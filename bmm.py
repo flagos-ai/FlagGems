@@ -1,3 +1,4 @@
+import torch
 import triton
 import triton.language as tl
 from itertools import product
@@ -138,7 +139,7 @@ def bmm(A, B, *, out=None):
     batch, M, K = A.shape
     _, _, N = B.shape
     if out == None:
-        O = triton.empty((batch, M, N), dtype=A.dtype, device=A.device)
+        O = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
     else:
         O = out
 
