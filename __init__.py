@@ -3,12 +3,18 @@ from .matmul import matmul as mm
 from .bmm import bmm
 from .softmax import softmax
 from .layernorm import layer_norm
+from .silu import silu
+from .gelu import gelu
+from .dropout import dropout
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
 aten_lib.impl('mm', mm, 'CUDA')
 aten_lib.impl('bmm', bmm, 'CUDA')
 aten_lib.impl('bmm.out', bmm, 'CUDA')
+aten_lib.impl('silu', silu, 'CUDA')
+aten_lib.impl('silu.out', silu, 'CUDA')
+aten_lib.impl('dropout', dropout, 'CUDA')
 aten_lib.impl('native_layer_norm', layer_norm, 'CUDA')
 aten_lib.impl('softmax.int', softmax, 'CompositeImplicitAutograd')
 
@@ -19,6 +25,12 @@ test_y = torch.randn((16, 16), device='cuda', dtype=torch.float16)
 test_w = torch.randn((16, 16), device='cuda', dtype=torch.float16)
 test_b = torch.randn((16, 16), device='cuda', dtype=torch.float16)
 
+SiLU = torch.nn.SiLU()
+SiLU(test_x)
+GELU = torch.nn.GELU()
+GELU(test_x)
+DROPOUT = torch.nn.Dropout()
+DROPOUT(test_x, p=0.5)
 torch.mm(test_x, test_y)
 torch.softmax(test_x)
 torch.layer_norm(test_x, test_x.shape, test_w, test_b, 1e-5)
