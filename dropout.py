@@ -1,7 +1,9 @@
 import triton
 import triton.language as tl
 import torch
+from .libentry import libentry
 
+@libentry()
 @triton.autotune(configs=[
     triton.Config({"N_BLOCK_SIZE": 256}, num_warps=2, num_stages=4),
     triton.Config({"N_BLOCK_SIZE": 256}, num_warps=2, num_stages=5),
@@ -41,7 +43,7 @@ def dropout_kernel(
     pmask = tl.rand(seed, n_offset + tl.arange(0, N_BLOCK_SIZE)) > p
     output = tl.where(pmask, input, 0.0)
     output = output * (1.0 / (1.0 - p))
-    tl.store(Y_ptr, output.to(tl.float16))
+    tl.store(Y_ptr, output.to(input.dtype))
 
 
 def dropout(A, p=0.5, train=False):

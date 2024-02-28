@@ -1,7 +1,7 @@
 import torch
 import triton
 import triton.language as tl
-from libentry import libentry
+from .libentry import libentry
 
 
 @libentry()
@@ -18,10 +18,11 @@ from libentry import libentry
     key=["N"]
 )
 @triton.jit
-def silu_kernel(
+def selu_kernel(
     X,
     Y,
     N,
+    DTYPE,
     N_BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0) * N_BLOCK_SIZE
@@ -43,11 +44,11 @@ def silu_kernel(
     )
     X_val = tl.load(X_ptrs)
     Y_val = X_val / (1.0 + tl.exp(-X_val.to(tl.float32)))
-    tl.store(Y_ptrs, Y_val.to(tl.float16))
+    tl.store(Y_ptrs, Y_val.to(input.dtype))
     
 
-def silu(A, *, out=None):
-    print("FLAG SILU")
+def selu(A, *, out=None):
+    print("FLAG SELU")
     M, N = A.shape
     if out == None:
         O = torch.empty_like(A)
@@ -55,7 +56,7 @@ def silu(A, *, out=None):
         O = out
     
     grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]), )
-    silu_kernel[grid_fn](A, O, M*N)
+    selu_kernel[grid_fn](A, O, M*N)
     # reshape input data into 2D tensor
     O.reshape(M, N)
     return O
