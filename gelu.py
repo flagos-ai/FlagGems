@@ -38,9 +38,7 @@ def gelu_none_kernel(
                                block_shape=(M_BLOCK_SIZE, ),
                                order=(0, ))
     input = tl.load(X_ptrs)
-    # gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * x * (1 + 0.044715 * x * x)))
-    # sqrt(2/pi) = 0.79788456
-    output = output # TODO: erf implement
+    output = output
     tl.store(Y_ptrs, output.to(input.dtype))
 
 
@@ -98,7 +96,8 @@ def gelu(A, approximate='none', out=None):
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]), )
     if approximate == 'none':
         print("NONE GELU")
-        gelu_none_kernel[grid_fn](A, O, M)
+        print("ERF VERSION NOT IMPLEMENT SO WE USED TAHN VERSION")
+        gelu_tanh_kernel[grid_fn](A, O, M)
     elif approximate == 'tanh':
         print("TANH GELU")
         gelu_tanh_kernel[grid_fn](A, O, M)
