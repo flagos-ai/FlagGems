@@ -17,7 +17,7 @@ aten_lib.impl('silu', selu, 'CUDA')
 aten_lib.impl('silu.out', selu, 'CUDA')
 aten_lib.impl('gelu', gelu, 'CUDA')
 # aten_lib.impl('dropout', dropout, 'CUDA')
-aten_lib.impl('native_layer_norm', layer_norm, 'CUDA')
+aten_lib.impl('layer_norm', layer_norm, 'CompositeImplicitAutograd')
 # aten_lib.impl('softmax.int', softmax, 'CompositeImplicitAutograd')
 aten_lib.impl('addmm', addmm, 'CUDA')
 

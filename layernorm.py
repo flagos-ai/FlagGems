@@ -17,8 +17,6 @@ def _layer_norm_fwd_fused(
     Y,  # pointer to the output
     W,  # pointer to the weights
     B,  # pointer to the biases
-    Mean,  # pointer to the mean
-    Rstd,  # pointer to the 1/std
     stride,  # how much to increase the pointer when moving by 1 row
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
@@ -45,9 +43,6 @@ def _layer_norm_fwd_fused(
         _var += x * x
     var = tl.sum(_var, axis=0) / N
     rstd = 1 / tl.sqrt(var + eps)
-    # Write mean / rstd
-    tl.store(Mean + row, mean)
-    tl.store(Rstd + row, rstd)
     # Normalize and apply linear transformation
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
@@ -67,8 +62,6 @@ def layer_norm(x, normalized_shape, weight, bias, eps):
     # reshape input data into 2D tensor
     x_arg = x.reshape(-1, x.shape[-1])
     M, N = x_arg.shape
-    mean = torch.empty((M, ), dtype=torch.float32, device='cuda')
-    rstd = torch.empty((M, ), dtype=torch.float32, device='cuda')
     # Less than 64KB per feature: enqueue fused kernel
     MAX_FUSED_SIZE = 65536 // x.element_size()
     BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
@@ -78,7 +71,7 @@ def layer_norm(x, normalized_shape, weight, bias, eps):
     num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
     # enqueue kernel
     _layer_norm_fwd_fused[(M, )](  #
-        x_arg, y, weight, bias, mean, rstd,  #
+        x_arg, y, weight, bias,  #
         x_arg.stride(0), N, eps,  #
         BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps, num_ctas=1)
-    return (y, mean, rstd)
+    return y
