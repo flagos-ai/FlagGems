@@ -48,12 +48,12 @@ def dropout_kernel(
 
 def dropout(A, p=0.5, train=False):
     print("FLAG DROPOUT")
-    M, N = A.shape
+    origin_shape = A.shape
+    A = A.contiguous()
+    N = A.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]), )
-    A = A.view(-1)
     O = torch.empty_like(A)
-    dropout_kernel[grid_fn](A, O, M*N, p)
-    O = O.reshape(M, N)
+    dropout_kernel[grid_fn](A, O, N, p)
     return O
     
     

@@ -2,7 +2,6 @@ import torch
 import triton
 import triton.language as tl
 from .libentry import libentry
-import math
 
 @libentry()
 @triton.autotune(configs=[
@@ -87,7 +86,7 @@ def gelu_tanh_kernel(
 def gelu(A, approximate='none', out=None):
     print("FLAG GELU")
     A = A.contiguous()
-    M = math.prod(A.shape)
+    M = A.numel()
     if out == None:
         O = torch.empty_like(A)
     else:

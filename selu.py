@@ -3,7 +3,6 @@ import triton
 import triton.language as tl
 from .libentry import libentry
 
-
 @libentry()
 @triton.autotune(configs=[
     triton.Config({"N_BLOCK_SIZE": 256}, num_warps=2, num_stages=4),
@@ -49,14 +48,13 @@ def selu_kernel(
 
 def selu(A, *, out=None):
     print("FLAG SELU")
-    M, N = A.shape
+    A = A.contiguous()
+    M = A.numel()
     if out == None:
         O = torch.empty_like(A)
     else:
         O = out
     
-    grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]), )
-    selu_kernel[grid_fn](A, O, M*N)
-    # reshape input data into 2D tensor
-    O.reshape(M, N)
+    grid_fn = lambda meta: (triton.cdiv(M, meta["N_BLOCK_SIZE"]), )
+    selu_kernel[grid_fn](A, O, M)
     return O
