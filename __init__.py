@@ -7,6 +7,7 @@ from .selu import selu
 from .gelu import gelu
 from .dropout import dropout
 from .addmm import addmm
+from .cumsum import cumsum
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -20,6 +21,8 @@ aten_lib.impl('gelu', gelu, 'CUDA')
 aten_lib.impl('layer_norm', layer_norm, 'CompositeImplicitAutograd')
 # aten_lib.impl('softmax.int', softmax, 'CompositeImplicitAutograd')
 aten_lib.impl('addmm', addmm, 'CUDA')
+aten_lib.impl('cumsum', cumsum, 'CUDA')
+aten_lib.impl('cumsum.out', cumsum, 'CUDA')
 
 ## TODO
 # advanced softmax
