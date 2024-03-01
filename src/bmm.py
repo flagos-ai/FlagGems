@@ -4,25 +4,73 @@ import triton.language as tl
 from itertools import product
 from .libentry import libentry
 
+
 @libentry()
 @triton.autotune(
     # configs=get_configs(),
     configs=[
-        triton.Config({"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1}, num_warps=4, num_stages=2),
-        triton.Config({"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=2),
-        triton.Config({"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=2),
-        triton.Config({"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=2),
-        triton.Config({"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=2),
-        triton.Config({"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=2),
-
-        triton.Config({"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1}, num_warps=4, num_stages=3),
-        triton.Config({"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=3),
-        triton.Config({"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=3),
-        triton.Config({"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=3),
-        triton.Config({"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=3),
-        triton.Config({"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2}, num_warps=4, num_stages=3),
+        triton.Config(
+            {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
+            num_warps=4,
+            num_stages=2,
+        ),
+        triton.Config(
+            {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=2,
+        ),
+        triton.Config(
+            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=2,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=2,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=2,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=2,
+        ),
+        triton.Config(
+            {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=3,
+        ),
     ],
-    key=["M", "N", "K"]
+    key=["M", "N", "K"],
 )
 @triton.heuristics(
     {
@@ -134,6 +182,7 @@ def bmm_kernel(
         mask_c = mask_m[:, None] & mask_n[None, :]
     tl.store(o_ptrs, o, mask_c)
 
+
 def bmm(A, B, *, out=None):
     print("FLAG BMM")
     batch, M, K = A.shape
@@ -143,6 +192,10 @@ def bmm(A, B, *, out=None):
     else:
         O = out
 
-    grid_fn = lambda meta: (triton.cdiv(meta["M"], meta["TILE_M"]), triton.cdiv(meta["N"], meta["TILE_N"]), batch)
+    grid_fn = lambda meta: (
+        triton.cdiv(meta["M"], meta["TILE_M"]),
+        triton.cdiv(meta["N"], meta["TILE_N"]),
+        batch,
+    )
     bmm_kernel[grid_fn](A, B, O, M, N, K)
     return O

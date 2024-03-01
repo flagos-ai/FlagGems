@@ -3,29 +3,73 @@ import triton
 import triton.language as tl
 from .libentry import libentry
 
+
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64}, num_stages=3, num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32}, num_stages=5, num_warps=2),
-        triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32}, num_stages=5, num_warps=2),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 64},
+            num_stages=3,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 32},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
+            num_stages=5,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
+            num_stages=5,
+            num_warps=2,
+        ),
     ],
-    key=['M', 'N', 'K'],
+    key=["M", "N", "K"],
 )
 @triton.jit
 def addmm_kernel(
-    a_ptr, b_ptr, bias_ptr, c_ptr,
-    alpha, beta,
-    M, N, K,
-    stride_am, stride_ak,
-    stride_bk, stride_bn,
-    stride_cm, stride_cn,
-    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
+    a_ptr,
+    b_ptr,
+    bias_ptr,
+    c_ptr,
+    alpha,
+    beta,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
 ):
     """Kernel for computing the addmm C = alpha * (A x B) + beta * Bias.
     A has shape (M, K), B has shape (K, N) and C has shape (M, N)
@@ -70,8 +114,11 @@ def addmm_kernel(
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     tl.store(c_ptrs, c, mask=c_mask)
 
+
 def addmm(bias, input, weight, *, beta=1, alpha=1, out=None):
     print("FLAG ADDMM")
+    # requires 1d bias, 2d input, 2d weight, 2d out
+    # 2d bias not supported temporarily
     assert input.shape[1] == weight.shape[0], "Incompatible dimensions"
     M, K = input.shape
     _, N = weight.shape
@@ -82,14 +129,25 @@ def addmm(bias, input, weight, *, beta=1, alpha=1, out=None):
         assert out.shape == (M, N), "Output shape must match"
         assert out.is_contiguous(), "Output must be contiguous"
 
-    grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']), triton.cdiv(N, META['BLOCK_SIZE_N']), )
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]),
+        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    )
     addmm_kernel[grid](
-        input, weight, bias, out,
-        alpha, beta,
-        M, N, K,
-        input.stride(0), input.stride(1),
-        weight.stride(0), weight.stride(1),
-        out.stride(0), out.stride(1),
+        input,
+        weight,
+        bias,
+        out,
+        alpha,
+        beta,
+        M,
+        N,
+        K,
+        input.stride(0),
+        input.stride(1),
+        weight.stride(0),
+        weight.stride(1),
+        out.stride(0),
+        out.stride(1),
     )
     return out
-

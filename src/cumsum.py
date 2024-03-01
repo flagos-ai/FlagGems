@@ -3,15 +3,19 @@ import triton
 import triton.language as tl
 from .libentry import libentry
 
+
 @libentry()
 @triton.heuristics(
-    values={'BLOCK_N': lambda args: triton.next_power_of_2(args['N'])},
+    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
 )
 @triton.jit
 def cumsum_kernel(
-    inp, out,
+    inp,
+    out,
     N,
-    stride_m, stride_n, stride_k,
+    stride_m,
+    stride_n,
+    stride_k,
     BLOCK_N: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
@@ -39,7 +43,10 @@ def cumsum(inp, dim=1, *, dtype=None, out=None):
     if out is None:
         out = torch.empty_like(inp_arg, dtype=dtype)
 
-    grid = (M, K,)
+    grid = (
+        M,
+        K,
+    )
     cumsum_kernel[grid](inp_arg, out, N, inp.stride(0), inp.stride(1), inp.stride(2))
     out.reshape(inp.shape)
     return out

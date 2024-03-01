@@ -1,11 +1,12 @@
 import triton
 
+
 class LibEntry(triton.KernelInterface):
     def __init__(
-            self,
-            fn,
-            cfggen,
-        ):
+        self,
+        fn,
+        cfggen,
+    ):
         self.fn = fn
         self.cfggen = cfggen
         self.divisibility = 16
@@ -24,8 +25,8 @@ class LibEntry(triton.KernelInterface):
                 key.append(str(arg.dtype))
         tuner_key = tuple(key)
         for arg in _args:
-            if hasattr(arg, 'data_ptr'):
-                spec_key = (arg.data_ptr() % self.divisibility == 0, )
+            if hasattr(arg, "data_ptr"):
+                spec_key = (arg.data_ptr() % self.divisibility == 0,)
             elif isinstance(arg, int):
                 spec_key = (
                     arg % self.divisibility == 0,
@@ -33,7 +34,7 @@ class LibEntry(triton.KernelInterface):
                     arg == 1,
                 )
             else:
-                spec_key = (False, )
+                spec_key = (False,)
             key.append(spec_key)
         return tuner_key, tuple(key)
 
@@ -63,7 +64,7 @@ class LibEntry(triton.KernelInterface):
             else:
                 # compiled
                 kernel = self.kernel_cache[config]
-        grid = kwargs['grid']
+        grid = kwargs["grid"]
         if isinstance(grid, type(lambda: None)):
             # grid_fn
             current = dict(kwargs, **config.kwargs)
@@ -79,6 +80,7 @@ class LibEntry(triton.KernelInterface):
 
         ret = kernel[grid](*args)
         return ret
+
 
 def libentry(cfggen=None):
     """
