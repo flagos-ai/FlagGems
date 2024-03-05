@@ -43,7 +43,14 @@ def gelu_none_kernel(
         order=(0,),
     )
     input = tl.load(X_ptrs)
-    output = output
+    output = (
+        0.5
+        * input
+        * (
+            1
+            + tl.math.erf(input / tl.sqrt(2.0))
+        )
+    )
     tl.store(Y_ptrs, output.to(input.dtype))
 
 
@@ -112,11 +119,11 @@ def gelu(A, approximate="none", out=None):
     A = A.contiguous()
     M = A.numel()
 
-    if approximate == "none" or approximate == "tanh":
-        # ERF VERSION NOT IMPLEMENT SO WE USED TAHN VERSION
+    if approximate == "tanh":
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         gelu_tanh_kernel[grid_fn](A, O, M)
     else:
-        torch.error("approximation type not supported")
+        grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+        gelu_none_kernel[grid_fn](A, O, M)
 
     return O
