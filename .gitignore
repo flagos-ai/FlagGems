@@ -8,6 +8,10 @@ bin-release/
 .settings/
 __pycache__/
 
+# Distribution files
+build/
+*.egg-info/
+
 # Executables
 *.swf
 *.air

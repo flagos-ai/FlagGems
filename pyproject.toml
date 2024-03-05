@@ -1,0 +1,31 @@
+[project]
+name = "flag_gems"
+dynamic = ["version"]
+authors = [
+    {name = "Strong Spoon", email = "strongspoon@outlook.com"},
+]
+description = "A Triton Library for LLM Operators"
+readme = {file= "README.md", content-type="text/markdown"}
+requires-python = ">=3.8"
+license = {text = "LICENSE.txt"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.1.0",
+]
+
+[project.urls]
+homepage = "https://gitee.com/flagir/flag-gems"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+pythonpath = [
+    "src",
+]

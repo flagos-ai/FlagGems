@@ -4,7 +4,13 @@ import triton.language as tl
 from .libentry import libentry
 
 
-@libentry()
+def cfggen(all_args):
+    N = all_args['N']
+    BLOCK_N = triton.next_power_of_2(N)
+    return (BLOCK_N, )
+
+
+@libentry(cfggen=cfggen)
 @triton.heuristics(
     values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
 )
@@ -47,6 +53,6 @@ def cumsum(inp, dim=1, *, dtype=None, out=None):
         M,
         K,
     )
-    cumsum_kernel[grid](inp_arg, out, N, inp.stride(0), inp.stride(1), inp.stride(2))
+    cumsum_kernel[grid](inp_arg, out, N, inp_arg.stride(0), inp_arg.stride(1), inp_arg.stride(2))
     out.reshape(inp.shape)
     return out

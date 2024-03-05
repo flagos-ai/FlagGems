@@ -1,8 +1,5 @@
-import sys
-
-sys.path.append("..")
-import src
 import torch
+import flag_gems
 from transformers import AutoTokenizer, BertForPreTraining, BertConfig, BertModel
 
 tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")

@@ -54,6 +54,7 @@ def dropout_kernel(
 
 def dropout(A, p=0.5, train=False):
     print("FLAG DROPOUT")
+    # training not supported
     origin_shape = A.shape
     O = torch.empty_like(A)
     A = A.contiguous()

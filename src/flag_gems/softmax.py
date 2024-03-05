@@ -5,8 +5,7 @@ from .libentry import libentry
 
 
 def cfggen(all_args):
-    x = all_args["input_ptr"]
-    _, N, _ = x.shape
+    N = all_args["N"]
     BLOCK_SIZE = triton.next_power_of_2(N)
     return (BLOCK_SIZE,)
 
