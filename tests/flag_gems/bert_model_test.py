@@ -2,6 +2,8 @@ import torch
 import flag_gems
 from transformers import AutoTokenizer, BertForPreTraining, BertConfig, BertModel
 
+flag_gems.enable()
+
 tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
 # model = BertForPreTraining.from_pretrained("google-bert/bert-base-uncased")
 config = BertConfig()

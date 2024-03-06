@@ -5,9 +5,9 @@ from .libentry import libentry
 
 
 def cfggen(all_args):
-    N = all_args['N']
+    N = all_args["N"]
     BLOCK_N = triton.next_power_of_2(N)
-    return (BLOCK_N, )
+    return (BLOCK_N,)
 
 
 @libentry(cfggen=cfggen)
@@ -36,23 +36,24 @@ def cumsum_kernel(
 
 def cumsum(inp, dim=1, *, dtype=None, out=None):
     print("FLAG CUMSUM")
+    shape = inp.shape
     M = 1
-    N = inp.shape[dim]
+    N = shape[dim]
     for i in range(dim):
-        M *= inp.shape[i]
-    inp_arg = inp.contiguous()
-    inp_arg = inp_arg.reshape(M, N, -1)
-    K = inp_arg.numel() // M // N
+        M *= shape[i]
+    inp = inp.contiguous()
+    inp = inp.reshape(M, N, -1)
+    K = inp.numel() // M // N
 
     if dtype is None:
         dtype = inp.dtype
     if out is None:
-        out = torch.empty_like(inp_arg, dtype=dtype)
+        out = torch.empty_like(inp, dtype=dtype)
 
     grid = (
         M,
         K,
     )
-    cumsum_kernel[grid](inp_arg, out, N, inp_arg.stride(0), inp_arg.stride(1), inp_arg.stride(2))
-    out.reshape(inp.shape)
+    cumsum_kernel[grid](inp, out, N, inp.stride(0), inp.stride(1), inp.stride(2))
+    out = out.reshape(shape)
     return out

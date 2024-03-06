@@ -1,14 +1,20 @@
 # FlagGems
 
 ## Description
-1. Installation  
+
+1. Requirements  
+    - Triton >= 2.2.0  
+    - PyTorch >= 2.1.2  
+
+2. Installation  
     ```shell
     pip install .
     ```
 
-2. Usage  
+3. Usage  
     ```python
     import flag_gems
+    flag_gems.enable()
     ```
 
 ## Operators

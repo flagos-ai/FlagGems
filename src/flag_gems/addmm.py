@@ -110,9 +110,9 @@ def addmm_kernel(
         b_ptrs += BLOCK_SIZE_K * stride_bk
     # You can fuse arbitrary activation functions here
     # while the accumulator is still in FP32!
-    c = accumulator.to(tl.float16)
     bias = tl.load(bias_ptrs, mask=offs_bn < N, other=0.0)
-    c = c * alpha + bias * beta
+    accumulator = accumulator * alpha + bias * beta
+    c = accumulator.to(tl.float16)
 
     # -----------------------------------------------------------
     # Write back the block of the output matrix C with masks.

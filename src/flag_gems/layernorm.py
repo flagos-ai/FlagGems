@@ -58,7 +58,7 @@ def _layer_norm_fwd_fused(
         tl.store(Y + cols, y, mask=mask)
 
 
-def layer_norm(x, normalized_shape, weight, bias, eps):
+def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
     print("FLAG LAYER NORM")
     # allocate output
     y = torch.empty_like(x)
