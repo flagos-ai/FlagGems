@@ -89,6 +89,25 @@ def test_accuracy_cumsum(shape):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
+def test_accuracy_dropout(shape, dtype, p):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    
+    ref_out = torch.nn.functional.dropout(inp, p, True)
+    res_out = dropout(inp, p=p)
+    
+    num_equal = torch.sum(ref_out==res_out).item()
+    total_elements = ref_out.numel()
+    percentage_equal = (num_equal / total_elements) 
+    
+    assert percentage_equal >= 0.01
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_gelu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -180,8 +199,8 @@ def test_accuracy_silu(shape, dtype):
     assert torch.allclose(
         ref_out, res_out, atol=1e-3, rtol=1e-3
     ), f"max diff: {maxdiff}"
-
-
+    
+    
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
