@@ -48,7 +48,8 @@ def silu_kernel(
 
 
 def silu(A, *, out=None):
-    print("FLAG SILU")
+    if __debug__:
+        print("FLAG SILU")
     if out == None:
         O = torch.empty_like(A)
     else:

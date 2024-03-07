@@ -184,7 +184,8 @@ def bmm_kernel(
 
 
 def bmm(A, B, *, out=None):
-    print("FLAG BMM")
+    if __debug__:
+        print("FLAG BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     if out == None:

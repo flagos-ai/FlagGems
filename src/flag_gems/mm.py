@@ -148,7 +148,8 @@ def mm_kernel(
 
 
 def mm(a, b):
-    print("FLAG MM")
+    if __debug__:
+        print("FLAG MM")
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     assert a.is_contiguous(), "Matrix A must be contiguous"
     assert b.is_contiguous(), "Matrix B must be contiguous"

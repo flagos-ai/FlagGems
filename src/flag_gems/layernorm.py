@@ -59,7 +59,8 @@ def _layer_norm_fwd_fused(
 
 
 def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-    print("FLAG LAYER NORM")
+    if __debug__:
+        print("FLAG LAYER NORM")
     # allocate output
     y = torch.empty_like(x)
     # reshape input data into 2D tensor

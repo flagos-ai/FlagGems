@@ -35,7 +35,8 @@ def cumsum_kernel(
 
 
 def cumsum(inp, dim=1, *, dtype=None, out=None):
-    print("FLAG CUMSUM")
+    if __debug__:
+        print("FLAG CUMSUM")
     shape = inp.shape
     M = 1
     N = shape[dim]

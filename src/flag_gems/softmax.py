@@ -27,7 +27,8 @@ def softmax_kernel(output_ptr, input_ptr, M, N, K, BLOCK_SIZE: tl.constexpr):
 
 
 def softmax(x, dim=1, dtype=None, out=None):
-    print("FLAG SOFTMAX")
+    if __debug__:
+        print("FLAG SOFTMAX")
 
     M = 1
     N = x.shape[dim]

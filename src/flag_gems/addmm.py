@@ -108,7 +108,8 @@ def addmm_kernel(
 
 
 def addmm(bias, input, weight, *, beta=1, alpha=1, out=None):
-    print("FLAG ADDMM")
+    if __debug__:
+        print("FLAG ADDMM")
     assert input.shape[1] == weight.shape[0], "Incompatible dimensions"
     M, K = input.shape
     _, N = weight.shape

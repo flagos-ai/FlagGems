@@ -48,7 +48,8 @@ def relu_kernel(
 
 
 def relu(A):
-    print("FLAG RELU")
+    if __debug__:
+        print("FLAG RELU")
     O = torch.empty_like(A)
     A = A.contiguous()
     M = A.numel()

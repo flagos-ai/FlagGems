@@ -17,7 +17,12 @@
     flag_gems.enable()
     ```
 
-4. Tests  
+4. Disable Flag Info  
+    ```shell
+    python -O program.py
+    ```
+
+5. Tests  
     - Accuracy  
         ```shell
         cd tests/flag_gems
