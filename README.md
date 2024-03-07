@@ -17,6 +17,20 @@
     flag_gems.enable()
     ```
 
+4. Tests  
+    - Accuracy  
+        ```shell
+        cd tests/flag_gems
+        pytest op_accu_test.py
+        python -m pytest -k test_accuracy_addmm op_accu_test.py
+        ```
+    - Performance  
+        ```shell
+        cd tests/flag_gems
+        pytest op_perf_test.py
+        python -m pytest -k test_performance_addmm op_perf_test.py
+        ```
+
 ## Operators
 
 - addmm  
