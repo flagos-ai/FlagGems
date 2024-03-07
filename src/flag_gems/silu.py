@@ -23,7 +23,6 @@ def silu_kernel(
     X,
     Y,
     N,
-    DTYPE,
     N_BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0) * N_BLOCK_SIZE
@@ -45,7 +44,7 @@ def silu_kernel(
     )
     X_val = tl.load(X_ptrs)
     Y_val = X_val / (1.0 + tl.exp(-X_val.to(tl.float32)))
-    tl.store(Y_ptrs, Y_val.to(input.dtype))
+    tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 
 def silu(A, *, out=None):

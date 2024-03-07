@@ -71,9 +71,6 @@ def addmm_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
 ):
-    """Kernel for computing the addmm C = alpha * (A x B) + beta * Bias.
-    A has shape (M, K), B has shape (K, N) and C has shape (M, N)
-    """
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
 
@@ -84,15 +81,8 @@ def addmm_kernel(
     b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
     bias_ptrs = bias_ptr + offs_bn
 
-    # -----------------------------------------------------------
-    # Iterate to compute a block of the C matrix.
-    # We accumulate into a `[BLOCK_SIZE_M, BLOCK_SIZE_N]` block
-    # of fp32 values for higher accuracy.
-    # `accumulator` will be converted back to fp16 after the loop.
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        # Load the next block of A and B, generate a mask by checking the K dimension.
-        # If it is out of bounds, set it to 0.
         a = tl.load(
             a_ptrs,
             mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
@@ -103,19 +93,13 @@ def addmm_kernel(
             mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
             other=0.0,
         )
-        # We accumulate along the K dimension.
         accumulator += tl.dot(a, b)
-        # Advance the ptrs to the next K block.
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
-    # You can fuse arbitrary activation functions here
-    # while the accumulator is still in FP32!
     bias = tl.load(bias_ptrs, mask=offs_bn < N, other=0.0)
     accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(tl.float16)
+    c = accumulator.to(bias.dtype)
 
-    # -----------------------------------------------------------
-    # Write back the block of the output matrix C with masks.
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
@@ -125,8 +109,6 @@ def addmm_kernel(
 
 def addmm(bias, input, weight, *, beta=1, alpha=1, out=None):
     print("FLAG ADDMM")
-    # requires 1d bias, 2d input, 2d weight, 2d out
-    # 2d bias not supported temporarily
     assert input.shape[1] == weight.shape[0], "Incompatible dimensions"
     M, K = input.shape
     _, N = weight.shape

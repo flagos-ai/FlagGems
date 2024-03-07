@@ -19,13 +19,37 @@
 
 ## Operators
 
-- addmm
-- bmm
-- cumsum
-- dropout
-- gelu
-- layernorm
-- mm
-- relu
-- silu
-- softmax
+- addmm  
+    - only support torch.float16
+
+- bmm  
+    - only support torch.float16
+
+- cumsum  
+    - only support torch.float32  
+    - support synamic dimension  
+
+- dropout  
+
+- gelu  
+    - support torch.float16 and torch.float32
+    - support dynamic dimension  
+
+- layernorm  
+    - support torch.float16 and torch.float32
+    - only support 2d tensor  
+
+- mm  
+    - only support torch.float16
+
+- relu  
+    - support torch.float16 and torch.float32
+    - support dynamic dimension 
+
+- silu  
+    - support torch.float16 and torch.float32
+    - support dynamic dimension 
+
+- softmax  
+    - support torch.float16 and torch.float32
+    - support dynamic dimension 
