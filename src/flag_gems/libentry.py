@@ -23,7 +23,6 @@ class LibEntry(triton.KernelInterface):
         for arg in _args:
             if hasattr(arg, "dtype"):
                 key.append(str(arg.dtype))
-        tuner_key = tuple(key)
         for arg in _args:
             if hasattr(arg, "data_ptr"):
                 spec_key = (arg.data_ptr() % self.divisibility == 0,)
@@ -36,18 +35,18 @@ class LibEntry(triton.KernelInterface):
             else:
                 spec_key = (False,)
             key.append(spec_key)
-        return tuner_key, tuple(key)
+        return tuple(key)
 
     def run(self, *args, **kwargs):
         nargs = dict(zip(self.fn.arg_names, args))
         all_args = {**nargs, **kwargs}
         # autotuner
         if isinstance(self.fn, triton.runtime.Autotuner):
-            tuner_key, entry_key = self.get_key(all_args)
+            entry_key = self.get_key(all_args)
             if entry_key not in self.config_cache:
                 # tune
                 kernel = self.fn.run(*args, **kwargs)
-                config = self.fn.cache[tuner_key]
+                config = self.fn.best_config
                 self.config_cache[entry_key] = config
                 self.kernel_cache[config] = kernel
             else:

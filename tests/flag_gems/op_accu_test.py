@@ -92,15 +92,15 @@ def test_accuracy_cumsum(shape):
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 def test_accuracy_dropout(shape, dtype, p):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
-    
+
     ref_out = torch.nn.functional.dropout(inp, p, True)
     res_out = dropout(inp, p=p)
-    
-    num_equal = torch.sum(ref_out==res_out).item()
-    total_elements = ref_out.numel()
-    percentage_equal = (num_equal / total_elements) 
-    
-    assert percentage_equal >= 0.01
+
+    num_equal = torch.sum(ref_out == res_out).item()
+    exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
+    assert (
+        abs(num_equal - exp_equal) / exp_equal <= 0.05
+    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
 
 @pytest.mark.parametrize(
@@ -199,8 +199,8 @@ def test_accuracy_silu(shape, dtype):
     assert torch.allclose(
         ref_out, res_out, atol=1e-3, rtol=1e-3
     ), f"max diff: {maxdiff}"
-    
-    
+
+
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
