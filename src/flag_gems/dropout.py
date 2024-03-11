@@ -16,7 +16,7 @@ from .libentry import libentry
         triton.Config({"N_BLOCK_SIZE": 2048}, num_warps=4, num_stages=4),
         triton.Config({"N_BLOCK_SIZE": 2048}, num_warps=4, num_stages=5),
     ],
-    key=["N"],
+    key=["N", "p"],
 )
 @triton.jit
 def dropout_kernel(

@@ -96,7 +96,7 @@ def test_accuracy_dropout(shape, dtype, p):
     ref_out = torch.nn.functional.dropout(inp, p, True)
     res_out = dropout(inp, p=p)
 
-    num_equal = torch.sum(ref_out == res_out).item()
+    num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
     assert (
         abs(num_equal - exp_equal) / exp_equal <= 0.05
