@@ -107,15 +107,15 @@ def addmm_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def addmm(bias, input, weight, *, beta=1, alpha=1, out=None):
+def addmm(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     if __debug__:
         print("FLAG ADDMM")
-    assert input.shape[1] == weight.shape[0], "Incompatible dimensions"
-    M, K = input.shape
-    _, N = weight.shape
+    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
+    M, K = mat1.shape
+    _, N = mat2.shape
 
     if out is None:
-        out = torch.empty((M, N), device=input.device, dtype=input.dtype)
+        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Output shape must match"
         assert out.is_contiguous(), "Output must be contiguous"
@@ -125,8 +125,8 @@ def addmm(bias, input, weight, *, beta=1, alpha=1, out=None):
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
     addmm_kernel[grid](
-        input,
-        weight,
+        mat1,
+        mat2,
         bias,
         out,
         alpha,
@@ -134,10 +134,10 @@ def addmm(bias, input, weight, *, beta=1, alpha=1, out=None):
         M,
         N,
         K,
-        input.stride(0),
-        input.stride(1),
-        weight.stride(0),
-        weight.stride(1),
+        mat1.stride(0),
+        mat1.stride(1),
+        mat2.stride(0),
+        mat2.stride(1),
         out.stride(0),
         out.stride(1),
     )

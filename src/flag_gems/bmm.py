@@ -7,7 +7,6 @@ from .libentry import libentry
 
 @libentry()
 @triton.autotune(
-    # configs=get_configs(),
     configs=[
         triton.Config(
             {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
@@ -95,10 +94,6 @@ def bmm_kernel(
     DIVISIBLE_N: tl.constexpr,
     DIVISIBLE_K: tl.constexpr,
 ):
-    # A: shape(B, M, K)  stride(MK, K, 1)
-    # B: shape(B, K, N)  stride(KN, N, 1)
-    # O: shape(B, M, N)  stride(MN, N, 1)
-
     # batch offsets
     pid_b = tl.program_id(2)
     A += pid_b * M * K

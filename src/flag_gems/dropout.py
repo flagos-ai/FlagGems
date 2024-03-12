@@ -43,21 +43,20 @@ def dropout_kernel(
         block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
-    input = tl.load(X_ptr)
+    inp = tl.load(X_ptr)
     # random seed (lucky number)
     seed = 7
     pmask = tl.rand(seed, n_offset + tl.arange(0, N_BLOCK_SIZE)) > p
-    output = tl.where(pmask, input, 0.0)
+    output = tl.where(pmask, inp, 0.0)
     output = output * (1.0 / (1.0 - p))
-    tl.store(Y_ptr, output.to(input.dtype))
+    tl.store(Y_ptr, output.to(inp.dtype))
 
 
 def dropout(A, p=0.5, train=False):
     if __debug__:
         print("FLAG DROPOUT")
-    assert p < 1.0, "p must be less than 1.0"
+    assert p >= 0.0 and p < 1.0, "p must be in [0, 1)"
     # training not supported
-    origin_shape = A.shape
     O = torch.empty_like(A)
     A = A.contiguous()
     N = A.numel()

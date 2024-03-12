@@ -42,9 +42,9 @@ def gelu_none_kernel(
         block_shape=(M_BLOCK_SIZE,),
         order=(0,),
     )
-    input = tl.load(X_ptrs)
-    output = 0.5 * input * (1 + tl.math.erf(input / tl.sqrt(2.0)))
-    tl.store(Y_ptrs, output.to(input.dtype))
+    inp = tl.load(X_ptrs)
+    output = 0.5 * inp * (1 + tl.math.erf(inp / tl.sqrt(2.0)))
+    tl.store(Y_ptrs, output.to(inp.dtype))
 
 
 @libentry()
@@ -85,22 +85,18 @@ def gelu_tanh_kernel(
         block_shape=(M_BLOCK_SIZE,),
         order=(0,),
     )
-    input = tl.load(X_ptrs)
-    # gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * x * (1 + 0.044715 * x * x)))
-    # sqrt(2/pi) = 0.79788456
+    inp = tl.load(X_ptrs)
     output = (
         0.5
-        * input
+        * inp
         * (
             1
             + tl.math.tanh(
-                input
-                * 0.79788456
-                * (1 + 0.044715 * tl.math.pow(input.to(tl.float32), 2))
+                inp * 0.79788456 * (1 + 0.044715 * tl.math.pow(inp.to(tl.float32), 2))
             )
         )
     )
-    tl.store(Y_ptrs, output.to(input.dtype))
+    tl.store(Y_ptrs, output.to(inp.dtype))
 
 
 def gelu(A, approximate="none", out=None):

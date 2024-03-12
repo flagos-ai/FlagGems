@@ -5,11 +5,6 @@ import triton.language as tl
 from .libentry import libentry
 
 
-# `triton.jit`'ed functions can be auto-tuned by using the `triton.autotune` decorator, which consumes:
-#   - A list of `triton.Config` objects that define different configurations of
-#       meta-parameters (e.g., `BLOCK_SIZE_M`) and compilation options (e.g., `num_warps`) to try
-#   - An auto-tuning *key* whose change in values will trigger evaluation of all the
-#       provided configs
 @libentry()
 @triton.autotune(
     configs=[
@@ -105,15 +100,15 @@ def mm_kernel(
     N,
     K,
     stride_am,
-    stride_ak,  #
+    stride_ak,
     stride_bk,
-    stride_bn,  #
+    stride_bn,
     stride_cm,
     stride_cn,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
-    BLOCK_SIZE_K: tl.constexpr,  #
-    GROUP_SIZE_M: tl.constexpr,  #
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -162,15 +157,15 @@ def mm(a, b):
     mm_kernel[grid](
         a,
         b,
-        c,  #
+        c,
         M,
         N,
-        K,  #
+        K,
         a.stride(0),
-        a.stride(1),  #
+        a.stride(1),
         b.stride(0),
-        b.stride(1),  #
+        b.stride(1),
         c.stride(0),
-        c.stride(1),  #
+        c.stride(1),
     )
     return c
