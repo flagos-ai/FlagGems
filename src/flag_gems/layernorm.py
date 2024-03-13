@@ -4,76 +4,82 @@ import triton.language as tl
 from .libentry import libentry
 
 
-def cfggen(all_args):
-    x = all_args["X"]
-    N = all_args["N"]
-    MAX_FUSED_SIZE = 65536 // x.element_size()
-    BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
-    return (BLOCK_SIZE,)
+def cfggen():
+    warps = [1, 2, 4, 8, 16, 32]
+    configs = [
+        triton.Config({"BLOCK_ROW_SIZE": 1, "BLOCK_COL_SIZE": 2048}, num_warps=w)
+        for w in warps
+    ]
+    return configs
 
 
-@libentry(cfggen=cfggen)
+@libentry()
+@triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
-def _layer_norm_fwd_fused(
+def layer_norm_kernel(
     X,
     Y,
     W,
     B,
     stride,
+    M,
     N,
     eps,
-    BLOCK_SIZE: tl.constexpr,
+    BLOCK_ROW_SIZE: tl.constexpr,
+    BLOCK_COL_SIZE: tl.constexpr,
 ):
-    row = tl.program_id(0)
-    Y += row * stride
+    # Map the program id to the row of X and Y it should compute.
+    pid = tl.program_id(0)
+    row = pid * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    row_mask = row < M
     X += row * stride
-    mean = 0
-    _mean = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    for off in range(0, N, BLOCK_SIZE):
-        cols = off + tl.arange(0, BLOCK_SIZE)
-        a = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
+    Y += row * stride
+
+    # Compute mean
+    _mean = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    for off in range(0, N, BLOCK_COL_SIZE):
+        cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+        col_mask = cols < N
+        mask = row_mask and col_mask
+
+        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
-    mean = tl.sum(_mean, axis=0) / N
-    _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    for off in range(0, N, BLOCK_SIZE):
-        cols = off + tl.arange(0, BLOCK_SIZE)
-        x = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
-        x = tl.where(cols < N, x - mean, 0.0)
+    mean = tl.sum(_mean, axis=1)[:, None]
+    mean /= N
+
+    # Compute variance
+    _var = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    for off in range(0, N, BLOCK_COL_SIZE):
+        cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+        col_mask = cols < N
+        mask = row_mask and col_mask
+
+        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        x = tl.where(col_mask, x - mean, 0.0)
         _var += x * x
-    var = tl.sum(_var, axis=0) / N
+    var = tl.sum(_var, axis=1)[:, None]
+    var /= N
     rstd = 1 / tl.sqrt(var + eps)
-    for off in range(0, N, BLOCK_SIZE):
-        cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        w = tl.load(W + cols, mask=mask)
-        b = tl.load(B + cols, mask=mask)
-        x = tl.load(X + cols, mask=mask, other=0.0).to(tl.float32)
+
+    # Normalize and apply linear transformation
+    for off in range(0, N, BLOCK_COL_SIZE):
+        cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+        col_mask = cols < N
+        mask = row_mask and col_mask
+
+        w = tl.load(W + cols, col_mask)
+        b = tl.load(B + cols, col_mask)
+        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         x_hat = (x - mean) * rstd
         y = x_hat * w + b
+        # Write output
         tl.store(Y + cols, y, mask=mask)
 
 
 def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-    if __debug__:
-        print("FLAG LAYER NORM")
+    M, N = x.shape
     y = torch.empty_like(x)
-    x_arg = x.reshape(-1, x.shape[-1])
-    M, N = x_arg.shape
-    MAX_FUSED_SIZE = 65536 // x.element_size()
-    BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
-    if N > BLOCK_SIZE:
-        raise RuntimeError("This layer norm doesn't support feature dim >= 64KB.")
-    num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
-    _layer_norm_fwd_fused[(M,)](
-        x_arg,
-        y,
-        weight,
-        bias,
-        x_arg.stride(0),
-        N,
-        eps,
-        BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=num_warps,
-        num_ctas=1,
-    )
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
+
+    layer_norm_kernel[grid](x, y, weight, bias, x.stride(0), M, N, eps)
     return y

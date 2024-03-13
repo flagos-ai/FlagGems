@@ -4,26 +4,54 @@ import triton.language as tl
 from .libentry import libentry
 
 
-def cfggen(all_args):
-    N = all_args["N"]
-    BLOCK_SIZE = triton.next_power_of_2(N)
-    return (BLOCK_SIZE,)
-
-
-@libentry(cfggen=cfggen)
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_M": 1}, num_stages=4),
+        triton.Config({"BLOCK_M": 1}, num_stages=5),
+        triton.Config({"BLOCK_M": 2}, num_stages=4),
+        triton.Config({"BLOCK_M": 2}, num_stages=5),
+        triton.Config({"BLOCK_M": 4}, num_stages=4),
+        triton.Config({"BLOCK_M": 4}, num_stages=5),
+        triton.Config({"BLOCK_M": 8}, num_stages=4),
+        triton.Config({"BLOCK_M": 8}, num_stages=5),
+    ],
+    key=[
+        "M", "N",
+    ],
+)
+@triton.heuristics(
+    values={
+        "BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
+        "num_warps": lambda args: 4
+        if args["N"] <= 1024
+        else (8 if args["N"] <= 2048 else 16),
+    },
+)
 @triton.jit
-def softmax_kernel(output_ptr, input_ptr, M, N, K, BLOCK_SIZE: tl.constexpr):
+def softmax_kernel(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
-    n_offset = tl.arange(0, BLOCK_SIZE)
-    input_ptrs = input_ptr + pid_m * N * K + n_offset * K + pid_k
-    inp = tl.load(input_ptrs, mask=n_offset < N, other=-float("inf"))
-    row_minus_max = inp - tl.max(inp, axis=0)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    n_offset = tl.arange(0, BLOCK_N)
+    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    input_ptrs = input_ptr + offset
+    inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
+    row_minus_max = inp - tl.max(inp, axis=1)[:, None]
     numerator = tl.exp(row_minus_max)
-    denominator = tl.sum(numerator, axis=0)
+    denominator = tl.sum(numerator, axis=1)[:, None]
     softmax_output = numerator / denominator
-    output_ptrs = output_ptr + pid_m * N * K + n_offset * K + pid_k
-    tl.store(output_ptrs, softmax_output, mask=n_offset < N)
+    output_ptrs = output_ptr + offset
+    tl.store(output_ptrs, softmax_output, mask=mask)
 
 
 def softmax(x, dim=1, dtype=None, out=None):
@@ -41,26 +69,17 @@ def softmax(x, dim=1, dtype=None, out=None):
     if dtype is None:
         dtype = x.dtype
     if out is None:
-        out = torch.empty_like(x, dtype=dtype)
+        out = torch.empty_like(x, dtype=dtype, device="cuda")
 
-    BLOCK_SIZE = triton.next_power_of_2(N)
-    num_warps = 4
-    if BLOCK_SIZE >= 2048:
-        num_warps = 8
-    if BLOCK_SIZE >= 4096:
-        num_warps = 16
-    softmax_kernel[
-        (
-            M,
-            K,
-        )
-    ](
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        K,
+    )
+    softmax_kernel[grid](
         out,
         inp,
         M,
         N,
         K,
-        num_warps=num_warps,
-        BLOCK_SIZE=BLOCK_SIZE,
     )
     return out

@@ -1,5 +1,4 @@
 import torch
-
 import triton
 import triton.language as tl
 from .libentry import libentry
@@ -8,94 +7,111 @@ from .libentry import libentry
 @libentry()
 @triton.autotune(
     configs=[
+        # basic configs for compute-bound matmuls
         triton.Config(
-            {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 256,
-                "BLOCK_SIZE_K": 64,
-                "GROUP_SIZE_M": 8,
-            },
+            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
             num_stages=3,
             num_warps=8,
         ),
         triton.Config(
-            {
-                "BLOCK_SIZE_M": 64,
-                "BLOCK_SIZE_N": 256,
-                "BLOCK_SIZE_K": 32,
-                "GROUP_SIZE_M": 8,
-            },
+            {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
+            num_stages=3,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 32, "SPLIT_K": 1},
             num_stages=4,
             num_warps=4,
         ),
         triton.Config(
-            {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 32,
-                "GROUP_SIZE_M": 8,
-            },
+            {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
             num_stages=4,
             num_warps=4,
         ),
         triton.Config(
-            {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 32,
-                "GROUP_SIZE_M": 8,
-            },
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
             num_stages=4,
             num_warps=4,
         ),
         triton.Config(
-            {
-                "BLOCK_SIZE_M": 64,
-                "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 32,
-                "GROUP_SIZE_M": 8,
-            },
+            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32, "SPLIT_K": 1},
             num_stages=4,
             num_warps=4,
         ),
         triton.Config(
-            {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 32,
-                "BLOCK_SIZE_K": 32,
-                "GROUP_SIZE_M": 8,
-            },
+            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
             num_stages=4,
             num_warps=4,
         ),
         triton.Config(
-            {
-                "BLOCK_SIZE_M": 64,
-                "BLOCK_SIZE_N": 32,
-                "BLOCK_SIZE_K": 32,
-                "GROUP_SIZE_M": 8,
-            },
+            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
             num_stages=5,
             num_warps=2,
         ),
+        # good for int8
         triton.Config(
-            {
-                "BLOCK_SIZE_M": 32,
-                "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 32,
-                "GROUP_SIZE_M": 8,
-            },
+            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 128, "SPLIT_K": 1},
+            num_stages=3,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
+            num_stages=3,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 128, "SPLIT_K": 1},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 128, "SPLIT_K": 1},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64, "SPLIT_K": 1},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
             num_stages=5,
             num_warps=2,
         ),
     ],
     key=["M", "N", "K"],
 )
+@triton.heuristics(
+    {
+        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0,
+    }
+)
 @triton.jit
 def mm_kernel(
-    a_ptr,
-    b_ptr,
-    c_ptr,
+    A,
+    B,
+    C,
     M,
     N,
     K,
@@ -105,54 +121,99 @@ def mm_kernel(
     stride_bn,
     stride_cm,
     stride_cn,
-    BLOCK_SIZE_M: tl.constexpr,
-    BLOCK_SIZE_N: tl.constexpr,
-    BLOCK_SIZE_K: tl.constexpr,
-    GROUP_SIZE_M: tl.constexpr,
+    dot_out_dtype: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    EVEN_K: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
-    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    num_pid_in_group = GROUP_SIZE_M * num_pid_n
-    group_id = pid // num_pid_in_group
-    first_pid_m = group_id * GROUP_SIZE_M
-    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
-    pid_m = first_pid_m + (pid % group_size_m)
-    pid_n = (pid % num_pid_in_group) // group_size_m
+    # matrix multiplication
+    pid = tl.program_id(0)
+    pid_z = tl.program_id(1)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    # re-order program ID for better L2 performance
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // (group_size)
+    # do matrix multiplication
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
+    # pointers
+    A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+    B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
+    for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
+        if EVEN_K:
+            a = tl.load(A)
+            b = tl.load(B)
+        else:
+            k_remaining = K - k * (BLOCK_K * SPLIT_K)
+            _0 = tl.zeros((1, 1), dtype=C.dtype.element_ty)
+            a = tl.load(A, mask=rk[None, :] < k_remaining, other=_0)
+            b = tl.load(B, mask=rk[:, None] < k_remaining, other=_0)
+        if a.dtype != b.dtype:
+            a = a.to(C.dtype.element_ty)
+            b = b.to(C.dtype.element_ty)
+        acc += tl.dot(a, b, out_dtype=dot_out_dtype)
+        A += BLOCK_K * SPLIT_K * stride_ak
+        B += BLOCK_K * SPLIT_K * stride_bk
+    acc = acc.to(C.dtype.element_ty)
+    # rematerialize rm and rn to save registers
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+    mask = (rm < M)[:, None] & (rn < N)[None, :]
+    # handles write-back with reduction-splitting
+    if SPLIT_K == 1:
+        tl.store(C, acc, mask=mask)
+    else:
+        tl.atomic_add(C, acc, mask=mask)
 
-    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
-    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
-    offs_k = tl.arange(0, BLOCK_SIZE_K)
-    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
-        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
-        accumulator += tl.dot(a, b)
-        a_ptrs += BLOCK_SIZE_K * stride_ak
-        b_ptrs += BLOCK_SIZE_K * stride_bk
-    c = accumulator.to(tl.float16)
+_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
 
-    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    tl.store(c_ptrs, c, mask=c_mask)
+
+def get_higher_dtype(a, b):
+    if a is b:
+        return a
+
+    assert a in _ordered_datatypes
+    assert b in _ordered_datatypes
+
+    for d in _ordered_datatypes:
+        if a is d:
+            return b
+        if b is d:
+            return a
 
 
 def mm(a, b):
-    if __debug__:
-        print("FLAG MM")
-    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
-    assert a.is_contiguous(), "Matrix A must be contiguous"
-    assert b.is_contiguous(), "Matrix B must be contiguous"
+    device = a.device
+    # handle non-contiguous inputs if necessary
+    if a.stride(0) > 1 and a.stride(1) > 1:
+        a = a.contiguous()
+    if b.stride(0) > 1 and b.stride(1) > 1:
+        b = b.contiguous()
+    # checks constraints
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
-    K, N = b.shape
-    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    _, N = b.shape
+    # allocates output
+    c_dtype = get_higher_dtype(a.dtype, b.dtype)
+    c = torch.empty((M, N), device=device, dtype=c_dtype)
+    dot_out_dtype = tl.float32
+    # launch kernel
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        META["SPLIT_K"],
     )
     mm_kernel[grid](
         a,
@@ -167,5 +228,7 @@ def mm(a, b):
         b.stride(1),
         c.stride(0),
         c.stride(1),
+        dot_out_dtype=dot_out_dtype,
+        GROUP_M=8,
     )
     return c

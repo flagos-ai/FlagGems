@@ -96,7 +96,7 @@ def test_performance_cumsum(shape):
     end = time.time()
     triton_time = (end - start) * 1000
 
-    assert False, f"Shape: shape | Torch: {torch_time}ms | Triton: {triton_time}ms"
+    assert False, f"Shape: {shape} | Torch: {torch_time}ms | Triton: {triton_time}ms"
 
 
 @pytest.mark.parametrize(
@@ -125,7 +125,7 @@ def test_performance_gelu(shape, dtype):
     end = time.time()
     triton_time = (end - start) * 1000
 
-    assert False, f"Shape: shape | Torch: {torch_time}ms | Triton: {triton_time}ms"
+    assert False, f"Shape: {shape} | Torch: {torch_time}ms | Triton: {triton_time}ms"
 
 
 @pytest.mark.parametrize(
@@ -162,7 +162,7 @@ def test_performance_layernorm(shape, dtype):
     end = time.time()
     triton_time = (end - start) * 1000
 
-    assert False, f"Shape: shape | Torch: {torch_time}ms | Triton: {triton_time}ms"
+    assert False, f"Shape: {shape} | Torch: {torch_time}ms | Triton: {triton_time}ms"
 
 
 @pytest.mark.parametrize(
@@ -185,13 +185,14 @@ def test_performance_mm(shape):
 
     for i in range(5):
         res_out = mm(tensor_a, tensor_b)
+    start = time.time()
     for i in range(1000):
         res_out = mm(tensor_a, tensor_b)
     torch.cuda.synchronize()
     end = time.time()
     triton_time = (end - start) * 1000
 
-    assert False, f"Shape: shape | Torch: {torch_time}ms | Triton: {triton_time}ms"
+    assert False, f"Shape: {shape} | Torch: {torch_time}ms | Triton: {triton_time}ms"
 
 
 @pytest.mark.parametrize(
@@ -220,7 +221,7 @@ def test_performance_relu(shape, dtype):
     end = time.time()
     triton_time = (end - start) * 1000
 
-    assert False, f"Shape: shape | Torch: {torch_time}ms | Triton: {triton_time}ms"
+    assert False, f"Shape: {shape} | Torch: {torch_time}ms | Triton: {triton_time}ms"
 
 
 @pytest.mark.parametrize(
@@ -249,7 +250,7 @@ def test_performance_silu(shape, dtype):
     end = time.time()
     triton_time = (end - start) * 1000
 
-    assert False, f"Shape: shape | Torch: {torch_time}ms | Triton: {triton_time}ms"
+    assert False, f"Shape: {shape} | Torch: {torch_time}ms | Triton: {triton_time}ms"
 
 
 @pytest.mark.parametrize(
@@ -279,4 +280,4 @@ def test_performance_softmax(shape, dtype):
     end = time.time()
     triton_time = (end - start) * 1000
 
-    assert False, f"Shape: shape | Torch: {torch_time}ms | Triton: {triton_time}ms"
+    assert False, f"Shape: {shape} | Torch: {torch_time}ms | Triton: {triton_time}ms"

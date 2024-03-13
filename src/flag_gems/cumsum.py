@@ -4,13 +4,22 @@ import triton.language as tl
 from .libentry import libentry
 
 
-def cfggen(all_args):
-    N = all_args["N"]
-    BLOCK_N = triton.next_power_of_2(N)
-    return (BLOCK_N,)
-
-
-@libentry(cfggen=cfggen)
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
+        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
+        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
+        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
+        triton.Config({"BLOCK_M": 128}, num_warps=8, num_stages=5),
+        triton.Config({"BLOCK_M": 128}, num_warps=8, num_stages=5),
+        triton.Config({"BLOCK_M": 512}, num_warps=8, num_stages=4),
+        triton.Config({"BLOCK_M": 512}, num_warps=8, num_stages=5),
+    ],
+    key=[
+        "M",
+    ],
+)
 @triton.heuristics(
     values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
 )
@@ -18,20 +27,23 @@ def cfggen(all_args):
 def cumsum_kernel(
     inp,
     out,
+    M,
     N,
-    stride_m,
-    stride_n,
-    stride_k,
+    K,
+    BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     n_offset = tl.arange(0, BLOCK_N)
-    inp_ptrs = inp + pid_m * stride_m + n_offset * stride_n + pid_k * stride_k
-    inp_vals = tl.load(inp_ptrs, mask=n_offset < N)
-    result = tl.cumsum(inp_vals)
-    out_ptrs = out + pid_m * stride_m + n_offset * stride_n + pid_k * stride_k
-    tl.store(out_ptrs, result, mask=n_offset < N)
+    offset = m_offset[:, None, None] * N * K + n_offset[None, :, None] * K + pid_k
+    mask = m_offset[:, None, None] < M and n_offset[None, :, None] < N
+    inp_ptrs = inp + offset
+    inp_vals = tl.load(inp_ptrs, mask=mask)
+    result = tl.cumsum(inp_vals, axis=1)
+    out_ptrs = out + offset
+    tl.store(out_ptrs, result, mask=mask)
 
 
 def cumsum(inp, dim=1, *, dtype=None, out=None):
@@ -51,10 +63,10 @@ def cumsum(inp, dim=1, *, dtype=None, out=None):
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
 
-    grid = (
-        M,
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    cumsum_kernel[grid](inp, out, N, inp.stride(0), inp.stride(1), inp.stride(2))
+    cumsum_kernel[grid](inp, out, M, N, K)
     out = out.reshape(shape)
     return out
