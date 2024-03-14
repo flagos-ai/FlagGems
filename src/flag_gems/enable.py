@@ -8,6 +8,7 @@ from .layernorm import layer_norm
 from .mm import mm
 from .relu import relu
 from .silu import silu
+from .triu import triu
 from .softmax import softmax
 
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -26,4 +27,6 @@ def enable():
     aten_lib.impl("relu", relu, "CUDA")
     aten_lib.impl("silu", silu, "CUDA")
     aten_lib.impl("silu.out", silu, "CUDA")
+    aten_lib.impl("triu", triu, "CUDA")
+    aten_lib.impl("triu.out", triu, "CUDA")
     aten_lib.impl("softmax.int", softmax, "CompositeImplicitAutograd")
