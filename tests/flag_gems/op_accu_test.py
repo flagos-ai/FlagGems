@@ -1,9 +1,7 @@
 import sys
-
-sys.path.append("../../")
-from src.flag_gems import *
 import torch
 import pytest
+from flag_gems import *
 
 
 @pytest.mark.parametrize(

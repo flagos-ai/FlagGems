@@ -9,15 +9,14 @@ from .libentry import libentry
     configs=[
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
+        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
+        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
         triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 128}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 128}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 512}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 512}, num_warps=8, num_stages=5),
     ],
     key=[
-        "M", "N",
+        "M",
+        "N",
     ],
 )
 @triton.heuristics(

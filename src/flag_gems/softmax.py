@@ -17,7 +17,8 @@ from .libentry import libentry
         triton.Config({"BLOCK_M": 8}, num_stages=5),
     ],
     key=[
-        "M", "N",
+        "M",
+        "N",
     ],
 )
 @triton.heuristics(
