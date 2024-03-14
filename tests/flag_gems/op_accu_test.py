@@ -215,3 +215,22 @@ def test_accuracy_softmax(shape, dtype):
     assert torch.allclose(
         ref_out, res_out, atol=1e-3, rtol=1e-3
     ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 128) for i in range(1, 10)],
+)
+@pytest.mark.parametrize("diagonal", [ -3, -1, 0, 1, 3])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_triu(shape, diagonal, dtype):
+    M, N = shape
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.triu(inp, diagonal)
+    res_out = triu(inp, diagonal)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"

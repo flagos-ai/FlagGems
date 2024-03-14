@@ -7,6 +7,7 @@ from .layernorm import layer_norm
 from .mm import mm
 from .relu import relu
 from .silu import silu
+from .triu import triu
 from .softmax import softmax
 from .enable import enable
 
@@ -21,5 +22,6 @@ __all__ = [
     "mm",
     "relu",
     "silu",
+    "triu",
     "softmax",
 ]

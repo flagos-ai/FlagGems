@@ -401,6 +401,53 @@ def test_performance_softmax(M, N, dim, dtype, provider):
     return ms
 
 
+configs_triu = [
+    triton.testing.Benchmark(
+        x_names=["N"],
+        x_vals=[i * 64 for i in range(1, 20)],
+        line_arg="provider",
+        line_vals=["flag_gems", "torch"],
+        line_names=["flag_gems", "torch"],
+        styles=[("red", "-"), ("green", "-")],
+        ylabel="ms",
+        plot_name=f"test_performance_triu_{dtype}",
+        args={"M": 1024, "dtype": dtype},
+    )
+    for dtype in [torch.float16, torch.float32]
+]
+
+
+@triton.testing.perf_report(configs_triu)
+def test_performance_triu(M, N, dtype, provider):
+    layer_shape = (N,)
+    diagonal = 1
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    weight = torch.randn(layer_shape, dtype=dtype, device="cuda")
+    bias = torch.randn(layer_shape, dtype=dtype, device="cuda")
+    eps = 1e-5
+
+    if provider == "torch":
+        for i in range(5):
+            ref_out = torch.triu(inp, diagonal)
+        start = time.time()
+        for i in range(1000):
+            ref_out = torch.triu(inp, diagonal)
+        torch.cuda.synchronize()
+        end = time.time()
+        ms = (end - start) * 1000
+    if provider == "flag_gems":
+        for i in range(5):
+            res_out = triu(inp, diagonal)
+        start = time.time()
+        for i in range(1000):
+            res_out = triu(inp, diagonal)
+        torch.cuda.synchronize()
+        end = time.time()
+        ms = (end - start) * 1000
+
+    return ms
+
+
 test_performance_addmm.run(print_data=True)
 test_performance_bmm.run(print_data=True)
 test_performance_cumsum.run(print_data=True)
