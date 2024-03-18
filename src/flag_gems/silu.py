@@ -44,7 +44,7 @@ def silu_kernel(
     )
     X_val = tl.load(X_ptrs)
     X_val_fp64 = X_val.to(tl.float64)
-    Y_val = tl.fdiv(X_val_fp64,(1.0 + tl.exp(-X_val_fp64)))
+    Y_val = tl.fdiv(X_val_fp64, (1.0 + tl.exp(-X_val_fp64)))
     tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 

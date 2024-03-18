@@ -221,7 +221,7 @@ def test_accuracy_softmax(shape, dtype):
     "shape",
     [(4096, i * 128) for i in range(1, 10)],
 )
-@pytest.mark.parametrize("diagonal", [ -3, -1, 0, 1, 3])
+@pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_triu(shape, diagonal, dtype):
     M, N = shape

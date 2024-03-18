@@ -49,6 +49,7 @@ def cumsum(inp, dim=1, *, dtype=None, out=None):
     if __debug__:
         print("FLAG CUMSUM")
     shape = inp.shape
+    dim = dim % len(shape)
     M = 1
     N = shape[dim]
     for i in range(dim):

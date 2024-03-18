@@ -2,6 +2,7 @@ import torch
 import triton
 import triton.language as tl
 from .libentry import libentry
+import math
 
 
 def cfggen():
@@ -77,8 +78,13 @@ def layer_norm_kernel(
 
 
 def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-    M, N = x.shape
+    if __debug__:
+        print("FLAG LAYERNORM")
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
     y = torch.empty_like(x)
+    x = x.reshape(M, N)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
 
     layer_norm_kernel[grid](x, y, weight, bias, x.stride(0), M, N, eps)

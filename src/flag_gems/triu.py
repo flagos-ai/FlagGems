@@ -3,6 +3,7 @@ import triton
 import triton.language as tl
 from .libentry import libentry
 
+
 def cfggen():
     warps = [1, 2, 4, 8, 16, 32]
     configs = [
@@ -34,11 +35,10 @@ def triu_kernel(
         cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
         n_mask = cols < N
         mask = m_mask and n_mask
-        
-        x = tl.load(X+cols, mask, other=0.0)
+
+        x = tl.load(X + cols, mask, other=0.0)
         y = tl.where(row + diagonal <= cols, x, 0.0)
         tl.store(Y + cols, y, mask=mask)
-    
 
 
 def triu(A, diagonal=0, *, out=None):

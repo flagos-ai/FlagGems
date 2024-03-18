@@ -196,6 +196,8 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
+    if __debug__:
+        print("FLAG MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:

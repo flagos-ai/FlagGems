@@ -183,6 +183,8 @@ def bmm(A, B, *, out=None):
         print("FLAG BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
+    A = A.contiguous()
+    B = B.contiguous()
     if out == None:
         O = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
     else:
