@@ -53,6 +53,8 @@ def dropout_kernel(
 
 
 def dropout(A, p=0.5, train=False):
+    if not train:
+        return A
     if __debug__:
         print("FLAG DROPOUT")
     assert p >= 0.0 and p < 1.0, "p must be in [0, 1)"
