@@ -23,12 +23,20 @@ maxdiff = torch.max(
 
 succeed = True
 
-if torch.allclose(
-    ref_outputs.last_hidden_state, res_outputs.last_hidden_state, atol=1e-2, rtol=1e-2
-) is False:
+if (
+    torch.allclose(
+        ref_outputs.last_hidden_state,
+        res_outputs.last_hidden_state,
+        atol=1e-2,
+        rtol=1e-2,
+    )
+    is False
+):
     score = torch.nn.functional.cosine_similarity(
-        ref_outputs.last_hidden_state.flatten(), res_outputs.last_hidden_state.flatten(),
-        dim=0, eps=1e-6
+        ref_outputs.last_hidden_state.flatten(),
+        res_outputs.last_hidden_state.flatten(),
+        dim=0,
+        eps=1e-6,
     )
     succeed = score >= 0.99
 

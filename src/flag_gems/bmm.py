@@ -165,7 +165,7 @@ def bmm_kernel(
         a_ptrs += TILE_K
         b_ptrs += TILE_K * N
 
-        o += tl.dot(a, b)
+        o += tl.dot(a, b, allow_tf32=False)
 
     if DIVISIBLE_M and DIVISIBLE_N:
         mask_c = None

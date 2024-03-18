@@ -93,7 +93,7 @@ def addmm_kernel(
             mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
             other=0.0,
         )
-        accumulator += tl.dot(a, b)
+        accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
     bias = tl.load(bias_ptrs, mask=offs_bn < N, other=0.0)

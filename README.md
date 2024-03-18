@@ -8,6 +8,8 @@
 
 2. Installation  
     ```shell
+    git clone https://gitee.com/flagir/flag-gems.git
+    cd flag-gems
     pip install .
     ```
 
@@ -32,43 +34,48 @@
     - Performance  
         ```shell
         cd tests/flag_gems
-        pytest op_perf_test.py
-        python -m pytest -k test_performance_addmm op_perf_test.py
+        python op_perf_test.py
         ```
 
 ## Operators
 
 - addmm  
-    - only support torch.float16
+    - support torch.float16 and torch.float32  
 
 - bmm  
-    - only support torch.float16
+    - support torch.float16 and torch.float32  
 
 - cumsum  
-    - only support torch.float32  
+    - support torch.float16 and torch.float32  
     - support synamic dimension  
 
 - dropout  
+    - support torch.float16 and torch.float32  
+    - support inference and training  
 
 - gelu  
     - support torch.float16 and torch.float32
-    - support dynamic dimension  
+    - support high dimension  
 
 - layernorm  
     - support torch.float16 and torch.float32
-    - only support 2d tensor  
+    - support high dimension  
 
 - mm  
-    - only support torch.float16
+    - support torch.float16 and torch.float32  
 
 - relu  
     - support torch.float16 and torch.float32
-    - support dynamic dimension 
+    - support high dimension 
 
 - silu  
     - support torch.float16 and torch.float32
-    - support dynamic dimension 
+    - support high dimension 
 
 - softmax  
     - support torch.float16 and torch.float32
-    - support dynamic dimension 
+    - support high dimension 
+
+- triu
+    - support torch.float16 and torch.float32  
+    - support high dimension 

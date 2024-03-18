@@ -12,6 +12,7 @@ def cfggen():
     ]
     return configs
 
+
 def cfggen_batch():
     warps = [1, 2, 4, 8, 16, 32]
     configs = [
@@ -55,7 +56,7 @@ def triu_kernel(
 def triu_batch_kernel(
     X,
     Y,
-    batch, 
+    batch,
     MN,
     N,
     diagonal,
@@ -110,11 +111,14 @@ def triu(A, diagonal=0, *, out=None):
         grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         triu_kernel[grid](A, O, M, N, diagonal)
     else:
-        batch = int(torch.numel(A)/M/N)
+        batch = int(torch.numel(A) / M / N)
         print(batch)
         A = A.contiguous()
         B = A.view(batch, -1)
-        grid = lambda meta: (triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]), triton.cdiv(M*N, meta["MN_BLOCK_SIZE"]),)
-        triu_batch_kernel[grid](B, O, batch, M*N, N, diagonal)
+        grid = lambda meta: (
+            triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+            triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+        )
+        triu_batch_kernel[grid](B, O, batch, M * N, N, diagonal)
         O = O.view(A.shape)
     return O
