@@ -195,7 +195,7 @@ def test_accuracy_silu(shape, dtype):
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
-        ref_out, res_out, atol=1e-3, rtol=1e-3
+        ref_out, res_out, atol=1e-6, rtol=1e-6
     ), f"max diff: {maxdiff}"
 
 
