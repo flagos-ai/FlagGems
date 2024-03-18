@@ -40,29 +40,30 @@ class LibEntry(triton.KernelInterface):
     def run(self, *args, **kwargs):
         nargs = dict(zip(self.fn.arg_names, args))
         all_args = {**nargs, **kwargs}
+        entry_key = self.get_key(all_args)
         # autotuner
         if isinstance(self.fn, triton.runtime.Autotuner):
-            entry_key = self.get_key(all_args)
             if entry_key not in self.config_cache:
                 # tune
                 kernel = self.fn.run(*args, **kwargs)
                 config = self.fn.best_config
                 self.config_cache[entry_key] = config
-                self.kernel_cache[config] = kernel
+                self.kernel_cache[entry_key] = kernel
             else:
                 # tuned
                 config = self.config_cache[entry_key]
-                kernel = self.kernel_cache[config]
+                kernel = self.kernel_cache[entry_key]
         # heuristic
         else:
             assert self.cfggen is not None
             config = self.cfggen(all_args)
-            if config not in self.kernel_cache:
+            if entry_key not in self.kernel_cache:
                 # compile
                 kernel = self.fn.run(*args, **kwargs)
+                self.kernel_cache[entry_key] = kernel
             else:
                 # compiled
-                kernel = self.kernel_cache[config]
+                kernel = self.kernel_cache[entry_key]
         grid = kwargs["grid"]
         if isinstance(grid, type(lambda: None)):
             # grid_fn

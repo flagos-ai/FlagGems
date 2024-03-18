@@ -14,7 +14,7 @@ def cfggen():
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N", "diagonal"])
+@triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def triu_kernel(
     X,
