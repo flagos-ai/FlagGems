@@ -9,11 +9,11 @@ from .relu import relu
 from .silu import silu
 from .triu import triu
 from .softmax import softmax
-from .__enable__ import enable, Context
+from .__enable__ import enable, use_gems
 
 __all__ = [
     "enable",
-    "Context",
+    "use_gems",
     "addmm",
     "bmm",
     "cumsum",

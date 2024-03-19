@@ -180,7 +180,7 @@ def bmm_kernel(
 
 def bmm(A, B, *, out=None):
     if __debug__:
-        print("FLAG BMM")
+        print("GEMS BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

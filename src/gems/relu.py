@@ -49,7 +49,7 @@ def relu_kernel(
 
 def relu(A):
     if __debug__:
-        print("FLAG RELU")
+        print("GEMS RELU")
     O = torch.empty_like(A)
     A = A.contiguous()
     M = A.numel()

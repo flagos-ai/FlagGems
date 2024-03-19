@@ -1,5 +1,5 @@
 [project]
-name = "flag_gems"
+name = "gems"
 dynamic = ["version"]
 authors = [
     {name = "Strong Spoon", email = "strongspoon@outlook.com"},

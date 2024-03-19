@@ -1,6 +1,6 @@
 import torch
 import pytest
-from flag_gems import *
+from gems import *
 
 
 @pytest.mark.parametrize(

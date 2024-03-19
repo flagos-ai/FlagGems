@@ -109,7 +109,7 @@ def addmm_kernel(
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     if __debug__:
-        print("FLAG ADDMM")
+        print("GEMS ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     M, K = mat1.shape
     _, N = mat2.shape

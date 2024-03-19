@@ -32,7 +32,7 @@ def enable(lib=aten_lib):
     lib.impl("softmax.int", softmax, "CompositeImplicitAutograd")
 
 
-class Context:
+class use_gems:
     def __init__(self):
         self.lib = torch.library.Library("aten", "IMPL")
 

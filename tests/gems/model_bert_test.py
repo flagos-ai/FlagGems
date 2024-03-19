@@ -1,8 +1,10 @@
 import torch
-import flag_gems
+import pytest
+import gems
 from transformers import AutoTokenizer, BertConfig, BertModel
 
 
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_bert(dtype):
     tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
     config = BertConfig()
@@ -17,8 +19,7 @@ def test_accuracy_bert(dtype):
     with torch.no_grad():
         ref_outputs = model(**inputs)
 
-    print("=======================================")
-    with flag_gems.Context():
+    with gems.use_gems():
         with torch.no_grad():
             res_outputs = model(**inputs)
     maxdiff = torch.max(
@@ -44,19 +45,4 @@ def test_accuracy_bert(dtype):
         )
         succeed = score >= 0.99
 
-    if succeed:
-        print(f"##### BERT_{dtype} SUCCEED #####")
-    else:
-        print(f"###### BERT_{dtype} FAIL ######")
-        print("Max diff:", maxdiff)
-
-
-if __name__ == "__main__":
-    datatypes = [
-        torch.float16,
-        torch.float32,
-        torch.bfloat16,
-    ]
-
-    for dtype in datatypes:
-        test_accuracy_bert(dtype)
+    assert succeed, f"BERT_{dtype} FAIL with maxdiff {maxdiff}"

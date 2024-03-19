@@ -57,7 +57,7 @@ def softmax_kernel(
 
 def softmax(x, dim=1, dtype=None, out=None):
     if __debug__:
-        print("FLAG SOFTMAX")
+        print("GEMS SOFTMAX")
 
     dim = dim % x.ndim
     M = 1

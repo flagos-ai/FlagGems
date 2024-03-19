@@ -14,15 +14,15 @@
     ```
 
 3. Usage  
-    - Enalbe permanently  
+    - Enable permanently  
         ```python
-        import flag_gems
-        flag_gems.enable()
+        import gems
+        gems.enable()
         ```
     - Enable temporarily  
         ```python
-        import flag_gems
-        with flag_gems.Context():
+        import gems
+        with gems.Context():
             pass
         ```
 
@@ -34,19 +34,18 @@
 5. Tests  
     - Operator Accuracy  
         ```shell
-        cd tests/flag_gems
+        cd tests/gems
         pytest op_accu_test.py
-        python -m pytest -k test_accuracy_addmm op_accu_test.py
         ```
     - Operator Performance  
         ```shell
-        cd tests/flag_gems
+        cd tests/gems
         python op_perf_test.py
         ```
     - Model Accuracy  
         ```shell
-        cd tests/flag_gems
-        python model_bert_test.py
+        cd tests/gems
+        pytest model_bert_test.py
         ```
 
 ## Operators

@@ -1,15 +1,15 @@
 import torch
 import time
 import triton
-from flag_gems import *
+from gems import *
 
 configs_addmm = [
     triton.testing.Benchmark(
         x_names=["MNK"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_addmm_{dtype}",
@@ -35,7 +35,7 @@ def test_performance_addmm(MNK, alpha, beta, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
         start = time.time()
@@ -53,8 +53,8 @@ configs_bmm = [
         x_names=["MNK"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_bmm_{dtype}",
@@ -79,7 +79,7 @@ def test_performance_bmm(batch, MNK, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = bmm(tensor_A, tensor_B)
         start = time.time()
@@ -97,8 +97,8 @@ configs_cumsum = [
         x_names=["N"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_cumsum_{dtype}",
@@ -121,7 +121,7 @@ def test_performance_cumsum(M, N, dim, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = cumsum(inp, dim=dim)
         start = time.time()
@@ -139,8 +139,8 @@ configs_dropout = [
         x_names=["N"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_dropout_{dtype}",
@@ -164,7 +164,7 @@ def test_performance_dropout(M, N, p, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = dropout(inp, p=p, train=True)
         start = time.time()
@@ -182,8 +182,8 @@ configs_gelu = [
         x_names=["N"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_gelu_{dtype}",
@@ -206,7 +206,7 @@ def test_performance_gelu(M, N, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = gelu(inp)
         start = time.time()
@@ -224,8 +224,8 @@ configs_layernorm = [
         x_names=["N"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_layernorm_{dtype}",
@@ -256,7 +256,7 @@ def test_performance_layernorm(M, N, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = layer_norm(
                 inp, list(layer_shape), weight=weight, bias=bias, eps=eps
@@ -278,8 +278,8 @@ configs_mm = [
         x_names=["MNK"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_mm_{dtype}",
@@ -304,7 +304,7 @@ def test_performance_mm(MNK, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = mm(tensor_a, tensor_b)
         start = time.time()
@@ -322,8 +322,8 @@ configs_relu = [
         x_names=["N"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_relu_{dtype}",
@@ -346,7 +346,7 @@ def test_performance_relu(M, N, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = relu(inp)
         start = time.time()
@@ -364,8 +364,8 @@ configs_silu = [
         x_names=["N"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_silu_{dtype}",
@@ -388,7 +388,7 @@ def test_performance_silu(M, N, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = silu(inp)
         start = time.time()
@@ -406,8 +406,8 @@ configs_softmax = [
         x_names=["N"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_softmax_{dtype}",
@@ -430,7 +430,7 @@ def test_performance_softmax(M, N, dim, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = softmax(inp, dim=dim)
         start = time.time()
@@ -448,8 +448,8 @@ configs_triu = [
         x_names=["N"],
         x_vals=[i * 64 for i in range(1, 20)],
         line_arg="provider",
-        line_vals=["flag_gems", "torch"],
-        line_names=["flag_gems", "torch"],
+        line_vals=["gems", "torch"],
+        line_names=["gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"test_performance_triu_{dtype}",
@@ -477,7 +477,7 @@ def test_performance_triu(M, N, dtype, provider):
         torch.cuda.synchronize()
         end = time.time()
         ms = (end - start) * 1000
-    if provider == "flag_gems":
+    if provider == "gems":
         for i in range(5):
             res_out = triu(inp, diagonal)
         start = time.time()

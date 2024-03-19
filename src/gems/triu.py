@@ -100,7 +100,7 @@ def triu_batch_kernel(
 
 def triu(A, diagonal=0, *, out=None):
     if __debug__:
-        print("FLAG TRIU")
+        print("GEMS TRIU")
     if out == None:
         O = torch.empty_like(A)
     else:

@@ -47,7 +47,7 @@ def cumsum_kernel(
 
 def cumsum(inp, dim=1, *, dtype=None, out=None):
     if __debug__:
-        print("FLAG CUMSUM")
+        print("GEMS CUMSUM")
     shape = inp.shape
     dim = dim % len(shape)
     M = 1

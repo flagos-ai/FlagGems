@@ -79,7 +79,7 @@ def layer_norm_kernel(
 
 def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
     if __debug__:
-        print("FLAG LAYERNORM")
+        print("GEMS LAYERNORM")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

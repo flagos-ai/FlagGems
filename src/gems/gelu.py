@@ -101,7 +101,7 @@ def gelu_tanh_kernel(
 
 def gelu(A, approximate="none", out=None):
     if __debug__:
-        print("FLAG GELU")
+        print("GEMS GELU")
     if out == None:
         O = torch.empty_like(A)
     else:
