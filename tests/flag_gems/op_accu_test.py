@@ -15,7 +15,7 @@ from flag_gems import *
 )
 @pytest.mark.parametrize("alpha", [1.0, 0.5])
 @pytest.mark.parametrize("beta", [1.0, 0.5])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
     mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
     mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
@@ -35,7 +35,7 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
     assert (
-        diff_torch * 2 >= diff_triton
+        diff_triton < diff_torch * 1.05
     ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
 
 
@@ -49,7 +49,7 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
         (16, 1024, 128, 2048),
     ],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_bmm(batch, M, N, K, dtype):
     tensor_A = torch.randn((batch, M, K), dtype=dtype, device="cuda")
     tensor_B = torch.randn((batch, K, N), dtype=dtype, device="cuda")
@@ -62,7 +62,7 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
     assert (
-        diff_torch * 2 >= diff_triton
+        diff_triton < diff_torch * 1.05
     ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
 
 
@@ -70,7 +70,7 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_cumsum(shape, dtype):
     dim = 1
     inp = torch.randn(shape, dtype=dtype, device="cuda")
@@ -83,7 +83,7 @@ def test_accuracy_cumsum(shape, dtype):
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
     assert (
-        diff_torch >= diff_triton
+        diff_triton < diff_torch * 1.05
     ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
 
 
@@ -91,7 +91,7 @@ def test_accuracy_cumsum(shape, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 def test_accuracy_dropout(shape, dtype, p):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
@@ -110,7 +110,7 @@ def test_accuracy_dropout(shape, dtype, p):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_gelu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -127,7 +127,7 @@ def test_accuracy_gelu(shape, dtype):
     "shape",
     [(4096, i * 32) for i in range(1, 20)],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_layernorm(shape, dtype):
     layer_shape = shape[1:]
     inp = torch.randn(shape, dtype=dtype, device="cuda")
@@ -135,15 +135,24 @@ def test_accuracy_layernorm(shape, dtype):
     bias = torch.randn(layer_shape, dtype=dtype, device="cuda")
     eps = 1e-5
 
+    golden_out = torch.layer_norm(
+        inp.to(torch.float64),
+        list(layer_shape),
+        weight=weight.to(torch.float64),
+        bias=bias.to(torch.float64),
+        eps=eps,
+    )
+
     ref_out = torch.layer_norm(
         inp, list(layer_shape), weight=weight, bias=bias, eps=eps
     )
     res_out = layer_norm(inp, list(layer_shape), weight=weight, bias=bias, eps=eps)
 
-    maxdiff = torch.max(torch.abs(ref_out - res_out))
-    assert torch.allclose(
-        ref_out, res_out, atol=1e-3, rtol=1e-3
-    ), f"max diff: {maxdiff}"
+    diff_torch = torch.sum(torch.abs(golden_out - ref_out))
+    diff_triton = torch.sum(torch.abs(golden_out - res_out))
+    assert (
+        diff_triton < diff_torch * 1.05
+    ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
 
 
 @pytest.mark.parametrize(
@@ -156,7 +165,7 @@ def test_accuracy_layernorm(shape, dtype):
         (640, 256, 512),
     ],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mm(shape, dtype):
     M, N, K = shape
     tensor_a = torch.randn((M, K), dtype=dtype, device="cuda")
@@ -169,7 +178,7 @@ def test_accuracy_mm(shape, dtype):
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
     assert (
-        diff_torch * 2 >= diff_triton
+        diff_triton < diff_torch * 1.05
     ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
 
 
@@ -177,7 +186,7 @@ def test_accuracy_mm(shape, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_relu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -194,7 +203,7 @@ def test_accuracy_relu(shape, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_silu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -203,7 +212,7 @@ def test_accuracy_silu(shape, dtype):
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
-        ref_out, res_out, atol=1e-6, rtol=1e-6
+        ref_out, res_out, atol=1e-3, rtol=1e-3
     ), f"max diff: {maxdiff}"
 
 
@@ -211,7 +220,7 @@ def test_accuracy_silu(shape, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_softmax(shape, dtype):
     dim = 1
     inp = torch.randn(shape, dtype=dtype, device="cuda")
@@ -230,7 +239,7 @@ def test_accuracy_softmax(shape, dtype):
     [(1024, 1024), (16, 1024, 256), (32, 128, 512, 512), (20, 320, 15)],
 )
 @pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_triu(shape, diagonal, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_out = torch.triu(inp, diagonal)

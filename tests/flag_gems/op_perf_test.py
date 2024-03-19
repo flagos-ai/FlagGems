@@ -12,18 +12,19 @@ configs_addmm = [
         line_names=["flag_gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
-        plot_name=f"test_performance_addmm",
-        args={"alpha": 1.0, "beta": 1.0},
+        plot_name=f"test_performance_addmm_{dtype}",
+        args={"alpha": 1.0, "beta": 1.0, "dtype": dtype},
     )
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
 @triton.testing.perf_report(configs_addmm)
-def test_performance_addmm(MNK, provider, alpha=1.0, beta=1.0):
+def test_performance_addmm(MNK, alpha, beta, dtype, provider):
     M = N = K = MNK
-    mat1 = torch.randn((M, K), dtype=torch.float16, device="cuda")
-    mat2 = torch.randn((K, N), dtype=torch.float16, device="cuda")
-    bias = torch.randn((N,), dtype=torch.float16, device="cuda")
+    mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
+    mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
+    bias = torch.randn((N,), dtype=dtype, device="cuda")
 
     if provider == "torch":
         for i in range(5):
@@ -56,19 +57,18 @@ configs_bmm = [
         line_names=["flag_gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
-        plot_name=f"test_performance_bmm",
-        args={
-            "batch": 4,
-        },
+        plot_name=f"test_performance_bmm_{dtype}",
+        args={"batch": 4, "dtype": dtype},
     )
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
 @triton.testing.perf_report(configs_bmm)
-def test_performance_bmm(batch, MNK, provider):
+def test_performance_bmm(batch, MNK, dtype, provider):
     M = N = K = MNK
-    tensor_A = torch.randn((batch, M, K), dtype=torch.float16, device="cuda")
-    tensor_B = torch.randn((batch, K, N), dtype=torch.float16, device="cuda")
+    tensor_A = torch.randn((batch, M, K), dtype=dtype, device="cuda")
+    tensor_B = torch.randn((batch, K, N), dtype=dtype, device="cuda")
 
     if provider == "torch":
         for i in range(5):
@@ -104,9 +104,7 @@ configs_cumsum = [
         plot_name=f"test_performance_cumsum_{dtype}",
         args={"M": 1024, "dim": 1, "dtype": dtype},
     )
-    for dtype in [
-        torch.float16,
-    ]
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
@@ -136,6 +134,49 @@ def test_performance_cumsum(M, N, dim, dtype, provider):
     return ms
 
 
+configs_dropout = [
+    triton.testing.Benchmark(
+        x_names=["N"],
+        x_vals=[i * 64 for i in range(1, 20)],
+        line_arg="provider",
+        line_vals=["flag_gems", "torch"],
+        line_names=["flag_gems", "torch"],
+        styles=[("red", "-"), ("green", "-")],
+        ylabel="ms",
+        plot_name=f"test_performance_dropout_{dtype}",
+        args={"M": 1024, "p": p, "dtype": dtype},
+    )
+    for p in [0.3, 0.6, 0.9]
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
+]
+
+
+@triton.testing.perf_report(configs_dropout)
+def test_performance_dropout(M, N, p, dtype, provider):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+
+    if provider == "torch":
+        for i in range(5):
+            ref_out = torch.nn.functional.dropout(inp, p, True)
+        start = time.time()
+        for i in range(1000):
+            ref_out = torch.nn.functional.dropout(inp, p, True)
+        torch.cuda.synchronize()
+        end = time.time()
+        ms = (end - start) * 1000
+    if provider == "flag_gems":
+        for i in range(5):
+            res_out = dropout(inp, p=p, train=True)
+        start = time.time()
+        for i in range(1000):
+            res_out = dropout(inp, p=p, train=True)
+        torch.cuda.synchronize()
+        end = time.time()
+        ms = (end - start) * 1000
+
+    return ms
+
+
 configs_gelu = [
     triton.testing.Benchmark(
         x_names=["N"],
@@ -148,7 +189,7 @@ configs_gelu = [
         plot_name=f"test_performance_gelu_{dtype}",
         args={"M": 1024, "dtype": dtype},
     )
-    for dtype in [torch.float16, torch.float32]
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
@@ -190,7 +231,7 @@ configs_layernorm = [
         plot_name=f"test_performance_layernorm_{dtype}",
         args={"M": 1024, "dtype": dtype},
     )
-    for dtype in [torch.float16, torch.float32]
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
@@ -241,17 +282,18 @@ configs_mm = [
         line_names=["flag_gems", "torch"],
         styles=[("red", "-"), ("green", "-")],
         ylabel="ms",
-        plot_name=f"test_performance_mm",
-        args={},
+        plot_name=f"test_performance_mm_{dtype}",
+        args={"dtype": dtype},
     )
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
 @triton.testing.perf_report(configs_mm)
-def test_performance_mm(MNK, provider):
+def test_performance_mm(MNK, dtype, provider):
     M = N = K = MNK
-    tensor_a = torch.randn((M, K), dtype=torch.float16, device="cuda")
-    tensor_b = torch.randn((K, N), dtype=torch.float16, device="cuda")
+    tensor_a = torch.randn((M, K), dtype=dtype, device="cuda")
+    tensor_b = torch.randn((K, N), dtype=dtype, device="cuda")
 
     if provider == "torch":
         for i in range(5):
@@ -287,7 +329,7 @@ configs_relu = [
         plot_name=f"test_performance_relu_{dtype}",
         args={"M": 1024, "dtype": dtype},
     )
-    for dtype in [torch.float16, torch.float32]
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
@@ -329,7 +371,7 @@ configs_silu = [
         plot_name=f"test_performance_silu_{dtype}",
         args={"M": 1024, "dtype": dtype},
     )
-    for dtype in [torch.float16, torch.float32]
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
@@ -371,7 +413,7 @@ configs_softmax = [
         plot_name=f"test_performance_softmax_{dtype}",
         args={"M": 1024, "dim": 1, "dtype": dtype},
     )
-    for dtype in [torch.float16, torch.float32]
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
@@ -413,7 +455,7 @@ configs_triu = [
         plot_name=f"test_performance_triu_{dtype}",
         args={"M": 1024, "dtype": dtype},
     )
-    for dtype in [torch.float16, torch.float32]
+    for dtype in [torch.float16, torch.float32, torch.bfloat16]
 ]
 
 
@@ -451,9 +493,11 @@ def test_performance_triu(M, N, dtype, provider):
 test_performance_addmm.run(print_data=True)
 test_performance_bmm.run(print_data=True)
 test_performance_cumsum.run(print_data=True)
+test_performance_dropout.run(print_data=True)
 test_performance_gelu.run(print_data=True)
 test_performance_layernorm.run(print_data=True)
 test_performance_mm.run(print_data=True)
 test_performance_relu.run(print_data=True)
 test_performance_silu.run(print_data=True)
 test_performance_softmax.run(print_data=True)
+test_performance_triu.run(print_data=True)

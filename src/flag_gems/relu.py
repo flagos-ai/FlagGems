@@ -44,7 +44,7 @@ def relu_kernel(
     )
     X_val = tl.load(X_ptrs)
     Y_val = tl.where(X_val > 0, X_val, 0)
-    tl.store(Y_ptrs, Y_val)
+    tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 
 def relu(A):

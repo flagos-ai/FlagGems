@@ -25,57 +25,68 @@
     ```
 
 5. Tests  
-    - Accuracy  
+    - Operator Accuracy  
         ```shell
         cd tests/flag_gems
         pytest op_accu_test.py
         python -m pytest -k test_accuracy_addmm op_accu_test.py
         ```
-    - Performance  
+    - Operator Performance  
         ```shell
         cd tests/flag_gems
         python op_perf_test.py
         ```
+    - Model Accuracy  
+        + Bert with given data type  
+            ```shell
+            cd tests/flag_gems
+            python model_bert_test.py --dtype float16
+            ```
+        + Bert with all supported data types  
+            ```shell
+            cd tests/flag_gems
+            sh model_test.sh
+            ```
 
 ## Operators
 
 - addmm  
-    - support torch.float16 and torch.float32  
+    - support torch.float16, torch.float32 and torch.bfloat16  
 
 - bmm  
-    - support torch.float16 and torch.float32  
+    - support torch.float16, torch.float32 and torch.bfloat16  
 
 - cumsum  
-    - support torch.float16 and torch.float32  
+    - support torch.float16, torch.float32 and torch.bfloat16  
     - support synamic dimension  
 
 - dropout  
-    - support torch.float16 and torch.float32  
+    - support torch.float16, torch.float32 and torch.bfloat16  
     - support inference and training  
 
 - gelu  
-    - support torch.float16 and torch.float32
+    - support torch.float16, torch.float32 and torch.bfloat16  
     - support high dimension  
 
 - layernorm  
-    - support torch.float16 and torch.float32
+    - support torch.float16, torch.float32 and torch.bfloat16  
     - support high dimension  
 
 - mm  
-    - support torch.float16 and torch.float32  
+    - support torch.float16, torch.float32 and torch.bfloat16  
 
 - relu  
-    - support torch.float16 and torch.float32
+    - support torch.float16, torch.float32 and torch.bfloat16  
     - support high dimension 
 
 - silu  
-    - support torch.float16 and torch.float32
+    - support torch.float16, torch.float32 and torch.bfloat16  
     - support high dimension 
 
 - softmax  
-    - support torch.float16 and torch.float32
+    - support torch.float16, torch.float32 and torch.bfloat16  
     - support high dimension 
 
 - triu
-    - support torch.float16 and torch.float32  
+    - support torch.float16, torch.float32 and torch.bfloat16  
     - support high dimension 
