@@ -9,7 +9,7 @@ from .relu import relu
 from .silu import silu
 from .triu import triu
 from .softmax import softmax
-from .enable import enable
+from .__enable__ import enable
 
 __all__ = [
     "enable",

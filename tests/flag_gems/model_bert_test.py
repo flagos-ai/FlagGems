@@ -53,10 +53,9 @@ def test_accuracy_bert(dtype):
         print("Max diff:", maxdiff)
 
 
-args = argparse.ArgumentParser()
-args.add_argument("--dtype", type=str, default="float16")
-
 if __name__ == "__main__":
+    args = argparse.ArgumentParser()
+    args.add_argument("--dtype", type=str, default="float16")
     args = args.parse_args()
     dtype = getattr(torch, args.dtype)
 

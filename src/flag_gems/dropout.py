@@ -1,7 +1,7 @@
 import triton
 import triton.language as tl
 import torch
-from .libentry import libentry
+from .__libentry__ import libentry
 
 
 @libentry()
