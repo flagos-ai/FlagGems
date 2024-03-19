@@ -44,16 +44,10 @@
         python op_perf_test.py
         ```
     - Model Accuracy  
-        + Bert with given data type  
-            ```shell
-            cd tests/flag_gems
-            python model_bert_test.py --dtype float16
-            ```
-        + Bert with all supported data types  
-            ```shell
-            cd tests/flag_gems
-            sh model_test.sh
-            ```
+        ```shell
+        cd tests/flag_gems
+        python model_bert_test.py
+        ```
 
 ## Operators
 
@@ -65,7 +59,7 @@
 
 - cumsum  
     - support torch.float16, torch.float32 and torch.bfloat16  
-    - support synamic dimension  
+    - support high dimension  
 
 - dropout  
     - support torch.float16, torch.float32 and torch.bfloat16  
