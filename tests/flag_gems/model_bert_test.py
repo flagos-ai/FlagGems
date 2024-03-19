@@ -1,5 +1,4 @@
 import torch
-import argparse
 import flag_gems
 from transformers import AutoTokenizer, BertConfig, BertModel
 
@@ -19,10 +18,9 @@ def test_accuracy_bert(dtype):
         ref_outputs = model(**inputs)
 
     print("=======================================")
-    flag_gems.enable()
-    with torch.no_grad():
-        res_outputs = model(**inputs)
-
+    with flag_gems.Context():
+        with torch.no_grad():
+            res_outputs = model(**inputs)
     maxdiff = torch.max(
         torch.abs(ref_outputs.last_hidden_state - res_outputs.last_hidden_state)
     )
@@ -54,15 +52,11 @@ def test_accuracy_bert(dtype):
 
 
 if __name__ == "__main__":
-    args = argparse.ArgumentParser()
-    args.add_argument("--dtype", type=str, default="float16")
-    args = args.parse_args()
-    dtype = getattr(torch, args.dtype)
-
-    assert dtype in [
+    datatypes = [
         torch.float16,
         torch.float32,
         torch.bfloat16,
-    ], f"Unsupported dtype {dtype}"
+    ]
 
-    test_accuracy_bert(dtype)
+    for dtype in datatypes:
+        test_accuracy_bert(dtype)

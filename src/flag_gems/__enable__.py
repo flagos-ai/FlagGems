@@ -14,19 +14,30 @@ from .softmax import softmax
 aten_lib = torch.library.Library("aten", "IMPL")
 
 
-def enable():
-    aten_lib.impl("addmm", addmm, "CUDA")
-    aten_lib.impl("bmm", bmm, "CUDA")
-    aten_lib.impl("bmm.out", bmm, "CUDA")
-    aten_lib.impl("cumsum", cumsum, "CUDA")
-    aten_lib.impl("cumsum.out", cumsum, "CUDA")
-    aten_lib.impl("dropout", dropout, "CUDA")
-    aten_lib.impl("gelu", gelu, "CUDA")
-    aten_lib.impl("layer_norm", layer_norm, "CompositeImplicitAutograd")
-    aten_lib.impl("mm", mm, "CUDA")
-    aten_lib.impl("relu", relu, "CUDA")
-    aten_lib.impl("silu", silu, "CUDA")
-    aten_lib.impl("silu.out", silu, "CUDA")
-    aten_lib.impl("triu", triu, "CUDA")
-    aten_lib.impl("triu.out", triu, "CUDA")
-    aten_lib.impl("softmax.int", softmax, "CompositeImplicitAutograd")
+def enable(lib=aten_lib):
+    lib.impl("addmm", addmm, "CUDA")
+    lib.impl("bmm", bmm, "CUDA")
+    lib.impl("bmm.out", bmm, "CUDA")
+    lib.impl("cumsum", cumsum, "CUDA")
+    lib.impl("cumsum.out", cumsum, "CUDA")
+    lib.impl("dropout", dropout, "CUDA")
+    lib.impl("gelu", gelu, "CUDA")
+    lib.impl("layer_norm", layer_norm, "CompositeImplicitAutograd")
+    lib.impl("mm", mm, "CUDA")
+    lib.impl("relu", relu, "CUDA")
+    lib.impl("silu", silu, "CUDA")
+    lib.impl("silu.out", silu, "CUDA")
+    lib.impl("triu", triu, "CUDA")
+    lib.impl("triu.out", triu, "CUDA")
+    lib.impl("softmax.int", softmax, "CompositeImplicitAutograd")
+
+
+class Context:
+    def __init__(self):
+        self.lib = torch.library.Library("aten", "IMPL")
+
+    def __enter__(self):
+        enable(self.lib)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        del self.lib

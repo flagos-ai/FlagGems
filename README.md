@@ -14,10 +14,17 @@
     ```
 
 3. Usage  
-    ```python
-    import flag_gems
-    flag_gems.enable()
-    ```
+    - Enalbe permanently  
+        ```python
+        import flag_gems
+        flag_gems.enable()
+        ```
+    - Enable temporarily  
+        ```python
+        import flag_gems
+        with flag_gems.Context():
+            pass
+        ```
 
 4. Disable Flag Info  
     ```shell
