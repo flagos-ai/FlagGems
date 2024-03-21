@@ -1,92 +1,85 @@
-# FlagGems
+# Introduction
 
-## Description
+FlagGems is an operator library implemented in [Triton Language](https://github.com/openai/triton). It is designed for large language models to provide a set of operators that can be used in PyTorch framework.
 
-1. Requirements  
-    - Triton >= 2.2.0  
-    - PyTorch >= 2.1.2  
+# Quick Start
 
-2. Installation  
-    ```shell
-    git clone https://gitee.com/flagir/flag-gems.git
-    cd flag-gems
-    pip install .
+## Requirements
+
+1. Triton >= 2.2.0  
+2. PyTorch >= 2.1.2  
+
+## Installation  
+
+```shell
+git clone https://github.com/FlagOpen/FlagGems.git
+cd FlagGems
+pip install .
+```
+
+# Usage  
+
+## Import
+
+1. Enable permanently  
+    ```python
+    import gems
+    gems.enable()
     ```
 
-3. Usage  
-    - Enable permanently  
-        ```python
-        import gems
-        gems.enable()
-        ```
-    - Enable temporarily  
-        ```python
-        import gems
-        with gems.Context():
-            pass
-        ```
-
-4. Disable Flag Info  
-    ```shell
-    python -O program.py
+2. Enable temporarily  
+    ```python
+    import gems
+    with gems.use_gems():
+        pass
     ```
 
-5. Tests  
+3. Example  
+    ```python
+    import torch
+    import gems
+
+    M, N, K = 1024, 1024, 1024
+    A = torch.randn((M, K), dtype=torch.float16, device="cuda")
+    B = torch.randn((K, N), dtype=torch.float16, device="cuda")
+    with gems.use_gems():
+        C = torch.mm(A, B)
+    ```
+
+## Execute
+
+1. Run Tests  
     - Operator Accuracy  
         ```shell
         cd tests/gems
         pytest op_accu_test.py
-        ```
-    - Operator Performance  
-        ```shell
-        cd tests/gems
-        python op_perf_test.py
         ```
     - Model Accuracy  
         ```shell
         cd tests/gems
         pytest model_bert_test.py
         ```
+    - Operator Performance  
+        ```shell
+        cd tests/gems
+        python op_perf_test.py
+        ```
 
-## Operators
+2. Run without printing Flag infomation  
+    ```shell
+    python -O program.py
+    ```
 
-- addmm  
-    - support torch.float16, torch.float32 and torch.bfloat16  
+# Supported Platforms
 
-- bmm  
-    - support torch.float16, torch.float32 and torch.bfloat16  
+| Platform | float16 | float32 | bfloat16 |
+| :---: | :---: | :---: | :---: |
+| Nvidia A100 | ✓ | ✓ | ✓ |
 
-- cumsum  
-    - support torch.float16, torch.float32 and torch.bfloat16  
-    - support high dimension  
+# Contact us
 
-- dropout  
-    - support torch.float16, torch.float32 and torch.bfloat16  
-    - support inference and training  
+If you have any questions about our project, please submit an issue, or contact us through <a href="mailto:flaggems@baai.ac.cn">flaggems@baai.ac.cn</a>.
 
-- gelu  
-    - support torch.float16, torch.float32 and torch.bfloat16  
-    - support high dimension  
+# License
 
-- layernorm  
-    - support torch.float16, torch.float32 and torch.bfloat16  
-    - support high dimension  
-
-- mm  
-    - support torch.float16, torch.float32 and torch.bfloat16  
-
-- relu  
-    - support torch.float16, torch.float32 and torch.bfloat16  
-    - support high dimension 
-
-- silu  
-    - support torch.float16, torch.float32 and torch.bfloat16  
-    - support high dimension 
-
-- softmax  
-    - support torch.float16, torch.float32 and torch.bfloat16  
-    - support high dimension 
-
-- triu
-    - support torch.float16, torch.float32 and torch.bfloat16  
-    - support high dimension 
+The FlagGems project is based on [Apache 2.0](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE).
