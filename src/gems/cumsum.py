@@ -48,8 +48,9 @@ def cumsum_kernel(
 def cumsum(inp, dim=1, *, dtype=None, out=None):
     if __debug__:
         print("GEMS CUMSUM")
+    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
-    dim = dim % len(shape)
+    dim = dim % inp.ndim
     M = 1
     N = shape[dim]
     for i in range(dim):

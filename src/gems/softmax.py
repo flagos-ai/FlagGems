@@ -59,6 +59,7 @@ def softmax(x, dim=1, dtype=None, out=None):
     if __debug__:
         print("GEMS SOFTMAX")
 
+    assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
     dim = dim % x.ndim
     M = 1
     N = x.shape[dim]
