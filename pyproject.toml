@@ -2,9 +2,11 @@
 name = "gems"
 dynamic = ["version"]
 authors = [
-    {name = "Strong Spoon", email = "strongspoon@outlook.com"},
+    {name = "Zhixin Li", email = "strongspoon@outlook.com"},
+    {name = "Tongxin Bai", email = "waffle.bai@gmail.com"},
+    {name = "Yuming Huang", email = "jokmingwong@gmail.com"}
 ]
-description = "A Triton Library for LLM Operators"
+description = "FlagGems is a function library written in Triton."
 readme = {file= "README.md", content-type="text/markdown"}
 requires-python = ">=3.8"
 license = {text = "LICENSE.txt"}
@@ -20,7 +22,7 @@ test = [
 ]
 
 [project.urls]
-homepage = "https://gitee.com/flagir/flag-gems"
+homepage = "https://github.com/FlagOpen/FlagGems"
 
 [tool.pytest.ini_options]
 testpaths = [
