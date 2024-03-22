@@ -1,15 +1,16 @@
-# Introduction
+## Introduction
 
 FlagGems is an operator library implemented in [Triton Language](https://github.com/openai/triton). It is designed for large language models to provide a set of operators that can be used in PyTorch framework.
 
-# Quick Start
+## Quick Start
 
-## Requirements
+### Requirements
 
 1. Triton >= 2.2.0  
 2. PyTorch >= 2.1.2  
+3. Transformers >= 4.31.0  
 
-## Installation  
+### Installation  
 
 ```shell
 git clone https://github.com/FlagOpen/FlagGems.git
@@ -17,9 +18,9 @@ cd FlagGems
 pip install .
 ```
 
-# Usage  
+## Usage  
 
-## Import
+### Import
 
 1. Enable permanently  
     ```python
@@ -46,7 +47,7 @@ pip install .
         C = torch.mm(A, B)
     ```
 
-## Execute
+### Execute
 
 1. Run Tests  
     - Operator Accuracy  
@@ -70,16 +71,26 @@ pip install .
     python -O program.py
     ```
 
-# Supported Platforms
+## Supported Operators
+
+Operators will be implemented according to [OperatorList.md](https://github.com/FlagOpen/FlagGems/blob/master/OperatorList.md).
+
+## Supported Models
+
+| Model | float16 | float32 | bfloat16 |
+| :---: | :---: | :---: | :---: |
+| Bert_base | ✓ | ✓ | ✓ |
+
+## Supported Platforms
 
 | Platform | float16 | float32 | bfloat16 |
 | :---: | :---: | :---: | :---: |
 | Nvidia A100 | ✓ | ✓ | ✓ |
 
-# Contact us
+## Contact us
 
 If you have any questions about our project, please submit an issue, or contact us through <a href="mailto:flaggems@baai.ac.cn">flaggems@baai.ac.cn</a>.
 
-# License
+## License
 
 The FlagGems project is based on [Apache 2.0](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE).
