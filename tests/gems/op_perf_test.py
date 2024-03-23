@@ -1,222 +1,128 @@
+import numpy as np
+import itertools
 import torch
 import time
 import triton
 from gems import *
 
-configs_addmm = [
-    triton.testing.Benchmark(
-        x_names=["MNK"],
-        x_vals=[i * 64 for i in range(1, 20)],
-        line_arg="provider",
-        line_vals=["gems", "torch"],
-        line_names=["gems", "torch"],
-        styles=[("red", "-"), ("green", "-")],
-        ylabel="ms",
-        plot_name=f"test_performance_addmm_{dtype}",
-        args={"alpha": 1.0, "beta": 1.0, "dtype": dtype},
-    )
-    for dtype in [torch.float16, torch.float32, torch.bfloat16]
-]
+
+def run_bench(op, *args, warmups=10, repetitions=1000, **kwargs):    
+    for i in range(warmups):
+        ref_out = op(*args, **kwargs)
+    start = time.time()
+    for i in range(repetitions):
+        ref_out = op(*args, **kwargs)
+    torch.cuda.synchronize()
+    end = time.time()
+    ms = (end - start) * 1000
+    return ms
 
 
-@triton.testing.perf_report(configs_addmm)
-def test_performance_addmm(MNK, alpha, beta, dtype, provider):
-    M = N = K = MNK
+class Benchmark:
+    def __init__(self, op_name):
+        self.op_name = op_name
+
+    def provider_ops(self, gem=None, torch=None):
+        assert gem is not None
+        assert torch is not None
+        self.provider_ops = {'gem': gem, 'torch': torch}
+
+    def bench_params(self, **params):
+        self.bench_params = params
+
+    def arg_names(self, *arg_names):
+        self.x_names = arg_names
+    
+    def arg_vals(self, arg_vals):
+        self.x_vals = arg_vals
+    
+    def extra_args(self, **args):
+        self.extra_args = args
+
+    def perf(self, fn):
+        line_names, line_vals = zip(*self.provider_ops.items())
+        bench_param_names, bench_param_vals = zip(*self.bench_params.items())
+        benchmarks = (
+            triton.testing.Benchmark(
+                x_names=self.x_names,
+                x_vals=self.x_vals,
+                line_arg='op',
+                line_names=list(line_names),
+                line_vals=list(line_vals),
+                styles=[("red", "-"), ("green", "-")],
+                ylabel="ms",
+                plot_name='test_performance_{}_{}'.format(self.op_name, '_'.join(str(e) for e in bench_param_set)),
+                args={**self.extra_args, **dict(zip(bench_param_names, bench_param_set))}
+            )
+            for bench_param_set in itertools.product(*bench_param_vals)
+        )
+        return triton.testing.perf_report(benchmarks)(fn)
+
+f16_f32_bf = (torch.float16, torch.float32, torch.bfloat16)
+sizes = list(np.arange(1, 20) * 64)
+mnk_sizes = list(zip(sizes, sizes, sizes))
+
+addmm_bench = Benchmark('addmm')
+addmm_bench.bench_params(dtype=f16_f32_bf)
+addmm_bench.provider_ops(gem=addmm, torch=torch.addmm)
+addmm_bench.arg_names('M', 'N', 'K')
+addmm_bench.arg_vals(mnk_sizes)
+addmm_bench.extra_args(alpha=1.0, beta=1.0)
+@addmm_bench.perf
+def bench_addmm(op, M, N, K, alpha, beta, dtype):
     mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
     mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
     bias = torch.randn((N,), dtype=dtype, device="cuda")
-
-    if provider == "torch":
-        for i in range(5):
-            ref_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-        start = time.time()
-        for i in range(1000):
-            ref_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-    if provider == "gems":
-        for i in range(5):
-            res_out = addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-        start = time.time()
-        for i in range(1000):
-            res_out = addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-
+    ms = run_bench(op, bias, mat1, mat2, alpha=alpha, beta=beta)
     return ms
 
-
-configs_bmm = [
-    triton.testing.Benchmark(
-        x_names=["MNK"],
-        x_vals=[i * 64 for i in range(1, 20)],
-        line_arg="provider",
-        line_vals=["gems", "torch"],
-        line_names=["gems", "torch"],
-        styles=[("red", "-"), ("green", "-")],
-        ylabel="ms",
-        plot_name=f"test_performance_bmm_{dtype}",
-        args={"batch": 4, "dtype": dtype},
-    )
-    for dtype in [torch.float16, torch.float32, torch.bfloat16]
-]
-
-
-@triton.testing.perf_report(configs_bmm)
-def test_performance_bmm(batch, MNK, dtype, provider):
-    M = N = K = MNK
+bmm_bench = Benchmark('bmm')
+bmm_bench.bench_params(dtype=f16_f32_bf)
+bmm_bench.provider_ops(gem=bmm, torch=torch.bmm)
+bmm_bench.arg_names('M', 'N', 'K')
+bmm_bench.arg_vals(mnk_sizes)
+bmm_bench.extra_args(batch=4)
+@bmm_bench.perf
+def bench_bmm(op, batch, M, N, K, dtype):
     tensor_A = torch.randn((batch, M, K), dtype=dtype, device="cuda")
     tensor_B = torch.randn((batch, K, N), dtype=dtype, device="cuda")
-
-    if provider == "torch":
-        for i in range(5):
-            ref_out = torch.bmm(tensor_A, tensor_B)
-        start = time.time()
-        for i in range(1000):
-            ref_out = torch.bmm(tensor_A, tensor_B)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-    if provider == "gems":
-        for i in range(5):
-            res_out = bmm(tensor_A, tensor_B)
-        start = time.time()
-        for i in range(1000):
-            res_out = bmm(tensor_A, tensor_B)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-
+    ms = run_bench(op, tensor_A, tensor_B)
     return ms
 
-
-configs_cumsum = [
-    triton.testing.Benchmark(
-        x_names=["N"],
-        x_vals=[i * 64 for i in range(1, 20)],
-        line_arg="provider",
-        line_vals=["gems", "torch"],
-        line_names=["gems", "torch"],
-        styles=[("red", "-"), ("green", "-")],
-        ylabel="ms",
-        plot_name=f"test_performance_cumsum_{dtype}",
-        args={"M": 1024, "dim": 1, "dtype": dtype},
-    )
-    for dtype in [torch.float16, torch.float32, torch.bfloat16]
-]
-
-
-@triton.testing.perf_report(configs_cumsum)
-def test_performance_cumsum(M, N, dim, dtype, provider):
+cumsum_bench = Benchmark('cumsum')
+cumsum_bench.bench_params(dtype=f16_f32_bf)
+cumsum_bench.provider_ops(gem=cumsum, torch=torch.cumsum)
+cumsum_bench.arg_names('N')
+cumsum_bench.arg_vals(sizes)
+cumsum_bench.extra_args(M=1024, dim=1)
+@cumsum_bench.perf
+def bench_cumsum(op, M, N, dim, dtype):
     inp = torch.randn((M, N), dtype=dtype, device="cuda")
-
-    if provider == "torch":
-        for i in range(5):
-            ref_out = torch.cumsum(inp, dim=dim)
-        start = time.time()
-        for i in range(1000):
-            ref_out = torch.cumsum(inp, dim=dim)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-    if provider == "gems":
-        for i in range(5):
-            res_out = cumsum(inp, dim=dim)
-        start = time.time()
-        for i in range(1000):
-            res_out = cumsum(inp, dim=dim)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-
+    ms = run_bench(op, inp, dim=dim)
     return ms
 
-
-configs_dropout = [
-    triton.testing.Benchmark(
-        x_names=["N"],
-        x_vals=[i * 64 for i in range(1, 20)],
-        line_arg="provider",
-        line_vals=["gems", "torch"],
-        line_names=["gems", "torch"],
-        styles=[("red", "-"), ("green", "-")],
-        ylabel="ms",
-        plot_name=f"test_performance_dropout_{dtype}",
-        args={"M": 1024, "p": p, "dtype": dtype},
-    )
-    for p in [0.3, 0.6, 0.9]
-    for dtype in [torch.float16, torch.float32, torch.bfloat16]
-]
-
-
-@triton.testing.perf_report(configs_dropout)
-def test_performance_dropout(M, N, p, dtype, provider):
+dropout_bench = Benchmark('dropout')
+dropout_bench.bench_params(dtype=f16_f32_bf, p=(0.3, 0.6, 0.9))
+dropout_bench.provider_ops(gem=dropout, torch=torch.nn.functional.dropout)
+dropout_bench.arg_names('N')
+dropout_bench.arg_vals(sizes)
+dropout_bench.extra_args(M=1024)
+@dropout_bench.perf
+def bench_dropout(op, M, N, p, dtype):
     inp = torch.randn((M, N), dtype=dtype, device="cuda")
-
-    if provider == "torch":
-        for i in range(5):
-            ref_out = torch.nn.functional.dropout(inp, p, True)
-        start = time.time()
-        for i in range(1000):
-            ref_out = torch.nn.functional.dropout(inp, p, True)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-    if provider == "gems":
-        for i in range(5):
-            res_out = dropout(inp, p=p, train=True)
-        start = time.time()
-        for i in range(1000):
-            res_out = dropout(inp, p=p, train=True)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-
+    ms = run_bench(op, inp, p=p, training=True)
     return ms
 
-
-configs_gelu = [
-    triton.testing.Benchmark(
-        x_names=["N"],
-        x_vals=[i * 64 for i in range(1, 20)],
-        line_arg="provider",
-        line_vals=["gems", "torch"],
-        line_names=["gems", "torch"],
-        styles=[("red", "-"), ("green", "-")],
-        ylabel="ms",
-        plot_name=f"test_performance_gelu_{dtype}",
-        args={"M": 1024, "dtype": dtype},
-    )
-    for dtype in [torch.float16, torch.float32, torch.bfloat16]
-]
-
-
-@triton.testing.perf_report(configs_gelu)
-def test_performance_gelu(M, N, dtype, provider):
+gelu_bench = Benchmark('gelu')
+gelu_bench.bench_params(dtype=f16_f32_bf)
+gelu_bench.provider_ops(gem=gelu, torch=torch.nn.functional.gelu)
+gelu_bench.arg_names('N')
+gelu_bench.arg_vals(sizes)
+gelu_bench.extra_args(M=1024)
+@gelu_bench.perf
+def bench_gelu(op, M, N, dtype):
     inp = torch.randn((M, N), dtype=dtype, device="cuda")
-
-    if provider == "torch":
-        for i in range(5):
-            ref_out = torch.nn.functional.gelu(inp)
-        start = time.time()
-        for i in range(1000):
-            ref_out = torch.nn.functional.gelu(inp)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-    if provider == "gems":
-        for i in range(5):
-            res_out = gelu(inp)
-        start = time.time()
-        for i in range(1000):
-            res_out = gelu(inp)
-        torch.cuda.synchronize()
-        end = time.time()
-        ms = (end - start) * 1000
-
-    return ms
+    ms = run_bench(op, inp)
 
 
 configs_layernorm = [
@@ -490,11 +396,11 @@ def test_performance_triu(M, N, dtype, provider):
     return ms
 
 
-test_performance_addmm.run(print_data=True)
-test_performance_bmm.run(print_data=True)
-test_performance_cumsum.run(print_data=True)
-test_performance_dropout.run(print_data=True)
-test_performance_gelu.run(print_data=True)
+bench_addmm.run(print_data=True)
+bench_bmm.run(print_data=True)
+bench_cumsum.run(print_data=True)
+bench_dropout.run(print_data=True)
+bench_gelu.run(print_data=True)
 test_performance_layernorm.run(print_data=True)
 test_performance_mm.run(print_data=True)
 test_performance_relu.run(print_data=True)

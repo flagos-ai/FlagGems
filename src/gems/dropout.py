@@ -54,10 +54,10 @@ def dropout_kernel(
     tl.store(Y_ptr, output.to(inp.dtype))
 
 
-def dropout(A, p=0.5, train=False):
+def dropout(A, p=0.5, training=False):
     if __debug__:
         print("GEMS DROPOUT")
-    if not train:
+    if not training:
         return A
     assert p >= 0.0 and p < 1.0, "p must be in [0, 1)"
     # training not supported
