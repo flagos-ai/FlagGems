@@ -142,7 +142,7 @@ dropout_bench.extra_args(M=1024)
 @dropout_bench.perf
 def bench_dropout(op, M, N, p, dtype):
     inp = torch.randn((M, N), dtype=dtype, device="cuda")
-    ms = run_bench(op, inp, p=p, training=True)
+    ms = run_bench(op, inp, p, True)
     return ms
 
 
@@ -190,7 +190,16 @@ def bench_layernorm(op, M, N, dtype):
     weight = torch.randn(N, dtype=dtype, device="cuda")
     bias = torch.randn(N, dtype=dtype, device="cuda")
     eps = 1e-5
-    ms = run_bench(op, inp, normalized_shape=[N,], weight=weight, bias=bias, eps=eps)
+    ms = run_bench(
+        op,
+        inp,
+        normalized_shape=[
+            N,
+        ],
+        weight=weight,
+        bias=bias,
+        eps=eps,
+    )
     return ms
 
 

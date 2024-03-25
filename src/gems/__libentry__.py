@@ -15,26 +15,15 @@ class LibEntry(triton.KernelInterface):
         self.kernel_cache = dict()
 
     def get_key(self, all_args):
-        _args = []
+        key = []
         for name in self.fn.arg_names:
             if name in all_args:
-                _args.append(all_args[name])
-        key = [_args[i] for i in self.fn.key_idx]
-        for arg in _args:
-            if hasattr(arg, "dtype"):
-                key.append(str(arg.dtype))
-        for arg in _args:
-            if hasattr(arg, "data_ptr"):
-                spec_key = (arg.data_ptr() % self.divisibility == 0,)
-            elif isinstance(arg, int):
-                spec_key = (
-                    arg % self.divisibility == 0,
-                    arg % self.divisibility_8 == 0,
-                    arg == 1,
-                )
-            else:
-                spec_key = (False,)
-            key.append(spec_key)
+                arg = all_args[name]
+                if hasattr(arg, "data_ptr"):
+                    key.append(arg.dtype)
+                    key.append(arg.data_ptr() % self.divisibility == 0)
+                elif isinstance(arg, int):
+                    key.append(arg)
         return tuple(key)
 
     def run(self, *args, **kwargs):

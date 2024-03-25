@@ -30,7 +30,7 @@ def enable(lib=aten_lib):
     lib.impl("exp", exp, "CUDA")
     lib.impl("exp.out", exp, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
-    lib.impl("layer_norm", layer_norm, "CompositeImplicitAutograd")
+    lib.impl("layer_norm", layer_norm, "CUDA")
     lib.impl("mm", mm, "CUDA")
     lib.impl("reciprocal", reciprocal, "CUDA")
     lib.impl("reciprocal.out", reciprocal, "CUDA")
@@ -41,7 +41,7 @@ def enable(lib=aten_lib):
     lib.impl("silu.out", silu, "CUDA")
     lib.impl("triu", triu, "CUDA")
     lib.impl("triu.out", triu, "CUDA")
-    lib.impl("softmax.int", softmax, "CompositeImplicitAutograd")
+    lib.impl("softmax.int", softmax, "CUDA")
 
 
 class use_gems:

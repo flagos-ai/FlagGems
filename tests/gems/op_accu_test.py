@@ -1,6 +1,6 @@
 import torch
 import pytest
-from gems import *
+import gems
 
 
 @pytest.mark.parametrize(
@@ -12,7 +12,7 @@ def test_accuracy_abs(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.abs(inp)
-    res_out = abs(inp)
+    res_out = gems.abs(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
@@ -47,7 +47,7 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
     )
 
     ref_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-    res_out = addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
+    res_out = gems.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
@@ -74,7 +74,7 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
     golden_out = torch.bmm(tensor_A.to(torch.float64), tensor_B.to(torch.float64))
 
     ref_out = torch.bmm(tensor_A, tensor_B)
-    res_out = bmm(tensor_A, tensor_B)
+    res_out = gems.bmm(tensor_A, tensor_B)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
@@ -95,7 +95,7 @@ def test_accuracy_cumsum(shape, dtype):
     golden_out = torch.cumsum(inp.to(torch.float64), dim=dim)
 
     ref_out = torch.cumsum(inp, dim=dim)
-    res_out = cumsum(inp, dim=dim)
+    res_out = gems.cumsum(inp, dim=dim)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
@@ -114,7 +114,7 @@ def test_accuracy_dropout(shape, dtype, p):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.nn.functional.dropout(inp, p, True)
-    res_out = dropout(inp, p=p, train=True)
+    res_out = gems.dropout(inp, p=p, train=True)
 
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
@@ -132,7 +132,7 @@ def test_accuracy_exp(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.exp(inp)
-    res_out = exp(inp)
+    res_out = gems.exp(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
@@ -149,7 +149,7 @@ def test_accuracy_gelu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.nn.functional.gelu(inp)
-    res_out = gelu(inp)
+    res_out = gems.gelu(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
@@ -180,7 +180,7 @@ def test_accuracy_layernorm(shape, dtype):
     ref_out = torch.layer_norm(
         inp, list(layer_shape), weight=weight, bias=bias, eps=eps
     )
-    res_out = layer_norm(inp, list(layer_shape), weight=weight, bias=bias, eps=eps)
+    res_out = gems.layer_norm(inp, list(layer_shape), weight=weight, bias=bias, eps=eps)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
@@ -207,13 +207,14 @@ def test_accuracy_mm(shape, dtype):
 
     golden_out = torch.mm(tensor_a.to(torch.float64), tensor_b.to(torch.float64))
     ref_out = torch.mm(tensor_a, tensor_b)
-    res_out = mm(tensor_a, tensor_b)
+    res_out = gems.mm(tensor_a, tensor_b)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))
     assert (
         diff_triton < diff_torch * 1.05
     ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
+
 
 @pytest.mark.parametrize(
     "shape",
@@ -224,7 +225,7 @@ def test_accuracy_reciprocal(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.reciprocal(inp)
-    res_out = reciprocal(inp)
+    res_out = gems.reciprocal(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
@@ -241,7 +242,7 @@ def test_accuracy_relu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.nn.functional.relu(inp)
-    res_out = relu(inp)
+    res_out = gems.relu(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
@@ -258,7 +259,7 @@ def test_accuracy_rsqrt(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.rsqrt(inp)
-    res_out = rsqrt(inp)
+    res_out = gems.rsqrt(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
@@ -275,7 +276,7 @@ def test_accuracy_silu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.nn.functional.silu(inp)
-    res_out = silu(inp)
+    res_out = gems.silu(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
@@ -293,7 +294,7 @@ def test_accuracy_softmax(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.nn.functional.softmax(inp, dim=dim)
-    res_out = softmax(inp, dim=dim)
+    res_out = gems.softmax(inp, dim=dim)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
@@ -311,7 +312,7 @@ def test_accuracy_triu(shape, diagonal, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_out = torch.triu(inp, diagonal)
 
-    res_out = triu(inp, diagonal)
+    res_out = gems.triu(inp, diagonal)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
