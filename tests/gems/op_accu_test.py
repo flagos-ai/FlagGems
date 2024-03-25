@@ -215,6 +215,22 @@ def test_accuracy_mm(shape, dtype):
         diff_triton < diff_torch * 1.05
     ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
 
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_reciprocal(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.reciprocal(inp)
+    res_out = reciprocal(inp)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3, equal_nan=True
+    ), f"max diff: {maxdiff}"
+
 
 @pytest.mark.parametrize(
     "shape",

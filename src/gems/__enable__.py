@@ -8,6 +8,7 @@ from .exp import exp
 from .gelu import gelu
 from .layernorm import layer_norm
 from .mm import mm
+from .reciprocal import reciprocal
 from .relu import relu
 from .rsqrt import rsqrt
 from .silu import silu
@@ -31,6 +32,8 @@ def enable(lib=aten_lib):
     lib.impl("gelu", gelu, "CUDA")
     lib.impl("layer_norm", layer_norm, "CompositeImplicitAutograd")
     lib.impl("mm", mm, "CUDA")
+    lib.impl("reciprocal", reciprocal, "CUDA")
+    lib.impl("reciprocal.out", reciprocal, "CUDA")
     lib.impl("relu", relu, "CUDA")
     lib.impl("rsqrt", rsqrt, "CUDA")
     lib.impl("rsqrt.out", rsqrt, "CUDA")

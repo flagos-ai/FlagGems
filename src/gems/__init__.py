@@ -7,6 +7,7 @@ from .exp import exp
 from .gelu import gelu
 from .layernorm import layer_norm
 from .mm import mm
+from .reciprocal import reciprocal
 from .relu import relu
 from .rsqrt import rsqrt
 from .silu import silu
@@ -26,6 +27,7 @@ __all__ = [
     "gelu",
     "layer_norm",
     "mm",
+    "reciprocal",
     "relu",
     "rsqrt",
     "silu",

@@ -210,6 +210,21 @@ def bench_mm(op, M, N, K, dtype):
     return ms
 
 
+reciprocal_bench = Benchmark("reciprocal")
+reciprocal_bench.bench_params(dtype=f16_f32_bf)
+reciprocal_bench.provider_ops(gem=reciprocal, torch=torch.reciprocal)
+reciprocal_bench.arg_names("N")
+reciprocal_bench.arg_vals(sizes)
+reciprocal_bench.extra_args(M=1024)
+
+
+@reciprocal_bench.perf
+def bench_reciprocal(op, M, N, dtype):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp)
+    return ms
+
+
 relu_bench = Benchmark("relu")
 relu_bench.bench_params(dtype=f16_f32_bf)
 relu_bench.provider_ops(gem=relu, torch=torch.relu)
@@ -285,14 +300,18 @@ def bench_triu(op, M, N, diagonal, dtype):
     return ms
 
 
+bench_abs.run(print_data=True)
 bench_addmm.run(print_data=True)
 bench_bmm.run(print_data=True)
 bench_cumsum.run(print_data=True)
+bench_exp.run(print_data=True)
 bench_dropout.run(print_data=True)
 bench_gelu.run(print_data=True)
 bench_layernorm.run(print_data=True)
 bench_mm.run(print_data=True)
+bench_reciprocal.run(print_data=True)
 bench_relu.run(print_data=True)
+bench_rsqrt.run(print_data=True)
 bench_silu.run(print_data=True)
 bench_softmax.run(print_data=True)
 bench_triu.run(print_data=True)
