@@ -63,7 +63,7 @@ pip install .
     - Operator Performance  
         ```shell
         cd tests/gems
-        python op_perf_test.py
+        python -O op_perf_test.py
         ```
 
 2. Run without printing Flag infomation  
