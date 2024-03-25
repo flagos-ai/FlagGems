@@ -4,6 +4,23 @@ from gems import *
 
 
 @pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_abs(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.abs(inp)
+    res_out = abs(inp)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
     "M, N, K",
     [
         (256, 256, 256),
@@ -111,6 +128,23 @@ def test_accuracy_dropout(shape, dtype, p):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_exp(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.exp(inp)
+    res_out = exp(inp)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_gelu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -196,6 +230,23 @@ def test_accuracy_relu(shape, dtype):
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
         ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_rsqrt(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.rsqrt(inp)
+    res_out = rsqrt(inp)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3, equal_nan=True
     ), f"max diff: {maxdiff}"
 
 

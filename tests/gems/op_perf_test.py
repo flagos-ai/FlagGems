@@ -67,6 +67,22 @@ f16_f32_bf = (torch.float16, torch.float32, torch.bfloat16)
 sizes = [i * 64 for i in range(1, 20)]
 mnk_sizes = list(zip(sizes, sizes, sizes))
 
+
+abs_bench = Benchmark("abs")
+abs_bench.bench_params(dtype=f16_f32_bf)
+abs_bench.provider_ops(gem=abs, torch=torch.abs)
+abs_bench.arg_names("N")
+abs_bench.arg_vals(sizes)
+abs_bench.extra_args(M=1024)
+
+
+@abs_bench.perf
+def bench_abs(op, M, N, dtype):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp)
+    return ms
+
+
 addmm_bench = Benchmark("addmm")
 addmm_bench.bench_params(dtype=f16_f32_bf)
 addmm_bench.provider_ops(gem=addmm, torch=torch.addmm)
@@ -130,6 +146,21 @@ def bench_dropout(op, M, N, p, dtype):
     return ms
 
 
+exp_bench = Benchmark("exp")
+exp_bench.bench_params(dtype=f16_f32_bf)
+exp_bench.provider_ops(gem=exp, torch=torch.exp)
+exp_bench.arg_names("N")
+exp_bench.arg_vals(sizes)
+exp_bench.extra_args(M=1024)
+
+
+@exp_bench.perf
+def bench_exp(op, M, N, dtype):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp)
+    return ms
+
+
 gelu_bench = Benchmark("gelu")
 gelu_bench.bench_params(dtype=f16_f32_bf)
 gelu_bench.provider_ops(gem=gelu, torch=torch.nn.functional.gelu)
@@ -189,6 +220,21 @@ relu_bench.extra_args(M=1024)
 
 @relu_bench.perf
 def bench_relu(op, M, N, dtype):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp)
+    return ms
+
+
+rsqrt_bench = Benchmark("rsqrt")
+rsqrt_bench.bench_params(dtype=f16_f32_bf)
+rsqrt_bench.provider_ops(gem=rsqrt, torch=torch.rsqrt)
+rsqrt_bench.arg_names("N")
+rsqrt_bench.arg_vals(sizes)
+rsqrt_bench.extra_args(M=1024)
+
+
+@rsqrt_bench.perf
+def bench_rsqrt(op, M, N, dtype):
     inp = torch.randn((M, N), dtype=dtype, device="cuda")
     ms = run_bench(op, inp)
     return ms
