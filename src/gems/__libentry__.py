@@ -5,18 +5,16 @@ class LibEntry(triton.KernelInterface):
     def __init__(
         self,
         fn,
-        cfggen,
     ):
         self.fn = fn
-        self.cfggen = cfggen
+        self.arg_names = fn.arg_names
         self.divisibility = 16
-        self.divisibility_8 = 8
         self.config_cache = dict()
         self.kernel_cache = dict()
 
     def get_key(self, all_args):
         key = []
-        for name in self.fn.arg_names:
+        for name in self.arg_names:
             if name in all_args:
                 arg = all_args[name]
                 if hasattr(arg, "data_ptr"):
@@ -27,37 +25,50 @@ class LibEntry(triton.KernelInterface):
         return tuple(key)
 
     def run(self, *args, **kwargs):
-        nargs = dict(zip(self.fn.arg_names, args))
+        nargs = dict(zip(self.arg_names, args))
         all_args = {**nargs, **kwargs}
         entry_key = self.get_key(all_args)
-        # autotuner
+        config = {}
+        # Autotuner
         if isinstance(self.fn, triton.runtime.Autotuner):
             if entry_key not in self.config_cache:
                 # tune
                 kernel = self.fn.run(*args, **kwargs)
-                config = self.fn.best_config
+                config = self.fn.best_config.kwargs
                 self.config_cache[entry_key] = config
                 self.kernel_cache[entry_key] = kernel
+                return
             else:
                 # tuned
                 config = self.config_cache[entry_key]
                 kernel = self.kernel_cache[entry_key]
-        # heuristic
-        else:
-            assert self.cfggen is not None
-            config = self.cfggen(all_args)
+        # Heuristics
+        elif isinstance(self.fn, triton.runtime.Heuristics):
             if entry_key not in self.kernel_cache:
                 # compile
                 kernel = self.fn.run(*args, **kwargs)
                 self.kernel_cache[entry_key] = kernel
+                return
+            else:
+                # compiled
+                for v, heur in self.fn.values.items():
+                    config[v] = heur({**dict(zip(self.arg_names, args)), **kwargs})
+                kernel = self.kernel_cache[entry_key]
+        # JitFunction
+        else:
+            if entry_key not in self.kernel_cache:
+                # compile
+                kernel = self.fn.run(*args, **kwargs)
+                self.kernel_cache[entry_key] = kernel
+                return
             else:
                 # compiled
                 kernel = self.kernel_cache[entry_key]
         grid = kwargs["grid"]
         if isinstance(grid, type(lambda: None)):
             # grid_fn
-            current = dict(kwargs, **config.kwargs)
-            meta = {**dict(zip(self.fn.arg_names, args)), **current}
+            current = dict(**kwargs, **config)
+            meta = {**dict(zip(self.arg_names, args)), **current}
             grid = grid(meta)
 
         # allow grid len < 3
@@ -67,16 +78,16 @@ class LibEntry(triton.KernelInterface):
         grid_2 = grid[2] if grid_size > 2 else 1
         grid = (grid_0, grid_1, grid_2)
 
-        ret = kernel[grid](*args)
-        return ret
+        kernel[grid](*args)
+        return
 
 
-def libentry(cfggen=None):
+def libentry():
     """
     Decorator for triton library entries.
     """
 
     def decorator(fn):
-        return LibEntry(fn, cfggen)
+        return LibEntry(fn)
 
     return decorator
