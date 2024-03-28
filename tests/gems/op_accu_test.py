@@ -230,6 +230,23 @@ def test_accuracy_layernorm(shape, dtype):
 
 @pytest.mark.parametrize(
     "shape",
+    [(4096, i * 32) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_mean(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.mean(inp)
+    res_out = gems.mean(inp)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}, {ref_out}, {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
     [
         (256, 256, 256),
         (1024, 1024, 1024),

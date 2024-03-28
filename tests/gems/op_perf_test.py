@@ -203,6 +203,21 @@ def bench_layernorm(op, M, N, dtype):
     return ms
 
 
+mean_bench = Benchmark("mean")
+mean_bench.bench_params(dtype=f16_f32_bf)
+mean_bench.provider_ops(gem=mean, torch=torch.mean)
+mean_bench.arg_names("N")
+mean_bench.arg_vals(sizes)
+mean_bench.extra_args(M=1024)
+
+
+@mean_bench.perf
+def bench_mean(op, M, N, dtype):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp)
+    return ms
+
+
 mm_bench = Benchmark("mm")
 mm_bench.bench_params(dtype=f16_f32_bf)
 mm_bench.provider_ops(gem=mm, torch=torch.mm)
@@ -317,6 +332,7 @@ bench_exp.run(print_data=True)
 bench_dropout.run(print_data=True)
 bench_gelu.run(print_data=True)
 bench_layernorm.run(print_data=True)
+bench_mean.run(print_data=True)
 bench_mm.run(print_data=True)
 bench_reciprocal.run(print_data=True)
 bench_relu.run(print_data=True)

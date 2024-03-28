@@ -9,6 +9,7 @@ from .dropout import dropout
 from .exp import exp
 from .gelu import gelu
 from .layernorm import layer_norm
+from .mean import mean
 from .mm import mm
 from .mul import mul
 from .reciprocal import reciprocal
@@ -39,6 +40,7 @@ def enable(lib=aten_lib):
     lib.impl("exp.out", exp, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
     lib.impl("layer_norm", layer_norm, "CUDA")
+    lib.impl("mean", mean, "CUDA")
     lib.impl("mm", mm, "CUDA")
     lib.impl("mul", mul, "CUDA")
     lib.impl("mul.out", mul, "CUDA")

@@ -8,6 +8,7 @@ from .div import div
 from .exp import exp
 from .gelu import gelu
 from .layernorm import layer_norm
+from .mean import mean
 from .mm import mm
 from .mul import mul
 from .reciprocal import reciprocal
@@ -32,6 +33,7 @@ __all__ = [
     "exp",
     "gelu",
     "layer_norm",
+    "mean",
     "mm",
     "mul",
     "reciprocal",
