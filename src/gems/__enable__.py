@@ -55,7 +55,7 @@ def enable(lib=aten_lib):
     lib.impl("sub.out", sub, "CUDA")
     lib.impl("triu", triu, "CUDA")
     lib.impl("triu.out", triu, "CUDA")
-    lib.impl("softmax.int", softmax, "CUDA")
+    lib.impl("softmax.int", softmax, "AutogradCUDA")
 
 
 class use_gems:
