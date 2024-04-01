@@ -77,7 +77,6 @@ def sub_kernel(
 def sub_scalar_kernel(
     X,
     Y_scalar,
-    alpha,
     O,
     M,
     M_BLOCK_SIZE: tl.constexpr,
@@ -101,7 +100,7 @@ def sub_scalar_kernel(
     )
     X_val = tl.load(X_ptrs)
     O_val = tl.load(O_ptrs)
-    O_val = X_val - Y_scalar * alpha
+    O_val = X_val - Y_scalar
     tl.store(O_ptrs, O_val.to(X_val.dtype))
 
 
@@ -124,5 +123,5 @@ def sub(A, B, *, alpha=1, out=None):
         A = A.contiguous()
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-        sub_scalar_kernel[grid_fn](A, B, alpha, O, M)
+        sub_scalar_kernel[grid_fn](A, B*alpha, O, M)
         return O
