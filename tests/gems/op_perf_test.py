@@ -174,6 +174,14 @@ def bench_div(op, M, N, dtype):
     return ms
 
 
+@div_bench.perf
+def bench_div_scalar(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = random.randint(0, 1000)
+    ms = run_bench(op, inp1, inp2)
+    return ms
+
+
 dropout_bench = Benchmark("dropout")
 dropout_bench.bench_params(dtype=f16_f32_bf, p=(0.3, 0.6, 0.9))
 dropout_bench.provider_ops(gem=dropout, torch=torch.nn.functional.dropout)
@@ -292,6 +300,12 @@ def bench_mul(op, M, N, dtype):
     ms = run_bench(op, inp1, inp2)
     return ms
 
+@mul_bench.perf
+def bench_mul_scalar(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = random.randint(0, 10000)
+    ms = run_bench(op, inp1, inp2)
+    return ms
 
 reciprocal_bench = Benchmark("reciprocal")
 reciprocal_bench.bench_params(dtype=f16_f32_bf)
@@ -432,6 +446,7 @@ def bench_triu(op, M, N, diagonal, dtype):
     ms = run_bench(op, inp, diagonal=diagonal)
     return ms
 
+
 bench_abs.run(print_data=True)
 bench_add.run(print_data=True)
 bench_add_scalar.run(print_data=True)
@@ -441,11 +456,13 @@ bench_cumsum.run(print_data=True)
 bench_exp.run(print_data=True)
 bench_dropout.run(print_data=True)
 bench_div.run(print_data=True)
+bench_div_scalar.run(print_data=True)
 bench_gelu.run(print_data=True)
 bench_layernorm.run(print_data=True)
 bench_mean.run(print_data=True)
 bench_mm.run(print_data=True)
 bench_mul.run(print_data=True)
+bench_mul_scalar.run(print_data=True)
 bench_pow_tensor_scalar.run(print_data=True)
 bench_pow_tensor_tensor.run(print_data=True)
 bench_reciprocal.run(print_data=True)
