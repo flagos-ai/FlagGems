@@ -12,6 +12,7 @@ from .layernorm import layer_norm
 from .mean import mean
 from .mm import mm
 from .mul import mul
+from .pow import pow
 from .reciprocal import reciprocal
 from .relu import relu
 from .rsqrt import rsqrt
@@ -44,6 +45,7 @@ def enable(lib=aten_lib):
     lib.impl("mm", mm, "CUDA")
     lib.impl("mul.Tensor", mul, "CUDA")
     lib.impl("mul.out", mul, "CUDA")
+    lib.impl("pow.Tensor_Scalar_out", pow, "CUDA")
     lib.impl("reciprocal", reciprocal, "CUDA")
     lib.impl("reciprocal.out", reciprocal, "CUDA")
     lib.impl("relu", relu, "CUDA")

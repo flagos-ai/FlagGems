@@ -11,6 +11,7 @@ from .layernorm import layer_norm
 from .mean import mean
 from .mm import mm
 from .mul import mul
+from .pow import pow
 from .reciprocal import reciprocal
 from .relu import relu
 from .rsqrt import rsqrt
@@ -36,6 +37,7 @@ __all__ = [
     "mean",
     "mm",
     "mul",
+    "pow",
     "reciprocal",
     "relu",
     "rsqrt",

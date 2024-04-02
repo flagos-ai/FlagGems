@@ -301,6 +301,30 @@ reciprocal_bench.arg_vals(sizes)
 reciprocal_bench.extra_args(M=1024)
 
 
+pow_bench = Benchmark("pow")
+pow_bench.bench_params(dtype=f16_f32_bf)
+pow_bench.provider_ops(gem=pow, torch=torch.pow)
+pow_bench.arg_names("N")
+pow_bench.arg_vals(sizes)
+pow_bench.extra_args(M=1024)
+
+
+@pow_bench.perf
+def bench_pow_tensor_scalar(op, M, N, dtype):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    exponent = random.randint(-10, 10)
+    ms = run_bench(op, inp, exponent)
+    return ms
+
+
+@pow_bench.perf
+def bench_pow_tensor_tensor(op, M, N, dtype):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    exponent = torch.randint(-10, 10, (M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp, exponent)
+    return ms
+
+
 @reciprocal_bench.perf
 def bench_reciprocal(op, M, N, dtype):
     inp = torch.randn((M, N), dtype=dtype, device="cuda")
@@ -410,6 +434,7 @@ def bench_triu(op, M, N, diagonal, dtype):
 
 bench_abs.run(print_data=True)
 bench_add.run(print_data=True)
+bench_add_scalar.run(print_data=True)
 bench_addmm.run(print_data=True)
 bench_bmm.run(print_data=True)
 bench_cumsum.run(print_data=True)
@@ -421,10 +446,13 @@ bench_layernorm.run(print_data=True)
 bench_mean.run(print_data=True)
 bench_mm.run(print_data=True)
 bench_mul.run(print_data=True)
+bench_pow_tensor_scalar.run(print_data=True)
+bench_pow_tensor_tensor.run(print_data=True)
 bench_reciprocal.run(print_data=True)
 bench_relu.run(print_data=True)
 bench_rsqrt.run(print_data=True)
 bench_silu.run(print_data=True)
 bench_softmax.run(print_data=True)
 bench_sub.run(print_data=True)
+bench_sub_scalar.run(print_data=True)
 bench_triu.run(print_data=True)
