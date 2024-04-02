@@ -2,6 +2,7 @@ import itertools
 import torch
 import time
 import triton
+import random
 from gems import *
 
 
@@ -83,6 +84,32 @@ def bench_abs(op, M, N, dtype):
     return ms
 
 
+add_bench = Benchmark("add")
+add_bench.bench_params(dtype=f16_f32_bf)
+add_bench.provider_ops(gem=add, torch=torch.add)
+add_bench.arg_names("N")
+add_bench.arg_vals(sizes)
+add_bench.extra_args(M=1024)
+
+
+@add_bench.perf
+def bench_add(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    alpha = random.random()
+    ms = run_bench(op, inp1, inp2, alpha=alpha)
+    return ms
+
+
+@add_bench.perf
+def bench_add_scalar(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = random.random()
+    alpha = random.random()
+    ms = run_bench(op, inp1, inp2, alpha=alpha)
+    return ms
+
+
 addmm_bench = Benchmark("addmm")
 addmm_bench.bench_params(dtype=f16_f32_bf)
 addmm_bench.provider_ops(gem=addmm, torch=torch.addmm)
@@ -128,6 +155,22 @@ cumsum_bench.extra_args(M=1024, dim=1)
 def bench_cumsum(op, M, N, dim, dtype):
     inp = torch.randn((M, N), dtype=dtype, device="cuda")
     ms = run_bench(op, inp, dim=dim)
+    return ms
+
+
+div_bench = Benchmark("div")
+div_bench.bench_params(dtype=f16_f32_bf)
+div_bench.provider_ops(gem=div, torch=torch.div)
+div_bench.arg_names("N")
+div_bench.arg_vals(sizes)
+div_bench.extra_args(M=1024)
+
+
+@div_bench.perf
+def bench_div(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp1, inp2)
     return ms
 
 
@@ -234,6 +277,22 @@ def bench_mm(op, M, N, K, dtype):
     return ms
 
 
+mul_bench = Benchmark("mul")
+mul_bench.bench_params(dtype=f16_f32_bf)
+mul_bench.provider_ops(gem=mul, torch=torch.mul)
+mul_bench.arg_names("N")
+mul_bench.arg_vals(sizes)
+mul_bench.extra_args(M=1024)
+
+
+@mul_bench.perf
+def bench_mul(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp1, inp2)
+    return ms
+
+
 reciprocal_bench = Benchmark("reciprocal")
 reciprocal_bench.bench_params(dtype=f16_f32_bf)
 reciprocal_bench.provider_ops(gem=reciprocal, torch=torch.reciprocal)
@@ -309,6 +368,32 @@ def bench_softmax(op, M, N, dim, dtype):
     return ms
 
 
+sub_bench = Benchmark("sub")
+sub_bench.bench_params(dtype=f16_f32_bf)
+sub_bench.provider_ops(gem=sub, torch=torch.sub)
+sub_bench.arg_names("N")
+sub_bench.arg_vals(sizes)
+sub_bench.extra_args(M=1024)
+
+
+@sub_bench.perf
+def bench_sub(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    alpha = random.randint(0, 10000)
+    ms = run_bench(op, inp1, inp2, alpha=alpha)
+    return ms
+
+
+@sub_bench.perf
+def bench_sub_scalar(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = random.randint(0, 10000)
+    alpha = random.randint(0, 10000)
+    ms = run_bench(op, inp1, inp2, alpha=alpha)
+    return ms
+
+
 triu_bench = Benchmark("triu")
 triu_bench.bench_params(dtype=f16_f32_bf)
 triu_bench.provider_ops(gem=triu, torch=torch.triu)
@@ -323,20 +408,23 @@ def bench_triu(op, M, N, diagonal, dtype):
     ms = run_bench(op, inp, diagonal=diagonal)
     return ms
 
-
-bench_abs.run(print_data=True)
-bench_addmm.run(print_data=True)
-bench_bmm.run(print_data=True)
-bench_cumsum.run(print_data=True)
-bench_exp.run(print_data=True)
-bench_dropout.run(print_data=True)
-bench_gelu.run(print_data=True)
-bench_layernorm.run(print_data=True)
-bench_mean.run(print_data=True)
-bench_mm.run(print_data=True)
-bench_reciprocal.run(print_data=True)
-bench_relu.run(print_data=True)
-bench_rsqrt.run(print_data=True)
-bench_silu.run(print_data=True)
-bench_softmax.run(print_data=True)
-bench_triu.run(print_data=True)
+# bench_abs.run(print_data=True)
+bench_add.run(print_data=True)
+# bench_addmm.run(print_data=True)
+# bench_bmm.run(print_data=True)
+# bench_cumsum.run(print_data=True)
+# bench_exp.run(print_data=True)
+# bench_dropout.run(print_data=True)
+bench_div.run(print_data=True)
+# bench_gelu.run(print_data=True)
+# bench_layernorm.run(print_data=True)
+# bench_mean.run(print_data=True)
+# bench_mm.run(print_data=True)
+bench_mul.run(print_data=True)
+# bench_reciprocal.run(print_data=True)
+# bench_relu.run(print_data=True)
+# bench_rsqrt.run(print_data=True)
+# bench_silu.run(print_data=True)
+# bench_softmax.run(print_data=True)
+bench_sub.run(print_data=True)
+# bench_triu.run(print_data=True)
