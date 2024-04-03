@@ -47,13 +47,10 @@ def rsqrt_kernel(
     tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 
-def rsqrt(A, *, out=None):
+def rsqrt(A):
     if __debug__:
         print("GEMS RSQRT")
-    if out == None:
-        O = torch.empty_like(A)
-    else:
-        O = out
+    O = torch.empty_like(A)
     A = A.contiguous()
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)

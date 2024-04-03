@@ -107,19 +107,15 @@ def addmm_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def addmm(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
+def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     if __debug__:
         print("GEMS ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     M, K = mat1.shape
     _, N = mat2.shape
 
-    if out is None:
-        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    else:
-        assert out.shape == (M, N), "Output shape must match"
-        assert out.is_contiguous(), "Output must be contiguous"
-
+    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+  
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),

@@ -19,8 +19,9 @@ from .__libentry__ import libentry
     key=["M"],
 )
 @triton.jit
-def abs_kernel(
-    X,
+def pow_scalar_kernel(
+    X_val,
+    exponent,
     Y,
     M,
     M_BLOCK_SIZE: tl.constexpr,
@@ -34,25 +35,26 @@ def abs_kernel(
         block_shape=(M_BLOCK_SIZE,),
         order=(0,),
     )
-    X_ptrs = tl.make_block_ptr(
-        X,
+    exp_ptrs = tl.make_block_ptr(
+        exponent,
         shape=(M,),
         strides=(1,),
         offsets=(pid,),
         block_shape=(M_BLOCK_SIZE,),
         order=(0,),
     )
-    X_val = tl.load(X_ptrs)
-    Y_val = tl.abs(X_val)
-    tl.store(Y_ptrs, Y_val.to(X_val.dtype))
+    exp_val = tl.load(exp_ptrs)
+    Y_val = tl.math.pow(X_val, exp_val)
+    tl.store(Y_ptrs, Y_val.to(exp_val.dtype))
 
 
-def abs(A):
+def pow_scalar(A, exponent):
     if __debug__:
-        print("GEMS ABS")
-    O = torch.empty_like(A)
-    A = A.contiguous()
-    M = A.numel()
+        print("GEMS POW_SCALAR")
+    O = torch.empty_like(exponent)
+    exponent = exponent.contiguous()
+    M = exponent.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-    abs_kernel[grid_fn](A, O, M)
+    pow_scalar_kernel[grid_fn](A, exponent, O, M)
     return O
+    

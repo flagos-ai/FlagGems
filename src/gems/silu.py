@@ -48,13 +48,10 @@ def silu_kernel(
     tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 
-def silu(A, *, out=None):
+def silu(A):
     if __debug__:
         print("GEMS SILU")
-    if out == None:
-        O = torch.empty_like(A)
-    else:
-        O = out
+    O = torch.empty_like(A)
     A = A.contiguous()
     M = A.numel()
 

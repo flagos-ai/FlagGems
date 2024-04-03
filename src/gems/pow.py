@@ -101,7 +101,7 @@ def pow_tensor_tensor_kernel(
     tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 
-def pow(A, exponent, *, out=None):
+def pow(A, exponent):
     if __debug__:
         print("GEMS POW")
     O = torch.empty_like(A)

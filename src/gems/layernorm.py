@@ -22,6 +22,8 @@ def layer_norm_kernel(
     Y,
     W,
     B,
+    Mean,  # pointer to the mean
+    Rstd,  # pointer to the 1/std
     stride,
     M,
     N,
@@ -61,6 +63,9 @@ def layer_norm_kernel(
     var = tl.sum(_var, axis=1)[:, None]
     var /= N
     rstd = 1 / tl.sqrt(var + eps)
+    # Write mean / rstd
+    tl.store(Mean + row, mean)
+    tl.store(Rstd + row, rstd)
 
     # Normalize and apply linear transformation
     for off in range(0, N, BLOCK_COL_SIZE):
@@ -84,8 +89,11 @@ def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
     y = torch.empty_like(x)
+    # FIXME: CANNOT PASS
+    mean = torch.empty_like(x[:, 0])
+    rstd = torch.empty_like(mean)
     x = x.reshape(M, N)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
 
-    layer_norm_kernel[grid](x, y, weight, bias, x.stride(0), M, N, eps)
-    return y
+    layer_norm_kernel[grid](x, y, weight, bias, mean, rstd, x.stride(0), M, N, eps)
+    return y, mean, rstd

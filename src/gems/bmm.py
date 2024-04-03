@@ -178,17 +178,14 @@ def bmm_kernel(
     tl.store(o_ptrs, o, mask_c)
 
 
-def bmm(A, B, *, out=None):
+def bmm(A, B):
     if __debug__:
         print("GEMS BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
     B = B.contiguous()
-    if out == None:
-        O = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
-    else:
-        O = out
+    O = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),

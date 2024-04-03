@@ -45,7 +45,7 @@ def cumsum_kernel(
     tl.store(out_ptrs, result, mask=mask)
 
 
-def cumsum(inp, dim=1, *, dtype=None, out=None):
+def cumsum(inp, dim=1, *, dtype=None):
     if __debug__:
         print("GEMS CUMSUM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -61,8 +61,7 @@ def cumsum(inp, dim=1, *, dtype=None, out=None):
 
     if dtype is None:
         dtype = inp.dtype
-    if out is None:
-        out = torch.empty_like(inp, dtype=dtype)
+    out = torch.empty_like(inp, dtype=dtype)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),

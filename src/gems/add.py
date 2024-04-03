@@ -104,13 +104,10 @@ def add_scalar_kernel(
     tl.store(O_ptrs, O_val.to(X_val.dtype))
 
 
-def add(A, B, *, alpha=1, out=None):
+def add(A, B, *, alpha=1):
     if __debug__:
         print("GEMS ADD")
-    if out == None:
-        O = torch.empty_like(A)
-    else:
-        O = out
+    O = torch.empty_like(A)
     if isinstance(B,torch.Tensor):
         A = A.contiguous()
         B = B.contiguous()

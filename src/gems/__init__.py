@@ -11,7 +11,9 @@ from .layernorm import layer_norm
 from .mean import mean
 from .mm import mm
 from .mul import mul
-from .pow import pow
+from .pow_scalar import pow_scalar
+from .pow_tensor_scalar import pow_tensor_scalar
+from .pow_tensor_tensor import pow_tensor_tensor
 from .reciprocal import reciprocal
 from .relu import relu
 from .rsqrt import rsqrt
@@ -37,7 +39,9 @@ __all__ = [
     "mean",
     "mm",
     "mul",
-    "pow",
+    "pow_scalar",
+    "pow_tensor_scalar",
+    "pow_tensor_tensor",
     "reciprocal",
     "relu",
     "rsqrt",

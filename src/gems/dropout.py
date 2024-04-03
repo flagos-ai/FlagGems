@@ -24,6 +24,7 @@ from .__libentry__ import libentry
 def dropout_kernel(
     X,
     Y,
+    Mask,
     N,
     p,
     N_BLOCK_SIZE: tl.constexpr,
@@ -45,6 +46,14 @@ def dropout_kernel(
         block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
+    Mask_ptr = tl.make_block_ptr(
+        Mask,
+        shape=(N,),
+        strides=(1,),
+        offsets=(n_offset,),
+        block_shape=(N_BLOCK_SIZE,),
+        order=(0,),
+    )
     inp = tl.load(X_ptr)
     # random seed (lucky number)
     seed = 7
@@ -52,6 +61,7 @@ def dropout_kernel(
     output = tl.where(pmask, inp, 0.0)
     output = output * (1.0 / (1.0 - p))
     tl.store(Y_ptr, output.to(inp.dtype))
+    tl.store(Mask_ptr, pmask.to(tl.int8))
 
 
 def dropout(A, p=0.5, train=False):
@@ -62,8 +72,9 @@ def dropout(A, p=0.5, train=False):
     assert p >= 0.0 and p < 1.0, "p must be in [0, 1)"
     # training not supported
     O = torch.empty_like(A)
+    Mask = torch.empty(A.shape, dtype=torch.int8, device="cuda")
     A = A.contiguous()
     N = A.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
-    dropout_kernel[grid_fn](A, O, N, p)
-    return O
+    dropout_kernel[grid_fn](A, O, Mask, N, p)
+    return O, Mask

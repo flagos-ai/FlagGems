@@ -19,8 +19,9 @@ from .__libentry__ import libentry
     key=["M"],
 )
 @triton.jit
-def abs_kernel(
+def pow_tensor_scalar_kernel(
     X,
+    exponent,
     Y,
     M,
     M_BLOCK_SIZE: tl.constexpr,
@@ -43,16 +44,17 @@ def abs_kernel(
         order=(0,),
     )
     X_val = tl.load(X_ptrs)
-    Y_val = tl.abs(X_val)
+    Y_val = tl.math.pow(X_val.to(tl.float32), exponent)
     tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 
-def abs(A):
+
+def pow_tensor_scalar(A, exponent):
     if __debug__:
-        print("GEMS ABS")
+        print("GEMS POW_TENSOR_SCALAR")
     O = torch.empty_like(A)
     A = A.contiguous()
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-    abs_kernel[grid_fn](A, O, M)
+    pow_tensor_scalar_kernel[grid_fn](A, exponent, O, M)
     return O

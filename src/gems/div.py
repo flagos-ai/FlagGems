@@ -211,13 +211,11 @@ def div_trunc_kernel(
     tl.store(O_ptrs, O_val.to(X_val.dtype))
 
 
-def div(A, B, *, rounding_mode=None, out=None):
+def div(A, B):
     if __debug__:
         print("GEMS DIV")
-    if out == None:
-        O = torch.empty_like(A)
-    else:
-        O = out
+    
+    O = torch.empty_like(A)
     if isinstance(B,torch.Tensor):
         A = A.contiguous()
         B = B.contiguous()

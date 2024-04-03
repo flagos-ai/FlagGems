@@ -47,7 +47,7 @@ def exp_kernel(
     tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 
-def exp(A, *, out=None):
+def exp(A):
     if __debug__:
         print("GEMS EXP")
     O = torch.empty_like(A)
