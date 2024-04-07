@@ -48,7 +48,6 @@ def pow_tensor_scalar_kernel(
     tl.store(Y_ptrs, Y_val.to(X_val.dtype))
 
 
-
 def pow_tensor_scalar(A, exponent):
     if __debug__:
         print("GEMS POW_TENSOR_SCALAR")

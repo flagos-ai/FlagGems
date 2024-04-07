@@ -81,7 +81,16 @@ def softmax_kernel(
     },
 )
 @triton.jit
-def softmax_backward_kernel(out_ptr, out_grad_ptr, in_grad_ptr, M, N, K, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+def softmax_backward_kernel(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    M,
+    N,
+    K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -100,7 +109,11 @@ def softmax_backward_kernel(out_ptr, out_grad_ptr, in_grad_ptr, M, N, K, BLOCK_M
     tl.store(in_grad_ptrs, in_grad, mask=mask)
 
 
-def softmax_func(x, dim=1, dtype=None, ):
+def softmax_func(
+    x,
+    dim=1,
+    dtype=None,
+):
     if __debug__:
         print("GEMS SOFTMAX")
 
@@ -178,7 +191,7 @@ class Softmax(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         dim = ctx.dim
-        out, = ctx.saved_tensors
+        (out,) = ctx.saved_tensors
         in_grad = softmax_backward(out, out_grad, dim)
         return in_grad, None, None
 

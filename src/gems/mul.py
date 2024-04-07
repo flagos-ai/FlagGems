@@ -107,8 +107,8 @@ def mul(A, B):
     if __debug__:
         print("GEMS MUL")
     O = torch.empty_like(A)
-    
-    if isinstance(B,torch.Tensor):
+
+    if isinstance(B, torch.Tensor):
         A = A.contiguous()
         B = B.contiguous()
         assert A.shape == B.shape, "Broadcast is not supported"
@@ -122,4 +122,3 @@ def mul(A, B):
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         mul_scalar_kernel[grid_fn](A, B, O, M)
         return O
-

@@ -57,4 +57,3 @@ def pow_scalar(A, exponent):
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     pow_scalar_kernel[grid_fn](A, exponent, O, M)
     return O
-    

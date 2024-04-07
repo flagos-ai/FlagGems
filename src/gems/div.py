@@ -153,7 +153,7 @@ def div_floor_kernel(
     X_val = tl.load(X_ptrs)
     Y_val = tl.load(Y_ptrs)
     O_val = tl.load(O_ptrs)
-    O_val = tl.math.floor(X_val.to(tl.float64)/ Y_val)
+    O_val = tl.math.floor(X_val.to(tl.float64) / Y_val)
     tl.store(O_ptrs, O_val.to(X_val.dtype))
 
 
@@ -207,16 +207,16 @@ def div_trunc_kernel(
     X_val = tl.load(X_ptrs)
     Y_val = tl.load(Y_ptrs)
     O_val = tl.load(O_ptrs)
-    O_val = tl.math.trunc(X_val.to(tl.float64)/ Y_val)
+    O_val = tl.math.trunc(X_val.to(tl.float64) / Y_val)
     tl.store(O_ptrs, O_val.to(X_val.dtype))
 
 
 def div(A, B):
     if __debug__:
         print("GEMS DIV")
-    
+
     O = torch.empty_like(A)
-    if isinstance(B,torch.Tensor):
+    if isinstance(B, torch.Tensor):
         A = A.contiguous()
         B = B.contiguous()
         assert A.shape == B.shape, "Broadcast is not supported"

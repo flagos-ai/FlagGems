@@ -115,7 +115,7 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     _, N = mat2.shape
 
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-  
+
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),

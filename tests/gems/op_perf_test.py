@@ -300,12 +300,14 @@ def bench_mul(op, M, N, dtype):
     ms = run_bench(op, inp1, inp2)
     return ms
 
+
 @mul_bench.perf
 def bench_mul_scalar(op, M, N, dtype):
     inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
     inp2 = random.randint(0, 10000)
     ms = run_bench(op, inp1, inp2)
     return ms
+
 
 reciprocal_bench = Benchmark("reciprocal")
 reciprocal_bench.bench_params(dtype=f16_f32_bf)

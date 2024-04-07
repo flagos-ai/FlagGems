@@ -67,4 +67,3 @@ def pow_tensor_tensor(A, exponent):
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     pow_tensor_tensor_kernel[grid_fn](A, exponent, O, M)
     return O
-    

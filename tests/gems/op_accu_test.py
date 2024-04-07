@@ -214,7 +214,6 @@ def test_accuracy_dropout(shape, dtype, p):
     ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
 
-
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
@@ -276,7 +275,9 @@ def test_accuracy_layernorm(shape, dtype):
         inp, list(layer_shape), weight=weight, bias=bias, eps=eps
     )
     with gems.use_gems():
-        res_out = torch.layer_norm(inp, list(layer_shape), weight=weight, bias=bias, eps=eps)
+        res_out = torch.layer_norm(
+            inp, list(layer_shape), weight=weight, bias=bias, eps=eps
+        )
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
     diff_triton = torch.sum(torch.abs(golden_out - res_out))

@@ -108,7 +108,7 @@ def add(A, B, *, alpha=1):
     if __debug__:
         print("GEMS ADD")
     O = torch.empty_like(A)
-    if isinstance(B,torch.Tensor):
+    if isinstance(B, torch.Tensor):
         A = A.contiguous()
         B = B.contiguous()
         assert A.shape == B.shape, "Broadcast is not supported"
@@ -120,5 +120,5 @@ def add(A, B, *, alpha=1):
         A = A.contiguous()
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-        add_scalar_kernel[grid_fn](A, B*alpha, O, M)
+        add_scalar_kernel[grid_fn](A, B * alpha, O, M)
         return O
