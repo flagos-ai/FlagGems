@@ -6,25 +6,34 @@ import math
 
 
 @libentry()
-@triton.heuristics(
-    values={"BLOCK_M": lambda args: triton.next_power_of_2(math.ceil(math.sqrt(args["M"])))},
-)
 @triton.jit
-def mean_kernel(
+def mean_kernel_1(
     inp,
-    out,
+    mid,
     M,
-    BLOCK_M: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
     inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
     div_val = inp_val / M
-    sum_val = tl.sum(div_val, axis=0).to(tl.float32)
-    tl.atomic_add(out, sum_val)
-    
+    sum_val = tl.sum(div_val, axis=0)
+    mid_ptr = mid + pid
+    tl.store(mid_ptr, sum_val)
+
+
+@libentry()
+@triton.jit
+def mean_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
+    offset = tl.arange(0, BLOCK_MID)
+    mid_ptrs = mid + offset
+    mask = offset < MID_SIZE
+    mid_val = tl.load(mid_ptrs, mask=mask, other=0.0)
+    sum_val = tl.sum(mid_val, axis=0)
+    tl.store(out, sum_val)
+
 
 def mean(inp, *, dtype=None):
     if __debug__:
@@ -32,11 +41,13 @@ def mean(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
-    out = torch.zeros(1, dtype=torch.float32, device=inp.device)
+    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    mid_size = triton.cdiv(M, block_size)
+    block_mid = triton.next_power_of_2(mid_size)
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        1, 1
-    )
-    mean_kernel[grid](inp, out, M)
-    return out.to(dtype)
+    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    out = torch.empty(1, dtype=dtype, device=inp.device)
+
+    mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+    mean_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    return out
