@@ -217,9 +217,12 @@ def div(A, B):
 
     O = torch.empty_like(A)
     if isinstance(B, torch.Tensor):
+        try:
+            A, B = torch.broadcast_tensors(A, B)
+        except RuntimeError as e:
+            print(f"Div: Tensor shape {A.shape} and tensor shape {B.shape} cannot broadcast to each other.")
         A = A.contiguous()
         B = B.contiguous()
-        assert A.shape == B.shape, "Broadcast is not supported"
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         div_kernel[grid_fn](A, B, O, M)
