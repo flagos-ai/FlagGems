@@ -99,7 +99,6 @@ def add_scalar_kernel(
         order=(0,),
     )
     X_val = tl.load(X_ptrs)
-    O_val = tl.load(O_ptrs)
     O_val = X_val + Y_scalar
     tl.store(O_ptrs, O_val.to(X_val.dtype))
 
