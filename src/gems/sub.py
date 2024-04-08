@@ -54,7 +54,6 @@ def sub_kernel(
     )
     X_val = tl.load(X_ptrs)
     Y_val = tl.load(Y_ptrs)
-    O_val = tl.load(O_ptrs)
     O_val = X_val - Y_val * alpha
     tl.store(O_ptrs, O_val.to(X_val.dtype))
 
