@@ -70,10 +70,9 @@ def dropout(A, p=0.5, train=False):
     if not train:
         return A
     assert p >= 0.0 and p < 1.0, "p must be in [0, 1)"
-    # training not supported
+    A = A.contiguous()
     O = torch.empty_like(A)
     Mask = torch.empty(A.shape, dtype=torch.int8, device="cuda")
-    A = A.contiguous()
     N = A.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
     dropout_kernel[grid_fn](A, O, Mask, N, p)

@@ -104,6 +104,7 @@ def mul_scalar_kernel(
 def mul(A, B):
     if __debug__:
         print("GEMS MUL")
+    A = A.contiguous()
     O = torch.empty_like(A)
 
     if isinstance(B, torch.Tensor):
@@ -111,14 +112,12 @@ def mul(A, B):
             A, B = torch.broadcast_tensors(A, B)
         except RuntimeError as e:
             print(f"Mul: Tensor shape {A.shape} and tensor shape {B.shape} cannot broadcast to each other.")
-        A = A.contiguous()
         B = B.contiguous()
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         mul_kernel[grid_fn](A, B, O, M)
         return O
     else:
-        A = A.contiguous()
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         mul_scalar_kernel[grid_fn](A, B, O, M)

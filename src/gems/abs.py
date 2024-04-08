@@ -50,8 +50,8 @@ def abs_kernel(
 def abs(A):
     if __debug__:
         print("GEMS ABS")
-    O = torch.empty_like(A)
     A = A.contiguous()
+    O = torch.empty_like(A)
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     abs_kernel[grid_fn](A, O, M)

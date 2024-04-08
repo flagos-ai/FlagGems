@@ -51,8 +51,8 @@ def silu_kernel(
 def silu(A):
     if __debug__:
         print("GEMS SILU")
-    O = torch.empty_like(A)
     A = A.contiguous()
+    O = torch.empty_like(A)
     M = A.numel()
 
     grid_fn = lambda meta: (triton.cdiv(M, meta["N_BLOCK_SIZE"]),)

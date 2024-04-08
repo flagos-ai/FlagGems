@@ -50,8 +50,8 @@ def reciprocal_kernel(
 def reciprocal(A):
     if __debug__:
         print("GEMS RECIPROCAL")
-    O = torch.empty_like(A)
     A = A.contiguous()
+    O = torch.empty_like(A)
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     reciprocal_kernel[grid_fn](A, O, M)

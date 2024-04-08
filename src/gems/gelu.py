@@ -102,8 +102,8 @@ def gelu_tanh_kernel(
 def gelu(A, *, approximate="none"):
     if __debug__:
         print("GEMS GELU")
-    O = torch.empty_like(A)
     A = A.contiguous()
+    O = torch.empty_like(A)
     M = A.numel()
 
     if approximate == "tanh":

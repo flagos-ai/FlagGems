@@ -105,20 +105,19 @@ def add_scalar_kernel(
 def add(A, B, *, alpha=1):
     if __debug__:
         print("GEMS ADD")
+    A = A.contiguous()
     O = torch.empty_like(A)
     if isinstance(B,torch.Tensor):
         try:
             A, B = torch.broadcast_tensors(A, B)
         except RuntimeError as e:
             print(f"Add: Tensor shape {A.shape} and tensor shape {B.shape} cannot broadcast to each other.")
-        A = A.contiguous()
         B = B.contiguous()
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         add_kernel[grid_fn](A, B, alpha, O, M)
         return O
     else:
-        A = A.contiguous()
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         add_scalar_kernel[grid_fn](A, B * alpha, O, M)

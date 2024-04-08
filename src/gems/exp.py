@@ -50,8 +50,8 @@ def exp_kernel(
 def exp(A):
     if __debug__:
         print("GEMS EXP")
-    O = torch.empty_like(A)
     A = A.contiguous()
+    O = torch.empty_like(A)
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     exp_kernel[grid_fn](A, O, M)

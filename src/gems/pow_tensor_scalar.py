@@ -51,8 +51,8 @@ def pow_tensor_scalar_kernel(
 def pow_tensor_scalar(A, exponent):
     if __debug__:
         print("GEMS POW_TENSOR_SCALAR")
-    O = torch.empty_like(A)
     A = A.contiguous()
+    O = torch.empty_like(A)
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     pow_tensor_scalar_kernel[grid_fn](A, exponent, O, M)

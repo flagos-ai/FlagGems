@@ -50,8 +50,8 @@ def relu_kernel(
 def relu(A):
     if __debug__:
         print("GEMS RELU")
-    O = torch.empty_like(A)
     A = A.contiguous()
+    O = torch.empty_like(A)
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     relu_kernel[grid_fn](A, O, M)
