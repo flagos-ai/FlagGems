@@ -248,13 +248,23 @@ def test_accuracy_div_scalar(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 def test_accuracy_dropout(shape, dtype, p):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
     ref_out = torch.nn.functional.dropout(inp, p, True)
     with gems.use_gems():
         res_out = torch.nn.functional.dropout(inp, p, True)
 
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
+    exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
+    assert (
+        abs(num_equal - exp_equal) / exp_equal <= 0.05
+    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+
+    out_grad = torch.randn_like(inp)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
+    with gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
     assert (
         abs(num_equal - exp_equal) / exp_equal <= 0.05
