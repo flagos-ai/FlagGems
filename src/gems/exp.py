@@ -56,3 +56,14 @@ def exp(A):
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     exp_kernel[grid_fn](A, O, M)
     return O
+
+def exp_out(A, *, out=None):
+    if __debug__:
+        print("GEMS EXP OUT")
+    A = A.contiguous()
+    if out == None:
+        out = torch.empty_like(A)
+    M = A.numel()
+    grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+    exp_kernel[grid_fn](A, out, M)
+    return out

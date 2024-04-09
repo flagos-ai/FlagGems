@@ -5,8 +5,8 @@ from .addmm import addmm
 from .bmm import bmm
 from .cumsum import cumsum
 from .div import div
-from .dropout import dropout
-from .exp import exp
+from .dropout import dropout, native_dropout
+from .exp import exp, exp_out
 from .gelu import gelu
 from .layernorm import layer_norm
 from .mean import mean
@@ -33,8 +33,10 @@ def enable(lib=aten_lib):
     lib.impl("bmm", bmm, "CUDA")
     lib.impl("cumsum", cumsum, "CUDA")
     lib.impl("div.Tensor", div, "CUDA")
-    lib.impl("native_dropout", dropout, "CUDA")
+    lib.impl("native_dropout", native_dropout, "CUDA")
+    lib.impl("dropout", dropout, "CUDA")
     lib.impl("exp", exp, "CUDA")
+    lib.impl("exp.out", exp_out, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "CUDA")
     lib.impl("mean", mean, "CUDA")

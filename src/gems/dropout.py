@@ -64,6 +64,20 @@ def dropout_kernel(
     tl.store(Mask_ptr, pmask.to(tl.int8))
 
 
+def native_dropout(A, p=0.5, train=False):
+    if __debug__:
+        print("GEMS NATIVE DROPOUT")
+    if not train:
+        return A
+    assert p >= 0.0 and p < 1.0, "p must be in [0, 1)"
+    A = A.contiguous()
+    O = torch.empty_like(A)
+    Mask = torch.empty(A.shape, dtype=torch.int8, device="cuda")
+    N = A.numel()
+    grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
+    dropout_kernel[grid_fn](A, O, Mask, N, p)
+    return O, Mask
+
 def dropout(A, p=0.5, train=False):
     if __debug__:
         print("GEMS DROPOUT")
@@ -76,4 +90,4 @@ def dropout(A, p=0.5, train=False):
     N = A.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
     dropout_kernel[grid_fn](A, O, Mask, N, p)
-    return O, Mask
+    return O
