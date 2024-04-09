@@ -114,6 +114,8 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     M, K = mat1.shape
     _, N = mat2.shape
 
+    mat1 = mat1.contiguous()
+    mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
 
     grid = lambda META: (

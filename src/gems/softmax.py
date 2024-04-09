@@ -124,12 +124,10 @@ def softmax_func(
     for i in range(dim):
         M *= x.shape[i]
     inp = x.contiguous()
-    inp = inp.reshape(M, N, -1)
-    K = inp.numel() // M // N
-
     if dtype is None:
         dtype = x.dtype
-    out = torch.empty_like(x, dtype=dtype)
+    out = torch.empty_like(inp, dtype=dtype)
+    K = inp.numel() // M // N
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
@@ -156,14 +154,10 @@ def softmax_backward(out, out_grad, dim=1):
     for i in range(dim):
         M *= out.shape[i]
 
-    # NOTE: ensure contiguous?
-    in_grad = torch.empty_like(out)
-
     out = out.contiguous()
-    out = out.reshape(M, N, -1)
+    out_grad = out_grad.contiguous()
+    in_grad = torch.empty_like(out)
     K = out.numel() // M // N
-
-    out_grad = out_grad.contiguous().reshape(M, N, -1)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),

@@ -24,7 +24,6 @@ def layer_norm_kernel(
     B,
     Mean,  # pointer to the mean
     Rstd,  # pointer to the 1/std
-    stride,
     M,
     N,
     eps,
@@ -35,8 +34,8 @@ def layer_norm_kernel(
     pid = tl.program_id(0)
     row = pid * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     row_mask = row < M
-    X += row * stride
-    Y += row * stride
+    X += row * N
+    Y += row * N
 
     # Compute mean
     _mean = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
@@ -47,8 +46,8 @@ def layer_norm_kernel(
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
+    _mean /= N
     mean = tl.sum(_mean, axis=1)[:, None]
-    mean /= N
 
     # Compute variance
     _var = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
@@ -60,8 +59,8 @@ def layer_norm_kernel(
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         x = tl.where(col_mask, x - mean, 0.0)
         _var += x * x
+    _var /= N
     var = tl.sum(_var, axis=1)[:, None]
-    var /= N
     rstd = 1 / tl.sqrt(var + eps)
     # Write mean / rstd
     tl.store(Mean + row, mean)
@@ -88,12 +87,11 @@ def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
+    x = x.contiguous()
     y = torch.empty_like(x)
-    # FIXME: CANNOT PASS
-    mean = torch.empty_like(x[:, 0])
-    rstd = torch.empty_like(mean)
-    x = x.reshape(M, N)
+    mean = torch.empty(M, dtype=x.dtype, device=x.device)
+    rstd = torch.empty(M, dtype=x.dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
 
-    layer_norm_kernel[grid](x, y, weight, bias, mean, rstd, x.stride(0), M, N, eps)
+    layer_norm_kernel[grid](x, y, weight, bias, mean, rstd, M, N, eps)
     return y, mean, rstd

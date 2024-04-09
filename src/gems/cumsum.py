@@ -56,7 +56,6 @@ def cumsum(inp, dim=1, *, dtype=None):
     for i in range(dim):
         M *= shape[i]
     inp = inp.contiguous()
-    inp = inp.reshape(M, N, -1)
     K = inp.numel() // M // N
 
     if dtype is None:
@@ -68,5 +67,4 @@ def cumsum(inp, dim=1, *, dtype=None):
         K,
     )
     cumsum_kernel[grid](inp, out, M, N, K)
-    out = out.reshape(shape)
     return out

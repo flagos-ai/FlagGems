@@ -307,8 +307,6 @@ def test_accuracy_layernorm(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     weight = torch.randn(layer_shape, dtype=dtype, device="cuda")
     bias = torch.randn(layer_shape, dtype=dtype, device="cuda")
-    mean = torch.empty_like(inp[:, 0])
-    rstd = torch.empty_like(mean)
     eps = 1e-5
 
     golden_out = torch.layer_norm(
