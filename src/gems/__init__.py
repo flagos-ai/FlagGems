@@ -3,7 +3,7 @@ from .add import add
 from .addmm import addmm
 from .bmm import bmm
 from .cumsum import cumsum
-from .dropout import dropout
+from .dropout import native_dropout
 from .div import div
 from .exp import exp
 from .gelu import gelu
@@ -31,7 +31,7 @@ __all__ = [
     "addmm",
     "bmm",
     "cumsum",
-    "dropout",
+    "native_dropout",
     "div",
     "exp",
     "gelu",
