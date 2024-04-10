@@ -75,9 +75,33 @@ def test_accuracy_add_broadcast(shape_a, shape_b, alpha, dtype):
 )
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-def test_accuracy_add_scalar(shape, scalar, alpha, dtype):
+def test_accuracy_add_tensor_scalar(shape, scalar, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
+
+    ref_out = torch.add(inp1, inp2, alpha=alpha)
+    with gems.use_gems():
+        res_out = torch.add(inp1, inp2, alpha=alpha)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [111.111, -999.999],
+)
+@pytest.mark.parametrize("alpha", [0, 1, 4, -9])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
+    inp1 = scalar
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.add(inp1, inp2, alpha=alpha)
     with gems.use_gems():
@@ -227,9 +251,32 @@ def test_accuracy_div_broadcast(shape_a, shape_b, dtype):
     [111.111, -999.999],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-def test_accuracy_div_scalar(shape, scalar, dtype):
+def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
+
+    ref_out = torch.div(inp1, inp2)
+    with gems.use_gems():
+        res_out = torch.div(inp1, inp2)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [200, 100],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
+    inp1 = scalar
+    inp2 = torch.randint(-5, 5, shape, dtype=dtype, device="cuda")
 
     ref_out = torch.div(inp1, inp2)
     with gems.use_gems():
@@ -438,9 +485,32 @@ def test_accuracy_mul_broadcast(shape_a, shape_b, dtype):
     [111.111, -999.999],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-def test_accuracy_mul_scalar(shape, scalar, dtype):
+def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
+
+    ref_out = torch.mul(inp1, inp2)
+    with gems.use_gems():
+        res_out = torch.mul(inp1, inp2)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [111.111, -999.999],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
+    inp1 = scalar
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.mul(inp1, inp2)
     with gems.use_gems():
@@ -461,7 +531,7 @@ def test_accuracy_mul_scalar(shape, scalar, dtype):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_pow_scalar(inp, shape, dtype):
+def test_accuracy_pow_scalar_tensor(inp, shape, dtype):
     exponent = torch.randint(-5, 5, shape, dtype=dtype, device="cuda")
     ref_out = torch.pow(inp, exponent)
     with gems.use_gems():
@@ -663,9 +733,33 @@ def test_accuracy_sub_broadcast(shape_a, shape_b, alpha, dtype):
 )
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-def test_accuracy_sub_scalar(shape, scalar, alpha, dtype):
+def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
+
+    ref_out = torch.sub(inp1, inp2, alpha=alpha)
+    with gems.use_gems():
+        res_out = torch.sub(inp1, inp2, alpha=alpha)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [111.111, -999.999],
+)
+@pytest.mark.parametrize("alpha", [0, 1, 4, -9])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
+    inp1 = scalar
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.sub(inp1, inp2, alpha=alpha)
     with gems.use_gems():

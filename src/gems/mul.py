@@ -104,10 +104,9 @@ def mul_scalar_kernel(
 def mul(A, B):
     if __debug__:
         print("GEMS MUL")
-    A = A.contiguous()
-    O = torch.empty_like(A)
-
-    if isinstance(B, torch.Tensor):
+    if isinstance(A,torch.Tensor) and isinstance(B, torch.Tensor):
+        A = A.contiguous()
+        O = torch.empty_like(A)
         try:
             A, B = torch.broadcast_tensors(A, B)
         except RuntimeError as e:
@@ -117,8 +116,20 @@ def mul(A, B):
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         mul_kernel[grid_fn](A, B, O, M)
         return O
-    else:
+    elif isinstance(A, torch.Tensor):
+        A = A.contiguous()
+        O = torch.empty_like(A)
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         mul_scalar_kernel[grid_fn](A, B, O, M)
         return O
+    elif isinstance(B, torch.Tensor):
+        B = B.contiguous()
+        O = torch.empty_like(B)
+        M = B.numel()
+        grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+        mul_scalar_kernel[grid_fn](B, A, O, M)
+        return O
+    else:
+        # Both scalar
+        return A * B

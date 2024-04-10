@@ -73,7 +73,7 @@ def sub_kernel(
     key=["M"],
 )
 @triton.jit
-def sub_scalar_kernel(
+def sub_tensor_scalar_kernel(
     X,
     Y_scalar,
     O,
@@ -102,12 +102,57 @@ def sub_scalar_kernel(
     tl.store(O_ptrs, O_val.to(X_val.dtype))
 
 
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"M_BLOCK_SIZE": 256}, num_warps=2, num_stages=4),
+        triton.Config({"M_BLOCK_SIZE": 256}, num_warps=2, num_stages=5),
+        triton.Config({"M_BLOCK_SIZE": 512}, num_warps=2, num_stages=4),
+        triton.Config({"M_BLOCK_SIZE": 512}, num_warps=2, num_stages=5),
+        triton.Config({"M_BLOCK_SIZE": 1024}, num_warps=4, num_stages=4),
+        triton.Config({"M_BLOCK_SIZE": 1024}, num_warps=4, num_stages=5),
+        triton.Config({"M_BLOCK_SIZE": 2048}, num_warps=4, num_stages=4),
+        triton.Config({"M_BLOCK_SIZE": 2048}, num_warps=4, num_stages=5),
+    ],
+    key=["M"],
+)
+@triton.jit
+def sub_scalar_tensor_kernel(
+    X_scalar,
+    Y,
+    alpha,
+    O,
+    M,
+    M_BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0) * M_BLOCK_SIZE
+    Y_ptrs = tl.make_block_ptr(
+        Y,
+        shape=(M,),
+        strides=(1,),
+        offsets=(pid,),
+        block_shape=(M_BLOCK_SIZE,),
+        order=(0,),
+    )
+    O_ptrs = tl.make_block_ptr(
+        O,
+        shape=(M,),
+        strides=(1,),
+        offsets=(pid,),
+        block_shape=(M_BLOCK_SIZE,),
+        order=(0,),
+    )
+    Y_val = tl.load(Y_ptrs)
+    O_val = X_scalar - Y_val * alpha
+    tl.store(O_ptrs, O_val.to(Y_val.dtype))
+
+
 def sub(A, B, *, alpha=1):
     if __debug__:
         print("GEMS SUB")
-    A = A.contiguous()
-    O = torch.empty_like(A)
-    if isinstance(B, torch.Tensor):
+    if isinstance(A,torch.Tensor) and isinstance(B, torch.Tensor):
+        A = A.contiguous()
+        O = torch.empty_like(A)
         try:
             A, B = torch.broadcast_tensors(A, B)
         except RuntimeError as e:
@@ -117,8 +162,20 @@ def sub(A, B, *, alpha=1):
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         sub_kernel[grid_fn](A, B, alpha, O, M)
         return O
-    else:
+    elif isinstance(A, torch.Tensor):
+        A = A.contiguous()
+        O = torch.empty_like(A)
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-        sub_scalar_kernel[grid_fn](A, B * alpha, O, M)
+        sub_tensor_scalar_kernel[grid_fn](A, B * alpha, O, M)
         return O
+    elif isinstance(B, torch.Tensor):
+        B = B.contiguous()
+        O = torch.empty_like(B)
+        M = B.numel()
+        grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+        sub_scalar_tensor_kernel[grid_fn](A, B, alpha, O, M)
+        return O
+    else:
+        # Both scalar
+        return A - B
