@@ -92,26 +92,26 @@ def dropout_backward_kernel(
     n_offset = tl.program_id(0) * N_BLOCK_SIZE
     DY_ptr = tl.make_block_ptr(
         DY,
-        shape=(N, ),
+        shape=(N,),
         strides=(1,),
         offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE, ),
+        block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
     MASK_ptr = tl.make_block_ptr(
         MASK,
-        shape=(N, ),
+        shape=(N,),
         strides=(1,),
         offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE, ),
+        block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
     DX_ptr = tl.make_block_ptr(
         DX,
-        shape=(N, ),
+        shape=(N,),
         strides=(1,),
         offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE, ),
+        block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
     dy = tl.load(DY_ptr)
@@ -137,12 +137,11 @@ class NativeDropout(torch.autograd.Function):
         ctx.p = p
         return O, Mask
 
-
     @staticmethod
     def backward(ctx, grad_outputs, kwargs):
         if __debug__:
             print("GEMS NATIVE DROPOUT BACKWARD")
-        Mask, = ctx.saved_tensors
+        (Mask,) = ctx.saved_tensors
         scale = 1.0 / (1.0 - ctx.p)
         grad_outputs = grad_outputs.contiguous()
         grad_inputs = torch.empty_like(grad_outputs)
@@ -154,4 +153,3 @@ class NativeDropout(torch.autograd.Function):
 
 def native_dropout(x, p=0.5, train=True):
     return NativeDropout.apply(x, p, train)
-

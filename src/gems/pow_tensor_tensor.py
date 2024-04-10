@@ -65,7 +65,9 @@ def pow_tensor_tensor(A, exponent):
     try:
         A, exponent = torch.broadcast_tensors(A, exponent)
     except RuntimeError as e:
-        print(f"Pow: Tensor shape {A.shape} and tensor shape {exponent.shape} cannot broadcast to each other.")
+        print(
+            f"Pow: Tensor shape {A.shape} and tensor shape {exponent.shape} cannot broadcast to each other."
+        )
     exponent = exponent.contiguous()
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)

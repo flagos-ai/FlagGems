@@ -184,7 +184,7 @@ def bench_div_scalar(op, M, N, dtype):
 
 dropout_bench = Benchmark("dropout")
 dropout_bench.bench_params(dtype=f16_f32_bf, p=(0.3, 0.6, 0.9))
-dropout_bench.provider_ops(gem=dropout, torch=torch.nn.functional.dropout)
+dropout_bench.provider_ops(gem=native_dropout, torch=torch.nn.functional.dropout)
 dropout_bench.arg_names("N")
 dropout_bench.arg_vals(sizes)
 dropout_bench.extra_args(M=1024)

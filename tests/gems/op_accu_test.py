@@ -665,6 +665,26 @@ def test_accuracy_rsqrt(shape, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
+@pytest.mark.parametrize("alpha", [0, 1, 4, -9])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_rsub(shape, alpha, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.rsub(inp1, inp2, alpha=alpha)
+    with gems.use_gems():
+        res_out = torch.rsub(inp1, inp2, alpha=alpha)
+
+    maxdiff = torch.max(torch.abs(ref_out - res_out))
+    assert torch.allclose(
+        ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_silu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")

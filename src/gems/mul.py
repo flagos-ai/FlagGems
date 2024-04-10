@@ -110,7 +110,9 @@ def mul(A, B):
         try:
             A, B = torch.broadcast_tensors(A, B)
         except RuntimeError as e:
-            print(f"Mul: Tensor shape {A.shape} and tensor shape {B.shape} cannot broadcast to each other.")
+            print(
+                f"Mul: Tensor shape {A.shape} and tensor shape {B.shape} cannot broadcast to each other."
+            )
         B = B.contiguous()
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)

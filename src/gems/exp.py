@@ -57,6 +57,7 @@ def exp(A):
     exp_kernel[grid_fn](A, O, M)
     return O
 
+
 def exp_out(A, *, out=None):
     if __debug__:
         print("GEMS EXP OUT")
