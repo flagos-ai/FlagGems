@@ -211,7 +211,7 @@ def div_trunc_kernel(
 def div(A, B):
     if __debug__:
         print("GEMS DIV")
-    if isinstance(A,torch.Tensor) and isinstance(B, torch.Tensor):
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         A = A.contiguous()
         O = torch.empty_like(A)
         try:
@@ -225,14 +225,14 @@ def div(A, B):
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         div_kernel[grid_fn](A, B, O, M)
         return O
-    elif isinstance(A,torch.Tensor):
+    elif isinstance(A, torch.Tensor):
         A = A.contiguous()
         O = torch.empty_like(A)
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         div_tensor_scalar_kernel[grid_fn](A, B, O, M)
         return O
-    elif isinstance(B,torch.Tensor):
+    elif isinstance(B, torch.Tensor):
         B = B.contiguous()
         O = torch.empty_like(B)
         M = B.numel()

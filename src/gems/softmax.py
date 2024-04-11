@@ -109,84 +109,70 @@ def softmax_backward_kernel(
     tl.store(in_grad_ptrs, in_grad, mask=mask)
 
 
-def softmax_func(
-    x,
-    dim=1,
-    dtype=None,
-):
-    if __debug__:
-        print("GEMS SOFTMAX")
-
-    assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
-    dim = dim % x.ndim
-    M = 1
-    N = x.shape[dim]
-    for i in range(dim):
-        M *= x.shape[i]
-    inp = x.contiguous()
-    if dtype is None:
-        dtype = x.dtype
-    out = torch.empty_like(inp, dtype=dtype)
-    K = inp.numel() // M // N
-
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        K,
-    )
-    softmax_kernel[grid](
-        out,
-        inp,
-        M,
-        N,
-        K,
-    )
-    return out
-
-
-def softmax_backward(out, out_grad, dim=1):
-    if __debug__:
-        print("GEMS SOFTMAX VJP")
-
-    assert dim >= -out.ndim and dim < out.ndim, "Invalid dim"
-    dim = dim % out.ndim
-    M = 1
-    N = out.shape[dim]
-    for i in range(dim):
-        M *= out.shape[i]
-
-    out = out.contiguous()
-    out_grad = out_grad.contiguous()
-    in_grad = torch.empty_like(out)
-    K = out.numel() // M // N
-
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        K,
-    )
-    softmax_backward_kernel[grid](
-        out,
-        out_grad,
-        in_grad,
-        M,
-        N,
-        K,
-    )
-    return in_grad
-
-
 class Softmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, dim, dtype):
-        out = softmax_func(x, dim=dim, dtype=dtype)
+        if __debug__:
+            print("GEMS SOFTMAX")
+
+        assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
+        dim = dim % x.ndim
+        M = 1
+        N = x.shape[dim]
+        for i in range(dim):
+            M *= x.shape[i]
+        inp = x.contiguous()
+        if dtype is None:
+            dtype = x.dtype
+        out = torch.empty_like(inp, dtype=dtype)
+        K = inp.numel() // M // N
+
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+            K,
+        )
+        softmax_kernel[grid](
+            out,
+            inp,
+            M,
+            N,
+            K,
+        )
         ctx.save_for_backward(out)
         ctx.dim = dim
         return out
 
     @staticmethod
     def backward(ctx, out_grad):
+        if __debug__:
+            print("GEMS SOFTMAX VJP")
         dim = ctx.dim
         (out,) = ctx.saved_tensors
-        in_grad = softmax_backward(out, out_grad, dim)
+
+        assert dim >= -out.ndim and dim < out.ndim, "Invalid dim"
+        dim = dim % out.ndim
+        M = 1
+        N = out.shape[dim]
+        for i in range(dim):
+            M *= out.shape[i]
+
+        out = out.contiguous()
+        out_grad = out_grad.contiguous()
+        in_grad = torch.empty_like(out)
+        K = out.numel() // M // N
+
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+            K,
+        )
+        softmax_backward_kernel[grid](
+            out,
+            out_grad,
+            in_grad,
+            M,
+            N,
+            K,
+        )
         return in_grad, None, None
 
 

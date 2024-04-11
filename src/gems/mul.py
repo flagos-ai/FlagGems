@@ -104,7 +104,7 @@ def mul_scalar_kernel(
 def mul(A, B):
     if __debug__:
         print("GEMS MUL")
-    if isinstance(A,torch.Tensor) and isinstance(B, torch.Tensor):
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         A = A.contiguous()
         O = torch.empty_like(A)
         try:

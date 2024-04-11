@@ -143,14 +143,14 @@ def add_scalar_tensor_kernel(
         order=(0,),
     )
     Y_val = tl.load(Y_ptrs)
-    O_val = X_scalar + Y_val*alpha
+    O_val = X_scalar + Y_val * alpha
     tl.store(O_ptrs, O_val.to(Y_val.dtype))
 
 
 def add(A, B, *, alpha=1):
     if __debug__:
         print("GEMS ADD")
-    if isinstance(A,torch.Tensor) and isinstance(B,torch.Tensor):
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         A = A.contiguous()
         O = torch.empty_like(A)
         try:
@@ -181,4 +181,3 @@ def add(A, B, *, alpha=1):
     else:
         # Both scalar
         return A - B
-

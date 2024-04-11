@@ -150,7 +150,7 @@ def sub_scalar_tensor_kernel(
 def sub(A, B, *, alpha=1):
     if __debug__:
         print("GEMS SUB")
-    if isinstance(A,torch.Tensor) and isinstance(B, torch.Tensor):
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         A = A.contiguous()
         O = torch.empty_like(A)
         try:
