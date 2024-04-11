@@ -45,7 +45,7 @@ def enable(lib=aten_lib):
     lib.impl("pow.Tensor_Scalar", pow_tensor_scalar, "CUDA")
     lib.impl("pow.Tensor_Tensor", pow_tensor_tensor, "CUDA")
     lib.impl("reciprocal", reciprocal, "CUDA")
-    lib.impl("relu", relu, "CUDA")
+    lib.impl("relu", relu, "AutogradCUDA")
     lib.impl("rsqrt", rsqrt, "CUDA")
     lib.impl("silu", silu, "CUDA")
     lib.impl("sub.Tensor", sub, "CUDA")
