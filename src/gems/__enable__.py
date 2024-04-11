@@ -47,7 +47,7 @@ def enable(lib=aten_lib):
     lib.impl("reciprocal", reciprocal, "CUDA")
     lib.impl("relu", relu, "AutogradCUDA")
     lib.impl("rsqrt", rsqrt, "CUDA")
-    lib.impl("silu", silu, "CUDA")
+    lib.impl("silu", silu, "AutogradCUDA")
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("triu", triu, "CUDA")
     lib.impl("softmax.int", softmax, "AutogradCUDA")

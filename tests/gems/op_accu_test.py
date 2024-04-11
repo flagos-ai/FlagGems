@@ -696,7 +696,7 @@ def test_accuracy_rsub(shape, alpha, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_silu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
     ref_out = torch.nn.functional.silu(inp)
     with gems.use_gems():
@@ -705,6 +705,15 @@ def test_accuracy_silu(shape, dtype):
     maxdiff = torch.max(torch.abs(ref_out - res_out))
     assert torch.allclose(
         ref_out, res_out, atol=1e-3, rtol=1e-3
+    ), f"max diff: {maxdiff}"
+
+    out_grad = torch.randn_like(inp)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
+    with gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    maxdiff = torch.max(torch.abs(ref_in_grad - res_in_grad))
+    assert torch.allclose(
+        ref_in_grad, res_in_grad, atol=1e-3, rtol=1e-3
     ), f"max diff: {maxdiff}"
 
 
