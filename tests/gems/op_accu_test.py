@@ -361,16 +361,20 @@ def test_accuracy_gelu(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_layernorm(shape, dtype):
     layer_shape = shape[1:]
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    weight = torch.randn(layer_shape, dtype=dtype, device="cuda")
-    bias = torch.randn(layer_shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
+    bias = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
     eps = 1e-5
 
+    golden_inp = inp.to(torch.float64)
+    golden_weight = weight.to(torch.float64)
+    golden_bias = bias.to(torch.float64)
+
     golden_out = torch.layer_norm(
-        inp.to(torch.float64),
+        golden_inp,
         list(layer_shape),
-        weight=weight.to(torch.float64),
-        bias=bias.to(torch.float64),
+        weight=golden_weight,
+        bias=golden_bias,
         eps=eps,
     )
     ref_out = torch.layer_norm(
@@ -386,6 +390,33 @@ def test_accuracy_layernorm(shape, dtype):
     assert (
         diff_triton < diff_torch * 1.05
     ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
+
+    out_grad = torch.randn_like(inp)
+
+    (golden_in_grad, golden_weight_grad, golden_bias_grad) = torch.autograd.grad(
+        golden_out, (golden_inp, golden_weight, golden_bias), out_grad.to(torch.float64)
+    )
+    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_out, (inp, weight, bias), out_grad
+    )
+    with gems.use_gems():
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+
+    diff_torch = torch.sum(torch.abs(golden_in_grad - ref_in_grad))
+    diff_triton = torch.sum(torch.abs(golden_in_grad - res_in_grad))
+    assert (
+        diff_triton < diff_torch * 2
+    ), f"Input Grad: Torch diff: {diff_torch}, Triton diff: {diff_triton}"
+    diff_torch = torch.sum(torch.abs(golden_weight_grad - ref_weight_grad))
+    diff_triton = torch.sum(torch.abs(golden_weight_grad - res_weight_grad))
+    assert (
+        diff_triton < diff_torch * 2
+    ), f"Weight Grad: Torch diff: {diff_torch}, Triton diff: {diff_triton}"
+    assert torch.allclose(
+        ref_bias_grad, res_bias_grad, atol=1e-3, rtol=1e-3
+    ), f"bias grad diff"
 
 
 @pytest.mark.parametrize(

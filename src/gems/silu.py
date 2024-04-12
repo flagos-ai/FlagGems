@@ -99,7 +99,7 @@ def silu_backward_kernel(
     X_val = tl.load(X_ptrs)
     dY_val_fp32 = dY_val.to(tl.float32)
     X_val_fp32 = X_val.to(tl.float32)
-    sigmoid_val = tl.math.div_rn(1.0 , 1.0 + tl.exp(-X_val_fp32))
+    sigmoid_val = tl.math.div_rn(1.0, 1.0 + tl.exp(-X_val_fp32))
     dX_val = dY_val_fp32 * sigmoid_val * (1.0 + X_val_fp32 * (1.0 - sigmoid_val))
     tl.store(dX_ptrs, dX_val.to(dY_val.dtype))
 
@@ -128,7 +128,7 @@ class Silu(torch.autograd.Function):
         in_grad = torch.empty_like(out_grad)
         grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
         silu_backward_kernel[grid_fn](out_grad, inp, in_grad, N)
-        return in_grad, None, None
+        return in_grad
 
 
 def silu(A):

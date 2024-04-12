@@ -123,7 +123,7 @@ class Relu(torch.autograd.Function):
         in_grad = torch.empty_like(out_grad)
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         relu_backward_kernel[grid_fn](out_grad, inp, in_grad, M)
-        return in_grad, None, None
+        return in_grad
 
 
 def relu(A):

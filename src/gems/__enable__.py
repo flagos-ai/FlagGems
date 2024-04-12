@@ -37,7 +37,7 @@ def enable(lib=aten_lib):
     lib.impl("exp", exp, "CUDA")
     lib.impl("exp.out", exp_out, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
-    lib.impl("native_layer_norm", layer_norm, "CUDA")
+    lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
     lib.impl("mean", mean, "CUDA")
     lib.impl("mm", mm, "CUDA")
     lib.impl("mul.Tensor", mul, "CUDA")
