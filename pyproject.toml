@@ -4,7 +4,8 @@ dynamic = ["version"]
 authors = [
     {name = "Zhixin Li", email = "strongspoon@outlook.com"},
     {name = "Tongxin Bai", email = "waffle.bai@gmail.com"},
-    {name = "Yuming Huang", email = "jokmingwong@gmail.com"}
+    {name = "Yuming Huang", email = "jokmingwong@gmail.com"},
+    {name = "Feiyu Chen", email = "iclementine@outlook.com"},
 ]
 description = "FlagGems is a function library written in Triton."
 readme = {file= "README.md", content-type="text/markdown"}
