@@ -2,9 +2,10 @@
 
 ## Introduction
 
-FlagGems is a high-performance general operator library implemented in [Triton Language](https://github.com/openai/triton). It aims to provide a suite of operators applicable to the PyTorch framework for large language models, and achieve acceleration for the inference and training of models. 
+FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It aims to provide a suite of kernel functions to accelerate LLM training and inference.  
 
-By overwriting the backend ATen operators of PyTorch, FlagGems facilitates such a smooth transition that users can switch to the Triton operator library without modifying their model code. Users can continue to utilize the ATen backend as usual, and enjoy a significant enhancement in performance. The Triton language offers advantages in readability, user-friendliness and performance comparable to CUDA. This makes it convenient for developers to engage in the development of FlagGems with a minimal investment in learning.  
+By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing users to switch to the Triton function library without the need to modify their model code. Users can still utilize the ATen backend as usual while experiencing significant performance enhancement. The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.  
+
 
 ## Changelog
 
