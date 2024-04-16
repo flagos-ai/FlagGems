@@ -31,8 +31,8 @@ __all__ = [
     "addmm",
     "bmm",
     "cumsum",
-    "native_dropout",
     "div",
+    "native_dropout",
     "exp",
     "gelu",
     "layer_norm",
@@ -46,7 +46,7 @@ __all__ = [
     "relu",
     "rsqrt",
     "silu",
+    "softmax",
     "sub",
     "triu",
-    "softmax",
 ]

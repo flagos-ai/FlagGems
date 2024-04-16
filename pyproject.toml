@@ -1,6 +1,6 @@
 [project]
-name = "gems"
-dynamic = ["version"]
+name = "flag_gems"
+version = "1.0.0"
 authors = [
     {name = "Zhixin Li", email = "strongspoon@outlook.com"},
     {name = "Tongxin Bai", email = "waffle.bai@gmail.com"},
@@ -15,6 +15,9 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
+]
+dependencies = [
+    "triton>=2.2.0"
 ]
 
 [project.optional-dependencies]

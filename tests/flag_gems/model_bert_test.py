@@ -1,6 +1,6 @@
 import torch
 import pytest
-import gems
+import flag_gems
 from transformers import AutoTokenizer, BertConfig, BertModel
 
 
@@ -19,7 +19,7 @@ def test_accuracy_bert(dtype):
     with torch.no_grad():
         ref_outputs = model(**inputs)
 
-    with gems.use_gems():
+    with flag_gems.use_gems():
         with torch.no_grad():
             res_outputs = model(**inputs)
     maxdiff = torch.max(

@@ -3,7 +3,7 @@ import torch
 import time
 import triton
 import random
-from gems import *
+from flag_gems import *
 
 
 def run_bench(op, *args, warmups=10, repetitions=1000, **kwargs):

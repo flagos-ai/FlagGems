@@ -1,6 +1,6 @@
 import torch
 import pytest
-import gems
+import flag_gems
 
 
 @pytest.mark.parametrize(
@@ -12,7 +12,7 @@ def test_accuracy_abs(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.abs(inp)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.abs(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -32,7 +32,7 @@ def test_accuracy_add(shape, alpha, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.add(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -56,7 +56,7 @@ def test_accuracy_add_broadcast(shape_a, shape_b, alpha, dtype):
     inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
 
     ref_out = torch.add(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -80,7 +80,7 @@ def test_accuracy_add_tensor_scalar(shape, scalar, alpha, dtype):
     inp2 = scalar
 
     ref_out = torch.add(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -104,7 +104,7 @@ def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.add(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -140,7 +140,7 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
     )
 
     ref_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
@@ -168,7 +168,7 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
     golden_out = torch.bmm(tensor_A.to(torch.float64), tensor_B.to(torch.float64))
 
     ref_out = torch.bmm(tensor_A, tensor_B)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.bmm(tensor_A, tensor_B)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
@@ -190,7 +190,7 @@ def test_accuracy_cumsum(shape, dtype):
     golden_out = torch.cumsum(inp.to(torch.float64), dim=dim)
 
     ref_out = torch.cumsum(inp, dim=dim)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.cumsum(inp, dim=dim)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
@@ -210,7 +210,7 @@ def test_accuracy_div(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.div(inp1, inp2)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -233,7 +233,7 @@ def test_accuracy_div_broadcast(shape_a, shape_b, dtype):
     inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
 
     ref_out = torch.div(inp1, inp2)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -256,7 +256,7 @@ def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
     inp2 = scalar
 
     ref_out = torch.div(inp1, inp2)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -279,7 +279,7 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     inp2 = torch.randint(-5, 5, shape, dtype=dtype, device="cuda")
 
     ref_out = torch.div(inp1, inp2)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -298,7 +298,7 @@ def test_accuracy_dropout(shape, dtype, p):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
     ref_out = torch.nn.functional.dropout(inp, p, True)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.nn.functional.dropout(inp, p, True)
 
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
@@ -309,7 +309,7 @@ def test_accuracy_dropout(shape, dtype, p):
 
     out_grad = torch.randn_like(inp)
     (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
@@ -327,7 +327,7 @@ def test_accuracy_exp(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.exp(inp)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.exp(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -345,7 +345,7 @@ def test_accuracy_gelu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.nn.functional.gelu(inp)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.nn.functional.gelu(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -380,7 +380,7 @@ def test_accuracy_layernorm(shape, dtype):
     ref_out = torch.layer_norm(
         inp, list(layer_shape), weight=weight, bias=bias, eps=eps
     )
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.layer_norm(
             inp, list(layer_shape), weight=weight, bias=bias, eps=eps
         )
@@ -399,7 +399,7 @@ def test_accuracy_layernorm(shape, dtype):
     (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
         ref_out, (inp, weight, bias), out_grad
     )
-    with gems.use_gems():
+    with flag_gems.use_gems():
         (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
             res_out, (inp, weight, bias), out_grad
         )
@@ -428,7 +428,7 @@ def test_accuracy_mean(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.mean(inp)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.mean(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -455,7 +455,7 @@ def test_accuracy_mm(shape, dtype):
 
     golden_out = torch.mm(tensor_a.to(torch.float64), tensor_b.to(torch.float64))
     ref_out = torch.mm(tensor_a, tensor_b)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.mm(tensor_a, tensor_b)
 
     diff_torch = torch.sum(torch.abs(golden_out - ref_out))
@@ -475,7 +475,7 @@ def test_accuracy_mul(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.mul(inp1, inp2)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -498,7 +498,7 @@ def test_accuracy_mul_broadcast(shape_a, shape_b, dtype):
     inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
 
     ref_out = torch.mul(inp1, inp2)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -521,7 +521,7 @@ def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
     inp2 = scalar
 
     ref_out = torch.mul(inp1, inp2)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -544,7 +544,7 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.mul(inp1, inp2)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -565,7 +565,7 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
 def test_accuracy_pow_scalar_tensor(inp, shape, dtype):
     exponent = torch.randint(-5, 5, shape, dtype=dtype, device="cuda")
     ref_out = torch.pow(inp, exponent)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -587,7 +587,7 @@ def test_accuracy_pow_tensor_scalar(shape, exponent, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.pow(inp, exponent)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -606,7 +606,7 @@ def test_accuracy_pow_tensor_tensor(shape, dtype):
     exponent = torch.randint(-10, 10, shape, dtype=dtype, device="cuda")
 
     ref_out = torch.pow(inp, exponent)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -629,7 +629,7 @@ def test_accuracy_pow_tensor_tensor_broadcast(shape_a, shape_b, dtype):
     exponent = torch.randint(-10, 10, shape_b, dtype=dtype, device="cuda")
 
     ref_out = torch.pow(inp, exponent)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -647,7 +647,7 @@ def test_accuracy_reciprocal(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.reciprocal(inp)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.reciprocal(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -665,7 +665,7 @@ def test_accuracy_relu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
     ref_out = torch.nn.functional.relu(inp)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.relu(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -675,7 +675,7 @@ def test_accuracy_relu(shape, dtype):
 
     out_grad = torch.randn_like(inp)
     (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     maxdiff = torch.max(torch.abs(ref_in_grad - res_in_grad))
     assert torch.allclose(
@@ -692,7 +692,7 @@ def test_accuracy_rsqrt(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.rsqrt(inp)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.rsqrt(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -712,7 +712,7 @@ def test_accuracy_rsub(shape, alpha, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.rsub(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.rsub(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -730,7 +730,7 @@ def test_accuracy_silu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
     ref_out = torch.nn.functional.silu(inp)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.nn.functional.silu(inp)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -740,7 +740,7 @@ def test_accuracy_silu(shape, dtype):
 
     out_grad = torch.randn_like(inp)
     (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     maxdiff = torch.max(torch.abs(ref_in_grad - res_in_grad))
     assert torch.allclose(
@@ -759,7 +759,7 @@ def test_accuracy_sub(shape, alpha, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.sub(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -783,7 +783,7 @@ def test_accuracy_sub_broadcast(shape_a, shape_b, alpha, dtype):
     inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
 
     ref_out = torch.sub(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -807,7 +807,7 @@ def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
     inp2 = scalar
 
     ref_out = torch.sub(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -831,7 +831,7 @@ def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.sub(inp1, inp2, alpha=alpha)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -850,7 +850,7 @@ def test_accuracy_softmax(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
     ref_out = torch.nn.functional.softmax(inp, dim=dim)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.nn.functional.softmax(inp, dim=dim)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
@@ -860,7 +860,7 @@ def test_accuracy_softmax(shape, dtype):
 
     out_grad = torch.randn_like(inp)
     (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     maxdiff = torch.max(torch.abs(ref_in_grad - res_in_grad))
     assert torch.allclose(
@@ -877,7 +877,7 @@ def test_accuracy_softmax(shape, dtype):
 def test_accuracy_triu(shape, diagonal, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_out = torch.triu(inp, diagonal)
-    with gems.use_gems():
+    with flag_gems.use_gems():
         res_out = torch.triu(inp, diagonal)
 
     maxdiff = torch.max(torch.abs(ref_out - res_out))
