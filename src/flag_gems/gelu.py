@@ -43,7 +43,8 @@ def gelu_none_kernel(
         order=(0,),
     )
     inp = tl.load(X_ptrs)
-    output = 0.5 * inp * (1 + tl.math.erf(inp / tl.sqrt(2.0)))
+    scale = 0.7071067811
+    output = 0.5 * inp * (1 + tl.math.erf(inp * scale))
     tl.store(Y_ptrs, output.to(inp.dtype))
 
 

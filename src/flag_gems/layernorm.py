@@ -82,6 +82,59 @@ def layer_norm_kernel(
 
 
 @libentry()
+@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.jit
+def layer_norm_welford_kernel(
+    X,
+    Y,
+    W,
+    B,
+    Mean,  # pointer to the mean
+    Rstd,  # pointer to the 1/std
+    M,
+    N,
+    eps,
+    BLOCK_ROW_SIZE: tl.constexpr,
+    BLOCK_COL_SIZE: tl.constexpr,
+):
+    # Map the program id to the row of X and Y it should compute.
+    pid = tl.program_id(0)
+    row = pid * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    row_mask = row < M
+    X += row * N
+    Y += row * N
+
+    # Compute mean and variance
+    mean = tl.zeros([BLOCK_ROW_SIZE, 1], dtype=tl.float32)
+    var = tl.zeros([BLOCK_ROW_SIZE, 1], dtype=tl.float32)
+    # welford
+    for off in range(0, N):
+        a = tl.load(X + off).to(tl.float32)
+        delta = a - mean
+        mean += delta / (off + 1)
+        var += (a - mean) * delta
+    var /= N
+    rstd = 1.0 / tl.sqrt(var + eps)
+    # Write mean / rstd
+    tl.store(Mean + row, mean, mask=row_mask)
+    tl.store(Rstd + row, rstd, mask=row_mask)
+
+    # Normalize and apply linear transformation
+    for off in range(0, N, BLOCK_COL_SIZE):
+        cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+        col_mask = cols < N
+        mask = row_mask and col_mask
+
+        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        x_hat = (x - mean) * rstd
+        w = tl.load(W + cols, col_mask)
+        b = tl.load(B + cols, col_mask)
+        y = x_hat * w + b
+        # Write output
+        tl.store(Y + cols, y, mask=mask)
+
+
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
@@ -155,7 +208,7 @@ def layer_norm_backward_kernel(
     key=["N"],
 )
 @triton.jit
-def wb_backward_kernel(
+def weight_bias_backward_kernel(
     dY,
     X,
     Mean,
@@ -228,7 +281,9 @@ class LayerNorm(torch.autograd.Function):
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
         weight_grad = torch.empty_like(weight)
         bias_grad = torch.empty_like(weight)
-        wb_backward_kernel[grid](out_grad, x, mean, rstd, weight_grad, bias_grad, M, N)
+        weight_bias_backward_kernel[grid](
+            out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
+        )
         return in_grad, None, weight_grad, bias_grad, None, None
 
 

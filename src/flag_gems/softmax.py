@@ -156,7 +156,6 @@ class Softmax(torch.autograd.Function):
         for i in range(dim):
             M *= out.shape[i]
 
-        out = out.contiguous()
         out_grad = out_grad.contiguous()
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
