@@ -39,7 +39,7 @@ def cumsum_kernel(
     offset = m_offset[:, None, None] * N * K + n_offset[None, :, None] * K + pid_k
     mask = m_offset[:, None, None] < M and n_offset[None, :, None] < N
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
+    inp_vals = tl.load(inp_ptrs, mask=mask).to(tl.float32)
     result = tl.cumsum(inp_vals, axis=1)
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)

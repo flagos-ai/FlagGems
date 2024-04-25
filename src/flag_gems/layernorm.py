@@ -164,8 +164,8 @@ def layer_norm_backward_kernel(
     Mean += pid
     Rstd += pid
 
-    mean = tl.load(Mean)
-    rstd = tl.load(Rstd)
+    mean = tl.load(Mean).to(tl.float32)
+    rstd = tl.load(Rstd).to(tl.float32)
 
     dx_part2 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     dx_part3 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
@@ -174,10 +174,10 @@ def layer_norm_backward_kernel(
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
         col_mask = cols[None, :] < N
         mask = row_mask and col_mask
-        dy = tl.load(dY + cols[None, :], mask)
-        x = tl.load(X + cols[None, :], mask)
+        dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
+        x = tl.load(X + cols[None, :], mask).to(tl.float32)
         x_hat = (x - mean) * rstd
-        w = tl.load(W + cols, mask=cols < N)
+        w = tl.load(W + cols, mask=cols < N).to(tl.float32)
         dx_hat = dy * w
         dx_part2 += dx_hat
         dx_part3 += dx_hat * x_hat
@@ -189,19 +189,19 @@ def layer_norm_backward_kernel(
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
         col_mask = cols[None, :] < N
         mask = row_mask and col_mask
-        dy = tl.load(dY + cols[None, :], mask)
-        x = tl.load(X + cols[None, :], mask)
-        w = tl.load(W + cols, mask=cols < N)
+        dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
+        x = tl.load(X + cols[None, :], mask).to(tl.float32)
+        w = tl.load(W + cols, mask=cols < N).to(tl.float32)
         x_hat = (x - mean) * rstd
         dx_hat = dy * w
         dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / N)
-        tl.store(dX + cols, dx.to(dy.dtype), mask=mask)
+        tl.store(dX + cols, dx, mask=mask)
 
 
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_ROW_SIZE": 1024, "BLOCK_COL_SIZE": n}, num_warps=w)
+        triton.Config({"BLOCK_ROW_SIZE": 2048, "BLOCK_COL_SIZE": n}, num_warps=w)
         for n in [1, 2, 4, 8]
         for w in [4, 8]
     ],
@@ -241,8 +241,8 @@ def weight_bias_backward_kernel(
         accB += dy
     dw = tl.sum(accW, axis=0)
     db = tl.sum(accB, axis=0)
-    tl.store(dW, dw.to(dW.dtype.element_ty)[None, :], mask=col_mask)
-    tl.store(dB, db.to(dB.dtype.element_ty)[None, :], mask=col_mask)
+    tl.store(dW, dw[None, :], mask=col_mask)
+    tl.store(dB, db[None, :], mask=col_mask)
 
 
 class LayerNorm(torch.autograd.Function):

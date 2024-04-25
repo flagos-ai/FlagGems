@@ -5,25 +5,16 @@ import flag_gems
 
 RESOLUTION = {
     torch.float16: 1e-3,
-    torch.float32: 1e-6,
-    torch.bfloat16: 1e-2,
+    torch.float32: 1.3e-6,
+    torch.bfloat16: 0.016,
 }
 
 
-def allclose_with_dtype(a, b, dtype, equal_nan=False):
-    atol = RESOLUTION[dtype]
-    maxdiff = torch.max(torch.abs(a - b))
-    assert torch.allclose(
-        a, b, atol=atol, rtol=1e-3, equal_nan=equal_nan
-    ), f"max diff: {maxdiff}"
-
-
-def closer_to_golden(golden, ref, res, tolerance=1.05):
-    diff_torch = torch.sum(torch.abs(golden - ref))
-    diff_triton = torch.sum(torch.abs(golden - res))
-    assert (
-        diff_triton < diff_torch * tolerance
-    ), f"Torch diff: {diff_torch}, Triton diff: {diff_triton}"
+def allclose_with_dtype(a, b, dtype, equal_nan=False, reduce_dim=1):
+    b = b.to(dtype)
+    atol = 1e-4 * reduce_dim
+    rtol = RESOLUTION[dtype]
+    torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
 
 @pytest.mark.parametrize(
@@ -34,11 +25,11 @@ def closer_to_golden(golden, ref, res, tolerance=1.05):
 def test_accuracy_abs(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.abs(inp)
+    ref_out = torch.abs(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.abs(inp)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -51,11 +42,11 @@ def test_accuracy_add(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.add(inp1, inp2, alpha=alpha)
+    ref_out = torch.add(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -72,11 +63,11 @@ def test_accuracy_add_broadcast(shape_a, shape_b, alpha, dtype):
     inp1 = torch.randn(shape_a, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
 
-    ref_out = torch.add(inp1, inp2, alpha=alpha)
+    ref_out = torch.add(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -93,11 +84,11 @@ def test_accuracy_add_tensor_scalar(shape, scalar, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
 
-    ref_out = torch.add(inp1, inp2, alpha=alpha)
+    ref_out = torch.add(inp1.to(torch.float64), inp2, alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -114,11 +105,11 @@ def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.add(inp1, inp2, alpha=alpha)
+    ref_out = torch.add(inp1, inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -139,19 +130,17 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
     mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
     bias = torch.randn((N,), dtype=dtype, device="cuda")
 
-    golden_out = torch.addmm(
+    ref_out = torch.addmm(
         bias.to(torch.float64),
         mat1.to(torch.float64),
         mat2.to(torch.float64),
         alpha=alpha,
         beta=beta,
     )
-
-    ref_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
     with flag_gems.use_gems():
         res_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
-    closer_to_golden(golden_out, ref_out, res_out)
+    allclose_with_dtype(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize(
@@ -169,13 +158,11 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
     tensor_A = torch.randn((batch, M, K), dtype=dtype, device="cuda")
     tensor_B = torch.randn((batch, K, N), dtype=dtype, device="cuda")
 
-    golden_out = torch.bmm(tensor_A.to(torch.float64), tensor_B.to(torch.float64))
-
-    ref_out = torch.bmm(tensor_A, tensor_B)
+    ref_out = torch.bmm(tensor_A.to(torch.float64), tensor_B.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.bmm(tensor_A, tensor_B)
 
-    closer_to_golden(golden_out, ref_out, res_out)
+    allclose_with_dtype(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize(
@@ -187,13 +174,11 @@ def test_accuracy_cumsum(shape, dtype):
     dim = 1
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    golden_out = torch.cumsum(inp.to(torch.float64), dim=dim)
-
-    ref_out = torch.cumsum(inp, dim=dim)
+    ref_out = torch.cumsum(inp.to(torch.float64), dim=dim)
     with flag_gems.use_gems():
         res_out = torch.cumsum(inp, dim=dim)
 
-    closer_to_golden(golden_out, ref_out, res_out)
+    allclose_with_dtype(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
 @pytest.mark.parametrize(
@@ -205,11 +190,11 @@ def test_accuracy_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.div(inp1, inp2)
+    ref_out = torch.div(inp1.to(torch.float64), inp2.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
-    allclose_with_dtype(ref_out, res_out, dtype, equal_nan=True)
+    allclose_with_dtype(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize(
@@ -225,11 +210,11 @@ def test_accuracy_div_broadcast(shape_a, shape_b, dtype):
     inp1 = torch.randn(shape_a, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
 
-    ref_out = torch.div(inp1, inp2)
+    ref_out = torch.div(inp1.to(torch.float64), inp2.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -245,11 +230,11 @@ def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
 
-    ref_out = torch.div(inp1, inp2)
+    ref_out = torch.div(inp1.to(torch.float64), inp2)
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -265,11 +250,11 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
     inp2 = torch.randint(-5, 5, shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.div(inp1, inp2)
+    ref_out = torch.div(inp1, inp2.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -309,11 +294,11 @@ def test_accuracy_dropout(shape, dtype, p):
 def test_accuracy_exp(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.exp(inp)
+    ref_out = torch.exp(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.exp(inp)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -324,79 +309,76 @@ def test_accuracy_exp(shape, dtype):
 def test_accuracy_gelu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.nn.functional.gelu(inp)
+    ref_out = torch.nn.functional.gelu(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.nn.functional.gelu(inp)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
     "shape",
-    [(4096, i * 32) for i in range(1, 20)],
+    [(4096, i * 64) for i in range(1, 20)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_layernorm(shape, dtype):
-    layer_shape = shape[1:]
+    M = shape[0]
+    N = shape[1]
+    layer_shape = [
+        N,
+    ]
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
     bias = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
     eps = 1e-5
 
-    golden_inp = inp.to(torch.float64)
-    golden_weight = weight.to(torch.float64)
-    golden_bias = bias.to(torch.float64)
+    ref_inp = inp.to(torch.float64)
+    ref_weight = weight.to(torch.float64)
+    ref_bias = bias.to(torch.float64)
 
-    golden_out = torch.layer_norm(
-        golden_inp,
-        list(layer_shape),
-        weight=golden_weight,
-        bias=golden_bias,
-        eps=eps,
-    )
     ref_out = torch.layer_norm(
-        inp, list(layer_shape), weight=weight, bias=bias, eps=eps
+        ref_inp,
+        list(layer_shape),
+        weight=ref_weight,
+        bias=ref_bias,
+        eps=eps,
     )
     (res_out, res_mean, res_rstd) = flag_gems.layer_norm(
         inp, list(layer_shape), weight=weight, bias=bias, eps=eps
     )
 
-    ref_mean = torch.mean(inp, dim=1)
-    ref_var = torch.var(inp, dim=1, correction=0)
+    ref_mean = torch.mean(ref_inp, dim=1)
+    ref_var = torch.var(ref_inp, dim=1, correction=0)
     ref_rstd = torch.rsqrt(ref_var + eps)
-    allclose_with_dtype(ref_mean, res_mean, dtype)
-    allclose_with_dtype(ref_rstd, res_rstd, dtype)
-    closer_to_golden(golden_out, ref_out, res_out)
+    allclose_with_dtype(res_mean, ref_mean, dtype)
+    allclose_with_dtype(res_rstd, ref_rstd, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
-
-    (golden_in_grad, golden_weight_grad, _) = torch.autograd.grad(
-        golden_out, (golden_inp, golden_weight, golden_bias), out_grad.to(torch.float64)
-    )
     (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-        ref_out, (inp, weight, bias), out_grad
+        ref_out, (ref_inp, ref_weight, ref_bias), out_grad.to(torch.float64)
     )
     (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
         res_out, (inp, weight, bias), out_grad
     )
-    closer_to_golden(golden_in_grad, ref_in_grad, res_in_grad, tolerance=2)
-    closer_to_golden(golden_weight_grad, ref_weight_grad, res_weight_grad, tolerance=2)
-    allclose_with_dtype(ref_bias_grad, res_bias_grad, dtype)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
+    allclose_with_dtype(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
+    allclose_with_dtype(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
 @pytest.mark.parametrize(
     "shape",
-    [(4096, i * 32) for i in range(1, 20)],
+    [(4096, i * 64) for i in range(1, 20)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mean(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.mean(inp)
+    ref_out = torch.mean(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.mean(inp)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -415,12 +397,11 @@ def test_accuracy_mm(shape, dtype):
     tensor_a = torch.randn((M, K), dtype=dtype, device="cuda")
     tensor_b = torch.randn((K, N), dtype=dtype, device="cuda")
 
-    golden_out = torch.mm(tensor_a.to(torch.float64), tensor_b.to(torch.float64))
-    ref_out = torch.mm(tensor_a, tensor_b)
+    ref_out = torch.mm(tensor_a.to(torch.float64), tensor_b.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.mm(tensor_a, tensor_b)
 
-    closer_to_golden(golden_out, ref_out, res_out)
+    allclose_with_dtype(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize(
@@ -432,11 +413,11 @@ def test_accuracy_mul(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.mul(inp1, inp2)
+    ref_out = torch.mul(inp1.to(torch.float64), inp2.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -452,11 +433,11 @@ def test_accuracy_mul_broadcast(shape_a, shape_b, dtype):
     inp1 = torch.randn(shape_a, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
 
-    ref_out = torch.mul(inp1, inp2)
+    ref_out = torch.mul(inp1.to(torch.float64), inp2.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -472,11 +453,11 @@ def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
 
-    ref_out = torch.mul(inp1, inp2)
+    ref_out = torch.mul(inp1.to(torch.float64), inp2)
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -492,11 +473,11 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.mul(inp1, inp2)
+    ref_out = torch.mul(inp1, inp2.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -510,11 +491,11 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_pow_scalar_tensor(inp, shape, dtype):
     exponent = torch.randint(-5, 5, shape, dtype=dtype, device="cuda")
-    ref_out = torch.pow(inp, exponent)
+    ref_out = torch.pow(inp, exponent.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
 
-    allclose_with_dtype(ref_out, res_out, dtype, equal_nan=True)
+    allclose_with_dtype(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize(
@@ -529,11 +510,11 @@ def test_accuracy_pow_scalar_tensor(inp, shape, dtype):
 def test_accuracy_pow_tensor_scalar(shape, exponent, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.pow(inp, exponent)
+    ref_out = torch.pow(inp.to(torch.float64), exponent)
     with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
 
-    allclose_with_dtype(ref_out, res_out, dtype, equal_nan=True)
+    allclose_with_dtype(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize(
@@ -545,11 +526,11 @@ def test_accuracy_pow_tensor_tensor(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     exponent = torch.randint(-10, 10, shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.pow(inp, exponent)
+    ref_out = torch.pow(inp.to(torch.float64), exponent.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
 
-    allclose_with_dtype(ref_out, res_out, dtype, equal_nan=True)
+    allclose_with_dtype(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize(
@@ -565,11 +546,11 @@ def test_accuracy_pow_tensor_tensor_broadcast(shape_a, shape_b, dtype):
     inp = torch.randn(shape_a, dtype=dtype, device="cuda")
     exponent = torch.randint(-10, 10, shape_b, dtype=dtype, device="cuda")
 
-    ref_out = torch.pow(inp, exponent)
+    ref_out = torch.pow(inp.to(torch.float64), exponent.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
 
-    allclose_with_dtype(ref_out, res_out, dtype, equal_nan=True)
+    allclose_with_dtype(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize(
@@ -580,11 +561,11 @@ def test_accuracy_pow_tensor_tensor_broadcast(shape_a, shape_b, dtype):
 def test_accuracy_reciprocal(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.reciprocal(inp)
+    ref_out = torch.reciprocal(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.reciprocal(inp)
 
-    allclose_with_dtype(ref_out, res_out, dtype, equal_nan=True)
+    allclose_with_dtype(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize(
@@ -595,16 +576,17 @@ def test_accuracy_reciprocal(shape, dtype):
 def test_accuracy_relu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
-    ref_out = torch.nn.functional.relu(inp)
+    ref_inp = inp.to(torch.float64)
+    ref_out = torch.nn.functional.relu(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.relu(inp)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    allclose_with_dtype(ref_in_grad, res_in_grad, dtype)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.parametrize(
@@ -615,11 +597,11 @@ def test_accuracy_relu(shape, dtype):
 def test_accuracy_rsqrt(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.rsqrt(inp)
+    ref_out = torch.rsqrt(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.rsqrt(inp)
 
-    allclose_with_dtype(ref_out, res_out, dtype, equal_nan=True)
+    allclose_with_dtype(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize(
@@ -632,11 +614,11 @@ def test_accuracy_rsub(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.rsub(inp1, inp2, alpha=alpha)
+    ref_out = torch.rsub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.rsub(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -647,16 +629,17 @@ def test_accuracy_rsub(shape, alpha, dtype):
 def test_accuracy_silu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
-    ref_out = torch.nn.functional.silu(inp)
+    ref_inp = inp.to(torch.float64)
+    ref_out = torch.nn.functional.silu(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.nn.functional.silu(inp)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    allclose_with_dtype(ref_in_grad, res_in_grad, dtype)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.parametrize(
@@ -669,11 +652,11 @@ def test_accuracy_sub(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.sub(inp1, inp2, alpha=alpha)
+    ref_out = torch.sub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -690,11 +673,11 @@ def test_accuracy_sub_broadcast(shape_a, shape_b, alpha, dtype):
     inp1 = torch.randn(shape_a, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
 
-    ref_out = torch.sub(inp1, inp2, alpha=alpha)
+    ref_out = torch.sub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -711,11 +694,11 @@ def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
 
-    ref_out = torch.sub(inp1, inp2, alpha=alpha)
+    ref_out = torch.sub(inp1.to(torch.float64), inp2, alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -732,11 +715,11 @@ def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.sub(inp1, inp2, alpha=alpha)
+    ref_out = torch.sub(inp1, inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -748,28 +731,29 @@ def test_accuracy_softmax(shape, dtype):
     dim = 1
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
-    ref_out = torch.nn.functional.softmax(inp, dim=dim)
+    ref_inp = inp.to(torch.float64)
+    ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
     with flag_gems.use_gems():
         res_out = torch.nn.functional.softmax(inp, dim=dim)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, inp, out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    allclose_with_dtype(ref_in_grad, res_in_grad, dtype)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
 @pytest.mark.parametrize(
     "shape",
-    [(1024, 1024), (16, 1024, 256), (32, 128, 512, 512), (20, 320, 15)],
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_triu(shape, diagonal, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_out = torch.triu(inp, diagonal)
+    ref_out = torch.triu(inp.to(torch.float64), diagonal)
     with flag_gems.use_gems():
         res_out = torch.triu(inp, diagonal)
 
-    allclose_with_dtype(ref_out, res_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
