@@ -27,35 +27,15 @@ def add_kernel(
     M,
     M_BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * M_BLOCK_SIZE
-    Y_ptrs = tl.make_block_ptr(
-        Y,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    X_ptrs = tl.make_block_ptr(
-        X,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    O_ptrs = tl.make_block_ptr(
-        O,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    X_val = tl.load(X_ptrs)
-    Y_val = tl.load(Y_ptrs)
+    pid = tl.program_id(0) * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)
+    mask = pid < M
+    Y_ptrs = Y + pid
+    X_ptrs = X + pid
+    O_ptrs = O + pid
+    X_val = tl.load(X_ptrs, mask)
+    Y_val = tl.load(Y_ptrs, mask)
     O_val = X_val + Y_val * alpha
-    tl.store(O_ptrs, O_val.to(X_val.dtype))
+    tl.store(O_ptrs, O_val, mask=mask)
 
 
 @libentry()
@@ -80,26 +60,13 @@ def add_tensor_scalar_kernel(
     M,
     M_BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * M_BLOCK_SIZE
-    X_ptrs = tl.make_block_ptr(
-        X,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    O_ptrs = tl.make_block_ptr(
-        O,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    X_val = tl.load(X_ptrs)
+    pid = tl.program_id(0) * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)
+    mask = pid < M
+    X_ptrs = X + pid
+    O_ptrs = O + pid
+    X_val = tl.load(X_ptrs, mask)
     O_val = X_val + Y_scalar
-    tl.store(O_ptrs, O_val.to(X_val.dtype))
+    tl.store(O_ptrs, O_val, mask=mask)
 
 
 @libentry()
@@ -125,26 +92,13 @@ def add_scalar_tensor_kernel(
     M,
     M_BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * M_BLOCK_SIZE
-    Y_ptrs = tl.make_block_ptr(
-        Y,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    O_ptrs = tl.make_block_ptr(
-        O,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    Y_val = tl.load(Y_ptrs)
+    pid = tl.program_id(0) * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)
+    mask = pid < M
+    Y_ptrs = Y + pid
+    O_ptrs = O + pid
+    Y_val = tl.load(Y_ptrs, mask)
     O_val = X_scalar + Y_val * alpha
-    tl.store(O_ptrs, O_val.to(Y_val.dtype))
+    tl.store(O_ptrs, O_val, mask=mask)
 
 
 def add(A, B, *, alpha=1):
