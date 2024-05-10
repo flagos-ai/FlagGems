@@ -18,6 +18,7 @@ from .reciprocal import reciprocal
 from .relu import relu
 from .rsqrt import rsqrt
 from .silu import silu
+from .sigmoid import sigmoid
 from .sub import sub
 from .triu import triu
 from .softmax import softmax
@@ -46,6 +47,7 @@ __all__ = [
     "relu",
     "rsqrt",
     "silu",
+    "sigmoid",
     "softmax",
     "sub",
     "triu",

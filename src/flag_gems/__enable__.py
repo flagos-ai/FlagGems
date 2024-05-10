@@ -19,6 +19,7 @@ from .reciprocal import reciprocal
 from .relu import relu
 from .rsqrt import rsqrt
 from .silu import silu
+from .sigmoid import sigmoid
 from .sub import sub
 from .triu import triu
 from .softmax import softmax
@@ -48,6 +49,7 @@ def enable(lib=aten_lib):
     lib.impl("relu", relu, "AutogradCUDA")
     lib.impl("rsqrt", rsqrt, "CUDA")
     lib.impl("silu", silu, "AutogradCUDA")
+    lib.impl("sigmoid", sigmoid, "AutogradCUDA")
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("triu", triu, "CUDA")
     lib.impl("softmax.int", softmax, "AutogradCUDA")

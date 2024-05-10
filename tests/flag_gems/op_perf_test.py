@@ -393,6 +393,21 @@ def bench_silu(op, M, N, dtype):
     return ms
 
 
+sigmoid_bench = Benchmark("sigmoid")
+sigmoid_bench.bench_params(dtype=f16_f32_bf)
+sigmoid_bench.provider_ops(gem=sigmoid, torch=torch.sigmoid)
+sigmoid_bench.arg_names("N")
+sigmoid_bench.arg_vals(sizes)
+sigmoid_bench.extra_args(M=1024)
+
+
+@silu_bench.perf
+def bench_sigmoid(op, M, N, dtype):
+    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp)
+    return ms
+
+
 softmax_bench = Benchmark("softmax")
 softmax_bench.bench_params(dtype=f16_f32_bf)
 softmax_bench.provider_ops(gem=softmax, torch=torch.nn.functional.softmax)
@@ -471,6 +486,7 @@ bench_reciprocal.run(print_data=True)
 bench_relu.run(print_data=True)
 bench_rsqrt.run(print_data=True)
 bench_silu.run(print_data=True)
+bench_sigmoid.run(print_data=True)
 bench_softmax.run(print_data=True)
 bench_sub.run(print_data=True)
 bench_sub_scalar.run(print_data=True)

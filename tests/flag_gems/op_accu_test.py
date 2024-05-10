@@ -646,6 +646,26 @@ def test_accuracy_silu(shape, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_sigmoid(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+
+    ref_inp = inp.to(torch.float64)
+    ref_out = torch.sigmoid(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.sigmoid(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype)
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sub(shape, alpha, dtype):
