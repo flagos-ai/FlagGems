@@ -3,6 +3,7 @@ import triton
 import triton.language as tl
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
+
 @pointwise_dynamic
 @triton.jit
 def silu_forward(x):

@@ -7,22 +7,24 @@ from flag_gems.utils.code_utils import NameSpace
 
 class Rename(ast.NodeTransformer):
     """Rename references to variables"""
+
     def __init__(self, mapping):
         self.mapping = mapping
 
     def visit_arg(self, node):
         if node.arg in self.mapping:
-            return ast.arg(**{**node.__dict__, 'arg': self.mapping[node.arg]})
+            return ast.arg(**{**node.__dict__, "arg": self.mapping[node.arg]})
         return node
 
     def visit_Name(self, node):
         if node.id in self.mapping:
-            return ast.Name(**{**node.__dict__, 'id': self.mapping[node.id]})
+            return ast.Name(**{**node.__dict__, "id": self.mapping[node.id]})
         return node
 
 
 class HandleReturn(ast.NodeTransformer):
     """Replace return statements with assignments"""
+
     def __init__(self, return_names):
         self.return_names = return_names
 
@@ -31,7 +33,8 @@ class HandleReturn(ast.NodeTransformer):
             targets = ast.Tuple(
                 elts=tuple(
                     ast.Name(id=self.return_names[i], ctx=ast.Store())
-                    for i in range(len(self.return_names))),
+                    for i in range(len(self.return_names))
+                ),
                 ctx=ast.Store(),
             )
         else:
@@ -43,6 +46,7 @@ class HandleReturn(ast.NodeTransformer):
 
 class NameCollector(ast.NodeVisitor):
     """Collect all assignemnts to variables in a function"""
+
     def __init__(self):
         self.names = set()
 
@@ -57,8 +61,12 @@ class NameCollector(ast.NodeVisitor):
         self.names.add(node.target.id)
 
 
-def inline_function(f: JITFunction, input_names: List[str],
-                    output_names: List[str], namespace: NameSpace):
+def inline_function(
+    f: JITFunction,
+    input_names: List[str],
+    output_names: List[str],
+    namespace: NameSpace,
+):
     nc = NameCollector()
     ast_tree = ast.parse(f.src)
     nc.visit(ast_tree)

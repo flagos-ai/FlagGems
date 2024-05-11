@@ -12,6 +12,7 @@ from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.inliner import inline_function
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
+
 def generate_pointwise_wrapper(
     inputs: List[torch.Tensor],
     num_outputs: int,
@@ -27,7 +28,12 @@ def generate_pointwise_wrapper(
     num_inputs = len(inputs)
 
     # compute task index space from input shapes
-    tensor_shapes = tuple(item.shape for item in chain(inputs, ))
+    tensor_shapes = tuple(
+        item.shape
+        for item in chain(
+            inputs,
+        )
+    )
     shape = broadcast_shapes(tensor_shapes)
     rank = len(shape)
 
@@ -36,9 +42,7 @@ def generate_pointwise_wrapper(
     num_warps = 4
 
     # wrapper signature
-    input_parameters: List[str] = [
-        f"in{i}: torch.Tensor" for i in range(num_inputs)
-    ]
+    input_parameters: List[str] = [f"in{i}: torch.Tensor" for i in range(num_inputs)]
     arguments: str = ", ".join(input_parameters)
     wrapper_signature: str = f"def {wrapper_name}({arguments}):"
     code.writeline(wrapper_signature)
@@ -115,14 +119,20 @@ def generate_pointwise_wrapper(
         code.newline()
 
     # generate triton kernel
-    code = generate_pointwise_kernel(num_inputs, num_outputs, rank,
-                                     kernel_name, scalar_fn, code)
+    code = generate_pointwise_kernel(
+        num_inputs, num_outputs, rank, kernel_name, scalar_fn, code
+    )
     return code
 
 
-def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
-                              kernel_name: str, scalar_fn: JITFunction,
-                              code: IndentedBuffer) -> IndentedBuffer:
+def generate_pointwise_kernel(
+    num_inputs: int,
+    num_outputs: int,
+    rank: int,
+    kernel_name: str,
+    scalar_fn: JITFunction,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
     code.writeline("@libentry()")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
@@ -140,15 +150,13 @@ def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
         for i in range(num_inputs):
             for j in range(rank):
                 function_ns.create_name(f"stride_in{i}{j}")
-            stride_args = ", ".join(f"stride_in{i}{j}: int"
-                                    for j in range(rank))
+            stride_args = ", ".join(f"stride_in{i}{j}: int" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for in{i}")
 
         for i in range(num_outputs):
             for j in range(rank):
                 function_ns.create_name(f"stride_out{i}{j}")
-            stride_args = ", ".join(f"stride_out{i}{j}: int"
-                                    for j in range(rank))
+            stride_args = ", ".join(f"stride_out{i}{j}: int" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for out{i}")
 
         task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
@@ -193,12 +201,10 @@ def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
                 code.writeline(f"tid //= s{i}")
         code.newline()
 
-
         # loads
         code.writeline("# loads")
         for i in range(num_inputs):
-            ptrs_expr: str = " + ".join(f"i{j} * stride_in{i}{j}"
-                                        for j in range(rank))
+            ptrs_expr: str = " + ".join(f"i{j} * stride_in{i}{j}" for j in range(rank))
             ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
             load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
             function_ns.create_name(f"in{i}")  # add to the namespace
@@ -207,10 +213,12 @@ def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
 
         # compute
         code.writeline("# compute")
-        compute_body = inline_function(scalar_fn,
-                                       [f"in{i}" for i in range(num_inputs)],
-                                       [f"out{i}" for i in range(num_outputs)],
-                                       function_ns)
+        compute_body = inline_function(
+            scalar_fn,
+            [f"in{i}" for i in range(num_inputs)],
+            [f"out{i}" for i in range(num_outputs)],
+            function_ns,
+        )
         for line in compute_body.strip().splitlines():
             code.writeline(line)
         code.newline()
@@ -218,8 +226,7 @@ def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
         # loads
         code.writeline("# stores")
         for i in range(num_outputs):
-            ptrs_expr: str = " + ".join(f"i{j} * stride_out{i}{j}"
-                                        for j in range(rank))
+            ptrs_expr: str = " + ".join(f"i{j} * stride_out{i}{j}" for j in range(rank))
             ptrs_expr: str = f"out{i}_ptr + {ptrs_expr}"
             load_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
             code.writeline(load_stmt)
@@ -247,6 +254,7 @@ class PointwiseDynamicFunction:
     which are specialized according to the rank of the task space(the broadcasted shape of all input tensors).
     The generated code are written out to the cache directory (defaults to ~/.flaggems).
     """
+
     def __init__(self, scalar_fn: JITFunction):
         self.scalar_fn = scalar_fn
         self.scalar_fn_cache_key = scalar_fn.cache_key
@@ -260,9 +268,9 @@ class PointwiseDynamicFunction:
             # generate file & import it
             code = IndentedBuffer()
             code = generate_imports(code)
-            code = generate_pointwise_wrapper(args, 1, "_wrapper",
-                                              "_jit_function", self.scalar_fn,
-                                              code)
+            code = generate_pointwise_wrapper(
+                args, 1, "_wrapper", "_jit_function", self.scalar_fn, code
+            )
 
             file_name = f"pointwise_dynamic_{self.scalar_fn_cache_key}_rank_{key}.py"
             with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
@@ -270,8 +278,7 @@ class PointwiseDynamicFunction:
                 f.close()
 
             # load
-            spec = importlib.util.spec_from_file_location(
-                "_add_module", f.name)
+            spec = importlib.util.spec_from_file_location("_add_module", f.name)
             m = importlib.util.module_from_spec(spec)
             # do not expose it to sys.modules
             # sys.modules["_add_module"] = m
@@ -307,8 +314,7 @@ if __name__ == "__main__":
 
     import triton
 
-    t1 = triton.testing.do_bench(lambda: f(a, b), return_mode='median')
-    t2 = triton.testing.do_bench(lambda: torch.sigmoid(a + b),
-                                 return_mode='median')
+    t1 = triton.testing.do_bench(lambda: f(a, b), return_mode="median")
+    t2 = triton.testing.do_bench(lambda: torch.sigmoid(a + b), return_mode="median")
     print(t1)
     print(t2)

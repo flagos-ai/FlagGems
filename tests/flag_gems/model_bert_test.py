@@ -10,7 +10,7 @@ def test_accuracy_bert(dtype):
     config = BertConfig()
     model = BertModel(config)
     tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
-    inputs = (tokenizer("Hello, my dog is cute.", return_tensors="pt").to("cuda"))
+    inputs = tokenizer("Hello, my dog is cute.", return_tensors="pt").to("cuda")
 
     ref_model = copy.deepcopy(model)
     ref_model.to(torch.float64).to("cuda").eval()
@@ -25,9 +25,7 @@ def test_accuracy_bert(dtype):
         with torch.no_grad():
             res_outputs = res_model(**res_inputs).last_hidden_state
 
-    maxdiff = torch.max(
-        torch.abs(ref_outputs - res_outputs)
-    )
+    maxdiff = torch.max(torch.abs(ref_outputs - res_outputs))
     succeed = True
     if (
         torch.allclose(
@@ -45,4 +43,6 @@ def test_accuracy_bert(dtype):
             eps=1e-6,
         )
         succeed = score >= 0.99
-    assert succeed, f"BERT_{dtype} FAIL with maxdiff {maxdiff} and score {score}\nREF: {ref_outputs}\nRES: {res_outputs}"
+    assert (
+        succeed
+    ), f"BERT_{dtype} FAIL with maxdiff {maxdiff} and score {score}\nREF: {ref_outputs}\nRES: {res_outputs}"

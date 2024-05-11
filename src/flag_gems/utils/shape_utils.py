@@ -24,16 +24,17 @@ def broadcast(s1: Shape, s2: Shape) -> Shape:
     s = list(s1)
 
     for i in range(r2):
-        if s1[d+i] == 1:
+        if s1[d + i] == 1:
             s[d + i] = s2[i]
         elif s2[i] == 1:
             s[d + i] = s1[d + i]
-        elif s2[i] == s1[d+i]:
+        elif s2[i] == s1[d + i]:
             s[d + i] = s2[i]
         else:
             raise ValueError(f"Unbroadcastable {_s1} and {_s2}")
     s = tuple(s)
     return s
+
 
 def broadcastable(s1: Shape, s2: Shape) -> bool:
     r1 = len(s1)
@@ -48,17 +49,18 @@ def broadcastable(s1: Shape, s2: Shape) -> bool:
 
     d = r1 - r2
     for i in range(r2):
-        if s1[d+i] == 1 or s2[i] == 1 or s1[d+i] == s2[i]:
+        if s1[d + i] == 1 or s2[i] == 1 or s1[d + i] == s2[i]:
             continue
         return False
     return True
+
 
 def broadcastable_to(s1: Shape, s2: Shape) -> bool:
     r1 = len(s1)
     if r1 == 0:
         return True
     r2 = len(s2)
-    if r2 == 0: # r1 > 0
+    if r2 == 0:  # r1 > 0
         return False
 
     if r1 > r2:
@@ -66,10 +68,11 @@ def broadcastable_to(s1: Shape, s2: Shape) -> bool:
 
     d = r2 - r1
     for i in range(r1):
-        if s1[i] == 1 or s1[i] == s2[d+i]:
+        if s1[i] == 1 or s1[i] == s2[d + i]:
             continue
         return False
     return True
+
 
 def broadcast_shapes(shapes: Iterable[Shape]) -> Shape:
     if len(shapes) == 0:
@@ -78,6 +81,7 @@ def broadcast_shapes(shapes: Iterable[Shape]) -> Shape:
     for s in shapes[1:]:
         shape = broadcast(shape, s)
     return shape
+
 
 def broadcasted_stride(shape: Shape, stride: Stride, new_shape: Shape) -> Stride:
     assert broadcastable_to(shape, new_shape)
@@ -89,8 +93,10 @@ def broadcasted_stride(shape: Shape, stride: Stride, new_shape: Shape) -> Stride
         new_stride[d + i] = 0 if (shape[i] == 1 and new_shape[d + i] > 1) else stride[i]
     return tuple(new_stride)
 
+
 def volume(shape: Shape) -> int:
     return functools.reduce(operator.mul, shape, 1)
+
 
 def is_valid_perm(perm: Perm) -> bool:
     r = len(perm)
@@ -99,6 +105,7 @@ def is_valid_perm(perm: Perm) -> bool:
         if sorted_axes[i] != i:
             return False
     return True
+
 
 def unravel_index(linear_offset: int, shape: Shape) -> MultiIndex:
     multi_index = []
@@ -109,6 +116,7 @@ def unravel_index(linear_offset: int, shape: Shape) -> MultiIndex:
         linear_offset = linear_offset // s
         multi_index.append(i)
     return tuple(reversed(multi_index))
+
 
 def c_contiguous_stride(shape: Shape) -> Stride:
     strides = []

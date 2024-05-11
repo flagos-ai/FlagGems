@@ -4,12 +4,14 @@ import triton.language as tl
 
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
+
 @pointwise_dynamic
 @triton.jit
 def gelu_none(x):
     scale = 0.7071067811
     output = 0.5 * x * (1 + tl.math.erf(x * scale))
     return output
+
 
 @pointwise_dynamic
 @triton.jit
@@ -35,4 +37,3 @@ def gelu(A, *, approximate="none"):
         return gelu_tanh(A)
     else:
         return gelu_none(A)
-
