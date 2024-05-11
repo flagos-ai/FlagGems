@@ -144,6 +144,23 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
 
 
 @pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwisenot(shape, dtype):
+    inp = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_not(inp)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_not(inp)
+
+    torch.testing.assert_close(res_out, ref_out, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
     "batch, M, N, K",
     [
         (1, 1024, 1024, 1024),
@@ -163,6 +180,22 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
         res_out = torch.bmm(tensor_A, tensor_B)
 
     allclose_with_dtype(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_cos(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_inp = inp.to(torch.float64)
+    ref_out = torch.cos(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cos(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize(
@@ -312,6 +345,38 @@ def test_accuracy_gelu(shape, dtype):
     ref_out = torch.nn.functional.gelu(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.nn.functional.gelu(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_isinf(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.masked_fill(inp, inp > 1.0, -float("inf"))
+
+    ref_out = torch.isinf(inp.to(torch.float64))
+    with flag_gems.use_gems():
+        res_out = torch.isinf(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_isnan(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.masked_fill(inp, inp > 1.0, float("nan"))
+
+    ref_out = torch.isnan(inp.to(torch.float64))
+    with flag_gems.use_gems():
+        res_out = torch.isnan(inp)
 
     allclose_with_dtype(res_out, ref_out, dtype)
 
@@ -481,6 +546,21 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
 
 
 @pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_neg(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.neg(inp.to(torch.float64))
+    with flag_gems.use_gems():
+        res_out = torch.neg(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
     "inp",
     [0.9, 1.0, 100.9, -111.9],
 )
@@ -626,6 +706,27 @@ def test_accuracy_rsub(shape, alpha, dtype):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_sigmoid(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+
+    ref_inp = inp.to(torch.float64)
+    ref_out = torch.sigmoid(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.sigmoid(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_silu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
 
@@ -647,20 +748,16 @@ def test_accuracy_silu(shape, dtype):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-def test_accuracy_sigmoid(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+def test_accuracy_sin(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_inp = inp.to(torch.float64)
-    ref_out = torch.sigmoid(ref_inp)
+    ref_out = torch.sin(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.sigmoid(inp)
+        res_out = torch.sin(inp)
 
     allclose_with_dtype(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(inp)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    allclose_with_dtype(res_in_grad, ref_in_grad, dtype)
 
 @pytest.mark.parametrize(
     "shape",
@@ -762,6 +859,27 @@ def test_accuracy_softmax(shape, dtype):
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_tanh(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+
+    ref_inp = inp.to(torch.float64)
+    ref_out = torch.tanh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.tanh(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.parametrize(
