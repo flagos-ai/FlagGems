@@ -9,10 +9,11 @@ from .dropout import native_dropout
 from .div import div
 from .exp import exp
 from .gelu import gelu
+from .groupnorm import group_norm
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
-from .mean import mean
+from .mean import mean, mean_dim
 from .mm import mm
 from .mul import mul
 from .neg import neg
@@ -29,6 +30,8 @@ from .softmax import softmax
 from .sub import sub
 from .tanh import tanh
 from .triu import triu
+from .var_mean import var_mean
+from .vector_norm import vector_norm
 from .__enable__ import enable, use_gems
 
 __all__ = [
@@ -45,10 +48,12 @@ __all__ = [
     "native_dropout",
     "exp",
     "gelu",
+    "group_norm",
     "isinf",
     "isnan",
     "layer_norm",
     "mean",
+    "mean_dim",
     "mm",
     "mul",
     "neg",
@@ -65,4 +70,6 @@ __all__ = [
     "sub",
     "tanh",
     "triu",
+    "var_mean",
+    "vector_norm",
 ]

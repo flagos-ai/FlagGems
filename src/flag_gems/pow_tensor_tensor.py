@@ -60,15 +60,15 @@ def pow_tensor_tensor_kernel(
 def pow_tensor_tensor(A, exponent):
     if __debug__:
         print("GEMS POW_TENSOR_TENSOR")
-    A = A.contiguous()
-    O = torch.empty_like(A)
     try:
         A, exponent = torch.broadcast_tensors(A, exponent)
     except RuntimeError as e:
         print(
             f"Pow: Tensor shape {A.shape} and tensor shape {exponent.shape} cannot broadcast to each other."
         )
+    A = A.contiguous()
     exponent = exponent.contiguous()
+    O = torch.empty_like(A)
     M = A.numel()
     grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
     pow_tensor_tensor_kernel[grid_fn](A, exponent, O, M)

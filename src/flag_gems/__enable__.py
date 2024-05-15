@@ -10,10 +10,11 @@ from .div import div
 from .dropout import native_dropout
 from .exp import exp, exp_out
 from .gelu import gelu
+from .groupnorm import group_norm
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
-from .mean import mean
+from .mean import mean, mean_dim
 from .mm import mm
 from .mul import mul
 from .neg import neg
@@ -30,6 +31,8 @@ from .softmax import softmax
 from .sub import sub
 from .tanh import tanh
 from .triu import triu
+from .var_mean import var_mean
+from .vector_norm import vector_norm
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -47,10 +50,12 @@ def enable(lib=aten_lib):
     lib.impl("exp", exp, "CUDA")
     lib.impl("exp.out", exp_out, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
+    lib.impl("native_group_norm", group_norm, "AutogradCUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
     lib.impl("mean", mean, "CUDA")
+    lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")
     lib.impl("mul.Tensor", mul, "CUDA")
     lib.impl("neg", neg, "CUDA")
@@ -67,6 +72,8 @@ def enable(lib=aten_lib):
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("tanh", tanh, "AutogradCUDA")
     lib.impl("triu", triu, "CUDA")
+    lib.impl("var_mean.correction", var_mean, "CUDA")
+    lib.impl("linalg_vector_norm", vector_norm, "CUDA")
 
 
 class use_gems:

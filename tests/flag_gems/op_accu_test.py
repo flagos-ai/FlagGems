@@ -350,6 +350,58 @@ def test_accuracy_gelu(shape, dtype):
 
 
 @pytest.mark.parametrize(
+    "N, C, H, W, num_groups",
+    [
+        (16, 3, 16, 16, 1),
+        (32, 32, 32, 32, 8),
+        (1, 32, 32, 32, 8),
+        (1, 32, 32, 32, 16),
+        (1, 64, 32, 32, 16),
+        (1, 64, 32, 32, 32),
+        (1, 64, 32, 32, 64),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
+    HW = H * W
+    inp = torch.randn(size=(N, C, H, W), dtype=dtype, device="cuda", requires_grad=True)
+    weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    eps = 1e-5
+
+    ref_inp = inp.to(torch.float64)
+    ref_weight = weight.to(torch.float64)
+    ref_bias = bias.to(torch.float64)
+
+    ref_out = torch.nn.functional.group_norm(
+        ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
+    )
+    ref_mean = torch.mean(ref_inp.reshape([N, num_groups, -1]), dim=2)
+    ref_var = torch.var(ref_inp.reshape([N, num_groups, -1]), dim=2, correction=0)
+    ref_rstd = torch.rsqrt(ref_var + eps)
+
+    (res_out, res_mean, res_rstd) = flag_gems.group_norm(
+        inp, weight, bias, N, C, HW, num_groups, eps
+    )
+
+    allclose_with_dtype(res_mean, ref_mean, dtype)
+    allclose_with_dtype(res_rstd, ref_rstd, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight, ref_bias), out_grad.to(torch.float64)
+    )
+    (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+        res_out, (inp, weight, bias), out_grad
+    )
+    group_size = C // num_groups
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
+    allclose_with_dtype(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
+    allclose_with_dtype(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
+
+
+@pytest.mark.parametrize(
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
@@ -438,10 +490,25 @@ def test_accuracy_layernorm(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mean(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
-
     ref_out = torch.mean(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.mean(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dim", [-1, 0, 1, None, [1, 0]])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_meandim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_out = torch.mean(inp.to(torch.float64), dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp, dim, keepdim)
 
     allclose_with_dtype(res_out, ref_out, dtype)
 
@@ -893,5 +960,42 @@ def test_accuracy_triu(shape, diagonal, dtype):
     ref_out = torch.triu(inp.to(torch.float64), diagonal)
     with flag_gems.use_gems():
         res_out = torch.triu(inp, diagonal)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dim", [-1, 0, 1, None, [1, 0]])
+@pytest.mark.parametrize("correction", [0, 1])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_var, ref_mean = torch.var_mean(inp, dim, correction=correction, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_var, res_mean = torch.var_mean(
+            inp, dim, correction=correction, keepdim=keepdim
+        )
+
+    allclose_with_dtype(res_mean, ref_mean, dtype)
+    allclose_with_dtype(res_var, ref_var, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("ord", [2, float("inf"), -float("inf"), 0, 1])
+@pytest.mark.parametrize("dim", [-1, 0, 1, None, [1, 0]])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_out = torch.linalg.vector_norm(inp.to(torch.float64), ord, dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
     allclose_with_dtype(res_out, ref_out, dtype)
