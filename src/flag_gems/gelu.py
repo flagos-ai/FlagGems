@@ -1,7 +1,6 @@
-import torch
 import triton
 import triton.language as tl
-
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -30,9 +29,7 @@ def gelu_tanh(x):
 
 
 def gelu(A, *, approximate="none"):
-    if __debug__:
-        print("GEMS GELU")
-
+    logging.debug("GEMS GELU")
     if approximate == "tanh":
         return gelu_tanh(A)
     else:

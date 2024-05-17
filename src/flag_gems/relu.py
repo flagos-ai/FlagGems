@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -19,16 +20,14 @@ def relu_backward(x, dy):
 class Relu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        if __debug__:
-            print("GEMS RELU FORWARD")
+        logging.debug("GEMS RELU FORWARD")
         O = relu_forward(A)
         ctx.save_for_backward(A)
         return O
 
     @staticmethod
     def backward(ctx, out_grad):
-        if __debug__:
-            print("GEMS RELU BACKWARD")
+        logging.debug("GEMS RELU BACKWARD")
         (inp,) = ctx.saved_tensors
         in_grad = relu_backward(inp, out_grad)
         return in_grad

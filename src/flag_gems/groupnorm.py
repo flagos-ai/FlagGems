@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -293,8 +294,7 @@ def weight_bias_backward_kernel(
 class GroupNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, weight, bias, N, C, HW, num_groups, eps):
-        if __debug__:
-            print("GEMS GROUPNORM FORWARD")
+        logging.debug("GEMS GROUPNORM FORWARD")
         group_size = C // num_groups
         x = x.contiguous()
         if weight is not None:
@@ -331,8 +331,7 @@ class GroupNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, y_grad, mean_grad, rstd_grad):
-        if __debug__:
-            print("GEMS GROUPNORM BACKWARD")
+        logging.debug("GEMS GROUPNORM BACKWARD")
         y_grad = y_grad.contiguous()
         (x, weight, mean, rstd) = ctx.saved_tensors
         num_groups = ctx.num_groups

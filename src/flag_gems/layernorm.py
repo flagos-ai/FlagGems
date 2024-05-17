@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 import math
 
@@ -248,8 +249,7 @@ def weight_bias_backward_kernel(
 class LayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-        if __debug__:
-            print("GEMS LAYERNORM FORWARD")
+        logging.debug("GEMS LAYERNORM FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
@@ -269,8 +269,7 @@ class LayerNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad, mean_grad, rstd_grad):
-        if __debug__:
-            print("GEMS LAYERNORM BACKWARD")
+        logging.debug("GEMS LAYERNORM BACKWARD")
         out_grad = out_grad.contiguous()
         (x, weight, mean, rstd) = ctx.saved_tensors
         M = ctx.M

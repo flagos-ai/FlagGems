@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 import math
 from collections import namedtuple
@@ -86,8 +87,7 @@ def min_kernel(
 
 
 def min(inp):
-    if __debug__:
-        print("GEMS min")
+    logging.debug("GEMS MIN")
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
@@ -103,8 +103,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    if __debug__:
-        print("GEMS min_dim")
+    logging.debug("GEMS MIN DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

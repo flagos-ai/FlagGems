@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 import math
 from collections import namedtuple
@@ -86,8 +87,7 @@ def max_kernel(
 
 
 def max(inp):
-    if __debug__:
-        print("GEMS max")
+    logging.debug("GEMS MAX")
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
@@ -103,8 +103,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    if __debug__:
-        print("GEMS max_dim")
+    logging.debug("GEMS MAX DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

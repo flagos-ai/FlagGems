@@ -1,6 +1,5 @@
-import torch
 import triton
-import triton.language as tl
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -11,7 +10,6 @@ def neg_func(x):
 
 
 def neg(A):
-    if __debug__:
-        print("GEMS NEG")
+    logging.debug("GEMS NEG")
     O = neg_func(A)
     return O

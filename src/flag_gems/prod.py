@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 import math
 from .__libentry__ import libentry
 
@@ -40,8 +41,7 @@ def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 def prod(inp, *, dtype=None):
-    if __debug__:
-        print("GEMS prod")
+    logging.debug("GEMS PROD")
     if dtype is None:
         dtype = inp.dtype
 
@@ -105,8 +105,7 @@ def prod_kernel(
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    if __debug__:
-        print("GEMS prod_dim")
+    logging.debug("GEMS PROD DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape

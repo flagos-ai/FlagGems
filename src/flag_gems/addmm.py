@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -108,8 +109,7 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    if __debug__:
-        print("GEMS ADDMM")
+    logging.debug("GEMS ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     M, K = mat1.shape
     _, N = mat2.shape

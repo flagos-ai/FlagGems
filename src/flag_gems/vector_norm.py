@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -126,8 +127,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    if __debug__:
-        print("GEMS VECTOR NORM")
+    logging.debug("GEMS VECTOR NORM")
     if dtype is not None:
         dtype = torch.dtype(dtype)
     else:

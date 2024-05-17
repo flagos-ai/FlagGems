@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -62,8 +63,7 @@ def var_mean_kernel(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    if __debug__:
-        print("GEMS VAR MEAN")
+    logging.debug("GEMS VAR MEAN")
     if correction is None:
         correction = 1.0
 

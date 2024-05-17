@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 import math
 
@@ -81,8 +82,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    if __debug__:
-        print("GEMS sum")
+    logging.debug("GEMS SUM")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -99,8 +99,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    if __debug__:
-        print("GEMS sum_dim")
+    logging.debug("GEMS SUM DIM")
     dim = dim[0]  # todo dim list
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"

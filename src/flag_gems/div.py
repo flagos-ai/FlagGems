@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -209,13 +210,12 @@ def div_trunc_kernel(
 
 
 def div(A, B):
-    if __debug__:
-        print("GEMS DIV")
+    logging.debug("GEMS DIV")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         try:
             A, B = torch.broadcast_tensors(A, B)
         except RuntimeError as e:
-            print(
+            logging.error(
                 f"Div: Tensor shape {A.shape} and tensor shape {B.shape} cannot broadcast to each other."
             )
         A = A.contiguous()

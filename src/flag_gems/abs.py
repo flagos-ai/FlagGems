@@ -1,6 +1,6 @@
-import torch
 import triton
 import triton.language as tl
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -11,7 +11,6 @@ def abs_func(x):
 
 
 def abs(A):
-    if __debug__:
-        print("GEMS ABS")
+    logging.debug("GEMS ABS")
     O = abs_func(A)
     return O

@@ -1,7 +1,6 @@
-import torch
 import triton
 import triton.language as tl
-
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -12,7 +11,6 @@ def reciprocal_func(x):
 
 
 def reciprocal(A):
-    if __debug__:
-        print("GEMS RECIPROCAL")
+    logging.debug("GEMS RECIPROCAL")
     O = reciprocal_func(A)
     return O

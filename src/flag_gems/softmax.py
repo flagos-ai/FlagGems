@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -112,8 +113,7 @@ def softmax_backward_kernel(
 class Softmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, dim, dtype):
-        if __debug__:
-            print("GEMS SOFTMAX")
+        logging.debug("GEMS SOFTMAX")
 
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         dim = dim % x.ndim
@@ -144,8 +144,7 @@ class Softmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        if __debug__:
-            print("GEMS SOFTMAX VJP")
+        logging.debug("GEMS SOFTMAX VJP")
         dim = ctx.dim
         (out,) = ctx.saved_tensors
 

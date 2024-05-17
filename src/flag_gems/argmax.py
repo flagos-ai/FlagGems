@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 import math
 
@@ -87,8 +88,7 @@ def argmax_kernel(
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    if __debug__:
-        print("GEMS argmax")
+    logging.debug("GEMS ARGMAX")
     if dim is None:
         M = inp.numel()
         if dtype is None:

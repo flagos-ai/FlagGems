@@ -1,7 +1,7 @@
 import torch
 import triton
 import triton.language as tl
-from itertools import product
+import logging
 from .__libentry__ import libentry
 
 
@@ -179,8 +179,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    if __debug__:
-        print("GEMS BMM")
+    logging.debug("GEMS BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

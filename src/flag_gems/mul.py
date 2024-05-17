@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -102,13 +103,12 @@ def mul_scalar_kernel(
 
 
 def mul(A, B):
-    if __debug__:
-        print("GEMS MUL")
+    logging.debug("GEMS MUL")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         try:
             A, B = torch.broadcast_tensors(A, B)
         except RuntimeError as e:
-            print(
+            logging.error(
                 f"Mul: Tensor shape {A.shape} and tensor shape {B.shape} cannot broadcast to each other."
             )
         A = A.contiguous()

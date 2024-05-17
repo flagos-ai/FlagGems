@@ -1,6 +1,6 @@
-import torch
 import triton
 import triton.language as tl
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -11,7 +11,6 @@ def cos_func(x):
 
 
 def cos(A):
-    if __debug__:
-        print("GEMS COS")
+    logging.debug("GEMS COS")
     O = cos_func(A)
     return O

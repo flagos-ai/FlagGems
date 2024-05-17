@@ -1,6 +1,7 @@
 import triton
 import triton.language as tl
 import torch
+import logging
 from .__libentry__ import libentry
 
 
@@ -124,12 +125,11 @@ def dropout_backward_kernel(
 class NativeDropout(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, p, train):
-        if __debug__:
-            print("GEMS NATIVE DROPOUT FORWARD")
+        logging.debug("GEMS NATIVE DROPOUT FORWARD")
         assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
         x = x.contiguous()
         O = torch.empty_like(x)
-        Mask = torch.empty(x.shape, dtype=torch.bool, device="cuda")
+        Mask = torch.empty(x.shape, dtype=torch.bool, device=x.device)
         N = x.numel()
         grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
         dropout_forward_kernel[grid_fn](x, O, Mask, N, p)
@@ -139,8 +139,7 @@ class NativeDropout(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_outputs, kwargs):
-        if __debug__:
-            print("GEMS NATIVE DROPOUT BACKWARD")
+        logging.debug("GEMS NATIVE DROPOUT BACKWARD")
         (Mask,) = ctx.saved_tensors
         scale = 1.0 / (1.0 - ctx.p)
         grad_outputs = grad_outputs.contiguous()

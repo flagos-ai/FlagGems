@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 import math
 
@@ -36,8 +37,7 @@ def mean_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
-    if __debug__:
-        print("GEMS MEAN")
+    logging.debug("GEMS MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -84,8 +84,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    if __debug__:
-        print("GEMS MEAN DIM")
+    logging.debug("GEMS MEAN DIM")
 
     if dtype == None:
         dtype = x.dtype

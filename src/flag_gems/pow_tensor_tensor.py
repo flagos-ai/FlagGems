@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -58,12 +59,11 @@ def pow_tensor_tensor_kernel(
 
 
 def pow_tensor_tensor(A, exponent):
-    if __debug__:
-        print("GEMS POW_TENSOR_TENSOR")
+    logging.debug("GEMS POW_TENSOR_TENSOR")
     try:
         A, exponent = torch.broadcast_tensors(A, exponent)
     except RuntimeError as e:
-        print(
+        logging.error(
             f"Pow: Tensor shape {A.shape} and tensor shape {exponent.shape} cannot broadcast to each other."
         )
     A = A.contiguous()

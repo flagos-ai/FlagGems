@@ -1,6 +1,6 @@
-import torch
 import triton
 import triton.language as tl
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -11,7 +11,6 @@ def sin_func(x):
 
 
 def sin(A):
-    if __debug__:
-        print("GEMS SIN")
+    logging.debug("GEMS SIN")
     O = sin_func(A)
     return O

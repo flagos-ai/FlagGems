@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -49,8 +50,7 @@ def pow_scalar_kernel(
 
 
 def pow_scalar(A, exponent):
-    if __debug__:
-        print("GEMS POW_SCALAR")
+    logging.debug("GEMS POW_SCALAR")
     exponent = exponent.contiguous()
     O = torch.empty_like(exponent)
     M = exponent.numel()

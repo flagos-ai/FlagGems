@@ -2,6 +2,7 @@ import math
 import torch
 import triton
 import triton.language as tl
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -23,16 +24,14 @@ def sigmoid_backward(y, dy):
 class Sigmoid(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        if __debug__:
-            print("GEMS SIGMOID FORWARD")
+        logging.debug("GEMS SIGMOID FORWARD")
         O = sigmoid_forward(A)
         ctx.save_for_backward(O)
         return O
 
     @staticmethod
     def backward(ctx, out_grad):
-        if __debug__:
-            print("GEMS SIGMOID BACKWARD")
+        logging.debug("GEMS SIGMOID BACKWARD")
         (out,) = ctx.saved_tensors
         in_grad = sigmoid_backward(out, out_grad)
         return in_grad

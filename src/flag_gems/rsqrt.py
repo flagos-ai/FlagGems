@@ -1,7 +1,6 @@
-import torch
 import triton
 import triton.language as tl
-
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -12,7 +11,6 @@ def rsqrt_func(x):
 
 
 def rsqrt(A):
-    if __debug__:
-        print("GEMS RSQRT")
+    logging.debug("GEMS RSQRT")
     O = rsqrt_func(A)
     return O

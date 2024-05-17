@@ -10,7 +10,6 @@ By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless
 ## Changelog
 
 ### v1.0
-- released in April 2024  
 - support BLAS operators: addmm, bmm, mm  
 - support pointwise operators: abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu  
 - support reduction operators: cumsum, layernorm, mean, softmax  
@@ -76,12 +75,12 @@ pip install .
     - Operator Performance  
         ```shell
         cd tests/flag_gems
-        python -O op_perf_test.py
+        python op_perf_test.py
         ```
 
-2. Run without printing Flag infomation  
+2. Run tests with logging infomation  
     ```shell
-    python -O program.py
+    pytest program.py --log-cli-level debug
     ```
 
 ## Supported Operators
@@ -102,7 +101,7 @@ Operators will be implemented according to [OperatorList.md](https://github.com/
 
 ## Contributions
 
-If you are interested in contributing to the FlagGems project, please refer to [Contributing.md](https://github.com/FlagOpen/FlagGems/blob/master/Contributing.md). Any contributions would be highly appreciated.
+If you are interested in contributing to the FlagGems project, please refer to [CONTRIBUTING.md](https://github.com/FlagOpen/FlagGems/blob/master/CONTRIBUTING.md). Any contributions would be highly appreciated.
 
 ## Contact us
 

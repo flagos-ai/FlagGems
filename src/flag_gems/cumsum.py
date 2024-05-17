@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 
 
@@ -46,8 +47,7 @@ def cumsum_kernel(
 
 
 def cumsum(inp, dim=1, *, dtype=None):
-    if __debug__:
-        print("GEMS CUMSUM")
+    logging.debug("GEMS CUMSUM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

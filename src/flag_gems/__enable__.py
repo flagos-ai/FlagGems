@@ -8,7 +8,7 @@ from .cos import cos
 from .cumsum import cumsum
 from .div import div
 from .dropout import native_dropout
-from .exp import exp, exp_out
+from .exp import exp
 from .gelu import gelu
 from .groupnorm import group_norm
 from .isinf import isinf
@@ -56,7 +56,6 @@ def enable(lib=aten_lib):
     lib.impl("div.Tensor", div, "CUDA")
     lib.impl("native_dropout", native_dropout, "AutogradCUDA")
     lib.impl("exp", exp, "CUDA")
-    lib.impl("exp.out", exp_out, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
     lib.impl("native_group_norm", group_norm, "AutogradCUDA")
     lib.impl("isinf", isinf, "CUDA")

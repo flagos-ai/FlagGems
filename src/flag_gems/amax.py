@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import logging
 from .__libentry__ import libentry
 import math
 
@@ -81,8 +82,7 @@ def amax_kernel(
 
 
 def amax(inp, dim=None, keepdim=False):
-    if __debug__:
-        print("GEMS amax")
+    logging.debug("GEMS AMAX")
     if dim is None or len(dim) == 0:
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
