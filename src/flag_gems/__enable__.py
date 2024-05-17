@@ -34,6 +34,14 @@ from .triu import triu
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 
+from .max import max, max_dim
+from .min import min, min_dim
+from .amax import amax
+from .argmax import argmax
+from .prod import prod, prod_dim
+from .sum import sum, sum_dim
+
+
 aten_lib = torch.library.Library("aten", "IMPL")
 
 
@@ -74,6 +82,17 @@ def enable(lib=aten_lib):
     lib.impl("triu", triu, "CUDA")
     lib.impl("var_mean.correction", var_mean, "CUDA")
     lib.impl("linalg_vector_norm", vector_norm, "CUDA")
+
+    lib.impl("max", max, "CUDA")
+    lib.impl("max.dim", max_dim, "CUDA")
+    lib.impl("min", min, "CUDA")
+    lib.impl("min.dim", min_dim, "CUDA")
+    lib.impl("amax", amax, "CUDA")
+    lib.impl("argmax", argmax, "CUDA")
+    lib.impl("prod", prod, "CUDA")
+    lib.impl("prod.dim_int", prod_dim, "CUDA")
+    lib.impl("sum", sum, "CUDA")
+    lib.impl("sum.dim_IntList", sum_dim, "CUDA")
 
 
 class use_gems:
