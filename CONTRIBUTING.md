@@ -21,10 +21,9 @@ FlagGems
 ├── src: source code for library
 │   ├──flag_gems
 │   │   ├──utils: utilities for automatic code generation
+│   │   ├──ops: single operators
+│   │   ├──fused: fused operators
 │   │   ├──__init__.py
-│   │   ├──__enable__.py
-│   │   ├──__libentry__.py
-│   │   ├──operator.py: source code for operators
 ├── tests
 │   ├──flag_gems
 │   │   ├──model_bert_test.py: test for BERT model running with flag_gems

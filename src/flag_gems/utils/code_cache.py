@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 
 
-@functools.lru_cache(maxsize=None) # this is the same as functools.cache in Python 3.9+
+@functools.lru_cache(maxsize=None)  # this is the same as functools.cache in Python 3.9+
 def cache_dir_path() -> Path:
     """Return the cache directory for generated files in flaggems."""
     _cache_dir = os.environ.get("FLAGGEMS_CACHE_DIR")

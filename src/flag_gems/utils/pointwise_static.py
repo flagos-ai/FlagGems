@@ -224,7 +224,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from triton import language as tl")
     code.newline()
 
-    code.writeline("from flag_gems.__libentry__ import libentry")
+    code.writeline("from flag_gems.utils import libentry")
     code.newline()
     return code
 

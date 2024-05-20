@@ -137,3 +137,12 @@ FlagGems will implement the following operators as planned. Version 1.0 will be 
 - unfold
 - where
 - zeros
+
+## v4.0
+
+- rms_norm
+- skip_layernorm
+- skip_rmsnorm
+- apply_rotary_position_embedding
+- silu_and_mul
+- gelu_and_mul

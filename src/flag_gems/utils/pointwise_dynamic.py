@@ -244,7 +244,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline(
         "from flag_gems.utils.shape_utils import broadcast_shapes, broadcasted_stride, c_contiguous_stride, volume, Stride"
     )
-    code.writeline("from flag_gems.__libentry__ import libentry")
+    code.writeline("from flag_gems.utils import libentry")
     code.newline()
     return code
 
