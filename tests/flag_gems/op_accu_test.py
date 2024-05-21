@@ -1205,3 +1205,49 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
     allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_log_softmax(shape, dtype):
+    dim = 1
+    # torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    ref_inp = inp.to(torch.float64)
+    ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.log_softmax(inp, dim=dim)
+    allclose_with_dtype(res_out, ref_out, dtype)
+    out_grad = torch.randn_like(res_out)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024), (16, 128), (20, 320)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_outer(shape, dtype):
+    inp1_shape, inp2_shape = list(shape)
+    inp1 = torch.randn(inp1_shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp2 = torch.randn(inp2_shape, dtype=dtype, device="cuda", requires_grad=True)
+
+    inp1_f64 = inp1.to(torch.float64)
+    inp2_f64 = inp2.to(torch.float64)
+    ref_out = torch.outer(inp1_f64, inp2_f64)
+    with flag_gems.use_gems():
+        res_out = torch.outer(inp1, inp2)
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(res_out)
+    ref_in1_grad, ref_in2_grad = torch.autograd.grad(
+        ref_out, (inp1_f64, inp2_f64), out_grad.to(torch.float64)
+    )
+    res_in1_grad, res_in2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
+    allclose_with_dtype(res_in1_grad, ref_in1_grad, dtype)
+    allclose_with_dtype(res_in2_grad, ref_in2_grad, dtype)
