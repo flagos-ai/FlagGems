@@ -1325,3 +1325,42 @@ def test_accuracy_outer(shape, dtype):
     res_in1_grad, res_in2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
     allclose_with_dtype(res_in1_grad, ref_in1_grad, dtype)
     allclose_with_dtype(res_in2_grad, ref_in2_grad, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 30)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_silu_and_mul(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1, inp2 = inp.chunk(2, dim=-1)
+
+    ref_out = torch.mul(
+        torch.nn.functional.silu(inp1.to(torch.float64)),
+        inp2.to(torch.float64),
+    )
+    with flag_gems.use_gems():
+        res_out = flag_gems.silu_and_mul(inp1, inp2)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 30)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("approximate", ["none", "tanh"])
+def test_accuracy_gelu_and_mul(shape, approximate, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1, inp2 = inp.chunk(2, dim=-1)
+
+    ref_out = torch.mul(
+        torch.nn.functional.gelu(inp1.to(torch.float64), approximate=approximate),
+        inp2.to(torch.float64),
+    )
+    with flag_gems.use_gems():
+        res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
