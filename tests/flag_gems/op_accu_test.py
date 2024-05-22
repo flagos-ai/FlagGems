@@ -528,6 +528,42 @@ def test_accuracy_layernorm(shape, dtype):
     [(4096, i * 64) for i in range(1, 20)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_skip_layernorm(shape, dtype):
+    M = shape[0]
+    N = shape[1]
+    layer_shape = [
+        N,
+    ]
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=False)
+    residual = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=False)
+    weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=False)
+    bias = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=False)
+    eps = 1e-5
+
+    ref_inp = inp.to(torch.float64)
+    ref_residual = residual.to(torch.float64)
+    ref_weight = weight.to(torch.float64)
+    ref_bias = bias.to(torch.float64)
+
+    ref_out = torch.layer_norm(
+        ref_inp + ref_residual,
+        list(layer_shape),
+        weight=ref_weight,
+        bias=ref_bias,
+        eps=eps,
+    )
+    res_out = flag_gems.skip_layer_norm(
+        inp, residual, list(layer_shape), weight=weight, bias=bias, eps=eps
+    )
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_rmsnorm(shape, dtype):
     M = shape[0]
     N = shape[1]
@@ -558,6 +594,7 @@ def test_accuracy_rmsnorm(shape, dtype):
     )
 
     allclose_with_dtype(res_out, ref_out, dtype)
+    
 
 
 @pytest.mark.parametrize(
