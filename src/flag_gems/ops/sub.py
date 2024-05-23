@@ -29,34 +29,15 @@ def sub_kernel(
     M_BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0) * M_BLOCK_SIZE
-    Y_ptrs = tl.make_block_ptr(
-        Y,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    X_ptrs = tl.make_block_ptr(
-        X,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    O_ptrs = tl.make_block_ptr(
-        O,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    X_val = tl.load(X_ptrs)
-    Y_val = tl.load(Y_ptrs)
+    offset = pid + tl.arange(0, M_BLOCK_SIZE)
+    mask = offset < M
+    X_ptr = X + offset
+    Y_ptr = Y + offset
+    O_ptr = O + offset
+    X_val = tl.load(X_ptr, mask=mask, other=0.0)
+    Y_val = tl.load(Y_ptr, mask=mask, other=0.0)
     O_val = X_val - Y_val * alpha
-    tl.store(O_ptrs, O_val.to(X_val.dtype))
+    tl.store(O_ptr, O_val, mask=mask)
 
 
 @libentry()
@@ -82,25 +63,13 @@ def sub_tensor_scalar_kernel(
     M_BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0) * M_BLOCK_SIZE
-    X_ptrs = tl.make_block_ptr(
-        X,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    O_ptrs = tl.make_block_ptr(
-        O,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    X_val = tl.load(X_ptrs)
+    offset = pid + tl.arange(0, M_BLOCK_SIZE)
+    mask = offset < M
+    X_ptr = X + offset
+    O_ptr = O + offset
+    X_val = tl.load(X_ptr, mask=mask, other=0.0)
     O_val = X_val - Y_scalar
-    tl.store(O_ptrs, O_val.to(X_val.dtype))
+    tl.store(O_ptr, O_val, mask=mask)
 
 
 @libentry()
@@ -127,25 +96,13 @@ def sub_scalar_tensor_kernel(
     M_BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0) * M_BLOCK_SIZE
-    Y_ptrs = tl.make_block_ptr(
-        Y,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    O_ptrs = tl.make_block_ptr(
-        O,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    Y_val = tl.load(Y_ptrs)
+    offset = pid + tl.arange(0, M_BLOCK_SIZE)
+    mask = offset < M
+    Y_ptr = Y + offset
+    O_ptr = O + offset
+    Y_val = tl.load(Y_ptr, mask=mask, other=0.0)
     O_val = X_scalar - Y_val * alpha
-    tl.store(O_ptrs, O_val.to(Y_val.dtype))
+    tl.store(O_ptr, O_val, mask=mask)
 
 
 def sub(A, B, *, alpha=1):

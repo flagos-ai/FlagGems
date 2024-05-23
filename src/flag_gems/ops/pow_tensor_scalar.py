@@ -28,25 +28,13 @@ def pow_tensor_scalar_kernel(
     M_BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0) * M_BLOCK_SIZE
-    Y_ptrs = tl.make_block_ptr(
-        Y,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    X_ptrs = tl.make_block_ptr(
-        X,
-        shape=(M,),
-        strides=(1,),
-        offsets=(pid,),
-        block_shape=(M_BLOCK_SIZE,),
-        order=(0,),
-    )
-    X_val = tl.load(X_ptrs)
+    offset = pid + tl.arange(0, M_BLOCK_SIZE)
+    mask = offset < M
+    X_ptrs = X + offset
+    Y_ptrs = Y + offset
+    X_val = tl.load(X_ptrs, mask=mask, other=0.0)
     Y_val = tl.math.pow(X_val.to(tl.float32), exponent)
-    tl.store(Y_ptrs, Y_val.to(X_val.dtype))
+    tl.store(Y_ptrs, Y_val, mask=mask)
 
 
 def pow_tensor_scalar(A, exponent):

@@ -42,8 +42,8 @@ def var_mean_kernel(
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
-    _mean /= N
-    mean = tl.sum(_mean, axis=1)[:, None]
+    mean = tl.sum(_mean, axis=1) / N
+    mean = mean[:, None]
 
     # Compute variance
     _var = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
@@ -55,8 +55,8 @@ def var_mean_kernel(
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         _var += x * x
-    _var /= N - correction
-    var = tl.sum(_var, axis=1)[:, None]
+    var = tl.sum(_var, axis=1) / (N - correction)
+    var = var[:, None]
     # Write mean / var
     tl.store(Mean, mean, row_mask)
     tl.store(Var, var, row_mask)

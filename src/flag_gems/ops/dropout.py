@@ -30,39 +30,21 @@ def dropout_forward_kernel(
     p,
     N_BLOCK_SIZE: tl.constexpr,
 ):
-    n_offset = tl.program_id(0) * N_BLOCK_SIZE
-    X_ptr = tl.make_block_ptr(
-        X,
-        shape=(N,),
-        strides=(1,),
-        offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE,),
-        order=(0,),
-    )
-    Y_ptr = tl.make_block_ptr(
-        Y,
-        shape=(N,),
-        strides=(1,),
-        offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE,),
-        order=(0,),
-    )
-    Mask_ptr = tl.make_block_ptr(
-        Mask,
-        shape=(N,),
-        strides=(1,),
-        offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE,),
-        order=(0,),
-    )
-    inp = tl.load(X_ptr)
+    pid = tl.program_id(0) * N_BLOCK_SIZE
+    offset = pid + tl.arange(0, N_BLOCK_SIZE)
+    mask = offset < N
+    X_ptr = X + offset
+    Y_ptr = Y + offset
+    Mask_ptr = Mask + offset
+
+    inp = tl.load(X_ptr, mask=mask, other=0.0)
     # random seed (lucky number)
     seed = 7
-    pmask = tl.rand(seed, n_offset + tl.arange(0, N_BLOCK_SIZE)) > p
+    pmask = tl.rand(seed, offset) > p
     output = tl.where(pmask, inp, 0.0)
     output = output * (1.0 / (1.0 - p))
-    tl.store(Y_ptr, output.to(inp.dtype))
-    tl.store(Mask_ptr, pmask.to(tl.int8))
+    tl.store(Y_ptr, output.to(inp.dtype), mask=mask)
+    tl.store(Mask_ptr, pmask.to(tl.int8), mask=mask)
 
 
 @libentry()
@@ -90,36 +72,18 @@ def dropout_backward_kernel(
     scale,
     N_BLOCK_SIZE: tl.constexpr,
 ):
-    n_offset = tl.program_id(0) * N_BLOCK_SIZE
-    DY_ptr = tl.make_block_ptr(
-        DY,
-        shape=(N,),
-        strides=(1,),
-        offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE,),
-        order=(0,),
-    )
-    MASK_ptr = tl.make_block_ptr(
-        MASK,
-        shape=(N,),
-        strides=(1,),
-        offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE,),
-        order=(0,),
-    )
-    DX_ptr = tl.make_block_ptr(
-        DX,
-        shape=(N,),
-        strides=(1,),
-        offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE,),
-        order=(0,),
-    )
-    dy = tl.load(DY_ptr)
-    mask = tl.load(MASK_ptr)
-    output = dy * mask
+    pid = tl.program_id(0) * N_BLOCK_SIZE
+    offset = pid + tl.arange(0, N_BLOCK_SIZE)
+    mask = offset < N
+    DY_ptr = DY + offset
+    MASK_ptr = MASK + offset
+    DX_ptr = DX + offset
+
+    dy = tl.load(DY_ptr, mask=mask, other=0.0)
+    Mask = tl.load(MASK_ptr, mask=mask, other=0.0)
+    output = dy * Mask
     output = output * scale
-    tl.store(DX_ptr, output.to(dy.dtype))
+    tl.store(DX_ptr, output.to(dy.dtype), mask=mask)
 
 
 class NativeDropout(torch.autograd.Function):

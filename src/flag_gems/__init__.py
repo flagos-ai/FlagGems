@@ -13,6 +13,7 @@ def enable(lib=aten_lib):
     lib.impl("bitwise_not", bitwise_not, "CUDA")
     lib.impl("bitwise_or.Tensor", bitwise_or_tensor, "CUDA")
     lib.impl("bmm", bmm, "CUDA")
+    lib.impl("clamp.Tensor", clamp_tensor, "CUDA")
     lib.impl("cos", cos, "CUDA")
     lib.impl("cumsum", cumsum, "CUDA")
     lib.impl("div.Tensor", div, "CUDA")

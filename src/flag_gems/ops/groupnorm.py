@@ -23,95 +23,40 @@ def group_norm_kernel(
     BLOCK_HW_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    mini_batch = pid // num_groups
     group = pid % num_groups
     num_elements = group_size * HW
-    batch_offset = mini_batch * num_groups * num_elements
-    group_offset = batch_offset + group * num_elements
-    Y_block_ptr = tl.make_block_ptr(
-        Y + group_offset,
-        shape=(group_size, HW),
-        strides=(HW, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
-        order=(1, 0),
-    )
-    X_block_ptr = tl.make_block_ptr(
-        X + group_offset,
-        shape=(group_size, HW),
-        strides=(HW, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
-        order=(1, 0),
-    )
-    rstd_block_ptr = tl.make_block_ptr(
-        Rstd + mini_batch * num_groups,
-        shape=(group_size,),
-        strides=(1,),
-        offsets=(group,),
-        block_shape=(1,),
-        order=(0,),
-    )
-    mean_block_ptr = tl.make_block_ptr(
-        Mean + mini_batch * num_groups,
-        shape=(group_size,),
-        strides=(1,),
-        offsets=(group,),
-        block_shape=(1,),
-        order=(0,),
-    )
-    X_val = tl.load(X_block_ptr, boundary_check=(0, 1), padding_option="zero")
-    mean = tl.sum(
-        tl.view(
-            X_val.to(tl.float32) / num_elements, (1, BLOCK_GROUP_SIZE * BLOCK_HW_SIZE)
-        ),
-        1,
-    )
-    # [1,1]
-    group_mask = tl.arange(0, BLOCK_GROUP_SIZE) < group_size
-    hw_mask = tl.arange(0, BLOCK_HW_SIZE) < HW
-    mask = group_mask[:, None] & hw_mask[None, :]
-    centered_mean = tl.where(mask, X_val - mean, 0.0)
+    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
+    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
 
-    var = tl.sum(
-        tl.view(
-            centered_mean * centered_mean / num_elements,
-            (1, BLOCK_GROUP_SIZE * BLOCK_HW_SIZE),
-        ),
-        1,
-    )
+    wb_offset = group * group_size + group_offset
+    wb_mask = wb_offset < C
+    W_ptr = W + wb_offset
+    B_ptr = B + wb_offset
+
+    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
+
+    Mean_ptr = Mean + pid
+    Rstd_ptr = Rstd + pid
+
+    X_ptr = X + xy_offset
+    Y_ptr = Y + xy_offset
+
+    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    mean = tl.sum(X_val) / num_elements
+    x = tl.where(xy_mask, X_val - mean, 0.0)
+
+    var = tl.sum(x * x) / num_elements
     rstd = tl.math.rsqrt(var + eps)
-    Y_val = centered_mean * rstd
+    x_hat = x * rstd
 
-    if W:
-        weight_block_ptr = tl.make_block_ptr(
-            W,
-            shape=(C,),
-            strides=(1,),
-            offsets=(group * group_size,),
-            block_shape=(BLOCK_GROUP_SIZE,),
-            order=(0,),
-        )
-        weight = tl.load(weight_block_ptr, boundary_check=(0,))
-        weight = tl.expand_dims(weight, 1)
-        Y_val = Y_val * weight
+    weight = tl.load(W_ptr, mask=wb_mask, other=0.0)[:, None]
+    bias = tl.load(B_ptr, mask=wb_mask, other=0.0)[:, None]
+    Y_val = x_hat * weight + bias
 
-    if B:
-        bias_block_ptr = tl.make_block_ptr(
-            B,
-            shape=(C,),
-            strides=(1,),
-            offsets=(group * group_size,),
-            block_shape=(BLOCK_GROUP_SIZE,),
-            order=(0,),
-        )
-        bias = tl.load(bias_block_ptr, boundary_check=(0,))
-        bias = tl.expand_dims(bias, 1)
-        Y_val += bias
-
-    tl.store(Y_block_ptr, Y_val.to(X_val.dtype), boundary_check=(0, 1))
-    tl.store(rstd_block_ptr, rstd.to(X_val.dtype))
-    tl.store(mean_block_ptr, mean.to(X_val.dtype))
+    tl.store(Y_ptr, Y_val, mask=xy_mask)
+    tl.store(Mean_ptr, mean)
+    tl.store(Rstd_ptr, rstd)
 
 
 @libentry()
@@ -131,85 +76,42 @@ def group_norm_backward_kernel(
     BLOCK_HW_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    batch = pid // num_groups
     group = pid % num_groups
     num_elements = group_size * HW
-    batch_offset = batch * num_groups * num_elements
-    group_offset = batch_offset + group * num_elements
-    grad_x_block_ptr = tl.make_block_ptr(
-        grad_x + group_offset,
-        shape=(group_size, HW),
-        strides=(HW, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
-        order=(1, 0),
-    )
-    grad_y_ptr = tl.make_block_ptr(
-        grad_y + group_offset,
-        shape=(group_size, HW),
-        strides=(HW, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
-        order=(1, 0),
-    )
-    x_block_ptr = tl.make_block_ptr(
-        X + group_offset,
-        shape=(group_size, HW),
-        strides=(HW, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
-        order=(1, 0),
-    )
-    rstd_block_ptr = tl.make_block_ptr(
-        Rstd + batch * num_groups,
-        shape=(group_size,),
-        strides=(1,),
-        offsets=(group,),
-        block_shape=(1,),
-        order=(0,),
-    )
-    mean_block_ptr = tl.make_block_ptr(
-        Mean + batch * num_groups,
-        shape=(group_size,),
-        strides=(1,),
-        offsets=(group,),
-        block_shape=(1,),
-        order=(0,),
-    )
-    weight_block_ptr = tl.make_block_ptr(
-        W,
-        shape=(C,),
-        strides=(1,),
-        offsets=(group * group_size,),
-        block_shape=(BLOCK_GROUP_SIZE,),
-        order=(0,),
-    )
 
-    rstd = tl.load(rstd_block_ptr)
-    mean = tl.load(mean_block_ptr)
-    grad_Y = tl.load(grad_y_ptr, boundary_check=(0, 1))
+    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
+    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
+    wb_offset = group * group_size + group_offset
 
-    weight = tl.load(weight_block_ptr, boundary_check=(0,))
-    weight = tl.expand_dims(weight, -1)
-    grad_norm = weight * grad_Y
+    wb_mask = wb_offset < C
+    W_ptr = W + wb_offset
 
-    X_val = tl.load(x_block_ptr, boundary_check=(0, 1))
-    group_mask = tl.arange(0, BLOCK_GROUP_SIZE) < group_size
-    hw_mask = tl.arange(0, BLOCK_HW_SIZE) < HW
-    mask = group_mask[:, None] & hw_mask[None, :]
-    centered_mean = tl.where(mask, X_val - mean, 0)
-    grad_std = tl.sum(
-        tl.view(grad_norm * centered_mean, (1, BLOCK_GROUP_SIZE * BLOCK_HW_SIZE)), 1
-    )
+    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
+
+    Mean_ptr = Mean + pid
+    Rstd_ptr = Rstd + pid
+    X_ptr = X + xy_offset
+    dY_ptr = grad_y + xy_offset
+    dX_ptr = grad_x + xy_offset
+
+    rstd = tl.load(Rstd_ptr).to(tl.float32)
+    mean = tl.load(Mean_ptr).to(tl.float32)
+    dY_val = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    weight = tl.load(W_ptr, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
+
+    dx_hat = weight * dY_val
+
+    x = tl.where(xy_mask, X_val - mean, 0.0)
+
+    grad_std = tl.sum(dx_hat * x)
     grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / (HW * group_size)
-    grad_distance = 2 * centered_mean * grad_var
-    grad_centered_mean = tl.where(mask, grad_norm * rstd + grad_distance, 0)
-    grad_mean = (
-        -tl.sum(tl.view(grad_centered_mean, (1, BLOCK_GROUP_SIZE * BLOCK_HW_SIZE)), 1)
-        / num_elements
-    )
+    grad_distance = 2 * x * grad_var
+    grad_centered_mean = dx_hat * rstd + grad_distance
+    grad_mean = -tl.sum(grad_centered_mean) / num_elements
     grad_X = grad_centered_mean + grad_mean
-    tl.store(grad_x_block_ptr, grad_X.to(X_val.dtype), boundary_check=(0, 1))
+    tl.store(dX_ptr, grad_X, mask=xy_mask)
 
 
 @libentry()
@@ -230,66 +132,31 @@ def weight_bias_backward_kernel(
     BLOCK_HW: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    grad_y_ptr = tl.make_block_ptr(
-        dY + pid * HW,
-        shape=(N, HW),
-        strides=(C * HW, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_N, BLOCK_HW),
-        order=(1, 0),
-    )
-    x_ptr = tl.make_block_ptr(
-        X + pid * HW,
-        shape=(N, HW),
-        strides=(C * HW, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_N, BLOCK_HW),
-        order=(1, 0),
-    )
-    mean_ptr = tl.make_block_ptr(
-        Mean + pid // group_size,
-        shape=(N,),
-        strides=(num_groups,),
-        offsets=(0,),
-        block_shape=(BLOCK_N,),
-        order=(0,),
-    )
-    rstd_ptr = tl.make_block_ptr(
-        Rstd + pid // group_size,
-        shape=(N,),
-        strides=(num_groups,),
-        offsets=(0,),
-        block_shape=(BLOCK_N,),
-        order=(0,),
-    )
-    dW_ptr = tl.make_block_ptr(
-        dW + pid,
-        shape=(1,),
-        strides=(1,),
-        offsets=(0,),
-        block_shape=(1),
-        order=(0,),
-    )
-    dB_ptr = tl.make_block_ptr(
-        dB + pid,
-        shape=(1,),
-        strides=(1,),
-        offsets=(0,),
-        block_shape=(1),
-        order=(0,),
-    )
-    grad_y = tl.load(grad_y_ptr, boundary_check=(0, 1)).to(tl.float32)
-    x = tl.load(x_ptr, boundary_check=(0, 1))
+    group = pid // group_size
+    n_offset = tl.arange(0, BLOCK_N)
+    hw_offset = tl.arange(0, BLOCK_HW)
+    xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+    mr_mask = n_offset < N
+
+    dW_ptr = dW + pid
+    dB_ptr = dB + pid
+
+    mean_ptr = Mean + group + n_offset * num_groups
+    rstd_ptr = Rstd + group + n_offset * num_groups
+
+    dY_ptr = dY + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+    x_ptr = X + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+
+    grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    x = tl.load(x_ptr, mask=xy_mask, other=0.0)
     x_f32 = x.to(tl.float32)
-    mean = tl.load(mean_ptr, boundary_check=(0,)).to(tl.float32)
-    mean = tl.expand_dims(mean, 1)
-    rstd = tl.load(rstd_ptr, boundary_check=(0,)).to(tl.float32)
-    rstd = tl.expand_dims(rstd, 1)
+    mean = tl.load(mean_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
+    rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
 
     dB = tl.sum(grad_y)
     dW = tl.sum((x_f32 - mean) * rstd * grad_y)
-    tl.store(dW_ptr, dW.to(x.dtype), boundary_check=(0,))
-    tl.store(dB_ptr, dB.to(x.dtype), boundary_check=(0,))
+    tl.store(dW_ptr, dW.to(x.dtype))
+    tl.store(dB_ptr, dB.to(x.dtype))
 
 
 class GroupNorm(torch.autograd.Function):

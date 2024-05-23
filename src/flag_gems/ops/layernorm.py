@@ -47,8 +47,8 @@ def layer_norm_kernel(
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
-    _mean /= N
-    mean = tl.sum(_mean, axis=1)[:, None]
+    mean = tl.sum(_mean, axis=1) / N
+    mean = mean[:, None]
 
     # Compute variance
     _var = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
@@ -60,8 +60,8 @@ def layer_norm_kernel(
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         x = tl.where(col_mask, x - mean, 0.0)
         _var += x * x
-    _var /= N
-    var = tl.sum(_var, axis=1)[:, None]
+    var = tl.sum(_var, axis=1) / N
+    var = var[:, None]
     rstd = 1 / tl.sqrt(var + eps)
     # Write mean / rstd
     tl.store(Mean + row, mean)
@@ -76,60 +76,8 @@ def layer_norm_kernel(
         w = tl.load(W + cols, col_mask)
         b = tl.load(B + cols, col_mask)
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        x_hat = (x - mean) * rstd
-        y = x_hat * w + b
-        # Write output
-        tl.store(Y + cols, y, mask=mask)
-
-
-@libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
-@triton.jit
-def layer_norm_welford_kernel(
-    X,
-    Y,
-    W,
-    B,
-    Mean,  # pointer to the mean
-    Rstd,  # pointer to the 1/std
-    M,
-    N,
-    eps,
-    BLOCK_ROW_SIZE: tl.constexpr,
-    BLOCK_COL_SIZE: tl.constexpr,
-):
-    # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
-    row = pid * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    row_mask = row < M
-    X += row * N
-    Y += row * N
-
-    # Compute mean and variance
-    mean = tl.zeros([BLOCK_ROW_SIZE, 1], dtype=tl.float32)
-    var = tl.zeros([BLOCK_ROW_SIZE, 1], dtype=tl.float32)
-    # welford
-    for off in range(0, N):
-        a = tl.load(X + off).to(tl.float32)
-        delta = a - mean
-        mean += delta / (off + 1)
-        var += (a - mean) * delta
-    var /= N
-    rstd = 1.0 / tl.sqrt(var + eps)
-    # Write mean / rstd
-    tl.store(Mean + row, mean, mask=row_mask)
-    tl.store(Rstd + row, rstd, mask=row_mask)
-
-    # Normalize and apply linear transformation
-    for off in range(0, N, BLOCK_COL_SIZE):
-        cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
-
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        x_hat = (x - mean) * rstd
-        w = tl.load(W + cols, col_mask)
-        b = tl.load(B + cols, col_mask)
+        x = tl.where(col_mask, x - mean, 0.0)
+        x_hat = x * rstd
         y = x_hat * w + b
         # Write output
         tl.store(Y + cols, y, mask=mask)
@@ -177,7 +125,8 @@ def layer_norm_backward_kernel(
         mask = row_mask and col_mask
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
-        x_hat = (x - mean) * rstd
+        x = tl.where(col_mask, x - mean, 0.0)
+        x_hat = x * rstd
         w = tl.load(W + cols, mask=cols < N).to(tl.float32)
         dx_hat = dy * w
         dx_part2 += dx_hat
@@ -193,7 +142,8 @@ def layer_norm_backward_kernel(
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
         w = tl.load(W + cols, mask=cols < N).to(tl.float32)
-        x_hat = (x - mean) * rstd
+        x = tl.where(col_mask, x - mean, 0.0)
+        x_hat = x * rstd
         dx_hat = dy * w
         dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / N)
         tl.store(dX + cols, dx, mask=mask)
@@ -237,7 +187,8 @@ def weight_bias_backward_kernel(
         x = tl.load(X + rows[:, None] * N, mask).to(tl.float32)
         mean = tl.load(Mean + rows, mask=rows < M)[:, None].to(tl.float32)
         rstd = tl.load(Rstd + rows, mask=rows < M)[:, None].to(tl.float32)
-        x_hat = (x - mean) * rstd
+        x = tl.where(col_mask, x - mean, 0.0)
+        x_hat = x * rstd
         accW += dy * x_hat
         accB += dy
     dw = tl.sum(accW, axis=0)

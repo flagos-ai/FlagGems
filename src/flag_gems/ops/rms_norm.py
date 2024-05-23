@@ -28,7 +28,7 @@ def rms_norm_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
 
-    var = tl.sum(x * x / N, axis=0)
+    var = tl.sum(x * x, axis=0) / N
     rrms = 1 / tl.sqrt(var + eps)
 
     w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
@@ -49,7 +49,7 @@ class RmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        rms_norm_kernel[M, ](y, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
+        rms_norm_kernel[M,](y, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
         return y
 
 

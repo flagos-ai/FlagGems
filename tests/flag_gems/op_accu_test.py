@@ -226,6 +226,28 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
+@pytest.mark.parametrize("isnone", [None, "max", "min"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_clamp(shape, isnone, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    maxi = torch.randn(shape, dtype=dtype, device="cuda")
+    mini = torch.randn(shape, dtype=dtype, device="cuda")
+    if isnone == "min":
+        mini = None
+    elif isnone == "max":
+        maxi = None
+
+    ref_out = torch.clamp(inp, min=mini, max=maxi)
+    with flag_gems.use_gems():
+        res_out = torch.clamp(inp, min=mini, max=maxi)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_cos(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
@@ -577,11 +599,10 @@ def test_accuracy_rmsnorm(shape, dtype):
     ref_inp = inp.to(torch.float64)
     ref_weight = weight.to(torch.float64)
 
-
-    def _torch_rms_norm(x, weight, eps): 
+    def _torch_rms_norm(x, weight, eps):
         variance = x.pow(2).mean(-1, keepdim=True)
         hidden_states = x * torch.rsqrt(variance + eps)
-        return weight * hidden_states 
+        return weight * hidden_states
 
     ref_out = _torch_rms_norm(
         ref_inp,
@@ -589,12 +610,9 @@ def test_accuracy_rmsnorm(shape, dtype):
         eps=eps,
     )
 
-    res_out = flag_gems.rms_norm(
-        inp, list(layer_shape), weight=weight, eps=eps
-    )
+    res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
     allclose_with_dtype(res_out, ref_out, dtype)
-    
 
 
 @pytest.mark.parametrize(
