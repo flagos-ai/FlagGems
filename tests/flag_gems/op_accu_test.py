@@ -365,6 +365,9 @@ def test_accuracy_dropout(shape, dtype, p):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.dropout(inp, p, True)
 
+    # nz_ref = torch.sum(ref_out == 0.0)
+    # nz_res = torch.sum(res_out == 0.0)
+
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
     assert (
