@@ -3,6 +3,7 @@ import torch
 import time
 import triton
 import random
+import op_accu_test
 from flag_gems import *
 
 
@@ -464,6 +465,26 @@ def bench_triu(op, M, N, diagonal, dtype):
     return ms
 
 
+rope_bench = Benchmark("rope")
+rope_bench.bench_params(dtype=f16_f32_bf)
+rope_bench.provider_ops(
+    gem=apply_rotary_pos_emb, torch=op_accu_test.torch_apply_rotary_pos_emb
+)
+rope_bench.arg_names("M")
+rope_bench.arg_vals(sizes)
+rope_bench.extra_args(num_heads=16, head_dim=128, max_seq_len=2048)
+
+
+@rope_bench.perf
+def bench_rope(op, M, num_heads, head_dim, max_seq_len, dtype):
+    q = torch.randn((M, num_heads, head_dim), dtype=dtype, device="cuda")
+    k = torch.randn((M, num_heads, head_dim), dtype=dtype, device="cuda")
+    position_ids = torch.randint(1, max_seq_len, (M,), device="cuda")
+    cos = torch.randn((max_seq_len, head_dim // 2), dtype=dtype, device="cuda")
+    sin = torch.randn((max_seq_len, head_dim // 2), dtype=dtype, device="cuda")
+    ms = run_bench(op, q, k, cos, sin, position_ids)
+
+
 silu_and_mul_bench = Benchmark("silu_and_mul")
 silu_and_mul_bench.bench_params(dtype=f16_f32_bf)
 silu_and_mul_bench.provider_ops(
@@ -527,5 +548,6 @@ bench_softmax.run(print_data=True)
 bench_sub.run(print_data=True)
 bench_sub_scalar.run(print_data=True)
 bench_triu.run(print_data=True)
+bench_rope.run(print_data=True)
 bench_silu_and_mul.run(print_data=True)
 bench_gelu_and_mul.run(print_data=True)
