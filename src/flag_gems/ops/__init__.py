@@ -1,3 +1,5 @@
+from .all import all, all_dim, all_dims
+from .any import any, any_dim, any_dims
 from .abs import abs
 from .add import add
 from .addmm import addmm
@@ -48,6 +50,12 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 
 __all__ = [
+    "all",
+    "all_dim",
+    "all_dims",
+    "any",
+    "any_dim",
+    "any_dims",
     "add",
     "abs",
     "addmm",
