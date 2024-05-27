@@ -23,7 +23,7 @@ def prod_kernel_mid(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
     mid_value = tl.reduce(inp_val, axis=0, combine_fn=reduce_mul)
     mid_ptr = mid + pid
     tl.store(mid_ptr, mid_value.to(inp_val.dtype))
@@ -35,7 +35,7 @@ def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=1.0)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=1.0).to(tl.float32)
     prod_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_mul)
     tl.store(out, prod_val)
 
@@ -97,7 +97,7 @@ def prod_kernel(
     mask1 = m_offset < M
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
     result_index = tl.reduce(inp_vals, axis=1, combine_fn=reduce_mul)
 
     out_ptrs = out + offset_index
