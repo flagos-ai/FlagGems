@@ -261,7 +261,7 @@ def generate_functional_pointwise_wrapper(
         # output allocation
         num_output_tensor_index = 0
         for i in range(op_desc.num_outputs()):
-            if op_desc.input_type(i) is None:
+            if op_desc.output_dtype(i) is None:
                 code.writeline(f"out{num_output_tensor_index} = torch.empty(shape, dtype=in0.dtype, device=in0.device)")
             else:
                 code.writeline(f"out{num_output_tensor_index} = torch.empty(shape, dtype={_type_name(op_desc.output_dtype(i))}, device=in0.device)")
@@ -623,6 +623,7 @@ if __name__ == "__main__":
     out2 = x * 2.0 + y
     print(out1)
     print(out2)
+    torch.testing.assert_close(out1, out2)
     print()
 
     @pointwise_dynamic(is_tensor=[True, False, True])
@@ -634,6 +635,7 @@ if __name__ == "__main__":
     out2 = x * 2.0 + y
     print(out1)
     print(out2)
+    torch.testing.assert_close(out1, out2)
     print()
 
 
@@ -646,6 +648,7 @@ if __name__ == "__main__":
     out2 = x > y
     print(out1)
     print(out2)
+    torch.testing.assert_close(out1, out2)
     print()
 
     @pointwise_dynamic()
@@ -657,6 +660,7 @@ if __name__ == "__main__":
     out2 = torch.sin(x) + torch.cos(y)
     print(out1)
     print(out2)
+    torch.testing.assert_close(out1, out2)
     print()
 
     @pointwise_dynamic
@@ -668,6 +672,7 @@ if __name__ == "__main__":
     out2 = torch.sin(x) + torch.cos(y)
     print(out1)
     print(out2)
+    torch.testing.assert_close(out1, out2)
     print()
 
     @pointwise_dynamic
@@ -681,5 +686,6 @@ if __name__ == "__main__":
     out2 = torch.sin(x) + torch.cos(y)
     print(out1)
     print(out2)
+    torch.testing.assert_close(out1, out2)
     print()
 
