@@ -2,6 +2,11 @@ import torch
 import pytest
 import flag_gems
 
+
+major, minor = torch.__version__.split(".")[:2]
+skip_expr = major < "2" or minor < "2"
+
+
 RESOLUTION = {
     torch.float16: 1e-3,
     torch.float32: 1.3e-6,
@@ -167,6 +172,48 @@ def test_accuracy_bitwiseand(shape, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
+@pytest.mark.parametrize(
+    "scalar",
+    [0x000f, 0x7fff, -0x00ff],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseand_scalar(shape, scalar, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_and(inp1, scalar)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_and(inp1, scalar)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0x000f, 0x7fff, -0x00ff],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseand_scalar_tensor(shape, scalar, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_and(scalar, inp1)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_and(scalar, inp1)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
 @pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
 def test_accuracy_bitwisenot(shape, dtype):
     inp = torch.randint(
@@ -201,6 +248,48 @@ def test_accuracy_bitwiseor(shape, dtype):
 
 
 @pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0x000f, 0x7fff, -0x00ff],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseor_scalar(shape, scalar, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_or(inp1, scalar)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_or(inp1, scalar)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0x000f, 0x7fff, -0x00ff],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseor_scalar_tensor(shape, scalar, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_or(scalar, inp1)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_or(scalar, inp1)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
     "batch, M, N, K",
     [
         (1, 1024, 1024, 1024),
@@ -229,6 +318,29 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_clamp(shape, isnone, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    import random
+    maxi = random.random()
+    mini = random.random()
+    if isnone == "min":
+        mini = None
+    elif isnone == "max":
+        maxi = None
+
+    ref_out = torch.clamp(inp, min=mini, max=maxi)
+    with flag_gems.use_gems():
+        res_out = torch.clamp(inp, min=mini, max=maxi)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("isnone", [None, "max", "min"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_clamp_tensor(shape, isnone, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     maxi = torch.randn(shape, dtype=dtype, device="cuda")
     mini = torch.randn(shape, dtype=dtype, device="cuda")
@@ -389,6 +501,38 @@ def test_accuracy_dropout(shape, dtype, p):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_eq(shape, dtype):
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+    inp2 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.eq(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.eq(inp1, inp2)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_eq_scalar(shape, dtype):
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+    inp2 = 0
+
+    ref_out = torch.eq(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.eq(inp1, inp2)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_exp(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -397,6 +541,41 @@ def test_accuracy_exp(shape, dtype):
         res_out = torch.exp(inp)
 
     allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_ge(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.ge(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.ge(inp1, inp2)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0.5, 1.0, 100.9, -111.9],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_ge_scalar(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.ge(inp, scalar)
+    with flag_gems.use_gems():
+        res_out = torch.ge(inp, scalar)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
 @pytest.mark.parametrize(
@@ -471,11 +650,46 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_gt(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.gt(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gt(inp1, inp2)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0.5, 1.0, 100.9, -111.9],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_gt_scalar(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.gt(inp, scalar)
+    with flag_gems.use_gems():
+        res_out = torch.gt(inp, scalar)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_isinf(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     inp = torch.masked_fill(inp, inp > 1.0, -float("inf"))
 
-    ref_out = torch.isinf(inp.to(torch.float64))
+    ref_out = torch.isinf(inp)
     with flag_gems.use_gems():
         res_out = torch.isinf(inp)
 
@@ -491,7 +705,7 @@ def test_accuracy_isnan(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     inp = torch.masked_fill(inp, inp > 1.0, float("nan"))
 
-    ref_out = torch.isnan(inp.to(torch.float64))
+    ref_out = torch.isnan(inp)
     with flag_gems.use_gems():
         res_out = torch.isnan(inp)
 
@@ -546,6 +760,76 @@ def test_accuracy_layernorm(shape, dtype):
     allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
     allclose_with_dtype(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
     allclose_with_dtype(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_le(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.le(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.le(inp1, inp2)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0.5, 1.0, 100.9, -111.9],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_le_scalar(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.le(inp, scalar)
+    with flag_gems.use_gems():
+        res_out = torch.le(inp, scalar)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_lt(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.lt(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.lt(inp1, inp2)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0.5, 1.0, 100.9, -111.9],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_lt_scalar(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.lt(inp, scalar)
+    with flag_gems.use_gems():
+        res_out = torch.lt(inp, scalar)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
 @pytest.mark.parametrize(
@@ -728,6 +1012,29 @@ def test_accuracy_mul(shape, dtype):
 
 
 @pytest.mark.parametrize(
+    "shape",
+    [
+        (256, 256),
+        (1024, 1024),
+        (1024, 128),
+        (1024, 64),
+        (640, 256),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_mv(shape, dtype):
+    N, M = shape
+    matrix = torch.randn((N, M), dtype=dtype, device="cuda")
+    vector = torch.randn((M,), dtype=dtype, device="cuda")
+
+    ref_out = torch.mv(matrix.to(torch.float64), vector.to(torch.float64))
+    with flag_gems.use_gems():
+        res_out = torch.mv(matrix, vector)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
     "shape_a",
     [(16, 1024, 256)],
 )
@@ -785,6 +1092,38 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
         res_out = torch.mul(inp1, inp2)
 
     allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_ne(shape, dtype):
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+    inp2 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.ne(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.ne(inp1, inp2)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_ne_scalar(shape, dtype):
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+    inp2 = 0
+
+    ref_out = torch.ne(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.ne(inp1, inp2)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
 @pytest.mark.parametrize(
@@ -1514,6 +1853,7 @@ def test_accuracy_all(shape, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
+@pytest.mark.skipif(skip_expr, reason="PyTorch < 2.2.0 does not support")
 @pytest.mark.parametrize(
     "shape",
     [(i, j) for i in [2, 4096] for j in [2, 64, 1024]],
@@ -1534,6 +1874,7 @@ def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
     
 
+@pytest.mark.skipif(skip_expr, reason="PyTorch < 2.2.0 does not support")
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024, 16), (16, 128, 64, 64), (2, 3, 5)],
@@ -1573,6 +1914,7 @@ def test_accuracy_any(shape, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
+@pytest.mark.skipif(skip_expr, reason="PyTorch < 2.2.0 does not support")
 @pytest.mark.parametrize(
     "shape",
     [(i, j) for i in [2, 4096] for j in [2, 64, 1024]],
@@ -1593,6 +1935,7 @@ def test_accuracy_any_dim(shape, dim, keepdim, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
+@pytest.mark.skipif(skip_expr, reason="PyTorch < 2.2.0 does not support")
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024, 16), (16, 128, 64, 64), (2, 3, 5)],

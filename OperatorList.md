@@ -32,6 +32,7 @@ FlagGems will implement the following operators as planned. Version 1.0 will be 
 
 ## v2.0
 
+- mv
 - all
 - any
 - bitwise_and
@@ -41,7 +42,6 @@ FlagGems will implement the following operators as planned. Version 1.0 will be 
 - eq
 - ge
 - gt
-- is_nonzero
 - isinf
 - isnan
 - le
