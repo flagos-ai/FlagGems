@@ -361,7 +361,11 @@ def generate_pointwise_kernel(
     code: IndentedBuffer
 ) -> IndentedBuffer:
     code.writeline("@libentry()")
-    code.writeline("@triton.jit")
+    if op_desc.num_non_tensor_args() > 0:
+        non_specialize_arg_names = [f"val{i}" for i in range(op_desc.num_non_tensor_args())]
+        code.writeline(f"@triton.jit(do_not_specialize={non_specialize_arg_names})")
+    else:
+        code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
 
     function_ns = NameSpace()
@@ -373,7 +377,7 @@ def generate_pointwise_kernel(
         # inputs ptrs & non tensor inputs
         for i in range(op_desc.num_inputs()):
             if op_desc.is_tensor(i):
-                code.writeline(f"in{input_tensor_index}_ptr: tl.pointer_type,")
+                code.writeline(f"in{input_tensor_index}_ptr: tl.tensor, # of tl.pointer_type")
                 function_ns.create_name(f"in{input_tensor_index}_ptr")
                 input_tensor_index += 1
             else:
@@ -386,7 +390,7 @@ def generate_pointwise_kernel(
 
         # output ptrs
         for i in range(op_desc.num_outputs()):
-            code.writeline(f"out{output_tensor_index}_ptr: tl.pointer_type,")
+            code.writeline(f"out{output_tensor_index}_ptr: tl.tensor, # of tl.pointer_type")
             function_ns.create_name(f"out{output_tensor_index}_ptr")
             output_tensor_index += 1
 
@@ -684,6 +688,21 @@ if __name__ == "__main__":
     y = torch.tensor(2.0, device="cuda")
     out1 = ordinary2(x, y)
     out2 = torch.sin(x) + torch.cos(y)
+    print(out1)
+    print(out2)
+    torch.testing.assert_close(out1, out2)
+    print()
+
+    @pointwise_dynamic(is_tensor=[True, False], output_dtypes=[torch.bool])
+    @triton.jit
+    def eq(x, y):
+        return x.to(tl.float32) == y.to(tl.float32) # ensures that y is not used for specialization
+    x = torch.arange(10, device="cuda")
+    y = 1
+    # by default value 1 is treated as constexpr even thought it is not marked as constexpr
+    # do_not_specialize avoids this
+    out1 = eq(x, y)
+    out2 = x == y
     print(out1)
     print(out2)
     torch.testing.assert_close(out1, out2)
