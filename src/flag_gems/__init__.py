@@ -84,6 +84,7 @@ def enable(lib=aten_lib):
     lib.impl("any.dims", any_dims, "CUDA")
     lib.impl("log_softmax.int", log_softmax, "AutogradCUDA")
     lib.impl("outer", outer, "AutogradCUDA")
+    lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradCUDA")
 
 
 class use_gems:

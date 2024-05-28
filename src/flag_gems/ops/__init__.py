@@ -52,6 +52,7 @@ from .argmax import argmax
 from .prod import prod, prod_dim
 from .log_softmax import log_softmax
 from .outer import outer
+from .cross_entropy_loss import cross_entropy_loss
 
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -132,4 +133,5 @@ __all__ = [
     "vector_norm",
     "log_softmax",
     "outer",
+    "cross_entropy_loss",
 ]

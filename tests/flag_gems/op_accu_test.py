@@ -1994,3 +1994,29 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
 
     allclose_with_dtype(res_out, ref_out, dtype)
 
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 30)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_cross_entropy_loss(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    dim = 1
+    up_limit = shape[dim] - 1
+    target_shape = list(shape)
+    del target_shape[dim]
+    target = torch.randint(0, up_limit, target_shape, device="cuda")
+
+    ref_inp = inp.to(torch.float64)
+
+    criterion = torch.nn.CrossEntropyLoss()
+
+    ref_out = criterion(ref_inp, target)
+    with flag_gems.use_gems():
+        res_out = criterion(inp, target)
+    allclose_with_dtype(res_out, ref_out, dtype)
+    out_grad = torch.randn_like(res_out)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype)
