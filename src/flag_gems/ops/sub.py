@@ -32,7 +32,7 @@ def sub(A, B, *, alpha=1):
         O = sub_func_tensor_scalar(A, B, alpha)
         return O
     elif isinstance(B, torch.Tensor):
-        O = sub_func_scalar_tensor(A, B, alhpa)
+        O = sub_func_scalar_tensor(A, B, alpha)
         return O
     else:
         # Both scalar
