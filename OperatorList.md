@@ -1,7 +1,5 @@
 ## Operator List
 
-FlagGems will implement the following operators as planned. Version 1.0 will be released within 6 months. 
-
 ## v1.0
 - addmm
 - bmm

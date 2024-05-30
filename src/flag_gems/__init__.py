@@ -3,6 +3,8 @@ import torch
 from .ops import *
 from .fused import *
 
+__version__ = "2.0"
+
 aten_lib = torch.library.Library("aten", "IMPL")
 
 
