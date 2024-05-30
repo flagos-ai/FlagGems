@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry, pointwise_dynamic
+from ..utils import pointwise_dynamic
 
 
 @pointwise_dynamic
@@ -11,36 +11,10 @@ def mul_func(x, y):
     return x * y
 
 
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"M_BLOCK_SIZE": 256}, num_warps=2, num_stages=4),
-        triton.Config({"M_BLOCK_SIZE": 256}, num_warps=2, num_stages=5),
-        triton.Config({"M_BLOCK_SIZE": 512}, num_warps=2, num_stages=4),
-        triton.Config({"M_BLOCK_SIZE": 512}, num_warps=2, num_stages=5),
-        triton.Config({"M_BLOCK_SIZE": 1024}, num_warps=4, num_stages=4),
-        triton.Config({"M_BLOCK_SIZE": 1024}, num_warps=4, num_stages=5),
-        triton.Config({"M_BLOCK_SIZE": 2048}, num_warps=4, num_stages=4),
-        triton.Config({"M_BLOCK_SIZE": 2048}, num_warps=4, num_stages=5),
-    ],
-    key=["M"],
-)
+@pointwise_dynamic(is_tensor=[True, False])
 @triton.jit
-def mul_scalar_kernel(
-    X,
-    Y_scalar,
-    O,
-    M,
-    M_BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(0) * M_BLOCK_SIZE
-    offset = pid + tl.arange(0, M_BLOCK_SIZE)
-    mask = offset < M
-    X_ptrs = X + offset
-    O_ptrs = O + offset
-    X_val = tl.load(X_ptrs, mask=mask, other=0.0)
-    O_val = X_val * Y_scalar
-    tl.store(O_ptrs, O_val, mask=mask)
+def mul_func_scalar(x, y):
+    return x * y
 
 
 def mul(A, B):
@@ -49,18 +23,10 @@ def mul(A, B):
         O = mul_func(A, B)
         return O
     elif isinstance(A, torch.Tensor):
-        A = A.contiguous()
-        O = torch.empty_like(A)
-        M = A.numel()
-        grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-        mul_scalar_kernel[grid_fn](A, B, O, M)
+        O = mul_func_scalar(A, B)
         return O
     elif isinstance(B, torch.Tensor):
-        B = B.contiguous()
-        O = torch.empty_like(B)
-        M = B.numel()
-        grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-        mul_scalar_kernel[grid_fn](B, A, O, M)
+        O = mul_func_scalar(B, A)
         return O
     else:
         # Both scalar

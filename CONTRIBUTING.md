@@ -24,11 +24,9 @@ FlagGems
 │   │   ├──ops: single operators
 │   │   ├──fused: fused operators
 │   │   ├──__init__.py
-├── tests
-│   ├──flag_gems
-│   │   ├──model_bert_test.py: test for BERT model running with flag_gems
-│   │   ├──op_accu_test.py: test for accuracy of operators
-│   │   ├──op_perf_test.py: test for performance of operators
+├── tests: accuracy test files
+├── benchmark: performance test files
+├── examples: model test files
 ├── LICENSE
 ├── README.md
 ├── README_cn.md

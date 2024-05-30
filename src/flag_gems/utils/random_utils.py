@@ -1,5 +1,6 @@
 import torch
 
+
 # This function is roughly a python wrapper of CUDAGeneratorImpl::philox_cuda_state in Pytorch.
 # https://github.com/pytorch/pytorch/blob/8a4597980c2692b73f35fb3c7145eaeaf2273e77/aten/src/ATen/cuda/CUDAGeneratorImpl.cpp#L452
 # It returns the current state of the default Philox RNG in seed and offset and

@@ -28,13 +28,12 @@ def skip_rms_norm_kernel(
     X += pid * x_stride_r
     R += pid * r_stride_r
 
-
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
     x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
     r = tl.load(R + cols * r_stride_c, mask, other=0.0).to(tl.float32)
 
-    x += r 
+    x += r
 
     var = tl.sum(x * x / N, axis=0)
     rrms = 1 / tl.sqrt(var + eps)
@@ -58,7 +57,9 @@ class SkipRmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        skip_rms_norm_kernel[M, ](y, x, residual, weight, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE)
+        skip_rms_norm_kernel[M,](
+            y, x, residual, weight, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
+        )
         return y
 
 

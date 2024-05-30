@@ -41,7 +41,7 @@ def enable(lib=aten_lib):
     lib.impl("lt.Tensor", lt, "CUDA")
     lib.impl("lt.Scalar", lt_scalar, "CUDA")
     lib.impl("rms_norm", rms_norm, "CUDA")
-    
+
     lib.impl("mean", mean, "CUDA")
     lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")

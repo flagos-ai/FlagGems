@@ -113,7 +113,9 @@ class NativeDropout(torch.autograd.Function):
         grad_inputs = torch.empty_like(grad_outputs)
         N = grad_outputs.numel()
         grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
-        dropout_backward_kernel[grid_fn](grad_outputs, grad_inputs, N, ctx.p, ctx.philox_seed, ctx.philox_offset)
+        dropout_backward_kernel[grid_fn](
+            grad_outputs, grad_inputs, N, ctx.p, ctx.philox_seed, ctx.philox_offset
+        )
         return grad_inputs, None, None
 
 

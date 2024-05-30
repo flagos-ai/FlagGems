@@ -106,9 +106,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-    )
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     sum_kernel[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)

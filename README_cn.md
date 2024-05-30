@@ -13,13 +13,19 @@ FlagGems通过对PyTorch的后端aten算子进行覆盖重写，实现算子库�
 - 支持pointwise类算子：abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu  
 - 支持reduction类算子：cumsum, layernorm, mean, softmax  
 
+### v2.0
+- 支持BLAS类算子: mv, outer  
+- 支持pointwise类算子: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid  
+- 支持reduction类算子: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm  
+- 支持融合算子: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding  
+
 ## 快速入门
 
 ### 依赖
 
 1. Triton >= 2.2.0  
 2. PyTorch >= 2.1.2  
-3. Transformers >= 4.31.0  
+3. Transformers >= 4.40.2  
 
 ### 安装  
 
@@ -60,27 +66,40 @@ pip install .
 
 ### 执行
 
-1. 运行测试  
-    - 算子正确性测试  
+1. 算子正确性测试  
+    - 在CUDA上运行参考实现  
         ```shell
         cd tests/flag_gems
         pytest op_accu_test.py
         ```
-    - 模型正确性测试  
+    - 在CPU上运行参考实现  
         ```shell
-        cd tests/flag_gems
-        pytest model_bert_test.py
+        cd tests
+        pytest test_xx_ops.py --device cpu
         ```
-    - 算子性能测试  
+2. 模型正确性测试  
+    ```shell
+    cd examples
+    pytest model_xx_test.py
+    ```
+
+3. 算子性能测试  
+    - 测试CUDA性能  
         ```shell
-        cd tests/flag_gems
-        python op_perf_test.py
+        cd benchmark
+        pytest test_xx_perf.py -s
+        ```
+    - 测试端到端性能  
+        ```shell
+        cd benchmark
+        pytest test_xx_perf.py -s --mode cpu
         ```
 
 2. 运行时打印日志信息  
     ```shell
     pytest program.py --log-cli-level debug
     ```
+    测试性能时不建议打开。  
 
 ## 支持算子
 
@@ -88,9 +107,8 @@ pip install .
 
 ## 支持模型
 
-| Model | float16 | float32 | bfloat16 |
-| :---: | :---: | :---: | :---: |
-| Bert_base | ✓ | ✓ | ✓ |
+- Bert-base-uncased  
+- Llama-2-7b  
 
 ## 支持平台
 

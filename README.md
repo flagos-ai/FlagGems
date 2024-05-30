@@ -14,13 +14,19 @@ By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless
 - support pointwise operators: abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu  
 - support reduction operators: cumsum, layernorm, mean, softmax  
 
+### v2.0
+- support BLAS operator: mv, outer  
+- support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid  
+- support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm  
+- support fused operators: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding  
+
 ## Quick Start
 
 ### Requirements
 
 1. Triton >= 2.2.0  
 2. PyTorch >= 2.1.2  
-3. Transformers >= 4.31.0  
+3. Transformers >= 4.40.2  
 
 ### Installation  
 
@@ -61,27 +67,41 @@ pip install .
 
 ### Execute
 
-1. Run Tests  
-    - Operator Accuracy  
+1. Test Operator Accuracy  
+    - Run reference on cuda  
         ```shell
-        cd tests/flag_gems
-        pytest op_accu_test.py
+        cd tests
+        pytest test_xx_ops.py
         ```
-    - Model Accuracy  
+    - Run reference on cpu  
         ```shell
-        cd tests/flag_gems
-        pytest model_bert_test.py
-        ```
-    - Operator Performance  
-        ```shell
-        cd tests/flag_gems
-        python op_perf_test.py
+        cd tests
+        pytest test_xx_ops.py --device cpu
         ```
 
-2. Run tests with logging infomation  
+2. Test Model Accuracy  
+    ```shell
+    cd examples
+    pytest model_xx_test.py
+    ```
+
+3. Test Operator Performance  
+    - Test CUDA performance  
+        ```shell
+        cd benchmark
+        pytest test_xx_perf.py -s
+        ```
+    - Test end-to-end performance  
+        ```shell
+        cd benchmark
+        pytest test_xx_perf.py -s --mode cpu
+        ```
+
+4. Run tests with logging infomation  
     ```shell
     pytest program.py --log-cli-level debug
     ```
+    Not recommended in performance testing.  
 
 ## Supported Operators
 
@@ -89,9 +109,8 @@ Operators will be implemented according to [OperatorList.md](https://github.com/
 
 ## Supported Models
 
-| Model | float16 | float32 | bfloat16 |
-| :---: | :---: | :---: | :---: |
-| Bert_base | ✓ | ✓ | ✓ |
+- Bert-base-uncased  
+- Llama-2-7b  
 
 ## Supported Platforms
 

@@ -3,7 +3,11 @@ from .any import any, any_dim, any_dims
 from .abs import abs
 from .add import add
 from .addmm import addmm
-from .bitwise_and import bitwise_and_tensor, bitwise_and_scalar, bitwise_and_scalar_tensor
+from .bitwise_and import (
+    bitwise_and_tensor,
+    bitwise_and_scalar,
+    bitwise_and_scalar_tensor,
+)
 from .bitwise_not import bitwise_not
 from .bitwise_or import bitwise_or_tensor, bitwise_or_scalar, bitwise_or_scalar_tensor
 from .bmm import bmm
@@ -30,9 +34,7 @@ from .mul import mul
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
-from .pow_scalar import pow_scalar
-from .pow_tensor_scalar import pow_tensor_scalar
-from .pow_tensor_tensor import pow_tensor_tensor
+from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .reciprocal import reciprocal
 from .relu import relu
 from .rsqrt import rsqrt

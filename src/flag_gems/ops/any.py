@@ -8,7 +8,7 @@ import logging
 
 # torch.any: Tests if any elements in input evaluate to True.
 #            If the dtype of input is not BOOL, then test if any elements in input evaluate to non-zero value
-# In triton function, test if any elements in input evaluate to non-zero value is ok. 
+# In triton function, test if any elements in input evaluate to non-zero value is ok.
 def cfggen():
     block_m = [1, 2, 4, 8]
     configs = [
@@ -58,7 +58,7 @@ def any_kernel_1(
     inp,
     mid,
     n_elements,
-    mid_size, 
+    mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -107,7 +107,7 @@ def any_dim(inp, dim=None, keepdim=False):
         if keepdim:
             out = torch.reshape(out, [1] * inp.ndim)
     else:
-        assert (dim >= -inp.ndim and dim < inp.ndim) , "Invalid dim" 
+        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
         order = list(range(0, inp.ndim))
         order.remove(dim)
@@ -119,9 +119,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-        )
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         any_kernel_dim[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
@@ -132,7 +130,7 @@ def any_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS ANY DIMS")
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
-    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
+    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
@@ -146,9 +144,7 @@ def any_dims(inp, dim=None, keepdim=False):
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-    )
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     any_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
