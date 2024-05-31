@@ -26,10 +26,6 @@ jobs:
         run: |
           pytest -s tests/test_*
 
-      - name: benchmark-flag-gems
-        run: |
-          pytest -s benchmark/test_*
-
       - name: examples-flag-gems
         run: |
           pytest -s examples/model_*
