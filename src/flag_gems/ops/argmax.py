@@ -35,8 +35,8 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     mid_ptrs = mid_value + offset
     mask = offset < mid_size
     mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
-    sum_val = tl.argmax(mid_val, axis=0)
-    mid_index_ptrs = mid_index + sum_val
+    index_val = tl.argmax(mid_val, axis=0)
+    mid_index_ptrs = mid_index + index_val
     out_val = tl.load(mid_index_ptrs)
     tl.store(out, out_val)
 

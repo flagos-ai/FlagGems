@@ -143,9 +143,12 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.parametrize("size_average", [None, True, False])
+@pytest.mark.parametrize("reduce", [None, True, False])
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_cross_entropy_loss(shape, dtype):
+def test_accuracy_cross_entropy_loss(shape, dtype, size_average, reduce, reduction):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     dim = 1
     up_limit = shape[dim] - 1
@@ -156,7 +159,9 @@ def test_accuracy_cross_entropy_loss(shape, dtype):
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
 
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(
+        size_average=size_average, reduce=reduce, reduction=reduction
+    )
 
     ref_out = criterion(ref_inp, ref_target)
     with flag_gems.use_gems():

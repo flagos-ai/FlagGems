@@ -20,9 +20,9 @@ def max_kernel_1(
     inp_ptrs = inp + offset
     mask = offset < M
     inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    sum_val = tl.max(inp_val)
+    max_val = tl.max(inp_val)
     mid_ptr = mid + pid
-    tl.store(mid_ptr, sum_val)
+    tl.store(mid_ptr, max_val)
 
 
 @libentry()
@@ -32,8 +32,8 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     mid_ptrs = mid + offset
     mask = offset < mid_size
     mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
-    sum_val = tl.max(mid_val)
-    tl.store(out, sum_val)
+    max_val = tl.max(mid_val)
+    tl.store(out, max_val)
 
 
 @libentry()
