@@ -32,7 +32,7 @@ jobs:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
         - 82
-      options: --gpus all --hostname flag-gems_cicd_model
+      options: --gpus all --hostname flag-gems_cicd_model -v /home/flaggems_cicd/huggingface_cache_bert:/__w/_temp/_github_home/.cache/huggingface
     steps:
       - name: checkout-code
         uses: actions/checkout@v2
