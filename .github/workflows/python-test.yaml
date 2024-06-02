@@ -20,11 +20,15 @@ jobs:
       options: --gpus all --hostname flag-gems_cicd_ut
     steps:
       - name: checkout-code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: unit_test-flag-gems
         run: |
-          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_*
+          pytest -s tests/test_unary_pointwise_ops.py
+          pytest -s tests/test_binary_pointwise_ops.py
+          pytest -s tests/test_blas_ops.py
+          pytest -s tests/test_reduction_ops.py
+          pytest -s tests/test_special_ops.py
   
   container-model-test:
     runs-on: [self-hosted, docker]
@@ -39,4 +43,4 @@ jobs:
 
       - name: examples-flag-gems
         run: |
-          CUDA_VISIBLE_DEVICES=1 pytest -s examples/model_bert_test.py
+          pytest -s examples/model_bert_test.py
