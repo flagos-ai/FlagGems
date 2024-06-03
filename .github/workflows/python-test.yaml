@@ -13,7 +13,7 @@ on:
 jobs:
   container-unit-test:
     runs-on: [self-hosted, docker]
-    timeout-minutes: 5
+    timeout-minutes: 30
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
@@ -25,11 +25,14 @@ jobs:
 
       - name: unit_test-flag-gems
         run: |
-          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &
-          CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_binary_pointwise_ops.py &
-          CUDA_VISIBLE_DEVICES=2 pytest -s tests/test_blas_ops.py &
-          CUDA_VISIBLE_DEVICES=3 pytest -s tests/test_reduction_ops.py &
-          CUDA_VISIBLE_DEVICES=4 pytest -s tests/test_special_ops.py
+          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py & pids[0]=$!
+          CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_binary_pointwise_ops.py & pids[1]=$!
+          CUDA_VISIBLE_DEVICES=2 pytest -s tests/test_blas_ops.py & pids[2]=$!
+          CUDA_VISIBLE_DEVICES=3 pytest -s tests/test_reduction_ops.py & pids[3]=$!
+          CUDA_VISIBLE_DEVICES=4 pytest -s tests/test_special_ops.py & pids[4]=$!
+          for pid in "${pids[@]}"; do
+            wait $pid
+          done
   
   container-model-test:
     runs-on: [self-hosted, docker]
