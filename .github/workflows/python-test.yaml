@@ -18,28 +18,17 @@ jobs:
       ports:
         - 81
       options: --gpus all --hostname flag-gems_cicd_ut
-    strategy:
-      max-parallel: 5
-      matrix:
-        device: [0, 1, 2, 3, 4]
-        include: 
-          - file: test_unary_pointwise_ops.py
-            device : 0
-          - file: test_binary_pointwise_ops.py
-            device : 1
-          - file: test_blas_ops.py
-            device : 2
-          - file: test_reduction_ops.py
-            device : 3
-          - file: test_special_ops.py
-            device : 4
     steps:
       - name: checkout-code
         uses: actions/checkout@v4
 
       - name: unit_test-flag-gems
         run: |
-          CUDA_VISIBLE_DEVICES= ${{ matrix.device }} pytest -s tests/${{ matrix.file }}
+          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py
+          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_binary_pointwise_ops.py
+          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_blas_ops.py
+          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_reduction_ops.py
+          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_special_ops.py
   
   container-model-test:
     runs-on: [self-hosted, docker]
@@ -54,4 +43,4 @@ jobs:
 
       - name: examples-flag-gems
         run: |
-          CUDA_VISIBLE_DEVICES=5 pytest -s examples/model_bert_test.py
+          CUDA_VISIBLE_DEVICES=1 pytest -s examples/model_bert_test.py
