@@ -24,11 +24,11 @@ jobs:
 
       - name: unit_test-flag-gems
         run: |
-          pytest -s tests/test_unary_pointwise_ops.py
-          pytest -s tests/test_binary_pointwise_ops.py
-          pytest -s tests/test_blas_ops.py
-          pytest -s tests/test_reduction_ops.py
-          pytest -s tests/test_special_ops.py
+          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &
+          CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_binary_pointwise_ops.py &
+          CUDA_VISIBLE_DEVICES=2 pytest -s tests/test_blas_ops.py &
+          CUDA_VISIBLE_DEVICES=3 pytest -s tests/test_reduction_ops.py &
+          CUDA_VISIBLE_DEVICES=4 pytest -s tests/test_special_ops.py
   
   container-model-test:
     runs-on: [self-hosted, docker]
@@ -43,4 +43,4 @@ jobs:
 
       - name: examples-flag-gems
         run: |
-          pytest -s examples/model_bert_test.py
+          CUDA_VISIBLE_DEVICES=5 pytest -s examples/model_bert_test.py
