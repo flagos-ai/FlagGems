@@ -194,3 +194,9 @@ def outer_args(dtype, batch, size):
     inp1 = torch.randn([size], dtype=dtype, device="cuda")
     inp2 = torch.randn([size], dtype=dtype, device="cuda")
     return inp1, inp2
+
+def where_args(dtype,batch, size):
+    inp1 = torch.randn([size], dtype=dtype, device="cuda")
+    inp2 = torch.randn([size], dtype=dtype, device="cuda")
+    condition = inp1 > 0
+    return condition, inp1, inp2

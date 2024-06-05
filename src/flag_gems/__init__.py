@@ -67,6 +67,7 @@ def enable(lib=aten_lib):
     lib.impl("triu", triu, "CUDA")
     lib.impl("var_mean.correction", var_mean, "CUDA")
     lib.impl("linalg_vector_norm", vector_norm, "CUDA")
+    lib.impl("where.self", where, "CUDA")
 
     lib.impl("max", max, "CUDA")
     lib.impl("max.dim", max_dim, "CUDA")
