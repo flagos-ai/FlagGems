@@ -7,6 +7,45 @@ FlagGems is a high-performance general operator library implemented in [OpenAI T
 By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing users to switch to the Triton function library without the need to modify their model code. Users can still utilize the ATen backend as usual while experiencing significant performance enhancement. The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.  
 
 
+## Feature
+
+### Automatic Codegen
+
+In FlagGems, we provide automatic code generation that developers can use to conveniently generate pointwise single operators and pointwise fused operators. Automatic code generation can handle various needs such as normal pointwise computations, non-tensor arguments, and specifying output data types.
+
+#### Normal Pointwise Operator
+
+Decorating the pointwise operator function with `pointwise_dynamic` can save the manual handling of tensor addressing, tensor read/write, parallel tiling, tensor broadcasting, dynamic dimensions, non-contiguous storage, etc. For example, in the following code, developers only need to describe the computational logic to generate flexible and efficient Triton code.
+
+```python
+@pointwise_dynamic
+@triton.jit
+def abs_func(x):
+    return tl.abs(x)
+```
+
+#### Non-Tensor Argument
+
+By default, `pointwise_dynamic` treats all parameters as tensors, and by passing a list of boolean values to the parameter `is_tensor`, developers can specify which parameters are tensors and which are not. Additionally, developers can pass in `dtypes` to indicate the data types of non-tensor parameters, but this is not required. For example, in the following code, the `alpha` parameter is defined as a non-tensor floating point number, while the `x` and `y` parameters are defined as tensors.
+
+```python
+@pointwise_dynamic(is_tensor=[True, True, False], dtypes=[None, None, float])
+@triton.jit
+def add_func(x, y, alpha):
+    return x + y * alpha
+```
+
+#### Output Data Type
+
+By default, all output tensors have the same data type as the first input tensor, but it can also be customized by providing a list of data types to the parameter `output_dtypes`. For example, in the following code, the output tensor type is specified as `torch.bool`.
+
+```python
+@pointwise_dynamic(output_dtypes=[torch.bool])
+@triton.jit
+def ge(x, y):
+    return x > y
+```
+
 ## Changelog
 
 ### v1.0
