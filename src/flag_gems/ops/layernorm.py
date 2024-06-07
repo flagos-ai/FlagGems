@@ -125,15 +125,15 @@ def layer_norm_backward_kernel(
         mask = row_mask and col_mask
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
-        x = tl.where(col_mask, x - mean, 0.0)
+        x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
         w = tl.load(W + cols, mask=cols < N).to(tl.float32)
         dx_hat = dy * w
         dx_part2 += dx_hat
         dx_part3 += dx_hat * x_hat
 
-    dx_2 = tl.sum(dx_part2)
-    dx_3 = tl.sum(dx_part3)
+    dx_2 = tl.sum(dx_part2, axis=1, keep_dims=True)
+    dx_3 = tl.sum(dx_part3, axis=1, keep_dims=True)
 
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
@@ -142,7 +142,7 @@ def layer_norm_backward_kernel(
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
         w = tl.load(W + cols, mask=cols < N).to(tl.float32)
-        x = tl.where(col_mask, x - mean, 0.0)
+        x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
         dx_hat = dy * w
         dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / N)
@@ -226,7 +226,7 @@ class LayerNorm(torch.autograd.Function):
         M = ctx.M
         N = ctx.N
         in_grad = torch.empty_like(x)
-        grid = (M, 1, 1)
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
         layer_norm_backward_kernel[grid](out_grad, x, weight, mean, rstd, in_grad, M, N)
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
         weight_grad = torch.empty_like(weight)
