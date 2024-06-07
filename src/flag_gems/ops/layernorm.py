@@ -132,8 +132,8 @@ def layer_norm_backward_kernel(
         dx_part2 += dx_hat
         dx_part3 += dx_hat * x_hat
 
-    dx_2 = tl.sum(dx_part2, axis=1, keep_dims=True)
-    dx_3 = tl.sum(dx_part3, axis=1, keep_dims=True)
+    dx_2 = tl.sum(dx_part2, axis=1)[:, None]
+    dx_3 = tl.sum(dx_part3, axis=1)[:, None]
 
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
