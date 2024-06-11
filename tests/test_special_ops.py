@@ -2,6 +2,7 @@ import torch
 import pytest
 import flag_gems
 from .accuracy_utils import *
+from typing import Optional
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -68,13 +69,17 @@ def torch_apply_rotary_pos_emb(
     k,
     cos,
     sin,
-    position_ids,
+    position_ids: Optional[torch.Tensor] = None,
     rotary_interleaved: bool = False,
 ):
     q = q.float()
     k = k.float()
-    cos = cos[position_ids].unsqueeze(-2)  # [bs, seq_len, 1, dim/2]
-    sin = sin[position_ids].unsqueeze(-2)  # [bs, seq_len, 1, dim/2]
+    if position_ids is None:
+        cos = cos[None, : q.size(-3), None, :]
+        sin = sin[None, : q.size(-3), None, :]
+    else:
+        cos = cos[position_ids].unsqueeze(-2)  # [bs, seq_len, 1, dim/2]
+        sin = sin[position_ids].unsqueeze(-2)  # [bs, seq_len, 1, dim/2]
     if rotary_interleaved:
         cos = torch.repeat_interleave(cos, 2, dim=-1)  # [bs, seq_len, 1, dim]
         sin = torch.repeat_interleave(sin, 2, dim=-1)  # [bs, seq_len, 1, dim]
@@ -96,6 +101,7 @@ def torch_apply_rotary_pos_emb(
 @pytest.mark.parametrize("head_dim", [64, 96, 128, 256])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("rotary_interleaved", [True, False])
+@pytest.mark.parametrize("has_pos_id", [True, False])
 def test_apply_rotary_pos_emb(
     batch_size,
     max_seq_len,
@@ -103,6 +109,7 @@ def test_apply_rotary_pos_emb(
     k_heads,
     head_dim,
     dtype,
+    has_pos_id,
     rotary_interleaved,
 ):
     seq_len = torch.randint(1, max_seq_len, (1,)).item()
@@ -127,7 +134,7 @@ def test_apply_rotary_pos_emb(
         k=ref_k,
         cos=ref_cos,
         sin=ref_sin,
-        position_ids=ref_position_ids,
+        position_ids=ref_position_ids if has_pos_id else None,
         rotary_interleaved=rotary_interleaved,
     )
     q_embed_out, k_embed_out = flag_gems.apply_rotary_pos_emb(
@@ -135,7 +142,7 @@ def test_apply_rotary_pos_emb(
         k=k,
         cos=cos,
         sin=sin,
-        position_ids=position_ids,
+        position_ids=position_ids if has_pos_id else None,
         rotary_interleaved=rotary_interleaved,
     )
 
