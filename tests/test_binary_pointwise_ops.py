@@ -571,7 +571,7 @@ def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_where(shape, dtype):
+def test_accuracy_where_self(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp1 = to_reference(inp1, True)
@@ -580,5 +580,35 @@ def test_accuracy_where(shape, dtype):
     ref_out = torch.where(ref_inp1 > 0, ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.where(inp1 > 0, inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_where_self_scalar(shape, scalar, dtype):
+    inp1 = scalar
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.where(inp2 > 0, inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.where(inp2 > 0, inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_where_other_scalar(shape, scalar, dtype):
+    inp1 = scalar
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.where(inp2 > 0, ref_inp2, inp1)
+    with flag_gems.use_gems():
+        res_out = torch.where(inp2 > 0, inp2, inp1)
 
     gems_assert_close(res_out, ref_out, dtype)
