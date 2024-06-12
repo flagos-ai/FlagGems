@@ -109,6 +109,19 @@ def test_perf_div(dtype):
 
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_perf_dropout(dtype):
+    bench = Benchmark(
+        op_name="dropout",
+        torch_op=torch.nn.Dropout(p=0.5),
+        arg_func=unary_arg,
+        dtype=dtype,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_eq(dtype):
     bench = Benchmark(
         op_name="eq",

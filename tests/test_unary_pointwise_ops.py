@@ -73,24 +73,6 @@ def test_accuracy_gelu(shape, dtype):
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("approximate", ["none", "tanh"])
-def test_accuracy_gelu_and_mul(shape, approximate, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
-
-    ref_out = torch.mul(
-        torch.nn.functional.gelu(ref_inp1, approximate=approximate), ref_inp2
-    )
-    with flag_gems.use_gems():
-        res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
-
-    gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_isinf(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     inp = torch.masked_fill(inp, inp > 1.0, -float("inf"))
@@ -214,21 +196,6 @@ def test_accuracy_silu(shape, dtype):
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_silu_and_mul(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
-
-    ref_out = torch.mul(torch.nn.functional.silu(ref_inp1), ref_inp2)
-    with flag_gems.use_gems():
-        res_out = flag_gems.silu_and_mul(inp1, inp2)
-
-    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)

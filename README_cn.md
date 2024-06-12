@@ -6,6 +6,46 @@ FlagGems是一个使用OpenAI推出的[Triton编程语言](https://github.com/op
 
 FlagGems通过对PyTorch的后端aten算子进行覆盖重写，实现算子库的无缝替换，使用户能够在不修改模型代码的情况下平稳地切换到triton算子库。FlagGems不会影响aten后端的正常使用，并且会带来良好的性能提升。Triton语言为算子库提供了更好的可读性和易用性，同时保持了不逊于CUDA的算子性能，因此开发者只需付出较低的学习成本，即可参与FlagGems的算子开发与建设。  
 
+
+## 特性
+
+### 自动代码生成
+
+在FlagGems中，我们提供了一套自动代码生成的机制，开发者可以使用它来便捷地生成pointwise类型的单算子与融合算子。自动代码生成可以处理常规的对位计算、非张量参数、指定输出类型等多种需求。
+
+#### 常规对位计算
+
+在对位算子函数前装饰`pointwise_dynamic`，可以节省张量寻址、张量读写、并行分块、张量广播、动态维度、非连续存储等的手动处理。例如以下代码，开发者只需简单描述计算逻辑，即可生成灵活高效的Triton核函数与包装代码。
+
+```python
+@pointwise_dynamic
+@triton.jit
+def abs_func(x):
+    return tl.abs(x)
+```
+
+#### 非张量参数
+
+在默认情况下，`pointwise_dynamic`将所有参数均处理为张量，而通过向参数`is_tensor`传递布尔值列表，开发者可以指定哪些参数是张量，哪些参数非张量。此外，开发者还可以传入`dtypes`说明非张量参数的数据类型，但这不是必要的。例如以下代码，将`alpha`参数定义为非张量的浮点数，而`x`和`y`参数定义为张量。
+
+```python
+@pointwise_dynamic(is_tensor=[True, True, False], dtypes=[None, None, float])
+@triton.jit
+def add_func(x, y, alpha):
+    return x + y * alpha
+```
+
+#### 输出数据类型
+
+在默认情况下，输出张量使用与首个输入张量相同的数据类型，但也可向参数`output_dtypes`传入数据类型组成的列表来指定。例如以下代码，指定输出张量类型为`torch.bool`。
+
+```python
+@pointwise_dynamic(output_dtypes=[torch.bool])
+@triton.jit
+def ge(x, y):
+    return x > y
+```
+
 ## 更新日志
 
 ### v1.0

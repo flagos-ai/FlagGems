@@ -17,6 +17,10 @@ class Benchmark:
         self.dtype = dtype
         self.batch = batch
         self.sizes = sizes
+        self.gems_op = None
+
+    def set_gems(self, gems_op):
+        self.gems_op = gems_op
 
     def profile(self, op, *args):
         if CPU_MODE:
@@ -43,8 +47,11 @@ class Benchmark:
         for size in self.sizes:
             args = self.arg_func(self.dtype, self.batch, size)
             torch_perf = self.profile(self.torch_op, *args)
-            with flag_gems.use_gems():
-                gems_perf = self.profile(self.torch_op, *args)
+            if self.gems_op:
+                gems_perf = self.profile(self.gems_op, *args)
+            else:
+                with flag_gems.use_gems():
+                    gems_perf = self.profile(self.torch_op, *args)
             print(f"{size: <10}{torch_perf: >20.6}{gems_perf: >20.6}")
 
 
@@ -94,108 +101,7 @@ def ternary_args(dtype, batch, size):
     return inp1, inp2, inp3
 
 
-def cross_entropy_loss_args(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-    target = torch.randint(
-        0,
-        size,
-        [
-            batch,
-        ],
-        device="cuda",
-    )
-    return inp, target
-
-
-def cumsum_args(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-    return inp, 1
-
-
-def group_norm_args(dtype, batch, size):
-    C = 16
-    G = 16
-    inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
-    weight = torch.randn(
-        [
-            C,
-        ],
-        dtype=dtype,
-        device="cuda",
-    )
-    bias = torch.randn(
-        [
-            C,
-        ],
-        dtype=dtype,
-        device="cuda",
-    )
-    return inp, G, weight, bias
-
-
-def layer_norm_args(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-    weight = torch.randn(
-        [
-            size,
-        ],
-        dtype=dtype,
-        device="cuda",
-    )
-    bias = torch.randn(
-        [
-            size,
-        ],
-        dtype=dtype,
-        device="cuda",
-    )
-    return (
-        inp,
-        [
-            size,
-        ],
-        weight,
-        bias,
-    )
-
-
-def addmm_args(dtype, batch, size):
-    bias = torch.randn(
-        [
-            size,
-        ],
-        dtype=dtype,
-        device="cuda",
-    )
-    inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([size, size], dtype=dtype, device="cuda")
-    return bias, inp1, inp2
-
-
-def bmm_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size, size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([batch, size, size], dtype=dtype, device="cuda")
-    return inp1, inp2
-
-
-def mm_args(dtype, batch, size):
-    inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([size, size], dtype=dtype, device="cuda")
-    return inp1, inp2
-
-
-def mv_args(dtype, batch, size):
-    inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([size], dtype=dtype, device="cuda")
-    return inp1, inp2
-
-
-def outer_args(dtype, batch, size):
-    inp1 = torch.randn([size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([size], dtype=dtype, device="cuda")
-    return inp1, inp2
-
-def where_args(dtype,batch, size):
+def where_args(dtype, batch, size):
     inp1 = torch.randn([size], dtype=dtype, device="cuda")
     inp2 = torch.randn([size], dtype=dtype, device="cuda")
     condition = inp1 > 0

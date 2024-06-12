@@ -301,6 +301,24 @@ def test_accuracy_ge_scalar(shape, dtype):
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("approximate", ["none", "tanh"])
+def test_accuracy_gelu_and_mul(shape, approximate, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.mul(
+        torch.nn.functional.gelu(ref_inp1, approximate=approximate), ref_inp2
+    )
+    with flag_gems.use_gems():
+        res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gt(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
@@ -517,6 +535,21 @@ def test_accuracy_rsub(shape, alpha, dtype):
     ref_out = torch.rsub(ref_inp1, ref_inp2, alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.rsub(inp1, inp2, alpha=alpha)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_silu_and_mul(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.mul(torch.nn.functional.silu(ref_inp1), ref_inp2)
+    with flag_gems.use_gems():
+        res_out = flag_gems.silu_and_mul(inp1, inp2)
 
     gems_assert_close(res_out, ref_out, dtype)
 

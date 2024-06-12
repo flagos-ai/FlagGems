@@ -1,3 +1,4 @@
+import os
 import importlib
 from typing import Tuple, List, Callable, Mapping, Optional, Any
 
@@ -588,6 +589,7 @@ class PointwiseDynamicFunction:
         assert isinstance(scalar_fn, JITFunction)
         self._scalar_fn = scalar_fn
         self._scalar_fn_cache_key = scalar_fn.cache_key
+        self.pid = os.getpid()
 
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
@@ -610,13 +612,14 @@ class PointwiseDynamicFunction:
                 code,
             )
 
-            file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}.py"
+            file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}.py"
             with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
             # load
             spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{self._scalar_fn_cache_key}", f.name
+                f"_gen_module_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}",
+                f.name,
             )
             m = importlib.util.module_from_spec(spec)
             # do not expose it to sys.modules
