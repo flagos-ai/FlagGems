@@ -7,27 +7,35 @@ from ..utils import pointwise_dynamic
 
 @pointwise_dynamic(is_tensor=[True, True, True])
 @triton.jit
-def where_self(self, condition, other):
+def where_self_func(self, condition, other):
     return tl.where(condition, self, other)
+
+
+def where_self(condition, self, other):
+    logging.debug("GEMS WHERE_SELF")
+    O = where_self_func(self, condition, other)
+    return O
 
 
 @pointwise_dynamic(is_tensor=[True, True, False])
 @triton.jit
-def where_self_scalar(other, condition, self):
+def where_scalar_self_func(other, condition, self):
     return tl.where(condition, self, other)
+
+
+def where_scalar_self(condition, self, other):
+    logging.debug("GEMS WHERE_SCALAR_SELF")
+    O = where_scalar_self_func(other, condition, self)
+    return O
 
 
 @pointwise_dynamic(is_tensor=[True, True, False])
 @triton.jit
-def where_other_scalar(self, condition, other):
+def where_scalar_other_func(self, condition, other):
     return tl.where(condition, self, other)
 
 
-def where(condition, self, other):
-    logging.debug("GEMS WHERE")
-    if isinstance(self, torch.Tensor) and isinstance(other, torch.Tensor):
-        return where_self(self, condition, other)
-    elif isinstance(other, torch.Tensor):
-        return where_self_scalar(other, condition, self)
-    elif isinstance(self, torch.Tensor):
-        return where_other_scalar(self, condition, other)
+def where_scalar_other(condition, self, other):
+    logging.debug("GEMS WHERE_SCALAR_OTHER")
+    O = where_scalar_other_func(self, condition, other)
+    return O

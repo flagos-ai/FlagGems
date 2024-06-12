@@ -58,7 +58,7 @@ from .cross_entropy_loss import cross_entropy_loss
 
 from .var_mean import var_mean
 from .vector_norm import vector_norm
-from .where import where
+from .where import where_self, where_scalar_self, where_scalar_other
 
 __all__ = [
     "all",
@@ -137,5 +137,7 @@ __all__ = [
     "log_softmax",
     "outer",
     "cross_entropy_loss",
-    "where",
+    "where_self",
+    "where_scalar_self",
+    "where_scalar_other",
 ]
