@@ -619,7 +619,8 @@ class PointwiseDynamicFunction:
             # load
             spec = importlib.util.spec_from_file_location(
                 f"_gen_module_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}",
-                f.name)
+                f.name,
+            )
             m = importlib.util.module_from_spec(spec)
             # do not expose it to sys.modules
             # sys.modules["_add_module"] = m
