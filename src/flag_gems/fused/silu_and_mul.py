@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -17,8 +19,7 @@ class SiluAndMul(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, B):
         logging.debug("GEMS SILU AND MUL FORWARD")
-        O = silu_and_mul_kernel(A, B)
-        return O
+        return silu_and_mul_kernel(A, B)
 
 
 def silu_and_mul(A, B):

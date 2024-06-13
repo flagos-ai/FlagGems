@@ -1,7 +1,7 @@
 import torch
 
-from .ops import *
 from .fused import *
+from .ops import *
 
 __version__ = "2.0"
 

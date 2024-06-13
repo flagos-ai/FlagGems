@@ -1,6 +1,8 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -12,5 +14,4 @@ def cos_func(x):
 
 def cos(A):
     logging.debug("GEMS COS")
-    O = cos_func(A)
-    return O
+    return cos_func(A)

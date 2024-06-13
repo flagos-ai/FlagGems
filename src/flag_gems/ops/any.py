@@ -1,13 +1,15 @@
+import logging
+import math
+
 import torch
 import triton
-import math
 import triton.language as tl
+
 from ..utils import libentry
-import logging
 
 
-# torch.any: Tests if any elements in input evaluate to True.
-#            If the dtype of input is not BOOL, then test if any elements in input evaluate to non-zero value
+# torch.any: Tests if any elements in input evaluate to True. If the dtype of input
+#            is not BOOL, then test if any elements in input evaluate to non-zero value
 # In triton function, test if any elements in input evaluate to non-zero value is ok.
 def cfggen():
     block_m = [1, 2, 4, 8]
@@ -88,7 +90,6 @@ def any(inp):
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
-    dtype = inp.dtype
 
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)

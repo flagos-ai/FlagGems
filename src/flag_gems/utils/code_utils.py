@@ -1,5 +1,7 @@
-# The code for IndentedBuffer is adapted from https://github.com/pytorch/pytorch/blob/ed48ea9997c2b04736096e4b6669543ab2e627d5/torch/_inductor/utils.py#L742
-# The code for Namespace is adapted from https://github.com/pytorch/pytorch/blob/ed48ea9997c2b04736096e4b6669543ab2e627d5/torch/fx/graph.py#L115
+# The code for IndentedBuffer is adapted from
+# https://github.com/pytorch/pytorch/blob/ed48ea9997c2b04736096e4b6669543ab2e627d5/torch/_inductor/utils.py#L742
+# The code for Namespace is adapted from
+# https://github.com/pytorch/pytorch/blob/ed48ea9997c2b04736096e4b6669543ab2e627d5/torch/fx/graph.py#L115
 
 # License from pytorch(https://github.com/pytorch/pytorch)
 
@@ -54,13 +56,13 @@
 
 # All rights reserved.
 
-import keyword
 import builtins
-from collections import defaultdict
-import re
-from typing import Set, Dict
-from io import StringIO
 import contextlib
+import keyword
+import re
+from collections import defaultdict
+from io import StringIO
+from typing import Dict, Set
 
 
 class IndentedBuffer:

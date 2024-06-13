@@ -1,8 +1,8 @@
-import torch
 import pytest
-import copy
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 import flag_gems
-from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 @pytest.mark.parametrize(

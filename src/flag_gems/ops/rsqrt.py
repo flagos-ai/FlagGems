@@ -1,6 +1,8 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -12,5 +14,4 @@ def rsqrt_func(x):
 
 def rsqrt(A):
     logging.debug("GEMS RSQRT")
-    O = rsqrt_func(A)
-    return O
+    return rsqrt_func(A)

@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import libentry
 
 

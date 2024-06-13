@@ -1,16 +1,16 @@
-import os
 import importlib
-from typing import Tuple, List, Callable, Mapping, Optional, Any
+import os
+from typing import Any, Callable, List, Mapping, Optional, Tuple
 
 import torch
 import triton
-from triton.runtime.jit import JITFunction
 from triton import language as tl
+from triton.runtime.jit import JITFunction
 
-from flag_gems.utils.shape_utils import broadcast_shapes
 from flag_gems.utils.code_cache import cache_dir
-from flag_gems.utils.inliner import inline_function
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
+from flag_gems.utils.inliner import inline_function
+from flag_gems.utils.shape_utils import broadcast_shapes
 
 
 # ------------------ Operation Description ---------------------------
@@ -246,7 +246,8 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from triton import language as tl")
     code.newline()
     code.writeline(
-        "from flag_gems.utils.shape_utils import broadcast_shapes, broadcasted_stride, c_contiguous_stride, volume, Stride"
+        "from flag_gems.utils.shape_utils import broadcast_shapes, \
+        broadcasted_stride, c_contiguous_stride, volume, Stride"
     )
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.newline()
@@ -279,17 +280,20 @@ def generate_functional_pointwise_wrapper(
         for i in range(op_desc.num_outputs()):
             if op_desc.output_dtype(i) is None:
                 code.writeline(
-                    f"out{num_output_tensor_index} = torch.empty(shape, dtype=in0.dtype, device=in0.device)"
+                    f"out{num_output_tensor_index} = \
+                    torch.empty(shape, dtype=in0.dtype, device=in0.device)"
                 )
             else:
                 code.writeline(
-                    f"out{num_output_tensor_index} = torch.empty(shape, dtype={_type_name(op_desc.output_dtype(i))}, device=in0.device)"
+                    f"out{num_output_tensor_index} = \
+                    torch.empty(shape, dtype={_type_name(op_desc.output_dtype(i))}, device=in0.device)"
                 )
             num_output_tensor_index += 1
 
         # call destination_passing_func
         output_names: str = output_ref_for_wrapper(op_desc)
-        call_str = f"{output_names} = {destination_passing_func_name}({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
+        call_str = f"{output_names} = {destination_passing_func_name} \
+                   ({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
         code.writeline(call_str)
 
         return_str = f"return {output_names}"
@@ -326,7 +330,7 @@ def generate_destination_passing_pointwise_wrapper(
             f"in{i}.shape" for i in range(op_desc.num_input_tensors())
         )
         code.writeline(f"shape = broadcast_shapes([{shapes_str}])")
-        code.writeline(f"num_tasks = volume(shape)")
+        code.writeline("num_tasks = volume(shape)")
         code.newline()
 
         # input strides for each input tensor w.r.t. the task index space
@@ -368,7 +372,7 @@ def generate_destination_passing_pointwise_wrapper(
                 shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
                 if rank > 0:
                     code.writeline(f"{shape_args}, # task indexing space")
-                code.writeline(f"num_tasks, # num tasks")
+                code.writeline("num_tasks, # num tasks")
 
             code.writeline(f"tile_size={tile_size},")
             code.writeline(f"num_warps={num_warps},")
@@ -451,7 +455,7 @@ def generate_pointwise_kernel(
             code.writeline(f"{task_space_args}, # task_space")
 
             # number of tasks, used to compute mask
-            code.writeline(f"num_tasks: int,")
+            code.writeline("num_tasks: int,")
             function_ns.create_name("num_tasks")
 
         code.writeline("tile_size: tl.constexpr,")

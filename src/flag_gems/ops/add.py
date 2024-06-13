@@ -1,7 +1,8 @@
+import logging
+
 import torch
 import triton
-import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -26,13 +27,10 @@ def add_func_scalar_tensor(x, y, alpha):
 def add(A, B, *, alpha=1):
     logging.debug("GEMS ADD")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        O = add_func(A, B, alpha)
-        return O
+        return add_func(A, B, alpha)
     elif isinstance(A, torch.Tensor):
-        O = add_func_tensor_scalar(A, B, alpha)
-        return O
+        return add_func_tensor_scalar(A, B, alpha)
     elif isinstance(B, torch.Tensor):
-        O = add_func_scalar_tensor(A, B, alpha)
-        return O
+        return add_func_scalar_tensor(A, B, alpha)
     else:
         return A + B * alpha

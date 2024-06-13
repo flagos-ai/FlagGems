@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import libentry
 
 
@@ -184,12 +186,12 @@ def bmm(A, B):
     _, _, N = B.shape
     A = A.contiguous()
     B = B.contiguous()
-    O = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+    out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),
         triton.cdiv(meta["N"], meta["TILE_N"]),
         batch,
     )
-    bmm_kernel[grid_fn](A, B, O, M, N, K)
-    return O
+    bmm_kernel[grid_fn](A, B, out, M, N, K)
+    return out

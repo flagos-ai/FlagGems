@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -13,5 +15,4 @@ def isnan_func(x):
 
 def isnan(A):
     logging.debug("GEMS ISNAN")
-    O = isnan_func(A)
-    return O
+    return isnan_func(A)

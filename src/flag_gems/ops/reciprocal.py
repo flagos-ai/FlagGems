@@ -1,6 +1,8 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -12,5 +14,4 @@ def reciprocal_func(x):
 
 def reciprocal(A):
     logging.debug("GEMS RECIPROCAL")
-    O = reciprocal_func(A)
-    return O
+    return reciprocal_func(A)

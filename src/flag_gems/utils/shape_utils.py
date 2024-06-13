@@ -1,6 +1,6 @@
-from typing import Tuple, Iterable
 import functools
 import operator
+from typing import Iterable, Tuple
 
 Shape = Tuple[int]
 Stride = Tuple[int]

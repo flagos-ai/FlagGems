@@ -1,12 +1,13 @@
-import torch
 import pytest
+import torch
+
 import flag_gems
+
 from .performance_utils import *
 
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_gelu_and_mul(dtype):
-
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.gelu(x), y)
 
@@ -26,7 +27,6 @@ def test_perf_gelu_and_mul(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_silu_and_mul(dtype):
-
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.silu(x), y)
 
@@ -46,7 +46,6 @@ def test_perf_silu_and_mul(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_skip_layernorm(dtype):
-
     def skip_layernorm_args(dtype, batch, size):
         inp = torch.randn([batch, size], dtype=dtype, device="cuda")
         residual = torch.randn([batch, size], dtype=dtype, device="cuda")
@@ -93,7 +92,6 @@ def test_perf_skip_layernorm(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_skip_rmsnorm(dtype):
-
     def skip_rmsnorm_args(dtype, batch, size):
         inp = torch.randn([batch, size], dtype=dtype, device="cuda")
         residual = torch.randn([batch, size], dtype=dtype, device="cuda")

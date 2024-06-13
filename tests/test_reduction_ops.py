@@ -1,6 +1,8 @@
-import torch
 import pytest
+import torch
+
 import flag_gems
+
 from .accuracy_utils import *
 
 

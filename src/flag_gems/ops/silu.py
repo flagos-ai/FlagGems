@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -27,9 +29,9 @@ class Silu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
         logging.debug("GEMS SILU FORWARD")
-        O = silu_forward(A)
+        out = silu_forward(A)
         ctx.save_for_backward(A)
-        return O
+        return out
 
     @staticmethod
     def backward(ctx, out_grad):
