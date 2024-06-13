@@ -100,7 +100,7 @@ class OPDesc:
                 _check_sized_list(output_dtypes, num_outputs)
                 self._output_dtypes = output_dtypes
             else:
-                self._output_dtypes = [None] * num_inputs  # infer from the 1st input
+                self._output_dtypes = [None] * num_outputs  # infer from the 1st input
         elif output_dtypes is not None:
             self._num_outputs = len(output_dtypes)
             self._output_dtypes = output_dtypes

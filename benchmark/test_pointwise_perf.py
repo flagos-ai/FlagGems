@@ -405,3 +405,23 @@ def test_perf_triu(dtype):
         sizes=SIZES,
     )
     bench.run()
+
+
+def where_args(dtype, batch, size):
+    inp1 = torch.randn([size], dtype=dtype, device="cuda")
+    inp2 = torch.randn([size], dtype=dtype, device="cuda")
+    condition = inp1 > 0
+    return condition, inp1, inp2
+
+
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_perf_where(dtype):
+    bench = Benchmark(
+        op_name="where",
+        torch_op=torch.where,
+        arg_func=where_args,
+        dtype=dtype,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
