@@ -13,7 +13,7 @@ on:
 jobs:
   container-unit-test:
     runs-on: [self-hosted, docker]
-    timeout-minutes: 30
+    timeout-minutes: 50
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
