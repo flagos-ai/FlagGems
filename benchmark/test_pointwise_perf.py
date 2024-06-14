@@ -1,7 +1,18 @@
 import pytest
 import torch
 
-from .performance_utils import *
+from .performance_utils import (
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    POINTWISE_BATCH,
+    SIZES,
+    Benchmark,
+    binary_args,
+    binary_int_args,
+    ternary_args,
+    unary_arg,
+    unary_int_arg,
+)
 
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

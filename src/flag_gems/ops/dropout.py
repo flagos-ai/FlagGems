@@ -17,7 +17,7 @@ try:
     _grid = (1,)
     _seed, _offset = philox_cuda_seed_offset(0)
     _rand[_grid](_seed, _offset)
-except:
+except Exception:
     tl_rand_dtype = tl.int32
 
 del _grid

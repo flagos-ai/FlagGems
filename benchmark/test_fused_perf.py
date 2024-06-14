@@ -3,7 +3,14 @@ import torch
 
 import flag_gems
 
-from .performance_utils import *
+from .performance_utils import (
+    FLOAT_DTYPES,
+    POINTWISE_BATCH,
+    REDUCTION_BATCH,
+    SIZES,
+    Benchmark,
+    binary_args,
+)
 
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
