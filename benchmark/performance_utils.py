@@ -1,9 +1,11 @@
+import time
+
 import torch
 import triton
-import time
-import flag_gems
-from .conftest import CPU_MODE
 
+import flag_gems
+
+from .conftest import CPU_MODE
 
 WARMUP = 10
 REPETITION = 1000
@@ -42,8 +44,8 @@ class Benchmark:
 
     def run(self):
         print(f"Operator {self.op_name} Performance Test ({self.dtype})")
-        print(f"Size        Torch Latency (ms)   Gems Latency (ms)")
-        print(f"--------------------------------------------------")
+        print("Size        Torch Latency (ms)   Gems Latency (ms)")
+        print("--------------------------------------------------")
         for size in self.sizes:
             args = self.arg_func(self.dtype, self.batch, size)
             torch_perf = self.profile(self.torch_op, *args)

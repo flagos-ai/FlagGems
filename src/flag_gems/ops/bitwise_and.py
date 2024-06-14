@@ -1,5 +1,7 @@
-import triton
 import logging
+
+import triton
+
 from ..utils import pointwise_dynamic
 
 
@@ -11,8 +13,7 @@ def bitwise_and_func(x, y):
 
 def bitwise_and_tensor(A, B):
     logging.debug("GEMS BITWISE AND")
-    O = bitwise_and_func(A, B)
-    return O
+    return bitwise_and_func(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False])
@@ -23,11 +24,9 @@ def bitwise_and_func_scalar(x, y):
 
 def bitwise_and_scalar(A, B):
     logging.debug("GEMS BITWISE AND SCALAR")
-    O = bitwise_and_func_scalar(A, B)
-    return O
+    return bitwise_and_func_scalar(A, B)
 
 
 def bitwise_and_scalar_tensor(A, B):
     logging.debug("GEMS BITWISE AND SCALAR TENSOR")
-    O = bitwise_and_func_scalar(B, A)
-    return O
+    return bitwise_and_func_scalar(B, A)

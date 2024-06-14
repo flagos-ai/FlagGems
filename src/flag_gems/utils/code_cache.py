@@ -1,7 +1,7 @@
 import functools
 import os
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 
 @functools.lru_cache(maxsize=None)  # this is the same as functools.cache in Python 3.9+

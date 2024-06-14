@@ -1,6 +1,6 @@
-import torch
 import pytest
-import flag_gems
+import torch
+
 from .performance_utils import *
 
 

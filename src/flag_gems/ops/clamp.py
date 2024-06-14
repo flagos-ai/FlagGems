@@ -1,6 +1,8 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -27,12 +29,11 @@ def clamp_tensor(A, mini=None, maxi=None):
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
-        O = clamp_func_max_tensor(A, maxi)
+        return clamp_func_max_tensor(A, maxi)
     elif maxi is None:
-        O = clamp_func_min_tensor(A, mini)
+        return clamp_func_min_tensor(A, mini)
     else:
-        O = clamp_func_tensor(A, mini, maxi)
-    return O
+        return clamp_func_tensor(A, mini, maxi)
 
 
 @pointwise_dynamic(is_tensor=[True, False, False])
@@ -58,9 +59,8 @@ def clamp(A, mini=None, maxi=None):
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
-        O = clamp_func_max(A, maxi)
+        return clamp_func_max(A, maxi)
     elif maxi is None:
-        O = clamp_func_min(A, mini)
+        return clamp_func_min(A, mini)
     else:
-        O = clamp_func(A, mini, maxi)
-    return O
+        return clamp_func(A, mini, maxi)

@@ -1,6 +1,8 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -12,8 +14,7 @@ def pow_func(x, exponent):
 
 def pow_tensor_tensor(A, exponent):
     logging.debug("GEMS POW_TENSOR_TENSOR")
-    O = pow_func(A, exponent)
-    return O
+    return pow_func(A, exponent)
 
 
 @pointwise_dynamic(is_tensor=[True, False])
@@ -24,8 +25,7 @@ def pow_func_tensor_scalar(x, exponent):
 
 def pow_tensor_scalar(A, exponent):
     logging.debug("GEMS POW_TENSOR_SCALAR")
-    O = pow_func_tensor_scalar(A, exponent)
-    return O
+    return pow_func_tensor_scalar(A, exponent)
 
 
 @pointwise_dynamic(is_tensor=[False, True])
@@ -36,5 +36,4 @@ def pow_func_scalar_tensor(x, exponent):
 
 def pow_scalar(A, exponent):
     logging.debug("GEMS POW_SCALAR")
-    O = pow_func_scalar_tensor(A, exponent)
-    return O
+    return pow_func_scalar_tensor(A, exponent)

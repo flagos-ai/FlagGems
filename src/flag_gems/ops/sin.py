@@ -1,6 +1,8 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -12,5 +14,4 @@ def sin_func(x):
 
 def sin(A):
     logging.debug("GEMS SIN")
-    O = sin_func(A)
-    return O
+    return sin_func(A)

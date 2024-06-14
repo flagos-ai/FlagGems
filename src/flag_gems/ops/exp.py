@@ -1,6 +1,8 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -12,5 +14,4 @@ def exp_func(x):
 
 def exp(A):
     logging.debug("GEMS EXP")
-    O = exp_func(A)
-    return O
+    return exp_func(A)

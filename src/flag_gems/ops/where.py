@@ -1,7 +1,8 @@
-import torch
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -13,8 +14,7 @@ def where_self_func(self, condition, other):
 
 def where_self(condition, self, other):
     logging.debug("GEMS WHERE_SELF")
-    O = where_self_func(self, condition, other)
-    return O
+    return where_self_func(self, condition, other)
 
 
 @pointwise_dynamic(is_tensor=[True, True, False])
@@ -25,8 +25,7 @@ def where_scalar_self_func(other, condition, self):
 
 def where_scalar_self(condition, self, other):
     logging.debug("GEMS WHERE_SCALAR_SELF")
-    O = where_scalar_self_func(other, condition, self)
-    return O
+    return where_scalar_self_func(other, condition, self)
 
 
 @pointwise_dynamic(is_tensor=[True, True, False])
@@ -37,5 +36,4 @@ def where_scalar_other_func(self, condition, other):
 
 def where_scalar_other(condition, self, other):
     logging.debug("GEMS WHERE_SCALAR_OTHER")
-    O = where_scalar_other_func(self, condition, other)
-    return O
+    return where_scalar_other_func(self, condition, other)

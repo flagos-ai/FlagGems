@@ -1,7 +1,8 @@
+import logging
+
 import torch
 import triton
-import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -26,14 +27,11 @@ def div_func_scalar_tensor(x, y):
 def div(A, B):
     logging.debug("GEMS DIV")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        O = div_func(A, B)
-        return O
+        return div_func(A, B)
     elif isinstance(A, torch.Tensor):
-        O = div_func_tensor_scalar(A, B)
-        return O
+        return div_func_tensor_scalar(A, B)
     elif isinstance(B, torch.Tensor):
-        O = div_func_scalar_tensor(A, B)
-        return O
+        return div_func_scalar_tensor(A, B)
     else:
         # Both scalar
         return A / B
