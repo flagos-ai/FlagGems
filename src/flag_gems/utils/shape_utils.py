@@ -126,3 +126,14 @@ def c_contiguous_stride(shape: Shape) -> Stride:
         s *= size
 
     return tuple(reversed(strides))
+
+
+def dim_compress(inp, dims):
+    if isinstance(dims, int):
+        dims = [dims]
+    dim = inp.ndim
+    stride = inp.stride()
+    batch_dim = [i for i in range(dim) if i not in dims]
+    sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
+    order = batch_dim + sorted_reduction_dim
+    return inp.permute(order).contiguous()

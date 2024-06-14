@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import dim_compress, libentry
 
 
 def cfggen():
@@ -140,8 +140,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         dim = list(range(x.ndim))
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
-    order = [i for i in range(x.ndim) if i not in dim] + dim
-    x = x.permute(order).contiguous()
+    x = dim_compress(x, dim)
     N = 1
     for i in dim:
         N *= shape[i]
