@@ -3,7 +3,12 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import *
+from .accuracy_utils import (
+    FLOAT_DTYPES,
+    POINTWISE_SHAPES,
+    gems_assert_close,
+    to_reference,
+)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -52,7 +57,7 @@ def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="cuda"):
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
+    x2 = x[..., x.shape[-1] // 2 :]  # noqa: E203
     return torch.cat((-x2, x1), dim=-1)
 
 

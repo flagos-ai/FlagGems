@@ -1,7 +1,7 @@
 import torch
 
-from .fused import *
-from .ops import *
+from .fused import *  # noqa: F403
+from .ops import *  # noqa: F403
 
 __version__ = "2.0"
 

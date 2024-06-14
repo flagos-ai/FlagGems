@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .performance_utils import *
+from .performance_utils import BLAS_BATCH, DEFAULT_BATCH, FLOAT_DTYPES, SIZES, Benchmark
 
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
