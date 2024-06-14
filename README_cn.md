@@ -1,4 +1,4 @@
-[English](https://github.com/FlagOpen/FlagGems/blob/master/README.md)
+[English](./README.md)
 
 ## 介绍
 
@@ -143,7 +143,7 @@ pip install .
 
 ## 支持算子
 
-算子将按照文档[OperatorList.md](https://github.com/FlagOpen/FlagGems/blob/master/OperatorList.md)的顺序逐步实现。
+算子将按照文档[OperatorList.md](./OperatorList.md)的顺序逐步实现。
 
 ## 支持模型
 
@@ -156,9 +156,15 @@ pip install .
 | :---: | :---: | :---: | :---: |
 | Nvidia A100 | ✓ | ✓ | ✓ |
 
+## 性能表现
+
+FlagGems相比Torch Eager模式下ATen算子库的加速比如下图所示。其中，每个算子的加速比综合了多个形状测例的数据，代表该算子的整体性能。
+
+![算子加速比](./assets/speedup-0614-chn.png)
+
 ## 贡献代码
 
-欢迎大家参与FlagGems的算子开发并贡献代码，详情请参考[CONTRIBUTING.md](https://github.com/FlagOpen/FlagGems/blob/master/CONTRIBUTING.md)。
+欢迎大家参与FlagGems的算子开发并贡献代码，详情请参考[CONTRIBUTING.md](/CONTRIBUTING.md)。
 
 ## 联系我们
 
@@ -166,4 +172,4 @@ pip install .
 
 ## 证书
 
-本项目基于[Apache 2.0](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE)。
+本项目基于[Apache 2.0](./LICENSE)。

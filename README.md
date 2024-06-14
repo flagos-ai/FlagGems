@@ -1,4 +1,4 @@
-[中文版](https://github.com/FlagOpen/FlagGems/blob/master/README_cn.md)
+[中文版](./README_cn.md)
 
 ## Introduction
 
@@ -144,7 +144,7 @@ pip install .
 
 ## Supported Operators
 
-Operators will be implemented according to [OperatorList.md](https://github.com/FlagOpen/FlagGems/blob/master/OperatorList.md).
+Operators will be implemented according to [OperatorList.md](./OperatorList.md).
 
 ## Supported Models
 
@@ -157,9 +157,15 @@ Operators will be implemented according to [OperatorList.md](https://github.com/
 | :---: | :---: | :---: | :---: |
 | Nvidia A100 | ✓ | ✓ | ✓ |
 
+## Performance
+
+The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode. The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
+
+![Operator Speedup](./assets/speedup-0614-eng.png)
+
 ## Contributions
 
-If you are interested in contributing to the FlagGems project, please refer to [CONTRIBUTING.md](https://github.com/FlagOpen/FlagGems/blob/master/CONTRIBUTING.md). Any contributions would be highly appreciated.
+If you are interested in contributing to the FlagGems project, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md). Any contributions would be highly appreciated.
 
 ## Contact us
 
@@ -167,4 +173,4 @@ If you have any questions about our project, please submit an issue, or contact 
 
 ## License
 
-The FlagGems project is based on [Apache 2.0](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE).
+The FlagGems project is based on [Apache 2.0](./LICENSE).
