@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import libentry
 
 
@@ -84,12 +86,12 @@ def triu_batch_kernel(
 def triu(A, diagonal=0):
     logging.debug("GEMS TRIU")
     A = A.contiguous()
-    O = torch.empty_like(A)
+    out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     M, N = A.shape[-2:]
     if len(A.shape) == 2:
         grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-        triu_kernel[grid](A, O, M, N, diagonal)
+        triu_kernel[grid](A, out, M, N, diagonal)
     else:
         batch = int(torch.numel(A) / M / N)
         B = A.view(batch, -1)
@@ -97,6 +99,6 @@ def triu(A, diagonal=0):
             triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
             triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
         )
-        triu_batch_kernel[grid](B, O, batch, M * N, N, diagonal)
-        O = O.view(A.shape)
-    return O
+        triu_batch_kernel[grid](B, out, batch, M * N, N, diagonal)
+        out = out.view(A.shape)
+    return out

@@ -1,7 +1,18 @@
-import torch
 import pytest
-import flag_gems
-from .performance_utils import *
+import torch
+
+from .performance_utils import (
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    POINTWISE_BATCH,
+    SIZES,
+    Benchmark,
+    binary_args,
+    binary_int_args,
+    ternary_args,
+    unary_arg,
+    unary_int_arg,
+)
 
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -400,6 +411,26 @@ def test_perf_triu(dtype):
         op_name="triu",
         torch_op=torch.triu,
         arg_func=unary_arg,
+        dtype=dtype,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def where_args(dtype, batch, size):
+    inp1 = torch.randn([size], dtype=dtype, device="cuda")
+    inp2 = torch.randn([size], dtype=dtype, device="cuda")
+    condition = inp1 > 0
+    return condition, inp1, inp2
+
+
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_perf_where(dtype):
+    bench = Benchmark(
+        op_name="where",
+        torch_op=torch.where,
+        arg_func=where_args,
         dtype=dtype,
         batch=POINTWISE_BATCH,
         sizes=SIZES,

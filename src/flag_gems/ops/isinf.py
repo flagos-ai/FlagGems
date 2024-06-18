@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -13,5 +15,4 @@ def isinf_func(x):
 
 def isinf(A):
     logging.debug("GEMS ISINF")
-    O = isinf_func(A)
-    return O
+    return isinf_func(A)

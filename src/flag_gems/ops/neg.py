@@ -1,5 +1,7 @@
-import triton
 import logging
+
+import triton
+
 from ..utils import pointwise_dynamic
 
 
@@ -11,5 +13,4 @@ def neg_func(x):
 
 def neg(A):
     logging.debug("GEMS NEG")
-    O = neg_func(A)
-    return O
+    return neg_func(A)

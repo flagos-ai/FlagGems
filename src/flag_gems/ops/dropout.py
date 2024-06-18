@@ -1,9 +1,28 @@
+import logging
+
+import torch
 import triton
 import triton.language as tl
-import torch
-import logging
-from ..utils.random_utils import philox_cuda_seed_offset
+
 from ..utils import libentry
+from ..utils.random_utils import philox_cuda_seed_offset
+
+try:
+    tl_rand_dtype = tl.int64
+
+    @triton.jit
+    def _rand(seed, offset):
+        offset = offset.to(tl_rand_dtype)
+
+    _grid = (1,)
+    _seed, _offset = philox_cuda_seed_offset(0)
+    _rand[_grid](_seed, _offset)
+except Exception:
+    tl_rand_dtype = tl.int32
+
+del _grid
+del _seed
+del _offset
 
 
 @libentry()
@@ -32,13 +51,15 @@ def dropout_forward_kernel(
     philox_offset,
     N_BLOCK_SIZE: tl.constexpr,
 ):
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl_rand_dtype)
     pid = tl.program_id(0) * N_BLOCK_SIZE
     offset = pid + tl.arange(0, N_BLOCK_SIZE)
     mask = offset < N
     X_ptr = X + offset
     Y_ptr = Y + offset
     inp = tl.load(X_ptr, mask=mask, other=0.0)
-    philox_offset = philox_offset + offset.to(tl.uint64)
+    philox_offset = philox_offset + offset
     pmask = tl.rand(philox_seed, philox_offset, n_rounds=6) > p
     p = 1.0 / (1.0 - p)
     out = tl.where(pmask, inp * p, 0.0)
@@ -71,13 +92,14 @@ def dropout_backward_kernel(
     philox_offset,
     N_BLOCK_SIZE: tl.constexpr,
 ):
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl_rand_dtype)
     pid = tl.program_id(0) * N_BLOCK_SIZE
     offset = pid + tl.arange(0, N_BLOCK_SIZE)
     mask = offset < N
     DY_ptr = DY + offset
     DX_ptr = DX + offset
-
-    philox_offset = philox_offset + offset.to(tl.uint64)
+    philox_offset = philox_offset + offset
     pmask = tl.rand(philox_seed, philox_offset, n_rounds=6) > p
     dy = tl.load(DY_ptr, mask=mask, other=0.0)
 
@@ -93,18 +115,18 @@ class NativeDropout(torch.autograd.Function):
         logging.debug("GEMS NATIVE DROPOUT FORWARD")
         assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
         x = x.contiguous()
-        O = torch.empty_like(x)
+        out = torch.empty_like(x)
         N = x.numel()
         grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
         # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
         # hence we cannot obtain the per thread offset as in Pytorch.
         increment = N
         philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-        dropout_forward_kernel[grid_fn](x, O, N, p, philox_seed, philox_offset)
+        dropout_forward_kernel[grid_fn](x, out, N, p, philox_seed, philox_offset)
         ctx.p = p
         ctx.philox_seed = philox_seed
         ctx.philox_offset = philox_offset
-        return O, None
+        return out, None
 
     @staticmethod
     def backward(ctx, grad_outputs, kwargs):

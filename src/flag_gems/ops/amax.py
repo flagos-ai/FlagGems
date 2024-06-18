@@ -1,9 +1,11 @@
+import logging
+import math
+
 import torch
 import triton
 import triton.language as tl
-import logging
-from ..utils import libentry
-import math
+
+from ..utils import dim_compress, libentry
 
 
 @libentry()
@@ -100,8 +102,7 @@ def amax(inp, dim=None, keepdim=False):
 
         shape = list(inp.shape)
         dim = [d % inp.ndim for d in dim]
-        order = [i for i in range(inp.ndim) if i not in dim] + dim
-        inp = inp.permute(order).contiguous()
+        inp = dim_compress(inp, dim)
         N = 1
         for i in dim:
             N *= shape[i]

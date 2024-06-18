@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -13,8 +15,7 @@ def gt_func(x, y):
 
 def gt(A, B):
     logging.debug("GEMS GT")
-    O = gt_func(A, B)
-    return O
+    return gt_func(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False], output_dtypes=[torch.bool])
@@ -25,5 +26,4 @@ def gt_func_scalar(x, y):
 
 def gt_scalar(A, B):
     logging.debug("GEMS GT SCALAR")
-    O = gt_func_scalar(A, B)
-    return O
+    return gt_func_scalar(A, B)

@@ -1,9 +1,9 @@
-import torch
-import triton.language as tl
 import logging
-from ..utils import libentry
-from .mul import mul
+
+import torch
+
 from .mm import mm
+from .mul import mul
 
 
 class Outer(torch.autograd.Function):

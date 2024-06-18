@@ -1,7 +1,8 @@
-from typing import List
 import ast
+from typing import List
 
 from triton.runtime import JITFunction
+
 from flag_gems.utils.code_utils import NameSpace
 
 

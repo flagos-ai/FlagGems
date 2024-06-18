@@ -1,9 +1,11 @@
+import logging
+import math
+
 import torch
 import triton
 import triton.language as tl
-import logging
-from ..utils import libentry
-import math
+
+from ..utils import dim_compress, libentry
 
 
 @libentry()
@@ -85,23 +87,25 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
     logging.debug("GEMS MEAN DIM")
 
-    if dtype == None:
+    if dtype is None:
         dtype = x.dtype
     if dim is None:
-        dim = list(range(x.ndim))
+        out = mean(x, dtype=dtype)
+        if not keepdim:
+            out = out.reshape([1] * x.ndim)
+        return out
 
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
-    order = [i for i in range(x.ndim) if i not in dim] + dim
-    x = x.permute(order).contiguous()
+    x = dim_compress(x, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = x.numel() // N
-    mean = torch.empty(shape, dtype=dtype, device=x.device)
+    out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-    mean_dim_kernel[grid](x, mean, M, N)
+    mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
-        mean = mean.squeeze(dim)
-    return mean
+        out = out.squeeze(dim)
+    return out

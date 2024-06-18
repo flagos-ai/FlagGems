@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -13,8 +15,7 @@ def ge_func(x, y):
 
 def ge(A, B):
     logging.debug("GEMS GE")
-    O = ge_func(A, B)
-    return O
+    return ge_func(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False], output_dtypes=[torch.bool])
@@ -25,5 +26,4 @@ def ge_func_scalar(x, y):
 
 def ge_scalar(A, B):
     logging.debug("GEMS GE SCALAR")
-    O = ge_func_scalar(A, B)
-    return O
+    return ge_func_scalar(A, B)

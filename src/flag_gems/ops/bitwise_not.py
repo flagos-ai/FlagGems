@@ -1,5 +1,7 @@
-import triton
 import logging
+
+import triton
+
 from ..utils import pointwise_dynamic
 
 
@@ -11,5 +13,4 @@ def bitwise_not_func(x):
 
 def bitwise_not(A):
     logging.debug("GEMS BITWISE NOT")
-    O = bitwise_not_func(A)
-    return O
+    return bitwise_not_func(A)

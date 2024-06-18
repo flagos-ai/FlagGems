@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -37,12 +39,11 @@ class GeluAndMul(torch.autograd.Function):
     def forward(ctx, A, B, approximate="none"):
         logging.debug("GEMS GELU AND MUL FORWARD")
         if approximate == "none":
-            O = gelu_none_and_mul_kernel(A, B)
+            return gelu_none_and_mul_kernel(A, B)
         elif approximate == "tanh":
-            O = gelu_tanh_and_mul_kernel(A, B)
+            return gelu_tanh_and_mul_kernel(A, B)
         else:
             raise ValueError(f"Invalid approximate value: {approximate}")
-        return O
 
 
 def gelu_and_mul(A, B, approximate="none"):

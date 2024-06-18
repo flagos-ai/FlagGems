@@ -1,7 +1,15 @@
-import torch
 import pytest
+import torch
+
 import flag_gems
-from .accuracy_utils import *
+
+from .accuracy_utils import (
+    FLOAT_DTYPES,
+    MNK_SHAPES,
+    SCALARS,
+    gems_assert_close,
+    to_reference,
+)
 
 
 @pytest.mark.parametrize("M", MNK_SHAPES)

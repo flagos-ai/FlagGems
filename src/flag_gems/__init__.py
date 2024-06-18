@@ -1,7 +1,7 @@
 import torch
 
-from .ops import *
-from .fused import *
+from .fused import *  # noqa: F403
+from .ops import *  # noqa: F403
 
 __version__ = "2.0"
 
@@ -67,7 +67,9 @@ def enable(lib=aten_lib):
     lib.impl("triu", triu, "CUDA")
     lib.impl("var_mean.correction", var_mean, "CUDA")
     lib.impl("linalg_vector_norm", vector_norm, "CUDA")
-
+    lib.impl("where.self", where_self, "CUDA")
+    lib.impl("where.ScalarSelf", where_scalar_self, "CUDA")
+    lib.impl("where.ScalarOther", where_scalar_other, "CUDA")
     lib.impl("max", max, "CUDA")
     lib.impl("max.dim", max_dim, "CUDA")
     lib.impl("min", min, "CUDA")

@@ -1,6 +1,8 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
@@ -12,5 +14,4 @@ def abs_func(x):
 
 def abs(A):
     logging.debug("GEMS ABS")
-    O = abs_func(A)
-    return O
+    return abs_func(A)

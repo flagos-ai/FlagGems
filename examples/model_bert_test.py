@@ -1,8 +1,10 @@
-import torch
-import pytest
 import copy
-import flag_gems
+
+import pytest
+import torch
 from transformers import AutoTokenizer, BertConfig, BertModel
+
+import flag_gems
 
 
 @pytest.mark.parametrize(
@@ -49,4 +51,5 @@ def test_accuracy_bert(prompt, dtype):
         succeed = score >= 0.99
     assert (
         succeed
-    ), f"BERT_{dtype} FAIL with maxdiff {maxdiff} and score {score}\nREF: {ref_outputs}\nRES: {res_outputs}"
+    ), f"BERT_{dtype} FAIL with maxdiff {maxdiff} and score {score}\nREF: \
+        {ref_outputs}\nRES: {res_outputs}"

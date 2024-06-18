@@ -1,7 +1,16 @@
-import torch
 import pytest
+import torch
+
 import flag_gems
-from .accuracy_utils import *
+
+from .accuracy_utils import (
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    POINTWISE_SHAPES,
+    gems_assert_close,
+    gems_assert_equal,
+    to_reference,
+)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)

@@ -1,11 +1,23 @@
-import torch
 import pytest
-import flag_gems
-from .performance_utils import *
+import torch
+
+from .performance_utils import BLAS_BATCH, DEFAULT_BATCH, FLOAT_DTYPES, SIZES, Benchmark
 
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_addmm(dtype):
+    def addmm_args(dtype, batch, size):
+        bias = torch.randn(
+            [
+                size,
+            ],
+            dtype=dtype,
+            device="cuda",
+        )
+        inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([size, size], dtype=dtype, device="cuda")
+        return bias, inp1, inp2
+
     bench = Benchmark(
         op_name="addmm",
         torch_op=torch.addmm,
@@ -19,6 +31,11 @@ def test_perf_addmm(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_bmm(dtype):
+    def bmm_args(dtype, batch, size):
+        inp1 = torch.randn([batch, size, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([batch, size, size], dtype=dtype, device="cuda")
+        return inp1, inp2
+
     bench = Benchmark(
         op_name="bmm",
         torch_op=torch.bmm,
@@ -32,6 +49,11 @@ def test_perf_bmm(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_mm(dtype):
+    def mm_args(dtype, batch, size):
+        inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([size, size], dtype=dtype, device="cuda")
+        return inp1, inp2
+
     bench = Benchmark(
         op_name="mm",
         torch_op=torch.mm,
@@ -45,6 +67,11 @@ def test_perf_mm(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_mv(dtype):
+    def mv_args(dtype, batch, size):
+        inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([size], dtype=dtype, device="cuda")
+        return inp1, inp2
+
     bench = Benchmark(
         op_name="mv",
         torch_op=torch.mv,
@@ -58,6 +85,11 @@ def test_perf_mv(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_outer(dtype):
+    def outer_args(dtype, batch, size):
+        inp1 = torch.randn([size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([size], dtype=dtype, device="cuda")
+        return inp1, inp2
+
     bench = Benchmark(
         op_name="outer",
         torch_op=torch.outer,
