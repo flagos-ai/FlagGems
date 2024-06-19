@@ -1,9 +1,10 @@
+from typing import Optional
+
 import torch
 import triton
 import triton.language as tl
 
 from ..utils import libentry
-from typing import Optional
 
 
 @libentry()

@@ -1,3 +1,5 @@
+from typing import Optional
+
 import pytest
 import torch
 
@@ -9,7 +11,6 @@ from .accuracy_utils import (
     gems_assert_close,
     to_reference,
 )
-from typing import Optional
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
