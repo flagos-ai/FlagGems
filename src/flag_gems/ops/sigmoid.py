@@ -27,9 +27,13 @@ class Sigmoid(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
         logging.debug("GEMS SIGMOID FORWARD")
-        out = sigmoid_forward(A.to(torch.float32))
-        ctx.save_for_backward(out)
-        return out.to(A.dtype)
+        if A.requires_grad is True:
+            out = sigmoid_forward(A.to(torch.float32))
+            ctx.save_for_backward(out)
+            return out.to(A.dtype)
+        else:
+            out = sigmoid_forward(A)
+            return out
 
     @staticmethod
     def backward(ctx, out_grad):
