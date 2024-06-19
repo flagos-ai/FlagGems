@@ -29,7 +29,8 @@ jobs:
           CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_binary_pointwise_ops.py &
           CUDA_VISIBLE_DEVICES=2 pytest -s tests/test_blas_ops.py &
           CUDA_VISIBLE_DEVICES=3 pytest -s tests/test_reduction_ops.py &
-          CUDA_VISIBLE_DEVICES=4 pytest -s tests/test_special_ops.py && wait
+          CUDA_VISIBLE_DEVICES=4 pytest -s tests/test_special_ops.py &
+          CUDA_VISIBLE_DEVICES=5 pytest -s tests/test_libentry.py && wait
 
   container-model-test:
     runs-on: [self-hosted, docker]
