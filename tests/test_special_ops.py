@@ -57,7 +57,7 @@ def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="cuda"):
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]  # noqa: E203
+    x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
 

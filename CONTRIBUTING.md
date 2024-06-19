@@ -14,6 +14,14 @@ Please report bugs using Github's issues. When reporting bugs, please provide
 In pull requests, contributor should describe what changed and why. Please also provide test cases if applicable.
 Pull requests require approvals from two members before merging.
 
+Using pre-commit git hooks with FlagGems, you can format source Python code and perform basic code pre-checks when calling the git commit command
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit
+```
+
 ## Project Structure
 
 ```
