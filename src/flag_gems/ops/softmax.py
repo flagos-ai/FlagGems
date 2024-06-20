@@ -18,6 +18,8 @@ from ..utils import libentry
         triton.Config({"TILE_K": 1024}),
     ],
     key=[
+        "M",
+        "N",
         "K",
     ],
 )
@@ -94,7 +96,7 @@ def softmax_kernel_non_inner(
         triton.Config({"TILE_N": 512}),
         triton.Config({"TILE_N": 1024}),
     ],
-    key=["N"],
+    key=["M", "N"],
 )
 @triton.heuristics(
     values={
@@ -167,6 +169,8 @@ def softmax_kernel_inner(
         triton.Config({"TILE_K": 1024}),
     ],
     key=[
+        "M",
+        "N",
         "K",
     ],
 )
@@ -236,7 +240,7 @@ def softmax_backward_kernel_non_inner(
         triton.Config({"TILE_N": 512}),
         triton.Config({"TILE_N": 1024}),
     ],
-    key=["N"],
+    key=["M", "N"],
 )
 @triton.heuristics(
     values={
