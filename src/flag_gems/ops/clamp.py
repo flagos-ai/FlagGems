@@ -2,6 +2,8 @@ import logging
 
 import triton
 import triton.language as tl
+from torch._prims_common import ELEMENTWISE_TYPE_PROMOTION_KIND
+from torch._prims_common.wrappers import elementwise_type_promotion_wrapper
 
 from ..utils import pointwise_dynamic
 
@@ -24,6 +26,10 @@ def clamp_func_max_tensor(x, maxi):
     return tl.minimum(maxi, x.to(tl.float32))
 
 
+@elementwise_type_promotion_wrapper(
+    type_promoting_args=("A", "mini", "maxi"),
+    type_promotion_kind=ELEMENTWISE_TYPE_PROMOTION_KIND.DEFAULT,
+)
 def clamp_tensor(A, mini=None, maxi=None):
     logging.debug("GEMS CLAMP TENSOR")
     if mini is None and maxi is None:
@@ -54,6 +60,10 @@ def clamp_func_max(x, maxi):
     return tl.minimum(maxi, x.to(tl.float32))
 
 
+@elementwise_type_promotion_wrapper(
+    type_promoting_args=("A", "mini", "maxi"),
+    type_promotion_kind=ELEMENTWISE_TYPE_PROMOTION_KIND.DEFAULT,
+)
 def clamp(A, mini=None, maxi=None):
     logging.debug("GEMS CLAMP")
     if mini is None and maxi is None:

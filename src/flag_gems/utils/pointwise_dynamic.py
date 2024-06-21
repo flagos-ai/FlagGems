@@ -245,11 +245,15 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("from triton import language as tl")
     code.newline()
-    code.writeline(
-        "from flag_gems.utils.shape_utils import broadcast_shapes, \
-        broadcasted_stride, c_contiguous_stride, volume, Stride"
-    )
+    code.writeline("from flag_gems.utils.shape_utils import (")
+    code.writeline("    broadcast_shapes,")
+    code.writeline("    broadcasted_stride,")
+    code.writeline("    c_contiguous_stride,")
+    code.writeline("    volume,")
+    code.writeline("    Stride,")
+    code.writeline(")")
     code.writeline("from flag_gems.utils.libentry import libentry")
+    code.newline()
     code.newline()
     return code
 
@@ -280,24 +284,32 @@ def generate_functional_pointwise_wrapper(
         for i in range(op_desc.num_outputs()):
             if op_desc.output_dtype(i) is None:
                 code.writeline(
-                    f"out{num_output_tensor_index} = \
-                    torch.empty(shape, dtype=in0.dtype, device=in0.device)"
+                    (
+                        f"out{num_output_tensor_index} = "
+                        f"torch.empty(shape, dtype=in0.dtype, device=in0.device)"
+                    )
                 )
             else:
                 code.writeline(
-                    f"out{num_output_tensor_index} = \
-                    torch.empty(shape, dtype={_type_name(op_desc.output_dtype(i))}, device=in0.device)"
+                    (
+                        f"out{num_output_tensor_index} = "
+                        f"torch.empty(shape, dtype={_type_name(op_desc.output_dtype(i))}, "
+                        f"device=in0.device)"
+                    )
                 )
             num_output_tensor_index += 1
 
         # call destination_passing_func
         output_names: str = output_ref_for_wrapper(op_desc)
-        call_str = f"{output_names} = {destination_passing_func_name} \
-                   ({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
+        call_str = (
+            f"{output_names} = {destination_passing_func_name}"
+            f"({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
+        )
         code.writeline(call_str)
 
         return_str = f"return {output_names}"
         code.writeline(return_str)
+        code.newline()
         code.newline()
     return code
 
@@ -380,6 +392,7 @@ def generate_destination_passing_pointwise_wrapper(
 
         # return
         code.writeline(f"return {output_ref_for_wrapper(op_desc)}")
+        code.newline()
         code.newline()
     return code
 
