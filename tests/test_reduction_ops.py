@@ -160,19 +160,23 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_cross_entropy_loss(shape, dtype, size_average, reduce, reduction):
+@pytest.mark.parametrize("ignore_index", [1, 200, -100])
+def test_accuracy_cross_entropy_loss(
+    shape, dtype, size_average, reduce, ignore_index, reduction
+):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     dim = 1
     up_limit = shape[dim] - 1
     target_shape = list(shape)
     del target_shape[dim]
     target = torch.randint(0, up_limit, target_shape, device="cuda")
-
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
-
     criterion = torch.nn.CrossEntropyLoss(
-        size_average=size_average, reduce=reduce, reduction=reduction
+        size_average=size_average,
+        reduce=reduce,
+        ignore_index=ignore_index,
+        reduction=reduction,
     )
 
     ref_out = criterion(ref_inp, ref_target)
@@ -182,7 +186,6 @@ def test_accuracy_cross_entropy_loss(shape, dtype, size_average, reduce, reducti
 
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
-
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
