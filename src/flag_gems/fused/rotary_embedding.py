@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import triton
 import triton.language as tl
@@ -30,6 +32,7 @@ def apply_rotary_pos_emb_kernel(
     p_stride_s,
     cos_stride_s,
     sin_stride_s,
+    seq_len,
     NUM_Q_HEADS: tl.constexpr,
     NUM_K_HEADS: tl.constexpr,
     HEAD_DIM: tl.constexpr,
@@ -39,8 +42,11 @@ def apply_rotary_pos_emb_kernel(
 ):
     s_id = tl.program_id(0)
 
-    pos_ptr += s_id * p_stride_s
-    pos_id = tl.load(pos_ptr)
+    if pos_ptr is None:
+        pos_id = s_id % seq_len
+    else:
+        pos_ptr += s_id * p_stride_s
+        pos_id = tl.load(pos_ptr)
     cos_ptr += pos_id * cos_stride_s
     sin_ptr += pos_id * sin_stride_s
 
@@ -95,7 +101,7 @@ def apply_rotary_pos_emb(
     k,
     cos,
     sin,
-    position_ids,
+    position_ids: Optional[torch.IntTensor] = None,
     rotary_interleaved: bool = False,
 ):
     """
@@ -106,7 +112,7 @@ def apply_rotary_pos_emb(
         k: (*, k_heads, head_dim)
         cos: (max_seq_len, head_dim // 2)
         sin: (max_seq_len, head_dim // 2)
-        position_ids: (*, )
+        position_ids: (*, ), optional, position ids for each token
         rotary_interleaved: whether the head_dim is rotated in an interleaved way
 
     Returns:
@@ -131,11 +137,18 @@ def apply_rotary_pos_emb(
     assert (
         q.shape[:-2] == k.shape[:-2]
     ), f"q and k must have the same length, got {q.shape[:-2]} and {k.shape[:-2]}"
-    assert (
-        position_ids.shape == q.shape[:-2]
-    ), f"position_ids must have the same length as q, got {position_ids.shape} and {q.shape[:-2]}"
+    if position_ids is None:
+        assert (
+            len(q.shape) == 4
+        ), f"q must have 4 dimensions if position_ids is not provided, got {q.shape}"
+        seq_len = q.shape[-3]
+    else:
+        assert (
+            position_ids.shape == q.shape[:-2]
+        ), f"position_ids must have the same length as q, got {position_ids.shape} and {q.shape[:-2]}"
 
-    position_ids = position_ids.view(-1)
+        position_ids = position_ids.view(-1)
+        seq_len = None
 
     q = q.view(-1, q.shape[-2], q.shape[-1])
     k = k.view(-1, k.shape[-2], k.shape[-1])
@@ -170,9 +183,10 @@ def apply_rotary_pos_emb(
         k_embed.stride(0),
         k_embed.stride(1),
         k_embed.stride(2),
-        position_ids.stride(0),
+        position_ids.stride(0) if position_ids is not None else 0,
         cos.stride(0),
         sin.stride(0),
+        seq_len,
         q.shape[-2],
         k.shape[-2],
         head_dim,
