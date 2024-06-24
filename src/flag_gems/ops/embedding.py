@@ -66,6 +66,69 @@ def renorm_embedding_kernel(
     tl.store(W + cols, embedding_weight, mask)
 
 
+@triton.jit
+def embedding_backward_kernel(
+    GradOut,  # pointer to the gradient output
+    GradIn,  # pointer to the gradient input
+    indices,  # pointer to the input
+    padding_idx, # padding_idx
+    N: tl.constexpr,  # number of columns in X
+    BLOCK_SIZE: tl.constexpr,
+): 
+    pid = tl.program_id(0)
+    GradIn += pid * N
+    indices += pid
+
+    mask = tl.arange(0, BLOCK_SIZE) < N 
+    cols = tl.arange(0, BLOCK_SIZE)
+
+    row_idx = tl.load(indices).to(tl.int32)
+    if (row_idx != padding_idx): 
+        GradOut += row_idx * N
+        embedding_grad = tl.load(GradIn + cols, mask, other=0.0)
+        tl.atomic_add(GradOut + cols, embedding_grad, mask=mask)
+
+
+@triton.jit
+def indice_freq_kernel(
+    indices_freq, # indice frequency
+    indices,  # pointer to the input
+    elem_cnt: tl.constexpr,  # number of columns in X
+    BLOCK_SIZE: tl.constexpr,
+): 
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < elem_cnt
+
+    index_element = tl.load(indices + offsets, mask=mask).to(tl.int32)
+    tl.atomic_add(indices_freq + index_element, 1, mask=mask)
+    
+
+@triton.jit
+def embedding_grad_scale_kernel(
+    grad_out, # indice frequency
+    indice_freq,  # pointer to the input
+    n_rows, 
+    N, 
+    BLOCK_SIZE: tl.constexpr,
+): 
+    row_start = tl.program_id(0)
+    row_step = tl.num_programs(0)
+
+    for row_idx in range(row_start, n_rows, row_step):
+        indice_freq_val = tl.load(indice_freq + row_idx).to(tl.int32)
+        if indice_freq_val > 1: 
+            embedding_scale = 1.0 / indice_freq_val
+
+            cols = tl.arange(0, BLOCK_SIZE)
+            mask = tl.arange(0, BLOCK_SIZE) < N 
+            embedding_grad = tl.load(grad_out + row_idx * N + cols, mask=mask)
+            scaled_embedding_grad = embedding_grad * embedding_scale
+            tl.store(grad_out + row_idx * N + cols, scaled_embedding_grad, mask=mask)
+
+
 class Embedding(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, weight, padding_idx=None, max_norm=None, norm_type=2.0):
