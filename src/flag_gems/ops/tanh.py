@@ -3,19 +3,17 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from torch._prims_common import ELEMENTWISE_TYPE_PROMOTION_KIND
-from torch._prims_common.wrappers import elementwise_type_promotion_wrapper
 
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[[0, "INT_TO_FLOAT"]])
 @triton.jit
 def tanh_forward(x):
     return tl.math.tanh(x.to(tl.float32))
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[[0, "INT_TO_FLOAT"]])
 @triton.jit
 def tanh_backward(y, dy):
     return dy * (1.0 - tl.math.pow(y.to(tl.float32), 2))
@@ -37,9 +35,5 @@ class Tanh(torch.autograd.Function):
         return in_grad
 
 
-@elementwise_type_promotion_wrapper(
-    type_promoting_args=("A"),
-    type_promotion_kind=ELEMENTWISE_TYPE_PROMOTION_KIND.INT_TO_FLOAT,
-)
 def tanh(A):
     return Tanh.apply(A)

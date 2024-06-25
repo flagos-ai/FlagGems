@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[[0, 1, "DEFAULT"]])
 @triton.jit
 def silu_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)

@@ -2,13 +2,11 @@ import logging
 
 import triton
 import triton.language as tl
-from torch._prims_common import ELEMENTWISE_TYPE_PROMOTION_KIND
-from torch._prims_common.wrappers import elementwise_type_promotion_wrapper
 
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[[0, "DEFAULT"]])
 @triton.jit
 def gelu_none(x):
     scale = 0.7071067811
@@ -16,7 +14,7 @@ def gelu_none(x):
     return output
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[[0, "DEFAULT"]])
 @triton.jit
 def gelu_tanh(x):
     output = (
@@ -32,10 +30,6 @@ def gelu_tanh(x):
     return output
 
 
-@elementwise_type_promotion_wrapper(
-    type_promoting_args=("A"),
-    type_promotion_kind=ELEMENTWISE_TYPE_PROMOTION_KIND.DEFAULT,
-)
 def gelu(A, *, approximate="none"):
     logging.debug("GEMS GELU")
     if approximate == "tanh":
