@@ -18,7 +18,7 @@ FlagGems通过对PyTorch的后端aten算子进行覆盖重写，实现算子库�
 在对位算子函数前装饰`pointwise_dynamic`，可以节省张量寻址、张量读写、并行分块、张量广播、动态维度、非连续存储等的手动处理。例如以下代码，开发者只需简单描述计算逻辑，即可生成灵活高效的Triton核函数与包装代码。
 
 ```python
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[[0, "COMPLEX_TO_FLOAT"]])
 @triton.jit
 def abs_func(x):
     return tl.abs(x)
@@ -29,7 +29,11 @@ def abs_func(x):
 在默认情况下，`pointwise_dynamic`将所有参数均处理为张量，而通过向参数`is_tensor`传递布尔值列表，开发者可以指定哪些参数是张量，哪些参数非张量。此外，开发者还可以传入`dtypes`说明非张量参数的数据类型，但这不是必要的。例如以下代码，将`alpha`参数定义为非张量的浮点数，而`x`和`y`参数定义为张量。
 
 ```python
-@pointwise_dynamic(is_tensor=[True, True, False], dtypes=[None, None, float])
+@pointwise_dynamic(
+    is_tensor=[True, True, False],
+    dtypes=[None, None, float],
+    promotion_methods=[[0,"DEFAULT"]]
+)
 @triton.jit
 def add_func(x, y, alpha):
     return x + y * alpha
@@ -37,14 +41,35 @@ def add_func(x, y, alpha):
 
 #### 输出数据类型
 
-在默认情况下，输出张量使用与首个输入张量相同的数据类型，但也可向参数`output_dtypes`传入数据类型组成的列表来指定。例如以下代码，指定输出张量类型为`torch.bool`。
+此外，开发者必须传入 `promotion_methods` 来说明该 Op 在进行计算时应该如何进行`类型提升`以获得正确的输出类型
 
 ```python
-@pointwise_dynamic(output_dtypes=[torch.bool])
+@pointwise_dynamic(promotion_methods=[[0, "ALWAYS_BOOL"]])
 @triton.jit
 def ge(x, y):
     return x > y
 ```
+
+`promotion_methods` 通过传入 `int` 来表示需要进行类型提升的参数位置, 通过传入 `str` 来表示类型提升的方式, `str` 对于以下枚举类型
+
+```python
+class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
+    DEFAULT = (0,)
+    NO_OPMATH = (1,)
+    INT_TO_FLOAT = (2,)
+    ALWAYS_BOOL = (3,)
+    COMPLEX_TO_FLOAT = (4,)
+    BOOL_TO_LONG = (5,)
+```
+
+举例：
+
+- `DEFAULT` ：add
+- `NO_OPMATH` ： where, nextafter, cat
+- `INT_TO_FLOAT` ：sin
+- `ALWAYS_BOOL` ：eq
+- `COMPLEX_TO_FLOAT` ：abs
+- `BOOL_TO_LONG` ：pow
 
 ## 更新日志
 
