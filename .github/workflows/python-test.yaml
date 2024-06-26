@@ -26,6 +26,7 @@ jobs:
       - name: unit_test-flag-gems
         run: |
           CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &
+          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_pointwise_type_promotion.py &
           CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_binary_pointwise_ops.py &
           CUDA_VISIBLE_DEVICES=2 pytest -s tests/test_blas_ops.py &
           CUDA_VISIBLE_DEVICES=3 pytest -s tests/test_reduction_ops.py &

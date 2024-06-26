@@ -213,7 +213,11 @@ def ith_parameter_for_type_promotion(op_desc: OPDesc, ith: int) -> str:
     non_tensor_index = 0
     for i in range(op_desc.num_inputs()):
         if i not in op_desc.ith_type_promotion_args(ith):
-            break
+            if op_desc._is_tensor[i]:
+                input_tensor_index += 1
+            else:
+                non_tensor_index += 1
+            continue
         if op_desc._is_tensor[i]:
             parameters.append(f"in{input_tensor_index}")
             input_tensor_index += 1
