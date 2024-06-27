@@ -317,7 +317,6 @@ def generate_functional_pointwise_wrapper(
         num_output_tensor_index = 0
         for i in range(op_desc.num_outputs()):
             type_promotion_args = ith_parameter_for_type_promotion(op_desc, i)
-            print(type_promotion_args)
             k_type_promotion = op_desc.ith_type_promotion_kind(i)
             code.writeline(
                 (
@@ -711,7 +710,11 @@ def pointwise_dynamic(
 
 if __name__ == "__main__":
 
-    @pointwise_dynamic(is_tensor=[True, False, True], dtypes=[None, float, None])
+    @pointwise_dynamic(
+        is_tensor=[True, False, True],
+        dtypes=[None, float, None],
+        promotion_methods=[[0, 1, 2, "DEFAULT"]],
+    )
     @triton.jit
     def saxpy(x, alpha, y):
         return x * alpha + y
@@ -725,7 +728,9 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(is_tensor=[True, False, True])
+    @pointwise_dynamic(
+        is_tensor=[True, False, True], promotion_methods=[[0, 1, 2, "DEFAULT"]]
+    )
     @triton.jit
     def saxpy(x, alpha, y):
         return x * alpha + y
@@ -737,7 +742,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(output_dtypes=[torch.bool])
+    @pointwise_dynamic(promotion_methods=[[0, 1, "ALWAYS_BOOL"]])
     @triton.jit
     def ge(x, y):
         return x > y
@@ -749,7 +754,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic()
+    @pointwise_dynamic(promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
     @triton.jit
     def ordinary(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -761,7 +766,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic
+    @pointwise_dynamic(promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
     @triton.jit
     def ordinary2(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -773,7 +778,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic
+    @pointwise_dynamic(promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
     @triton.jit
     def ordinary2(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -787,7 +792,9 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(is_tensor=[True, False], output_dtypes=[torch.bool])
+    @pointwise_dynamic(
+        is_tensor=[True, False], promotion_methods=[[0, 1, "ALWAYS_BOOL"]]
+    )
     @triton.jit
     def eq(x, y):
         return x.to(tl.float32) == y.to(
