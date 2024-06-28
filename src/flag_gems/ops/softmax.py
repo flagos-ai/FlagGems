@@ -7,26 +7,42 @@ import triton.language as tl
 from ..utils import libentry
 
 
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"TILE_K": 32}),
-        triton.Config({"TILE_K": 64}),
-        triton.Config({"TILE_K": 128}),
-        triton.Config({"TILE_K": 256}),
-        triton.Config({"TILE_K": 512}),
-        triton.Config({"TILE_K": 1024}),
-    ],
-    key=[
-        "M",
-        "N",
-        "K",
-    ],
+def heuristics_for_tile_k(m, k, max_tile_k, num_sms):
+    tile_k = 1
+    upper_bound = min(k, max_tile_k)
+    while tile_k <= upper_bound:
+        num_blocks = m * triton.cdiv(k, tile_k)
+        num_waves = num_blocks / num_sms
+        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
+        else:
+            break
+    return tile_k
+
+
+@triton.heuristics(
+    values={
+        "TILE_K": lambda args: heuristics_for_tile_k(
+            args["M"],
+            args["K"],
+            8192,
+            torch.cuda.get_device_properties(
+                torch.cuda.current_device()
+            ).multi_processor_count,
+        )
+    }
+)
+@triton.heuristics(values={"TILE_N": lambda args: triton.cdiv(8192, args["TILE_K"])})
+@triton.heuristics(
+    values={
+        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
+    },
 )
 @triton.heuristics(
     values={
-        "TILE_N": lambda args: max(1, 1024 // args["TILE_K"]),
-        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
+        "num_warps": lambda args: heuristics_for_num_warps(
+            args["TILE_N"] * args["TILE_K"]
+        )
     },
 )
 @triton.jit
@@ -44,6 +60,7 @@ def softmax_kernel_non_inner(
     pid_m = tl.program_id(0)
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)
+
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
@@ -57,52 +74,70 @@ def softmax_kernel_non_inner(
         output_ptrs = output_ptr + offset
         tl.store(output_ptrs, out, mask=mask)
     else:
-        m = tl.full([TILE_K], value=float("-inf"), dtype=tl.float32)
-        z = tl.full([TILE_K], value=0.0, dtype=tl.float32)
+        m = tl.full([TILE_N, TILE_K], value=float("-inf"), dtype=tl.float32)
+        z = tl.full([TILE_N, TILE_K], value=0.0, dtype=tl.float32)
 
-        n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
-        for _ in range(0, N, TILE_N):
+        # specialization does not improve performance inn this example, as tested
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets
             mask = (n_offsets[:, None] < N) & (k_offsets < K)
-            input_ptrs = input_ptr + offset
-            inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
-            m_new = tl.maximum(m, tl.max(inp, 0))
-            alpha = m - m_new
-            z = z * tl.exp(alpha) + tl.sum(tl.exp(inp - m_new[None, :]), axis=0)
+            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf"))
+            m_new = tl.maximum(m, inp)
+            alpha = tl.exp(m - m_new)
+            z = z * alpha + tl.exp(inp - m_new)
             m = m_new
-            n_offsets += TILE_N
-            offset += TILE_N * K
 
-        n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
-        for _ in range(0, N, TILE_N):
-            mask = (n_offsets[:, None] < N) & (k_offsets < K)
-            input_ptrs = input_ptr + offset
-            inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
+        m_reduced = tl.max(m, 0)  # (TILE_K,)
+        z = tl.sum(z * tl.exp(m - m_reduced[None, :]), 0)  # (TILE_K, )
+        m = m_reduced
+
+        # specialization does not improve performance inn this example, as tested
+        previous_multiple = prev_multiple_of(N, TILE_N)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
+            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets
+            mask = (n_offsets[:, None] < N) & (k_offsets[None, :] < K)
+            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf"))
             o = tl.exp(inp - m[None, :]) / z[None, :]
-            output_ptrs = output_ptr + offset
-            tl.store(output_ptrs, o, mask=mask)
-            n_offsets += TILE_N
-            offset += TILE_N * K
+            tl.store(output_ptr + offsets, o, mask=mask)
 
 
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"TILE_N": 32}),
-        triton.Config({"TILE_N": 64}),
-        triton.Config({"TILE_N": 128}),
-        triton.Config({"TILE_N": 256}),
-        triton.Config({"TILE_N": 512}),
-        triton.Config({"TILE_N": 1024}),
-    ],
-    key=["M", "N"],
+def heuristics_for_num_warps(tile_size):
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
+
+
+@triton.jit
+def next_multiple_of(a, b):
+    # the smallest x>=a that x%b ==0
+    return tl.cidv(a, b) * b
+
+
+@triton.jit
+def prev_multiple_of(a, b):
+    # the largest x<a that x%b ==0
+    return tl.cdiv(a, b) * b - b
+
+
+@triton.heuristics(
+    values={
+        "TILE_N": lambda args: triton.next_power_of_2(args["N"])
+        if args["N"] <= (32 * 1024)
+        else 4096
+    },
 )
 @triton.heuristics(
     values={
-        "TILE_M": lambda args: max(1, 1024 // args["TILE_N"]),
         "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
     },
+)
+@triton.heuristics(
+    values={"num_warps": lambda args: heuristics_for_num_warps(args["TILE_N"])},
 )
 @triton.jit
 def softmax_kernel_inner(
@@ -110,54 +145,71 @@ def softmax_kernel_inner(
     input_ptr,
     M,
     N,
-    TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
-    m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
-        offset = m_offsets[:, None] * N + n_offsets
+        offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + offset
-        mask = (m_offsets[:, None] < M) & (n_offsets < N)
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
-        m = tl.max(inp, 1)
-        e = tl.exp(inp - m[:, None])
-        z = tl.sum(e, 1)
-        out = e / z[:, None]
+        mask = n_offsets < N
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
+            output_ptr.dtype.element_ty
+        )
+        m = tl.max(inp, 0)
+        e = tl.exp(inp - m)
+        z = tl.sum(e, 0)
+        out = e / z
         output_ptrs = output_ptr + offset
         tl.store(output_ptrs, out, mask=mask)
     else:
-        m = tl.full([TILE_M], value=float("-inf"), dtype=tl.float32)
-        z = tl.full([TILE_M], value=0.0, dtype=tl.float32)
+        m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
+        z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
+        input_ptr += pid_m * N
+        output_ptr += pid_m * N
 
-        n_offsets = tl.arange(0, TILE_N)
-        offset = m_offsets[:, None] * N + n_offsets
-        for _ in range(0, N, TILE_N):
-            mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            input_ptrs = input_ptr + offset
-            inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
-            m_new = tl.maximum(m, tl.max(inp, 1))
-            alpha = m - m_new
-            z = z * tl.exp(alpha) + tl.sum(tl.exp(inp - m_new[:, None]), axis=1)
+        previous_multiple = prev_multiple_of(N, TILE_N)
+        for start_n in range(0, previous_multiple, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp = tl.load(input_ptr + n_offsets)
+            m_new = tl.maximum(m, inp)
+            z = z * tl.exp(m - m_new) + tl.exp(inp - m_new)
             m = m_new
-            n_offsets += TILE_N
-            offset += TILE_N
+        # specialize the last iteration
+        for start_n in range(previous_multiple, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf"))
+            m_new = tl.maximum(m, inp)
+            z = z * tl.exp(m - m_new) + tl.exp(inp - m_new)
+            m = m_new
 
-        n_offsets = tl.arange(0, TILE_N)
-        offset = m_offsets[:, None] * N + n_offsets
-        for _ in range(0, N, TILE_N):
-            mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            input_ptrs = input_ptr + offset
-            inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
-            o = tl.exp(inp - m[:, None]) / z[:, None]
-            output_ptrs = output_ptr + offset
-            tl.store(output_ptrs, o, mask=mask)
-            n_offsets += TILE_N
-            offset += TILE_N
+        m_reduced = tl.max(m, 0)
+        z = tl.sum(z * tl.exp(m - m_reduced), 0)
+        m = m_reduced
+
+        previous_multiple = prev_multiple_of(N, TILE_N)
+        # specialize the first iteration
+        for start_n in range(0, TILE_N, TILE_N):
+            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            inp = tl.load(
+                input_ptr + n_offsets,
+                mask=mask,
+                other=-float("inf"),
+                eviction_policy="evict_first",
+            )
+            o = tl.exp(inp - m) / z
+            tl.store(output_ptr + n_offsets, o, mask=mask)
+        for start_n in range(TILE_N, N, TILE_N):
+            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
+            inp = tl.load(input_ptr + n_offsets, eviction_policy="evict_first")
+            o = tl.exp(inp - m) / z
+            tl.store(output_ptr + n_offsets, o)
 
 
+# ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
     configs=[
@@ -277,7 +329,9 @@ def softmax_backward_kernel_inner(
         offsets = m_offsets[:, None] * N + n_offsets
         for _ in range(0, N, TILE_N):
             mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            out_tile = tl.load(out_ptr + offsets, mask=mask)
+            out_tile = tl.load(
+                out_ptr + offsets, mask=mask, eviction_policy="evict_last"
+            )
             out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
             scale += out_tile * out_grad_tile
             n_offsets += TILE_N
@@ -288,7 +342,9 @@ def softmax_backward_kernel_inner(
         offsets = m_offsets[:, None] * N + n_offsets
         for _ in range(0, N, TILE_N):
             mask = (m_offsets[:, None] < M) & (n_offsets < N)
-            out_tile = tl.load(out_ptr + offsets, mask=mask)
+            out_tile = tl.load(
+                out_ptr + offsets, mask=mask, eviction_policy="evict_first"
+            )
             out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
             in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
@@ -323,7 +379,7 @@ class Softmax(torch.autograd.Function):
                 K,
             )
         else:
-            grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+            grid = (M, 1, 1)
             softmax_kernel_inner[grid](
                 out,
                 inp,
