@@ -1,13 +1,12 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(output_dtypes=[torch.bool])
+@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def le_func(x, y):
     return x.to(tl.float32) <= y
@@ -18,7 +17,7 @@ def le(A, B):
     return le_func(A, B)
 
 
-@pointwise_dynamic(is_tensor=[True, False], output_dtypes=[torch.bool])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def le_func_scalar(x, y):
     return x.to(tl.float32) <= y
