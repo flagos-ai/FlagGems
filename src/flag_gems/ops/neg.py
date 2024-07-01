@@ -5,7 +5,7 @@ import triton
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(promotion_methods=[[0, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def neg_func(x):
     return -x

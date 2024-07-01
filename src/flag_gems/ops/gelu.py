@@ -6,7 +6,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(promotion_methods=[[0, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_none(x):
     scale = 0.7071067811
@@ -14,7 +14,7 @@ def gelu_none(x):
     return output
 
 
-@pointwise_dynamic(promotion_methods=[[0, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_tanh(x):
     output = (

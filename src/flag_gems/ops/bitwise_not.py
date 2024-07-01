@@ -5,7 +5,7 @@ import triton
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[[0, "DEFAULT"]])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def bitwise_not_func(x):
     return ~x

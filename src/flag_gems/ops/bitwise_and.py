@@ -5,7 +5,7 @@ import triton
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def bitwise_and_func(x, y):
     return x & y
@@ -16,7 +16,7 @@ def bitwise_and_tensor(A, B):
     return bitwise_and_func(A, B)
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def bitwise_and_func_scalar(x, y):
     return x & y

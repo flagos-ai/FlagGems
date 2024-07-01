@@ -6,13 +6,13 @@ import triton
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def mul_func(x, y):
     return x * y
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def mul_func_scalar(x, y):
     return x * y

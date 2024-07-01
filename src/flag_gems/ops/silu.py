@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(promotion_methods=[[0, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def silu_forward(x):
     x_fp32 = x.to(tl.float32)
@@ -15,7 +15,7 @@ def silu_forward(x):
     return y
 
 
-@pointwise_dynamic(promotion_methods=[[0, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def silu_backward(x, dy):
     dy_fp32 = dy.to(tl.float32)

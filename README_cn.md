@@ -18,7 +18,7 @@ FlagGems通过对PyTorch的后端aten算子进行覆盖重写，实现算子库�
 在对位算子函数前装饰`pointwise_dynamic`，可以节省张量寻址、张量读写、并行分块、张量广播、动态维度、非连续存储等的手动处理。例如以下代码，开发者只需简单描述计算逻辑，即可生成灵活高效的Triton核函数与包装代码。
 
 ```python
-@pointwise_dynamic(promotion_methods=[[0, "COMPLEX_TO_FLOAT"]])
+@pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
 @triton.jit
 def abs_func(x):
     return tl.abs(x)
@@ -32,7 +32,7 @@ def abs_func(x):
 @pointwise_dynamic(
     is_tensor=[True, True, False],
     dtypes=[None, None, float],
-    promotion_methods=[[0,"DEFAULT"]]
+    promotion_methods=[(0,"DEFAULT")]
 )
 @triton.jit
 def add_func(x, y, alpha):
@@ -44,7 +44,7 @@ def add_func(x, y, alpha):
 此外，开发者必须传入 `promotion_methods` 来说明该 Op 在进行计算时应该如何进行`类型提升`以获得正确的输出类型
 
 ```python
-@pointwise_dynamic(promotion_methods=[[0, "ALWAYS_BOOL"]])
+@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def ge(x, y):
     return x > y

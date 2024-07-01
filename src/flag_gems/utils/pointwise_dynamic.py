@@ -713,7 +713,7 @@ if __name__ == "__main__":
     @pointwise_dynamic(
         is_tensor=[True, False, True],
         dtypes=[None, float, None],
-        promotion_methods=[[0, 1, 2, "DEFAULT"]],
+        promotion_methods=[(0, 1, 2, "DEFAULT")],
     )
     @triton.jit
     def saxpy(x, alpha, y):
@@ -729,7 +729,7 @@ if __name__ == "__main__":
     print()
 
     @pointwise_dynamic(
-        is_tensor=[True, False, True], promotion_methods=[[0, 1, 2, "DEFAULT"]]
+        is_tensor=[True, False, True], promotion_methods=[(0, 1, 2, "DEFAULT")]
     )
     @triton.jit
     def saxpy(x, alpha, y):
@@ -742,7 +742,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(promotion_methods=[[0, 1, "ALWAYS_BOOL"]])
+    @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
     @triton.jit
     def ge(x, y):
         return x > y
@@ -754,7 +754,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
+    @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
     @triton.jit
     def ordinary(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -766,7 +766,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
+    @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
     @triton.jit
     def ordinary2(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -778,7 +778,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
+    @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
     @triton.jit
     def ordinary2(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -793,7 +793,7 @@ if __name__ == "__main__":
     print()
 
     @pointwise_dynamic(
-        is_tensor=[True, False], promotion_methods=[[0, 1, "ALWAYS_BOOL"]]
+        is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")]
     )
     @triton.jit
     def eq(x, y):

@@ -6,19 +6,19 @@ import triton
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func(x, y):
     return x / y
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func_tensor_scalar(x, y):
     return x / y
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[[0, 1, "INT_TO_FLOAT"]])
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func_scalar_tensor(x, y):
     return x / y
@@ -37,19 +37,19 @@ def true_divide(A, B):
         return A / B
 
 
-@pointwise_dynamic(promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
     return triton.div_rz(x, y)
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
     return triton.div_rz(x, y)
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
     return triton.div_rz(x, y)
@@ -68,19 +68,19 @@ def trunc_divide(A, B):
         return A / B
 
 
-@pointwise_dynamic(promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y):
     return x // y
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_tensor_scalar(x, y):
     return x // y
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_scalar_tensor(x, y):
     return x // y

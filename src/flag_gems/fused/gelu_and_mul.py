@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def gelu_none_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)
@@ -15,7 +15,7 @@ def gelu_none_and_mul_kernel(x, y):
     return x_gelu * y
 
 
-@pointwise_dynamic(promotion_methods=[[0, 1, "DEFAULT"]])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def gelu_tanh_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)

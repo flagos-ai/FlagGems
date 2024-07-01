@@ -18,7 +18,7 @@ In FlagGems, we provide automatic code generation that developers can use to con
 Decorating the pointwise operator function with `pointwise_dynamic` can save the manual handling of tensor addressing, tensor read/write, parallel tiling, tensor broadcasting, dynamic dimensions, non-contiguous storage, etc. For example, in the following code, developers only need to describe the computational logic to generate flexible and efficient Triton code.
 
 ```python
-@pointwise_dynamic(promotion_methods=[[0, "COMPLEX_TO_FLOAT"]])
+@pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
 @triton.jit
 def abs_func(x):
     return tl.abs(x)
@@ -32,7 +32,7 @@ By default, `pointwise_dynamic` treats all parameters as tensors, and by passing
 @pointwise_dynamic(
     is_tensor=[True, True, False],
     dtypes=[None, None, float],
-    promotion_methods=[[0,"DEFAULT"]]
+    promotion_methods=[(0,"DEFAULT")]
 )
 @triton.jit
 def add_func(x, y, alpha):
