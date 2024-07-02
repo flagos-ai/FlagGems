@@ -538,8 +538,8 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_softmax(shape, dtype):
-    dim = 1
+@pytest.mark.parametrize("dim", [0, 1])
+def test_accuracy_softmax(shape, dtype, dim):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp, True)
 
