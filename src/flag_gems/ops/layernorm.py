@@ -9,9 +9,13 @@ from ..utils import libentry
 
 
 def cfggen():
-    warps = [1, 2, 4, 8, 16, 32]
+    block_m = [1, 2, 4]
+    block_n = [1024, 2048, 4096]
+    warps = [4, 8, 16]
     configs = [
-        triton.Config({"BLOCK_ROW_SIZE": 1, "BLOCK_COL_SIZE": 2048}, num_warps=w)
+        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
+        for m in block_m
+        for n in block_n
         for w in warps
     ]
     return configs
@@ -203,9 +207,10 @@ class LayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
         logging.debug("GEMS LAYERNORM FORWARD")
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
+        # dim = x.ndim - len(normalized_shape)
+        # M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
+        M = x.numel() // N
         x = x.contiguous()
         weight = weight.contiguous()
         bias = bias.contiguous()

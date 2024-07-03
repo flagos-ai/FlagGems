@@ -1,13 +1,12 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(output_dtypes=[torch.bool])
+@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def isnan_func(x):
     return tl.math.isnan(x.to(tl.float32))

@@ -3,6 +3,7 @@ import os
 from typing import Any, Callable, List, Mapping, Optional, Tuple
 
 import torch
+import torch._prims_common as utils
 import triton
 from triton import language as tl
 from triton.runtime.jit import JITFunction
@@ -41,7 +42,7 @@ class OPDesc:
     _num_non_tensor_inputs: int
 
     _num_outputs: int
-    _output_dtypes: List[torch.dtype]
+    _promotion_methods: List[Tuple[int, ...]]
 
     def __init__(
         self,
@@ -50,12 +51,18 @@ class OPDesc:
         is_tensor: Optional[List[bool]] = None,
         dtypes: Optional[List[Optional[type]]] = None,
         num_outputs: Optional[int] = None,
-        output_dtypes: Optional[List[torch.dtype]] = None,
+        promotion_methods: Optional[List[Tuple[int, ...]]] = None,
     ):
         if is_tensor is not None:
             _check_typed_list(is_tensor, bool)
         if dtypes is not None:
             _check_typed_list(dtypes, (type, type(None)))
+        if promotion_methods is None:
+            raise ValueError(
+                "No type promotion method provided! You must provide type promotion method for each output!"
+            )
+        else:
+            self._promotion_methods = promotion_methods
 
         if num_inputs is not None:
             self._num_inputs = num_inputs
@@ -91,22 +98,11 @@ class OPDesc:
                 "Cannot make OPDesc when none of (num_inputs, is_tensor, dtypes) is specified."
             )
 
-        if output_dtypes is not None:
-            _check_typed_list(output_dtypes, torch.dtype)
-
         if num_outputs is not None:
             self._num_outputs = num_outputs
-            if output_dtypes is not None:
-                _check_sized_list(output_dtypes, num_outputs)
-                self._output_dtypes = output_dtypes
-            else:
-                self._output_dtypes = [None] * num_outputs  # infer from the 1st input
-        elif output_dtypes is not None:
-            self._num_outputs = len(output_dtypes)
-            self._output_dtypes = output_dtypes
+            _check_sized_list(promotion_methods, num_outputs)
         else:
-            self._num_outputs = 1
-            self._output_dtypes = [None]
+            self._num_outputs = len(promotion_methods)
 
         assert self._num_inputs >= 1
         assert self._num_outputs >= 1
@@ -127,9 +123,6 @@ class OPDesc:
     def input_type(self, arg_id) -> Optional[type]:
         return self._dtypes[arg_id]
 
-    def output_dtype(self, output_id) -> torch.dtype:
-        return self._output_dtypes[output_id]
-
     def num_input_tensors(self) -> int:
         return self._num_input_tensors
 
@@ -138,6 +131,23 @@ class OPDesc:
 
     def num_non_tensor_args(self) -> int:
         return self._num_non_tensor_inputs
+
+    def type_promotion_methods(self) -> List[Tuple[int, ...]]:
+        return self._promotion_methods
+
+    def _match_enum_by_string(
+        self, input_str: str
+    ) -> utils.ELEMENTWISE_TYPE_PROMOTION_KIND:
+        for kind in utils.ELEMENTWISE_TYPE_PROMOTION_KIND:
+            if input_str.lower() == kind.name.lower():
+                return kind
+        raise ValueError(f"No matching enum member found for input: {input_str}")
+
+    def ith_type_promotion_args(self, i) -> List[int]:
+        return self._promotion_methods[i][:-1]
+
+    def ith_type_promotion_kind(self, i) -> utils.ELEMENTWISE_TYPE_PROMOTION_KIND:
+        return self._match_enum_by_string(self._promotion_methods[i][-1])
 
     def signature(self, outputs_in_arg: bool = False):
         input_types = []
@@ -151,11 +161,8 @@ class OPDesc:
                     input_types.append(_type_name(dtype))
 
         output_types = []
-        for dtype in self._output_dtypes:
-            if dtype is None:
-                output_types.append("Tensor")
-            else:
-                output_types.append(f"Tensor[{_type_name(dtype)}]")
+        for _ in range(self.num_outputs()):
+            output_types.append("Tensor")
         if outputs_in_arg:
             input_types.extend(output_types)
         sig = f'Pointwise: ({", ".join(input_types)}) -> ({", ".join(output_types)})'
@@ -192,6 +199,31 @@ def parameter_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) -> str
         for i in range(op_desc.num_outputs()):
             parameters.append(f"out{output_tensor_index}: torch.Tensor")
             output_tensor_index += 1
+
+    return ", ".join(parameters)
+
+
+def ith_parameter_for_type_promotion(op_desc: OPDesc, ith: int) -> str:
+    """Generate parameter reference for i-th type promotion rule
+    Example: in0, val0, out0
+    """
+    parameters: List[str] = []
+
+    input_tensor_index = 0
+    non_tensor_index = 0
+    for i in range(op_desc.num_inputs()):
+        if i not in op_desc.ith_type_promotion_args(ith):
+            if op_desc._is_tensor[i]:
+                input_tensor_index += 1
+            else:
+                non_tensor_index += 1
+            continue
+        if op_desc._is_tensor[i]:
+            parameters.append(f"in{input_tensor_index}")
+            input_tensor_index += 1
+        else:
+            parameters.append(f"val{non_tensor_index}")
+            non_tensor_index += 1
 
     return ", ".join(parameters)
 
@@ -245,11 +277,17 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("from triton import language as tl")
     code.newline()
-    code.writeline(
-        "from flag_gems.utils.shape_utils import broadcast_shapes, \
-        broadcasted_stride, c_contiguous_stride, volume, Stride"
-    )
+    code.writeline("from flag_gems.utils.shape_utils import (")
+    code.writeline("    broadcast_shapes,")
+    code.writeline("    broadcasted_stride,")
+    code.writeline("    c_contiguous_stride,")
+    code.writeline("    volume,")
+    code.writeline("    Stride,")
+    code.writeline(")")
     code.writeline("from flag_gems.utils.libentry import libentry")
+    code.writeline("from flag_gems.utils.type_utils import type_promotion")
+    code.writeline("import torch._prims_common as utils")
+    code.newline()
     code.newline()
     return code
 
@@ -278,26 +316,29 @@ def generate_functional_pointwise_wrapper(
         # output allocation
         num_output_tensor_index = 0
         for i in range(op_desc.num_outputs()):
-            if op_desc.output_dtype(i) is None:
-                code.writeline(
-                    f"out{num_output_tensor_index} = \
-                    torch.empty(shape, dtype=in0.dtype, device=in0.device)"
+            type_promotion_args = ith_parameter_for_type_promotion(op_desc, i)
+            k_type_promotion = op_desc.ith_type_promotion_kind(i)
+            code.writeline(
+                (
+                    f"out{num_output_tensor_index} = "
+                    f"torch.empty(shape, dtype=type_promotion"
+                    f"({type_promotion_args}, type_promotion=utils.{k_type_promotion})[1], "
+                    f"device=in0.device)"
                 )
-            else:
-                code.writeline(
-                    f"out{num_output_tensor_index} = \
-                    torch.empty(shape, dtype={_type_name(op_desc.output_dtype(i))}, device=in0.device)"
-                )
+            )
             num_output_tensor_index += 1
 
         # call destination_passing_func
         output_names: str = output_ref_for_wrapper(op_desc)
-        call_str = f"{output_names} = {destination_passing_func_name} \
-                   ({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
+        call_str = (
+            f"{output_names} = {destination_passing_func_name}"
+            f"({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
+        )
         code.writeline(call_str)
 
         return_str = f"return {output_names}"
         code.writeline(return_str)
+        code.newline()
         code.newline()
     return code
 
@@ -380,6 +421,7 @@ def generate_destination_passing_pointwise_wrapper(
 
         # return
         code.writeline(f"return {output_ref_for_wrapper(op_desc)}")
+        code.newline()
         code.newline()
     return code
 
@@ -646,7 +688,7 @@ def pointwise_dynamic(
     is_tensor: Optional[List[bool]] = None,
     dtypes: Optional[List[Optional[type]]] = None,
     num_outputs: Optional[int] = None,
-    output_dtypes: Optional[List[type]] = None,
+    promotion_methods: Optional[Tuple[int, ...]] = None,
 ):
     def decorator(fn):
         nonlocal num_inputs
@@ -657,7 +699,7 @@ def pointwise_dynamic(
             is_tensor=is_tensor,
             dtypes=dtypes,
             num_outputs=num_outputs,
-            output_dtypes=output_dtypes,
+            promotion_methods=promotion_methods,
         )
         return PointwiseDynamicFunction(op_desc, fn)
 
@@ -668,7 +710,11 @@ def pointwise_dynamic(
 
 if __name__ == "__main__":
 
-    @pointwise_dynamic(is_tensor=[True, False, True], dtypes=[None, float, None])
+    @pointwise_dynamic(
+        is_tensor=[True, False, True],
+        dtypes=[None, float, None],
+        promotion_methods=[(0, 1, 2, "DEFAULT")],
+    )
     @triton.jit
     def saxpy(x, alpha, y):
         return x * alpha + y
@@ -682,7 +728,9 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(is_tensor=[True, False, True])
+    @pointwise_dynamic(
+        is_tensor=[True, False, True], promotion_methods=[(0, 1, 2, "DEFAULT")]
+    )
     @triton.jit
     def saxpy(x, alpha, y):
         return x * alpha + y
@@ -694,7 +742,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(output_dtypes=[torch.bool])
+    @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
     @triton.jit
     def ge(x, y):
         return x > y
@@ -706,7 +754,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic()
+    @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
     @triton.jit
     def ordinary(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -718,7 +766,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic
+    @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
     @triton.jit
     def ordinary2(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -730,7 +778,7 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic
+    @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
     @triton.jit
     def ordinary2(x, y):
         return tl.sin(x) + tl.cos(y)
@@ -744,7 +792,9 @@ if __name__ == "__main__":
     torch.testing.assert_close(out1, out2)
     print()
 
-    @pointwise_dynamic(is_tensor=[True, False], output_dtypes=[torch.bool])
+    @pointwise_dynamic(
+        is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")]
+    )
     @triton.jit
     def eq(x, y):
         return x.to(tl.float32) == y.to(

@@ -125,9 +125,11 @@ def softmax_and_sub_kernel(
     target = tl.load(target_ptrs, mask=mask, other=0.0)
     out_grad_ptr = out_grad + m_offset[:, None] * K + pid_k
     out_grad_value = tl.load(out_grad_ptr)
-    out = out_grad_value * (softmax_output - target) / mean_num
-    output_ptrs = output_ptr + offset
+    # backward formula derivation for value of ingnore index
+    target_sum = tl.sum(target, axis=1)[:, None]
+    out = out_grad_value * (target_sum * softmax_output - target) / mean_num
 
+    output_ptrs = output_ptr + offset
     tl.store(output_ptrs, out, mask=mask)
 
 
@@ -184,11 +186,12 @@ def softmax_and_sub_reduce_kernel(
     softmax_output = numerator / denominator
     target_ptrs = target_ptr + offset
     target = tl.load(target_ptrs, mask=mask, other=0.0)
-
+    # backward formula derivation for value of ingnore index
+    target_sum = tl.sum(target, axis=1)[:, None]
     out_grad_value = tl.load(out_grad)
-    out = out_grad_value * (softmax_output - target) / mean_num
-    output_ptrs = output_ptr + offset
+    out = out_grad_value * (target_sum * softmax_output - target) / mean_num
 
+    output_ptrs = output_ptr + offset
     tl.store(output_ptrs, out, mask=mask)
 
 
@@ -198,17 +201,47 @@ class CrossEntropyLoss(torch.autograd.Function):
         logging.debug("GEMS CrossEntropyLoss")
         assert reduction in Reduction._value2member_map_, "Invalid reduction"
         assert isinstance(input, torch.Tensor), "input is not a tensor"
+
         if input.ndim >= 2:
             dim = 1
         else:
             dim = 0
+
         if reduction != Reduction.MEAN.value:
             mean_num = -1
         else:
-            mean_num = -target.numel()
+            # get all ingore count of target
+            ignore_count = (target == ignore_index).to(torch.int64).sum().item()
+
+            mean_num = -target.numel() + ignore_count
+
+        # special mean_num is 0, return 0
+        if mean_num == 0:
+            ctx.shape = input.shape
+            ctx.mean_num = mean_num
+            ctx.dim = dim
+            ctx.input_dtype = input.dtype
+            ctx.input_device = input.device
+            if dim == 0:
+                return torch.tensor(0, device=input.device, dtype=input.dtype)
+            else:
+                return torch.tensor(
+                    float("nan"), device=input.device, dtype=input.dtype
+                )
+
         shape = list(input.shape)
         shape[dim] = 1
+
+        # action for target value equals ignore index, out of [0,C)
+        # 1 to delete target negetive value and set 0 to make sure scatter is OK
+        target_tmp = target
+        target = torch.where(target == ignore_index, 0, target)
         target = torch.zeros_like(input).scatter(dim, target.view(shape), 1)
+
+        # 2 set ignore index of target value 0
+        target_tmp = target_tmp.unsqueeze(dim)
+        target_tmp = target_tmp.expand(input.shape).contiguous()
+        target = torch.where(target_tmp == ignore_index, 0, target)
 
         M = 1
         N = input.shape[dim]
@@ -245,11 +278,32 @@ class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logging.debug("GEMS CrossEntropyLoss VJP")
-        input, target = ctx.saved_tensors
-        dim = ctx.dim
         mean_num = ctx.mean_num
+        dim = ctx.dim
+        if mean_num == 0:
+            input_shape = ctx.shape
+            input_dtype = ctx.input_dtype
+            input_device = ctx.input_device
+            if dim == 0:
+                return (
+                    torch.zeros(input_shape, dtype=input_dtype, device=input_device),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            else:
+                return (
+                    torch.tensor(float("nan"), dtype=input_dtype, device=input_device),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+        input, target = ctx.saved_tensors
         reduction = ctx.reduction
-
         M = 1
         N = input.shape[dim]
         for i in range(dim):
@@ -287,8 +341,6 @@ class CrossEntropyLoss(torch.autograd.Function):
         return out, None, None, None, None, None
 
 
-# todo: reducetion(dtype: int,default mean->1), support other scenarios as follows:
-#       (none->0, sum->2)
 def cross_entropy_loss(
     input, target, weight=None, reduction=1, ignore_index=-100, label_smoothing=0.0
 ):

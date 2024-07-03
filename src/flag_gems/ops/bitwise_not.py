@@ -5,7 +5,7 @@ import triton
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def bitwise_not_func(x):
     return ~x
