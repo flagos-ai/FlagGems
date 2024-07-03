@@ -145,6 +145,7 @@ def test_apply_rotary_pos_emb(
         position_ids=ref_position_ids if has_pos_id else None,
         rotary_interleaved=rotary_interleaved,
     )
+
     q_embed_out, k_embed_out = flag_gems.apply_rotary_pos_emb(
         q=q,
         k=k,
@@ -164,14 +165,24 @@ def test_apply_rotary_pos_emb(
 @pytest.mark.parametrize("N", [128, 256, 4096])
 @pytest.mark.parametrize("padding_idx", [-1, 1, 2])
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16]) # triton.atomic_add still not support bf16
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, torch.float16]
+)  # triton.atomic_add still not support bf16
 def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
-    indices = torch.randint(0, EmbeddingSize, (Batch, M), device="cuda", requires_grad=False)
-    embedding = torch.randn((EmbeddingSize, N), device="cuda", dtype=dtype, requires_grad=True)
+    indices = torch.randint(
+        0, EmbeddingSize, (Batch, M), device="cuda", requires_grad=False
+    )
+    embedding = torch.randn(
+        (EmbeddingSize, N), device="cuda", dtype=dtype, requires_grad=True
+    )
     ref_embedding = to_reference(embedding)
 
-    res_out = torch.nn.functional.embedding(indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq)
-    ref_out = flag_gems.embedding(indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq)
+    res_out = torch.nn.functional.embedding(
+        indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+    )
+    ref_out = flag_gems.embedding(
+        indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+    )
 
     out_grad = torch.randn_like(ref_out)
     ref_grad = to_reference(out_grad)
@@ -184,4 +195,3 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 
     gems_assert_close(ref_out, res_out, dtype)
     gems_assert_close(ref_in_grad, res_in_grad, dtype)
-    

@@ -83,7 +83,7 @@ __all__ = [
     "cumsum",
     "div",
     "native_dropout",
-    "embedding", 
+    "embedding",
     "eq",
     "eq_scalar",
     "exp",
