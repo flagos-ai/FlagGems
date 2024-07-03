@@ -53,7 +53,7 @@ from ..utils import libentry
     ],
     key=["M", "N", "K"],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
     a_ptr,
     b_ptr,

@@ -8,7 +8,7 @@ from ..utils import libentry
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["eps"])
 def group_norm_kernel(
     X,
     Y,

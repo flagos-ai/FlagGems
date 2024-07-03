@@ -23,7 +23,7 @@ def cfggen():
 
 @libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
-@triton.jit
+@triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel(
     X,
     Y,

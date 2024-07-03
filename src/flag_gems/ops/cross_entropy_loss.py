@@ -40,7 +40,7 @@ class Reduction(IntEnum):
         ),
     },
 )
-@triton.jit
+@triton.jit(do_not_specialize=["mean_num"])
 def log_softmax_and_mul_kernel(
     output_ptr,
     input_ptr,
@@ -95,7 +95,7 @@ def log_softmax_and_mul_kernel(
         ),
     },
 )
-@triton.jit
+@triton.jit(do_not_specialize=["mean_num"])
 def softmax_and_sub_kernel(
     output_ptr,
     input_ptr,
@@ -158,7 +158,7 @@ def softmax_and_sub_kernel(
         ),
     },
 )
-@triton.jit
+@triton.jit(do_not_specialize=["mean_num"])
 def softmax_and_sub_reduce_kernel(
     output_ptr,
     input_ptr,

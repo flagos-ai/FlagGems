@@ -7,7 +7,7 @@ import flag_gems
 
 from .conftest import CPU_MODE
 
-WARMUP = 10
+WARMUP = 100
 REPETITION = 1000
 
 

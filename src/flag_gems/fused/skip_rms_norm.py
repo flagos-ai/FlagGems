@@ -9,7 +9,7 @@ from ..utils import libentry
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["eps"])
 def skip_rms_norm_kernel(
     Y,  # pointer to the output
     X,  # pointer to the input

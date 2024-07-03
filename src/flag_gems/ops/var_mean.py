@@ -33,7 +33,7 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 @libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
-@triton.jit
+@triton.jit(do_not_specialize=["correction"])
 def var_mean_welford_kernel(
     X,
     Var,
@@ -112,7 +112,7 @@ def var_mean_kernel_1(
 @triton.heuristics(
     values={"BLOCK_N": lambda args: triton.next_power_of_2(args["BLOCK_NUM"])},
 )
-@triton.jit
+@triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
     Acc,
     Average,

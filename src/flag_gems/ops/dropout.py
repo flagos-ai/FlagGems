@@ -41,7 +41,7 @@ del _offset
         "N",
     ],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_forward_kernel(
     X,
     Y,
@@ -82,7 +82,7 @@ def dropout_forward_kernel(
         "N",
     ],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_backward_kernel(
     DY,
     DX,

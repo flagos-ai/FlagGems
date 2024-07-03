@@ -27,7 +27,7 @@ def cfggen_batch():
 
 @libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
-@triton.jit
+@triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
     Y,
@@ -55,7 +55,7 @@ def triu_kernel(
 
 @libentry()
 @triton.autotune(configs=cfggen_batch(), key=["batch", "MN", "N", "diagonal"])
-@triton.jit
+@triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,
     Y,
