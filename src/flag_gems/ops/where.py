@@ -20,7 +20,7 @@ def where_self(condition, self, other):
 
 
 @pointwise_dynamic(
-    is_tensor=[True, True, False], promotion_methods=[(1, 2, "NO_OPMATH")]
+    is_tensor=[True, False, True], promotion_methods=[(1, 2, "NO_OPMATH")]
 )
 @triton.jit
 def where_scalar_self_func(condition, self, other):
