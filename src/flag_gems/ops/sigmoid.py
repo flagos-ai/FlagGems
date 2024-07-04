@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -11,7 +10,8 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def sigmoid_forward(x):
-    log2e: tl.constexpr = math.log2(math.e)
+    log2e = 1.4426950408889634  # math.log2(math.e)
+    # NOTE: do not assign to constexpr since it cannot in inlined into a loop
     return 1 / (1 + tl.math.exp2(-x.to(tl.float32) * log2e))
 
 
