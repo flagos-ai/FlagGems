@@ -30,7 +30,7 @@ def embedding_kernel(
     tl.store(Y + cols, embedding_weight, mask)
 
 
-# @libentry()
+@libentry()
 @triton.jit
 def indice_freq_kernel(
     indices_freq,  # indice frequency
@@ -48,13 +48,14 @@ def indice_freq_kernel(
     tl.atomic_add(indices_freq + index_element, 1, mask=mask)
 
 
-# @libentry()
+@libentry()
 @triton.jit(do_not_specialize=["padding_idx"])
 def embedding_backward_kernel(
     GradIn,  # pointer to the gradient input
     GradOut,  # pointer to the gradient output
     indices,  # pointer to the input
     padding_idx,  # padding_idx
+    HAS_PADDING_IDX: tl.constexpr,
     N: tl.constexpr,  # number of columns in X
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -66,13 +67,18 @@ def embedding_backward_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
 
     row_idx = tl.load(indices).to(tl.int32)
-    if row_idx != padding_idx:
+    if not HAS_PADDING_IDX:
         GradIn += row_idx * N
         embedding_grad = tl.load(GradOut + cols, mask, other=0.0)
         tl.atomic_add(GradIn + cols, embedding_grad, mask=mask)
+    else:
+        if row_idx != padding_idx:
+            GradIn += row_idx * N
+            embedding_grad = tl.load(GradOut + cols, mask, other=0.0)
+            tl.atomic_add(GradIn + cols, embedding_grad, mask=mask)
 
 
-# @libentry()
+@libentry()
 @triton.jit(do_not_specialize=["n_rows", "N"])
 def embedding_grad_scale_kernel(
     grad_out,  # indice frequency
@@ -117,7 +123,7 @@ class Embedding(torch.autograd.Function):
 
         embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
 
-        if padding_idx < 0:
+        if padding_idx is not None and padding_idx < 0:
             padding_idx = weight.shape[0] + padding_idx
 
         ctx.M = M
@@ -158,8 +164,15 @@ class Embedding(torch.autograd.Function):
 
         BLOCK_SIZE = triton.next_power_of_2(ctx.N)
 
+        HAS_PADDING_IDX = ctx.padding_idx is not None
         embedding_backward_kernel[ctx.M,](
-            grad_inputs, grad_outputs, ctx.indices, ctx.padding_idx, ctx.N, BLOCK_SIZE
+            grad_inputs,
+            grad_outputs,
+            ctx.indices,
+            ctx.padding_idx,
+            HAS_PADDING_IDX,
+            ctx.N,
+            BLOCK_SIZE,
         )
 
         if ctx.scale_grad_by_freq:
@@ -169,5 +182,7 @@ class Embedding(torch.autograd.Function):
         return grad_inputs, None, None, None, None
 
 
-def embedding(indices, weight, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
+def embedding(
+    indices, weight, padding_idx=None, scale_grad_by_freq=False, sparse=False
+):
     return Embedding.apply(weight, indices, padding_idx, scale_grad_by_freq, sparse)

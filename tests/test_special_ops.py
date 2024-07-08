@@ -163,7 +163,7 @@ def test_apply_rotary_pos_emb(
 @pytest.mark.parametrize("Batch", [2, 4])
 @pytest.mark.parametrize("M", [4, 8])
 @pytest.mark.parametrize("N", [128, 256, 4096])
-@pytest.mark.parametrize("padding_idx", [-1, 1, 2])
+@pytest.mark.parametrize("padding_idx", [None, -1, 1, 2])
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
 @pytest.mark.parametrize(
     "dtype", [torch.float32]
