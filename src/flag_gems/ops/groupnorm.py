@@ -176,21 +176,22 @@ class GroupNorm(torch.autograd.Function):
         rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
         grid = (N * num_groups,)
 
-        group_norm_kernel[grid](
-            x,
-            y,
-            weight,
-            bias,
-            mean,
-            rstd,
-            group_size,
-            C,
-            HW,
-            num_groups,
-            eps,
-            BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
-            BLOCK_HW_SIZE=triton.next_power_of_2(HW),
-        )
+        with torch.cuda.device(x.device):
+            group_norm_kernel[grid](
+                x,
+                y,
+                weight,
+                bias,
+                mean,
+                rstd,
+                group_size,
+                C,
+                HW,
+                num_groups,
+                eps,
+                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
+                BLOCK_HW_SIZE=triton.next_power_of_2(HW),
+            )
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.num_groups = num_groups
         ctx.group_size = group_size
@@ -213,20 +214,21 @@ class GroupNorm(torch.autograd.Function):
         weight_grad = torch.empty_like(weight)
         bias_grad = torch.empty_like(weight)
         grid = (N * num_groups,)
-        group_norm_backward_kernel[grid](
-            y_grad,
-            x,
-            weight,
-            mean,
-            rstd,
-            num_groups,
-            group_size,
-            x_grad,
-            C,
-            HW,
-            BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
-            BLOCK_HW_SIZE=triton.next_power_of_2(HW),
-        )
+        with torch.cuda.device(x.device):
+            group_norm_backward_kernel[grid](
+                y_grad,
+                x,
+                weight,
+                mean,
+                rstd,
+                num_groups,
+                group_size,
+                x_grad,
+                C,
+                HW,
+                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
+                BLOCK_HW_SIZE=triton.next_power_of_2(HW),
+            )
         weight_bias_backward_kernel[(C, 1, 1)](
             y_grad,
             x,

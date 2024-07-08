@@ -193,5 +193,6 @@ def bmm(A, B):
         triton.cdiv(meta["N"], meta["TILE_N"]),
         batch,
     )
-    bmm_kernel[grid_fn](A, B, out, M, N, K)
+    with torch.cuda.device(A.device):
+        bmm_kernel[grid_fn](A, B, out, M, N, K)
     return out

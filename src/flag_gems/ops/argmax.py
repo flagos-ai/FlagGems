@@ -109,8 +109,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        argmax_kernel_1[(mid_size, 1, 1)](inp, mid_value, mid_index, M, block_size)
-        argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+        with torch.cuda.device(inp.device):
+            argmax_kernel_1[(mid_size, 1, 1)](inp, mid_value, mid_index, M, block_size)
+            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -132,6 +133,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        argmax_kernel[grid](inp, out_index, M, N, K)
+        with torch.cuda.device(inp.device):
+            argmax_kernel[grid](inp, out_index, M, N, K)
 
         return out_index

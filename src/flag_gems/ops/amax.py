@@ -91,8 +91,9 @@ def amax(inp, dim=None, keepdim=False):
             for i in range(0, inp.dim()):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
-        amax_kernel_1[(mid_size, 1)](inp, mid, M, block_size)
-        amax_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+        with torch.cuda.device(inp.device):
+            amax_kernel_1[(mid_size, 1)](inp, mid, M, block_size)
+            amax_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
         return out
     else:
         if isinstance(dim, int):
@@ -112,7 +113,8 @@ def amax(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        amax_kernel[grid](inp, out, M, N)
+        with torch.cuda.device(inp.device):
+            amax_kernel[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
         return out

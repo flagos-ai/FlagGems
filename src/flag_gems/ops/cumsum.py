@@ -68,5 +68,6 @@ def cumsum(inp, dim=1, *, dtype=None):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    cumsum_kernel[grid](inp, out, M, N, K)
+    with torch.cuda.device(inp.device):
+        cumsum_kernel[grid](inp, out, M, N, K)
     return out

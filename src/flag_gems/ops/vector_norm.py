@@ -264,53 +264,54 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
-    if dim is None or len(dim) == x.ndim:
-        dim = list(range(x.ndim))
-        shape = [1] * x.ndim
-        x = dim_compress(x, dim)
-        M = x.numel()
-        BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
-        BLOCK_MID = triton.next_power_of_2(MID_SIZE)
+    with torch.cuda.device(x.device):
+        if dim is None or len(dim) == x.ndim:
+            dim = list(range(x.ndim))
+            shape = [1] * x.ndim
+            x = dim_compress(x, dim)
+            M = x.numel()
+            BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+            MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
+            BLOCK_MID = triton.next_power_of_2(MID_SIZE)
 
-        mid = torch.empty([MID_SIZE], dtype=dtype, device=x.device)
-        out = torch.empty(shape, dtype=dtype, device=x.device)
-        if ord == 2:
-            l2_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)
-            l2_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID)
-        elif ord == float("inf"):
-            max_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)
-            max_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID)
-        elif ord == -float("inf"):
-            min_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)
-            min_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID)
-        elif ord == 0:
-            l0_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)
-            l0_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID)
+            mid = torch.empty([MID_SIZE], dtype=dtype, device=x.device)
+            out = torch.empty(shape, dtype=dtype, device=x.device)
+            if ord == 2:
+                l2_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)
+                l2_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID)
+            elif ord == float("inf"):
+                max_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)
+                max_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID)
+            elif ord == -float("inf"):
+                min_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)
+                min_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID)
+            elif ord == 0:
+                l0_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)
+                l0_norm_kernel_2[(1,)](mid, out, MID_SIZE, BLOCK_MID)
+            else:
+                l1_norm_kernel_1[(MID_SIZE,)](x, mid, ord, M, BLOCK_SIZE)
+                l1_norm_kernel_2[(1,)](mid, out, ord, MID_SIZE, BLOCK_MID)
         else:
-            l1_norm_kernel_1[(MID_SIZE,)](x, mid, ord, M, BLOCK_SIZE)
-            l1_norm_kernel_2[(1,)](mid, out, ord, MID_SIZE, BLOCK_MID)
-    else:
-        shape = list(x.shape)
-        dim = [d % x.ndim for d in dim]
-        x = dim_compress(x, dim)
-        N = 1
-        for i in dim:
-            N *= shape[i]
-            shape[i] = 1
-        M = x.numel() // N
-        out = torch.empty(shape, dtype=dtype, device=x.device)
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-        if ord == 2:
-            l2_norm_kernel[grid](x, out, M, N)
-        elif ord == float("inf"):
-            max_norm_kernel[grid](x, out, M, N)
-        elif ord == -float("inf"):
-            min_norm_kernel[grid](x, out, M, N)
-        elif ord == 0:
-            l0_norm_kernel[grid](x, out, M, N)
-        else:
-            v_norm_kernel[grid](x, out, M, N, ord)
+            shape = list(x.shape)
+            dim = [d % x.ndim for d in dim]
+            x = dim_compress(x, dim)
+            N = 1
+            for i in dim:
+                N *= shape[i]
+                shape[i] = 1
+            M = x.numel() // N
+            out = torch.empty(shape, dtype=dtype, device=x.device)
+            grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+            if ord == 2:
+                l2_norm_kernel[grid](x, out, M, N)
+            elif ord == float("inf"):
+                max_norm_kernel[grid](x, out, M, N)
+            elif ord == -float("inf"):
+                min_norm_kernel[grid](x, out, M, N)
+            elif ord == 0:
+                l0_norm_kernel[grid](x, out, M, N)
+            else:
+                v_norm_kernel[grid](x, out, M, N, ord)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out

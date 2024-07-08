@@ -94,8 +94,9 @@ def any(inp):
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
 
-    any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
-    any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+    with torch.cuda.device(inp.device):
+        any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
+        any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
     return out
 
@@ -118,7 +119,8 @@ def any_dim(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        any_kernel_dim[grid](inp, out, M, N)
+        with torch.cuda.device(inp.device):
+            any_kernel_dim[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
     return out
@@ -142,7 +144,8 @@ def any_dims(inp, dim=None, keepdim=False):
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    any_kernel_dim[grid](inp, out, M, N)
+    with torch.cuda.device(inp.device):
+        any_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out
