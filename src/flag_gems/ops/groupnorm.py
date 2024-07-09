@@ -6,6 +6,14 @@ import triton.language as tl
 
 from ..utils import libentry
 
+try:
+    from triton.language.extra.cuda.libdevice import rsqrt
+except ImportError:
+    try:
+        from triton.language.math import rsqrt
+    except ImportError:
+        from triton.language.libdevice import rsqrt
+
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
@@ -49,7 +57,7 @@ def group_norm_kernel(
     x = tl.where(xy_mask, X_val - mean, 0.0)
 
     var = tl.sum(x * x) / num_elements
-    rstd = tl.math.rsqrt(var + eps)
+    rstd = rsqrt(var + eps)
     x_hat = x * rstd
 
     weight = tl.load(W_ptr, mask=wb_mask, other=0.0)[:, None]

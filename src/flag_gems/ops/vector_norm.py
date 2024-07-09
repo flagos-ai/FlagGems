@@ -7,6 +7,14 @@ import triton.language as tl
 
 from ..utils import dim_compress, libentry
 
+try:
+    from triton.language.extra.cuda.libdevice import pow
+except ImportError:
+    try:
+        from triton.language.math import pow
+    except ImportError:
+        from triton.language.libdevice import pow
+
 
 def cfggen():
     block_m = [1, 2, 4, 8]
@@ -224,9 +232,9 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
         mask = row_mask and col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += tl.math.pow(tl.abs(a), ord)
+        _sum += pow(tl.abs(a), ord)
     sum = tl.sum(_sum, axis=1)
-    out = tl.math.pow(sum, 1 / ord)[:, None]
+    out = pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
 
 
@@ -240,7 +248,7 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.sum(tl.math.pow(tl.abs(x), ord))
+    mid = tl.sum(pow(tl.abs(x), ord))
     tl.store(Mid, mid)
 
 
@@ -251,7 +259,7 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
     Mid = Mid + offset
     mask = offset < MID_SIZE
     mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.math.pow(tl.sum(mid), 1 / ord)
+    out = pow(tl.sum(mid), 1 / ord)
     tl.store(Out, out)
 
 
