@@ -88,7 +88,7 @@ Examples：
 
 ### Requirements
 
-1. Triton >= 2.2.0
+1. Triton >= 2.2.0, <3.0.0
 2. PyTorch >= 2.1.2
 3. Transformers >= 4.40.2
 
@@ -186,7 +186,7 @@ Operators will be implemented according to [OperatorList.md](./OperatorList.md).
 
 The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode. The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
 
-![Operator Speedup](./assets/speedup-0624-eng.png)
+![Operator Speedup](./assets/speedup-0708-eng.png)
 
 ## Contributions
 

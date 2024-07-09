@@ -9,6 +9,7 @@ from .conftest import CPU_MODE
 
 WARMUP = 100
 REPETITION = 1000
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class Benchmark:
