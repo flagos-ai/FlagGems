@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from .performance_utils import (
@@ -10,8 +9,7 @@ from .performance_utils import (
 )
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_rand(dtype):
+def test_perf_rand():
     def rand_kwargs(dtype, batch, size):
         return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
 
@@ -19,7 +17,7 @@ def test_perf_rand(dtype):
         op_name="rand",
         torch_op=torch.rand,
         arg_func=None,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=rand_kwargs,
@@ -27,8 +25,7 @@ def test_perf_rand(dtype):
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_randn(dtype):
+def test_perf_randn():
     def randn_kwargs(dtype, batch, size):
         return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
 
@@ -36,7 +33,7 @@ def test_perf_randn(dtype):
         op_name="randn",
         torch_op=torch.randn,
         arg_func=None,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=randn_kwargs,
@@ -44,13 +41,12 @@ def test_perf_randn(dtype):
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_rand_like(dtype):
+def test_perf_rand_like():
     bench = Benchmark(
         op_name="rand_like",
         torch_op=torch.rand_like,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
