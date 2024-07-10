@@ -671,8 +671,7 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
 )  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
 def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     rtol = (
-        torch.rand(1, dtype=torch.float32, device="cuda").item()
-        * (0.0001 if dtype in [torch.bfloat16, torch.float16] else 0.01)
+        torch.rand(1, dtype=torch.float32, device="cuda").item() * 0.0001
         if not zero_tol
         else 0
     )
