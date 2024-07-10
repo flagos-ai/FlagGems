@@ -25,6 +25,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .isclose import allclose, isclose
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
@@ -65,6 +66,7 @@ __all__ = [
     "all",
     "all_dim",
     "all_dims",
+    "allclose",
     "any",
     "any_dim",
     "any_dims",
@@ -94,6 +96,7 @@ __all__ = [
     "group_norm",
     "gt",
     "gt_scalar",
+    "isclose",
     "isinf",
     "isnan",
     "layer_norm",
