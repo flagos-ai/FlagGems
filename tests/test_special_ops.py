@@ -166,10 +166,9 @@ def test_apply_rotary_pos_emb(
 @pytest.mark.parametrize("padding_idx", [None, -1, 1, 2])
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
 @pytest.mark.parametrize(
-    "dtype", [torch.float32]
+    "dtype", [torch.float16, torch.float32]
 )  # triton.atomic_add still not support bf16
 def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
-    torch.manual_seed(0)
     indices = torch.randint(
         0, EmbeddingSize, (Batch, M), device="cuda", requires_grad=False
     )
@@ -182,7 +181,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
         indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
     ref_out = flag_gems.embedding(
-        indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+        ref_embedding, indices, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
 
     out_grad = torch.randn_like(ref_out)
@@ -190,9 +189,6 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_embedding, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, embedding, out_grad)
-
-    res_out = to_reference(res_out)
-    res_in_grad = to_reference(res_in_grad)
 
     gems_assert_close(ref_out, res_out, dtype)
     gems_assert_close(ref_in_grad, res_in_grad, dtype)
