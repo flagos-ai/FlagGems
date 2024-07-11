@@ -219,7 +219,8 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty(M, dtype=x.dtype, device=x.device)
         grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
 
-        layer_norm_kernel[grid](x, y, weight, bias, mean, rstd, M, N, eps)
+        with torch.cuda.device(x.device):
+            layer_norm_kernel[grid](x, y, weight, bias, mean, rstd, M, N, eps)
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.M = M
         ctx.N = N
@@ -238,9 +239,11 @@ class LayerNorm(torch.autograd.Function):
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
         weight_grad = torch.empty_like(weight)
         bias_grad = torch.empty_like(weight)
-        weight_bias_backward_kernel[grid](
-            out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
-        )
+
+        with torch.cuda.device(x.device):
+            weight_bias_backward_kernel[grid](
+                out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
+            )
         return in_grad, None, weight_grad, bias_grad, None, None
 
 

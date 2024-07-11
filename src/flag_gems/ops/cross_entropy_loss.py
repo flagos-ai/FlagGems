@@ -255,15 +255,16 @@ class CrossEntropyLoss(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        log_softmax_and_mul_kernel[grid](
-            out,
-            inp,
-            target,
-            mean_num,
-            M,
-            N,
-            K,
-        )
+        with torch.cuda.device(inp.device):
+            log_softmax_and_mul_kernel[grid](
+                out,
+                inp,
+                target,
+                mean_num,
+                M,
+                N,
+                K,
+            )
         if reduction != Reduction.NONE.value:
             out_result = sum(out)
         else:
@@ -316,28 +317,29 @@ class CrossEntropyLoss(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        if reduction != Reduction.NONE.value:
-            softmax_and_sub_reduce_kernel[grid](
-                out,
-                inp,
-                target,
-                out_grad,
-                mean_num,
-                M,
-                N,
-                K,
-            )
-        else:
-            softmax_and_sub_kernel[grid](
-                out,
-                inp,
-                target,
-                out_grad,
-                mean_num,
-                M,
-                N,
-                K,
-            )
+        with torch.cuda.device(inp.device):
+            if reduction != Reduction.NONE.value:
+                softmax_and_sub_reduce_kernel[grid](
+                    out,
+                    inp,
+                    target,
+                    out_grad,
+                    mean_num,
+                    M,
+                    N,
+                    K,
+                )
+            else:
+                softmax_and_sub_kernel[grid](
+                    out,
+                    inp,
+                    target,
+                    out_grad,
+                    mean_num,
+                    M,
+                    N,
+                    K,
+                )
         return out, None, None, None, None, None
 
 

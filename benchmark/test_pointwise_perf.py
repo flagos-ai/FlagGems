@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from .performance_utils import (
@@ -15,423 +14,438 @@ from .performance_utils import (
 )
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_abs(dtype):
+def test_perf_abs():
     bench = Benchmark(
         op_name="abs",
         torch_op=torch.abs,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_add(dtype):
+def test_perf_add():
     bench = Benchmark(
         op_name="add",
         torch_op=torch.add,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", INT_DTYPES)
-def test_perf_bitwiseand(dtype):
+def test_perf_bitwiseand():
     bench = Benchmark(
         op_name="bitwiseand",
         torch_op=torch.bitwise_and,
         arg_func=binary_int_args,
-        dtype=dtype,
+        dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", INT_DTYPES)
-def test_perf_bitwisenot(dtype):
+def test_perf_bitwisenot():
     bench = Benchmark(
         op_name="bitwisenot",
         torch_op=torch.bitwise_not,
         arg_func=unary_int_arg,
-        dtype=dtype,
+        dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", INT_DTYPES)
-def test_perf_bitwiseor(dtype):
+def test_perf_bitwiseor():
     bench = Benchmark(
         op_name="bitwiseor",
         torch_op=torch.bitwise_or,
         arg_func=binary_int_args,
-        dtype=dtype,
+        dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_clamp(dtype):
+def test_perf_clamp():
     bench = Benchmark(
         op_name="clamp",
         torch_op=torch.clamp,
         arg_func=ternary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_cos(dtype):
+def test_perf_cos():
     bench = Benchmark(
         op_name="cos",
         torch_op=torch.cos,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_div(dtype):
+def test_perf_div():
     bench = Benchmark(
         op_name="div",
         torch_op=torch.div,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_dropout(dtype):
+def test_perf_dropout():
     bench = Benchmark(
         op_name="dropout",
         torch_op=torch.nn.Dropout(p=0.5),
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_eq(dtype):
+def test_perf_eq():
     bench = Benchmark(
         op_name="eq",
         torch_op=torch.eq,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_exp(dtype):
+def test_perf_exp():
     bench = Benchmark(
         op_name="exp",
         torch_op=torch.exp,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_ge(dtype):
+def test_perf_ge():
     bench = Benchmark(
         op_name="ge",
         torch_op=torch.ge,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_gelu(dtype):
+def test_perf_gelu():
     bench = Benchmark(
         op_name="gelu",
         torch_op=torch.nn.functional.gelu,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_gt(dtype):
+def test_perf_gt():
     bench = Benchmark(
         op_name="gt",
         torch_op=torch.gt,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_isinf(dtype):
+def test_perf_isinf():
     bench = Benchmark(
         op_name="isinf",
         torch_op=torch.isinf,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_isnan(dtype):
+def test_perf_isnan():
     bench = Benchmark(
         op_name="isnan",
         torch_op=torch.isnan,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_le(dtype):
+def test_perf_le():
     bench = Benchmark(
         op_name="le",
         torch_op=torch.le,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_lt(dtype):
+def test_perf_lt():
     bench = Benchmark(
         op_name="lt",
         torch_op=torch.lt,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_mul(dtype):
+def test_perf_mul():
     bench = Benchmark(
         op_name="mul",
         torch_op=torch.mul,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_ne(dtype):
+def test_perf_ne():
     bench = Benchmark(
         op_name="ne",
         torch_op=torch.ne,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_neg(dtype):
+def test_perf_neg():
     bench = Benchmark(
         op_name="neg",
         torch_op=torch.neg,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_pow(dtype):
+def test_perf_pow():
     bench = Benchmark(
         op_name="pow",
         torch_op=torch.pow,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_reciprocal(dtype):
+def test_perf_reciprocal():
     bench = Benchmark(
         op_name="reciprocal",
         torch_op=torch.reciprocal,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_relu(dtype):
+def test_perf_relu():
     bench = Benchmark(
         op_name="relu",
         torch_op=torch.nn.functional.relu,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_rsqrt(dtype):
+def test_perf_rsqrt():
     bench = Benchmark(
         op_name="rsqrt",
         torch_op=torch.rsqrt,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_sigmoid(dtype):
+def test_perf_sigmoid():
     bench = Benchmark(
         op_name="sigmoid",
         torch_op=torch.sigmoid,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_silu(dtype):
+def test_perf_silu():
     bench = Benchmark(
         op_name="silu",
         torch_op=torch.nn.functional.silu,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_sin(dtype):
+def test_perf_sin():
     bench = Benchmark(
         op_name="sin",
         torch_op=torch.sin,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_sub(dtype):
+def test_perf_sub():
     bench = Benchmark(
         op_name="sub",
         torch_op=torch.sub,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_tanh(dtype):
+def test_perf_tanh():
     bench = Benchmark(
         op_name="tanh",
         torch_op=torch.tanh,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_triu(dtype):
+def test_perf_triu():
     bench = Benchmark(
         op_name="triu",
         torch_op=torch.triu,
         arg_func=unary_arg,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
 
 
-def where_args(dtype, batch, size):
-    inp1 = torch.randn([size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([size], dtype=dtype, device="cuda")
-    condition = inp1 > 0
-    return condition, inp1, inp2
+def test_perf_where():
+    def where_args(dtype, batch, size):
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        condition = inp1 > 0
+        return condition, inp1, inp2
 
-
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_where(dtype):
     bench = Benchmark(
         op_name="where",
         torch_op=torch.where,
         arg_func=where_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_isclose():
+    bench = Benchmark(
+        op_name="isclose",
+        torch_op=torch.isclose,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_isclose_int():
+    bench = Benchmark(
+        op_name="isclose",
+        torch_op=torch.isclose,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_allclose():
+    bench = Benchmark(
+        op_name="allclose",
+        torch_op=torch.allclose,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_allclose_int():
+    bench = Benchmark(
+        op_name="allclose",
+        torch_op=torch.allclose,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )

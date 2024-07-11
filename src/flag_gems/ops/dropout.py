@@ -4,33 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.random_utils import philox_cuda_seed_offset
-
-try:
-    uint_to_uniform_float = tl.uint_to_uniform_float
-except AttributeError:
-    # Copied from triton.language package for compatibility
-    @triton.jit
-    def uint_to_uniform_float(x):
-        """
-        Numerically stable function to convert a random uint into a random float uniformly sampled in [0, 1).
-        """
-        # TODO: fix frontend issues and cleanup
-        # conditions can be simplified
-        # scale is ((2**23 - 1) / 2**23) * 2**(N_BITS - 1)
-        if tl.constexpr(x.dtype == tl.uint32) or tl.constexpr(x.dtype == tl.int32):
-            # maximum value such that `MAX_INT * scale < 1.0` (with float rounding)
-            x = x.to(tl.int32, bitcast=True)
-            scale = 4.6566127342e-10
-        else:
-            tl.static_assert(
-                tl.constexpr(x.dtype == tl.uint64) or tl.constexpr(x.dtype == tl.int64)
-            )
-            x = x.to(tl.int64, bitcast=True)
-            scale = 1.0842020432385337e-19
-        x = tl.where(x < 0, -x - 1, x)
-        return x * scale
-
+from ..utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 
 UNROLL = 4
 

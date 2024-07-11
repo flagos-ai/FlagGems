@@ -134,13 +134,14 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        log_softmax_kernel[grid](
-            out,
-            inp,
-            M,
-            N,
-            K,
-        )
+        with torch.cuda.device(inp.device):
+            log_softmax_kernel[grid](
+                out,
+                inp,
+                M,
+                N,
+                K,
+            )
         ctx.save_for_backward(out)
         ctx.dim = dim
         return out
@@ -167,14 +168,15 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        log_softmax_backward_kernel[grid](
-            out,
-            out_grad,
-            in_grad,
-            M,
-            N,
-            K,
-        )
+        with torch.cuda.device(in_grad.device):
+            log_softmax_backward_kernel[grid](
+                out,
+                out_grad,
+                in_grad,
+                M,
+                N,
+                K,
+            )
         return in_grad, None, None
 
 

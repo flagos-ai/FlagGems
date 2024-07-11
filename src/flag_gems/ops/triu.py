@@ -89,16 +89,17 @@ def triu(A, diagonal=0):
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     M, N = A.shape[-2:]
-    if len(A.shape) == 2:
-        grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
-        triu_kernel[grid](A, out, M, N, diagonal)
-    else:
-        batch = int(torch.numel(A) / M / N)
-        B = A.view(batch, -1)
-        grid = lambda meta: (
-            triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
-            triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
-        )
-        triu_batch_kernel[grid](B, out, batch, M * N, N, diagonal)
-        out = out.view(A.shape)
+    with torch.cuda.device(A.device):
+        if len(A.shape) == 2:
+            grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+            triu_kernel[grid](A, out, M, N, diagonal)
+        else:
+            batch = int(torch.numel(A) / M / N)
+            B = A.view(batch, -1)
+            grid = lambda meta: (
+                triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+            )
+            triu_batch_kernel[grid](B, out, batch, M * N, N, diagonal)
+            out = out.view(A.shape)
     return out

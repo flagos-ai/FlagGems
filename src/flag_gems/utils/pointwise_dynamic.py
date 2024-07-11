@@ -10,7 +10,6 @@ from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
-from flag_gems.utils.inliner import inline_function
 from flag_gems.utils.shape_utils import broadcast_shapes
 
 
@@ -365,10 +364,8 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(8192, triton.next_power_of_2(num_tasks))")
-            code.writeline(
-                "num_warps = 4 if tile_size <= 1024 else (8 if tile_size <= 4096 else 16)"
-            )
+            code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
+            code.writeline("num_warps = 4")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
             code.writeline(
                 "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
@@ -420,6 +417,7 @@ def generate_destination_passing_pointwise_wrapper(
                     code.writeline("num_tasks, # num tasks")
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     code.writeline("tile_size=tile_size,")
+                    code.writeline("one_tile_per_cta=tiles_per_cta==1,")
                 code.writeline("num_warps=num_warps,")
             code.writeline(")")
 
@@ -437,23 +435,32 @@ def generate_pointwise_kernel(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
+    # make the inlined function visible in the context
+    fn_name = scalar_fn.__name__
+    code.writeline(f"from {scalar_fn.__module__} import {fn_name}")
+    code.writeline(f"inlined_f = {fn_name}._scalar_fn")
+    code.newline()
+
+    # the decorators
     code.writeline("@libentry()")
     if op_desc.num_non_tensor_args() > 0:
+        # we do not specialize non tensor args since they are passed into the inlined function
+        # which means that their values may not deserve specialization
         non_specialize_arg_names = [
             f"val{i}" for i in range(op_desc.num_non_tensor_args())
         ]
         code.writeline(f"@triton.jit(do_not_specialize={non_specialize_arg_names})")
     else:
         code.writeline("@triton.jit")
-    code.writeline(f"def {kernel_name}(")
 
-    function_ns = NameSpace()
     # signature
+    code.writeline(f"def {kernel_name}(")
+    function_ns = NameSpace()
     with code.indent():
         input_tensor_index = 0
         non_tensor_index = 0
         output_tensor_index = 0
-        # inputs ptrs & non tensor inputs
+        # signature: inputs ptrs & non tensor inputs
         for i in range(op_desc.num_inputs()):
             if op_desc.is_tensor(i):
                 code.writeline(
@@ -471,7 +478,7 @@ def generate_pointwise_kernel(
                 function_ns.create_name(f"val{non_tensor_index}")
                 non_tensor_index += 1
 
-        # output ptrs
+        # signature: output ptrs
         for i in range(op_desc.num_outputs()):
             code.writeline(
                 f"out{output_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
@@ -479,6 +486,8 @@ def generate_pointwise_kernel(
             function_ns.create_name(f"out{output_tensor_index}_ptr")
             output_tensor_index += 1
 
+        # signature: strides, for each tensor arguments
+        # only add this arguments when rank > 0
         if rank > 0:
             # strides for inputs
             for i in range(op_desc.num_input_tensors()):
@@ -504,41 +513,134 @@ def generate_pointwise_kernel(
             code.writeline("num_tasks: int,")
             function_ns.create_name("num_tasks")
 
+        # tile size & tiles_per_cta, gsl style
+        if rank > 0:
+            code.writeline("tiles_per_cta,")
+            function_ns.create_name("tiles_per_cta")
+
             code.writeline("tile_size: tl.constexpr,")
             function_ns.create_name("tile_size")
 
-            code.writeline("tiles_per_cta,")
-            function_ns.create_name("tiles_per_cta")
+            code.writeline("one_tile_per_cta: tl.constexpr,")
+            function_ns.create_name("one_tile_per_cta")
     code.writeline("):")
 
-    # function body
+    # input & output names
+    inputs_to_scalar_fn = []
+    input_tensor_index = 0
+    non_tensor_index = 0
+    for i in range(op_desc.num_inputs()):
+        if op_desc.is_tensor(i):
+            inputs_to_scalar_fn.append(f"in{input_tensor_index}")
+            input_tensor_index += 1
+        else:
+            inputs_to_scalar_fn.append(f"val{non_tensor_index}")
+            non_tensor_index += 1
+    inputs_to_scalar_fn: str = ", ".join(inputs_to_scalar_fn)
+
+    outputs_to_scalar_fn = [f"out{i}" for i in range(op_desc.num_outputs())]
+    outputs_to_scalar_fn: str = ", ".join(outputs_to_scalar_fn)
+
+    # function body for rank-0
+    if rank == 0:
+        with code.indent():
+            code.writeline("# loads")
+            for i in range(op_desc.num_input_tensors()):
+                ptrs_expr: str = f"in{i}_ptr"
+                load_stmt: str = f"in{i} = tl.load({ptrs_expr})"
+                function_ns.create_name(f"in{i}")  # add to the namespace
+                code.writeline(load_stmt)
+            code.newline()
+
+            code.writeline("# compute")
+            code.writeline(f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})")
+            code.newline()
+
+            code.writeline("# stores")
+            for i in range(op_desc.num_output_tensors()):
+                ptrs_expr: str = f"out{i}_ptr"
+                store_stmt: str = f"tl.store({ptrs_expr}, out{i})"
+                code.writeline(store_stmt)
+            code.newline()
+            return code
+
     with code.indent():
         # get pid
-        if rank > 0:
-            code.writeline("# task id & masking")
-            pid_stmt = "pid = tl.program_id(0)"
-            code.writeline(pid_stmt)
-            function_ns.create_name("pid")
+        code.writeline("# task id & masking")
+        pid_stmt = "pid = tl.program_id(0)"
+        code.writeline(pid_stmt)
+        function_ns.create_name("pid")
 
-            code.writeline("num_ctas = tl.num_programs(0)")
-            function_ns.create_name("num_ctas")
+        code.writeline("num_ctas = tl.num_programs(0)")
+        function_ns.create_name("num_ctas")
 
         # get tid (a.k.a task id)
-        if rank > 0:
-            tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
-            code.writeline(tid_stmt)
-            function_ns.create_name("init_tid")
+        tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
+        code.writeline(tid_stmt)
+        function_ns.create_name("init_tid")
 
-        if rank > 0:
+        # one-tile-per-cta, monolithic kernel style
+        code.writeline("if one_tile_per_cta: # monolitic kernel style")
+        with code.indent():
+            tid_stmt = "tid = init_tid"
+            code.writeline(tid_stmt)
+            function_ns.create_name("tid")
+
+            # only apply masking when rank > 0
+            # since we only load a value instead of a block of values when the rank is 0
+            mask_stmt: str = "mask = tid < num_tasks"
+            code.writeline(mask_stmt)
+            function_ns.create_name("mask")
+            code.newline()
+
+            # reconstruct multi index
+            code.writeline("# multi index recontruction")
+            for i in reversed(range(rank)):
+                if i > 0:
+                    code.writeline(f"i{i} = tid % s{i}")
+                    code.writeline(f"tid //= s{i}")
+                else:
+                    code.writeline(f"i{i} = tid")
+                function_ns.create_name(f"{i}")
+            code.newline()
+
+            # loads
+            code.writeline("# loads")
+            for i in range(op_desc.num_input_tensors()):
+                ptrs_expr: str = " + ".join(
+                    f"i{j} * in{i}_stride{j}" for j in range(rank)
+                )
+                ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
+                load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
+                function_ns.create_name(f"in{i}")  # add to the namespace
+                code.writeline(load_stmt)
+            code.newline()
+
+            # compute
+            code.writeline("# compute")
+            code.writeline(f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})")
+            code.newline()
+
+            # stores
+            code.writeline("# stores")
+            for i in range(op_desc.num_output_tensors()):
+                ptrs_expr: str = " + ".join(
+                    f"i{j} * out{i}_stride{j}" for j in range(rank)
+                )
+                ptrs_expr: str = f"out{i}_ptr + {ptrs_expr}"
+                store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
+                code.writeline(store_stmt)
+
+        # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+        code.writeline("else: # grid-stride-loop style kernel")
+        with code.indent():
             code.writeline("for j in range(0, tiles_per_cta):")
             function_ns.create_name("j")
-        with code.indent(int(rank > 0)):
-            if rank > 0:
+            with code.indent():
                 tid_stmt = "tid = init_tid + j * tile_size * num_ctas"
                 code.writeline(tid_stmt)
                 function_ns.create_name("tid")
 
-            if rank > 0:
                 # only apply masking when rank > 0
                 # since we only load a value instead of a block of values when the rank is 0
                 mask_stmt: str = "mask = tid < num_tasks"
@@ -549,68 +651,43 @@ def generate_pointwise_kernel(
                 # reconstruct multi index
                 code.writeline("# multi index recontruction")
                 for i in reversed(range(rank)):
-                    code.writeline(f"i{i} = tid % s{i}")
-                    function_ns.create_name(f"{i}")
                     if i > 0:
+                        code.writeline(f"i{i} = tid % s{i}")
                         code.writeline(f"tid //= s{i}")
+                    else:
+                        code.writeline(f"i{i} = tid")
+                    function_ns.create_name(f"{i}")
                 code.newline()
 
-            # loads
-            code.writeline("# loads")
-            for i in range(op_desc.num_input_tensors()):
-                if rank > 0:
+                # loads
+                code.writeline("# loads")
+                for i in range(op_desc.num_input_tensors()):
                     ptrs_expr: str = " + ".join(
                         f"i{j} * in{i}_stride{j}" for j in range(rank)
                     )
                     ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
                     load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
-                else:
-                    ptrs_expr: str = f"in{i}_ptr"
-                    load_stmt: str = f"in{i} = tl.load({ptrs_expr})"
-                function_ns.create_name(f"in{i}")  # add to the namespace
-                code.writeline(load_stmt)
-            code.newline()
+                    function_ns.create_name(f"in{i}")  # add to the namespace
+                    code.writeline(load_stmt)
+                code.newline()
 
-            # compute
-            code.writeline("# compute")
+                # compute
+                code.writeline("# compute")
+                code.writeline(
+                    f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})"
+                )
+                code.newline()
 
-            inputs_to_scalar_fn = []
-            input_tensor_index = 0
-            non_tensor_index = 0
-            for i in range(op_desc.num_inputs()):
-                if op_desc.is_tensor(i):
-                    inputs_to_scalar_fn.append(f"in{input_tensor_index}")
-                    input_tensor_index += 1
-                else:
-                    inputs_to_scalar_fn.append(f"val{non_tensor_index}")
-                    non_tensor_index += 1
-
-            outputs_to_scalar_fn = [f"out{i}" for i in range(op_desc.num_outputs())]
-
-            compute_body = inline_function(
-                scalar_fn,
-                inputs_to_scalar_fn,
-                outputs_to_scalar_fn,
-                function_ns,
-            )
-            for line in compute_body.strip().splitlines():
-                code.writeline(line)
-            code.newline()
-
-            # stores
-            code.writeline("# stores")
-            for i in range(op_desc.num_output_tensors()):
-                if rank > 0:
+                # stores
+                code.writeline("# stores")
+                for i in range(op_desc.num_output_tensors()):
                     ptrs_expr: str = " + ".join(
                         f"i{j} * out{i}_stride{j}" for j in range(rank)
                     )
                     ptrs_expr: str = f"out{i}_ptr + {ptrs_expr}"
                     store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
-                else:
-                    ptrs_expr: str = f"out{i}_ptr"
-                    store_stmt: str = f"tl.store({ptrs_expr}, out{i})"
-                code.writeline(store_stmt)
-            code.newline()
+                    code.writeline(store_stmt)
+                code.newline()
     return code
 
 
