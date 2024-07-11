@@ -188,7 +188,5 @@ class Embedding(torch.autograd.Function):
         return grad_inputs, None, None, None, None
 
 
-def embedding(
-    weight, indices, padding_idx=None, scale_grad_by_freq=False, sparse=False
-):
+def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
     return Embedding.apply(weight, indices, padding_idx, scale_grad_by_freq, sparse)
