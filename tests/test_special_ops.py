@@ -180,10 +180,10 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     res_out = torch.nn.functional.embedding(
         indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
-    ref_out = flag_gems.embedding(
-        ref_embedding, indices, padding_idx, scale_grad_by_freq=scale_grad_by_freq
-    )
-
+    with flag_gems.use_gems():
+        ref_out = torch.nn.functional.embedding(
+            indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+        )
     out_grad = torch.randn_like(ref_out)
     ref_grad = to_reference(out_grad)
 
