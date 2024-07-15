@@ -51,3 +51,24 @@ def test_perf_rand_like():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_embedding():
+    def embedding_kwargs(dtype, batch, size):
+        input = torch.randint(0, batch, (batch,), device="cuda")
+        weight = torch.randn((batch + 1, size), device="cuda", dtype=dtype)
+        return {"input": input, "weight": weight}
+
+    bench = Benchmark(
+        op_name="embedding",
+        torch_op=torch.nn.functional.embedding,
+        arg_func=None,
+        dtypes=[
+            torch.float32,
+            torch.float16,
+        ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=embedding_kwargs,
+    )
+    bench.run()
