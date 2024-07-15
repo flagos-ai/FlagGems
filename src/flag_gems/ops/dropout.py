@@ -4,9 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
-
-UNROLL = 4
+from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 
 
 def heur_block(args):
@@ -41,6 +39,7 @@ def dropout_forward_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
+    UNROLL: tl.constexpr = 4  # philox generate 128 random bits at a time
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -97,7 +96,7 @@ def dropout_backward_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
-    UNROLL = 4
+    UNROLL: tl.constexpr = 4
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -135,6 +134,9 @@ def dropout_backward_kernel(
     tl.store(DX + off_1, dx_1, mask=off_1 < N, eviction_policy="evict_first")
     tl.store(DX + off_2, dx_2, mask=off_2 < N, eviction_policy="evict_first")
     tl.store(DX + off_3, dx_3, mask=off_3 < N, eviction_policy="evict_first")
+
+
+UNROLL = 4
 
 
 class NativeDropout(torch.autograd.Function):
