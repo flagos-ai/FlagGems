@@ -6,13 +6,18 @@ import triton.language as tl
 
 from ..utils import libentry
 
+MAX_TILE_K = 8192
+NUM_SMS = torch.cuda.get_device_properties(
+    torch.cuda.current_device()
+).multi_processor_count
 
-def heuristics_for_tile_k(m, k, max_tile_k, num_sms):
+
+def heur_tile_k(args):
     tile_k = 1
-    upper_bound = min(k, max_tile_k)
+    upper_bound = min(args["K"], MAX_TILE_K)
     while tile_k <= upper_bound:
-        num_blocks = m * triton.cdiv(k, tile_k)
-        num_waves = num_blocks / num_sms
+        num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
+        num_waves = num_blocks / NUM_SMS
         if (num_waves > 1) and (tile_k * 2 <= upper_bound):
             tile_k *= 2
         else:
@@ -20,30 +25,31 @@ def heuristics_for_tile_k(m, k, max_tile_k, num_sms):
     return tile_k
 
 
+def heur_tile_n_non_inner(args):
+    return triton.cdiv(8192, args["TILE_K"])
+
+
+def heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def heur_num_warps_non_inner(args):
+    tile_size = args["TILE_N"] * args["TILE_K"]
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
+
+
 @triton.heuristics(
-    values={
-        "TILE_K": lambda args: heuristics_for_tile_k(
-            args["M"],
-            args["K"],
-            8192,
-            torch.cuda.get_device_properties(
-                torch.cuda.current_device()
-            ).multi_processor_count,
-        )
+    {
+        "TILE_K": heur_tile_k,
+        "TILE_N": heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": heur_one_tile_per_cta,
+        "num_warps": heur_num_warps_non_inner,
     }
-)
-@triton.heuristics(values={"TILE_N": lambda args: triton.cdiv(8192, args["TILE_K"])})
-@triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
-    },
-)
-@triton.heuristics(
-    values={
-        "num_warps": lambda args: heuristics_for_num_warps(
-            args["TILE_N"] * args["TILE_K"]
-        )
-    },
 )
 @triton.jit
 def softmax_kernel_non_inner(
@@ -103,15 +109,6 @@ def softmax_kernel_non_inner(
             tl.store(output_ptr + offsets, o, mask=mask)
 
 
-def heuristics_for_num_warps(tile_size):
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
-
-
 @triton.jit
 def next_multiple_of(a, b):
     # the smallest x>=a that x%b ==0
@@ -124,20 +121,29 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
+def heur_tile_n_inner(args):
+    if args["N"] <= (32 * 1024):
+        return triton.next_power_of_2(args["N"])
+    else:
+        return 4096
+
+
+def heur_num_warps_inner(args):
+    tile_size = args["TILE_N"]
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
+
+
 @triton.heuristics(
-    values={
-        "TILE_N": lambda args: triton.next_power_of_2(args["N"])
-        if args["N"] <= (32 * 1024)
-        else 4096
-    },
-)
-@triton.heuristics(
-    values={
-        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
-    },
-)
-@triton.heuristics(
-    values={"num_warps": lambda args: heuristics_for_num_warps(args["TILE_N"])},
+    {
+        "TILE_N": heur_tile_n_inner,
+        "ONE_TILE_PER_CTA": heur_one_tile_per_cta,
+        "num_warps": heur_num_warps_inner,
+    }
 )
 @triton.jit
 def softmax_kernel_inner(
@@ -209,6 +215,10 @@ def softmax_kernel_inner(
             tl.store(output_ptr + n_offsets, o)
 
 
+def heur_tile_n_bwd_non_inner(args):
+    return max(1, 1024 // args["TILE_K"])
+
+
 # ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
@@ -227,9 +237,9 @@ def softmax_kernel_inner(
     ],
 )
 @triton.heuristics(
-    values={
-        "TILE_N": lambda args: max(1, 1024 // args["TILE_K"]),
-        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
+    {
+        "TILE_N": heur_tile_n_bwd_non_inner,
+        "ONE_TILE_PER_CTA": heur_one_tile_per_cta,
     },
 )
 @triton.jit
@@ -282,6 +292,10 @@ def softmax_backward_kernel_non_inner(
             offsets += TILE_N * K
 
 
+def heru_tile_m(args):
+    return max(1, 1024 // args["TILE_N"])
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -296,8 +310,8 @@ def softmax_backward_kernel_non_inner(
 )
 @triton.heuristics(
     values={
-        "TILE_M": lambda args: max(1, 1024 // args["TILE_N"]),
-        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
+        "TILE_M": heru_tile_m,
+        "ONE_TILE_PER_CTA": heur_one_tile_per_cta,
     },
 )
 @triton.jit

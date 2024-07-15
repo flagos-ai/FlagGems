@@ -20,10 +20,26 @@ except AttributeError:
         return r * tl.cos(th), r * tl.sin(th)
 
 
+def heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
+
+
 @triton.heuristics(
-    values={
-        "BLOCK": lambda args: 512 if args["N"] <= 512 else 1024,
-        "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
+    {
+        "BLOCK": heur_block,
+        "num_warps": heur_num_warps,
     }
 )
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])

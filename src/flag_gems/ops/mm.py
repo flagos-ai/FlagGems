@@ -7,6 +7,10 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_even_k(args):
+    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -107,7 +111,7 @@ from ..utils import libentry
 )
 @triton.heuristics(
     {
-        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0,
+        "EVEN_K": heur_even_k,
     }
 )
 @triton.jit

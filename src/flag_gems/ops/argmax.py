@@ -43,6 +43,10 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     tl.store(out, out_val)
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -59,7 +63,9 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     ],
 )
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit
 def argmax_kernel(

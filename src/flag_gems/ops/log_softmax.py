@@ -7,6 +7,19 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
+def heur_num_warps(args):
+    if args["N"] <= 1024:
+        return 4
+    elif args["N"] <= 2048:
+        return 8
+    else:
+        return 16
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -25,12 +38,10 @@ from ..utils import libentry
     ],
 )
 @triton.heuristics(
-    values={
-        "BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
-        "num_warps": lambda args: (
-            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
-        ),
-    },
+    {
+        "BLOCK_N": heur_block_n,
+        "num_warps": heur_num_warps,
+    }
 )
 @triton.jit
 def log_softmax_kernel(
@@ -76,12 +87,10 @@ def log_softmax_kernel(
     ],
 )
 @triton.heuristics(
-    values={
-        "BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
-        "num_warps": lambda args: (
-            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
-        ),
-    },
+    {
+        "BLOCK_N": heur_block_n,
+        "num_warps": heur_num_warps,
+    }
 )
 @triton.jit
 def log_softmax_backward_kernel(

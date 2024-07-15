@@ -61,6 +61,10 @@ def prod(inp, *, dtype=None):
     return out
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -77,7 +81,9 @@ def prod(inp, *, dtype=None):
     ],
 )
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit
 def prod_kernel(

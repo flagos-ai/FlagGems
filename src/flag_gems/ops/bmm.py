@@ -7,6 +7,18 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_divisible_m(args):
+    return args["M"] % args["TILE_M"] == 0
+
+
+def heur_divisible_n(args):
+    return args["N"] % args["TILE_N"] == 0
+
+
+def heur_divisible_k(args):
+    return args["K"] % args["TILE_K"] == 0
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -75,9 +87,9 @@ from ..utils import libentry
 )
 @triton.heuristics(
     {
-        "DIVISIBLE_M": lambda args: args["M"] % args["TILE_M"] == 0,
-        "DIVISIBLE_N": lambda args: args["N"] % args["TILE_N"] == 0,
-        "DIVISIBLE_K": lambda args: args["K"] % args["TILE_K"] == 0,
+        "DIVISIBLE_M": heur_divisible_m,
+        "DIVISIBLE_N": heur_divisible_n,
+        "DIVISIBLE_K": heur_divisible_k,
     }
 )
 @triton.jit

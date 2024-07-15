@@ -7,6 +7,10 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -23,7 +27,9 @@ from ..utils import libentry
     ],
 )
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit
 def cumsum_kernel(
