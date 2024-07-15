@@ -4,6 +4,8 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    ALL_FLOAT_DTYPES,
+    ALL_INT_DTYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
@@ -250,5 +252,24 @@ def test_accuracy_triu(shape, diagonal, dtype):
     ref_out = torch.triu(ref_inp, diagonal)
     with flag_gems.use_gems():
         res_out = torch.triu(inp, diagonal)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+def test_accuracy_isfinite(shape, dtype):
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.masked_fill(inp, inp > 1.0, float("inf"))
+        inp = torch.masked_fill(inp, inp < -1.0, float("-inf"))
+        inp = torch.masked_fill(inp, (inp > -0.1) & (inp < 0.1), float("nan"))
+    else:
+        inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.isfinite(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.isfinite(inp)
 
     gems_assert_equal(res_out, ref_out)

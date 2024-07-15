@@ -450,3 +450,27 @@ def test_perf_allclose_int():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_isfinite():
+    bench = Benchmark(
+        op_name="isfinite",
+        torch_op=torch.isfinite,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_isfinite_int():
+    bench = Benchmark(
+        op_name="isfinite",
+        torch_op=torch.isfinite,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()

@@ -35,6 +35,7 @@ def enable(lib=aten_lib):
     lib.impl("native_group_norm", group_norm, "AutogradCUDA")
     lib.impl("gt.Tensor", gt, "CUDA")
     lib.impl("gt.Scalar", gt_scalar, "CUDA")
+    lib.impl("isfinite", isfinite, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
