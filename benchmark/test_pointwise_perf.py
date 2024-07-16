@@ -40,7 +40,7 @@ def test_perf_add():
 
 def test_perf_bitwiseand():
     bench = Benchmark(
-        op_name="bitwiseand",
+        op_name="bitwiseand_int",
         torch_op=torch.bitwise_and,
         arg_func=binary_int_args,
         dtypes=INT_DTYPES,
@@ -52,7 +52,7 @@ def test_perf_bitwiseand():
 
 def test_perf_bitwisenot():
     bench = Benchmark(
-        op_name="bitwisenot",
+        op_name="bitwisenot_int",
         torch_op=torch.bitwise_not,
         arg_func=unary_int_arg,
         dtypes=INT_DTYPES,
@@ -64,7 +64,7 @@ def test_perf_bitwisenot():
 
 def test_perf_bitwiseor():
     bench = Benchmark(
-        op_name="bitwiseor",
+        op_name="bitwiseor_int",
         torch_op=torch.bitwise_or,
         arg_func=binary_int_args,
         dtypes=INT_DTYPES,
@@ -418,7 +418,7 @@ def test_perf_isclose():
 
 def test_perf_isclose_int():
     bench = Benchmark(
-        op_name="isclose",
+        op_name="isclose_int",
         torch_op=torch.isclose,
         arg_func=binary_int_args,
         dtypes=INT_DTYPES,
@@ -442,7 +442,7 @@ def test_perf_allclose():
 
 def test_perf_allclose_int():
     bench = Benchmark(
-        op_name="allclose",
+        op_name="allclose_int",
         torch_op=torch.allclose,
         arg_func=binary_int_args,
         dtypes=INT_DTYPES,
@@ -466,7 +466,7 @@ def test_perf_isfinite():
 
 def test_perf_isfinite_int():
     bench = Benchmark(
-        op_name="isfinite",
+        op_name="isfinite_int",
         torch_op=torch.isfinite,
         arg_func=unary_int_arg,
         dtypes=INT_DTYPES,
