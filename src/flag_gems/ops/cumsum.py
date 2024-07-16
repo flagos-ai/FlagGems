@@ -68,6 +68,8 @@ def cumsum(inp, dim=1, *, dtype=None):
 
     if dtype is None:
         dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
     out = torch.empty_like(inp, dtype=dtype)
 
     grid = lambda meta: (

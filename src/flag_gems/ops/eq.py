@@ -13,6 +13,11 @@ def eq_func(x, y):
 
 
 def eq(A, B):
+    if A.device != B.device:
+        if A.device.type == "cuda":
+            B = B.to(A.device)
+        else:
+            A = A.to(B.device)
     logging.debug("GEMS EQ")
     return eq_func(A, B)
 

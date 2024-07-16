@@ -175,6 +175,7 @@ Operators will be implemented according to [OperatorList.md](./OperatorList.md).
 
 - Bert-base-uncased
 - Llama-2-7b
+- Llava-1.5-7b
 
 ## Supported Platforms
 
