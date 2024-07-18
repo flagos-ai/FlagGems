@@ -395,7 +395,6 @@ def generate_destination_passing_pointwise_wrapper(
                 code.writeline(
                     f"in{i}_strides = broadcasted_stride(in{i}.shape, in{i}.stride(), shape)"
                 )
-
             for i in range(op_desc.num_output_tensors()):
                 code.writeline(f"if 'out{i}_offset' in kwargs:")
                 with code.indent():
@@ -410,8 +409,10 @@ def generate_destination_passing_pointwise_wrapper(
                 code.writeline("else:")
                 with code.indent():
                     code.writeline(f"out{i}_strides = out{i}.stride()")
-
-            code.newline()
+        else:
+            for i in range(op_desc.num_output_tensors()):
+                code.writeline(f"out{i}_offset = 0")
+        code.newline()
 
         # grid
         code.writeline("# kernel launch")
