@@ -474,3 +474,35 @@ def test_perf_isfinite_int():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_flip():
+    def flip_kwargs(dtype, batch, size):
+        return {"dims": [0, 1]}
+
+    bench = Benchmark(
+        op_name="flip",
+        torch_op=torch.flip,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=flip_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_flip_int():
+    def flip_kwargs(dtype, batch, size):
+        return {"dims": [0, 1]}
+
+    bench = Benchmark(
+        op_name="flip",
+        torch_op=torch.flip,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=flip_kwargs,
+    )
+    bench.run()
