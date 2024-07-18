@@ -19,6 +19,7 @@ from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum
 from .div import div
 from .dropout import native_dropout
+from .embedding import embedding
 from .eq import eq, eq_scalar
 from .exp import exp
 from .ge import ge, ge_scalar
@@ -88,6 +89,7 @@ __all__ = [
     "cumsum",
     "div",
     "native_dropout",
+    "embedding",
     "eq",
     "eq_scalar",
     "exp",
