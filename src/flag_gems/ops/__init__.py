@@ -21,6 +21,7 @@ from .div import div
 from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
+from .erf import erf
 from .exp import exp
 from .flip import flip
 from .ge import ge, ge_scalar
@@ -90,6 +91,7 @@ __all__ = [
     "cumsum",
     "div",
     "native_dropout",
+    "erf",
     "embedding",
     "eq",
     "eq_scalar",

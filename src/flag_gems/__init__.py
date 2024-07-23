@@ -26,6 +26,7 @@ def enable(lib=aten_lib):
     lib.impl("cumsum", cumsum, "CUDA")
     lib.impl("div.Tensor", div, "CUDA")
     lib.impl("native_dropout", native_dropout, "AutogradCUDA")
+    lib.impl("erf", erf, "CUDA")
     lib.impl("embedding", embedding, "AutogradCUDA")
     lib.impl("eq.Tensor", eq, "CUDA")
     lib.impl("eq.Scalar", eq_scalar, "CUDA")
