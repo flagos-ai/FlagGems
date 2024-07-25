@@ -60,6 +60,9 @@ def rand_kernel(
     tl.store(out_ptr + off_3, r3, mask=off_3 < N, eviction_policy="evict_first")
 
 
+UNROLL = 4
+
+
 def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     logging.debug("GEMS RAND")
     if dtype is None:
@@ -69,8 +72,11 @@ def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
-    philox_seed, philox_offset = philox_cuda_seed_offset(N)
+    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
+    # hence we cannot obtain the per thread offset as in Pytorch.
+    increment = triton.cdiv(N, UNROLL)
+    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
     with torch.cuda.device(device):
         rand_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out
