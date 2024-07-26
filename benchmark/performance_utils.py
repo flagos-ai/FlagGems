@@ -14,9 +14,19 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class Benchmark:
     def __init__(
-        self, op_name, torch_op, arg_func, dtypes, batch, sizes, kwargs_func=None
+        self,
+        op_name,
+        torch_op,
+        arg_func,
+        dtypes,
+        batch,
+        sizes,
+        is_backward=False,
+        kwargs_func=None,
     ):
         self.op_name = op_name
+        if is_backward:
+            self.op_name += " backward"
         self.torch_op = torch_op
         self.arg_func = arg_func
         self.kwargs_func = kwargs_func
@@ -24,24 +34,30 @@ class Benchmark:
         self.batch = batch
         self.sizes = sizes
         self.gems_op = None
+        self.is_backward = is_backward
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
 
     def profile(self, op, *args, **kwargs):
+        fn = lambda: op(*args, **kwargs)
+        if self.is_backward:
+            out = fn()
+            dout = torch.randn_like(out)
+            fn = lambda: out.backward(dout, retain_graph=True)
         if CPU_MODE:
             for i in range(WARMUP):
-                op(*args, **kwargs)
+                fn()
             torch.cuda.synchronize()
             start = time.time()
             for i in range(REPETITION):
-                op(*args, **kwargs)
+                fn()
             torch.cuda.synchronize()
             end = time.time()
             latency = (end - start) / REPETITION * 1000
         else:
             latency = triton.testing.do_bench(
-                lambda: op(*args, **kwargs),
+                fn,
                 warmup=WARMUP,
                 rep=REPETITION,
                 return_mode="median",
@@ -58,6 +74,13 @@ class Benchmark:
                 args = ()
                 if self.arg_func is not None:
                     args = self.arg_func(dtype, self.batch, size)
+                if self.is_backward:
+                    args = tuple(
+                        a.clone().requires_grad_()
+                        if torch.is_tensor(a) and torch.is_floating_point(a)
+                        else a
+                        for a in args
+                    )
 
                 kwargs = {}
                 if self.kwargs_func is not None:
