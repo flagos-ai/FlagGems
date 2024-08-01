@@ -53,6 +53,18 @@ def test_perf_rand_like():
     bench.run()
 
 
+def test_perf_exponential_():
+    bench = Benchmark(
+        op_name="exponential_",
+        torch_op=torch.Tensor.exponential_,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_embedding():
     def embedding_kwargs(dtype, batch, size):
         input = torch.randint(0, batch, (batch,), device="cuda")

@@ -31,6 +31,7 @@ def enable(lib=aten_lib):
     lib.impl("eq.Tensor", eq, "CUDA")
     lib.impl("eq.Scalar", eq_scalar, "CUDA")
     lib.impl("exp", exp, "CUDA")
+    lib.impl("exponential_", exponential_, "CUDA")
     lib.impl("ge.Tensor", ge, "CUDA")
     lib.impl("ge.Scalar", ge_scalar, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
@@ -49,7 +50,6 @@ def enable(lib=aten_lib):
     lib.impl("rand", rand, "CUDA")
     lib.impl("randn", randn, "CUDA")
     lib.impl("rand_like", rand_like, "CUDA")
-
     lib.impl("mean", mean, "CUDA")
     lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")

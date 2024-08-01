@@ -23,6 +23,7 @@ from .embedding import embedding
 from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
+from .exponential_ import exponential_
 from .flip import flip
 from .ge import ge, ge_scalar
 from .gelu import gelu
@@ -96,6 +97,7 @@ __all__ = [
     "eq",
     "eq_scalar",
     "exp",
+    "exponential_",
     "flip",
     "ge",
     "ge_scalar",
