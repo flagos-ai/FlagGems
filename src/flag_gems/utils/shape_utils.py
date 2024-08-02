@@ -2,6 +2,8 @@ import functools
 import operator
 from typing import Iterable, Tuple
 
+import torch
+
 Shape = Tuple[int]
 Stride = Tuple[int]
 MultiIndex = Tuple[int]
@@ -137,3 +139,20 @@ def dim_compress(inp, dims):
     sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
     order = batch_dim + sorted_reduction_dim
     return inp.permute(order).contiguous()
+
+
+def size_in_bytes(a):
+    return a.numel() * a.element_size()
+
+
+def can_use_int32_index(a):
+    INT32_MAX = torch.iinfo(torch.int32).max
+    if a.is_contiguous():
+        return size_in_bytes(a) <= INT32_MAX
+
+    max_offset = 0
+    for size, stride in zip(a.shape, a.stride()):
+        max_offset += size * stride
+        if max_offset > INT32_MAX:
+            return False
+    return True
