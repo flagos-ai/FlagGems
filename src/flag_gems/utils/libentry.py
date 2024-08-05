@@ -1,6 +1,10 @@
 import inspect
+import threading
 
+import torch
 import triton
+
+DEVICE_COUNT = torch.cuda.device_count()
 
 
 class LibEntry(triton.KernelInterface):
@@ -11,7 +15,8 @@ class LibEntry(triton.KernelInterface):
         self.fn = fn
         self.arg_names = fn.arg_names
         self.divisibility = 16
-        self.kernel_cache = dict()
+        self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
+
         fn = self.fn
         while not isinstance(fn, triton.runtime.JITFunction):
             fn = fn.fn
@@ -26,6 +31,7 @@ class LibEntry(triton.KernelInterface):
             for p in self.jit_function.params
             if not p.is_constexpr and p.do_not_specialize
         ]
+        self.lock = threading.Lock()
 
     def key(self, spec_args, dns_args, const_args):
         spec_key = [
@@ -84,45 +90,56 @@ class LibEntry(triton.KernelInterface):
                 k_args.append(val)
 
         entry_key = self.key(spec_args, dns_args, const_args)
+        device = torch.cuda.current_device()
+        cache = self.kernel_cache[device]
+        while entry_key not in cache:
+            # NOTE: we serialize the first run of a jit function regardless of which device to run on
+            # because Triton runtime is currently not threadsafe.
+            with self.lock:
+                if entry_key in cache:
+                    break
+                kernel = self.fn.run(*args, **kwargs)
+                fn = self.fn
+                # collect constexpr arguments for grid computation
+                constexprs = {}
+                while not isinstance(fn, triton.runtime.JITFunction):
+                    if isinstance(fn, triton.runtime.Autotuner):
+                        config = fn.best_config
+                        constexprs["num_warps"] = config.num_warps
+                        constexprs["num_stages"] = config.num_stages
+                        constexprs["num_ctas"] = config.num_ctas
+                        constexprs = {**constexprs, **config.kwargs}
+                    elif isinstance(fn, triton.runtime.Heuristics):
+                        for v, heur in fn.values.items():
+                            constexprs[v] = heur(
+                                {
+                                    **dict(zip(fn.arg_names, args)),
+                                    **kwargs,
+                                    **constexprs,
+                                }
+                            )
+                    else:
+                        raise RuntimeError("Invalid Runtime Function")
+                    fn = fn.fn
+                for p in self.jit_function.params:
+                    if p.is_constexpr and p.name not in constexprs:
+                        constexprs[p.name] = p.default
+                cache[entry_key] = (kernel, constexprs)
+            return kernel, constexprs
 
-        if entry_key not in self.kernel_cache:
-            kernel = self.fn.run(*args, **kwargs)
-            fn = self.fn
-            # collect constexpr arguments for grid computation
-            constexprs = {}
-            while not isinstance(fn, triton.runtime.JITFunction):
-                if isinstance(fn, triton.runtime.Autotuner):
-                    config = fn.best_config
-                    constexprs["num_warps"] = config.num_warps
-                    constexprs["num_stages"] = config.num_stages
-                    constexprs["num_ctas"] = config.num_ctas
-                    constexprs = {**constexprs, **config.kwargs}
-                elif isinstance(fn, triton.runtime.Heuristics):
-                    for v, heur in fn.values.items():
-                        constexprs[v] = heur(
-                            {**dict(zip(fn.arg_names, args)), **kwargs, **constexprs}
-                        )
-                else:
-                    raise RuntimeError("Invalid Runtime Function")
-                fn = fn.fn
-            for p in self.jit_function.params:
-                if p.is_constexpr and p.name not in constexprs:
-                    constexprs[p.name] = p.default
-            self.kernel_cache[entry_key] = (kernel, constexprs)
-        else:
-            kernel, constexprs = self.kernel_cache[entry_key]
+        kernel, constexprs = cache[entry_key]
 
-            if callable(grid):
-                # collect all arguments to the grid fn，ie:
-                # 1. args,
-                # 2. kwargs,
-                # 3. all all other captured arguments in CompiledKernel from Autotunner & Heuristics
-                # when kwargs & captured args conflict, captured args have higher priority
-                meta = {**dict(zip(self.arg_names, args)), **kwargs, **constexprs}
-                grid = grid(meta)
-            grid = grid + (1, 1)
+        if callable(grid):
+            # collect all arguments to the grid fn，ie:
+            # 1. args,
+            # 2. kwargs,
+            # 3. all all other captured arguments in CompiledKernel from Autotunner & Heuristics
+            # when kwargs & captured args conflict, captured args have higher priority
+            meta = {**dict(zip(self.arg_names, args)), **kwargs, **constexprs}
+            grid = grid(meta)
+        grid = grid + (1, 1)
 
-            kernel[grid[0:3]](*k_args)
+        kernel[grid[0:3]](*k_args)
         return kernel, constexprs
 
 

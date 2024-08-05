@@ -1,3 +1,4 @@
+import threading
 from contextlib import contextmanager
 
 import torch
@@ -30,16 +31,18 @@ def softmax_inner_decorator_cascade(x, dim, dtype=None):
     inp = x.contiguous()
     if dtype is None:
         dtype = x.dtype
+
     out = torch.empty_like(inp, dtype=dtype)
 
-    grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
-    softmax_kernel_inner[grid](
-        out,
-        inp,
-        M,
-        N,
-        DUMMY=60,
-    )
+    with torch.cuda.device(out.device):
+        grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+        softmax_kernel_inner[grid](
+            out,
+            inp,
+            M,
+            N,
+            DUMMY=60,
+        )
     return out
 
 
@@ -180,3 +183,36 @@ def test_kernel_arg_apply_default():
     x = torch.randn((128, 128, 128), device="cuda")
     with not_raises(KeyError):
         _ = softmax_inner_kernel_arg_apply_default(x, dim=2)
+
+
+class TaskThread(threading.Thread):
+    def __init__(self, func, args):
+        threading.Thread.__init__(self)
+        self.func = func
+        self.args = args
+
+    def run(self):
+        return self.func(*self.args)
+
+
+def run_two_threads():
+    devices = [0, 0]
+    fs = []
+
+    def task_fn(dev):
+        x = torch.randn((128, 128, 128), device=dev)
+        return softmax_inner_decorator_cascade(x, 1)
+
+    for dev in devices:
+        work = TaskThread(task_fn, (dev,))
+        work.start()
+        fs.append(work)
+
+    for i in range(len(fs)):
+        fs[i].join()
+
+
+def test_threadsafety():
+    for i in range(100):
+        with not_raises(Exception):
+            run_two_threads()

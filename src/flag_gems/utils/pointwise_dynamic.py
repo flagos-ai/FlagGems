@@ -1,5 +1,6 @@
 import importlib
 import os
+import threading
 from typing import Any, Callable, List, Mapping, Optional, Tuple
 
 import torch
@@ -418,7 +419,7 @@ def generate_destination_passing_pointwise_wrapper(
         code.writeline("# kernel launch")
 
         # launch kernel
-        code.writeline("with torch.cuda.device(in0.device):")
+        code.writeline("with torch.cuda.device(in0.device.index):")
         with code.indent():
             kernel_launch: str = f"{kernel_name}[grid]("
             code.writeline(kernel_launch)
@@ -767,6 +768,7 @@ class PointwiseDynamicFunction:
         self._scalar_fn = scalar_fn
         self._scalar_fn_cache_key = scalar_fn.cache_key
         self.pid = os.getpid()
+        self.lock = threading.Lock()
 
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
@@ -774,36 +776,43 @@ class PointwiseDynamicFunction:
     def __call__(self, *args, **kwargs):
         # note: kwargs should not be used in JITFunction directly
         key = f"{self.arg_key(*args)}"
-        if key in self.overloads:
-            overload = self.overloads[key]
-        else:
+        cache = self.overloads
+        lock = self.lock
+
+        while key not in cache:
             # generate file & import it
-            code = IndentedBuffer()
-            code = generate_code(
-                self._op_desc,
-                self._scalar_fn,
-                args,
-                "_wrapper",
-                "_wrapper_out",
-                "_jit_function",
-                code,
-            )
+            with lock:
+                if key in cache:
+                    break
+                code = IndentedBuffer()
+                code = generate_code(
+                    self._op_desc,
+                    self._scalar_fn,
+                    args,
+                    "_wrapper",
+                    "_wrapper_out",
+                    "_jit_function",
+                    code,
+                )
 
-            file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}.py"
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getvalue())
+                file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}.py"
 
-            # load
-            spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}",
-                f.name,
-            )
-            m = importlib.util.module_from_spec(spec)
-            # do not expose it to sys.modules
-            # sys.modules["_add_module"] = m
-            spec.loader.exec_module(m)
-            overload = getattr(m, "_wrapper")
-            self.overloads[key] = overload
+                with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+                    f.write(code.getvalue())
+
+                # load
+                spec = importlib.util.spec_from_file_location(
+                    f"_gen_module_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}",
+                    f.name,
+                )
+                m = importlib.util.module_from_spec(spec)
+                # do not expose it to sys.modules
+                # sys.modules["_add_module"] = m
+                spec.loader.exec_module(m)
+                overload = getattr(m, "_wrapper")
+                cache[key] = overload
+
+        overload = self.overloads[key]
         return overload(*args, **kwargs)
 
     def arg_key(self, *args):
