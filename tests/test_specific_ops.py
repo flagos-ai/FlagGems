@@ -176,3 +176,4 @@ if __name__ == "__main__":
 
         if exec_flag is False:
             logging.fatal(f"No op named {args.name} found! Check the name and list!")
+            exit(-1)

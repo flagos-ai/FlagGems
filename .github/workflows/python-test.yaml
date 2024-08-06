@@ -29,6 +29,8 @@ jobs:
             "CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &"
             "CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_pointwise_type_promotion.py &"
             "CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_binary_pointwise_ops.py &"
+            "CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_tensor_constructor_ops.py &"
+            "CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_distribution_ops.py &"
             "CUDA_VISIBLE_DEVICES=2 pytest -s tests/test_blas_ops.py &"
             "CUDA_VISIBLE_DEVICES=3 pytest -s tests/test_reduction_ops.py &"
             "CUDA_VISIBLE_DEVICES=4 pytest -s tests/test_special_ops.py &"

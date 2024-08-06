@@ -1,8 +1,6 @@
 from typing import Optional
 
-import numpy as np
 import pytest
-import scipy
 import torch
 
 import flag_gems
@@ -197,51 +195,23 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rand(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.rand(shape, dtype=dtype, device="cuda")
-    assert (res_out <= 1.0).all()
-    assert (res_out >= 0.0).all()
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_randn(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.randn(shape, dtype=dtype, device="cuda")
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
-    assert torch.abs(mean) < 0.01
-    assert torch.abs(std - 1) < 0.01
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rand_like(shape, dtype):
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_neg(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y = x.conj()
+    z = y.imag
+    assert z.is_neg()
     with flag_gems.use_gems():
-        res_out = torch.rand_like(x)
-    assert (res_out <= 1.0).all()
-    assert (res_out >= 0.0).all()
+        out = z.resolve_neg()
+    assert not out.is_neg()
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_exponential_(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device="cuda")
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_conj(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y = x.conj()
+    assert y.is_conj()
     with flag_gems.use_gems():
-        x.exponential_()
-    assert x.min() > 0
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES[:1])
-@pytest.mark.parametrize("dtype", (torch.float32,))
-@pytest.mark.parametrize("lambd", (0.01, 0.5, 100.0))
-def test_accuracy_exponential_pvalue(shape, dtype, lambd):
-    x = torch.empty(size=shape, dtype=dtype, device="cuda")
-    with flag_gems.use_gems():
-        x.exponential_(lambd=lambd)
-    expo_cdf = lambda x: np.where(x < 0, 0, 1.0 - np.exp(-lambd * x))
-    pvalue = scipy.stats.kstest(x.cpu().numpy().flatten(), expo_cdf).pvalue
-    assert pvalue > 0.05
+        z = y.resolve_conj()
+    assert not z.is_conj()

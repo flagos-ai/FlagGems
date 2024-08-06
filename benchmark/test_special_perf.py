@@ -1,68 +1,6 @@
 import torch
 
-from .performance_utils import (
-    FLOAT_DTYPES,
-    POINTWISE_BATCH,
-    SIZES,
-    Benchmark,
-    unary_arg,
-)
-
-
-def test_perf_rand():
-    def rand_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="rand",
-        torch_op=torch.rand,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=rand_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_randn():
-    def randn_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="randn",
-        torch_op=torch.randn,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=randn_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_rand_like():
-    bench = Benchmark(
-        op_name="rand_like",
-        torch_op=torch.rand_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_exponential_():
-    bench = Benchmark(
-        op_name="exponential_",
-        torch_op=torch.Tensor.exponential_,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+from .performance_utils import POINTWISE_BATCH, SIZES, Benchmark
 
 
 def test_perf_embedding():
@@ -82,5 +20,39 @@ def test_perf_embedding():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=embedding_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_resolve_neg():
+    def resolve_neg_arg(dtype, batch, size):
+        x = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        y = x.conj()
+        z = y.imag
+        return (z,)
+
+    bench = Benchmark(
+        op_name="resolve_neg",
+        torch_op=torch.resolve_neg,
+        arg_func=resolve_neg_arg,
+        dtypes=[torch.cfloat],
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_resolve_conj():
+    def resolve_conj_arg(dtype, batch, size):
+        x = torch.randn(size=(size, batch), dtype=dtype, device="cuda")
+        return (x.conj(),)
+
+    bench = Benchmark(
+        op_name="resolve_conj",
+        torch_op=torch.resolve_conj,
+        arg_func=resolve_conj_arg,
+        dtypes=[torch.cfloat],
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
     )
     bench.run()
