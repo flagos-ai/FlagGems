@@ -8,9 +8,11 @@ import pytest
 
 blas_ops_ut_map = {
     "linear": ("test_accuracy_addmm",),
+    "addmm": ("test_accuracy_addmm",),
     "bmm": ("test_accuracy_bmm",),
     "mv": ("test_accuracy_mv",),
     "mm": ("test_accuracy_mm",),
+    "matmul": ("test_accuracy_mm",),
     "outer": ("test_accuracy_outer",),
 }
 
@@ -24,9 +26,10 @@ reduction_ops_ut_map = {
         "test_accuracy_cross_entropy_loss_indices",
         "test_accuracy_cross_entropy_loss_probabilities",
     ),
-    "groupnorm": ("test_accuracy_groupnorm",),
-    "native_groupnorm": ("test_accuracy_groupnorm",),
-    "layernorm": ("test_accuracy_layernorm",),
+    "group_norm": ("test_accuracy_groupnorm",),
+    "native_group_norm": ("test_accuracy_groupnorm",),
+    "layer_norm": ("test_accuracy_layernorm",),
+    "native_layer_norm": ("test_accuracy_layernorm",),
     "log_softmax": ("test_accuracy_log_softmax",),
     "max": (
         "test_accuracy_max",
