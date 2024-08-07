@@ -12,7 +12,6 @@ on:
 jobs:
   container-unit-test:
     runs-on: [self-hosted, docker]
-    timeout-minutes: 50
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
@@ -21,6 +20,9 @@ jobs:
     steps:
       - name: checkout-code
         uses: actions/checkout@v4
+
+      - name: check-gpu-free
+        run: tests/scripts/gpu_check.sh
 
       - name: unit_test-flag-gems
         shell: bash
@@ -63,7 +65,6 @@ jobs:
 
   container-model-test:
     runs-on: [self-hosted, docker]
-    timeout-minutes: 5
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
@@ -72,6 +73,9 @@ jobs:
     steps:
       - name: checkout-code
         uses: actions/checkout@v4
+
+      - name: check-gpu-free
+        run: tests/scripts/gpu_check.sh
 
       - name: examples-flag-gems
         run: |

@@ -128,7 +128,7 @@ special_ops_ut_map = {
     "native_dropout": ("test_accuracy_dropout",),
 }
 
-op_name_2_unit_test_maps = {
+op_name_to_unit_test_maps = {
     "test_blas_ops.py": blas_ops_ut_map,
     "test_reduction_ops.py": reduction_ops_ut_map,
     "test_unary_pointwise_ops.py": unary_pointwise_ops_ut_map,
@@ -145,26 +145,32 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, help="test for a specific op")
     args = parser.parse_args()
 
-    if args.all:
-        op_nums = 0
-        op_list = []
-        for item in op_name_2_unit_test_maps.values():
-            op_nums = op_nums + len(item)
-            for op in item.keys():
-                op_list.append(op)
-        print(f"{op_nums} ops to test, and here is the sorted op list:")
-        op_list = sorted(op_list)
-        print(op_list)
+    op_nums = 0
+    op_list = []
+    for item in op_name_to_unit_test_maps.values():
+        op_nums = op_nums + len(item)
+        for op in item.keys():
+            op_list.append(op)
+    print(f"Here is the sorted op list with {op_nums} ops:")
+    op_list = sorted(op_list)
+    print(op_list)
 
-        for file_name, collection in op_name_2_unit_test_maps.items():
+    final_result = 0
+    if args.all:
+        for file_name, collection in op_name_to_unit_test_maps.items():
             for op, uts in collection.items():
                 for ut in uts:
                     cmd = f"{file_name}::{ut}"
                     result = pytest.main(["-s", cmd])
+        print("final_result: ", final_result)
+        exit(final_result)
 
     if args.name:
-        exec_flag = False
-        for file_name, collection in op_name_2_unit_test_maps.items():
+        if args.name not in op_list:
+            logging.fatal(f"No op named {args.name} found! Check the name and list!")
+            exit(1)
+
+        for file_name, collection in op_name_to_unit_test_maps.items():
             for op, uts in collection.items():
                 if op == args.name:
                     print(op)
@@ -172,8 +178,6 @@ if __name__ == "__main__":
                         cmd = f"{file_name}::{ut}"
                         print(cmd)
                         result = pytest.main(["-s", cmd])
-                        exec_flag = True
-
-        if exec_flag is False:
-            logging.fatal(f"No op named {args.name} found! Check the name and list!")
-            exit(-1)
+                        final_result += result
+        print("final_result: ", final_result)
+        exit(final_result)
