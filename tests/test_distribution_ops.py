@@ -20,7 +20,7 @@ def test_accuracy_normal(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_uniform(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():

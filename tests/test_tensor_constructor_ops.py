@@ -12,7 +12,7 @@ from .accuracy_utils import (
 
 
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_rand(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.rand(shape, dtype=dtype, device="cuda")
@@ -21,7 +21,7 @@ def test_accuracy_rand(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_randn(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device="cuda")
