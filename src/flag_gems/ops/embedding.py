@@ -124,9 +124,6 @@ class Embedding(torch.autograd.Function):
         with torch.cuda.device(weight.device):
             embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
 
-        if padding_idx is not None and padding_idx < 0:
-            padding_idx = weight.shape[0] + padding_idx
-
         ctx.M = M
         ctx.N = N
         ctx.num_weights = weight.shape[0]
