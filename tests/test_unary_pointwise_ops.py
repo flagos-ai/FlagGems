@@ -303,3 +303,19 @@ def test_accuracy_flip(shape, dtype, dims):
         res_out = torch.flip(inp, dims)
     ref_out = torch.flip(ref_inp, dims)
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
+def test_accuracy_masked_fill(shape, dtype, threshold):
+    inp = torch.zeros(shape, dtype=dtype, device="cuda")
+    mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
+    value = 1024
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.masked_fill(ref_inp, mask, value)
+    with flag_gems.use_gems():
+        res_out = torch.masked_fill(inp, mask, value)
+
+    gems_assert_equal(res_out, ref_out)

@@ -39,6 +39,7 @@ from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
+from .masked_fill import masked_fill
 from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -185,4 +186,5 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "masked_fill",
 ]
