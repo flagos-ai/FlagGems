@@ -4,9 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
+from ..utils import libentry
 from .sum import sum
 
 
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
@@ -15,7 +17,7 @@ from .sum import sum
     ],
     key=["C", "D"],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["ignore_index"])
 def celoss_indice_kernel(
     inp_ptr,
     tgt_ptr,
@@ -68,6 +70,7 @@ def celoss_indice_kernel(
     tl.store(out_ptrs, out, mask=tgt_mask and ignore_mask)
 
 
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
@@ -76,7 +79,7 @@ def celoss_indice_kernel(
     ],
     key=["C", "D"],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["label_smoothing"])
 def celoss_probability_kernel(
     inp_ptr,
     tgt_ptr,
@@ -129,6 +132,7 @@ def celoss_probability_kernel(
     tl.store(out_ptrs, out, mask=offset_d < D)
 
 
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
@@ -137,7 +141,7 @@ def celoss_probability_kernel(
     ],
     key=["C", "D"],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["ignore_index", "label_smoothing"])
 def celoss_indice_smooth_kernel(
     inp_ptr,
     tgt_ptr,
@@ -208,6 +212,7 @@ def celoss_indice_smooth_kernel(
     tl.store(out_ptrs, out, mask=tgt_mask and ignore_mask)
 
 
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
@@ -216,7 +221,7 @@ def celoss_indice_smooth_kernel(
     ],
     key=["C", "D"],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["ignore_index", "mean_num"])
 def celoss_indice_bwd(
     out_grad_ptr,
     inp_ptr,
@@ -279,6 +284,7 @@ def celoss_indice_bwd(
         tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
 
 
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
@@ -287,7 +293,7 @@ def celoss_indice_bwd(
     ],
     key=["C", "D"],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["label_smoothing", "mean_num"])
 def celoss_probability_bwd(
     out_grad_ptr,
     inp_ptr,
@@ -362,6 +368,7 @@ def celoss_probability_bwd(
         tl.store(inp_grad_ptrs, inp_grad, mask)
 
 
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
@@ -370,7 +377,7 @@ def celoss_probability_bwd(
     ],
     key=["C", "D"],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["ignore_index", "label_smoothing", "mean_num"])
 def celoss_indice_smooth_bwd(
     out_grad_ptr,
     inp_ptr,

@@ -88,8 +88,8 @@ Examples：
 
 ### Requirements
 
-1. Triton >= 2.2.0, <3.0.0
-2. PyTorch >= 2.1.2
+1. Triton >= 2.2.0
+2. PyTorch >= 2.2.0
 3. Transformers >= 4.40.2
 
 ### Installation
