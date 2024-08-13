@@ -1,6 +1,6 @@
 import torch
 
-from .performance_utils import POINTWISE_BATCH, SIZES, Benchmark
+from .performance_utils import FLOAT_DTYPES, POINTWISE_BATCH, SIZES, Benchmark
 
 
 def test_perf_embedding():
@@ -20,6 +20,23 @@ def test_perf_embedding():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=embedding_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_topk():
+    def topk_kwargs(dtype, batch, size):
+        x = torch.randn((batch, size), device="cuda", dtype=dtype)
+        return {"x": x, "k": 5, "dim": -1}
+
+    bench = Benchmark(
+        op_name="topk",
+        torch_op=torch.topk,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=topk_kwargs,
     )
     bench.run()
 

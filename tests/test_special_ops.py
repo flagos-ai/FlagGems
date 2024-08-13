@@ -9,6 +9,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_close,
+    gems_assert_equal,
     to_reference,
 )
 
@@ -204,6 +205,34 @@ def test_accuracy_resolve_neg(shape, dtype):
     with flag_gems.use_gems():
         out = z.resolve_neg()
     assert not out.is_neg()
+
+
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("hiddensize", [128])
+@pytest.mark.parametrize("topk", [5])
+@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_topk(
+    batch_size,
+    hiddensize,
+    topk,
+    largest,
+    dtype,
+):
+    # Note(Zhengzekang): here I use arange is to generate unique array
+    # Due to fp16 and bf16 has lower precision, it maybe generate the same number, which cause topk index is not equal.
+    x = torch.arange(batch_size * hiddensize, dtype=dtype, device="cuda").reshape(
+        batch_size, hiddensize
+    )
+    indices = torch.randperm(x.size(1))
+    x = x[:, indices]
+    ref_value, ref_index = torch.topk(x, topk, largest=largest)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.topk(x, topk, largest=largest)
+
+    gems_assert_close(ref_value, res_value, dtype)
+    gems_assert_equal(ref_index, res_index)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
