@@ -31,6 +31,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isinf import isinf
@@ -128,6 +129,7 @@ __all__ = [
     "group_norm",
     "gt",
     "gt_scalar",
+    "index_select",
     "isclose",
     "isfinite",
     "isinf",
