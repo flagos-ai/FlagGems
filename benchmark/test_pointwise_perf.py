@@ -134,6 +134,30 @@ def test_perf_eq():
     bench.run()
 
 
+def test_perf_maximum():
+    bench = Benchmark(
+        op_name="maximum",
+        torch_op=torch.maximum,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_minimum():
+    bench = Benchmark(
+        op_name="minimum",
+        torch_op=torch.minimum,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_exp():
     bench = Benchmark(
         op_name="exp",
