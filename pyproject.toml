@@ -39,3 +39,9 @@ testpaths = [
 pythonpath = [
     "src",
 ]
+
+[tool.coverage.run]
+omit = [
+    "*/.flaggems/*",
+    "*/usr/lib/*",
+    ]
