@@ -1,6 +1,13 @@
 import torch
 
-from .performance_utils import FLOAT_DTYPES, POINTWISE_BATCH, SIZES, Benchmark
+from .performance_utils import (
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    POINTWISE_BATCH,
+    SIZES,
+    Benchmark,
+    unary_int_arg,
+)
 
 
 def test_perf_embedding():
@@ -71,5 +78,21 @@ def test_perf_resolve_conj():
         dtypes=[torch.cfloat],
         batch=POINTWISE_BATCH,
         sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_unique():
+    def unique_kwargs(dtype, batch, size):
+        return {"sorted": True, "return_inverse": True, "return_counts": False}
+
+    bench = Benchmark(
+        op_name="unique",
+        torch_op=torch.unique,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=unique_kwargs,
     )
     bench.run()

@@ -7,6 +7,7 @@ import flag_gems
 
 from .accuracy_utils import (
     FLOAT_DTYPES,
+    INT_DTYPES,
     POINTWISE_SHAPES,
     RESOLUTION,
     gems_assert_close,
@@ -254,3 +255,83 @@ def test_accuracy_resolve_conj(shape, dtype):
     with flag_gems.use_gems():
         z = y.resolve_conj()
     assert not z.is_conj()
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(8191,), (8192, 73739)])
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+@pytest.mark.parametrize("sorted", [True])
+@pytest.mark.parametrize("return_inverse", [True, False])
+@pytest.mark.parametrize("return_counts", [False, True])
+def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(-10, 10, shape, device="cuda").to(dtype)
+    ref_inp = to_reference(inp, False)
+
+    if return_counts:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_out, res_unique_order, res_counts = torch.unique(
+                    inp,
+                    sorted=sorted,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_unique_order, ref_counts = torch.unique(
+                ref_inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            assert res_out.numel() == ref_out.numel()
+            gems_assert_equal(res_unique_order, ref_unique_order)
+        else:
+            with flag_gems.use_gems():
+                res_out, res_counts = torch.unique(
+                    inp,
+                    sorted=sorted,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_counts = torch.unique(
+                ref_inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            assert res_out.numel() == ref_out.numel()
+        gems_assert_equal(res_counts, ref_counts)
+    else:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_out, res_unique_order = torch.unique(
+                    inp,
+                    sorted=sorted,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_unique_order = torch.unique(
+                ref_inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            assert res_out.numel() == ref_out.numel()
+            gems_assert_equal(res_unique_order, ref_unique_order)
+        else:
+            with flag_gems.use_gems():
+                res_out = torch.unique(
+                    inp,
+                    sorted=sorted,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out = torch.unique(
+                ref_inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            assert res_out.numel() == ref_out.numel()
+    gems_assert_equal(res_out, ref_out)
