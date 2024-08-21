@@ -14,12 +14,9 @@ def heur_block_n(args):
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
+        triton.Config({"BLOCK_M": 8}, num_warps=8),
+        triton.Config({"BLOCK_M": 16}, num_warps=8),
+        triton.Config({"BLOCK_M": 32}, num_warps=8),
     ],
     key=[
         "M",
