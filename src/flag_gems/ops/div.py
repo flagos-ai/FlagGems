@@ -2,6 +2,7 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 
 from ..utils import pointwise_dynamic
 
@@ -40,19 +41,19 @@ def true_divide(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return triton.div_rz(x, y)
+    return tl.math.trunc(tl.math.div_rz(x, y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return triton.div_rz(x, y)
+    return tl.math.trunc(tl.math.div_rz(x, y))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return triton.div_rz(x, y)
+    return tl.math.trunc(tl.math.div_rz(x, y))
 
 
 def trunc_divide(A, B):
@@ -71,19 +72,19 @@ def trunc_divide(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y):
-    return x // y
+    return tl.math.floor(tl.math.div_rd(x, y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_tensor_scalar(x, y):
-    return x // y
+    return tl.math.floor(tl.math.div_rd(x, y))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_scalar_tensor(x, y):
-    return x // y
+    return tl.math.floor(tl.math.div_rd(x, y))
 
 
 def floor_divide(A, B):
@@ -99,7 +100,7 @@ def floor_divide(A, B):
         return A // B
 
 
-def div(A, B, rounding_mode=None):
+def div_mode(A, B, rounding_mode=None):
     if rounding_mode is None:
         return true_divide(A, B)
     elif rounding_mode == "trunc":

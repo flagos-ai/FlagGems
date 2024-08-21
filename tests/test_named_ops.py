@@ -220,7 +220,7 @@ if __name__ == "__main__":
         for file_name, collection in op_name_to_unit_test_maps.items():
             for op, uts in collection.items():
                 for ut in uts:
-                    cmd = f"{file_name}::{ut} --device {device}"
+                    cmd = f"{file_name}::{ut}"
                     result = pytest.main(["-s", cmd, "--device", device])
         print("final_result: ", final_result)
         exit(final_result)

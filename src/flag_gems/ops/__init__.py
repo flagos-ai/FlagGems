@@ -17,7 +17,7 @@ from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum
-from .div import div
+from .div import div_mode, floor_divide, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
@@ -65,6 +65,7 @@ from .prod import prod, prod_dim
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
+from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
 from .resolve_conj import resolve_conj
@@ -111,7 +112,9 @@ __all__ = [
     "clamp_tensor",
     "cos",
     "cumsum",
-    "div",
+    "true_divide",
+    "div_mode",
+    "floor_divide",
     "zeros",
     "ones",
     "full",
@@ -151,6 +154,8 @@ __all__ = [
     "minimum",
     "rand",
     "randn",
+    "rand_like",
+    "randn_like",
     "resolve_neg",
     "resolve_conj",
     "normal_tensor_float",
@@ -158,7 +163,6 @@ __all__ = [
     "normal_tensor_tensor",
     "normal_float_float",
     "uniform_",
-    "rand_like",
     "mv",
     "ne",
     "ne_scalar",
