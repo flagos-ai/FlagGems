@@ -187,7 +187,7 @@ Operators will be implemented according to [OperatorList.md](./OperatorList.md).
 
 The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode. The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
 
-![Operator Speedup](./assets/speedup-0708-eng.png)
+![Operator Speedup](./assets/speedup-0814-eng.png)
 
 ## Contributions
 

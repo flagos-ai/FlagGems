@@ -23,14 +23,10 @@ def heur_num_warps(args):
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
+        triton.Config({"BLOCK_M": 1}),
+        triton.Config({"BLOCK_M": 2}),
+        triton.Config({"BLOCK_M": 4}),
+        triton.Config({"BLOCK_M": 8}),
     ],
     key=[
         "M",
@@ -72,14 +68,10 @@ def log_softmax_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
+        triton.Config({"BLOCK_M": 1}),
+        triton.Config({"BLOCK_M": 2}),
+        triton.Config({"BLOCK_M": 4}),
+        triton.Config({"BLOCK_M": 8}),
     ],
     key=[
         "M",
