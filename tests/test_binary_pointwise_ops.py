@@ -256,6 +256,42 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+# Note : tl.math.div_rz only support float32, cast will cause diff
+# with torch, so we only do float32 test for now.
+def test_accuracy_trunc_div(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
+    with flag_gems.use_gems():
+        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+
+    logging.debug(
+        f"The maximum difference between torch and triton is "
+        f"{torch.max(torch.abs(ref_out - res_out))}"
+    )
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_floor_div(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="floor")
+    with flag_gems.use_gems():
+        res_out = torch.div(inp1, inp2, rounding_mode="floor")
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_eq(shape, dtype):
     inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
