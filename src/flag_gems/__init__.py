@@ -126,6 +126,7 @@ def enable(lib=aten_lib):
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
     lib.impl("flip", flip, "CUDA")
+    lib.impl("tile", tile, "CUDA")
     lib.impl("index_select", index_select, "CUDA")
     lib.impl("masked_fill", masked_fill, "CUDA")
     lib.impl("_unique2", _unique2, "CUDA")
