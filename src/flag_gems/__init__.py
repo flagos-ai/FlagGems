@@ -45,7 +45,7 @@ def enable(lib=aten_lib):
     lib.impl("exponential_", exponential_, "CUDA")
     lib.impl("ge.Tensor", ge, "CUDA")
     lib.impl("ge.Scalar", ge_scalar, "CUDA")
-    lib.impl("gelu", gelu, "CUDA")
+    lib.impl("gelu", gelu, "AutogradCUDA")
     lib.impl("native_group_norm", group_norm, "AutogradCUDA")
     lib.impl("gt.Tensor", gt, "CUDA")
     lib.impl("gt.Scalar", gt_scalar, "CUDA")

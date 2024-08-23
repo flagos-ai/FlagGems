@@ -73,15 +73,23 @@ def test_accuracy_exp(shape, dtype):
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_gelu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+@pytest.mark.parametrize("approximate", ["none", "tanh"])
+def test_accuracy_gelu(shape, dtype, approximate):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp, True)
 
-    ref_out = torch.nn.functional.gelu(ref_inp)
+    ref_out = torch.nn.functional.gelu(ref_inp, approximate=approximate)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.gelu(inp)
+        res_out = torch.nn.functional.gelu(inp, approximate=approximate)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
