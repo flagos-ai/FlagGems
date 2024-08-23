@@ -614,3 +614,19 @@ def test_masked_fill():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_tile():
+    def tile_kwargs(dtype, batch, size):
+        return {"dims": [2, 4]}
+
+    bench = Benchmark(
+        op_name="tile",
+        torch_op=torch.tile,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=tile_kwargs,
+    )
+    bench.run()

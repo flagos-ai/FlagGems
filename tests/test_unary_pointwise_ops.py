@@ -11,6 +11,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    TILE_DIMS,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -327,3 +328,18 @@ def test_accuracy_masked_fill(shape, dtype, threshold):
         res_out = torch.masked_fill(inp, mask, value)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dims", TILE_DIMS)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_accuracy_tile(shape, dims, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.tile(ref_inp, dims)
+
+    with flag_gems.use_gems():
+        res_out = torch.tile(inp, dims)
+
+    gems_assert_close(res_out, ref_out, dtype)
