@@ -4,26 +4,29 @@
 name: model-test
 
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+  workflow_call:
 
 jobs:
-  container-model-test:
+  model-test:
     runs-on: [self-hosted, docker]
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
         - 82
-      options: --gpus all --hostname flag-gems_cicd_model -v /home/flaggems_cicd/huggingface_cache_bert:/__w/_temp/_github_home/.cache/huggingface
+      options: --gpus all --hostname flag-gems_cicd_model -v /home/flaggems_cicd/huggingface_cache_bert:/__w/_temp/_github_home/.cache/huggingface -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
+      - name: Get commit ID
+        run: |
+          git config --global --add safe.directory /__w/FlagGems/FlagGems
+          COMMIT_ID=$(git rev-parse HEAD)
+          echo "Commit ID is $COMMIT_ID"
+
       - name: checkout-code
         uses: actions/checkout@v4
 
       - name: check-gpu-free
-        run: tests/scripts/gpu_check.sh
+        shell: bash
+        run: tools/gpu_check.sh
 
       - name: examples-flag-gems
-        run: |
-          CUDA_VISIBLE_DEVICES=5 pytest -s examples/model_bert_test.py
+        run: tools/model-test.sh ${{ github.event.pull_request.number }}
