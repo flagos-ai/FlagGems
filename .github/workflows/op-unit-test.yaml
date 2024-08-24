@@ -4,10 +4,7 @@
 name: op-unit-test
 
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+  workflow_call:
 
 jobs:
   container-unit-test:
@@ -16,49 +13,15 @@ jobs:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
         - 81
-      options: --gpus all --hostname flag-gems_cicd_ut
+      options: --gpus all --hostname flag-gems_cicd_ut -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
       - name: checkout-code
         uses: actions/checkout@v4
 
       - name: check-gpu-free
-        run: tests/scripts/gpu_check.sh
+        shell: bash
+        run: tools/gpu_check.sh
 
       - name: unit_test-flag-gems
         shell: bash
-        run: |
-          cmds=(
-            "CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &"
-            "CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_pointwise_type_promotion.py &"
-            "CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_binary_pointwise_ops.py &"
-            "CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_tensor_constructor_ops.py &"
-            "CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_distribution_ops.py &"
-            "CUDA_VISIBLE_DEVICES=2 pytest -s tests/test_blas_ops.py &"
-            "CUDA_VISIBLE_DEVICES=3 pytest -s tests/test_reduction_ops.py &"
-            "CUDA_VISIBLE_DEVICES=4 pytest -s tests/test_special_ops.py &"
-            "CUDA_VISIBLE_DEVICES=5 pytest -s tests/test_libentry.py &"
-          )
-
-          declare -a exit_statuses
-
-          for cmd in "${cmds[@]}"; do
-            eval "$cmd"
-          done
-
-          for job in $(jobs -p); do
-            wait $job
-            exit_statuses+=($?)
-            echo "Task $pid completed with exit status ${exit_statuses[-1]}"
-          done
-
-          echo "Exit statuses of all tasks: ${exit_statuses[@]}"
-
-          overall_status=0
-          for status in "${exit_statuses[@]}"; do
-            if [ $status -ne 0 ]; then
-              overall_status=1
-              break
-            fi
-          done
-
-          exit $overall_status
+        run: tools/op-unit-test.sh ${{ github.event.pull_request.number }}

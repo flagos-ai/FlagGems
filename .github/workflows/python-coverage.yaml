@@ -1,5 +1,3 @@
-# https://github.com/marketplace/actions/python-coverage
-
 name: python-coverage
 
 on:
@@ -8,62 +6,20 @@ on:
   pull_request:
     branches: [ "master" ]
 
-permissions:
-  pull-requests: write
-
 jobs:
+  op-unit-test:
+    uses: ./.github/workflows/op-unit-test.yaml
+  model-test:
+    uses: ./.github/workflows/model-test.yaml
   container-coverage-test:
     runs-on: [self-hosted, docker]
+    needs: [op-unit-test, model-test]
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
         - 81
-      options: --gpus all --hostname flag-gems_cicd_coverage
+      options: --gpus all --hostname flag-gems_cicd_coverage -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
-
-      - name: check-gpu-free
-        run: tests/scripts/gpu_check.sh
-
-      - name: run-pytest
+      - name: get-python-coverage
         shell: bash
-        run: |
-          cmds=(
-            "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_unary_pointwise_ops.py &"
-            "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_pointwise_type_promotion.py &"
-            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_binary_pointwise_ops.py &"
-            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_tensor_constructor_ops.py &"
-            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_distribution_ops.py &"
-            "CUDA_VISIBLE_DEVICES=2 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_blas_ops.py &"
-            "CUDA_VISIBLE_DEVICES=3 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_reduction_ops.py &"
-            "CUDA_VISIBLE_DEVICES=4 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_special_ops.py &"
-            "CUDA_VISIBLE_DEVICES=5 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_libentry.py &"
-            "CUDA_VISIBLE_DEVICES=5 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s examples/model_bert_test.py &"
-          )
-
-          declare -a exit_statuses
-
-          for cmd in "${cmds[@]}"; do
-            eval "$cmd"
-          done
-
-          for job in $(jobs -p); do
-            wait $job
-            exit_statuses+=($?)
-            echo "Task $pid completed with exit status ${exit_statuses[-1]}"
-          done
-
-          echo "Exit statuses of all tasks: ${exit_statuses[@]}"
-
-      - name: get-coverage
-        run: |
-          coverage combine --append
-          coverage report -m
-          coverage xml -o coverage.xml
-
-      - name: report-coverage
-        uses: orgoro/coverage@v3.2
-        with:
-            coverageFile: coverage.xml
-            thresholdNew: 0.8
-            thresholdModified: 0.0
-            token: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/code_coverage/coverage.sh ${{ github.event.pull_request.number }}
