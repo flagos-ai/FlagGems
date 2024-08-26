@@ -55,5 +55,4 @@ def process_coverage_file(xml_file):
 if __name__ == "__main__":
     id = getenv("PR_ID")
     sha = getenv("GITHUB_SHA")
-    attempt = getenv("GITHUB_RUN_ATTEMPT")
-    process_coverage_file(f"{id}-{sha}-{attempt}-python-coverage.xml")
+    process_coverage_file(f"{id}-{sha}-python-coverage.xml")
