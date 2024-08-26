@@ -190,7 +190,7 @@ FlagGems相比Torch Eager模式下ATen算子库的加速比如下图所示。其
 
 ## 贡献代码
 
-欢迎大家参与FlagGems的算子开发并贡献代码，详情请参考[CONTRIBUTING.md](/CONTRIBUTING.md)。
+欢迎大家参与FlagGems的算子开发并贡献代码，详情请参考[CONTRIBUTING.md](/CONTRIBUTING_cn.md)。
 
 ## 联系我们
 

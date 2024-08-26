@@ -3,11 +3,20 @@
 set -e
 
 PR_ID=$1
-PR_ID_DIR="PR_${PR_ID}_Coverage"
 
-ID_SHA_ATTEMPT="${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+# For local test
+if [ -z "$PR_ID" ]; then
+  PR_ID=168
+fi
+if [ -z "$GITHUB_SHA" ]; then
+  GITHUB_SHA=abcdefg
+fi
+ID_SHA="${PR_ID}-${GITHUB_SHA}"
+echo ID_SHA $ID_SHA
 
-COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA_ATTEMPT}-op"
+PR_ID_DIR="PR${PR_ID}"
+
+COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
 cmds=(
    "CUDA_VISIBLE_DEVICES=0 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py &"
    "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py &"
@@ -42,7 +51,7 @@ for status in "${exit_statuses[@]}"; do
     fi
 done
 
-mkdir -p /PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
-mv ${ID_SHA_ATTEMPT}* /PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
+mkdir -p /PR_Coverage/PR${PR_ID}/${ID_SHA}
+mv ${ID_SHA}* /PR_Coverage/PR${PR_ID}/${ID_SHA}
 
 exit $overall_status
