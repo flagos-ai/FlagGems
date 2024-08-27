@@ -8,10 +8,21 @@ on:
 
 jobs:
   op-unit-test:
+    concurrency:
+      group: op-unit-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     uses: ./.github/workflows/op-unit-test.yaml
+
   model-test:
+    concurrency:
+      group: model-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     uses: ./.github/workflows/model-test.yaml
+
   container-coverage-test:
+    concurrency:
+      group: container-coverage-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     runs-on: [self-hosted, docker]
     needs: [op-unit-test, model-test]
     container:
