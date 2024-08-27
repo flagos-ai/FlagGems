@@ -14,7 +14,7 @@ Please report bugs using Github's issues. When reporting bugs, please provide
 
 ## 2. Code Contribution
 In pull requests, contributor should describe what changed and why. Please also provide test cases if applicable.
-Pull requests require approvals from __two members__ before merging. Additionally, they must pass continuous integration checks.
+Pull requests require approvals from __one members__ before merging. Additionally, they must pass continuous integration checks.
 
 Currently, continuous integration checks include four pipelines:
 
@@ -43,6 +43,14 @@ Note: Since Triton JIT functions do not actually run, they will be excluded from
 The code merging requirement is a coverage rate of __90%__ or above. Detailed information about code coverage can be viewed in the log.
 
 To reproduce locally, you need to install tools like `lcov`, `coverage` and `PyGithub`.
+
+```bash
+cd $FlagGemsROOT
+PR_ID=your_pr_id
+bash tools/op-unit-test.sh
+bash tools/model-test.sh
+tools/code_coverage/coverage.sh PR_ID
+```
 
 Currently, the pipeline does not check the performance of operators. You can write performance tests in the `benchmark` directory to evaluate your optimization results.
 
