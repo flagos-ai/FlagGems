@@ -24,4 +24,12 @@ jobs:
 
       - name: FlagGems unit test
         shell: bash
-        run: tools/op-unit-test.sh ${{ github.event.pull_request.number }}
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
+            bash tools/op-unit-test.sh ${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            echo "This is a push event. The relate PR number is ${PR_NUMBER}"
+            bash tools/op-unit-test.sh ${PR_NUMBER}
+          fi
