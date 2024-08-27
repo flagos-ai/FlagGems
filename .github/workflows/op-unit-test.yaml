@@ -15,13 +15,13 @@ jobs:
         - 81
       options: --gpus all --hostname flag-gems_cicd_ut -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
-      - name: checkout-code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: check-gpu-free
+      - name: Check GPU free
         shell: bash
         run: tools/gpu_check.sh
 
-      - name: unit_test-flag-gems
+      - name: FlagGems unit test
         shell: bash
         run: tools/op-unit-test.sh ${{ github.event.pull_request.number }}

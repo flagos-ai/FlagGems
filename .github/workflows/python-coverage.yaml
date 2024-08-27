@@ -31,6 +31,14 @@ jobs:
         - 81
       options: --gpus all --hostname flag-gems_cicd_coverage -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
-      - name: get-python-coverage
+      - name: Get python coverage
         shell: bash
-        run: tools/code_coverage/coverage.sh ${{ github.event.pull_request.number }}
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
+            bash tools/code_coverage/coverage.sh ${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            echo "This is a push event. Relate PR number is ${PR_NUMBER}"
+            bash tools/code_coverage/coverage.sh ${PR_NUMBER}
+          fi
