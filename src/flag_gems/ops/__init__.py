@@ -60,6 +60,7 @@ from .normal import (
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad import pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
 from .rand import rand
@@ -112,6 +113,7 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "pad",
     "cumsum",
     "true_divide",
     "div_mode",
