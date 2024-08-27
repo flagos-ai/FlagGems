@@ -526,7 +526,7 @@ class CrossEntropyLoss(torch.autograd.Function):
                 ctx.mean_num = 1 / (N * D)
             else:
                 ctx.mean_num = 1 / sum(w_tgt).item()
-            return sum(out).to(inp.dtype) * ctx.mean_num
+            return (sum(out) * ctx.mean_num).to(inp.dtype)
         else:  # SUM
             return sum(out).to(inp.dtype)
 

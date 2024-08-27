@@ -195,22 +195,23 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
         (EmbeddingSize, N), device="cuda", dtype=dtype, requires_grad=True
     )
     ref_embedding = to_reference(embedding)
+    ref_indices = to_reference(indices)
 
-    res_out = torch.nn.functional.embedding(
-        indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+    ref_out = torch.nn.functional.embedding(
+        ref_indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
     with flag_gems.use_gems():
-        ref_out = torch.nn.functional.embedding(
-            indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+        res_out = torch.nn.functional.embedding(
+            indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
         )
-    out_grad = torch.randn_like(ref_out)
+    out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_embedding, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, embedding, out_grad)
 
-    gems_assert_close(ref_out, res_out, dtype)
-    gems_assert_close(ref_in_grad, res_in_grad, dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -244,14 +245,14 @@ def test_topk(
     for bsz in range(batch_size):
         col_indices = torch.randperm(x.size(1))
         x[bsz, :] = x[bsz, col_indices]
-
-    ref_value, ref_index = torch.topk(x, topk, largest=largest)
+    ref_x = to_reference(x)
+    ref_value, ref_index = torch.topk(ref_x, topk, largest=largest)
 
     with flag_gems.use_gems():
         res_value, res_index = torch.topk(x, topk, largest=largest)
 
-    gems_assert_close(ref_value, res_value, dtype)
-    gems_assert_equal(ref_index, res_index)
+    gems_assert_close(res_value, ref_value, dtype)
+    gems_assert_equal(res_index, ref_index)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
