@@ -344,3 +344,33 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
             )
             assert res_out.numel() == ref_out.numel()
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
+@pytest.mark.parametrize("contiguous", [True, False])
+def test_pad(shape, dtype, pad_mode, contiguous):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    if not contiguous:
+        x = x[::2, ::2]
+
+    ref_x = to_reference(x)
+
+    rank = x.ndim
+    pad_params = list(
+        torch.randint(0, 10, (rank * 2,), dtype=torch.int32, device="cpu")
+        if pad_mode == "constant"
+        else torch.randint(0, 10, (rank,), dtype=torch.int32, device="cpu")
+    )
+    pad_value = float(torch.randint(0, 1024, (1,), dtype=torch.int32, device="cpu"))
+
+    if pad_mode != "constant":
+        pad_params = [(pad_val + 2 - 1) // 2 * 2 for pad_val in pad_params]
+        pad_value = None
+
+    ref_out = torch.nn.functional.pad(x, pad_params, pad_mode, pad_value)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.pad(ref_x, pad_params, pad_mode, pad_value)
+
+    gems_assert_equal(ref_out, res_out)
