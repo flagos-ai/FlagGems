@@ -21,12 +21,12 @@ jobs:
           COMMIT_ID=$(git rev-parse HEAD)
           echo "Commit ID is $COMMIT_ID"
 
-      - name: checkout-code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: check-gpu-free
+      - name: Check GPU free
         shell: bash
         run: tools/gpu_check.sh
 
-      - name: examples-flag-gems
+      - name: FlagGems examples
         run: tools/model-test.sh ${{ github.event.pull_request.number }}
