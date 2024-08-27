@@ -253,6 +253,10 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     else:
         chunk_size = 1024
 
+    # Note(Zhengzekang): We should promise chunk_size is larger than k.
+    if chunk_size < k:
+        chunk_size = triton.next_power_of_2(k)
+
     chunk_num = triton.cdiv(topk_elem_cnt, chunk_size)
 
     stage1_out = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=x.dtype)
