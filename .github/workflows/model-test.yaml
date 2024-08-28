@@ -15,12 +15,6 @@ jobs:
         - 82
       options: --gpus all --hostname flag-gems_cicd_model -v /home/flaggems_cicd/huggingface_cache_bert:/__w/_temp/_github_home/.cache/huggingface -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
-      - name: Get commit ID
-        run: |
-          git config --global --add safe.directory /__w/FlagGems/FlagGems
-          COMMIT_ID=$(git rev-parse HEAD)
-          echo "Commit ID is $COMMIT_ID"
-
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -31,6 +25,7 @@ jobs:
       - name: FlagGems examples
         shell: bash
         run: |
+          git config --global --add safe.directory /__w/FlagGems/FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
             bash tools/model-test.sh ${{ github.event.pull_request.number }}
