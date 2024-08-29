@@ -445,6 +445,9 @@ class PadFunction:
         return max_rank
 
 
+_pad_func = PadFunction()
+
+
 def pad(self, pad, mode="constant", value=None):
     logging.debug("GEMS CONSTANT PAD ND")
 
@@ -482,5 +485,5 @@ def pad(self, pad, mode="constant", value=None):
                 pad_l <= input_size and pad_r <= input_size
             ), "Padding value causes wrapping around more than once."
 
-    out = PadFunction()(self, pad, mode, float(value))
+    out = _pad_func(self, pad, mode, float(value))
     return out
