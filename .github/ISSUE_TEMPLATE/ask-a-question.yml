@@ -1,0 +1,20 @@
+name: 🙋🏻‍♂️🙋🏼‍♀️ Ask a Question
+description: Ask a usage or consultation question.
+labels: [Question]
+
+body:
+- type: markdown
+  attributes:
+    value: >
+      #### Before asking a usage or consultation question, please ensure:
+
+      - You've searched Google for answers.
+
+      - You've checked existing and past issues for similar questions
+
+- type: textarea
+  id: question
+  attributes:
+    label: Please describe your question
+  validations:
+    required: true
