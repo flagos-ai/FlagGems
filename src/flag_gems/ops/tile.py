@@ -1,7 +1,7 @@
 import importlib
 import logging
 import os
-from typing import Any, Callable, List, Mapping, Tuple
+from typing import Callable, List, Mapping
 
 import torch
 
@@ -392,15 +392,12 @@ def generate_tile_kernel(
 
 
 def generate_code(
-    inputs: Tuple[Any],
+    rank: int,
     wrapper_name: str,
     destination_passing_func_name: str,
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    shape = inputs[0].shape
-    rank = max(len(shape), len(inputs[1]))
-
     # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
     code = generate_functional_tile_wrapper(
@@ -419,16 +416,17 @@ class TileFunction:
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, x, dims):
         # note: kwargs should not be used in JITFunction directly
-        key = f"{self.arg_key(*args)}"
+        ndim = self.arg_key(x, dims)
+        key = str(ndim)
         if key in self.overloads:
             overload = self.overloads[key]
         else:
             # generate file & import it
             code = IndentedBuffer()
             code = generate_code(
-                args,
+                ndim,
                 "_wrapper",
                 "_wrapper_out",
                 "_jit_function",
@@ -452,16 +450,18 @@ class TileFunction:
             spec.loader.exec_module(m)
             overload = getattr(m, "_wrapper")
             self.overloads[key] = overload
-        return overload(*args, **kwargs)
+        return overload(x, dims)
 
-    def arg_key(self, *args):
-        tensors = [item for item in args if torch.is_tensor(item)]
-        max_rank = max(item.ndim for item in tensors)
+    def arg_key(self, x, dims):
+        max_rank = max(x.ndim, len(dims))
         return max_rank
+
+
+_tile_func = TileFunction()
 
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
     logging.debug("GEMS TILE")
 
-    out = TileFunction()(inp, dims)
+    out = _tile_func(inp, dims)
     return out
