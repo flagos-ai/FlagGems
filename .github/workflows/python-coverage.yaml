@@ -31,6 +31,9 @@ jobs:
         - 81
       options: --gpus all --hostname flag-gems_cicd_coverage -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Get python coverage
         shell: bash
         run: |
