@@ -3,6 +3,7 @@ import torch
 from .performance_utils import (
     BLAS_BATCH,
     FLOAT_DTYPES,
+    INT_DTYPES,
     REDUCTION_BATCH,
     SIZES,
     Benchmark,
@@ -92,6 +93,27 @@ def test_perf_cumsum():
         torch_op=torch.cumsum,
         arg_func=cumsum_args,
         dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_nonzero():
+    def nonzero_args(dtype, batch, size):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="cuda").to(
+                torch.bool
+            )
+        else:
+            inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="cuda")
+        return (inp,)
+
+    bench = Benchmark(
+        op_name="nonzero",
+        torch_op=torch.nonzero,
+        arg_func=nonzero_args,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + [torch.bool],
         batch=REDUCTION_BATCH,
         sizes=SIZES,
     )
