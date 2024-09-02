@@ -16,7 +16,7 @@ from .bmm import bmm
 from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
-from .cumsum import cumsum
+from .cumsum import cumsum, normed_cumsum
 from .div import div_mode, floor_divide, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
@@ -48,6 +48,7 @@ from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm
 from .mul import mul
+from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
@@ -115,6 +116,7 @@ __all__ = [
     "cos",
     "pad",
     "cumsum",
+    "normed_cumsum",
     "true_divide",
     "div_mode",
     "floor_divide",
@@ -153,6 +155,7 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "multinomial",
     "maximum",
     "minimum",
     "rand",

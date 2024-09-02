@@ -98,6 +98,23 @@ def test_perf_unique():
     bench.run()
 
 
+def test_multinomial_with_replacement():
+    def multinomial_args(dtype, batch, size):
+        dist = torch.rand((batch, size), dtype=dtype, device="cuda")
+        n_samples = 10000
+        return (dist, n_samples, True)
+
+    bench = Benchmark(
+        op_name="multinomial",
+        torch_op=torch.multinomial,
+        arg_func=multinomial_args,
+        dtypes=(torch.float16, torch.float32),
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_pad():
     def padding_kwargs(dtype, batch, size):
         input = torch.randn((batch, size), device="cuda", dtype=dtype)
