@@ -27,6 +27,7 @@ from .exponential_ import exponential_
 from .flip import flip
 from .full import full
 from .full_like import full_like
+from .gather import gather, gather_out
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -75,6 +76,7 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
+from .scatter import scatter_reduce, scatter_src
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
@@ -131,6 +133,8 @@ __all__ = [
     "eq_scalar",
     "exp",
     "exponential_",
+    "gather",
+    "gather_out",
     "flip",
     "ones_like",
     "full_like",
@@ -180,6 +184,8 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
+    "scatter_src",
+    "scatter_reduce",
     "sigmoid",
     "silu",
     "sin",

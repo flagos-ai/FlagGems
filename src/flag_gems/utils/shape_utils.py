@@ -3,6 +3,8 @@ import operator
 from typing import Iterable, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
 Shape = Tuple[int]
 Stride = Tuple[int]
@@ -156,3 +158,91 @@ def can_use_int32_index(a):
         if max_offset > INT32_MAX:
             return False
     return True
+
+
+def offsetCalculator(inp, idx, strides, dim, isInp):
+    ndim = inp.ndim
+    shape = list(inp.shape)
+    offsets = 0
+    idx_dim = 0
+    for d in range(0, ndim):
+        mod = idx % shape[d]
+        add_on = mod * strides[d]
+        offsets += add_on
+        if d == dim:
+            idx_dim = add_on
+        idx = idx // shape[d]
+        # FIXME: Should we write a fast div/mod
+        # to boost the '%' and '//'? (Since they may be run many times)
+        # See also:
+        #   - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+        #   - Division by Invariant Integers Using Multiplication,
+        #     Torbjörn Granlund and Peter L. Montgomery, 1994.
+    return (offsets) if not isInp else (offsets - idx_dim)
+
+
+def restride_dim(src, dim, shape, step=0, storage_offset=None):
+    strides = list(src.stride())
+    strides[dim] *= step
+    return src.as_strided(shape, strides, storage_offset)
+
+
+def cfggen():
+    block_m = [1, 2, 4]
+    block_n = [256, 1024, 2048, 4096]
+    configs = [
+        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
+        for m in block_m
+        for n in block_n
+    ]
+    return configs
+
+
+@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.jit
+def add_on_kernel(
+    idx,
+    add_on,
+    cur_shape,
+    cur_strides,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_x = tl.program_id(axis=0)
+    pid_y = tl.program_id(axis=1)
+    rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    rows_mask = rows_offset < M
+
+    cols_offset = pid_y + tl.arange(0, BLOCK_N)[None, :]
+    cols_mask = cols_offset < N
+    block_mask = rows_mask and cols_mask
+
+    offsets = rows_offset * N + cols_offset
+    cur_idx = tl.load(idx + offsets, mask=block_mask, other=1)
+    mod = cur_idx % cur_shape
+    res = mod * cur_strides
+    tl.store(add_on + offsets, res, mask=block_mask)
+
+
+def offset_calculator(inp, idx, strides, dim, isInp):
+    ndim = inp.ndim
+    shape = list(inp.shape)
+    offsets = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
+    idx_dim = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
+    for d in range(0, ndim):
+        add_on = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
+        N = idx.size(idx.ndim - 1)
+        M = idx.numel() // N
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+            triton.cdiv(N, meta["BLOCK_N"]),
+        )
+        add_on_kernel[grid](idx, add_on, shape[d], strides[d], M, N)
+
+        offsets = torch.add(offsets, add_on)
+        if d == dim:
+            idx_dim = add_on
+        idx = idx // shape[d]
+    return offsets if not isInp else (offsets - idx_dim)
