@@ -10,6 +10,9 @@ skip_reason = "PyTorch < 2.2.0 does not support"
 
 
 RESOLUTION = {
+    torch.bool: 0,
+    torch.int16: 0,
+    torch.int32: 0,
     torch.float16: 1e-3,
     torch.float32: 1.3e-6,
     torch.bfloat16: 0.016,
@@ -28,6 +31,8 @@ POINTWISE_SHAPES = [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(4096, 256 * i) for i in range(1, 10, 2)]
 MNK_SHAPES = [15, 160, 1024]
+REDUCTION_MNK_SHAPES = [(15, 160, 1024), (16, 1025, 255)]
+ONE_DIM_SHAPES = [(256 * i + 7,) for i in range(1, 10, 2)]
 
 DIM_POINTWISE_SHAPES = [
     (1024, 1024, 1),

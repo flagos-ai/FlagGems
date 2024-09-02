@@ -7,6 +7,9 @@ from .accuracy_utils import (
     DIM_LIST,
     DIMS_LIST,
     FLOAT_DTYPES,
+    INT_DTYPES,
+    ONE_DIM_SHAPES,
+    REDUCTION_MNK_SHAPES,
     REDUCTION_SHAPES,
     gems_assert_close,
     gems_assert_equal,
@@ -236,11 +239,20 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "shape", REDUCTION_SHAPES + ONE_DIM_SHAPES + REDUCTION_MNK_SHAPES
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
-    dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    if shape in REDUCTION_MNK_SHAPES:
+        dim = 1
+    else:
+        dim = -1
+
+    if dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
@@ -248,6 +260,26 @@ def test_accuracy_cumsum(shape, dtype):
         res_out = torch.cumsum(inp, dim=dim)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.parametrize(
+    "shape", REDUCTION_SHAPES + ONE_DIM_SHAPES + REDUCTION_MNK_SHAPES
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+def test_accuracy_nonzero(shape, dtype):
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, dtype=torch.int, device="cuda").to(dtype)
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.nonzero(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nonzero(inp)
+
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize(
