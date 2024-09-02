@@ -50,3 +50,20 @@ def per_thread_offset(N, num_blocks, num_warps, warp_threads=32):
     max_threads = num_blocks * block_threads
     offset = (N + max_threads - 1) // max_threads
     return offset
+
+
+@triton.jit
+def uniform(seed, philox_offset, offset):
+    seed = seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    i4 = offset
+    c0 += i4
+    _O = c0 * 0
+    r0, r1, r2, r3 = tl.philox(seed, c0, c1, _O, _O)
+    r0 = uint_to_uniform_float(r0)
+    r1 = uint_to_uniform_float(r1)
+    r2 = uint_to_uniform_float(r2)
+    r3 = uint_to_uniform_float(r3)
+    return r0, r1, r2, r3

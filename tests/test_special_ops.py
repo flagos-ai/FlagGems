@@ -11,6 +11,8 @@ from .accuracy_utils import (
     INT_DTYPES,
     POINTWISE_SHAPES,
     RESOLUTION,
+    UT_SHAPES_1D,
+    UT_SHAPES_2D,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -344,6 +346,46 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
             )
             assert res_out.numel() == ref_out.numel()
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("n_samples", [1000])
+def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
+    if shape[-1] == 1:
+        dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+        with flag_gems.use_gems():
+            res_out = torch.multinomial(dist, n_samples, True)
+        assert torch.all(res_out == 0)
+    else:
+        # Mask p% off of the categories and test the sampling results fall in the rest
+        for p in (0.1, 0.5, 0.9):
+            dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+            dist[torch.rand(shape) < p] = 0
+            # Make sure there's at least one non-zero probability
+            dist[..., -1] = 0.5
+            with flag_gems.use_gems():
+                res_out = torch.multinomial(dist, n_samples, True)
+            # print(dist)
+            res_dist = torch.gather(dist, -1, res_out)
+            assert torch.all(res_dist)
+
+
+@pytest.mark.parametrize("pool", UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_multinomial_without_replacement(pool, dtype):
+    dist = torch.rand(size=pool, dtype=dtype, device="cuda")
+    k = pool[-1]
+    if k > 1:
+        ns = [k // 2, k]
+    else:
+        ns = [1]
+    for n in ns:
+        with flag_gems.use_gems():
+            out = torch.multinomial(dist, n, False)
+        # Verifies uniqueness
+        idx_cnt = torch.nn.functional.one_hot(out).sum(1)
+        assert torch.all(idx_cnt <= 1)
 
 
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])

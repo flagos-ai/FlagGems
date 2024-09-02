@@ -82,6 +82,7 @@ def enable(lib=aten_lib):
     lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")
     lib.impl("mul.Tensor", mul, "CUDA")
+    lib.impl("multinomial", multinomial, "CUDA")
     lib.impl("mv", mv, "CUDA")
     lib.impl("ne.Tensor", ne, "CUDA")
     lib.impl("ne.Scalar", ne_scalar, "CUDA")

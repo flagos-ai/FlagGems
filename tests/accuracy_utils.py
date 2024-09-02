@@ -1,3 +1,5 @@
+import itertools
+
 import torch
 
 from .conftest import TO_CPU
@@ -13,6 +15,15 @@ RESOLUTION = {
     torch.bfloat16: 0.016,
 }
 
+sizes_one = [1]
+sizes_pow_2 = [2**d for d in range(4, 11, 2)]
+sizes_noalign = [d + 17 for d in sizes_pow_2]
+sizes_1d = sizes_one + sizes_pow_2 + sizes_noalign
+sizes_2d_nc = [1, 16, 64, 1000]
+sizes_2d_nr = [1, 5, 1024]
+
+UT_SHAPES_1D = list((n,) for n in sizes_1d)
+UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
 POINTWISE_SHAPES = [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)]
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(4096, 256 * i) for i in range(1, 10, 2)]
