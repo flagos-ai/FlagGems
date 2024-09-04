@@ -416,3 +416,23 @@ def test_pad(shape, dtype, pad_mode, contiguous):
         res_out = torch.nn.functional.pad(ref_x, pad_params, pad_mode, pad_value)
 
     gems_assert_equal(ref_out, res_out)
+
+
+@pytest.mark.parametrize("start", [0, 1, 3])
+@pytest.mark.parametrize("step", [1, 2, 5])
+@pytest.mark.parametrize("end", [128, 256, 1024])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.int64, None])
+@pytest.mark.parametrize("device", ["cuda", None])
+@pytest.mark.parametrize(
+    "pin_memory", [False, None]
+)  # Since triton only target to GPU, pin_memory only used in CPU tensors.
+def test_arange(start, step, end, dtype, device, pin_memory):
+    res_out = torch.arange(
+        start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
+    )
+    with flag_gems.use_gems():
+        ref_out = torch.arange(
+            start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
+        )
+
+    gems_assert_equal(ref_out, res_out)

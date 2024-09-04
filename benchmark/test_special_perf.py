@@ -138,3 +138,23 @@ def test_perf_pad():
         kwargs_func=padding_kwargs,
     )
     bench.run()
+
+
+def test_perf_arange():
+    def arange_kwargs(dtype, batch, size):
+        return {
+            "end": batch * size,
+            "device": "cuda",
+            "dtype": dtype,
+        }
+
+    bench = Benchmark(
+        op_name="arange",
+        torch_op=torch.arange,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=arange_kwargs,
+    )
+    bench.run()
