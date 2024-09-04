@@ -182,10 +182,7 @@ def test_perf_ge():
     bench.run()
 
 
-def test_perf_gelu_tanh():
-    def gelu_kwargs(dtype, batch, size):
-        return {"approximate": "tanh"}
-
+def test_perf_gelu():
     bench = Benchmark(
         op_name="gelu",
         torch_op=torch.nn.functional.gelu,
@@ -193,56 +190,18 @@ def test_perf_gelu_tanh():
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
-        kwargs_func=gelu_kwargs,
     )
     bench.run()
 
 
-def test_perf_gelu_none():
-    def gelu_kwargs(dtype, batch, size):
-        return {"approximate": "none"}
-
+def test_perf_gelu_backward():
     bench = Benchmark(
-        op_name="gelu",
+        op_name="gelu backward",
         torch_op=torch.nn.functional.gelu,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
-        kwargs_func=gelu_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_gelu_backward_tanh():
-    def gelu_kwargs(dtype, batch, size):
-        return {"approximate": "tanh"}
-
-    bench = Benchmark(
-        op_name="gelu",
-        torch_op=torch.nn.functional.gelu,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=gelu_kwargs,
-        is_backward=True,
-    )
-    bench.run()
-
-
-def test_perf_gelu_backward_none():
-    def gelu_kwargs(dtype, batch, size):
-        return {"approximate": "none"}
-
-    bench = Benchmark(
-        op_name="gelu",
-        torch_op=torch.nn.functional.gelu,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=gelu_kwargs,
         is_backward=True,
     )
     bench.run()
@@ -587,7 +546,7 @@ def test_perf_flip_int():
         return {"dims": [0, 1]}
 
     bench = Benchmark(
-        op_name="flip",
+        op_name="flip_int",
         torch_op=torch.flip,
         arg_func=unary_int_arg,
         dtypes=INT_DTYPES,

@@ -18,7 +18,7 @@ def test_perf_normal():
         return loc, scale
 
     bench = Benchmark(
-        op_name="distributions.normal.Normal",
+        op_name="normal",
         torch_op=torch.distributions.normal.Normal,
         arg_func=normal_arg,
         dtypes=FLOAT_DTYPES,
