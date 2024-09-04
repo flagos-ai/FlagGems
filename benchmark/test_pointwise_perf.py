@@ -630,3 +630,20 @@ def test_perf_tile():
         kwargs_func=tile_kwargs,
     )
     bench.run()
+
+
+def test_perf_repeat():
+    def repeat_arg(dtype, batch, size):
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = [2, 4]
+        return inp1, inp2
+
+    bench = Benchmark(
+        op_name="repeat",
+        torch_op=torch.Tensor.repeat,
+        arg_func=repeat_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()

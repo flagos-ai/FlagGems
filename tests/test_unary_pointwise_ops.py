@@ -11,6 +11,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    REPEAT_SIZES,
     TILE_DIMS,
     gems_assert_close,
     gems_assert_equal,
@@ -341,5 +342,20 @@ def test_accuracy_tile(shape, dims, dtype):
 
     with flag_gems.use_gems():
         res_out = torch.tile(inp, dims)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("sizes", REPEAT_SIZES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_accuracy_repeat(shape, sizes, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = ref_inp.repeat(*sizes)
+
+    with flag_gems.use_gems():
+        res_out = inp.repeat(*sizes)
 
     gems_assert_close(res_out, ref_out, dtype)
