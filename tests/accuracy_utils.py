@@ -42,6 +42,7 @@ DIM_POINTWISE_SHAPES = [
 ]
 DIMS = [[0], [-2], [2], [0, 2], [2, 1], [0, -1, 1]]
 TILE_DIMS = [(2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
+REPEAT_SIZES = [(2, 3, 4, 5), (2, 0, 4, 5)]
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = [torch.float16, torch.float32, torch.float64, torch.bfloat16]

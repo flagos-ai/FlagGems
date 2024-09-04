@@ -72,6 +72,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
+from .repeat import repeat
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
@@ -216,4 +217,5 @@ __all__ = [
     "masked_fill",
     "_unique2",
     "nonzero",
+    "repeat",
 ]
