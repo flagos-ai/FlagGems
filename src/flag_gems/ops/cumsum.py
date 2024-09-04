@@ -5,7 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
 
+
+@libentry()
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
 def scan_part_sum_kernel(
     inp,
@@ -41,6 +44,7 @@ def scan_part_sum_kernel(
     tl.store(partial_sum_ptrs, part_sum_via_sum)
 
 
+@libentry()
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
 def add_base_sum_kernel(
     out,
@@ -64,6 +68,7 @@ def add_base_sum_kernel(
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
 
 
+@libentry()
 @triton.jit(do_not_specialize=["part_num"])
 def scan_part_sum_abc_kernel(
     inp,
@@ -109,6 +114,7 @@ def scan_part_sum_abc_kernel(
     tl.store(partial_sum_ptrs, part_sum_via_sum)
 
 
+@libentry()
 @triton.jit(do_not_specialize=["part_num"])
 def add_base_sum_abc_kernel(
     out,
