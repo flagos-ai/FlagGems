@@ -354,3 +354,20 @@ def test_perf_index_select():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_masked_select():
+    def masked_select_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+        return (inp, mask)
+
+    bench = Benchmark(
+        op_name="masked_select",
+        torch_op=torch.masked_select,
+        arg_func=masked_select_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
