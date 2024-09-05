@@ -3,7 +3,7 @@ import torch
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 
-__version__ = "2.0"
+__version__ = "2.1"
 
 aten_lib = torch.library.Library("aten", "IMPL")
 

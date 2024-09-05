@@ -79,10 +79,17 @@ Examples：
 - support reduction operators: cumsum, layernorm, mean, softmax
 
 ### v2.0
-- support BLAS operator: mv, outer
+- support BLAS operators: mv, outer
 - support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
 - support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
 - support fused operators: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+
+### v2.1
+- support Tensor operators: where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
+- support neural network operator: embedding
+- support basic math operators: allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
+- support distribution operators: normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
+- support science operators: erf, resolve_conj, resolve_neg
 
 ## Quick Start
 

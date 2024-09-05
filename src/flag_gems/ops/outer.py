@@ -2,8 +2,8 @@ import logging
 
 import torch
 
-from .mm import mm
 from .mul import mul
+from .mv import mv
 
 
 class Outer(torch.autograd.Function):
@@ -26,15 +26,8 @@ class Outer(torch.autograd.Function):
 
         inp, weight = ctx.saved_tensors
 
-        inp_shape = inp.shape
-        inp_grad_mid = mm(out_grad, weight[:, None])
-        inp_grad = inp_grad_mid.reshape(inp_shape)
-
-        weight_shape = weight.shape
-        inp = inp[None, :]
-        inp = inp.contiguous()
-        weight_grad_mid = mm(inp, out_grad)
-        weight_grad = weight_grad_mid.reshape(weight_shape)
+        inp_grad = mv(out_grad, weight)
+        weight_grad = mv(out_grad.t(), inp)
 
         return inp_grad, weight_grad
 
