@@ -284,7 +284,7 @@ def test_perf_softmax():
 
 def test_perf_softmax_backward():
     bench = Benchmark(
-        op_name="softmax backward",
+        op_name="softmax",
         torch_op=torch.nn.functional.softmax,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,

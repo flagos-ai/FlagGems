@@ -196,7 +196,7 @@ def test_perf_gelu():
 
 def test_perf_gelu_backward():
     bench = Benchmark(
-        op_name="gelu backward",
+        op_name="gelu",
         torch_op=torch.nn.functional.gelu,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
