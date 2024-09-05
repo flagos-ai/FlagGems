@@ -924,3 +924,19 @@ def test_accuracy_index_select(shape, dim, dtype):
         res_out = torch.index_select(inp, dim, index)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
+def test_accuracy_masked_select(shape, dtype, threshold):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    ref_out = torch.masked_select(ref_inp, ref_mask)
+    with flag_gems.use_gems():
+        res_out = torch.masked_select(inp, mask)
+
+    gems_assert_equal(res_out, ref_out)
