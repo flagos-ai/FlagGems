@@ -6,6 +6,7 @@ from .performance_utils import (
     POINTWISE_BATCH,
     SIZES,
     Benchmark,
+    binary_int_args,
     unary_int_arg,
 )
 
@@ -156,5 +157,17 @@ def test_perf_arange():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=arange_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_isin():
+    bench = Benchmark(
+        op_name="isin",
+        torch_op=torch.isin,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
     )
     bench.run()

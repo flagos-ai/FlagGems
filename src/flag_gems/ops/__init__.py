@@ -36,6 +36,7 @@ from .gt import gt, gt_scalar
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
+from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
@@ -153,6 +154,7 @@ __all__ = [
     "index_select",
     "isclose",
     "isfinite",
+    "isin",
     "isinf",
     "isnan",
     "layer_norm",
