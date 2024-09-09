@@ -8,6 +8,10 @@ major, minor = torch.__version__.split(".")[:2]
 skip_expr = major < "2" or minor < "2"
 skip_reason = "PyTorch < 2.2.0 does not support"
 
+INT16_MIN = torch.iinfo(torch.int16).min
+INT16_MAX = torch.iinfo(torch.int16).max
+INT32_MIN = torch.iinfo(torch.int32).min
+INT32_MAX = torch.iinfo(torch.int32).max
 
 RESOLUTION = {
     torch.bool: 0,
