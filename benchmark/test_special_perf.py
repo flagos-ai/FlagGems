@@ -171,3 +171,24 @@ def test_perf_isin():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_fill():
+    def fill_kwargs(dtype, batch, size):
+        value = 1.0
+        input = torch.empty(batch * size, dtype=dtype, device="cuda")
+        return {
+            "input": input,
+            "value": value,
+        }
+
+    bench = Benchmark(
+        op_name="fill",
+        torch_op=torch.fill,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=fill_kwargs,
+    )
+    bench.run()

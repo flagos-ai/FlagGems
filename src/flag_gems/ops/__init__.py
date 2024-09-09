@@ -25,6 +25,7 @@ from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
 from .exponential_ import exponential_
+from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -139,6 +140,8 @@ __all__ = [
     "eq",
     "eq_scalar",
     "exp",
+    "fill_scalar",
+    "fill_tensor",
     "exponential_",
     "gather",
     "gather_out",
