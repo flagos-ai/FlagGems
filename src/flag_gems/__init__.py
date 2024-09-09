@@ -40,6 +40,7 @@ def enable(lib=aten_lib):
     lib.impl("true_divide.Scalar", true_divide, "CUDA")
     lib.impl("floor_divide", floor_divide, "CUDA")
     lib.impl("floor_divide.Scalar", floor_divide, "CUDA")
+    lib.impl("remainder.Tensor", remainder, "CUDA")
     lib.impl("native_dropout", native_dropout, "AutogradCUDA")
     lib.impl("erf", erf, "CUDA")
     lib.impl("embedding", embedding, "AutogradCUDA")

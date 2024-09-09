@@ -119,8 +119,24 @@ def unary_int_arg(dtype, batch, size):
 
 
 def binary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    if dtype in FLOAT_DTYPES:
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    elif dtype in INT_DTYPES:
+        inp1 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            [batch, size],
+            dtype=dtype,
+            device="cuda",
+        )
+        inp2 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            [batch, size],
+            dtype=dtype,
+            device="cuda",
+        )
     return inp1, inp2
 
 

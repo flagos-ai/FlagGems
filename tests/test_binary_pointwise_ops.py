@@ -292,6 +292,82 @@ def test_accuracy_floor_div(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_floor_div_int(shape, dtype):
+    inp1 = torch.randint(
+        torch.iinfo(dtype).min,
+        torch.iinfo(dtype).max,
+        shape,
+        dtype=dtype,
+        device="cuda",
+    )
+    inp2 = torch.randint(
+        torch.iinfo(dtype).min,
+        torch.iinfo(dtype).max,
+        shape,
+        dtype=dtype,
+        device="cuda",
+    )
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    ref_out = ref_inp1 // ref_inp2
+    with flag_gems.use_gems():
+        res_out = inp1 // inp2
+
+    gems_assert_equal(res_out, ref_out)
+
+    for d in inp2.flatten()[:100]:
+        ref_out = ref_inp1 // d
+        with flag_gems.use_gems():
+            res_out = inp1 // d
+        gems_assert_equal(res_out, ref_out)
+
+        ref_out = d // ref_inp1
+        with flag_gems.use_gems():
+            res_out = d // ref_inp1
+        gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_remainder(shape, dtype):
+    inp1 = torch.randint(
+        torch.iinfo(dtype).min,
+        torch.iinfo(dtype).max,
+        shape,
+        dtype=dtype,
+        device="cuda",
+    )
+    inp2 = torch.randint(
+        torch.iinfo(dtype).min,
+        torch.iinfo(dtype).max,
+        shape,
+        dtype=dtype,
+        device="cuda",
+    )
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    ref_out = ref_inp1 % ref_inp2
+    with flag_gems.use_gems():
+        res_out = inp1 % inp2
+
+    gems_assert_equal(res_out, ref_out)
+
+    for d in inp2.flatten()[:100]:
+        ref_out = ref_inp1 % d
+        with flag_gems.use_gems():
+            res_out = inp1 % d
+        gems_assert_equal(res_out, ref_out)
+
+        ref_out = d % ref_inp1
+        with flag_gems.use_gems():
+            res_out = d % ref_inp1
+        gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_eq(shape, dtype):
     inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
