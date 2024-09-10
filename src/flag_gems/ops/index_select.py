@@ -28,7 +28,7 @@ def index_select_kernel(
     pid_y = tl.program_id(axis=1)
     rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
-    cols_offsets = pid_y + tl.arange(0, BLOCK_N)
+    cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
     cols_mask = cols_offsets < N
 
     block_mask = rows_mask and cols_mask
