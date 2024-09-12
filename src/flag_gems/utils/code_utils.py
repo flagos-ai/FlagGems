@@ -102,6 +102,9 @@ class IndentedBuffer:
         for line in lines:
             self.writeline(line)
 
+    def writemultiline(self, s):
+        self.writelines(s.splitlines())
+
     def indent(self, offset=1):
         @contextlib.contextmanager
         def ctx():

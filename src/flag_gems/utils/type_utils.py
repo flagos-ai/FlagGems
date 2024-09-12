@@ -1,8 +1,8 @@
-import torch._prims_common as utils
+from torch._prims_common import ELEMENTWISE_TYPE_PROMOTION_KIND, elementwise_dtypes
 
 
-def type_promotion(*args, type_promotion: utils.ELEMENTWISE_TYPE_PROMOTION_KIND):
-    computation_dtype, result_dtype = utils.elementwise_dtypes(
+def type_promotion(*args, type_promotion: ELEMENTWISE_TYPE_PROMOTION_KIND):
+    computation_dtype, result_dtype = elementwise_dtypes(
         *args,
         type_promotion_kind=type_promotion,
     )

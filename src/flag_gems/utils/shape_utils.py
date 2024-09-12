@@ -1,6 +1,6 @@
 import functools
 import operator
-from typing import Iterable, Tuple
+from typing import Iterable, Sequence, Tuple
 
 import torch
 import triton
@@ -127,9 +127,72 @@ def c_contiguous_stride(shape: Shape) -> Stride:
     s = 1
     for size in reversed(shape):
         strides.append(s)
-        s *= size
-
+        s *= max(size, 1)  # treat size 0 as size 1
     return tuple(reversed(strides))
+
+
+def f_contiguous_stride(shape: Shape) -> Stride:
+    strides = []
+    s = 1
+    for size in shape:
+        strides.append(s)
+        s *= max(size, 1)  # treat size 0 as size 1
+    return tuple(strides)
+
+
+def ordered_stride(shape: Shape, order: Perm) -> Stride:
+    strides = [0] * len(shape)
+    s = 1
+    for i in order:
+        strides[i] = s
+        s *= max(shape[i], 1)  # treat size 0 as size 1
+    return tuple(strides)
+
+
+def stride_order(strides):
+    # we also handle negative strides
+    return sorted(range(len(strides)), key=lambda i: abs(strides[i]))
+
+
+def all_the_same_shape(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    shape = tensors[0].shape
+    return all(item.shape == shape for item in tensors[1:])
+
+
+def all_the_same_stride(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    stride = tensors[0].stride()
+    return all(item.stride() == stride for item in tensors[1:])
+
+
+def all_c_contiguous(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    return all(tensor.is_contiguous() for tensor in tensors)
+
+
+def heuristics_for_tile_size(max_tile_size, *sizes):
+    ndim = len(sizes)
+    tile_sizes = [0 for _ in range(ndim)]
+    for i in range(ndim):
+        size = sizes[ndim - 1 - i]
+        tile_size = min(max_tile_size, triton.next_power_of_2(size))
+        tile_sizes[ndim - 1 - i] = tile_size
+        max_tile_size = max(1, max_tile_size // tile_size)
+    return tuple(tile_sizes)
+
+
+# This should be part of CodeGenConfig
+def heuristics_for_num_warps(tile_size):
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
 
 
 def dim_compress(inp, dims):
