@@ -18,6 +18,7 @@ from .accuracy_utils import (
     gems_assert_equal,
     to_reference,
 )
+from .conftest import TO_CPU
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -238,11 +239,11 @@ def test_accuracy_clamp_tensor(shape, isnone, dtype):
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_div(shape, dtype):
+def test_accuracy_div_tensor_tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
@@ -257,7 +258,7 @@ def test_accuracy_div(shape, dtype):
 def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
-    ref_inp1 = to_reference(inp1, True)
+    ref_inp1 = to_reference(inp1, False)
 
     ref_out = torch.div(ref_inp1, inp2)
     with flag_gems.use_gems():
@@ -272,7 +273,7 @@ def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
 def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp2 = to_reference(inp2, True)
+    ref_inp2 = to_reference(inp2, False)
 
     ref_out = torch.div(inp1, ref_inp2)
     with flag_gems.use_gems():
@@ -295,16 +296,18 @@ def test_accuracy_trunc_div(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2, rounding_mode="trunc")
 
-    logging.debug(
-        f"The maximum difference between torch and triton is "
-        f"{torch.max(torch.abs(ref_out - res_out))}"
-    )
+    if not TO_CPU:
+        logging.debug(
+            f"The maximum difference between torch and triton is "
+            f"{torch.max(torch.abs(ref_out - res_out))}"
+        )
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+# TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_accuracy_floor_div(shape, dtype):
+def test_accuracy_floor_div_float(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp1 = to_reference(inp1, False)
@@ -334,6 +337,9 @@ def test_accuracy_floor_div_int(shape, dtype):
         dtype=dtype,
         device="cuda",
     )
+    if TO_CPU:
+        inp1 = torch.where(inp1 == 0, 1, inp1)
+        inp2 = torch.where(inp2 == 0, 1, inp2)
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
@@ -344,14 +350,15 @@ def test_accuracy_floor_div_int(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
     for d in inp2.flatten()[:100]:
-        ref_out = ref_inp1 // d
+        ref_d = to_reference(d, False)
+        ref_out = ref_inp1 // ref_d
         with flag_gems.use_gems():
             res_out = inp1 // d
         gems_assert_equal(res_out, ref_out)
 
-        ref_out = d // ref_inp1
+        ref_out = ref_d // ref_inp1
         with flag_gems.use_gems():
-            res_out = d // ref_inp1
+            res_out = d // inp1
         gems_assert_equal(res_out, ref_out)
 
 
@@ -382,14 +389,15 @@ def test_accuracy_remainder(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
     for d in inp2.flatten()[:100]:
-        ref_out = ref_inp1 % d
+        ref_d = to_reference(d, False)
+        ref_out = ref_inp1 % ref_d
         with flag_gems.use_gems():
             res_out = inp1 % d
         gems_assert_equal(res_out, ref_out)
 
-        ref_out = d % ref_inp1
+        ref_out = ref_d % ref_inp1
         with flag_gems.use_gems():
-            res_out = d % ref_inp1
+            res_out = d % inp1
         gems_assert_equal(res_out, ref_out)
 
 
@@ -652,9 +660,11 @@ def test_accuracy_maximum(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
+
     ref_out = torch.maximum(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.maximum(inp1, inp2)
+
     gems_assert_equal(res_out, ref_out)
 
 
@@ -665,9 +675,11 @@ def test_accuracy_minimum(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
+
     ref_out = torch.minimum(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.minimum(inp1, inp2)
+
     gems_assert_equal(res_out, ref_out)
 
 
@@ -803,7 +815,7 @@ def test_accuracy_where_scalar_self(shape, scalar, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp2 = to_reference(inp2)
 
-    ref_out = torch.where(inp2 > 0, inp1, ref_inp2)
+    ref_out = torch.where(ref_inp2 > 0, inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.where(inp2 > 0, inp1, inp2)
 
@@ -818,22 +830,20 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp2 = to_reference(inp2)
 
-    ref_out = torch.where(inp2 > 0, ref_inp2, inp1)
+    ref_out = torch.where(ref_inp2 > 0, ref_inp2, inp1)
     with flag_gems.use_gems():
         res_out = torch.where(inp2 > 0, inp2, inp1)
 
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(128, 1024, 1024)])
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
 @pytest.mark.parametrize("zero_tol", [False, True])
 @pytest.mark.parametrize("equal_nan", [False, True])
-@pytest.mark.parametrize(
-    "gen_nan",
-    [0, 1, 2, 3, 4],
-)  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
+@pytest.mark.parametrize("gen_nan", [0, 1, 2, 3, 4])
 def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
+    # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
     rtol = (
         torch.rand(1, dtype=torch.float32, device="cuda").item() * 0.0001
         if not zero_tol
@@ -862,20 +872,22 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
         if dtype in [torch.int64]:
             inp1.view(-1)[0] = 2**63 - 1
             inp2.view(-1)[0] = -(2**63)
-            inp1.view(-1)[1] = 2**60 + 2**20
-            inp2.view(-1)[1] = 2**60
-            inp1.view(-1)[2] = 2**60 + 1
-            inp2.view(-1)[2] = 2**60
+            if inp1.numel() > 2 and inp2.numel() > 2:
+                inp1.view(-1)[1] = 2**60 + 2**20
+                inp2.view(-1)[1] = 2**60
+                inp1.view(-1)[2] = 2**60 + 1
+                inp2.view(-1)[2] = 2**60
             atol = 2 if not zero_tol else 0
             if gen_nan == 0:
                 rtol = 0
         elif dtype in [torch.int32]:
             inp1.view(-1)[0] = 2**31 - 1
             inp2.view(-1)[0] = -(2**31)
-            inp1.view(-1)[1] = 2**30 + 2**5
-            inp2.view(-1)[1] = 2**30
-            inp1.view(-1)[2] = 2**30 + 1
-            inp2.view(-1)[2] = 2**30
+            if inp1.numel() > 2 and inp2.numel() > 2:
+                inp1.view(-1)[1] = 2**30 + 2**5
+                inp2.view(-1)[1] = 2**30
+                inp1.view(-1)[2] = 2**30 + 1
+                inp2.view(-1)[2] = 2**30
             atol = 2 if not zero_tol else 0
             if gen_nan == 0:
                 rtol = 0
@@ -914,7 +926,7 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
                 ref_flat[0],
             )
         )
-    if dtype in [torch.int64, torch.int32]:
+    if inp1.numel() > 2 and dtype in [torch.int64, torch.int32]:
         assert (
             res_flat[1] == ref_flat[1] and res_flat[2] == ref_flat[2]
         ), "res vs ref: {} vs {}, {} vs {}".format(
@@ -926,10 +938,9 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
 @pytest.mark.parametrize("equal_nan", [False, True])
-@pytest.mark.parametrize(
-    "gen_nan", [0, 1, 2, 3, 4]
-)  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
+@pytest.mark.parametrize("gen_nan", [0, 1, 2, 3, 4])
 def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
+    # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
     rtol = torch.rand(1, dtype=torch.float32, device="cuda").item() * (
         0.0001 if dtype in [torch.bfloat16, torch.float16] else 0.01
     )

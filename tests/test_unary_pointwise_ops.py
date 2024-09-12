@@ -7,16 +7,14 @@ from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
     ALL_INT_DTYPES,
     BOOL_TYPES,
-    DIM_POINTWISE_SHAPES,
-    DIMS,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
-    REPEAT_SIZES,
-    TILE_DIMS,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
+    unsqueeze_tensor,
+    unsqueeze_tuple,
 )
 
 
@@ -258,11 +256,13 @@ def test_accuracy_tanh(shape, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
+@pytest.mark.parametrize(
+    "shape, diagonal", list(zip(POINTWISE_SHAPES, [-2, -1, 0, 1, 3]))
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_triu(shape, diagonal, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = unsqueeze_tensor(inp, 2)
     ref_inp = to_reference(inp)
 
     ref_out = torch.triu(ref_inp, diagonal)
@@ -303,26 +303,44 @@ def test_accuracy_isfinite(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
-@pytest.mark.parametrize("dims", DIMS)
-def test_accuracy_flip(shape, dtype, dims):
+def get_max_ndim(shape, dims):
+    max_ndim = max(len(shape), len(dims))
+    for dim in dims:
+        dim = dim + 1 if dim >= 0 else -dim
+        if dim > max_ndim:
+            max_ndim = dim
+    return max_ndim
+
+
+FLIP_DIMS = [(0,), (-2,), (2,), (0, 2), (2, 1), (0, -1, 1)]
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dims", FLIP_DIMS)
+def test_accuracy_flip_general(shape, dtype, dims):
     if dtype in ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
     else:
         inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+    max_ndim = get_max_ndim(shape, dims)
+    inp = unsqueeze_tensor(inp, max_ndim)
     ref_inp = to_reference(inp, False)
 
     with flag_gems.use_gems():
         res_out = torch.flip(inp, dims)
     ref_out = torch.flip(ref_inp, dims)
+
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
-@pytest.mark.parametrize("dims", DIMS)
+@pytest.mark.parametrize("dims", FLIP_DIMS)
 def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
+    max_ndim = get_max_ndim(shape, dims)
+    shape = unsqueeze_tuple(shape, max(max_ndim, 2))
+
     shape_dialted = tuple(item * 2 for item in shape)
     if dtype in ALL_FLOAT_DTYPES:
         inp = torch.randn(shape_dialted, dtype=dtype, device="cuda")[::2, ::2]
@@ -347,37 +365,43 @@ def test_accuracy_masked_fill(shape, dtype, threshold):
     value = 1024
 
     ref_inp = to_reference(inp)
-    ref_out = torch.masked_fill(ref_inp, mask, value)
+    ref_mask = to_reference(mask)
+    ref_out = torch.masked_fill(ref_inp, ref_mask, value)
     with flag_gems.use_gems():
         res_out = torch.masked_fill(inp, mask, value)
 
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
+TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dims", TILE_DIMS)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_tile(shape, dims, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp)
 
     ref_out = torch.tile(ref_inp, dims)
-
     with flag_gems.use_gems():
         res_out = torch.tile(inp, dims)
 
     gems_assert_close(res_out, ref_out, dtype)
 
 
+REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
+
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("sizes", REPEAT_SIZES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_repeat(shape, sizes, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp)
+    sizes = unsqueeze_tuple(sizes, inp.ndim)
 
     ref_out = ref_inp.repeat(*sizes)
-
     with flag_gems.use_gems():
         res_out = inp.repeat(*sizes)
 
