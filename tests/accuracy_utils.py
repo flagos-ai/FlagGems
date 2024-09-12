@@ -52,6 +52,7 @@ FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = [torch.float16, torch.float32, torch.float64, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 ALL_INT_DTYPES = [torch.int16, torch.int32, torch.int64]
+BOOL_TYPES = [torch.bool]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 DIM_LIST = [0, 1]

@@ -86,7 +86,7 @@ unary_pointwise_ops_ut_map = {
     "triu": ("test_accuracy_triu",),
     "erf": ("test_accuracy_erf",),
     "isfinite": ("test_accuracy_isfinite",),
-    "flip": ("test_accuracy_flip",),
+    "flip": ("test_accuracy_flip", "test_accuracy_flip_with_non_dense_input"),
 }
 
 distribution_ops_ut_map = {

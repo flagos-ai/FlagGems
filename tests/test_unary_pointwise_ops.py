@@ -6,6 +6,7 @@ import flag_gems
 from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
     ALL_INT_DTYPES,
+    BOOL_TYPES,
     DIM_POINTWISE_SHAPES,
     DIMS,
     FLOAT_DTYPES,
@@ -33,11 +34,14 @@ def test_accuracy_abs(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", INT_DTYPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
 def test_accuracy_bitwisenot(shape, dtype):
-    inp = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+    if dtype in BOOL_TYPES:
+        inp = torch.randint(0, 2, size=shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(
+            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        )
     ref_inp = to_reference(inp)
 
     ref_out = torch.bitwise_not(ref_inp)
@@ -307,6 +311,25 @@ def test_accuracy_flip(shape, dtype, dims):
         inp = torch.randn(shape, dtype=dtype, device="cuda")
     else:
         inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+    ref_inp = to_reference(inp, False)
+
+    with flag_gems.use_gems():
+        res_out = torch.flip(inp, dims)
+    ref_out = torch.flip(ref_inp, dims)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dims", DIMS)
+def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
+    shape_dialted = tuple(item * 2 for item in shape)
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape_dialted, dtype=dtype, device="cuda")[::2, ::2]
+    else:
+        inp = torch.randint(-1000, 1000, shape_dialted, device="cuda").to(dtype)[
+            ::2, ::2
+        ]
     ref_inp = to_reference(inp, False)
 
     with flag_gems.use_gems():
