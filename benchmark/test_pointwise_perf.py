@@ -114,7 +114,7 @@ def test_perf_floordiv_int():
     bench = Benchmark(
         op_name="floor_div",
         torch_op=torch.floor_divide,
-        arg_func=binary_args,
+        arg_func=binary_int_args,
         dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
@@ -126,7 +126,7 @@ def test_perf_remainder():
     bench = Benchmark(
         op_name="remainder",
         torch_op=torch.remainder,
-        arg_func=binary_args,
+        arg_func=binary_int_args,
         dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
