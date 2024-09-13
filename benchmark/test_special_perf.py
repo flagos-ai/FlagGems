@@ -192,3 +192,19 @@ def test_perf_fill():
         kwargs_func=fill_kwargs,
     )
     bench.run()
+
+
+def test_perf_stack():
+    def stack_args(dtype, batch, size):
+        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        return {(inp,) * 3}
+
+    bench = Benchmark(
+        op_name="stack",
+        torch_op=torch.stack,
+        arg_func=stack_args,
+        dtypes=FLOAT_DTYPES,
+        batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()

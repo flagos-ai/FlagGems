@@ -148,6 +148,7 @@ def enable(lib=aten_lib):
     lib.impl("nonzero", nonzero, "CUDA")
     lib.impl("repeat", repeat, "CUDA")
     lib.impl("masked_select", masked_select, "CUDA")
+    lib.impl("stack", stack, "CUDA")
 
 
 class use_gems:
