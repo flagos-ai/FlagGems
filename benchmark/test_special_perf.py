@@ -208,3 +208,19 @@ def test_perf_stack():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_hstack():
+    def hstack_args(dtype, batch, size):
+        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        return {(inp,) * 3}
+
+    bench = Benchmark(
+        op_name="hstack",
+        torch_op=torch.hstack,
+        arg_func=hstack_args,
+        dtypes=FLOAT_DTYPES,
+        batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()
