@@ -44,6 +44,11 @@ SPECIAL_SHAPES = (
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(2, 32)] if TO_CPU else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = [(1, 32)] if TO_CPU else [(1, 2), (4096, 256), (200, 2560, 3)]
+STACK_SHAPES = [
+    [(16,), (16,)],
+    [(16, 256), (16, 256)],
+    [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
+]
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
@@ -52,6 +57,7 @@ ALL_INT_DTYPES = INT_DTYPES + [torch.int64]
 BOOL_TYPES = [torch.bool]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
+STACK_DIM_LIST = [-2, -1, 0, 1]
 
 
 def to_reference(inp, upcast=False):
