@@ -4,9 +4,25 @@ import torch
 
 from .conftest import TO_CPU
 
-major, minor = torch.__version__.split(".")[:2]
-skip_expr = major < "2" or minor < "2"
-skip_reason = "PyTorch < 2.2.0 does not support"
+
+def SkipTorchVersion(skip_pattern):
+    cmp = skip_pattern[0]
+    assert cmp in ("=", "<", ">")
+    try:
+        M, N = skip_pattern[1:].split(".")
+        M, N = int(M), int(N)
+    except Exception:
+        raise "Cannot parse version number."
+    major, minor = torch.__version__.split(".")[:2]
+    major, minor = int(major), int(minor)
+
+    if cmp == "=":
+        return major == M and minor == N
+    elif cmp == "<":
+        return (major, minor) < (M, N)
+    else:
+        return (major, minor) > (M, N)
+
 
 INT16_MIN = torch.iinfo(torch.int16).min
 INT16_MAX = torch.iinfo(torch.int16).max
