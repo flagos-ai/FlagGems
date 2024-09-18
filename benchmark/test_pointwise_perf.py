@@ -630,3 +630,20 @@ def test_perf_repeat():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_repeat_interleave_self_int():
+    def repeat_interleave_self_int_arg(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        repeats = 2
+        return inp, repeats
+
+    bench = Benchmark(
+        op_name="repeat_interleave_self_int",
+        torch_op=torch.repeat_interleave,
+        arg_func=repeat_interleave_self_int_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
