@@ -147,7 +147,7 @@ pip install .
     - 在CPU上运行参考实现
         ```shell
         cd tests
-        pytest test_xx_ops.py --device cpu
+        pytest test_xx_ops.py --ref cpu
         ```
 2. 模型正确性测试
     ```shell

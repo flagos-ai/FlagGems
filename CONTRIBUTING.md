@@ -29,6 +29,7 @@ pre-commit
 
 ### 2.2 Op Unit Test
 Operator Unit Tests check the correctness of operators. If new operators are added, you need to add test cases in the corresponding file under the `tests` directory. If new test files are added, you should also add the test commands to the `cmd` variable in the `tools/coverage.sh` file.
+For operator testing, decorate @pytest.mark.{OP_NAME} before the test function so that we can run the unit test function of the specified OP through `pytest -m`. A unit test function can be decorated with multiple custom marks.
 
 ### 2.3 Model Test
 Model Tests check the correctness of models. Adding a new model follows a process similar to adding a new operator.
@@ -59,11 +60,12 @@ Currently, the pipeline does not check the performance of operators. You can wri
 ```
 FlagGems
 ├── src: source code for library
-│   ├──flag_gems
-│   │   ├──utils: utilities for automatic code generation
-│   │   ├──ops: single operators
-│   │   ├──fused: fused operators
-│   │   ├──__init__.py
+│   └──flag_gems
+│       ├──utils: utilities for automatic code generation
+│       ├──ops: single operators
+│       ├──fused: fused operators
+│       ├──testing: testing utility
+│       └──__init__.py
 ├── tests: accuracy test files
 ├── benchmark: performance test files
 ├── examples: model test files
@@ -72,7 +74,9 @@ FlagGems
 ├── README_cn.md
 ├── OperatorList.md
 ├── CONTRIBUTING.md
-└── pyproject.toml
+├── CONTRIBUTING_cn.md
+├── pyproject.toml
+└── pytest.ini
 ```
 
 ## 4. License

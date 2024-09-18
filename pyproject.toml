@@ -32,14 +32,6 @@ test = [
 [project.urls]
 homepage = "https://github.com/FlagOpen/FlagGems"
 
-[tool.pytest.ini_options]
-testpaths = [
-    "tests",
-]
-pythonpath = [
-    "src",
-]
-
 [tool.coverage.run]
 omit = [
     "*/.flaggems/*",
