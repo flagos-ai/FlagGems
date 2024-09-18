@@ -1,5 +1,6 @@
 import torch
 
+from . import testing  # noqa: F401
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 

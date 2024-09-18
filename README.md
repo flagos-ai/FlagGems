@@ -147,7 +147,7 @@ pip install .
     - Run reference on cpu
         ```shell
         cd tests
-        pytest test_xx_ops.py --device cpu
+        pytest test_xx_ops.py --ref cpu
         ```
 
 2. Test Model Accuracy

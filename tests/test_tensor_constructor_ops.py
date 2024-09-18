@@ -12,6 +12,7 @@ from .accuracy_utils import (
 from .conftest import TO_CPU
 
 
+@pytest.mark.rand
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_rand(shape, dtype):
@@ -21,6 +22,7 @@ def test_accuracy_rand(shape, dtype):
     assert (res_out >= 0.0).all()
 
 
+@pytest.mark.randn
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_randn(shape, dtype):
@@ -32,6 +34,7 @@ def test_accuracy_randn(shape, dtype):
     assert torch.abs(std - 1) < 0.01
 
 
+@pytest.mark.rand_like
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_rand_like(shape, dtype):
@@ -42,6 +45,7 @@ def test_accuracy_rand_like(shape, dtype):
     assert (res_out >= 0.0).all()
 
 
+@pytest.mark.randn_like
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_randn_like(shape, dtype):
@@ -54,6 +58,7 @@ def test_accuracy_randn_like(shape, dtype):
     assert torch.abs(std - 1) < 0.01
 
 
+@pytest.mark.zeros
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_zeros(shape, dtype):
@@ -64,6 +69,7 @@ def test_accuracy_zeros(shape, dtype):
     )
 
 
+@pytest.mark.ones
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_ones(shape, dtype):
@@ -74,6 +80,7 @@ def test_accuracy_ones(shape, dtype):
     )
 
 
+@pytest.mark.full
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_full(shape, dtype):
@@ -85,6 +92,7 @@ def test_accuracy_full(shape, dtype):
     )
 
 
+@pytest.mark.zeros_like
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_zeros_like(shape, dtype):
@@ -94,6 +102,7 @@ def test_accuracy_zeros_like(shape, dtype):
     gems_assert_equal(res_out, torch.zeros_like(x))
 
 
+@pytest.mark.ones_like
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_ones_like(shape, dtype):
@@ -103,6 +112,7 @@ def test_accuracy_ones_like(shape, dtype):
     gems_assert_equal(res_out, torch.ones_like(x))
 
 
+@pytest.mark.full_like
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_full_like(shape, dtype):
