@@ -1035,7 +1035,6 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
 
 
 REPEAT_INTERLEAVE_SHAPES = [
-    (1,),
     (1024, 1024),
     (20, 320, 15),
     (16, 128, 64, 60),
@@ -1045,11 +1044,25 @@ REPEAT_INTERLEAVE_REPEATS = [2]
 REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 
 
-@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES + [(1,)])
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
+    repeats = 2
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+    with flag_gems.use_gems():
+        res_out = torch.repeat_interleave(ref_inp, repeats, dim)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+@pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")[::2]
     repeats = 2
     ref_inp = to_reference(inp)
 
