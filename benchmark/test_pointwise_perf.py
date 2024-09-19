@@ -112,7 +112,7 @@ def test_perf_div():
 
 def test_perf_floordiv_int():
     bench = Benchmark(
-        op_name="floor_div",
+        op_name="floor_divide",
         torch_op=torch.floor_divide,
         arg_func=binary_int_args,
         dtypes=INT_DTYPES,

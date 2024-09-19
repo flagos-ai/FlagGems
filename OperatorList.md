@@ -59,7 +59,7 @@
 - sum
 - var_mean
 - vector_norm
-- cross_entropy_loss
+- CrossEntropyLoss
 - group_norm
 - log_softmax
 - native_group_norm

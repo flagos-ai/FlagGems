@@ -19,6 +19,7 @@ KEEPDIM_DIMS = (
 
 
 @pytest.mark.group_norm
+@pytest.mark.native_group_norm
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
@@ -75,6 +76,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 
 # TODO: failed at (1, 2) (2~32, 40499) (200, 2~64) (200~4096, 40999)
 @pytest.mark.layer_norm
+@pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
     "shape", [(1, 40999)] if QUICK_MODE else [(1, 40999), (4096, 256)]
 )

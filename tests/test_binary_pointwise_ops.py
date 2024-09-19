@@ -300,7 +300,7 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div
+@pytest.mark.trunc_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 # Note : tl.math.div_rz only support float32, cast will cause diff
@@ -324,7 +324,7 @@ def test_accuracy_trunc_div(shape, dtype):
 
 
 # TODO: failed at large size, eg. (65536 * 2048,)
-@pytest.mark.div
+@pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_accuracy_floor_div_float(shape, dtype):
@@ -1044,6 +1044,7 @@ REPEAT_INTERLEAVE_REPEATS = [2]
 REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 
 
+@pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES + [(1,)])
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1058,6 +1059,7 @@ def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
