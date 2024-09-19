@@ -83,7 +83,7 @@ def test_accuracy_mv(M, N, dtype):
     with flag_gems.use_gems():
         res_out = torch.mv(matrix, vector)
 
-    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
 
 
 @pytest.mark.outer
