@@ -73,7 +73,7 @@ def test_perf_cross_entropy_loss():
         return inp, target
 
     bench = Benchmark(
-        op_name="cross_entropy_loss",
+        op_name="CrossEntropyLoss",
         torch_op=torch.nn.CrossEntropyLoss(),
         arg_func=cross_entropy_loss_args,
         dtypes=FLOAT_DTYPES,

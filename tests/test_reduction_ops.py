@@ -45,7 +45,7 @@ THRESHOLD_SHAPE = (
 CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if QUICK_MODE else ["mean", "none", "sum"]
 
 
-@pytest.mark.amx
+@pytest.mark.amax
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_amax(shape, dim, keepdim, dtype):
