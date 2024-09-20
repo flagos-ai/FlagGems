@@ -78,7 +78,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
-    "shape", [(1, 40999)] if QUICK_MODE else [(1, 40999), (4096, 256)]
+    "shape", [(1, 40999)] if QUICK_MODE else [(1, 40999), (4096, 256), (4096, 100)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype):
