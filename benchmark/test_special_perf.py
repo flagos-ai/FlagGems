@@ -270,3 +270,21 @@ def test_perf_cat_int():
         kwargs_func=cat_kwargs,
     )
     bench.run()
+
+
+def test_perf_vstack():
+    def vstack_args(dtype, batch, size):
+        inp1 = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        inp2 = torch.randn(size=(batch + 1, size), dtype=dtype, device="cuda")
+        inp3 = torch.randn(size=(batch + 2, size), dtype=dtype, device="cuda")
+        return [[inp1, inp2, inp3]]
+
+    bench = Benchmark(
+        op_name="vstack",
+        torch_op=torch.vstack,
+        arg_func=vstack_args,
+        dtypes=FLOAT_DTYPES,
+        batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()

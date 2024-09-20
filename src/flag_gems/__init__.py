@@ -153,6 +153,7 @@ def enable(lib=aten_lib):
     lib.impl("hstack", hstack, "CUDA")
     lib.impl("cat", cat, "CUDA")
     lib.impl("repeat_interleave.self_int", repeat_interleave_self_int, "CUDA")
+    lib.impl("vstack", vstack, "CUDA")
 
 
 class use_gems:
