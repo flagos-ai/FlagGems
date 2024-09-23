@@ -29,29 +29,28 @@
 - mean
 
 ## v2.0
-
-- mv
 - all
 - any
 - bitwise_and
 - bitwise_not
 - bitwise_or
 - cos
+- clamp
 - eq
 - ge
 - gt
+- mv
 - isinf
 - isnan
 - le
 - lt
 - ne
 - neg
-- or
+- or_
 - sin
 - tanh
 - amax
 - argmax
-- clamp
 - max
 - min
 - outer
@@ -66,13 +65,12 @@
 - sigmoid
 
 ## v3.0
-
 - _conv_depthwise2d
 - _convolution
 - conv1d
 - conv2d
 - convolution
-- cudnn_convolution
+- cudnn_convolution (N/A)
 - multinomial
 - nonzero
 - normal
@@ -99,12 +97,11 @@
 - resolve_neg
 - arange
 - cat
-- chunk
-- chunk
+- chunk (N/A)
 - concat
 - constant_pad_nd
-- contiguous
-- copy_
+- contiguous (N/A)
+- copy_ (N/A)
 - fill
 - flip
 - full
@@ -117,30 +114,48 @@
 - narrow
 - ones
 - pad
-- permute
+- permute (N/A)
 - repeat
 - repeat_interleave
-- resize
+- resize_ (N/A)
 - scatter
-- select
+- index_add
+- select (N/A)
 - select_scatter
 - slice
 - slice_scatter
 - sort
-- split
-- split_with_sizes
+- split (N/A)
+- split_with_sizes (N/A)
 - stack
 - tile
-- transpose
-- unfold
+- transpose (N/A)
+- unfold (N/A)
 - where
 - zeros
 
 ## v4.0
-
 - rms_norm
-- skip_layernorm
-- skip_rmsnorm
-- apply_rotary_position_embedding
-- silu_and_mul
+- skip_rms_norm
+- skip_layer_norm
 - gelu_and_mul
+- silu_and_mul
+- apply_rotary_pos_emb
+
+## v5.0
+- unique
+- isin
+- allclose
+- isclose
+- isfinite
+- exponential_
+- vstack
+- minimum
+- maximum
+- ones_like
+- zeros_like
+- randn_like
+- floor_divide
+- masked_select
+- trunc_divide
+- remainder

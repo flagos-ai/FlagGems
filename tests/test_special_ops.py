@@ -668,6 +668,7 @@ VSTACK_SHAPES = [
 ]
 
 
+@pytest.mark.vstack
 @pytest.mark.parametrize("shape", VSTACK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_vstack(shape, dtype):
