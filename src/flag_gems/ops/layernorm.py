@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils.type_utils import get_accumulator_dtype
 
 
 @triton.jit
@@ -321,8 +322,12 @@ class LayerNorm(torch.autograd.Function):
         weight = weight.contiguous()
         bias = bias.contiguous()
         y = torch.empty_like(x)
-        mean = torch.empty(M, dtype=x.dtype, device=x.device)
-        rstd = torch.empty(M, dtype=x.dtype, device=x.device)
+
+        # NOTE: when the input is half-precision(either float16 or bfloat16)
+        # these statistical data saved for backward is in single precision
+        acc_type = get_accumulator_dtype(x.dtype)
+        mean = torch.empty(M, dtype=acc_type, device=x.device)
+        rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
         with torch.cuda.device(x.device):
             if N <= 128:
@@ -382,14 +387,17 @@ class LayerNorm(torch.autograd.Function):
         (x, weight, mean, rstd) = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
-        in_grad = torch.empty_like(x)
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
-        layer_norm_backward_kernel[grid](out_grad, x, weight, mean, rstd, in_grad, M, N)
-        grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
-        weight_grad = torch.empty_like(weight)
-        bias_grad = torch.empty_like(weight)
 
         with torch.cuda.device(x.device):
+            in_grad = torch.empty_like(x)
+            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
+            layer_norm_backward_kernel[grid](
+                out_grad, x, weight, mean, rstd, in_grad, M, N
+            )
+
+            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
+            weight_grad = torch.empty_like(weight)
+            bias_grad = torch.empty_like(weight)
             weight_bias_backward_kernel[grid](
                 out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
             )
