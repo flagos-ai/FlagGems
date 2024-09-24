@@ -74,11 +74,19 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
 
 
-# TODO: failed at (1, 2) (2~32, 40499) (200, 2~64) (200~4096, 40999)
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
-    "shape", [(1, 40999)] if QUICK_MODE else [(1, 40999), (4096, 256), (4096, 100)]
+    "shape",
+    [(1, 40999)]
+    if QUICK_MODE
+    else [
+        (200, 36),
+        (4096, 100),
+        (1, 40999),
+        (100, 40499),
+        (4096, 256),
+    ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype):
@@ -110,8 +118,8 @@ def test_accuracy_layernorm(shape, dtype):
     ref_mean = torch.mean(ref_inp, dim=1)
     ref_var = torch.var(ref_inp, dim=1, correction=0)
     ref_rstd = torch.rsqrt(ref_var + eps)
-    gems_assert_close(res_mean, ref_mean, dtype)
-    gems_assert_close(res_rstd, ref_rstd, dtype)
+    gems_assert_close(res_mean, ref_mean, res_mean.dtype)
+    gems_assert_close(res_rstd, ref_rstd, res_rstd.dtype)
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
