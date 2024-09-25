@@ -10,6 +10,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    UT_SHAPES_1D,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -430,3 +431,16 @@ def test_accuracy_repeat(shape, sizes, dtype):
         res_out = inp.repeat(*sizes)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.repeat_interleave
+@pytest.mark.parametrize("shape", UT_SHAPES_1D)
+@pytest.mark.parametrize("dtype", [torch.int32])
+def test_accuracy_repeat_interleave_tensor(shape, dtype):
+    repeats = torch.randint(0, 30, shape, dtype=dtype, device="cuda")
+    ref_repeats = to_reference(repeats)
+    ref_out = torch.repeat_interleave(ref_repeats)
+
+    with flag_gems.use_gems():
+        res_out = torch.repeat_interleave(repeats)
+    gems_assert_equal(res_out, ref_out)

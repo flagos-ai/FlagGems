@@ -647,3 +647,27 @@ def test_perf_repeat_interleave_self_int():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_repeat_interleave_tensor():
+    def repeat_interleave_tensor_arg(dtype, batch, size):
+        repeats = torch.randint(
+            low=0,
+            high=0x7F,
+            size=[
+                size,
+            ],
+            dtype=dtype,
+            device="cuda",
+        )
+        return (repeats,)
+
+    bench = Benchmark(
+        op_name="repeat_interleave_tensor",
+        torch_op=torch.repeat_interleave,
+        arg_func=repeat_interleave_tensor_arg,
+        dtypes=[torch.int32],
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
