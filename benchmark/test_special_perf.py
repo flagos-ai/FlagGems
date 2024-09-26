@@ -261,7 +261,7 @@ def test_perf_cat_int():
         return {"dim": 0}
 
     bench = Benchmark(
-        op_name="cat",
+        op_name="cat_int",
         torch_op=torch.cat,
         arg_func=cat_args,
         dtypes=INT_DTYPES,
@@ -285,6 +285,47 @@ def test_perf_vstack():
         arg_func=vstack_args,
         dtypes=FLOAT_DTYPES,
         batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_repeat_interleave_self_int():
+    def repeat_interleave_self_int_arg(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        repeats = 2
+        return inp, repeats
+
+    bench = Benchmark(
+        op_name="repeat_interleave_self_int",
+        torch_op=torch.repeat_interleave,
+        arg_func=repeat_interleave_self_int_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_repeat_interleave_tensor():
+    def repeat_interleave_tensor_arg(dtype, batch, size):
+        repeats = torch.randint(
+            low=0,
+            high=0x7F,
+            size=[
+                size,
+            ],
+            dtype=dtype,
+            device="cuda",
+        )
+        return (repeats,)
+
+    bench = Benchmark(
+        op_name="repeat_interleave_tensor",
+        torch_op=torch.repeat_interleave,
+        arg_func=repeat_interleave_tensor_arg,
+        dtypes=[torch.int32],
+        batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
     bench.run()
