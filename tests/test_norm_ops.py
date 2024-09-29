@@ -136,6 +136,39 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
+@pytest.mark.weight_norm_interface
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", [0, -1])
+def test_accuracy_weightnorm(shape, dtype, dim):
+    dim = dim % len(shape)
+    v = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    g = torch.randn(shape[dim], dtype=dtype, device="cuda", requires_grad=True)
+
+    ref_v = to_reference(v, False)
+    ref_g = to_reference(g, False)
+
+    ref_w_out, ref_norm_out = torch._weight_norm_interface(ref_v, ref_g, dim)
+    res_w_out, res_norm_out = flag_gems.weight_norm(v, g, dim)
+    gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=shape[(dim - 1) % 2])
+    gems_assert_close(
+        res_norm_out, ref_norm_out, res_norm_out.dtype, reduce_dim=shape[(dim - 1) % 2]
+    )
+
+    res_w_grad = torch.randn_like(v)
+    ref_w_grad = to_reference(res_w_grad, False)
+
+    ref_v_grad, ref_g_grad = torch.autograd.grad(
+        ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
+    )
+    res_v_grad, res_g_grad = torch.autograd.grad(
+        res_w_out, (v, g), grad_outputs=res_w_grad
+    )
+
+    gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=shape[(dim - 1) % 2])
+    gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=shape[(dim - 1) % 2])
+
+
 @pytest.mark.rms_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

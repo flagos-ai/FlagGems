@@ -210,6 +210,23 @@ def test_perf_layernorm():
     bench.run()
 
 
+def test_perf_weightnorm():
+    def weight_norm_args(dtype, batch, size):
+        v = torch.randn([batch, size], dtype=dtype, device="cuda")
+        g = torch.randn([batch], dtype=dtype, device="cuda")
+        return v, g, 0
+
+    bench = Benchmark(
+        op_name="weight_norm",
+        torch_op=torch._weight_norm_interface,
+        arg_func=weight_norm_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_log_softmax():
     bench = Benchmark(
         op_name="log_softmax",
