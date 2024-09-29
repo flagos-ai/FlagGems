@@ -136,10 +136,13 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
+WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
+    zip(REDUCTION_SHAPES, FLOAT_DTYPES, [-1] if QUICK_MODE else [0, -1, -1])
+)
+
+
 @pytest.mark.weight_norm_interface
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("dim", [0, -1])
+@pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
 def test_accuracy_weightnorm(shape, dtype, dim):
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
@@ -149,7 +152,8 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     ref_g = to_reference(g, False)
 
     ref_w_out, ref_norm_out = torch._weight_norm_interface(ref_v, ref_g, dim)
-    res_w_out, res_norm_out = flag_gems.weight_norm(v, g, dim)
+    with flag_gems.use_gems():
+        res_w_out, res_norm_out = torch._weight_norm_interface(v, g, dim)
     gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=shape[(dim - 1) % 2])
     gems_assert_close(
         res_norm_out, ref_norm_out, res_norm_out.dtype, reduce_dim=shape[(dim - 1) % 2]
