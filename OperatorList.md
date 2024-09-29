@@ -150,6 +150,7 @@
 - isfinite
 - exponential_
 - vstack
+- weight_norm_interface
 - minimum
 - maximum
 - ones_like
