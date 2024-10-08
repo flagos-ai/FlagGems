@@ -373,7 +373,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
     # allocate tensor
     if return_counts:
         local_unique = None
-        origin_idx = torch.empty_like(sorted_data, dtype=torch.int32)
+        origin_idx = torch.empty_like(sorted_data, dtype=torch.int64)
         idx = torch.empty_like(origin_idx)
     else:
         local_unique = torch.empty_like(sorted_data)
@@ -381,7 +381,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
         idx = None
         counts = None
     tile_sum = torch.empty(
-        (global_ctas_num,), dtype=torch.int32, device=sorted_data.device
+        (global_ctas_num,), dtype=torch.int64, device=sorted_data.device
     )
     data_out = None
     if not return_counts:
@@ -654,10 +654,10 @@ def sorted_indices_unique_flat(
     # allocate tensor
     ne_result = torch.empty_like(sorted_data, dtype=torch.bool)
     tile_sum = torch.empty(
-        (global_ctas_num,), dtype=torch.int32, device=sorted_data.device
+        (global_ctas_num,), dtype=torch.int64, device=sorted_data.device
     )
     data_out = torch.empty_like(sorted_data)
-    inverse_indices = torch.empty_like(sorted_data, dtype=torch.int32)
+    inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)
     idx = None
     if return_counts:
         idx = torch.empty_like(inverse_indices)
@@ -722,14 +722,14 @@ def simple_unique_flat(
     # allocate tensor
     data_out = torch.empty_like(sorted_data)
     if return_inverse:
-        inverse_indices = torch.empty_like(sorted_data, dtype=torch.int32)
+        inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)
     else:
         inverse_indices = None
     if return_counts:
-        idx = torch.empty_like(sorted_data, dtype=torch.int32)
+        idx = torch.empty_like(sorted_data, dtype=torch.int64)
     else:
         idx = None
-    unique_size = torch.empty([1], dtype=torch.int32, device=sorted_data.device)
+    unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)
 
     # launch kernel
     with torch.cuda.device(sorted_data.device.index):

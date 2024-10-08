@@ -38,4 +38,4 @@ def sub(A, B, *, alpha=1):
         return sub_func_scalar_tensor(A, B, alpha)
     else:
         # Both scalar
-        return A - B * alpha
+        return torch.tensor(A - B * alpha)

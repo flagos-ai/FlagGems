@@ -18,5 +18,5 @@ def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
     torch.testing.assert_close(res, ref, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
 
-def assert_equal(res, ref):
-    assert torch.equal(res, ref)
+def assert_equal(res, ref, equal_nan=False):
+    torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)

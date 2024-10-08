@@ -96,9 +96,9 @@ def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
     )
 
 
-def gems_assert_equal(res, ref):
+def gems_assert_equal(res, ref, equal_nan=False):
     res = to_cpu(res, ref)
-    flag_gems.testing.assert_equal(res, ref)
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
 
 
 def unsqueeze_tuple(t, max_len):

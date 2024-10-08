@@ -261,12 +261,12 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
 
     stage1_out = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=x.dtype)
     stage1_out_idx = torch.empty(
-        batch_size * chunk_num * k, device=x.device, dtype=torch.int32
+        batch_size * chunk_num * k, device=x.device, dtype=torch.int64
     )
 
     out_shape = x.shape[:-1] + (k,)
     stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
-    stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int32)
+    stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
     with torch.cuda.device(x.device):
         topk_stage1_kernel[
