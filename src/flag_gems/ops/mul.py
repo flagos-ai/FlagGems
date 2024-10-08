@@ -28,4 +28,4 @@ def mul(A, B):
         return mul_func_scalar(B, A)
     else:
         # Both scalar
-        return A * B
+        return torch.tensor(A * B)
