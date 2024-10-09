@@ -270,10 +270,13 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     gems_assert_close(res_var, ref_var, dtype)
 
 
-@pytest.mark.skip(reason="operator undone")
 @pytest.mark.scatter
-@pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize(
+    "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
@@ -305,17 +308,19 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
     ref_index = to_reference(index)
     ref_src = to_reference(src)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src)
-    from src.flag_gems.ops import scatter_src
-
-    res_out = scatter_src(inp, dim, index, src)
+    with flag_gems.use_gems():
+        res_out = torch.scatter(inp, dim, index, src)
 
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip(reason="operator undone")
 @pytest.mark.scatter
-@pytest.mark.parametrize("src_shape", [(2, 2, 2)])
-@pytest.mark.parametrize("inp_shape", [(3, 3, 3)])
+@pytest.mark.parametrize(
+    "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
@@ -347,17 +352,19 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     ref_index = to_reference(index)
     ref_src = to_reference(src)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="add")
-    from src.flag_gems.ops import scatter_reduce
-
-    res_out = scatter_reduce(inp, dim, index, src, reduce="add")
+    with flag_gems.use_gems():
+        res_out = torch.scatter(inp, dim, index, src, reduce="add")
 
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skip(reason="operator undone")
 @pytest.mark.scatter
-@pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize(
+    "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
@@ -389,16 +396,17 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
     ref_index = to_reference(index)
     ref_src = to_reference(src)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="multiply")
-    from src.flag_gems.ops import scatter_reduce
-
-    res_out = scatter_reduce(inp, dim, index, src, reduce="multiply")
+    with flag_gems.use_gems():
+        res_out = torch.scatter(inp, dim, index, src, reduce="multiply")
 
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skip(reason="operator undone")
 @pytest.mark.gather
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize(
+    "inp_shape",
+    [(32, 8, 4)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16), (128, 32, 256)],
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gather(inp_shape, dim, dtype):
@@ -429,51 +437,8 @@ def test_accuracy_gather(inp_shape, dim, dtype):
     ref_index = to_reference(index)
     ref_out = torch.gather(ref_inp, dim, ref_index)
 
-    from src.flag_gems.ops import gather
-
-    res_out = gather(inp, dim, index)
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.skip(reason="operator undone")
-@pytest.mark.gather
-@pytest.mark.parametrize("out_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_gather_out(out_shape, inp_shape, dim, dtype):
-    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
-    size_dim = min(out_shape[dim], inp_shape[dim])
-
-    import random
-
-    index_shape = [
-        random.randint(1, min(out_shape[0], inp_shape[0])),
-        random.randint(1, min(out_shape[1], inp_shape[1])),
-        random.randint(1, min(out_shape[2], inp_shape[2])),
-    ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
-    out = torch.randn(tuple(index_shape), dtype=dtype, device="cuda")
-
-    m, n, o = index_shape
-
-    index_size_dim = index_shape[dim]
-    # make unique indices
-    for i in range(1 if dim == 0 else m):
-        for j in range(1 if dim == 1 else n):
-            for k in range(1 if dim == 2 else o):
-                ii = [i, j, k]
-                ii[dim] = slice(0, index.size(dim) + 1)
-                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
-
-    ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_out = torch.gather(ref_inp, dim, ref_index, sparse_grad=False, out=out)
-
-    from src.flag_gems.ops import gather_out
-
-    res_out = gather_out(inp, dim, index, sparse_grad=False, out=out)
+    with flag_gems.use_gems():
+        res_out = torch.gather(inp, dim, index)
 
     gems_assert_equal(res_out, ref_out)
 
