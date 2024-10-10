@@ -432,29 +432,27 @@ def test_perf_scatter():
 
 def test_perf_gather():
     def gather_args(dtype, batch, size):
-        inp_shape = [512, 32, size // 256]
+        inp_shape = [batch, size]
         inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
         import random
 
-        dim = random.choice([0, 1, 2])
+        dim = random.choice([0, 1])
         size_dim = inp_shape[dim]
         index_shape = [
             random.randint(1, inp_shape[0]),
             random.randint(1, inp_shape[1]),
-            random.randint(1, inp_shape[2]),
         ]
         index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
 
-        m, n, o = index_shape
+        m, n = index_shape
 
         index_size_dim = index_shape[dim]
         # make unique indices
         for i in range(1 if dim == 0 else m):
             for j in range(1 if dim == 1 else n):
-                for k in range(1 if dim == 2 else o):
-                    ii = [i, j, k]
-                    ii[dim] = slice(0, index.size(dim) + 1)
-                    index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+                ii = [i, j]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
         return (inp, dim, index)
 
