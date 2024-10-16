@@ -44,7 +44,7 @@ def weight_norm_kernel_last(
     g,
     M,
     N,
-    eps: tl.constexpr,
+    eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -84,7 +84,7 @@ def weight_norm_kernel_first(
     g,
     M,
     N,
-    eps: tl.constexpr,
+    eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -126,7 +126,7 @@ def weight_norm_bwd_kernel_last(
     norm,
     M,
     N,
-    eps: tl.constexpr,
+    eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -176,7 +176,7 @@ def weight_norm_bwd_kernel_first(
     norm,
     M,
     N,
-    eps: tl.constexpr,
+    eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
