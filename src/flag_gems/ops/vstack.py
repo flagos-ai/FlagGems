@@ -62,7 +62,7 @@ def vstack_kernel(
     tl.store(out_offset, out, mask=offset_mask)
 
 
-def vstack(tensors: list[torch.Tensor]):
+def vstack(tensors: list):
     logging.debug("GEMS VSTACK")
 
     tensors = torch.atleast_2d(tensors)
