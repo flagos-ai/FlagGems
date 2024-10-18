@@ -98,6 +98,7 @@ from .topk import topk
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
+from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
@@ -231,6 +232,7 @@ __all__ = [
     "where_scalar_other",
     "masked_fill",
     "_unique2",
+    "_upsample_bicubic2d_aa",
     "nonzero",
     "repeat",
     "masked_select",

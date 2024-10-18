@@ -141,6 +141,36 @@ def test_perf_pad():
     bench.run()
 
 
+def test_perf_upsample_bicubic2d_aa():
+    def upsample_bicubic2d_aa_kwargs(dtype, batch, size):
+        channel = 16
+        scale_factors = (2, 2)
+        shape = (batch, channel, size, size)
+        output_size = (
+            int(shape[2] * scale_factors[0]),
+            int(shape[3] * scale_factors[1]),
+        )
+        input = torch.randn(size=shape, device="cuda", dtype=dtype)
+        return {
+            "input": input,
+            "output_size": output_size,
+            "align_corners": False,
+            "scales_h": None,
+            "scales_w": None,
+        }
+
+    bench = Benchmark(
+        op_name="_upsample_bicubic2d_aa",
+        torch_op=torch._C._nn._upsample_bicubic2d_aa,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=16,
+        sizes=[(128 * i) for i in range(1, 12)],
+        kwargs_func=upsample_bicubic2d_aa_kwargs,
+    )
+    bench.run()
+
+
 def test_perf_arange():
     def arange_kwargs(dtype, batch, size):
         return {
