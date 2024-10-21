@@ -455,7 +455,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     input = torch.rand(shape, dtype=dtype, device="cuda")
-    ref_i = to_reference(input)
+    ref_i = to_reference(input, True)
     output_size = tuple([int(input.shape[i + 2] * scale[i]) for i in range(2)])
     ref_out = torch._C._nn._upsample_bicubic2d_aa(
         ref_i, output_size=output_size, align_corners=align_corners
