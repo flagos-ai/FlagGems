@@ -148,8 +148,8 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     v = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     g = torch.randn(shape[dim], dtype=dtype, device="cuda", requires_grad=True)
 
-    ref_v = to_reference(v, False)
-    ref_g = to_reference(g, False)
+    ref_v = to_reference(v, True)
+    ref_g = to_reference(g, True)
 
     ref_w_out, ref_norm_out = torch._weight_norm_interface(ref_v, ref_g, dim)
     with flag_gems.use_gems():
@@ -160,7 +160,7 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     )
 
     res_w_grad = torch.randn_like(v)
-    ref_w_grad = to_reference(res_w_grad, False)
+    ref_w_grad = to_reference(res_w_grad, True)
 
     ref_v_grad, ref_g_grad = torch.autograd.grad(
         ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
