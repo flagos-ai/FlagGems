@@ -99,6 +99,7 @@ from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
@@ -233,6 +234,7 @@ __all__ = [
     "masked_fill",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "upsample_nearest2d",
     "nonzero",
     "repeat",
     "masked_select",
