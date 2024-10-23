@@ -103,7 +103,7 @@ from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
-from .weightnorm import weight_norm
+from .weightnorm import weight_norm, weight_norm_interface
 from .where import where_scalar_other, where_scalar_self, where_self
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -169,6 +169,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
+    "weight_norm_interface",
     "weight_norm",
     "le",
     "le_scalar",
