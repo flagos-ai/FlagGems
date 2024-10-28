@@ -86,7 +86,6 @@ def enable(lib=aten_lib):
     lib.impl("normal.Tensor_float", normal_tensor_float, "CUDA")
     lib.impl("normal.float_Tensor", normal_float_tensor, "CUDA")
     lib.impl("normal.Tensor_Tensor", normal_tensor_tensor, "CUDA")
-    lib.impl("normal.float_float", normal_float_float, "CUDA")
     lib.impl("uniform_", uniform_, "CUDA")
     lib.impl("mean", mean, "CUDA")
     lib.impl("mean.dim", mean_dim, "CUDA")
