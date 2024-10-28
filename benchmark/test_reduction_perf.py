@@ -482,3 +482,68 @@ def test_perf_gather():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_slice_scatter_perf():
+    def slice_scatter_args(dtype, batch, size):
+        shape = [batch, size]
+        import random
+
+        dim = random.choice([0, 1])
+        start = 16
+        end = 1024
+        step = 2
+
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+        range = end - start
+        valid_shape = list(inp.shape)
+        if end < start:
+            range = 0
+        elif (end - start) > valid_shape[dim]:
+            range = valid_shape[dim]
+            start = 0
+            end = valid_shape[dim]
+
+        valid_shape[dim] = (range + (step - 1)) // step
+        src = torch.randn(valid_shape, dtype=dtype, device="cuda")
+        return (inp, src, dim, start, end, step)
+
+    bench = Benchmark(
+        op_name="slice_scatter",
+        torch_op=torch.slice_scatter,
+        arg_func=slice_scatter_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_select_scatter_perf():
+    def select_scatter_args(dtype, batch, size):
+        shape = [batch, size]
+        import random
+
+        dim = random.choice([0, 1])
+
+        import random
+
+        index = random.randint(0, shape[dim] - 1)
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+        src_shape = list(inp.shape)
+        del src_shape[dim]
+        src = torch.randn(src_shape, dtype=dtype, device="cuda")
+
+        return (inp, src, dim, index)
+
+    bench = Benchmark(
+        op_name="select_scatter",
+        torch_op=torch.select_scatter,
+        arg_func=select_scatter_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
