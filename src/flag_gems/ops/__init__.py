@@ -60,12 +60,7 @@ from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
 from .nonzero import nonzero
-from .normal import (
-    normal_float_float,
-    normal_float_tensor,
-    normal_tensor_float,
-    normal_tensor_tensor,
-)
+from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -192,7 +187,6 @@ __all__ = [
     "normal_tensor_float",
     "normal_float_tensor",
     "normal_tensor_tensor",
-    "normal_float_float",
     "uniform_",
     "mv",
     "ne",
