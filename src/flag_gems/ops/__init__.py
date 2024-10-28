@@ -80,9 +80,11 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
 from .scatter import scatter
+from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
+from .slice_scatter import slice_scatter
 from .softmax import softmax
 from .stack import stack
 from .sub import sub
@@ -226,6 +228,8 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "select_scatter",
+    "slice_scatter",
     "masked_fill",
     "_unique2",
     "_upsample_bicubic2d_aa",
