@@ -4,7 +4,7 @@ from .shape_utils import (
     broadcastable,
     broadcastable_to,
     dim_compress,
-    offset_calculator,
+    offsetCalculator,
     restride_dim,
 )
 
@@ -13,7 +13,7 @@ __all__ = [
     "pointwise_dynamic",
     "dim_compress",
     "restride_dim",
-    "offset_calculator",
+    "offsetCalculator",
     "broadcastable_to",
     "broadcastable",
 ]

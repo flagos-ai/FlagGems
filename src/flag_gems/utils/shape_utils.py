@@ -223,27 +223,6 @@ def can_use_int32_index(a):
     return True
 
 
-def offsetCalculator(inp, idx, strides, dim, isInp):
-    ndim = inp.ndim
-    shape = list(inp.shape)
-    offsets = 0
-    idx_dim = 0
-    for d in range(0, ndim):
-        mod = idx % shape[d]
-        add_on = mod * strides[d]
-        offsets += add_on
-        if d == dim:
-            idx_dim = add_on
-        idx = idx // shape[d]
-        # FIXME: Should we write a fast div/mod
-        # to boost the '%' and '//'? (Since they may be run many times)
-        # See also:
-        #   - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
-        #   - Division by Invariant Integers Using Multiplication,
-        #     Torbjörn Granlund and Peter L. Montgomery, 1994.
-    return (offsets) if not isInp else (offsets - idx_dim)
-
-
 def restride_dim(src, dim, shape, step=0, storage_offset=None):
     strides = list(src.stride())
     strides[dim] *= step
@@ -290,6 +269,48 @@ def add_on_kernel(
 
 
 def offset_calculator(inp, idx, strides, dim, isInp):
+    """
+    Calculate the flat index(a.k.a offset) for a given ravel index in a multi-dimensional array.
+    The formula can be seen in:
+        - https://numpy.org/doc/stable/reference/arrays.ndarray.html#internal-memory-layout-of-an-ndarray
+        - https://numpy.org/devdocs/user/basics.indexing.html#single-element-indexing
+
+
+    Parameters:
+        inp (tensor):               The input multi-dimensional array from which the offset is calculated.
+        idx (tensor):               The linear index for which the offset is to be calculated.
+        strides (list of int):      A list containing the stride lengths for each dimension of the input array.
+        dim (int):                  The specific dimension for which the index offset needs to be calculated.
+        isInp (bool):               A flag indicating whether the tensor 'inp' is the parameter 'self'
+                                    in scatter/gather/index_* operators or not.
+
+                                    In operators such as scatter/gather and index_*, when the input tensor 'inp'
+                                    is the 'self' tensor to be processed, we may need to modify its offsets later.
+                                    For instance, in the scatter operator, the offset is calculated using the formula:
+
+                                        inp_offset = origin_offset - stride[dim] * n_dim + stride[dim] * index.
+
+                                    In this case, we return the fixed part of the formula:
+
+                                        origin_offset - stride[dim] * n_dim,
+
+                                    to facilitate subsequent modifications.
+                                    For other types of input 'inp', we return the complete calculation result
+                                    of origin_offsets directly.
+
+
+    Returns:
+    The calculated offset. If isInp is True, the fixed offset is returned; otherwise, the origin offset is returned.
+
+
+    Note:
+    The function includes a comment suggesting the potential optimization of division and modulus operations,
+    which may be beneficial if this function is called frequently.
+    See also:
+        - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+        - Division by Invariant Integers Using Multiplication,
+            Torbjörn Granlund and Peter L. Montgomery, 1994.
+    """
     ndim = inp.ndim
     shape = list(inp.shape)
     offsets = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
@@ -309,3 +330,24 @@ def offset_calculator(inp, idx, strides, dim, isInp):
             idx_dim = add_on
         idx = idx // shape[d]
     return offsets if not isInp else (offsets - idx_dim)
+
+
+def offsetCalculator(inp, idx, strides, dim, isInp):
+    ndim = inp.ndim
+    shape = list(inp.shape)
+    offsets = 0
+    idx_dim = 0
+    for d in range(0, ndim):
+        mod = idx % shape[d]
+        add_on = mod * strides[d]
+        offsets += add_on
+        if d == dim:
+            idx_dim = add_on
+        idx = idx // shape[d]
+        # FIXME: Should we write a fast div/mod
+        # to boost the '%' and '//'? (Since they may be run many times)
+        # See also:
+        #   - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+        #   - Division by Invariant Integers Using Multiplication,
+        #     Torbjörn Granlund and Peter L. Montgomery, 1994.
+    return (offsets) if not isInp else (offsets - idx_dim)
