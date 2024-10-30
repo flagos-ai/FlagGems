@@ -54,6 +54,34 @@ tools/code_coverage/coverage.sh PR_ID
 
 当前流水线尚未对算子的性能进行检查，可以在 `benchmark` 目录下撰写性能测试，查看自己的优化效果。
 
+
+### 2.5 算子性能测试
+
+`Op Benchmark` 用于评估算子的性能。如果新增了算子，需要在 `benchmark` 目录下的相应文件中添加对应的测试用例。建议按照以下步骤完成算子用例的添加：
+
+1. **选择合适的测试文件**
+   根据算子的类别，选择 `benchmark` 目录下对应的文件：
+   - 对于 reduction 类算子，可以添加到 `test_reduction_perf.py` 文件。
+   - 对于 tensor constructor 类算子，可以添加到 `test_tensor_constructor_perf.py` 文件。
+   - 如果算子难以归类，可以放到 `test_special_perf.py` 文件，或者创建一个新文件来表示新的算子类别。
+
+2. **检查现有测试类**
+   确认所需添加的文件后，查看该文件下已有的继承了 `Benchmark` 结构的各类（Class）。检查是否有适合你算子的测试场景，主要考虑以下两点：
+   - **Metric 采集是否合适**。
+   - **输入构造函数（`input_generator` 或 `input_fn`）是否合适**。
+
+3.    **添加测试用例**
+   根据测试场景的需求，选择以下方式添加测试用例：
+
+   3.1 **使用现有的 metric 和输入构造函数**
+   如果现有的 metric 采集和输入构造函数满足算子的要求，可以按照文件内的代码组织形式，直接添加一行 `pytest.mark.parametrize`。例如，可以参考 `test_binary_pointwise_perf.py` 文件中的所有算子用例。
+
+   3.2 **自定义输入构造函数**
+   如果现有的 metric 采集符合要求，但输入构造函数不满足算子需求，可以实现自定义的 `input_generator`。具体可参考 `test_special_perf.py` 文件中的 `topk_input_fn` 函数，它是为 `topk` 算子编写的输入构造函数。
+
+   3.3 **自定义 metric 和输入构造函数**
+   如果现有的 metric 采集和输入构造函数都不满足需求，可以新建一个 `Class`，为该类设置算子特化的 metric 采集逻辑和输入构造函数。此类场景可以参考 `benchmark` 目录下各种 `Benchmark` 子类的写法。
+
 ## 3. 项目结构
 
 ```
