@@ -1,390 +1,246 @@
+import random
+
+import pytest
 import torch
 
+from .attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
-    FLOAT_DTYPES,
-    INT_DTYPES,
-    POINTWISE_BATCH,
-    SIZES,
-    Benchmark,
-    binary_int_args,
-    unary_int_arg,
+    Config,
+    GenericBenchmark,
+    GenericBenchmark2DOnly,
+    GenericBenchmarkExcluse1D,
+    generate_tensor_input,
 )
 
 
-def test_perf_embedding():
-    def embedding_kwargs(dtype, batch, size):
-        input = torch.randint(0, batch, (batch,), device="cuda")
-        weight = torch.randn((batch + 1, size), device="cuda", dtype=dtype)
-        return {"input": input, "weight": weight}
+def topk_input_fn(shape, dtype, device):
+    x = torch.randn(shape, device=device, dtype=dtype)
+    k = 5 if shape[-1] > 5 else shape[-1]
+    yield {"x": x, "k": k, "dim": -1},
+    # TODO:  Currently only support sorted == True and only support topk in last dimension
+    # if Config.bench_level == BenchLevel.COMPREHENSIVE:
+    #     k = 5 if shape[0] > 5 else shape[0]
+    #     yield {"x": x, "k": k, "dim": 0},
+    #     yield {"x": x, "k": k, "dim": -1, "sorted": False},
 
-    bench = Benchmark(
+
+def sort_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    yield inp, {"dim": -1},
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        yield inp, {"dim": 0},
+
+
+def resolve_neg_input_fn(shape, dtype, device):
+    x = torch.randn(size=shape, dtype=dtype, device=device)
+    yield x.conj().imag,
+
+
+def resolve_conj_input_fn(shape, dtype, device):
+    x = torch.randn(size=shape, dtype=dtype, device=device)
+    yield x.conj(),
+
+
+special_operations = [
+    # Sorting Operations
+    ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
+    ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
+    # Complex Operations
+    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
+    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes, input_fn",
+    [
+        pytest.param(
+            op,
+            fn,
+            dtypes,
+            input_fn,
+            marks=getattr(pytest.mark, op, None),
+        )
+        for op, fn, dtypes, input_fn in special_operations
+    ],
+)
+def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
+    )
+    bench.run()
+
+
+@pytest.mark.isin
+def test_isin_perf():
+    def isin_input_fn(shape, dtype, device):
+        elements = generate_tensor_input(shape, dtype, device)
+        test_elements = generate_tensor_input(shape, dtype, device)
+        yield elements, test_elements
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            # assume_unique set to True
+            uniq_elements = torch.unique(generate_tensor_input(shape, dtype, device))
+            uniq_test_elements = torch.unique(
+                generate_tensor_input(shape, dtype, device)
+            )
+            yield uniq_elements, uniq_test_elements, {"assume_unique": True}
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=isin_input_fn,
+        op_name="isin",
+        torch_op=torch.isin,
+        dtypes=[torch.float16, torch.float32]
+        + INT_DTYPES,  # not support for torch.bfloat16
+    )
+    bench.run()
+
+
+@pytest.mark.unique
+def test_perf_unique():
+    def unique_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp, {"sorted": True, "return_inverse": True, "return_counts": False},
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield inp, {"sorted": True, "return_inverse": False, "return_counts": True},
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=unique_input_fn,
+        op_name="unique",
+        torch_op=torch.unique,
+        dtypes=INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.multinomial
+def test_multinomial_with_replacement():
+    def multinomial_input_fn(shape, dtype, device):
+        dist = torch.rand(shape, dtype=dtype, device=device)
+        n_samples = 10000
+        yield dist, n_samples, True,
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=multinomial_input_fn,
+        op_name="multinomial",
+        torch_op=torch.multinomial,
+        dtypes=(torch.float16, torch.float32),
+    )
+    bench.run()
+
+
+@pytest.mark.pad
+def test_perf_pad():
+    def padding_input_fn(shape, dtype, device):
+        input = torch.randn(shape, device=device, dtype=dtype)
+        rank = input.ndim
+        pad_params = [random.randint(0, 10) for _ in range(rank * 2)]
+        pad_value = float(torch.randint(0, 1024, [1]))
+        yield input, {
+            "pad": pad_params,
+            "mode": "constant",
+            "value": pad_value,
+        },
+
+    bench = GenericBenchmark(
+        input_fn=padding_input_fn,
+        op_name="padding",
+        torch_op=torch.nn.functional.pad,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class EmbeddingBenchmark(GenericBenchmark2DOnly):
+    def set_more_shapes(self):
+        # TODO: add more shapes
+        return None
+
+
+@pytest.mark.embedding
+def test_perf_embedding():
+    def embedding_input_fn(shape, dtype, device):
+        num_embeddings, embedding_dim = shape
+        indices = torch.randint(0, num_embeddings, (num_embeddings,), device=device)
+        weight = torch.randn(
+            (num_embeddings, embedding_dim), device=device, dtype=dtype
+        )
+        yield {"input": indices, "weight": weight},
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            indices_2d = torch.randint(
+                0,
+                num_embeddings,
+                (num_embeddings, num_embeddings),
+                device=device,
+            )
+            yield {"input": indices_2d, "weight": weight},
+
+    bench = EmbeddingBenchmark(
+        input_fn=embedding_input_fn,
         op_name="embedding",
         torch_op=torch.nn.functional.embedding,
-        arg_func=None,
         dtypes=[
             torch.float32,
             torch.float16,
         ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=embedding_kwargs,
     )
     bench.run()
 
 
-def test_perf_topk():
-    def topk_kwargs(dtype, batch, size):
-        x = torch.randn((batch, size), device="cuda", dtype=dtype)
-        return {"x": x, "k": 5, "dim": -1}
-
-    bench = Benchmark(
-        op_name="topk",
-        torch_op=torch.topk,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=topk_kwargs,
-    )
-    bench.run()
+class UpsampleBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        return None
 
 
-def test_perf_resolve_neg():
-    def resolve_neg_arg(dtype, batch, size):
-        x = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
-        y = x.conj()
-        z = y.imag
-        return (z,)
-
-    bench = Benchmark(
-        op_name="resolve_neg",
-        torch_op=torch.resolve_neg,
-        arg_func=resolve_neg_arg,
-        dtypes=[torch.cfloat],
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_resolve_conj():
-    def resolve_conj_arg(dtype, batch, size):
-        x = torch.randn(size=(size, batch), dtype=dtype, device="cuda")
-        return (x.conj(),)
-
-    bench = Benchmark(
-        op_name="resolve_conj",
-        torch_op=torch.resolve_conj,
-        arg_func=resolve_conj_arg,
-        dtypes=[torch.cfloat],
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_unique():
-    def unique_kwargs(dtype, batch, size):
-        return {"sorted": True, "return_inverse": True, "return_counts": False}
-
-    bench = Benchmark(
-        op_name="unique",
-        torch_op=torch.unique,
-        arg_func=unary_int_arg,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=unique_kwargs,
-    )
-    bench.run()
-
-
-def test_multinomial_with_replacement():
-    def multinomial_args(dtype, batch, size):
-        dist = torch.rand((batch, size), dtype=dtype, device="cuda")
-        n_samples = 10000
-        return (dist, n_samples, True)
-
-    bench = Benchmark(
-        op_name="multinomial",
-        torch_op=torch.multinomial,
-        arg_func=multinomial_args,
-        dtypes=(torch.float16, torch.float32),
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_pad():
-    def padding_kwargs(dtype, batch, size):
-        input = torch.randn((batch, size), device="cuda", dtype=dtype)
-        rank = input.ndim
-        pad_params = tuple(torch.randint(0, 10, [rank * 2]))
-        pad_value = float(torch.randint(0, 1024, [1]))
-        return {
-            "input": input,
-            "pad": pad_params,
-            "mode": "constant",
-            "value": pad_value,
-        }
-
-    bench = Benchmark(
-        op_name="padding",
-        torch_op=torch.nn.functional.pad,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=padding_kwargs,
-    )
-    bench.run()
-
-
+@pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
-    def upsample_bicubic2d_aa_kwargs(dtype, batch, size):
-        channel = 16
+    def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
+        batch, channel, height, weight = shape
+        input = torch.randn(size=shape, device=device, dtype=dtype)
         scale_factors = (2, 2)
-        shape = (batch, channel, size, size)
         output_size = (
-            int(shape[2] * scale_factors[0]),
-            int(shape[3] * scale_factors[1]),
+            int(height * scale_factors[0]),
+            int(weight * scale_factors[1]),
         )
-        input = torch.randn(size=shape, device="cuda", dtype=dtype)
-        return {
+        yield {
             "input": input,
             "output_size": output_size,
             "align_corners": False,
             "scales_h": None,
             "scales_w": None,
-        }
+        },
 
-    bench = Benchmark(
-        op_name="_upsample_bicubic2d_aa",
+    bench = UpsampleBenchmark(
+        input_fn=upsample_bicubic2d_aa_input_fn,
+        op_name="upsample_bicubic2d_aa",
         torch_op=torch._C._nn._upsample_bicubic2d_aa,
-        arg_func=None,
         dtypes=FLOAT_DTYPES,
-        batch=16,
-        sizes=[(128 * i) for i in range(1, 12)],
-        kwargs_func=upsample_bicubic2d_aa_kwargs,
     )
     bench.run()
 
 
+@pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
-    def upsample_nearest2d_kwargs(dtype, batch, size):
-        channel = 16
+    def upsample_nearest2d_input_fn(shape, dtype, device):
+        batch, channel, height, weight = shape
+        input = torch.randn(size=shape, device=device, dtype=dtype)
         scale_factors = (2, 2)
-        shape = (batch, channel, size, size)
         output_size = (
-            int(shape[2] * scale_factors[0]),
-            int(shape[3] * scale_factors[1]),
+            int(height * scale_factors[0]),
+            int(weight * scale_factors[1]),
         )
-        input = torch.randn(size=shape, device="cuda", dtype=dtype)
-        return {
+        yield {
             "input": input,
             "output_size": output_size,
             "scales_h": None,
             "scales_w": None,
-        }
+        },
 
-    bench = Benchmark(
+    bench = UpsampleBenchmark(
+        input_fn=upsample_nearest2d_input_fn,
         op_name="upsample_nearest2d",
         torch_op=torch._C._nn.upsample_nearest2d,
-        arg_func=None,
         dtypes=FLOAT_DTYPES,
-        batch=16,
-        sizes=[(128 * i) for i in range(1, 12)],
-        kwargs_func=upsample_nearest2d_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_arange():
-    def arange_kwargs(dtype, batch, size):
-        return {
-            "end": batch * size,
-            "device": "cuda",
-            "dtype": dtype,
-        }
-
-    bench = Benchmark(
-        op_name="arange",
-        torch_op=torch.arange,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=arange_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_isin():
-    bench = Benchmark(
-        op_name="isin",
-        torch_op=torch.isin,
-        arg_func=binary_int_args,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_fill():
-    def fill_kwargs(dtype, batch, size):
-        value = 1.0
-        input = torch.empty(batch * size, dtype=dtype, device="cuda")
-        return {
-            "input": input,
-            "value": value,
-        }
-
-    bench = Benchmark(
-        op_name="fill",
-        torch_op=torch.fill,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=fill_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_stack():
-    def stack_args(dtype, batch, size):
-        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
-        return {(inp,) * 3}
-
-    bench = Benchmark(
-        op_name="stack",
-        torch_op=torch.stack,
-        arg_func=stack_args,
-        dtypes=FLOAT_DTYPES,
-        batch=(512),
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_hstack():
-    def hstack_args(dtype, batch, size):
-        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
-        return {(inp,) * 3}
-
-    bench = Benchmark(
-        op_name="hstack",
-        torch_op=torch.hstack,
-        arg_func=hstack_args,
-        dtypes=FLOAT_DTYPES,
-        batch=(512),
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_cat():
-    def cat_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        return [[inp1, inp2]]
-
-    def cat_kwargs(dtype, batch, size):
-        return {"dim": 0}
-
-    bench = Benchmark(
-        op_name="cat",
-        torch_op=torch.cat,
-        arg_func=cat_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=cat_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_cat_int():
-    def cat_args(dtype, batch, size):
-        inp1 = torch.randint(
-            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
-        )
-        inp2 = torch.randint(
-            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
-        )
-        return [[inp1, inp2]]
-
-    def cat_kwargs(dtype, batch, size):
-        return {"dim": 0}
-
-    bench = Benchmark(
-        op_name="cat_int",
-        torch_op=torch.cat,
-        arg_func=cat_args,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=cat_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_vstack():
-    def vstack_args(dtype, batch, size):
-        inp1 = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
-        inp2 = torch.randn(size=(batch + 1, size), dtype=dtype, device="cuda")
-        inp3 = torch.randn(size=(batch + 2, size), dtype=dtype, device="cuda")
-        return [[inp1, inp2, inp3]]
-
-    bench = Benchmark(
-        op_name="vstack",
-        torch_op=torch.vstack,
-        arg_func=vstack_args,
-        dtypes=FLOAT_DTYPES,
-        batch=(512),
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_repeat_interleave_self_int():
-    def repeat_interleave_self_int_arg(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        repeats = 2
-        return inp, repeats
-
-    bench = Benchmark(
-        op_name="repeat_interleave_self_int",
-        torch_op=torch.repeat_interleave,
-        arg_func=repeat_interleave_self_int_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_repeat_interleave_tensor():
-    def repeat_interleave_tensor_arg(dtype, batch, size):
-        repeats = torch.randint(
-            low=0,
-            high=0x7F,
-            size=[
-                size,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        return (repeats,)
-
-    bench = Benchmark(
-        op_name="repeat_interleave_tensor",
-        torch_op=torch.repeat_interleave,
-        arg_func=repeat_interleave_tensor_arg,
-        dtypes=[torch.int32],
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
     )
     bench.run()
