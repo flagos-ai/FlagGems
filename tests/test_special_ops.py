@@ -680,6 +680,12 @@ def gen_cat_shapes_dim(shapes):
             results.append(
                 [[(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes], dim]
             )
+            results.append(
+                [
+                    [(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes],
+                    dim - rank,
+                ]
+            )
     return results
 
 
