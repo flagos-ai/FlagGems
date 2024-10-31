@@ -29,16 +29,14 @@ def index_select_kernel(
     rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
     cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
-    cols_mask = cols_offsets < N
 
-    block_mask = rows_mask and cols_mask
     out_mask = rows_mask and (cols_offsets < index_len)
 
     indices = tl.load(index + cols_offsets, mask=(cols_offsets < index_len), other=0)
     inp_off = rows_offsets * N + indices[None, :]
     out_off = rows_offsets * index_len + cols_offsets[None, :]
 
-    selected = tl.load(inp + inp_off, mask=block_mask, other=0.0)
+    selected = tl.load(inp + inp_off, mask=rows_mask, other=0.0)
     tl.store(out + out_off, selected, mask=out_mask)
 
 
