@@ -796,3 +796,19 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.repeat_interleave(repeats)
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.repeat_interleave
+@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+@pytest.mark.parametrize("dim", [-1, 0, 1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    repeats = torch.randint(0, 30, (shape[dim],), device="cuda")
+    ref_inp = to_reference(inp)
+    ref_repeats = to_reference(repeats)
+
+    ref_out = torch.repeat_interleave(ref_inp, ref_repeats, dim)
+    with flag_gems.use_gems():
+        res_out = torch.repeat_interleave(inp, repeats, dim)
+    gems_assert_equal(res_out, ref_out)
