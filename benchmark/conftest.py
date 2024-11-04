@@ -174,8 +174,13 @@ BUILTIN_MARKS = {
 @pytest.fixture(scope="session", autouse=True)
 def setup_once(request):
     if request.config.getoption("--query"):
-        print("")
-        print("This is query mode; skipping all real benchmark functions.")
+        print("\nThis is query mode; all benchmark functions will be skipped.")
+    else:
+        note_info = (
+            "\n\nNote: The 'size' field below is for backward compatibility with previous versions of the benchmark. "
+            "\nThis field will be removed in a future release."
+        )
+        print(note_info)
 
 
 @pytest.fixture()

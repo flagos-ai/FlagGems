@@ -124,8 +124,20 @@ def repeat_input_fn(shape, cur_dtype, device):
 
 def repeat_interleave_self_input_fn(shape, dtype, device):
     inp = generate_tensor_input(shape, dtype, device)
-    repeats = 3
-    yield inp, repeats
+    repeats = torch.randint(
+        low=0,
+        high=0x2F,
+        size=[
+            shape[0],
+        ],
+        device=device,
+    )
+    dim = 0
+    # repeat_interleave.self_Tensor(Tensor self, Tensor repeats, int? dim=None, *, SymInt? output_size=None) -> Tensor
+    yield inp, repeats, dim
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # repeat_interleave.self_int(Tensor self, SymInt repeats, int? dim=None, *, SymInt? output_size=None) -> Tensor
+        yield inp, 3
 
 
 @pytest.mark.parametrize(
