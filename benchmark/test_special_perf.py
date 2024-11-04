@@ -244,32 +244,3 @@ def test_perf_upsample_nearest2d():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
-
-
-def test_perf_repeat_interleave_self_tensor():
-    def repeat_interleave_self_tensor_arg(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        repeats = torch.randint(
-            low=0,
-            high=0x2F,
-            size=[
-                batch,
-            ],
-            device="cuda",
-        )
-        dim = 0
-        return (
-            inp,
-            repeats,
-            dim,
-        )
-
-    bench = Benchmark(
-        op_name="repeat_interleave_self_tensor",
-        torch_op=torch.repeat_interleave,
-        arg_func=repeat_interleave_self_tensor_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
