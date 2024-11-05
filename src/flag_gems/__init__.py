@@ -160,6 +160,7 @@ def enable(lib=aten_lib):
     lib.impl("vstack", vstack, "CUDA")
     lib.impl("repeat_interleave.Tensor", repeat_interleave_tensor, "CUDA")
     lib.impl("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, "CUDA")
+    lib.impl("randperm", randperm, "CUDA")
 
 
 class use_gems:

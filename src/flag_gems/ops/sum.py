@@ -16,11 +16,19 @@ def sum_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+
     pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
+
+    inp_val = tl.load(inp_ptrs, mask=mask, other=0).to(cdtype)
     sum_val = tl.sum(inp_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, sum_val)
@@ -29,10 +37,17 @@ def sum_kernel_1(
 @libentry()
 @triton.jit
 def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
+        mid.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = mid.dtype.element_ty
+
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0.0).to(tl.float32)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=0).to(cdtype)
     sum_val = tl.sum(mid_val)
     tl.store(out, sum_val)
 
@@ -56,19 +71,26 @@ def sum_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+
     # Map the program id to the row of inp it should compute.
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + pid * N
     out = out + pid
     row_mask = pid < M
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        a = tl.load(inp + cols, mask, other=0.0).to(tl.float32)
+        a = tl.load(inp + cols, mask, other=0).to(cdtype)
         _sum += a
     sum = tl.sum(_sum, axis=1)[:, None]
     tl.store(out, sum, row_mask)
