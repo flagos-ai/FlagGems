@@ -111,18 +111,24 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
 
     # slice left/right with 'stride' 2**(n_dims - i - 1)
     mask = core.arange(0, 2)[None, :, None]
-    left = core.broadcast_to(tl.sum(y * (1 - mask), 1)[:, None, :], shape)
-    right = core.broadcast_to(tl.sum(y * mask, 1)[:, None, :], shape)
+    left = core.broadcast_to(tl.sum(y * (1 - mask), 1)[:, None, :], shape).to(x.dtype)
+    right = core.broadcast_to(tl.sum(y * mask, 1)[:, None, :], shape).to(x.dtype)
     left = core.reshape(left, x.shape)
     right = core.reshape(right, x.shape)
 
-    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape)
-    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape)
+    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape).to(
+        ids.dtype
+    )
+    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape).to(
+        ids.dtype
+    )
     left_idx = core.reshape(left_idx, ids.shape)
     right_idx = core.reshape(right_idx, ids.shape)
 
     # actual compare-and-swap
-    if core.constexpr(x.dtype.primitive_bitwidth) == 16:
+    if core.constexpr(x.dtype.primitive_bitwidth) == 8:
+        idtype = core.int8
+    elif core.constexpr(x.dtype.primitive_bitwidth) == 16:
         idtype = core.int16
     elif core.constexpr(x.dtype.primitive_bitwidth) == 32:
         idtype = core.int32
@@ -138,7 +144,9 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     cond = (left > right) ^ flip
     ret = ix ^ core.where(cond, ileft ^ iright, zeros_like(ix))
 
-    if core.constexpr(ids.dtype.primitive_bitwidth) == 16:
+    if core.constexpr(ids.dtype.primitive_bitwidth) == 8:
+        idx_dtype = core.int8
+    elif core.constexpr(ids.dtype.primitive_bitwidth) == 16:
         idx_dtype = core.int16
     elif core.constexpr(ids.dtype.primitive_bitwidth) == 32:
         idx_dtype = core.int32

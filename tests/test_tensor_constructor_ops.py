@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    ALL_INT_DTYPES,
     DISTRIBUTION_SHAPES,
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
@@ -120,3 +121,18 @@ def test_accuracy_full_like(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.full_like(x, 3.1415926)
     gems_assert_equal(res_out, torch.full_like(x, 3.1415926))
+
+
+@pytest.mark.randperm
+@pytest.mark.parametrize("n", [123, 12345, 123456])
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
+def test_accuracy_randperm(n, dtype):
+    if n > torch.iinfo(torch.int16).max and dtype == torch.int16:
+        return
+
+    ref_out = torch.randperm(n, dtype=dtype, device="cpu" if TO_CPU else "cuda")
+    with flag_gems.use_gems():
+        res_out = torch.randperm(n, dtype=dtype, device="cuda")
+    sorted_ref, _ = torch.sort(ref_out)
+    sorted_res, _ = torch.sort(res_out)
+    gems_assert_equal(sorted_res, sorted_ref)

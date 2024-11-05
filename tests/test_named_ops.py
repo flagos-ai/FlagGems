@@ -103,6 +103,7 @@ tensor_constructor_ops_ut_map = {
     "ones_like": ("test_accuracy_ones_like",),
     "full": ("test_accuracy_full",),
     "full_like": ("test_accuracy_full_like",),
+    "randperm": ("test_accuracy_randperm",),
 }
 
 binary_pointwise_ops_ut_map = {
