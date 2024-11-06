@@ -3,7 +3,11 @@ import torch
 
 from .attri_util import FLOAT_DTYPES, BenchLevel
 from .conftest import Config
-from .performance_utils import GenericBenchmark, unary_input_fn
+from .performance_utils import (
+    GenericBenchmark,
+    GenericBenchmarkExcluse1D,
+    unary_input_fn,
+)
 
 
 class NormBenchmark(GenericBenchmark):
@@ -75,15 +79,26 @@ def test_group_and_layer_norm_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
-def weight_norm_input_fn(shape, dtype, device):
+def weight_norm_interface_input_fn(shape, dtype, device):
     dim = 0
     v = torch.randn(shape, dtype=dtype, device=device)
     g = torch.randn(shape[dim], dtype=dtype, device=device)
     yield v, g, dim
 
 
+def weight_norm_input_fn(shape, dtype, device):
+    v = torch.randn(shape, dtype=dtype, device=device)
+    g = torch.randn(shape, dtype=dtype, device=device)
+    yield v, g, 0
+
+
 norm_operations = [
-    ("weight_norm_interface", torch._weight_norm_interface, weight_norm_input_fn),
+    (
+        "weight_norm_interface",
+        torch._weight_norm_interface,
+        weight_norm_interface_input_fn,
+    ),
+    ("weight_norm", torch._weight_norm, weight_norm_input_fn),
     ("vector_norm", torch.linalg.vector_norm, unary_input_fn),
 ]
 
@@ -96,5 +111,7 @@ norm_operations = [
     ],
 )
 def test_weight_vector_norm_benchmark(op_name, torch_op, input_fn):
-    bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op)
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op
+    )
     bench.run()

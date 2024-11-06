@@ -38,7 +38,7 @@ from attri_util import BenchmarkMetrics, BenchmarkResult
 
 
 @dataclass
-class SummaryResult:
+class SummaryResultOverDtype:
     op_name: str = ""
     float16_speedup: float = 0.0
     float32_speedup: float = 0.0
@@ -51,13 +51,13 @@ class SummaryResult:
     def __str__(self) -> str:
         return (
             f"{self.op_name:<30} "
-            f"{self.float16_speedup:<15.6f} "
-            f"{self.float32_speedup:<15.6f} "
-            f"{self.bfloat16_speedup:<15.6f} "
-            f"{self.int16_speedup:<15.6f} "
-            f"{self.int32_speedup:<15.6f} "
-            f"{self.bool_speedup:<15.6f} "
-            f"{self.cfloat_speedup:<15.6f}"
+            f"{self.float16_speedup:<20.6f} "
+            f"{self.float32_speedup:<20.6f} "
+            f"{self.bfloat16_speedup:<20.6f} "
+            f"{self.int16_speedup:<20.6f} "
+            f"{self.int32_speedup:<20.6f} "
+            f"{self.bool_speedup:<20.6f} "
+            f"{self.cfloat_speedup:<20.6f}"
         )
 
 
@@ -99,13 +99,13 @@ def parse_log(log_file_path: str) -> List[BenchmarkResult]:
     return benchmark_results
 
 
-def calculate_avg_speedup(metrics):
+def calculate_avg_speedup_over_dtype(metrics):
     speedups = [metric.speedup for metric in metrics if metric.speedup is not None]
     return sum(speedups) / len(speedups) if speedups else 0.0
 
 
 def summary_for_plot(benchmark_results):
-    summary = defaultdict(SummaryResult)
+    summary = defaultdict(SummaryResultOverDtype)
 
     dtype_mapping = {
         "torch.float16": "float16_speedup",
@@ -114,7 +114,7 @@ def summary_for_plot(benchmark_results):
         "torch.int16": "int16_speedup",
         "torch.int32": "int32_speedup",
         "torch.bool": "bool_speedup",
-        "torch.cfloat": "cfloat_speedup",
+        "torch.complex64": "cfloat_speedup",
     }
 
     for item in benchmark_results:
@@ -124,14 +124,14 @@ def summary_for_plot(benchmark_results):
         else:
             dtype_suffix = (
                 "_complex"
-                if "cfloat" in item.dtype
+                if "complex64" in item.dtype
                 else "_int"
                 if "int" in item.dtype
                 else "_bool"
             )
 
         op_name = item.op_name + dtype_suffix
-        avg_speedup = calculate_avg_speedup(item.result)
+        avg_speedup = calculate_avg_speedup_over_dtype(item.result)
         cur_op_summary = summary[op_name]
         cur_op_summary.op_name = op_name
         setattr(
@@ -140,19 +140,22 @@ def summary_for_plot(benchmark_results):
             avg_speedup,
         )
 
+    # sort the keys based on `op_name`
+    sorted_summary = sorted(summary.values(), key=lambda x: x.op_name)
+
     header = (
         f"{'op_name':<30} "
-        f"{'float16_speedup':<16} "
-        f"{'float32_speedup':<16} "
-        f"{'bfloat16_speedup':<16} "
-        f"{'int16_speedup':<16} "
-        f"{'int32_speedup':<16} "
-        f"{'bool_speedup':<16} "
-        f"{'cfloat_speedup':<16}"
+        f"{'float16_speedup':<20} "
+        f"{'float32_speedup':<20} "
+        f"{'bfloat16_speedup':<20} "
+        f"{'int16_speedup':<20} "
+        f"{'int32_speedup':<20} "
+        f"{'bool_speedup':<20} "
+        f"{'cfloat_speedup':<20}"
     )
 
     print(header)
-    for result in summary.values():
+    for result in sorted_summary:
         print(result)
 
     return summary
