@@ -26,7 +26,7 @@ class ConcatBenchmark(Benchmark):
             yield from self.input_fn(shape, cur_dtype, self.device)
 
     def set_more_shapes(self):
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 11, 4)]
+        more_shapes_2d = [(1024, 2**i) for i in range(1, 11, 4)]
         more_shapes_3d = [(64, 64, 2**i) for i in range(0, 8, 4)]
         return more_shapes_2d + more_shapes_3d
 
@@ -101,7 +101,7 @@ class TensorRepeatBenchmark(GenericBenchmark):
 
     def set_more_shapes(self):
         more_shapes = [
-            (1024 * 1024,),
+            (16, 256, 256),
             (512, 512, 512),
             (64, 64, 64, 64),
         ]
@@ -122,22 +122,39 @@ def repeat_input_fn(shape, cur_dtype, device):
     yield inp1, inp2,
 
 
-def repeat_interleave_self_input_fn(shape, dtype, device):
+# repeat_interleave.self_int(Tensor self, SymInt repeats, int? dim=None, *, SymInt? output_size=None) -> Tensor
+def repeat_interleave_self_int_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    repeats = 3
+    yield inp, repeats,
+
+
+# repeat_interleave.self_Tensor(Tensor self, Tensor repeats, int? dim=None, *, SymInt? output_size=None) -> Tensor
+def repeat_interleave_self_tensor_input_fn(shape, dtype, device):
     inp = generate_tensor_input(shape, dtype, device)
     repeats = torch.randint(
         low=0,
-        high=0x2F,
+        high=0x1F,  # control the repeats number here
         size=[
             shape[0],
         ],
         device=device,
     )
     dim = 0
-    # repeat_interleave.self_Tensor(Tensor self, Tensor repeats, int? dim=None, *, SymInt? output_size=None) -> Tensor
     yield inp, repeats, dim
-    if Config.bench_level == BenchLevel.COMPREHENSIVE:
-        # repeat_interleave.self_int(Tensor self, SymInt repeats, int? dim=None, *, SymInt? output_size=None) -> Tensor
-        yield inp, 3
+
+
+# repeat_interleave.Tensor(Tensor repeats, *, SymInt? output_size=None) -> Tensor
+def repeat_interleave_tensor_input_fn(shape, dtype, device):
+    repeats = torch.randint(
+        low=0,
+        high=0x1F,  # control the repeats number here
+        size=[
+            shape[0],
+        ],
+        device=device,
+    )
+    yield repeats,
 
 
 @pytest.mark.parametrize(
@@ -154,11 +171,25 @@ def repeat_interleave_self_input_fn(shape, dtype, device):
             marks=pytest.mark.repeat,
         ),
         pytest.param(
-            "repeat_interleave",
-            torch.Tensor.repeat_interleave,
-            repeat_interleave_self_input_fn,
-            FLOAT_DTYPES + [torch.int32],
-            marks=pytest.mark.repeat_interleave,
+            "repeat_interleave_self_int",
+            torch.repeat_interleave,
+            repeat_interleave_self_int_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.repeat_interleave_self_int,
+        ),
+        pytest.param(
+            "repeat_interleave_self_tensor",
+            torch.repeat_interleave,
+            repeat_interleave_self_tensor_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.repeat_interleave_self_tensor,
+        ),
+        pytest.param(
+            "repeat_interleave_tensor",
+            torch.repeat_interleave,
+            repeat_interleave_tensor_input_fn,
+            [torch.int32],
+            marks=pytest.mark.repeat_interleave_tensor,
         ),
     ],
 )

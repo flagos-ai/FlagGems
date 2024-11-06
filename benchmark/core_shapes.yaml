@@ -81,7 +81,7 @@ TensorRepeatBenchmark:
     - [512, 512]
     - [512, 1024]
     - [512, 2048]
-  shape_desc: "((B), M, N) * 3"
+  shape_desc: "(B), M, N"
 
 GenericBenchmarkExcluse1D:
   shapes:
@@ -107,6 +107,14 @@ GenericBenchmark2DOnly:
     - [1024, 1024]
     - [4096, 4096]
     - [1024, 65536]
+
+UnaryReductionBenchmark:
+  shapes:
+    - [1048576,]  # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
 
 UnaryPointwiseBenchmark:
   shapes:

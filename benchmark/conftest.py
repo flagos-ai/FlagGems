@@ -183,6 +183,12 @@ def setup_once(request):
         print(note_info)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def clear_cuda_cache():
+    yield
+    torch.cuda.empty_cache()
+
+
 @pytest.fixture()
 def extract_and_log_op_attributes(request):
     print("")
