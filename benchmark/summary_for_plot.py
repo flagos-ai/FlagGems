@@ -47,8 +47,10 @@ class SummaryResultOverDtype:
     int32_speedup: float = 0.0
     bool_speedup: float = 0.0
     cfloat_speedup: float = 0.0
+    all_tests_passed: bool = False
 
     def __str__(self) -> str:
+        all_shapes_status = "yes" if self.all_tests_passed else "no"
         return (
             f"{self.op_name:<30} "
             f"{self.float16_speedup:<20.6f} "
@@ -58,6 +60,7 @@ class SummaryResultOverDtype:
             f"{self.int32_speedup:<20.6f} "
             f"{self.bool_speedup:<20.6f} "
             f"{self.cfloat_speedup:<20.6f}"
+            f"{all_shapes_status:<20}"
         )
 
 
@@ -89,6 +92,7 @@ def parse_log(log_file_path: str) -> List[BenchmarkResult]:
                         accuracy=metric.get("accuracy"),
                         tflops=metric.get("tflops"),
                         utilization=metric.get("utilization"),
+                        error_msg=metric.get("error_msg"),
                     )
                     for metric in data["result"]
                 ],
@@ -100,8 +104,16 @@ def parse_log(log_file_path: str) -> List[BenchmarkResult]:
 
 
 def calculate_avg_speedup_over_dtype(metrics):
-    speedups = [metric.speedup for metric in metrics if metric.speedup is not None]
+    speedups = [
+        metric.speedup
+        for metric in metrics
+        if metric.speedup is not None and metric.error_msg is None
+    ]
     return sum(speedups) / len(speedups) if speedups else 0.0
+
+
+def all_benchshape_passed(metrics):
+    return all(metric.error_msg is None for metric in metrics)
 
 
 def summary_for_plot(benchmark_results):
@@ -134,6 +146,7 @@ def summary_for_plot(benchmark_results):
         avg_speedup = calculate_avg_speedup_over_dtype(item.result)
         cur_op_summary = summary[op_name]
         cur_op_summary.op_name = op_name
+        cur_op_summary.all_tests_passed = all_benchshape_passed(item.result)
         setattr(
             summary[op_name],
             dtype_mapping.get(item.dtype, "float16_speedup"),
@@ -152,6 +165,7 @@ def summary_for_plot(benchmark_results):
         f"{'int32_speedup':<20} "
         f"{'bool_speedup':<20} "
         f"{'cfloat_speedup':<20}"
+        f"{'all_tests_passed':<20}"
     )
 
     print(header)

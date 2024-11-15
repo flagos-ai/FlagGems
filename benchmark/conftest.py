@@ -175,16 +175,22 @@ BUILTIN_MARKS = {
 def setup_once(request):
     if request.config.getoption("--query"):
         print("\nThis is query mode; all benchmark functions will be skipped.")
-    else:
-        note_info = (
-            "\n\nNote: The 'size' field below is for backward compatibility with previous versions of the benchmark. "
-            "\nThis field will be removed in a future release."
-        )
-        print(note_info)
+    # else:
+    #     note_info = (
+    #         "\n\nNote: The 'size' field below is for backward compatibility with previous versions of the benchmark. "
+    #         "\nThis field will be removed in a future release."
+    #     )
+    #     print(note_info)
+
+
+@pytest.fixture(scope="function", autouse=True)
+def clear_function_cache():
+    yield
+    torch.cuda.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
-def clear_cuda_cache():
+def clear_module_cache():
     yield
     torch.cuda.empty_cache()
 

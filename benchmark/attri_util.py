@@ -71,6 +71,8 @@ class BenchmarkMetrics:
     tflops: Optional[float] = None
     # Utilization (not implemented yet)
     utilization: Optional[float] = None
+    # Error message
+    error_msg: Optional[str] = None
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
@@ -172,7 +174,7 @@ class BenchmarkResult:
     def __str__(self) -> str:
         header = (
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, level={self.level})\n"
-            f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
+            f"{'Status':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
             f"{'Size Detail':>20}\n"
             f"{'-' * 90}\n"
         )
@@ -180,10 +182,10 @@ class BenchmarkResult:
         return header + metrics_lines
 
     def _format_metrics(self, metrics: BenchmarkMetrics) -> str:
-        self.gen_legacy_shape(metrics)
-        legacy_shape_str = (
-            metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
-        )
+        # self.gen_legacy_shape(metrics)
+        # legacy_shape_str = (
+        #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
+        # )
         latency_base_str = (
             f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
         )
@@ -192,8 +194,9 @@ class BenchmarkResult:
         shape_detail_str = (
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         )
+        status = "SUCCESS" if metrics.error_msg is None else "FAILED"
         return (
-            f"{legacy_shape_str:<10}"
+            f"{status:<10}"
             f"{latency_base_str:>20}"
             f"{latency_str:>20}"
             f"{speedup_str:>20}"
