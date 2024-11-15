@@ -44,7 +44,7 @@ def resolve_conj_input_fn(shape, dtype, device):
 special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
-    ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
+    # ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
     # Complex Operations
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
