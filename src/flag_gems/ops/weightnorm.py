@@ -236,7 +236,7 @@ def norm_kernel(
     v_shape0,
     v_shape1,
     v_shape2,
-    eps: tl.constexpr,
+    eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -274,7 +274,7 @@ def norm_bwd_kernel(
     v_shape0,
     v_shape1,
     v_shape2,
-    eps: tl.constexpr,
+    eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
