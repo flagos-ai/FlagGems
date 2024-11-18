@@ -3,12 +3,13 @@ import random
 import pytest
 import torch
 
-from .attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
+    GenericBenchmarkExcluse3D,
     generate_tensor_input,
 )
 
@@ -243,4 +244,23 @@ def test_perf_upsample_nearest2d():
         torch_op=torch._C._nn.upsample_nearest2d,
         dtypes=FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.diag
+def test_perf_diag():
+    def diag_input_fn(shape, dtype, device):
+        input = generate_tensor_input(shape, dtype, device)
+        diagonal = random.randint(-4, 4)
+        yield input, {
+            "diagonal": diagonal,
+        },
+
+    bench = GenericBenchmarkExcluse3D(
+        input_fn=diag_input_fn,
+        op_name="diag",
+        torch_op=torch.diag,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+    )
+
     bench.run()
