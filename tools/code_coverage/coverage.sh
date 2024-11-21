@@ -15,16 +15,16 @@ fi
 ID_SHA="${PR_ID}-${GITHUB_SHA}"
 echo ID_SHA $ID_SHA
 
-rm -rf /PR_Coverage/PR${PR_ID}/${ID_SHA}/${PR_ID}-${GITHUB_SHA}-python-coverage-full
-rm -rf /PR_Coverage/PR${PR_ID}/${ID_SHA}/${PR_ID}-${GITHUB_SHA}-python-coverage-diff
-rm -rf /PR_Coverage/PR${PR_ID}/${ID_SHA}/${PR_ID}-${GITHUB_SHA}-python-coverage-diff-discard
+rm -rf /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${PR_ID}-${GITHUB_SHA}-python-coverage-full
+rm -rf /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${PR_ID}-${GITHUB_SHA}-python-coverage-diff
+rm -rf /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${PR_ID}-${GITHUB_SHA}-python-coverage-diff-discard
 
 PYTHON_BIN=/usr/bin/python3.11
 
 export FlagGemsROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/../../" && pwd )"
 echo FlagGemsROOT ${FlagGemsROOT}
 
-FILES="/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-op* /PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-model*"
+FILES="/home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-op* /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-model*"
 coverage combine -q --keep --data-file=${ID_SHA} $FILES
 coverage report -m --data-file=${ID_SHA}
 coverage xml -i --data-file=${ID_SHA} -o ${ID_SHA}-python-coverage.xml
@@ -63,7 +63,7 @@ else
     echo  "This means the files modified in your PR are not tested by python coverage!"
     echo  "Pass! Please check carefully if you need add test for your files!"
     echo -e "\n================================================================"
-    mv -f ${ID_SHA}* /PR_Coverage/PR${PR_ID}/${ID_SHA}
+    mv -f ${ID_SHA}* /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}
     exit
 fi
 
@@ -87,8 +87,8 @@ genhtml -o ${ID_SHA}-python-coverage-diff-discard \
     --ignore-errors source \
     ${ID_SHA}-python-coverage-discard-diff.info
 
-mv -f ${ID_SHA}* /PR_Coverage/PR${PR_ID}/${ID_SHA}
+mv -f ${ID_SHA}* /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}
 
-lcov --list /PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-python-coverage-discard-diff.info
+lcov --list /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-python-coverage-discard-diff.info
 echo -e "\n==================== Python Coverage Result ====================\n"
-${PYTHON_BIN} ${FlagGemsROOT}/tools/code_coverage/coverage_lines.py  /PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-python-coverage-discard-diff.info 0.9
+${PYTHON_BIN} ${FlagGemsROOT}/tools/code_coverage/coverage_lines.py  /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-python-coverage-discard-diff.info 0.9

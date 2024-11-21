@@ -1,13 +1,13 @@
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: model-test
+name: reduction-op-test
 
 on:
   workflow_call:
 
 jobs:
-  model-test:
+  container-unit-test:
     runs-on: jiuding
     steps:
       - name: Checkout code
@@ -17,7 +17,7 @@ jobs:
         shell: bash
         run: tools/gpu_check.sh
 
-      - name: FlagGems examples
+      - name: Reduction Op Test
         shell: bash
         run: |
           echo "current dir: $(pwd)"
@@ -35,8 +35,10 @@ jobs:
           echo ID_SHA $ID_SHA
           PR_ID_DIR="PR${PR_ID}"
 
-          COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-model"
-          coverage run ${COVERAGE_ARGS} -m pytest -s examples/model_bert_test.py
+          COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
+          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_reduction_ops.py && \
+          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_general_reduction_ops.py && \
+          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_norm_ops.py
 
           mkdir -p /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}
           mv ${ID_SHA}* /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}
