@@ -3,9 +3,10 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES
+from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Benchmark,
+    Config,
     GenericBenchmark2DOnly,
     generate_tensor_input,
     unary_input_fn,
@@ -88,6 +89,14 @@ def cross_entropy_loss_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     target = torch.randint(0, shape[-1], (shape[0],), device=device)
     yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[-1], dtype=cur_dtype, device=device)
+        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+        yield inp, target, {
+            "weight": weight,
+            "reduction": "sum",
+            "label_smoothing": 0.1,
+        }
 
 
 def cumsum_input_fn(shape, cur_dtype, device):
@@ -114,7 +123,7 @@ def cumsum_input_fn(shape, cur_dtype, device):
         ),
         pytest.param(
             "CrossEntropyLoss",
-            torch.nn.CrossEntropyLoss(),
+            torch.nn.functional.cross_entropy,
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.CrossEntropyLoss,

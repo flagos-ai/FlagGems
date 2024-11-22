@@ -5,7 +5,6 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
-from .sum import sum
 
 
 @libentry()
@@ -18,33 +17,27 @@ from .sum import sum
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
-def celoss_indice_kernel(
+def celoss_indices_kernel(
     inp_ptr,
     tgt_ptr,
     w_ptr,
     out_ptr,
     w_tgt_ptr,
     ignore_index,
-    N,
     C,
     D,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
     tgt_mask = offset_d < D
     tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
 
-    ignore_mask = not (tgt == ignore_index)
-
-    w_ptrs = w_ptr + tgt
-    w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)
-    w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
-    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask and ignore_mask)
+    ignore_mask = not (tgt == ignore_index) and tgt_mask
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -65,9 +58,18 @@ def celoss_indice_kernel(
     inp_tgt_ptrs = inp_ptr + pid_n * C * D + tgt * D + offset_d
     inp_tgt = tl.load(inp_tgt_ptrs, mask=tgt_mask, other=-float("inf")).to(tl.float32)
 
-    out = (final_sum + final_max - inp_tgt) * w_tgt
+    out = final_sum + final_max - inp_tgt
+    w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
+
+    if w_ptr is None:
+        w_tgt = ignore_mask
+    else:
+        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+
+    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
+    out *= w_tgt
     out_ptrs = out_ptr + pid_n * D + offset_d
-    tl.store(out_ptrs, out, mask=tgt_mask and ignore_mask)
+    tl.store(out_ptrs, out, mask=tgt_mask)
 
 
 @libentry()
@@ -86,14 +88,13 @@ def celoss_probability_kernel(
     w_ptr,
     out_ptr,
     label_smoothing,
-    N,
     C,
     D,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -118,14 +119,16 @@ def celoss_probability_kernel(
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         tgt_ptrs = tgt_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         mask = offset_c[:, None] < C and offset_d[None, :] < D
-        w_ptrs = w_ptr + offset_c
-        w_mask = offset_c < C
         inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
-        tgt = tl.load(tgt_ptrs, mask, other=1).to(tl.float32)
+        tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
         tgt = tgt * (1.0 - label_smoothing) + label_smoothing / C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)[:, None]
         log = final_sum + final_max - inp
-        _sum += w * log * tgt
+        w_mask = offset_c < C
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w = tl.load(w_ptr + offset_c, mask=w_mask, other=0).to(tl.float32)
+        _sum += log * tgt * w[:, None]
 
     out = tl.sum(_sum, axis=0)
     out_ptrs = out_ptr + pid_n * D + offset_d
@@ -142,7 +145,7 @@ def celoss_probability_kernel(
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing"])
-def celoss_indice_smooth_kernel(
+def celoss_indices_smooth_kernel(
     inp_ptr,
     tgt_ptr,
     w_ptr,
@@ -150,25 +153,27 @@ def celoss_indice_smooth_kernel(
     w_tgt_ptr,
     ignore_index,
     label_smoothing,
-    N,
     C,
     D,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
     tgt_mask = offset_d < D
     tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
 
-    ignore_mask = not (tgt == ignore_index)
+    ignore_mask = not (tgt == ignore_index) and tgt_mask
 
-    w_tgt = tl.load(w_ptr + tgt, mask=tgt_mask, other=0).to(tl.float32)
+    if w_ptr is None:
+        w_tgt = ignore_mask
+    else:
+        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0)
     w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
-    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask and ignore_mask)
+    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -185,31 +190,34 @@ def celoss_indice_smooth_kernel(
     final_max = tl.max(tmp_max, axis=0)[None, :]
     tmp_sum = tmp_sum * tl.exp(tmp_max - final_max)
     final_sum = tl.log(tl.sum(tmp_sum, axis=0))[None, :]
+    final_sum_max = final_sum + final_max
 
     _sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
-        offset = offset_c[:, None] * D + offset_d[None, :]
-        inp_ptrs = inp_ptr + pid_n * C * D + offset
+        inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         mask = offset_c[:, None] < C and offset_d[None, :] < D
         inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
 
-        w_ptrs = w_ptr + offset_c
-        w = tl.load(w_ptrs, offset_c < C, other=0).to(tl.float32)
+        w_mask = offset_c < C
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w = tl.load(w_ptr + offset_c, w_mask, other=0).to(tl.float32)
 
-        smooth = tl.full([BLOCK_C, BLOCK_D], label_smoothing / C, dtype=tl.float32)
         smooth = tl.where(
             offset_c[:, None] == tgt[None, :],
             1 - label_smoothing + label_smoothing / C,
-            smooth,
-        )
+            label_smoothing / C,
+        ).to(tl.float32)
 
-        log = final_sum + final_max - inp
+        log = final_sum_max - inp
         _sum += log * smooth * w[:, None]
 
     out = tl.sum(_sum, axis=0)
+    out = tl.where(ignore_mask, out, 0)
     out_ptrs = out_ptr + pid_n * D + offset_d
-    tl.store(out_ptrs, out, mask=tgt_mask and ignore_mask)
+    tl.store(out_ptrs, out, mask=tgt_mask)
 
 
 @libentry()
@@ -222,7 +230,7 @@ def celoss_indice_smooth_kernel(
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "mean_num"])
-def celoss_indice_bwd(
+def celoss_indices_bwd(
     out_grad_ptr,
     inp_ptr,
     tgt_ptr,
@@ -230,14 +238,13 @@ def celoss_indice_bwd(
     inp_grad_ptr,
     ignore_index,
     mean_num,
-    N,
     C,
     D,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -245,8 +252,12 @@ def celoss_indice_bwd(
     tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
     out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
     out_grad = tl.load(out_grad_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
-    w_ptrs = w_ptr + tgt
-    w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
+
+    if w_ptr is None:
+        w_tgt = tgt_mask
+    else:
+        w_ptrs = w_ptr + tgt
+        w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
 
     ignore_mask = (tgt != ignore_index)[None, :]
 
@@ -302,14 +313,13 @@ def celoss_probability_bwd(
     inp_grad_ptr,
     label_smoothing,
     mean_num,
-    N,
     C,
     D,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
@@ -331,11 +341,14 @@ def celoss_probability_bwd(
         tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
         tgt = tgt * (1 - label_smoothing) + label_smoothing / C
 
-        w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)[:, None]
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w_ptrs = w_ptr + offset_c
+            w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
 
-        w_tgt_sum += tgt * w
+        w_tgt_sum += tgt * w[:, None]
 
         cur_max = tl.maximum(tmp_max, inp)
         cur_exp = tl.exp(inp - cur_max)
@@ -357,11 +370,14 @@ def celoss_probability_bwd(
         tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
         tgt = tgt * (1 - label_smoothing) + label_smoothing / C
 
-        w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)[:, None]
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w_ptrs = w_ptr + offset_c
+            w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
 
-        grad = w_tgt_sum / final_sum * tl.exp(inp - final_max) - w * tgt
+        grad = w_tgt_sum / final_sum * tl.exp(inp - final_max) - tgt * w[:, None]
         inp_grad = grad * out_grad * mean_num
 
         inp_grad_ptrs = inp_grad_ptr + offset
@@ -378,7 +394,7 @@ def celoss_probability_bwd(
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing", "mean_num"])
-def celoss_indice_smooth_bwd(
+def celoss_indices_smooth_bwd(
     out_grad_ptr,
     inp_ptr,
     tgt_ptr,
@@ -387,14 +403,13 @@ def celoss_indice_smooth_bwd(
     ignore_index,
     label_smoothing,
     mean_num,
-    N,
     C,
     D,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -415,9 +430,12 @@ def celoss_indice_smooth_bwd(
         inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
         inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
 
-        w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w_ptrs = w_ptr + offset_c
+            w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
 
         smooth = tl.full([BLOCK_C, BLOCK_D], label_smoothing / C, dtype=tl.float32)
         smooth = tl.where(
@@ -443,15 +461,17 @@ def celoss_indice_smooth_bwd(
         inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
         inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
 
-        w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w_ptrs = w_ptr + offset_c
+            w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
 
-        smooth = tl.full([BLOCK_C, BLOCK_D], label_smoothing / C, dtype=tl.float32)
         smooth = tl.where(
             offset_c[:, None] == tgt[None, :],
             1 - label_smoothing + label_smoothing / C,
-            smooth,
+            label_smoothing / C,
         )
 
         grad = w_sum / final_sum * tl.exp(inp - final_max) - smooth * w[:, None]
@@ -462,11 +482,65 @@ def celoss_indice_smooth_bwd(
         tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
 
 
+@libentry()
+@triton.autotune(
+    configs=[triton.Config({"BLOCK_N": n}) for n in [64, 256, 1024]],
+    key=[
+        "N",
+    ],
+)
+@triton.jit
+def sum_and_scale(
+    inp_ptr,
+    out_ptr,
+    N,
+    scalebyw: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    scale=1.0,
+    mean_num=None,
+):
+    mid_sum = tl.zeros(
+        [
+            BLOCK_N,
+        ],
+        dtype=tl.float32,
+    )
+    if scalebyw:
+        mid_wgt = tl.zeros(
+            [
+                BLOCK_N,
+            ],
+            dtype=tl.float32,
+        )
+        for off in range(0, N, BLOCK_N):
+            offset = off + tl.arange(0, BLOCK_N)
+            inp_ptrs = inp_ptr + offset
+            mask = offset < N
+            inp_vals = tl.load(inp_ptrs, mask=mask, other=0.0)
+            mid_sum += inp_vals
+            wgt_ptrs = scale + offset
+            wgt_vals = tl.load(wgt_ptrs, mask=mask, other=0.0)
+            mid_wgt += wgt_vals
+        out_val = tl.sum(mid_sum)
+        scale_val = tl.sum(mid_wgt)
+        tl.store(mean_num, scale_val)
+    else:
+        for off in range(0, N, BLOCK_N):
+            offset = off + tl.arange(0, BLOCK_N)
+            inp_ptrs = inp_ptr + offset
+            mask = offset < N
+            inp_vals = tl.load(inp_ptrs, mask=mask, other=0.0)
+            mid_sum += inp_vals
+        out_val = tl.sum(mid_sum)
+        scale_val = scale
+    out_val /= scale_val
+    tl.store(out_ptr, out_val)
+
+
 class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index, label_smoothing):
         logging.debug("GEMS CrossEntropyLoss")
-        # label_smoothing not supported
 
         shape = list(inp.shape)
         dim = inp.ndim
@@ -476,59 +550,81 @@ class CrossEntropyLoss(torch.autograd.Function):
         axis = 0 if dim == 1 else 1
         del shape[axis]
 
-        if weight is None:
-            weight = torch.ones(
-                [
-                    C,
-                ],
-                dtype=inp.dtype,
-                device=inp.device,
-            )
-
         inp = inp.contiguous()
         tgt = target.contiguous()
-        weight = weight.contiguous()
-        out = torch.zeros(shape, dtype=torch.float32, device=inp.device)
-        grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
+        weight = weight.contiguous() if weight is not None else None
+        out = torch.empty(shape, dtype=torch.float32, device=inp.device)
+        grid = lambda meta: (triton.cdiv(D, meta["BLOCK_D"]), N)
 
         if tgt.ndim == dim:
             # target probabilities
             with torch.cuda.device(inp.device):
                 celoss_probability_kernel[grid](
-                    inp, tgt, weight, out, label_smoothing, N, C, D
+                    inp,
+                    tgt,
+                    weight,
+                    out,
+                    label_smoothing,
+                    C,
+                    D,
                 )
         elif label_smoothing == 0:
             # target indices
-            w_tgt = torch.zeros(shape, dtype=torch.float32, device=inp.device)
+            w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
             with torch.cuda.device(inp.device):
-                celoss_indice_kernel[grid](
-                    inp, tgt, weight, out, w_tgt, ignore_index, N, C, D
+                celoss_indices_kernel[grid](
+                    inp,
+                    tgt,
+                    weight,
+                    out,
+                    w_tgt,
+                    ignore_index,
+                    C,
+                    D,
                 )
         else:
-            w_tgt = torch.zeros(shape, dtype=torch.float32, device=inp.device)
+            w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
             with torch.cuda.device(inp.device):
-                celoss_indice_smooth_kernel[grid](
-                    inp, tgt, weight, out, w_tgt, ignore_index, label_smoothing, N, C, D
+                celoss_indices_smooth_kernel[grid](
+                    inp,
+                    tgt,
+                    weight,
+                    out,
+                    w_tgt,
+                    ignore_index,
+                    label_smoothing,
+                    C,
+                    D,
                 )
-        ctx.save_for_backward(inp, tgt, weight)
-        ctx.N = N
-        ctx.C = C
-        ctx.D = D
-        ctx.ignore_index = ignore_index
-        ctx.label_smoothing = label_smoothing
-        ctx.mean_num = 1
-        ctx.shape = shape
 
-        if reduction == 0:  # NONE
-            return out.to(inp.dtype)
-        elif reduction == 1:  # MEAN
+        if reduction == 1:  # MEAN
+            out_reduce = torch.empty([], dtype=inp.dtype, device=inp.device)
             if tgt.ndim == dim:
-                ctx.mean_num = 1 / (N * D)
+                sum_and_scale[(1,)](out, out_reduce, N * D, False, scale=N * D)
             else:
-                ctx.mean_num = 1 / sum(w_tgt).item()
-            return (sum(out) * ctx.mean_num).to(inp.dtype)
-        else:  # SUM
-            return sum(out).to(inp.dtype)
+                wgt_sum = torch.empty([], dtype=torch.float32, device=inp.device)
+                sum_and_scale[(1,)](
+                    out, out_reduce, N * D, True, scale=w_tgt, mean_num=wgt_sum
+                )
+            out = out_reduce
+        elif reduction == 2:  # SUM
+            out_reduce = torch.empty([], dtype=inp.dtype, device=inp.device)
+            sum_and_scale[(1,)](out, out_reduce, N * D, False)
+            out = out_reduce
+
+        if inp.requires_grad:
+            ctx.save_for_backward(inp, tgt, weight)
+            ctx.N = N
+            ctx.C = C
+            ctx.D = D
+            ctx.ignore_index = ignore_index
+            ctx.label_smoothing = label_smoothing
+            ctx.shape = shape
+            ctx.mean_num = 1
+            if reduction == 1:
+                ctx.mean_num = N * D if tgt.ndim == dim else wgt_sum
+
+        return out.to(inp.dtype)
 
     @staticmethod
     def backward(ctx, out_grad):
@@ -540,23 +636,27 @@ class CrossEntropyLoss(torch.autograd.Function):
         D = ctx.D
         ignore_index = ctx.ignore_index
         label_smoothing = ctx.label_smoothing
-        mean_num = ctx.mean_num
+        mean_num = (
+            1 / ctx.mean_num.item()
+            if isinstance(ctx.mean_num, torch.Tensor)
+            else 1 / ctx.mean_num
+        )
         shape = ctx.shape
 
         out_grad = out_grad.broadcast_to(shape).contiguous()
 
         inp_grad = torch.zeros(inp.shape, dtype=inp.dtype, device=inp.device)
-        grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
+        grid = lambda meta: (triton.cdiv(D, meta["BLOCK_D"]), N)
         if tgt.ndim == inp.ndim:
             celoss_probability_bwd[grid](
-                out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, N, C, D
+                out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, C, D
             )
         elif label_smoothing == 0:
-            celoss_indice_bwd[grid](
-                out_grad, inp, tgt, weight, inp_grad, ignore_index, mean_num, N, C, D
+            celoss_indices_bwd[grid](
+                out_grad, inp, tgt, weight, inp_grad, ignore_index, mean_num, C, D
             )
         else:
-            celoss_indice_smooth_bwd[grid](
+            celoss_indices_smooth_bwd[grid](
                 out_grad,
                 inp,
                 tgt,
@@ -565,7 +665,6 @@ class CrossEntropyLoss(torch.autograd.Function):
                 ignore_index,
                 label_smoothing,
                 mean_num,
-                N,
                 C,
                 D,
             )

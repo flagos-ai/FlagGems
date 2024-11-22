@@ -60,7 +60,7 @@ THRESHOLD_SHAPE = (
     if QUICK_MODE
     else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
 )
-CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if QUICK_MODE else ["mean", "none", "sum"]
+CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
 
 
 @pytest.mark.amax
@@ -97,9 +97,10 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
+@pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cross_entropy_loss_indices(
-    shape, dtype, ignore_index, reduction, label_smoothing
+    shape, dtype, weight, ignore_index, reduction, label_smoothing
 ):
     dim = 1
     up_limit = shape[dim] - 1
@@ -108,18 +109,23 @@ def test_accuracy_cross_entropy_loss_indices(
 
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     target = torch.randint(0, up_limit, target_shape, device="cuda")
-    weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
-    ref_weight = to_reference(weight, True)
+
+    if weight:
+        wgt = torch.randn(shape[dim], dtype=dtype, device="cuda")
+        ref_wgt = to_reference(wgt, True)
+    else:
+        wgt = None
+        ref_wgt = None
     ref_criterion = torch.nn.CrossEntropyLoss(
-        weight=ref_weight,
+        weight=ref_wgt,
         ignore_index=ignore_index,
         reduction=reduction,
         label_smoothing=label_smoothing,
     )
     res_criterion = torch.nn.CrossEntropyLoss(
-        weight=weight,
+        weight=wgt,
         ignore_index=ignore_index,
         reduction=reduction,
         label_smoothing=label_smoothing,
