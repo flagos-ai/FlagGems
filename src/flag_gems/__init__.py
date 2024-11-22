@@ -112,6 +112,7 @@ def enable(lib=aten_lib):
     lib.impl("topk", topk, "CUDA")
     lib.impl("var_mean.correction", var_mean, "CUDA")
     lib.impl("linalg_vector_norm", vector_norm, "CUDA")
+    lib.impl("where.self_out", where_self_out, "CUDA")
     lib.impl("where.self", where_self, "CUDA")
     lib.impl("where.ScalarSelf", where_scalar_self, "CUDA")
     lib.impl("where.ScalarOther", where_scalar_other, "CUDA")

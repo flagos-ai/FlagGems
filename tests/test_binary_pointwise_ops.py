@@ -974,6 +974,53 @@ def test_accuracy_sub_scalar_scalar(dtype):
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_where_self_out_cross_device(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    cond = torch.randint(0, 2, shape, dtype=torch.bool, device="cuda")
+
+    import itertools
+
+    shapes = (shape, None)
+    for a_shape, b_shape, c_shape in itertools.product(shapes, shapes, shapes):
+        a = inp1 if a_shape else torch.tensor(0)
+        b = inp2 if b_shape else torch.tensor(1)
+        c = cond if c_shape else torch.tensor(True)
+
+        ref_a = to_reference(a)
+        ref_b = to_reference(b)
+        ref_c = to_reference(c)
+
+        ref_out = torch.where(ref_c, ref_a, ref_b)
+        with flag_gems.use_gems():
+            res_out = torch.where(c, a, b)
+
+        gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.where
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_where_self_out(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    cond = torch.randint(0, 2, shape, dtype=torch.bool, device="cuda")
+    out = torch.empty(shape, dtype=dtype, device="cuda")
+    ref_out = to_reference(out)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+    ref_cond = to_reference(cond)
+
+    ref_out = torch.where(ref_cond, ref_inp1, ref_inp2, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.where(cond, inp1, inp2, out=out)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.where
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_where_self(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
