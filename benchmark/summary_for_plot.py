@@ -130,19 +130,7 @@ def summary_for_plot(benchmark_results):
     }
 
     for item in benchmark_results:
-        dtype_suffix = ""
-        if item.dtype in ["torch.float16", "torch.float32", "torch.bfloat16"]:
-            dtype_suffix = ""  # No suffix for float types
-        else:
-            dtype_suffix = (
-                "_complex"
-                if "complex64" in item.dtype
-                else "_int"
-                if "int" in item.dtype
-                else "_bool"
-            )
-
-        op_name = item.op_name + dtype_suffix
+        op_name = item.op_name
         avg_speedup = calculate_avg_speedup_over_dtype(item.result)
         cur_op_summary = summary[op_name]
         cur_op_summary.op_name = op_name
