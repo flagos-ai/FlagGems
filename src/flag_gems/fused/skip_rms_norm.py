@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -25,7 +26,7 @@ def skip_rms_norm_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     Y += pid * y_stride_r
     X += pid * x_stride_r
     R += pid * r_stride_r

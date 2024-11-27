@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ..utils import triton_lang_extension as tle
+
 
 def configs():
     block = [(bx, by) for bx in (512, 256, 128, 64) for by in (2, 1)]
@@ -38,8 +40,8 @@ def upsample_bicubic2d_aa_kernel(
     BLOCK_X: tl.constexpr,
     BLOCK_Y: tl.constexpr,
 ):
-    pid_x = tl.program_id(axis=0)
-    pid_y = tl.program_id(axis=1)
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
     ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
     oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
 
@@ -389,8 +391,8 @@ def general_interpolate_bicubic2d_aa_kernel(
     BLOCK_X: tl.constexpr,
     BLOCK_Y: tl.constexpr,
 ):
-    pid_x = tl.program_id(axis=0)
-    pid_y = tl.program_id(axis=1)
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
     ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
     oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
 

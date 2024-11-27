@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 MAX_TILE_K = 8192
 NUM_SMS = torch.cuda.get_device_properties(
@@ -62,8 +63,8 @@ def softmax_kernel_non_inner(
     TILE_K: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_k = tl.program_id(1)
-    pid_m = tl.program_id(0)
+    pid_k = tle.program_id(1)
+    pid_m = tle.program_id(0)
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)
 
@@ -154,7 +155,7 @@ def softmax_kernel_inner(
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
+    pid_m = tle.program_id(0)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         offset = pid_m * N + n_offsets
@@ -254,8 +255,8 @@ def softmax_backward_kernel_non_inner(
     TILE_K: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     offsets_k = pid_k * TILE_K + tl.arange(0, TILE_K)
 
     if ONE_TILE_PER_CTA:
@@ -325,7 +326,7 @@ def softmax_backward_kernel_inner(
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
+    pid_m = tle.program_id(0)
     m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)

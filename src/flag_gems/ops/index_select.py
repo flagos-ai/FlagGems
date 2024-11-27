@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
+from ..utils import triton_lang_extension as tle
 
 
 def cfggen():
@@ -24,8 +25,8 @@ def cfggen():
 def index_select_kernel(
     inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
 ):
-    pid_x = tl.program_id(axis=0)
-    pid_y = tl.program_id(axis=1)
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
     rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
     cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)

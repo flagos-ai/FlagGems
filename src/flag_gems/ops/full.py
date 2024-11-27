@@ -6,6 +6,8 @@ import triton.language as tl
 
 from flag_gems.utils.shape_utils import volume
 
+from ..utils import triton_lang_extension as tle
+
 
 @triton.jit(do_not_specialize=["fill_value"])
 def full_kernel(
@@ -14,7 +16,7 @@ def full_kernel(
     fill_value,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
+    pid = tle.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements

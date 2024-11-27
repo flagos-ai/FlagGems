@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -17,7 +18,7 @@ def embedding_kernel(
     N: tl.constexpr,  # number of columns in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     out_ptr += pid * N
     in_ptr += pid
 
@@ -38,7 +39,7 @@ def indice_freq_kernel(
     elem_cnt: tl.constexpr,  # number of columns in X
     INDICE_BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     block_start = pid * INDICE_BLOCK_SIZE
 
     offsets = block_start + tl.arange(0, INDICE_BLOCK_SIZE)
@@ -59,7 +60,7 @@ def embedding_backward_kernel(
     N: tl.constexpr,  # number of columns in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     grad_out += pid * N
     indices += pid
 
@@ -91,8 +92,8 @@ def embedding_grad_scale_kernel(
     N,
     BLOCK_SIZE: tl.constexpr,
 ):
-    row_start = tl.program_id(0)
-    row_step = tl.num_programs(0)
+    row_start = tle.program_id(0)
+    row_step = tle.num_programs(0)
 
     for row_idx in range(row_start, n_rows, row_step):
         embedding_scale = 1.0

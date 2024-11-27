@@ -7,6 +7,8 @@ import triton.language as tl
 from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
+from ..utils import triton_lang_extension as tle
+
 
 def heur_block(args):
     if args["N"] <= 512:
@@ -44,7 +46,7 @@ def uniform_kernel(
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    i4 = tle.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
@@ -52,7 +54,7 @@ def uniform_kernel(
     r1 = uint_to_uniform_float(r1) * (to - from_) + from_
     r2 = uint_to_uniform_float(r2) * (to - from_) + from_
     r3 = uint_to_uniform_float(r3) * (to - from_) + from_
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
+    off_0 = tle.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
