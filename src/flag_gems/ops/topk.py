@@ -8,6 +8,7 @@ import triton.language.core as core
 from triton.language.standard import _log2, zeros_like
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 _MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
 _MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
@@ -52,9 +53,9 @@ def topk_stage1_kernel(
     CHUNK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = tl.program_id(0)
-    cur_chunk_idx = tl.program_id(1)
-    chunk_num = tl.num_programs(1)
+    cur_batch = tle.program_id(0)
+    cur_chunk_idx = tle.program_id(1)
+    chunk_num = tle.num_programs(1)
 
     y_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
     index_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
@@ -215,7 +216,7 @@ def topk_stage2_kernel(
     BLOCK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = tl.program_id(0)
+    cur_batch = tle.program_id(0)
     chunk_x += cur_batch * N
     chunk_index += cur_batch * N
     y_ptr += cur_batch * k

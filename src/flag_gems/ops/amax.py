@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
-from ..utils.shape_utils import can_use_int32_index
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -16,11 +16,8 @@ def amax_kernel_1(
     mid,
     M,
     BLOCK_SIZE: tl.constexpr,
-    INT64_INDEX: tl.constexpr = False,
 ):
-    pid = tl.program_id(0)
-    if INT64_INDEX:
-        pid = pid.to(tl.int64)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -59,12 +56,9 @@ def amax_kernel(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    INT64_INDEX: tl.constexpr = False,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tl.program_id(0)
-    if INT64_INDEX:
-        pid = pid.to(tl.int64)
+    pid = tle.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
@@ -91,7 +85,6 @@ def amax(inp, dim=None, keepdim=False):
         block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype
         mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        use_int64_index = not can_use_int32_index(inp)
         if not keepdim:
             out = torch.empty([], dtype=dtype, device=inp.device)
         else:
@@ -101,7 +94,10 @@ def amax(inp, dim=None, keepdim=False):
             out = torch.empty(shape, dtype=dtype, device=inp.device)
         with torch.cuda.device(inp.device):
             amax_kernel_1[(mid_size, 1)](
-                inp, mid, M, block_size, INT64_INDEX=use_int64_index
+                inp,
+                mid,
+                M,
+                block_size,
             )
             amax_kernel_2[(1, 1)](
                 mid, out, mid_size, block_mid
@@ -116,7 +112,6 @@ def amax(inp, dim=None, keepdim=False):
         shape = list(inp.shape)
         dim = [d % inp.ndim for d in dim]
         inp = dim_compress(inp, dim)
-        use_int64_index = not can_use_int32_index(inp)
         N = 1
         for i in dim:
             N *= shape[i]
@@ -127,7 +122,7 @@ def amax(inp, dim=None, keepdim=False):
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch.cuda.device(inp.device):
-            amax_kernel[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
+            amax_kernel[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
         return out

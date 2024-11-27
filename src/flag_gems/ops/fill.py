@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -15,7 +16,7 @@ def fill_scalar_kernel(
     value_scalar,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     cols = tl.arange(0, BLOCK_SIZE)
     offset = pid * BLOCK_SIZE + cols
     tl.store(out_ptr + offset, value_scalar, mask=offset < N)
@@ -29,7 +30,7 @@ def fill_tensor_kernel(
     value_ptr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     cols = tl.arange(0, BLOCK_SIZE)
     offset = pid * BLOCK_SIZE + cols
     value_scalar = tl.load(value_ptr)  # load the value from the tensor.

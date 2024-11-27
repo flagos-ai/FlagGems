@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -16,7 +17,7 @@ def mean_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -66,7 +67,7 @@ def mean(inp, *, dtype=None):
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Mean = Mean + pid
     row_mask = pid < M

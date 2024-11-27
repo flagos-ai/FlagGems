@@ -6,6 +6,8 @@ import triton.language as tl
 
 from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 
+from ..utils import triton_lang_extension as tle
+
 
 def heur_block(args):
     if args["N"] <= 512:
@@ -44,7 +46,7 @@ def fused_exponential_kernel(
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    i4 = tle.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
@@ -54,7 +56,7 @@ def fused_exponential_kernel(
         y0 = transform_exponential(d0, lambd, eps)
         y1 = transform_exponential(d1, lambd, eps)
         UNROLL = 2
-        start = tl.program_id(0).to(tl.uint64) * BLOCK * UNROLL
+        start = tle.program_id(0).to(tl.uint64) * BLOCK * UNROLL
         off_0 = start + tl.arange(0, BLOCK)
         off_1 = off_0 + BLOCK
         tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
@@ -69,7 +71,7 @@ def fused_exponential_kernel(
         y2 = transform_exponential(f2, lambd, eps)
         y3 = transform_exponential(f3, lambd, eps)
         UNROLL = 4
-        start = tl.program_id(0).to(tl.uint64) * BLOCK * UNROLL
+        start = tle.program_id(0).to(tl.uint64) * BLOCK * UNROLL
         off_0 = start + tl.arange(0, BLOCK)
         off_1 = off_0 + BLOCK
         off_2 = off_1 + BLOCK

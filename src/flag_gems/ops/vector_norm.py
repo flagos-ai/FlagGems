@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
+from ..utils import triton_lang_extension as tle
 
 try:
     from triton.language.extra.cuda.libdevice import pow
@@ -28,7 +29,7 @@ def cfggen():
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -50,7 +51,7 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @libentry()
 @triton.jit
 def l2_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -76,7 +77,7 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -98,7 +99,7 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @libentry()
 @triton.jit
 def max_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -124,7 +125,7 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -146,7 +147,7 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @libentry()
 @triton.jit
 def min_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -172,7 +173,7 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -193,7 +194,7 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @libentry()
 @triton.jit
 def l0_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -220,7 +221,7 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit(do_not_specialize=["ord"])
 def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
     row_mask = pid < M
@@ -241,7 +242,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
 @libentry()
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
     Mid = Mid + pid
@@ -273,7 +274,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
     with torch.cuda.device(x.device):
-        if dim is None or len(dim) == x.ndim:
+        if (not dim) or len(dim) == x.ndim:
             dim = list(range(x.ndim))
             shape = [1] * x.ndim
             x = dim_compress(x, dim)

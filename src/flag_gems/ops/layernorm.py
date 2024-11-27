@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 from ..utils.type_utils import get_accumulator_dtype
 
 
@@ -35,7 +36,7 @@ def layer_norm_persistent_kernel(
 ):
     # using 1d tile makes code clean
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
 
     n_offsets = tl.arange(0, TILE_N)
     mask = n_offsets < N
@@ -78,7 +79,7 @@ def layer_norm_persistent_kernel_multiline(
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     m_offsets = pid * TILE_M + tl.arange(0, TILE_M)
     m_mask = m_offsets < M
 
@@ -129,7 +130,7 @@ def layer_norm_loop_kernel(
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
 
     # Compute mean
     m = tl.zeros((TILE_N,), dtype=tl.float32)  # mean
@@ -217,7 +218,7 @@ def layer_norm_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    pid = tle.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -283,7 +284,7 @@ def weight_bias_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+    pid = tle.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)[None, :]
     col_mask = pid < N
     dY += pid
     X += pid

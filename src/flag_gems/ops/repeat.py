@@ -58,6 +58,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
+    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
     return code
@@ -275,11 +276,11 @@ def generate_repeat_kernel(
     with code.indent():
         # get pid
         code.writeline("# task id & masking")
-        pid_stmt = "pid = tl.program_id(0)"
+        pid_stmt = "pid = tle.program_id(0)"
         code.writeline(pid_stmt)
         function_ns.create_name("pid")
 
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         function_ns.create_name("num_ctas")
 
         # get tid (a.k.a task id)

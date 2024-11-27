@@ -6,12 +6,13 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     y_ptr += pid * BLOCK_SIZE
     step_offset = pid * BLOCK_SIZE * step
 

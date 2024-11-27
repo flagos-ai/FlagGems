@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ..utils import triton_lang_extension as tle
+
 
 def configs():
     block = [1024, 2048]
@@ -37,7 +39,7 @@ def upsample_nearest2d_kernel(
     SAME_H: tl.constexpr,
     SAME_W: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
+    pid = tle.program_id(axis=0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     ow = idx % OW
     oh = idx // OW % OH

@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 try:
     from triton.language.extra.cuda.libdevice import rsqrt
@@ -32,7 +33,7 @@ def group_norm_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
@@ -85,7 +86,7 @@ def group_norm_backward_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
 
@@ -141,7 +142,7 @@ def weight_bias_backward_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_HW: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     hw_offset = tl.arange(0, BLOCK_HW)

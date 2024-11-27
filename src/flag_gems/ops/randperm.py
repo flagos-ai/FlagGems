@@ -7,6 +7,7 @@ import triton.language as tl
 from flag_gems.utils.random_utils import philox_cuda_seed_offset
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 from .topk import argsort
 
 _MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
@@ -68,7 +69,7 @@ def bitonic_sortbykey_kernel(
     BLOCK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = tl.program_id(0)
+    cur_batch = tle.program_id(0)
     chunk_x += cur_batch * N
     chunk_index += cur_batch * N
     index_ptr += cur_batch * N
@@ -125,9 +126,9 @@ def digit_hist_kernel(
     bins_segment,
     BLOCK_SIZE: tl.constexpr,
 ):
-    bin_segid = tl.program_id(1)
-    pid0 = tl.program_id(0)
-    grid0 = tl.num_programs(0)
+    bin_segid = tle.program_id(1)
+    pid0 = tle.program_id(0)
+    grid0 = tle.num_programs(0)
 
     key_offset = pid0.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     key_mask = key_offset < n_elements
@@ -180,7 +181,7 @@ def radix_sortbykey_scatter_kernel(
     LOOKBACK_KIND_MASK = LOOKBACK_PARTIAL_MASK | LOOKBACK_GLOBAL_MASK
     LOOKBACK_VALUE_MASK = ~LOOKBACK_KIND_MASK
 
-    pid0 = tl.program_id(0)
+    pid0 = tle.program_id(0)
     portion_id_i64 = portion_id
     portion_id_i64 = portion_id_i64.to(tl.int64)
     key_offset = (
@@ -196,8 +197,8 @@ def radix_sortbykey_scatter_kernel(
     ikey_data = radix_type_convert(key_data)
     key_digit = (ikey_data >> bit_offset) & bit_mask
 
-    blk_bin_start = tl.program_id(1) * bins_segment
-    last_block = tl.program_id(0) == tl.num_programs(0) - 1
+    blk_bin_start = tle.program_id(1) * bins_segment
+    last_block = tle.program_id(0) == tle.num_programs(0) - 1
     for s in range(bins_segment):
         bin_id = s + blk_bin_start
         key_digit_mask = (key_digit == bin_id) & key_mask
@@ -259,7 +260,7 @@ def radix_sortbykey_scatter_kernel(
 def duplicate_keys_shuffle_kernel(
     value_in, n_elements, philox_seed, philox_offset, BLOCK_SIZE: tl.constexpr
 ):
-    pid0 = tl.program_id(0)
+    pid0 = tle.program_id(0)
     offset_range = tl.arange(0, BLOCK_SIZE)
     value_offset = pid0.to(tl.int64) * BLOCK_SIZE + offset_range
     value_mask = value_offset < n_elements
@@ -269,7 +270,7 @@ def duplicate_keys_shuffle_kernel(
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    i4 = tle.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     c0 += i4
     _O = c0 * 0
     r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)

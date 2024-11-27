@@ -6,6 +6,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ..utils import triton_lang_extension as tle
+
 Shape = Tuple[int]
 Stride = Tuple[int]
 MultiIndex = Tuple[int]
@@ -252,8 +254,8 @@ def add_on_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_x = tl.program_id(axis=0)
-    pid_y = tl.program_id(axis=1)
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
     rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offset < M
 

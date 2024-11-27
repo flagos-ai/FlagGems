@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -40,7 +41,7 @@ def apply_rotary_pos_emb_kernel(
     ROTARY_INTERLEAVED: tl.constexpr,
     MAX_POSITION_EMBEDDINGS: tl.constexpr,
 ):
-    s_id = tl.program_id(0)
+    s_id = tle.program_id(0)
 
     if pos_ptr is None:
         pos_id = s_id % seq_len

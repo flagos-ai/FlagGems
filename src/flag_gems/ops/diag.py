@@ -2,12 +2,14 @@ import torch
 import triton
 import triton.language as tl
 
+from ..utils import triton_lang_extension as tle
+
 
 @triton.jit
 def diag_1d_to_2d_kernel(
     data_ptr, output_ptr, N, M, stride, diagonal: tl.constexpr, BLOCK_SIZE: tl.constexpr
 ):
-    idx = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    idx = tle.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     if diagonal >= 0:
         row_idx = idx
@@ -35,7 +37,7 @@ def diag_2d_to_1d_kernel(
     diagonal: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    idx = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    idx = tle.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     if diagonal >= 0:
         row_idx = idx

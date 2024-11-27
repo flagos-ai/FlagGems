@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 def heur_even_k(args):
@@ -137,8 +138,8 @@ def mm_kernel(
     EVEN_K: tl.constexpr,
 ):
     # matrix multiplication
-    pid = tl.program_id(0)
-    pid_z = tl.program_id(1)
+    pid = tle.program_id(0)
+    pid_z = tle.program_id(1)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance
