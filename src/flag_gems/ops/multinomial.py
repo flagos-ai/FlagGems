@@ -7,8 +7,6 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_cuda_seed_offset, uniform
 
-from ..utils import triton_lang_extension as tle
-
 
 @libentry()
 @triton.heuristics(
@@ -27,8 +25,8 @@ def multinomial_with_replacement(
     #           |   dist0.batch0 | dist0.batch1 | dist0.batch2 ...
     #   grid.y  |   dist1.batch0 | dist1.batch1 | dist1.batch2 ...
     #           |   dist2.batch0 | dist2.batch1 | dist2.batch2 ...
-    y_off = tle.program_id(1) * N
-    n = tle.program_id(0) * NBLOCK + tl.arange(0, NBLOCK)
+    y_off = tl.program_id(1) * N
+    n = tl.program_id(0) * NBLOCK + tl.arange(0, NBLOCK)
     rv, _, _, _ = uniform(philox_seed, philox_offset, y_off + n)
 
     # Do a binary search for each random number on the cumulative probabilities.
@@ -40,7 +38,7 @@ def multinomial_with_replacement(
     rv += 0.0001
     rv = tl.where(rv > 0.9999, 0.9999, rv)
 
-    cdf_ptr += tle.program_id(1) * K
+    cdf_ptr += tl.program_id(1) * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)
     end = tl.zeros((NBLOCK,), dtype=tl.int32) + K - 1
     steps = tl.math.log2(K.to(tl.float32)).to(tl.int32) + 1
