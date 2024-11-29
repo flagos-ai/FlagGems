@@ -4,9 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.shape_utils import volume
-
 from ..utils import triton_lang_extension as tle
+from ..utils.shape_utils import volume
 
 
 @triton.jit
