@@ -122,7 +122,11 @@ class LibEntry(triton.KernelInterface):
                         raise RuntimeError("Invalid Runtime Function")
                     fn = fn.fn
                 for p in self.jit_function.params:
-                    if p.is_constexpr and p.name not in constexprs:
+                    if (
+                        p.is_constexpr
+                        and p.name not in constexprs
+                        and (p.default is not inspect._empty)
+                    ):
                         constexprs[p.name] = p.default
                 cache[entry_key] = (kernel, constexprs)
             return kernel, constexprs
