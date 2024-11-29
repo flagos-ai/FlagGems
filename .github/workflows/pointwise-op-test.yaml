@@ -23,7 +23,6 @@ jobs:
           echo "current dir: $(pwd)"
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "current dir: $(pwd)"
             echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
             PR_ID=${{ github.event.pull_request.number }}
           elif [ "${{ github.event_name }}" == "push" ]; then
@@ -31,16 +30,4 @@ jobs:
             echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
-          ID_SHA="${PR_ID}-${GITHUB_SHA}"
-          echo ID_SHA $ID_SHA
-          PR_ID_DIR="PR${PR_ID}"
-
-          COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
-          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_dynamic.py && \
-          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py && \
-          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py -m abs --record=log && \
-          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py && \
-          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py
-
-          mkdir -p /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}
-          mv ${ID_SHA}* /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}
+          bash tools/pointwise-op-test.sh ${PR_ID}
