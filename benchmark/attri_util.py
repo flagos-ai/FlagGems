@@ -172,12 +172,22 @@ class BenchmarkResult:
     result: List[BenchmarkMetrics]
 
     def __str__(self) -> str:
-        header = (
-            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, level={self.level})\n"
-            f"{'Status':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
-            f"{'Size Detail':>20}\n"
-            f"{'-' * 90}\n"
-        )
+        if self.result[0].tflops and self.result[0].tflops != 0.0:
+            header = (
+                f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
+                f"level={self.level})\n"
+                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20} {'TFLOPS':>20}"
+                f"{'Size Detail':>20}\n"
+                f"{'-' * 120}\n"
+            )
+        else:
+            header = (
+                f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, "
+                f"level={self.level})\n"
+                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
+                f"{'Size Detail':>20}\n"
+                f"{'-' * 90}\n"
+            )
         metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
         return header + metrics_lines
 
@@ -191,18 +201,33 @@ class BenchmarkResult:
         )
         latency_str = f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
         speedup_str = f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
+        if metrics.tflops and metrics.tflops != 0.0:
+            tflops_str = (
+                f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
+            )
         shape_detail_str = (
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         )
         status = "SUCCESS" if metrics.error_msg is None else "FAILED"
-        return (
-            f"{status:<10}"
-            f"{latency_base_str:>20}"
-            f"{latency_str:>20}"
-            f"{speedup_str:>20}"
-            f"{' ' * 10}"
-            f"{shape_detail_str}\n"
-        )
+        if metrics.tflops and metrics.tflops != 0.0:
+            return (
+                f"{status:<10}"
+                f"{latency_base_str:>20}"
+                f"{latency_str:>20}"
+                f"{speedup_str:>20}"
+                f"{tflops_str:>20}"
+                f"{' ' * 10}"
+                f"{shape_detail_str}\n"
+            )
+        else:
+            return (
+                f"{status:<10}"
+                f"{latency_base_str:>20}"
+                f"{latency_str:>20}"
+                f"{speedup_str:>20}"
+                f"{' ' * 10}"
+                f"{shape_detail_str}\n"
+            )
 
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
         first_shape = (
