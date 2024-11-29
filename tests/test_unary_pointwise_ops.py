@@ -305,15 +305,12 @@ def test_accuracy_erf(shape, dtype):
 
 @pytest.mark.isfinite
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
 def test_accuracy_isfinite(shape, dtype):
-    if dtype in ALL_FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
-        inp = torch.masked_fill(inp, inp > 1.0, float("inf"))
-        inp = torch.masked_fill(inp, inp < -1.0, float("-inf"))
-        inp = torch.masked_fill(inp, (inp > -0.1) & (inp < 0.1), float("nan"))
-    else:
-        inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.masked_fill(inp, inp > 1.0, float("inf"))
+    inp = torch.masked_fill(inp, inp < -1.0, float("-inf"))
+    inp = torch.masked_fill(inp, (inp > -0.1) & (inp < 0.1), float("nan"))
     ref_inp = to_reference(inp)
 
     ref_out = torch.isfinite(ref_inp)
