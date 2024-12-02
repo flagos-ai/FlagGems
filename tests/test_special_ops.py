@@ -708,6 +708,26 @@ def test_accuracy_cat(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.cat
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        (((0, 3), (2, 3)), 0),
+        (((0, 3), (0, 3)), 0),
+        (((0,), (0,)), 0),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_cat_empty_tensor(shape, dim, dtype):
+    inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    ref_inp = [to_reference(_) for _ in inp]
+    ref_out = torch.cat(ref_inp, dim)
+
+    with flag_gems.use_gems():
+        res_out = torch.cat(inp, dim)
+    gems_assert_equal(res_out, ref_out)
+
+
 VSTACK_SHAPES = [
     [(3,), (3,)],
     [(3, 33), (7, 33)],

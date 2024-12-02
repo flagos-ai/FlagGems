@@ -704,3 +704,50 @@ def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
     y = torch.randn_like(x)
     out = add(x, y)
     torch.testing.assert_close(out, x + y)
+
+
+@pytest.mark.parametrize("use_1d_tile", [True, False])
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=use_1d_tile,
+    )
+
+    @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")], config=config)
+    @triton.jit
+    def f(x):
+        return x * 2.0
+
+    shape = (0, 10)
+    x = torch.randn(shape, device="cuda")
+    out = f(x)
+    torch.testing.assert_close(out, x * 2.0)
+
+
+@pytest.mark.parametrize("use_1d_tile", [True, False])
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=use_1d_tile,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
+    )
+    @triton.jit
+    def f(x, y):
+        return x * 2.0 + y
+
+    shape = (0, 10)
+    x = torch.randn(shape, device="cuda")
+    y = torch.randn_like(x)
+    out = f(x, y)
+    torch.testing.assert_close(out, x * 2.0 + y)
