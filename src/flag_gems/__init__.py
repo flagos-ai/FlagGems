@@ -29,6 +29,7 @@ def enable(lib=aten_lib):
     lib.impl("cos", cos, "CUDA")
     lib.impl("pad", pad, "CUDA")
     lib.impl("cumsum", cumsum, "CUDA")
+    lib.impl("diag_embed", diag_embed, "CUDA")
     lib.impl("div.Tensor", true_divide, "CUDA")
     lib.impl("div.Scalar", true_divide, "CUDA")
     lib.impl("div.Tensor_mode", div_mode, "CUDA")

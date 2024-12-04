@@ -264,3 +264,22 @@ def test_perf_diag():
     )
 
     bench.run()
+
+
+@pytest.mark.diag_embed
+def test_perf_diag_embed():
+    def diag_embed_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield {"input": inp},
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield {"input": inp, "offset": 1, "dim1": 0, "dim2": -1},
+
+    bench = EmbeddingBenchmark(
+        input_fn=diag_embed_input_fn,
+        op_name="diag_embed",
+        torch_op=torch.diag_embed,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+    )
+
+    bench.run()
