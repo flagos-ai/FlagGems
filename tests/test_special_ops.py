@@ -8,6 +8,7 @@ import flag_gems
 
 from .accuracy_utils import (
     ALL_INT_DTYPES,
+    BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
     SPECIAL_SHAPES,
@@ -832,15 +833,17 @@ def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-# Test diag op
 @pytest.mark.diag
-@pytest.mark.parametrize(
-    "shape", [(1024, 1), (1024), (1024, 1024), (512, 1024), (798, 798)]
-)
+@pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
 @pytest.mark.parametrize("diagonal", [-2, -1, 0, 1, 2])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
 def test_accuracy_diag(shape, diagonal, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    elif dtype in BOOL_TYPES:
+        inp = torch.randint(0, 2, size=shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(0, 0x7FFF, size=shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp)
 
     ref_out = torch.diag(ref_inp, diagonal)
