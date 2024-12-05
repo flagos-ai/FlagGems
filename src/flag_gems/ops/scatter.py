@@ -15,6 +15,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton.language as tl")
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
@@ -30,24 +31,15 @@ def generate_scatter_kernel(
     code.newline()
 
     # the autotune function
-    code.writeline("def cfggen():")
-    with code.indent():
-        code.writeline("block_m = [1, 2, 4, 8]")
-        code.writeline("block_n = [256, 512, 1024, 2048]")
-        code.writeline("configs = [")
-        with code.indent():
-            code.writeline('triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)')
-            code.writeline("for m in block_m")
-            code.writeline("for n in block_n")
-        code.writeline("]")
-        code.writeline("return configs")
 
     code.newline()
     code.newline()
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline('@triton.autotune(configs=cfggen(), key=["M", "N"])')
+    code.writeline(
+        '@triton.autotune(configs=runtime.get_triton_config("scatter"), key=["M", "N"])'
+    )
     code.writeline("@triton.jit")
 
     # signature

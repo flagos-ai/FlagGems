@@ -6,6 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils.random_utils import philox_cuda_seed_offset
 
+from .. import runtime
 from ..utils import libentry
 from .topk import argsort
 
@@ -151,7 +152,7 @@ def digit_hist_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_triton_config("randperm"),
     key=["n_elements"],
 )
 @triton.jit

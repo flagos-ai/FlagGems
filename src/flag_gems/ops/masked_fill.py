@@ -4,21 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import broadcastable_to, libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    block_size = [1024, 2048, 4096]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_SIZE": n}, num_warps=w) for n in block_size for w in warps
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["N"])
+@triton.autotune(configs=runtime.get_triton_config("masked_fill"), key=["N"])
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(axis=0)
@@ -32,7 +24,7 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["N"])
+@triton.autotune(configs=runtime.get_triton_config("masked_fill"), key=["N"])
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(axis=0)

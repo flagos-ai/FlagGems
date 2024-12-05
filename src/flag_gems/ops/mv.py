@@ -4,19 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_stages=s, num_warps=w)
-        for m in [32, 64, 128]
-        for n in [1, 2, 4, 8]
-        for s in [3, 4]
-        for w in [4, 8]
-    ],
+    configs=runtime.get_triton_config("mv"),
     key=["M", "N"],
 )
 @triton.jit

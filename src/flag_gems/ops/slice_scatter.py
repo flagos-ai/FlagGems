@@ -4,20 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry, offsetCalculator, restride_dim
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("select_scatter"), key=["M", "N"])
 @triton.jit
 def slice_scatter_kernel(
     inp,
@@ -315,13 +308,7 @@ def scatter_3d_mid_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config(kwargs={"R": 1, "C": 512}, num_warps=4),
-        triton.Config(kwargs={"R": 32, "C": 32}, num_warps=4),
-        triton.Config(kwargs={"R": 64, "C": 64}, num_warps=4),
-        triton.Config(kwargs={"R": 4, "C": 512}, num_warps=4),
-        triton.Config(kwargs={"R": 16, "C": 128}, num_warps=4),
-    ],
+    configs=runtime.get_triton_config("select_scatter_inner"),
     key=["strided", "pivoted"],
 )
 @triton.heuristics(

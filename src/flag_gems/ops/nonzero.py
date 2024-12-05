@@ -4,17 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": k}, num_warps=w, num_stages=4)
-        for w in [4, 8, 16, 32]
-        for k in [256, 512, 1024, 2048, 4096, 8192]
-    ],
+    configs=runtime.get_triton_config("nonzero"),
     key=[
         "n_elements",
     ],
