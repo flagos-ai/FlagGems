@@ -853,22 +853,20 @@ def test_accuracy_diag(shape, diagonal, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+def get_dim1_dim2(o_rank):
+    dims = list(range(-o_rank, o_rank))
+    return [
+        p for p in itertools.permutations(dims, 2) if (p[0] % o_rank) != (p[1] % o_rank)
+    ]
+
+
 def get_diag_embed_shape_and_dims():
     shapes = [
         (1024,),
         (1024, 1024),
     ]
-
     # [(shape, dim1, dim2)]
     result = []
-
-    def get_dim1_dim2(o_rank):
-        dims = list(range(-o_rank, o_rank))
-        return [
-            p
-            for p in itertools.permutations(dims, 2)
-            if (p[0] % o_rank) != (p[1] % o_rank)
-        ]
 
     for s in shapes:
         dim_pairs = get_dim1_dim2(len(s) + 1)
@@ -895,3 +893,37 @@ def test_accuracy_diag_embed(shape, dtype, offset, dim1, dim2):
     with flag_gems.use_gems():
         res_out = torch.diag_embed(inp, offset, dim1, dim2)
     gems_assert_equal(res_out, ref_out)
+
+
+def get_diagonal_backward_shape_and_dims():
+    shapes = SPECIAL_SHAPES
+    result = []
+
+    for s in shapes:
+        dim_pairs = get_dim1_dim2(len(s))
+        result.extend([(s, dim1, dim2) for dim1, dim2 in dim_pairs])
+
+    return result
+
+
+@pytest.mark.diagonal_backward
+@pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
+@pytest.mark.parametrize("offset", [-1, 0, 1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.diagonal(ref_inp, offset, dim1, dim2)
+    res_out = torch.diagonal(inp, offset, dim1, dim2)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    res_out = to_reference(res_out)
+    res_in_grad = to_reference(res_in_grad)
+    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_in_grad, ref_in_grad)

@@ -283,3 +283,23 @@ def test_perf_diag_embed():
     )
 
     bench.run()
+
+
+@pytest.mark.diagonal_backward
+def test_perf_diagonal_backward():
+    def diagonal_backward_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp,
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield inp, {"offset": 1, "dim1": 0, "dim2": -1},
+
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=diagonal_backward_input_fn,
+        op_name="diagonal_backward",
+        torch_op=torch.diagonal,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
+    )
+
+    bench.run()
