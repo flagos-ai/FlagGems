@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
@@ -18,6 +19,7 @@ def amax_kernel_1(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
+
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -38,16 +40,8 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, amax_val)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("amax"), key=["M", "N"])
 @triton.jit
 def amax_kernel(
     inp,

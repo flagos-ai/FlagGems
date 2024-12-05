@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
@@ -58,10 +59,7 @@ def mean(inp, *, dtype=None):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4)
-        for m in [1, 2, 4, 8]
-    ],
+    configs=runtime.get_triton_config("mean"),
     key=["M", "N"],
 )
 @triton.jit

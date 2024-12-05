@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 from ..utils.type_utils import get_accumulator_dtype
@@ -18,7 +19,7 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_triton_config("layer_norm_persistent"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -61,7 +62,7 @@ def layer_norm_persistent_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_triton_config("layer_norm_persistent"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -109,11 +110,7 @@ def layer_norm_persistent_kernel_multiline(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"TILE_N": tile_n}, num_warps=w)
-        for tile_n in [1024, 2048, 4096, 8192]
-        for w in [4, 8, 16]
-    ],
+    configs=runtime.get_triton_config("layer_norm_loop"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -198,11 +195,7 @@ def layer_norm_loop_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        for m in [1, 2, 4, 8]
-        for w in [4, 8, 16]
-    ],
+    configs=runtime.get_triton_config("layer_norm_backward"),
     key=["M", "N"],
 )
 @triton.jit
@@ -264,11 +257,7 @@ def layer_norm_backward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": 2048, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for n in [1, 2, 4, 8]
-        for w in [4, 8]
-    ],
+    configs=runtime.get_triton_config("weight_bias_backward"),
     key=["N"],
 )
 @triton.jit

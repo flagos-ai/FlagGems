@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -228,14 +229,7 @@ def heur_tile_n_bwd_non_inner(args):
 # ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"TILE_K": 32}),
-        triton.Config({"TILE_K": 64}),
-        triton.Config({"TILE_K": 128}),
-        triton.Config({"TILE_K": 256}),
-        triton.Config({"TILE_K": 512}),
-        triton.Config({"TILE_K": 1024}),
-    ],
+    configs=runtime.get_triton_config("softmax_non_inner"),
     key=[
         "M",
         "N",
@@ -304,14 +298,7 @@ def heru_tile_m(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"TILE_N": 32}),
-        triton.Config({"TILE_N": 64}),
-        triton.Config({"TILE_N": 128}),
-        triton.Config({"TILE_N": 256}),
-        triton.Config({"TILE_N": 512}),
-        triton.Config({"TILE_N": 1024}),
-    ],
+    configs=runtime.get_triton_config("softmax_inner"),
     key=["M", "N"],
 )
 @triton.heuristics(

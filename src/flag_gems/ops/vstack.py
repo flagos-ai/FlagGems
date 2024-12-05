@@ -4,17 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": k}, num_warps=w)
-        for w in [4, 8, 16, 32]
-        for k in [512, 1024, 2048, 4096]
-    ],
+    configs=runtime.get_triton_config("vstack"),
     key=[
         "max_tile_elems",
     ],
