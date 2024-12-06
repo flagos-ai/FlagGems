@@ -247,9 +247,11 @@ class Benchmark:
                 kwargs.update(item)
         if self.is_backward:
             args = [
-                a.clone().requires_grad_()
-                if torch.is_tensor(a) and torch.is_floating_point(a)
-                else a
+                (
+                    a.clone().requires_grad_()
+                    if torch.is_tensor(a) and torch.is_floating_point(a)
+                    else a
+                )
                 for a in args
             ]
         return args, kwargs
@@ -315,7 +317,6 @@ class Benchmark:
 
 
 class GenericBenchmark(Benchmark):
-
     """
     A generic benchmark class for most of the operations.
 

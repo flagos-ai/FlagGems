@@ -247,6 +247,53 @@ def test_perf_upsample_nearest2d():
     bench.run()
 
 
+class ConvBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        return None
+
+
+@pytest.mark.conv2d
+def test_perf_conv2d():
+    def conv2d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_h,
+            input_w,
+            out_c,
+            kernel_h,
+            kernel_w,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_h, input_w)
+        weight_shape = (out_c, input_c // groups, kernel_h, kernel_w)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": input,
+            "weight": weight,
+            "bias": None,
+            "groups": groups,
+            "stride": stride,
+            "padding": padding,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = ConvBenchmark(
+        input_fn=conv2d_input_fn,
+        op_name="conv2d",
+        torch_op=torch.nn.functional.conv2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.diag
 def test_perf_diag():
     def diag_input_fn(shape, dtype, device):
@@ -262,7 +309,6 @@ def test_perf_diag():
         torch_op=torch.diag,
         dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
     )
-
     bench.run()
 
 
