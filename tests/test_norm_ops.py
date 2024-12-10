@@ -136,6 +136,117 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
+@pytest.mark.instance_norm
+@pytest.mark.native_instance_norm
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (2, 1, 2, 1),
+    ]
+    if QUICK_MODE
+    else [
+        (1, 1, 2, 2),
+        (2, 1, 2, 2),
+        (2, 3, 2, 2),
+        (2, 3, 128, 128),
+        (4, 16, 8, 8),
+        (2, 3, 1024),
+        (2, 3, 2048),
+        (2, 3, 4096),
+        (2, 3, 8192),
+        (2, 3, 10240),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("has_weight_bias", [True] if QUICK_MODE else [False, True])
+@pytest.mark.parametrize("use_input_stats", [True] if QUICK_MODE else [False, True])
+@pytest.mark.parametrize("has_running_stats", [False] if QUICK_MODE else [False, True])
+def test_accuracy_instancenorm(
+    shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+):
+    if use_input_stats is False and has_running_stats is False:
+        return
+
+    B, C = shape[:2]
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    if has_weight_bias:
+        weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+        bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    else:
+        weight, bias = None, None
+    running_mean = (
+        torch.randn(size=(C,), dtype=torch.float32, device="cuda")
+        if has_running_stats
+        else None
+    )
+    running_var = (
+        torch.randn(size=(C,), dtype=torch.float32, device="cuda").abs() + 1e-5
+        if has_running_stats
+        else None
+    )
+    momentum = 0.1
+    eps = 1e-5
+
+    ref_inp = to_reference(inp, True)
+    ref_weight = to_reference(weight, True)
+    ref_bias = to_reference(bias, True)
+    ref_running_mean = to_reference(
+        running_mean.clone() if has_running_stats else None, True
+    )
+    ref_running_var = to_reference(
+        running_var.clone() if has_running_stats else None, True
+    )
+
+    ref_out = torch.nn.functional.instance_norm(
+        ref_inp,
+        running_mean=ref_running_mean,
+        running_var=ref_running_var,
+        weight=ref_weight,
+        bias=ref_bias,
+        use_input_stats=use_input_stats,
+        momentum=momentum,
+        eps=eps,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.instance_norm(
+            inp,
+            running_mean=running_mean,
+            running_var=running_var,
+            weight=weight,
+            bias=bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+            cudnn_enabled=True,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+    if has_running_stats:
+        gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+        gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    if has_weight_bias:
+        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+        )
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+    else:
+        (ref_in_grad,) = torch.autograd.grad(ref_out, (ref_inp,), ref_grad)
+        (res_in_grad,) = torch.autograd.grad(res_out, (inp,), out_grad)
+    M = B * C
+    N = inp.numel() // M
+    if use_input_stats:
+        gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
+        if has_weight_bias:
+            gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=B * N)
+            gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N)
+
+
 WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
     zip(REDUCTION_SHAPES, FLOAT_DTYPES, [-1] if QUICK_MODE else [0, -1, -1])
 )

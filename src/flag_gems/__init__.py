@@ -72,6 +72,7 @@ def enable(lib=aten_lib, unused=None):
             ("_weight_norm", weight_norm, Autograd.enable),
             ("gt.Tensor", gt, Autograd.disable),
             ("gt.Scalar", gt_scalar, Autograd.disable),
+            ("instance_norm", instance_norm, Autograd.enable),
             ("isfinite", isfinite, Autograd.disable),
             ("isin.Tensor_Tensor", isin, Autograd.disable),
             ("isin.Scalar_Tensor", isin, Autograd.disable),
