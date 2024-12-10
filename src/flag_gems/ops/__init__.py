@@ -43,6 +43,7 @@ from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_select import index_select
+from .instancenorm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -174,6 +175,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
+    "instance_norm",
     "isclose",
     "isfinite",
     "isin",
