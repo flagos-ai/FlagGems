@@ -52,6 +52,8 @@ from .isnan import isnan
 from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
+from .logical_not import logical_not
+from .logical_or import logical_or
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
@@ -267,4 +269,6 @@ __all__ = [
     "conv1d",
     "_conv_depthwise2d",
     "repeat_interleave_self_tensor",
+    "logical_or",
+    "logical_not",
 ]
