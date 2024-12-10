@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
+from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import Benchmark, generate_tensor_input
 
 
@@ -36,6 +36,7 @@ forward_operations = [
     ("neg", torch.neg, FLOAT_DTYPES),
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
+    ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
     # Dropout
     ("native_dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
