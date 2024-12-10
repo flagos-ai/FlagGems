@@ -292,6 +292,6 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     _dim = 1
     for d in dim:
         _dim *= shape[d]
-    if dim == [] and keepdim:
+    if dim == []:
         _dim = inp.numel()
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
