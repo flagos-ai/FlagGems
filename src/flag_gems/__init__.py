@@ -194,6 +194,7 @@ def enable(lib=aten_lib, unused=None):
             ("diag_embed", diag_embed, Autograd.disable),
             ("diagonal_backward", diagonal_backward, Autograd.disable),
             ("logical_or", logical_or, Autograd.disable),
+            ("logical_and", logical_and, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
         ),
         user_unused_ops_list=unused,
