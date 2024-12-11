@@ -1230,3 +1230,26 @@ def test_accuracy_logical_or(shape, dtype):
         res_out = torch.logical_or(inp1, inp2)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.logical_and
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES)
+def test_accuracy_logical_and(shape, dtype):
+    if dtype in ALL_FLOAT_DTYPES:
+        inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+        inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    elif dtype in ALL_INT_DTYPES:
+        inp1 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cuda")
+        inp2 = torch.randint(-1000, 1000, shape, dtype=dtype, device="cuda")
+    elif dtype in BOOL_TYPES:
+        inp1 = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp2 = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.logical_and(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logical_and(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
