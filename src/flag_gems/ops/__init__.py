@@ -73,7 +73,7 @@ from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tens
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
-from .pad import pad
+from .pad import constant_pad_nd, pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
 from .rand import rand
@@ -147,6 +147,7 @@ __all__ = [
     "diag_embed",
     "diagonal_backward",
     "pad",
+    "constant_pad_nd",
     "cumsum",
     "normed_cumsum",
     "true_divide",
