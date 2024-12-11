@@ -53,7 +53,7 @@ jobs:
     concurrency:
       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    runs-on: jiuding
+    runs-on: cpu
     needs: [blas-op-test, model-test, op-test-quick-cpu, op-utils-test, pointwise-op-test, reduction-op-test, special-op-test]
     steps:
       - name: Checkout code
