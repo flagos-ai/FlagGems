@@ -488,3 +488,7 @@ def pad(self, pad, mode="constant", value=None):
 
     out = _pad_func(self, pad, mode, float(value))
     return out
+
+
+def constant_pad_nd(self, pad, value=0):
+    return pad(self, pad, mode="constant", value=value)
