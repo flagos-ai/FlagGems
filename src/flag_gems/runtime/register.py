@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 
 from . import backend, commom_utils, error
@@ -11,10 +9,10 @@ aten_lib = torch.library.Library("aten", "IMPL")
 class Register:
     def __init__(
         self,
-        config: Optional[tuple[tuple]],
-        user_unused_ops_list: Optional[list[str]] = None,
-        lib: Optional[any] = None,
-        debug: Optional[bool] = False,
+        config,
+        user_unused_ops_list=None,
+        lib=None,
+        debug=False,
     ):
         # lib is a instance of torch.library.Library
         self.lib = lib
@@ -77,20 +75,20 @@ class Register:
                 fn_name
             ) if hasbackward else self.forward_ops.append(fn_name)
 
-    def get_forward_ops(self) -> list[str]:
+    def get_forward_ops(self):
         return self.forward_ops if self.debug else []
 
-    def get_backward_ops(self) -> list[str]:
-        return self.backward_opss if self.debug else []
+    def get_backward_ops(self):
+        return self.backward_ops if self.debug else []
 
-    def get_unused_ops(self) -> list[str]:
+    def get_unused_ops(self):
         return self.unused_ops
 
-    def get_vendor_name(self) -> str:
+    def get_vendor_name(self):
         return self.device.vendor_name
 
-    def get_current_device(self) -> str:
+    def get_current_device(self):
         return self.device.name
 
-    def support_backward(self, fn) -> bool:
-        return fn.__name__ in self.backend_ops
+    def support_backward(self, fn):
+        return fn.__name__ in self.backward_ops

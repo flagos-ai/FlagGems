@@ -9,6 +9,7 @@ import triton
 import yaml
 
 import flag_gems
+from flag_gems.runtime import torch_backend_device, torch_device_fn
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -24,11 +25,12 @@ from .attri_util import (
 )
 from .conftest import Config
 
-torch.backends.cuda.matmul.allow_tf32 = False
+torch_backend_device.matmul.allow_tf32 = False
+device = flag_gems.device
 
 
 class Benchmark:
-    device: str = "cuda"
+    device: str = device
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
@@ -191,11 +193,11 @@ class Benchmark:
         if Config.cpu_mode:
             for i in range(Config.warm_up):
                 fn()
-            torch.cuda.synchronize()
+            torch_device_fn.synchronize()
             start = time.time()
             for i in range(Config.repetition):
                 fn()
-            torch.cuda.synchronize()
+            torch_device_fn.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:
@@ -309,7 +311,7 @@ class Benchmark:
                 level=Config.bench_level.value,
                 op_name=self.op_name,
                 dtype=str(dtype),
-                mode="cpu" if Config.cpu_mode else "cuda",
+                mode="cpu" if Config.cpu_mode else device,
                 result=metrics,
             )
             print(result)

@@ -5,12 +5,13 @@ import triton
 import triton.language as tl
 
 from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 MAX_TILE_K = 8192
-NUM_SMS = torch.cuda.get_device_properties(
-    torch.cuda.current_device()
+NUM_SMS = torch_device_fn.get_device_properties(
+    torch_device_fn.current_device()
 ).multi_processor_count
 
 
@@ -376,7 +377,7 @@ class Softmax(torch.autograd.Function):
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N  # post_dim
 
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 softmax_kernel_non_inner[grid](
@@ -415,7 +416,7 @@ class Softmax(torch.autograd.Function):
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
 
-        with torch.cuda.device(in_grad.device):
+        with torch_device_fn.device(in_grad.device):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 softmax_backward_kernel_non_inner[grid](

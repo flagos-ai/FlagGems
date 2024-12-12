@@ -2,6 +2,8 @@ import pytest
 import torch
 import triton
 
+import flag_gems
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.pointwise_dynamic import (
     CodeGenConfig,
     FunctionSchema,
@@ -158,7 +160,7 @@ def test_dynamic_function_without_non_tensor_args(use_block_pointer):
     SIZE = 2
     for ndim in range(8):
         shape = [SIZE] * ndim
-        x = torch.randn(shape, device="cuda")
+        x = torch.randn(shape, device=flag_gems.device)
         y = torch.randn_like(x)
         out = add(x, y)
         torch.testing.assert_close(out, x + y)
@@ -187,7 +189,7 @@ def test_dynamic_function_with_non_tensor_args(use_block_pointer):
     SIZE = 2
     for ndim in range(8):
         shape = [SIZE] * ndim
-        x = torch.randn(shape, device="cuda")
+        x = torch.randn(shape, device=flag_gems.device)
         y = torch.randn_like(x)
         alpha = 2.0
         out = axpy(x, y, alpha)
@@ -218,7 +220,7 @@ def test_dynamic_function_with_multiple_outputs(use_block_pointer):
     SIZE = 2
     for ndim in range(8):
         shape = [SIZE] * ndim
-        x = torch.randn(shape, device="cuda")
+        x = torch.randn(shape, device=flag_gems.device)
         y = torch.randn_like(x)
         alpha = 2.0
         out0, out1 = multiple_out(x, y, alpha)
@@ -250,8 +252,8 @@ def test_dynamic_function_with_broadcasting(use_block_pointer):
         return alpha * x + y
 
     SIZE = 10
-    x = torch.randn([SIZE, 1, SIZE], device="cuda")
-    y = torch.randn([1, SIZE, 1], device="cuda")
+    x = torch.randn([SIZE, 1, SIZE], device=flag_gems.device)
+    y = torch.randn([1, SIZE, 1], device=flag_gems.device)
     alpha = 2.0
     out = axpy(x, y, alpha)
     torch.testing.assert_close(out, alpha * x + y)
@@ -279,8 +281,8 @@ def test_dynamic_function_with_broadcasting2(use_block_pointer):
         return alpha * x + y
 
     SIZE = 10
-    x = torch.randn([SIZE, 1, SIZE], device="cuda")
-    y = torch.randn([], device="cuda")
+    x = torch.randn([SIZE, 1, SIZE], device=flag_gems.device)
+    y = torch.randn([], device=flag_gems.device)
     alpha = 2.0
     out = axpy(x, y, alpha)
     torch.testing.assert_close(out, alpha * x + y)
@@ -307,10 +309,10 @@ def test_dynamic_function_with_predefined_out(use_block_pointer):
         return alpha * x + y
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
-    y = torch.randn([], device="cuda")
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device)
+    y = torch.randn([], device=flag_gems.device)
     alpha = 2.0
-    o = torch.empty([SIZE, SIZE, SIZE], device="cuda")
+    o = torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device)
     out = axpy(x, y, alpha, out0=o)
     torch.testing.assert_close(out, alpha * x + y)
 
@@ -336,10 +338,10 @@ def test_dynamic_function_with_some_predefined_out1(use_block_pointer):
         return alpha * x + y, alpha * x - y
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
-    y = torch.randn([], device="cuda")
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device)
+    y = torch.randn([], device=flag_gems.device)
     alpha = 2.0
-    o = torch.empty([SIZE, SIZE, SIZE], device="cuda")
+    o = torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device)
     out0, out1 = axpyaxmy(x, y, alpha, out0=o)
     assert out0 is o
     torch.testing.assert_close(out0, alpha * x + y)
@@ -367,10 +369,10 @@ def test_dynamic_function_with_some_predefined_out2(use_block_pointer):
         return alpha * x + y, alpha * x - y
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
-    y = torch.randn([], device="cuda")
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device)
+    y = torch.randn([], device=flag_gems.device)
     alpha = 2.0
-    o = torch.empty([SIZE, SIZE, SIZE], device="cuda")
+    o = torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device)
     out0, out1 = axpyaxmy(x, y, alpha, out1=o)
     assert out1 is o
     torch.testing.assert_close(out0, alpha * x + y)
@@ -398,7 +400,7 @@ def test_dynamic_function_with_bool_input_and_output(use_block_pointer):
         return ~x
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda") > 0
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device) > 0
     notx = invert(x)
 
     torch.testing.assert_close(notx, ~x)
@@ -425,7 +427,7 @@ def test_dynamic_function_manual_instantiation(use_block_pointer):
         return ~x
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda") > 0
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device) > 0
     o = torch.empty_like(x)
     # manually instantiated overload does not handle output allocation
     # since it is kind of low level
@@ -455,10 +457,10 @@ def test_dynamic_function_with_nd_buffer(use_1d_tile, use_block_pointer):
         return alpha * x + y, alpha * x - y
 
     M, N, K = 40, 60, 80
-    x = torch.randn([M, N, K], device="cuda")[::2, ::2, ::2]
-    y = torch.randn([N // 2, K // 2, M // 2], device="cuda").permute(2, 0, 1)
+    x = torch.randn([M, N, K], device=flag_gems.device)[::2, ::2, ::2]
+    y = torch.randn([N // 2, K // 2, M // 2], device=flag_gems.device).permute(2, 0, 1)
     alpha = 2.0
-    o = torch.empty([M // 2, N // 2, K // 2], device="cuda")
+    o = torch.empty([M // 2, N // 2, K // 2], device=flag_gems.device)
     out0, out1 = axpyaxmy(x, y, alpha, out0=o)
     assert out0 is o
     torch.testing.assert_close(out0, alpha * x + y)
@@ -486,10 +488,10 @@ def test_dynamic_function_with_different_stride_order(use_block_pointer):
         return alpha * x + y, alpha * x - y
 
     M, N, K = 40, 60, 80
-    x = torch.randn([M, N, K], device="cuda")
-    y = torch.randn([N, K, M], device="cuda").permute(2, 0, 1)
+    x = torch.randn([M, N, K], device=flag_gems.device)
+    y = torch.randn([N, K, M], device=flag_gems.device).permute(2, 0, 1)
     alpha = 2.0
-    o = torch.empty([M, N, K], device="cuda")
+    o = torch.empty([M, N, K], device=flag_gems.device)
     out0, out1 = axpyaxmy(x, y, alpha, out0=o)
     assert out0 is o
     torch.testing.assert_close(out0, alpha * x + y)
@@ -519,11 +521,11 @@ def test_dynamic_function_manual_instantiation_mixing_strided_buffer_and_tensor(
         return alpha * x + y, alpha * x - y
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
-    y = torch.randn([SIZE, SIZE, SIZE], device="cuda")
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device)
+    y = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device)
     alpha = 2.0
-    _out0 = torch.empty([SIZE, SIZE, SIZE], device="cuda")
-    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device="cuda"))
+    _out0 = torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device)
+    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device))
     out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha, out0=_out0, out1=_out1)
 
     assert isinstance(out0, torch.Tensor)
@@ -554,11 +556,11 @@ def test_dynamic_function_manual_instantiation_does_not_support_broadcasting1(
         return alpha * x + y, alpha * x - y
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
-    y = torch.randn([1, SIZE], device="cuda")
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device)
+    y = torch.randn([1, SIZE], device=flag_gems.device)
     alpha = 2.0
-    _out0 = torch.empty([SIZE, SIZE, SIZE], device="cuda")
-    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device="cuda"))
+    _out0 = torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device)
+    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device))
 
     with pytest.raises(Exception):
         out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha, out0=_out0, out1=_out1)
@@ -588,11 +590,11 @@ def test_dynamic_function_manual_instantiation_does_not_support_broadcasting2(
         return alpha * x + y, alpha * x - y
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
-    y = torch.randn([SIZE, 1, SIZE], device="cuda")
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device)
+    y = torch.randn([SIZE, 1, SIZE], device=flag_gems.device)
     alpha = 2.0
-    _out0 = torch.empty([SIZE, SIZE, SIZE], device="cuda")
-    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device="cuda"))
+    _out0 = torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device)
+    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device))
 
     with pytest.raises(Exception):
         out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha, out0=_out0, out1=_out1)
@@ -622,8 +624,8 @@ def test_dynamic_function_manual_instantiation_does_not_allocate_output(
         return alpha * x + y, alpha * x - y
 
     SIZE = 10
-    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
-    y = torch.randn([SIZE, 1, SIZE], device="cuda")
+    x = torch.randn([SIZE, SIZE, SIZE], device=flag_gems.device)
+    y = torch.randn([SIZE, 1, SIZE], device=flag_gems.device)
     alpha = 2.0
 
     with pytest.raises(Exception):
@@ -650,14 +652,14 @@ def test_dynamic_function_gsl(use_block_pointer):
     SIZE = 2
     for ndim in range(8):
         shape = [SIZE] * ndim
-        x = torch.randn(shape, device="cuda")
+        x = torch.randn(shape, device=flag_gems.device)
         y = torch.randn_like(x)
         out = add(x, y)
         torch.testing.assert_close(out, x + y)
 
 
 @pytest.mark.skipif(
-    torch.cuda.get_device_properties(0).total_memory < (80 * 1024**3),
+    torch_device_fn.get_device_properties(0).total_memory < (80 * 1024**3),
     reason="This test requires a lot of memory.",
 )
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
@@ -675,7 +677,7 @@ def test_dynamic_function_int64_index(use_block_pointer):
     def f(x):
         return x * 2.0
 
-    x = torch.randn((2, 1024, 1024, 1024), dtype=torch.float16, device="cuda")
+    x = torch.randn((2, 1024, 1024, 1024), dtype=torch.float16, device=flag_gems.device)
     y1 = f(x)
     y2 = x * 2.0
     torch.testing.assert_close(y1, y2)
@@ -700,7 +702,7 @@ def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
         return x + y
 
     shape = ()
-    x = torch.randn(shape, device="cuda")
+    x = torch.randn(shape, device=flag_gems.device)
     y = torch.randn_like(x)
     out = add(x, y)
     torch.testing.assert_close(out, x + y)
@@ -723,7 +725,7 @@ def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
         return x * 2.0
 
     shape = (0, 10)
-    x = torch.randn(shape, device="cuda")
+    x = torch.randn(shape, device=flag_gems.device)
     out = f(x)
     torch.testing.assert_close(out, x * 2.0)
 
@@ -747,7 +749,7 @@ def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer)
         return x * 2.0 + y
 
     shape = (0, 10)
-    x = torch.randn(shape, device="cuda")
+    x = torch.randn(shape, device=flag_gems.device)
     y = torch.randn_like(x)
     out = f(x, y)
     torch.testing.assert_close(out, x * 2.0 + y)

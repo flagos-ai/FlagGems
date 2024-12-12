@@ -7,6 +7,7 @@ import triton.language as tl
 import triton.language.core as core
 from triton.language.standard import _log2, zeros_like
 
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -303,7 +304,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
     stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
-    with torch.cuda.device(x.device):
+    with torch_device_fn.device(x.device):
         topk_stage1_kernel[
             batch_size,
             chunk_num,
@@ -319,7 +320,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     stage2_elem_cnt = chunk_num * k
     BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
-    with torch.cuda.device(x.device):
+    with torch_device_fn.device(x.device):
         topk_stage2_kernel[batch_size,](
             stage2_out,
             stage2_out_idx,

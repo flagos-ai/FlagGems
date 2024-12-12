@@ -3,8 +3,9 @@ import logging
 import torch
 import triton
 
+from ..runtime import torch_device_fn
 from ..utils import pointwise_dynamic
-from ..utils.random_utils import philox_cuda_seed_offset
+from ..utils.random_utils import philox_backend_seed_offset
 from ..utils.shape_utils import broadcast_shapes, volume
 from .randn import randn_kernel
 
@@ -49,8 +50,8 @@ def normal_distribution(shape, device, *, generator=None):
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-    with torch.cuda.device(device):
+    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out
 

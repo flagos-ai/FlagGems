@@ -4,8 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import (
+    philox_backend_seed_offset,
+    uint_to_uniform_float,
+)
 from flag_gems.utils.shape_utils import volume
+
+from ..runtime import device, torch_device_fn
 
 try:
     pair_uniform_to_normal = tl.pair_uniform_to_normal
@@ -18,6 +23,9 @@ except AttributeError:
         th = 6.283185307179586 * u2
         r = tl.sqrt(-2.0 * tl.log(u1))
         return r * tl.cos(th), r * tl.sin(th)
+
+
+device_ = device
 
 
 def heur_block(args):
@@ -82,14 +90,14 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
-        device = torch.device("cuda")
+        device = torch.device(device_.name)
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-    with torch.cuda.device(device):
+    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -65,7 +66,7 @@ def nonzero(inp, *, as_tuple=False):
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         nonzero_kernel[grid](inp_bool, prefix_sum, out, n_elements, shape, inp_ndim)
 
     num_nonzeros = prefix_sum[n_elements - 1].item()

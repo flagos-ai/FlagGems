@@ -4,15 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime.moduel_tool import tl_extra_module
 from ..utils import pointwise_dynamic
 
-try:
-    from triton.language.extra.cuda.libdevice import erf, pow, tanh
-except ImportError:
-    try:
-        from triton.language.math import erf, pow, tanh
-    except ImportError:
-        from triton.language.libdevice import erf, pow, tanh
+erf = tl_extra_module.erf
+pow = tl_extra_module.pow
+tanh = tl_extra_module.tanh
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])

@@ -68,7 +68,7 @@ CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_amax(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
@@ -85,7 +85,7 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_argmax(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
@@ -108,13 +108,13 @@ def test_accuracy_cross_entropy_loss_indices(
     target_shape = list(shape)
     del target_shape[dim]
 
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    target = torch.randint(0, up_limit, target_shape, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randint(0, up_limit, target_shape, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
 
     if weight:
-        wgt = torch.randn(shape[dim], dtype=dtype, device="cuda")
+        wgt = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
         ref_wgt = to_reference(wgt, True)
     else:
         wgt = None
@@ -152,9 +152,9 @@ def test_accuracy_cross_entropy_loss_probabilities(
     shape, dtype, reduction, label_smoothing
 ):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    target = torch.randn(shape, dtype=dtype, device="cuda")
-    weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
     ref_weight = to_reference(weight, True)
@@ -192,9 +192,9 @@ CUMSUM_SHAPES = (
 def test_accuracy_cumsum(shape, dtype):
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
-        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+        inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
     else:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
@@ -239,11 +239,13 @@ NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
 def test_accuracy_nonzero(shape, dtype):
     if dtype == torch.bool:
-        inp = torch.randint(0, 2, shape, dtype=torch.int, device="cuda").to(dtype)
+        inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+            dtype
+        )
     elif dtype in INT_DTYPES:
-        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+        inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
     else:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, False)
 
     ref_out = torch.nonzero(ref_inp)
@@ -276,7 +278,7 @@ def test_accuracy_count_nonzero(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_softmax(shape, dtype):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
@@ -300,7 +302,7 @@ def test_accuracy_log_softmax(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 def test_accuracy_softmax(shape, dtype, dim):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
@@ -323,7 +325,7 @@ def test_accuracy_softmax(shape, dtype, dim):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 def test_accuracy_softmax_with_neg_inf(shape, dtype, dim):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     inp = torch.where(inp < 0.0, float("-inf"), inp)
     ref_inp = to_reference(inp, True)
 
@@ -351,7 +353,7 @@ def test_accuracy_softmax_with_neg_inf(shape, dtype, dim):
 def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     if shape[0] == 1:  # TODO: res is inf, while ref is nan
         shape = (2, 2)
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
     ref_var, ref_mean = torch.var_mean(
@@ -376,8 +378,8 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
-    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
-    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
 
     import random
@@ -387,7 +389,7 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[1], inp_shape[1])),
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
 
     m, n, o = index_shape
 
@@ -420,8 +422,8 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
-    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
-    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
 
     import random
@@ -431,7 +433,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[1], inp_shape[1])),
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
 
     m, n, o = index_shape
 
@@ -464,8 +466,8 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
-    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
-    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
 
     import random
@@ -475,7 +477,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
         random.randint(1, min(src_shape[1], inp_shape[1])),
         random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
 
     m, n, o = index_shape
 
@@ -506,7 +508,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gather(inp_shape, dim, dtype):
-    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     size_dim = inp_shape[dim]
 
     import random
@@ -516,7 +518,7 @@ def test_accuracy_gather(inp_shape, dim, dtype):
         random.randint(1, inp_shape[1]),
         random.randint(1, inp_shape[2]),
     ]
-    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
 
     m, n, o = index_shape
 
@@ -547,11 +549,11 @@ def test_accuracy_select_scatter(shape, dim, dtype):
     import random
 
     index = random.randint(0, shape[dim] - 1)
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     src_shape = list(inp.shape)
     del src_shape[dim]
-    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = to_reference(inp)
     ref_src = to_reference(src)
@@ -569,7 +571,7 @@ def test_accuracy_select_scatter(shape, dim, dtype):
 @pytest.mark.parametrize("end", [1024, 256])
 @pytest.mark.parametrize("step", [1, 2])
 def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
-    inp = torch.empty_strided(shape, stride, dtype=dtype, device="cuda")
+    inp = torch.empty_strided(shape, stride, dtype=dtype, device=flag_gems.device)
     inp.copy_(1)
 
     valid_shape = list(inp.shape)
@@ -585,7 +587,7 @@ def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
 
     valid_shape[dim] = (end - start + step - 1) // step
 
-    src = torch.rand(valid_shape, dtype=dtype, device="cuda")
+    src = torch.rand(valid_shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = to_reference(inp)
     ref_src = to_reference(src)
@@ -607,7 +609,7 @@ def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
 @pytest.mark.parametrize("end", [1024, 256])
 @pytest.mark.parametrize("step", [1, 2])
 def test_accuracy_slice_scatter_fallback(shape, stride, dim, dtype, start, end, step):
-    inp = torch.empty_strided(shape, stride, dtype=dtype, device="cuda")
+    inp = torch.empty_strided(shape, stride, dtype=dtype, device=flag_gems.device)
     inp.copy_(1)
 
     valid_shape = list(inp.shape)
@@ -623,7 +625,7 @@ def test_accuracy_slice_scatter_fallback(shape, stride, dim, dtype, start, end, 
 
     valid_shape[dim] = (end - start + step - 1) // step
 
-    src = torch.rand(valid_shape, dtype=dtype, device="cuda")
+    src = torch.rand(valid_shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = to_reference(inp)
     ref_src = to_reference(src)
@@ -644,11 +646,13 @@ def test_accuracy_slice_scatter_fallback(shape, stride, dim, dtype, start, end, 
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_index_select(shape, dim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     index_size = inp.size(dim)
     from math import floor
 
-    index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
+    index = torch.randint(
+        0, index_size, [floor(index_size * 0.8)], device=flag_gems.device
+    )
 
     ref_inp = to_reference(inp)
     ref_index = to_reference(index)
@@ -663,8 +667,8 @@ def test_accuracy_index_select(shape, dim, dtype):
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_masked_select(shape, dtype, threshold):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
 
     ref_inp = to_reference(inp)
     ref_mask = to_reference(mask)
