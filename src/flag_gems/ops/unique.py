@@ -773,17 +773,17 @@ def _unique2(
     return_counts: bool = False,
 ):
     if in0.numel() <= 8192:
-        sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
+        sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
             sorted_data, sorted_indices, return_inverse, return_counts
         )
     elif return_inverse:
-        sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
+        sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = sorted_indices_unique_flat(
             sorted_data, sorted_indices, return_counts
         )
     else:
-        sorted_data, _ = torch.sort(in0.ravel(), stable=False)
+        sorted_data, _ = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
             sorted_data, return_counts
         )

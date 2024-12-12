@@ -124,6 +124,7 @@ def enable(lib=aten_lib, unused=None):
             ("silu", silu, Autograd.enable),
             ("sin", sin, Autograd.disable),
             ("softmax.int", softmax, Autograd.enable),
+            ("sort", sort, Autograd.disable),
             ("sub.Tensor", sub, Autograd.disable),
             ("tanh", tanh, Autograd.enable),
             ("triu", triu, Autograd.disable),
