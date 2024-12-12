@@ -927,3 +927,42 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     res_in_grad = to_reference(res_in_grad)
     gems_assert_equal(res_out, ref_out)
     gems_assert_equal(res_in_grad, ref_in_grad)
+
+
+@pytest.mark.sort
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("hiddensize", [1, 256, 2048, 9333, 65536])
+@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.parametrize("dim", [0, -1])
+def test_sort(batch_size, hiddensize, descending, dtype, dim):
+    if dtype in FLOAT_DTYPES:
+        x = torch.empty((hiddensize,), dtype=dtype, device="cuda")
+        tmp = torch.tensor(0, dtype=dtype)
+        inf = torch.tensor(float("inf"), dtype=dtype)
+        for i in range(0, hiddensize):
+            x[i] = tmp.item()
+            tmp = torch.nextafter(tmp, inf)
+            if tmp.item() == inf.item():
+                hiddensize = i
+                x = x[:hiddensize]
+                break
+    else:
+        x = torch.arange(hiddensize, dtype=dtype, device="cuda")
+    y = torch.empty((batch_size, hiddensize), dtype=dtype, device="cuda")
+
+    # Each row use different shuffled index.
+    col_indices = torch.randperm(x.size(0))
+    for bsz in range(batch_size):
+        col_indices = torch.randperm(x.size(0))
+        y[bsz, :] = x[col_indices]
+    if dim == 0:
+        y = torch.movedim(y, dim, -1)
+    ref_y = to_reference(y)
+    ref_value, ref_index = torch.sort(ref_y, dim=dim, descending=descending)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.sort(y, dim=dim, descending=descending)
+
+    gems_assert_close(res_value, ref_value, dtype)
+    gems_assert_equal(res_index, ref_index)
