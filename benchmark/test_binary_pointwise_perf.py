@@ -52,6 +52,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("rsub", torch.rsub, FLOAT_DTYPES),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
             ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
+            ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
             # Comparison operations
             ("eq", torch.eq, FLOAT_DTYPES),
             ("ge", torch.ge, FLOAT_DTYPES),
