@@ -22,6 +22,7 @@ from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos
 from .count_nonzero import count_nonzero
 from .cross_entropy_loss import cross_entropy_loss
+from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -152,6 +153,7 @@ __all__ = [
     "diagonal_backward",
     "pad",
     "constant_pad_nd",
+    "cummin",
     "cumsum",
     "normed_cumsum",
     "true_divide",

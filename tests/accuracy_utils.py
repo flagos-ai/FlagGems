@@ -1,3 +1,4 @@
+import importlib
 import itertools
 
 import torch
@@ -7,16 +8,21 @@ import flag_gems
 from .conftest import QUICK_MODE, TO_CPU
 
 
-def SkipTorchVersion(skip_pattern):
+def SkipVersion(module_name, skip_pattern):
     cmp = skip_pattern[0]
-    assert cmp in ("=", "<", ">")
+    assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"
     try:
         M, N = skip_pattern[1:].split(".")
         M, N = int(M), int(N)
     except Exception:
-        raise "Cannot parse version number."
-    major, minor = torch.__version__.split(".")[:2]
-    major, minor = int(major), int(minor)
+        raise ValueError("Cannot parse version number from skip_pattern.")
+
+    try:
+        module = importlib.import_module(module_name)
+        version = module.__version__
+        major, minor = map(int, version.split(".")[:2])
+    except Exception:
+        raise ImportError(f"Cannot determine version of module: {module_name}")
 
     if cmp == "=":
         return major == M and minor == N

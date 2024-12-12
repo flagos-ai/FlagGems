@@ -37,6 +37,7 @@ def enable(lib=aten_lib, unused=None):
             ("pad", pad, Autograd.disable),
             ("constant_pad_nd", constant_pad_nd, Autograd.disable),
             ("cumsum", cumsum, Autograd.disable),
+            ("cummin", cummin, Autograd.disable),
             ("div.Tensor", true_divide, Autograd.disable),
             ("div.Scalar", true_divide, Autograd.disable),
             ("div.Tensor_mode", div_mode, Autograd.disable),
