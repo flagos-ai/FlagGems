@@ -196,6 +196,7 @@ def enable(lib=aten_lib, unused=None):
             ("count_nonzero", count_nonzero, Autograd.disable),
             ("logical_or", logical_or, Autograd.disable),
             ("logical_and", logical_and, Autograd.disable),
+            ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
         ),
         user_unused_ops_list=unused,
