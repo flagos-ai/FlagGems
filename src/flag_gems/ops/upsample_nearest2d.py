@@ -5,7 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import device
 from ..utils import triton_lang_extension as tle
+
+device = device.name
 
 
 def configs():
@@ -67,7 +70,7 @@ def upsample_nearest2d(
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
     logging.debug("GEMS UPSAMPLE NEAREST2D")
-    assert input.is_cuda
+    assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
     OH, OW = output_size

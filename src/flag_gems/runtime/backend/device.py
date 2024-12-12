@@ -29,9 +29,9 @@ class DeviceDetector(object):
             self.vendor_name = self.info.vendor_name
             self.name = self.info.device_name
             self.vendor = vendors_map[self.vendor_name]
-            self.device_count = backend.gen_torch_device_fn(
-                "device_count", self.vendor_name
-            )()
+            self.device_count = backend.gen_torch_device_object(
+                self.vendor_name
+            ).device_count()
 
     def get_vendor(self, vendor_name=None) -> tuple:
         # Try to get the vendor name from a quick special command like 'torch.mlu'.

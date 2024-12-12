@@ -3,15 +3,10 @@ import logging
 import triton
 import triton.language as tl
 
+from ..runtime import tl_extra_module
 from ..utils import pointwise_dynamic
 
-try:
-    from triton.language.extra.cuda.libdevice import isnan as _isnan
-except ImportError:
-    try:
-        from triton.language.math import isnan as _isnan
-    except ImportError:
-        from triton.language.libdevice import isnan as _isnan
+_isnan = tl_extra_module.isnan
 
 
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])

@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_device_fn
 from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import volume
 
@@ -67,7 +68,7 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    with torch.cuda.device(device):
+    with torch_device_fn.device(device):
         full_kernel[grid_fn](
             out,
             N,

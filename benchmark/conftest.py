@@ -5,6 +5,9 @@ import os
 import pytest
 import torch
 
+import flag_gems
+from flag_gems.runtime import torch_device_fn
+
 from .attri_util import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
@@ -16,6 +19,8 @@ from .attri_util import (
     OperationAttribute,
     get_recommended_shapes,
 )
+
+device = flag_gems.device
 
 
 class BenchConfig:
@@ -38,12 +43,12 @@ def pytest_addoption(parser):
     parser.addoption(
         "--mode",
         action="store",
-        default="cuda",
+        default=device,
         required=False,
-        choices=["cuda", "cpu"],
+        choices=[device, "cpu"],
         help=(
             "Specify how to measure latency, "
-            "'cpu' for CPU-side measurement or 'cuda' for GPU-side measurement."
+            f"'cpu' for CPU-side measurement or {device} for GPU-side measurement."
         ),
     )
 
@@ -186,13 +191,13 @@ def setup_once(request):
 @pytest.fixture(scope="function", autouse=True)
 def clear_function_cache():
     yield
-    torch.cuda.empty_cache()
+    torch_device_fn.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
 def clear_module_cache():
     yield
-    torch.cuda.empty_cache()
+    torch_device_fn.empty_cache()
 
 
 @pytest.fixture()

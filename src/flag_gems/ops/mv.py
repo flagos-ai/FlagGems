@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -54,7 +55,7 @@ def mv(inp, vec):
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         mv_kernel[grid](
             inp,
             vec,

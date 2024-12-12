@@ -19,8 +19,8 @@ from .accuracy_utils import (
 @pytest.mark.parametrize("alpha", SCALARS)
 @pytest.mark.parametrize("float_type", FLOAT_DTYPES)
 def test_type_promotion_default(shape, alpha, float_type):
-    inp1 = torch.randint(10, shape, device="cuda")
-    inp2 = torch.randn(shape, dtype=float_type, device="cuda")
+    inp1 = torch.randint(10, shape, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=float_type, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
     # arg0:int  arg1:float
@@ -38,8 +38,8 @@ def test_type_promotion_default(shape, alpha, float_type):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("float_type", FLOAT_DTYPES)
 def test_type_promotion_no_opmath(shape, float_type):
-    inp1 = torch.randint(10, shape, device="cuda")
-    inp2 = torch.randn(shape, dtype=float_type, device="cuda")
+    inp1 = torch.randint(10, shape, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=float_type, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
     # arg0:bool  arg1:int  arg2:float
@@ -59,7 +59,7 @@ def test_type_promotion_no_opmath(shape, float_type):
 @pytest.mark.parametrize("float_type", FLOAT_DTYPES)
 def test_type_promotion_int_to_float(shape, float_type):
     # arg0:float
-    inp_float = torch.randn(shape, dtype=float_type, device="cuda")
+    inp_float = torch.randn(shape, dtype=float_type, device=flag_gems.device)
     ref_inp = to_reference(inp_float)
     ref_out = torch.sin(ref_inp)
     with flag_gems.use_gems():
@@ -67,7 +67,7 @@ def test_type_promotion_int_to_float(shape, float_type):
     gems_assert_close(res_out, ref_out, float_type)
 
     # arg0:int
-    inp_int = torch.randint(10, shape, device="cuda")
+    inp_int = torch.randint(10, shape, device=flag_gems.device)
     ref_inp_int = to_reference(inp_int)
     ref_out = torch.sin(ref_inp_int)
     with flag_gems.use_gems():
@@ -78,8 +78,8 @@ def test_type_promotion_int_to_float(shape, float_type):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 def test_type_promotion_always_bool(shape):
     # arg0:int  arg0:int
-    inp1 = torch.randint(0, 10, shape, device="cuda")
-    inp2 = torch.randint(0, 10, shape, device="cuda")
+    inp1 = torch.randint(0, 10, shape, device=flag_gems.device)
+    inp2 = torch.randint(0, 10, shape, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
     ref_out = torch.eq(ref_inp1, ref_inp2)
@@ -92,7 +92,7 @@ def test_type_promotion_always_bool(shape):
 @pytest.mark.parametrize("float_type", FLOAT_DTYPES)
 def test_type_promotion_complex_to_long(shape, float_type):
     # arg0:float
-    inp = torch.randn(shape, dtype=float_type, device="cuda")
+    inp = torch.randn(shape, dtype=float_type, device=flag_gems.device)
     ref_inp = to_reference(inp)
     ref_out = torch.abs(ref_inp)
     with flag_gems.use_gems():
@@ -100,7 +100,7 @@ def test_type_promotion_complex_to_long(shape, float_type):
     gems_assert_equal(res_out, ref_out)
 
     # arg0:int
-    inp1 = torch.randint(0, 10, shape, device="cuda")
+    inp1 = torch.randint(0, 10, shape, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_out1 = torch.abs(ref_inp1)
     with flag_gems.use_gems():
@@ -111,8 +111,8 @@ def test_type_promotion_complex_to_long(shape, float_type):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("float_dtype", FLOAT_DTYPES)
 def test_type_promotion_bool_to_long(shape, float_dtype):
-    inp1 = torch.randn(shape, dtype=float_dtype, device="cuda")
-    inp2 = torch.randint(0, 10, shape, device="cuda")
+    inp1 = torch.randn(shape, dtype=float_dtype, device=flag_gems.device)
+    inp2 = torch.randint(0, 10, shape, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
     # arg0: float  arg1: int

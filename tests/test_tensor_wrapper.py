@@ -2,6 +2,7 @@ import torch
 import triton
 from triton import language as tl
 
+import flag_gems
 from flag_gems.utils import tensor_wrapper
 
 
@@ -16,8 +17,8 @@ def double(in_ptr, out_ptr, n, TILE_SIZE: tl.constexpr):
 
 
 def test_typed_pointer():
-    real = torch.randn(10, 10, device="cuda")
-    imag = torch.randn(10, 10, device="cuda")
+    real = torch.randn(10, 10, device=flag_gems.device)
+    imag = torch.randn(10, 10, device=flag_gems.device)
     x = torch.complex(real, imag)
 
     out = torch.empty_like(x)
@@ -34,8 +35,8 @@ def test_typed_pointer():
 
 
 def test_typed_pointer_reinterpret_with_offset():
-    real = torch.randn(100, device="cuda")
-    imag = torch.randn(100, device="cuda")
+    real = torch.randn(100, device=flag_gems.device)
+    imag = torch.randn(100, device=flag_gems.device)
     x = torch.complex(real, imag)
 
     out = torch.empty_like(x)
@@ -55,7 +56,7 @@ def test_typed_pointer_reinterpret_with_offset():
 
 
 def test_typed_pointer_as_is():
-    x = torch.randn(100, device="cuda")
+    x = torch.randn(100, device=flag_gems.device)
     out = torch.empty_like(x)
     TILE_SIZE = 128
     k = 10
@@ -71,7 +72,7 @@ def test_typed_pointer_as_is():
 
 
 def test_strided_buffer_slice():
-    x = torch.randn(100, 100, device="cuda")
+    x = torch.randn(100, 100, device=flag_gems.device)
     x_buffer = tensor_wrapper.StridedBuffer(x, (10, 10), (100, 1))
     assert x_buffer.size() == (10, 10)
     assert x.element_size() == x.element_size()

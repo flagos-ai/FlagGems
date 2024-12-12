@@ -902,7 +902,7 @@ class WrapperGenerator:
             else:
                 code.writeline(f"out{i}_stride_order = (0,)")
 
-        code.writeline("with torch.cuda._DeviceGuard(in0.device.index):")
+        code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
@@ -962,7 +962,7 @@ class WrapperGenerator:
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
 
-        code.writeline("with torch.cuda._DeviceGuard(in0.device.index):")
+        code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
@@ -1058,6 +1058,7 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+        code.writeline("from flag_gems.runtime import torch_device_fn")
         code.newline()
         code.newline()
         return code

@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -42,8 +43,8 @@ def arange_start(
         pin_memory = False
 
     if device is None:
-        device = torch.device(
-            "cuda"
+        device = (
+            runtime.device.name
         )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)

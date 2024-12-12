@@ -5,7 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import device
 from ..utils import triton_lang_extension as tle
+
+device = device.name
 
 
 def configs():
@@ -488,7 +491,7 @@ def _upsample_bicubic2d_aa(
     scales_w: Optional[float] = None,
 ):
     logging.debug("GEMS UPSAMPLE BICUBIC2D AA")
-    assert input.is_cuda
+    assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
 

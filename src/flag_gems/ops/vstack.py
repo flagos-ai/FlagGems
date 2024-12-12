@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -116,7 +117,7 @@ def vstack(tensors: list):
             scheduled_num_tensors,
         )
         # Launch the kernel
-        with torch.cuda.device(c_tensors[0].device):
+        with torch_device_fn.device(c_tensors[0].device):
             vstack_kernel[grid](
                 itensors[0],
                 itensors[1],

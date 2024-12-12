@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -536,7 +537,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 
         if tgt.ndim == dim:
             # target probabilities
-            with torch.cuda.device(inp.device):
+            with torch_device_fn.device(inp.device):
                 celoss_probability_kernel[grid](
                     inp,
                     tgt,
@@ -549,7 +550,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         elif label_smoothing == 0:
             # target indices
             w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
-            with torch.cuda.device(inp.device):
+            with torch_device_fn.device(inp.device):
                 celoss_indices_kernel[grid](
                     inp,
                     tgt,
@@ -562,7 +563,7 @@ class CrossEntropyLoss(torch.autograd.Function):
                 )
         else:
             w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
-            with torch.cuda.device(inp.device):
+            with torch_device_fn.device(inp.device):
                 celoss_indices_smooth_kernel[grid](
                     inp,
                     tgt,

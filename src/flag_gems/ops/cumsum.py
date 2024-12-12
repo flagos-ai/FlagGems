@@ -7,7 +7,10 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from ..runtime import device, torch_device_fn
 from ..utils import triton_lang_extension as tle
+
+device = device.name
 
 
 @libentry()
@@ -160,12 +163,12 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
     partial_sum = torch.empty(part_num, dtype=dtype, device=inp.device)
 
     grid = (part_num,)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         scan_part_sum_kernel[grid](inp, out, partial_sum, n_ele, part_num, BLOCK_SIZE)
 
     if part_num >= 2:
         scan_then_fan_col(partial_sum, partial_sum, part_num, dtype)
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             add_base_sum_kernel[grid](out, partial_sum, n_ele, part_num, BLOCK_SIZE)
 
 
@@ -178,14 +181,14 @@ def scan_then_fan(inp, out, A, B, C, dtype):
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
     grid = (A, part_num, C)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         scan_part_sum_abc_kernel[grid](
             inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
         )
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
 
@@ -375,9 +378,9 @@ def normed_cumsum(inp, dim=-1):
         inp = inp.transpose(dim, -1).contiguous()
         dim = -1
     out = torch.empty_like(inp)
-    with torch.cuda.device(inp.device.index):
+    with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = torch.cuda.get_device_properties("cuda").multi_processor_count
+        num_sms = torch_device_fn.get_device_properties(device).multi_processor_count
         TILE = 2048
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.
@@ -416,7 +419,7 @@ def normed_cumsum(inp, dim=-1):
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device="cuda")
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,

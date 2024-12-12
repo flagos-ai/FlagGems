@@ -1,14 +1,18 @@
 import json
 import logging
 
+import flag_gems
+
+device = flag_gems.device
+
 
 def pytest_addoption(parser):
     parser.addoption(
         "--ref",
         action="store",
-        default="cuda",
+        default=device,
         required=False,
-        choices=["cuda", "cpu"],
+        choices=[device, "cpu"],
         help="device to run reference tests on",
     )
     parser.addoption(

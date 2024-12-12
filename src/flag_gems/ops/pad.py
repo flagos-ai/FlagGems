@@ -68,6 +68,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from triton import language as tl")
     code.newline()
     code.writeline("from flag_gems.utils.libentry import libentry")
+    code.writeline("from flag_gems.runtime import torch_device_fn")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
     code.newline()
@@ -166,7 +167,7 @@ def generate_destination_passing_padding_wrapper(
         code.writeline("# kernel launch")
 
         # launch kernel
-        code.writeline("with torch.cuda.device(in0.device):")
+        code.writeline("with torch_device_fn.device(in0.device):")
         with code.indent():
             kernel_launch: str = f"{kernel_name}[grid]("
             code.writeline(kernel_launch)

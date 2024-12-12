@@ -3,7 +3,10 @@ import logging
 import triton
 import triton.language as tl
 
+from ..runtime import device
 from ..utils import pointwise_dynamic
+
+device = device.name
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
@@ -14,7 +17,7 @@ def eq_func(x, y):
 
 def eq(A, B):
     if A.device != B.device:
-        if A.device.type == "cuda":
+        if A.device.type == device:
             B = B.to(A.device)
         else:
             A = A.to(B.device)

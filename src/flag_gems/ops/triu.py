@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -79,7 +80,7 @@ def triu(A, diagonal=0):
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     M, N = A.shape[-2:]
-    with torch.cuda.device(A.device):
+    with torch_device_fn.device(A.device):
         if len(A.shape) == 2:
             grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
             triu_kernel[grid](A, out, M, N, diagonal)

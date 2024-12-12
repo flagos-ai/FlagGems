@@ -3,7 +3,10 @@ import logging
 import triton
 import triton.language as tl
 
+from ..runtime import device
 from ..utils import pointwise_dynamic
+
+device = device.name
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 0, "DEFAULT")])
@@ -17,5 +20,5 @@ def minimum_kernel(X, Y):
 
 def minimum(X, Y):
     logging.debug("GEMS MINIMUM")
-    assert X.is_cuda and Y.is_cuda
+    assert X.device.type == device and Y.device.type == device
     return minimum_kernel(X, Y)
