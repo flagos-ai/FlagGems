@@ -136,6 +136,13 @@ def cumsum_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES + INT_DTYPES,
             marks=pytest.mark.cumsum,
         ),
+        pytest.param(
+            "cummin",
+            torch.cummin,
+            cumsum_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=pytest.mark.cummin,
+        ),
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
