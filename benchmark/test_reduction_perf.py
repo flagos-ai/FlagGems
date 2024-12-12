@@ -1,3 +1,4 @@
+import random
 from typing import Generator
 
 import pytest
@@ -140,5 +141,22 @@ def cumsum_input_fn(shape, cur_dtype, device):
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+    )
+    bench.run()
+
+
+@pytest.mark.count_nonzero
+def test_perf_count_nonzero():
+    def count_nonzero_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = random.choice([None, 0, 1])
+
+        yield inp, dim
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=count_nonzero_input_fn,
+        op_name="count_nonzero",
+        torch_op=torch.count_nonzero,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()

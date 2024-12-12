@@ -225,6 +225,24 @@ def test_accuracy_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.count_nonzero
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+def test_accuracy_count_nonzero(shape, dtype):
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, dtype=torch.int, device="cuda").to(dtype)
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, False)
+    dim = random.choice([None] + list(range(inp.ndim)))
+    ref_out = torch.count_nonzero(ref_inp, dim)
+    with flag_gems.use_gems():
+        res_out = torch.count_nonzero(inp, dim)
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.log_softmax
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
