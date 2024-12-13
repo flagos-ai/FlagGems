@@ -53,11 +53,6 @@ def heur_block_n(args):
         "N",
     ],
 )
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
-)
 @triton.jit
 def min_kernel(
     inp,
@@ -73,21 +68,28 @@ def min_kernel(
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
-    mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf")).to(tl.float32)
-    result_value, result_index = tl.min(inp_vals, axis=1, return_indices=True)
 
+    min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
+    argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+        local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
+        # if return indices is not supported, call a tl.argmax in addition
+        # local_argmin = tl.argmin(inp_vals, 1)
+        update = local_min < min_values
+        min_values = tl.where(update, local_min, min_values)
+        argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+
+    offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index
     out_index_ptrs = out_index + offset_index
-
-    tl.store(out_value_ptrs, result_value, mask=mask1)
-    tl.store(out_index_ptrs, result_index, mask=mask1)
+    mask1 = m_offset < M
+    tl.store(out_value_ptrs, min_values, mask=mask1)
+    tl.store(out_index_ptrs, argmin_values, mask=mask1)
 
 
 def min(inp):

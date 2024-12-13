@@ -274,7 +274,7 @@ def test_accuracy_count_nonzero(shape, dtype):
 
 
 @pytest.mark.log_softmax
-@pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_softmax(shape, dtype):
     dim = 1

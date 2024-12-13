@@ -10,33 +10,8 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
-
-
-def heur_num_warps(args):
-    if args["N"] <= 1024:
-        return 4
-    elif args["N"] <= 2048:
-        return 8
-    else:
-        return 16
-
-
 @libentry()
-@triton.autotune(
-    configs=runtime.get_triton_config("log_softmax"),
-    key=[
-        "M",
-        "N",
-    ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
-)
+@triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
 @triton.jit
 def log_softmax_kernel(
     output_ptr,
@@ -50,33 +25,37 @@ def log_softmax_kernel(
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    input_ptrs = input_ptr + offset
-    inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-    row_minus_max = inp - tl.max(inp, axis=1)[:, None]
-    numerator = tl.exp(row_minus_max)
-    denominator = tl.sum(numerator, axis=1)[:, None]
-    softmax_output = tl.log(numerator / denominator)
-    output_ptrs = output_ptr + offset
-    tl.store(output_ptrs, softmax_output, mask=mask)
+
+    # TODO(chenfeiyu): consider float64 add add a utility function to get accumulator type
+    m = tl.full([BLOCK_M, BLOCK_N], value=float("-inf"), dtype=tl.float32)
+    z = tl.full([BLOCK_M, BLOCK_N], value=0.0, dtype=tl.float32)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        input_ptrs = input_ptr + offset
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
+        m_new = tl.maximum(inp, m)
+        all_neg_inf = m_new == float("-inf")
+        z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
+        m = m_new
+
+    m_reduced = tl.max(m, 1)
+    z = tl.sum(z * tl.exp(m - m_reduced[:, None]), 1)
+    m = m_reduced
+
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        input_ptrs = input_ptr + offset
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
+        o = inp - m[:, None] - tl.log(z[:, None])
+        tl.store(output_ptr + offset, o, mask=mask)
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_triton_config("log_softmax"),
-    key=[
-        "M",
-        "N",
-    ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
-)
+@triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
 @triton.jit
 def log_softmax_backward_kernel(
     out_ptr,
@@ -91,20 +70,28 @@ def log_softmax_backward_kernel(
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
 
-    offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    out_ptrs = out_ptr + offsets
-    out = tl.load(out_ptrs, mask=mask).to(tl.float32)
-    out_grad_ptrs = out_grad_ptr + offsets
-    out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
+    scale = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        out_grad_ptrs = out_grad_ptr + offsets
+        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
+        scale += out_grad
+    scale = tl.sum(scale, 1)
 
-    scale = tl.sum(out_grad, 1)
-    in_grad = out_grad - tl.exp(out.to(tl.float32)) * scale[:, None]
-
-    in_grad_ptrs = in_grad_ptr + offsets
-    tl.store(in_grad_ptrs, in_grad, mask=mask)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        out_ptrs = out_ptr + offsets
+        out = tl.load(out_ptrs, mask=mask).to(tl.float32)
+        out_grad_ptrs = out_grad_ptr + offsets
+        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
+        in_grad = out_grad - tl.exp(out) * scale[:, None]
+        in_grad_ptrs = in_grad_ptr + offsets
+        tl.store(in_grad_ptrs, in_grad, mask=mask)
 
 
 class LogSoftmax(torch.autograd.Function):

@@ -76,11 +76,6 @@ def heur_block_n(args):
         "N",
     ],
 )
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
-)
 @triton.jit
 def prod_kernel(
     inp,
@@ -95,17 +90,22 @@ def prod_kernel(
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
-    mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
-    result_index = tl.reduce(inp_vals, axis=1, combine_fn=reduce_mul)
 
+    acc = tl.full((BLOCK_M, BLOCK_N), value=1.0, dtype=tl.float32)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+
+        # set mask
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
+        acc *= inp_vals
+    result_index = tl.reduce(acc, axis=1, combine_fn=reduce_mul)
+
+    offset_index = m_offset * K + pid_k
     out_ptrs = out + offset_index
+    mask1 = m_offset < M
     tl.store(out_ptrs, result_index, mask=mask1)
 
 
