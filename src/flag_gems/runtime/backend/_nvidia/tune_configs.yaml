@@ -95,13 +95,17 @@ argmax:
   num_warps: 8
 log_softmax:
 - META:
-    BLOCK_M: 1
-- META:
-    BLOCK_M: 2
-- META:
-    BLOCK_M: 4
-- META:
     BLOCK_M: 8
+    BLOCK_N: 256
+  num_warps: 8
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 512
+  num_warps: 8
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 512
+  num_warps: 8
 mm:
 - META:
     BLOCK_M: 128
@@ -260,22 +264,28 @@ test_libentry:
 min:
 - META:
     BLOCK_M: 8
+    BLOCK_N: 256
   num_warps: 8
 - META:
     BLOCK_M: 16
+    BLOCK_N: 512
   num_warps: 8
 - META:
     BLOCK_M: 32
+    BLOCK_N: 512
   num_warps: 8
 prod:
 - META:
     BLOCK_M: 8
+    BLOCK_N: 256
   num_warps: 8
 - META:
     BLOCK_M: 16
+    BLOCK_N: 512
   num_warps: 8
 - META:
     BLOCK_M: 32
+    BLOCK_N: 512
   num_warps: 8
 max:
 - META:
