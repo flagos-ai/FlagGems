@@ -10,12 +10,13 @@ from .runtime.register import Register
 __version__ = "2.1"
 device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
+registrar = Register
+current_work_registrar = None
 
 
-def enable(lib=aten_lib, unused=None):
-    if unused is None:
-        unused = []
-    Register(
+def enable(lib=aten_lib, unused=None, registrar=registrar):
+    global current_work_registrar
+    current_work_registrar = registrar(
         (
             ("abs", abs, Autograd.disable),
             ("add.Tensor", add, Autograd.disable),
@@ -201,20 +202,30 @@ def enable(lib=aten_lib, unused=None):
             ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
         ),
-        user_unused_ops_list=unused,
+        user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
     )
 
 
 class use_gems:
-    def __init__(self):
+    def __init__(self, unused=None):
         self.lib = torch.library.Library("aten", "IMPL")
+        self.unused = [] if unused is None else unused
+        self.registrar = Register
 
     def __enter__(self):
-        enable(lib=self.lib)
+        enable(lib=self.lib, unused=self.unused, registrar=self.registrar)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        global current_work_registrar
         del self.lib
+        del self.unused
+        del self.registrar
+        del current_work_registrar
+
+
+def all_ops():
+    return current_work_registrar.get_all_ops()
 
 
 __all__ = [
