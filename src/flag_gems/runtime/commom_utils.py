@@ -1,15 +1,9 @@
 from enum import Enum
 
+from .backend import backend_utils
+
+Autograd = backend_utils.Autograd
 autograd_str = "Autograd"
-
-
-class Autograd(Enum):
-    enable = True
-    disable = False
-
-    @classmethod
-    def get_optional_value(cls):
-        return [member.name for member in cls]
 
 
 class vendors(Enum):
