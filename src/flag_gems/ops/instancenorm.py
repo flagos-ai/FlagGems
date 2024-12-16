@@ -280,7 +280,6 @@ def update_running_stats_kernel(
     eps,
     BLOCK_BATCH_SIZE: tl.constexpr = 1,
     BLOCK_CHANNEL_SIZE: tl.constexpr = 2048,
-    num_warps=4,
 ):
     cid = tl.program_id(0) * BLOCK_CHANNEL_SIZE + tl.arange(0, BLOCK_CHANNEL_SIZE)
     col_mask = cid < C
