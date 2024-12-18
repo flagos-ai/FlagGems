@@ -46,6 +46,7 @@ class Benchmark:
         torch_op,
         dtypes=None,
         is_backward=False,
+        **kwargs,
     ):
         self.op_name = op_name
         if is_backward:
@@ -68,6 +69,11 @@ class Benchmark:
         self.to_bench_dtypes = self.dtypes
         self.to_bench_metrics = self.metrics
 
+        # additional properties
+        for k in kwargs:
+            if hasattr(self, k):
+                setattr(self, k, kwargs[k])
+
     def set_metrics(self, user_desired_metrics: Optional[List[str]]):
         # Validate user-specified metrics
         if user_desired_metrics:
@@ -85,6 +91,19 @@ class Benchmark:
                 )
 
         self.to_bench_metrics = user_desired_metrics or self.metrics
+        if (
+            hasattr(self, "set_more_metrics")
+            and callable(getattr(self, "set_more_metrics"))
+            and Config.bench_level == BenchLevel.COMPREHENSIVE
+            and not Config.query
+        ):
+            for metric in self.set_more_metrics():
+                if metric not in self.to_bench_metrics:
+                    self.to_bench_metrics.append(metric)
+
+    def set_more_metrics(self):
+        """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
+        return None
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
         # Validate user-specified dtypes
@@ -142,6 +161,7 @@ class Benchmark:
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
+                # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
         except yaml.YAMLError as e:
@@ -209,6 +229,12 @@ class Benchmark:
             )
         # average latency in ms
         return latency
+
+    def get_gbps(self, args, latency=None):
+        # """Return the dynamic input iterator for each Operator."""
+        raise NotImplementedError(
+            "Each Benchmark must implement its own input iterator."
+        )
 
     def get_tflops(self, op, *args, **kwargs):
         """This method is currently not really implemented and serves as a placeholder.
@@ -293,6 +319,11 @@ class Benchmark:
                                 )
                     if "speedup" in self.to_bench_metrics:
                         metric.speedup = metric.latency_base / metric.latency
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = (
                             self.get_tflops(self.torch_op, *args, **kwargs)
@@ -337,11 +368,10 @@ class GenericBenchmark(Benchmark):
 
     def set_more_shapes(self):
         more_shapes_1d = [
-            (4,),
-            (1024,),
+            (2**28,),
         ]
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        more_shapes_2d = [(10000, 2**i) for i in (0, 8, 16)]
+        more_shapes_3d = [(100, 2**i, 100) for i in (0, 8, 16)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:

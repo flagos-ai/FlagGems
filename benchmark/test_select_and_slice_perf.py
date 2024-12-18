@@ -3,19 +3,18 @@ import random
 import pytest
 import torch
 
+from flag_gems.utils import shape_utils
+
 from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark2DOnly, generate_tensor_input
+from .performance_utils import GenericBenchmark, generate_tensor_input
 
 
-class TensorSelectBenchmark(GenericBenchmark2DOnly):
+class TensorSelectBenchmark(GenericBenchmark):
+    def set_more_metrics(self):
+        return ["gbps"]
+
     def set_more_shapes(self):
-        shapes = super().set_more_shapes()
-        return [
-            # this filter is for scatter
-            shape
-            for shape in shapes
-            if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
-        ]
+        return super().set_more_shapes()
 
 
 def index_select_input_fn(shape, cur_dtype, device):
@@ -35,13 +34,28 @@ def masked_select_input_fn(shape, cur_dtype, device):
     yield inp, mask
 
 
+def mask_select_gbps(bench_fn_args, latency):
+    mask = bench_fn_args[1]
+    io_amount = sum([shape_utils.size_in_bytes(item) for item in [mask]])
+    io_amount += 2 * int(torch.sum(mask))
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
+def index_select_gbps(bench_fn_args, latency):
+    inp = bench_fn_args[0]
+    dim = bench_fn_args[1]
+    io_amount = shape_utils.size_in_bytes(inp) * 2 // inp.size(dim)
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
 @pytest.mark.parametrize(
-    "op_name, torch_op, input_fn, dtypes",
+    "op_name, torch_op, input_fn, gbps_fn, dtypes",
     [
         pytest.param(
             "index_select",
             torch.index_select,
             index_select_input_fn,
+            index_select_gbps,
             FLOAT_DTYPES,
             marks=pytest.mark.index_select,
         ),
@@ -49,16 +63,27 @@ def masked_select_input_fn(shape, cur_dtype, device):
             "masked_select",
             torch.masked_select,
             masked_select_input_fn,
+            mask_select_gbps,
             FLOAT_DTYPES,
             marks=pytest.mark.masked_select,
         ),
     ],
 )
-def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
+def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
     bench = TensorSelectBenchmark(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        get_gbps=gbps_fn,
     )
     bench.run()
+
+
+def gather_scatter_gbps(bench_fn_args, latency):
+    index = bench_fn_args[2]
+    io_amount = sum([shape_utils.size_in_bytes(item) for item in [index, index]])
+    return io_amount * 1e-9 / (latency * 1e-3)
 
 
 @pytest.mark.scatter
@@ -94,6 +119,7 @@ def test_perf_scatter():
         op_name="scatter",
         torch_op=torch.scatter,
         input_fn=scatter_input_fn,
+        get_gbps=gather_scatter_gbps,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
@@ -128,17 +154,25 @@ def test_perf_gather():
         op_name="gather",
         torch_op=torch.gather,
         input_fn=gather_input_fn,
+        get_gbps=gather_scatter_gbps,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
 
 
+def slice_scatter_gbps(bench_fn_args, latency):
+    inp = bench_fn_args[0]
+    src = bench_fn_args[1]
+    io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, src, src]])
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
 @pytest.mark.slice_scatter
 def test_slice_scatter_perf():
     def slice_scatter_input_fn(shape, dtype, device):
-        dim = random.choice([0, 1])
-        start = 16
-        end = 1024
+        dim = 0 if len(shape) == 1 else 1
+        start = 0
+        end = shape[dim]
         step = 2
 
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -161,6 +195,7 @@ def test_slice_scatter_perf():
         torch_op=torch.slice_scatter,
         input_fn=slice_scatter_input_fn,
         dtypes=FLOAT_DTYPES,
+        get_gbps=slice_scatter_gbps,
     )
     bench.run()
 
@@ -168,7 +203,7 @@ def test_slice_scatter_perf():
 @pytest.mark.select_scatter
 def test_select_scatter_perf():
     def select_scatter_input_fn(shape, dtype, device):
-        dim = random.choice([0, 1])
+        dim = 0 if len(shape) == 1 else 1
         index = random.randint(0, shape[dim] - 1)
         inp = torch.randn(shape, dtype=dtype, device=device)
 
@@ -183,5 +218,6 @@ def test_select_scatter_perf():
         torch_op=torch.select_scatter,
         input_fn=select_scatter_input_fn,
         dtypes=FLOAT_DTYPES,
+        get_gbps=slice_scatter_gbps,
     )
     bench.run()
