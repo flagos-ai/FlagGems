@@ -102,7 +102,7 @@ from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
-from .slice_scatter import slice_scatter, slice_scatter_v2
+from .slice_scatter import slice_scatter
 from .softmax import softmax
 from .sort import sort
 from .stack import stack
@@ -258,7 +258,6 @@ __all__ = [
     "where_scalar_other",
     "select_scatter",
     "slice_scatter",
-    "slice_scatter_v2",
     "masked_fill",
     "masked_fill_",
     "_unique2",
