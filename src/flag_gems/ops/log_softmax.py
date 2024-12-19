@@ -11,7 +11,6 @@ from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
 @triton.jit
 def log_softmax_kernel(
     output_ptr,
@@ -19,8 +18,8 @@ def log_softmax_kernel(
     M,
     N,
     K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK_M: tl.constexpr = 8,
+    BLOCK_N: tl.constexpr = 256,
 ):
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
@@ -122,6 +121,7 @@ class LogSoftmax(torch.autograd.Function):
                 M,
                 N,
                 K,
+                num_warps=8,
             )
         ctx.save_for_backward(out)
         ctx.dim = dim

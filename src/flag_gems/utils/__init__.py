@@ -1,4 +1,4 @@
-from .libentry import libentry
+from .libentry import libentry, libtuner
 from .pointwise_dynamic import pointwise_dynamic
 from .shape_utils import (
     broadcastable,
@@ -10,6 +10,7 @@ from .shape_utils import (
 
 __all__ = [
     "libentry",
+    "libtuner",
     "pointwise_dynamic",
     "dim_compress",
     "restride_dim",

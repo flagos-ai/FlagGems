@@ -7,7 +7,7 @@ import torch
 import triton
 from triton.runtime.jit import JITFunction
 
-from flag_gems.utils.code_cache import cache_dir
+from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import (
     all_c_contiguous,
@@ -1262,7 +1262,7 @@ class PointwiseDynamicFunction:
             f"{'bptr_' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
             f"pid_{self.pid}.py"
         )
-        with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+        with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
             f.write(code.getvalue())
 
         # load
