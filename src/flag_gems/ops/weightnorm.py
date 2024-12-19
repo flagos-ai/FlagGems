@@ -199,86 +199,6 @@ def weight_norm_bwd_kernel_first(
     tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
 
 
-@libentry()
-@triton.autotune(
-    configs=runtime.get_triton_config("weight_norm_kernel"),
-    key=["v_shape0", "v_shape1", "v_shape2"],
-)
-@triton.jit(do_not_specialize=["eps"])
-def norm_kernel(
-    output,
-    v,
-    v_shape0,
-    v_shape1,
-    v_shape2,
-    eps,
-    BLOCK_ROW_SIZE: tl.constexpr,
-    BLOCK_COL_SIZE: tl.constexpr,
-):
-    tid_m = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    pid = tle.program_id(axis=0) * BLOCK_ROW_SIZE
-    row_offset = pid + tid_m
-    row_mask = row_offset < v_shape1
-
-    tid_n = tl.arange(0, BLOCK_COL_SIZE)[None, :]
-    v_block = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
-    for base in range(0, v_shape0 * v_shape2, BLOCK_COL_SIZE):
-        col_offset = base + tid_n
-        m_idx = col_offset // v_shape2
-        n_idx = row_offset
-        k_idx = col_offset % v_shape2
-
-        mask = m_idx < v_shape0 and row_mask
-
-        v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
-        v_value = tl.load(v + v_offsets, mask=mask)
-        v_block += v_value * v_value
-    v_sum = tl.sum(v_block, axis=1) + eps
-    v_norm = tl.sqrt(v_sum[:, None])
-    tl.store(output + row_offset, v_norm, mask=row_mask)
-
-
-@libentry()
-@triton.autotune(
-    configs=runtime.get_triton_config("weight_norm_kernel"),
-    key=["v_shape0", "v_shape1", "v_shape2"],
-)
-@triton.jit(do_not_specialize=["eps"])
-def norm_bwd_kernel(
-    v_grad,
-    norm_grad,
-    v,
-    norm,
-    v_shape0,
-    v_shape1,
-    v_shape2,
-    eps,
-    BLOCK_ROW_SIZE: tl.constexpr,
-    BLOCK_COL_SIZE: tl.constexpr,
-):
-    tid_m = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    pid = tle.program_id(axis=0) * BLOCK_ROW_SIZE
-    row_offset = pid + tid_m
-    row_mask = row_offset < v_shape1
-
-    norm_value = tl.load(norm + row_offset, mask=row_mask)
-    norm_grad_value = tl.load(norm_grad + row_offset, mask=row_mask)
-
-    tid_n = tl.arange(0, BLOCK_COL_SIZE)[None, :]
-    for base in range(0, v_shape0 * v_shape2, BLOCK_COL_SIZE):
-        col_offset = base + tid_n
-        m_idx = col_offset // v_shape2
-        n_idx = row_offset
-        k_idx = col_offset % v_shape2
-
-        mask = m_idx < v_shape0 and row_mask
-
-        v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
-        v_value = tl.load(v + v_offsets, mask=mask)
-        v_grad_value = v_value / norm_value * norm_grad_value
-        tl.store(v_grad + v_offsets, v_grad_value, mask=mask)
-
-
 class WeightNormInterface(torch.autograd.Function):
     @staticmethod
     def forward(ctx, v, g, dim):
@@ -286,7 +206,7 @@ class WeightNormInterface(torch.autograd.Function):
         v = v.contiguous()
         g = g.contiguous()
         output = torch.empty_like(v)
-        norm = torch.empty_like(g, dtype=torch.float32)
+        norm = torch.empty_like(g)
         if dim == 0:
             M = v.shape[0]
             N = math.prod(v.shape[1:])
@@ -352,16 +272,134 @@ class WeightNormInterface(torch.autograd.Function):
         return v_grad, g_grad, None
 
 
-class Norm(torch.autograd.Function):
+@libentry()
+@triton.autotune(
+    configs=runtime.get_triton_config("weight_norm_kernel"),
+    key=["v_shape0", "v_shape1", "v_shape2"],
+)
+@triton.jit(do_not_specialize=["eps"])
+def weight_norm_except_dim_kernel(
+    output,
+    norm,
+    v,
+    g,
+    v_shape0,
+    v_shape1,
+    v_shape2,
+    eps,
+    BLOCK_ROW_SIZE: tl.constexpr,
+    BLOCK_COL_SIZE: tl.constexpr,
+):
+    tid_m = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    pid = tle.program_id(axis=0) * BLOCK_ROW_SIZE
+    row_offset = pid + tid_m
+    row_mask = row_offset < v_shape1
+
+    tid_n = tl.arange(0, BLOCK_COL_SIZE)[None, :]
+    v_block = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    for base in range(0, v_shape0 * v_shape2, BLOCK_COL_SIZE):
+        col_offset = base + tid_n
+        m_idx = col_offset // v_shape2
+        n_idx = row_offset
+        k_idx = col_offset % v_shape2
+
+        mask = m_idx < v_shape0 and row_mask
+
+        v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
+        v_value = tl.load(v + v_offsets, mask=mask)
+        v_block += v_value * v_value
+    v_sum = tl.sum(v_block, axis=1) + eps
+    v_norm = tl.sqrt(v_sum[:, None])
+    tl.store(norm + row_offset, v_norm, mask=row_mask)
+
+    g_value = tl.load(g + row_offset, mask=row_mask)
+    for base in range(0, v_shape0 * v_shape2, BLOCK_COL_SIZE):
+        col_offset = base + tid_n
+        m_idx = col_offset // v_shape2
+        n_idx = row_offset
+        k_idx = col_offset % v_shape2
+
+        mask = m_idx < v_shape0 and row_mask
+
+        v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
+        v_value = tl.load(v + v_offsets, mask=mask)
+        out = v_value * g_value / v_norm
+        tl.store(output + v_offsets, out, mask=mask)
+
+
+@libentry()
+@triton.autotune(
+    configs=runtime.get_triton_config("weight_norm_kernel"),
+    key=["v_shape0", "v_shape1", "v_shape2"],
+)
+@triton.jit(do_not_specialize=["eps"])
+def weight_norm_except_dim_bwd_kernel(
+    v_grad,
+    g_grad,
+    grad,
+    v,
+    g,
+    norm,
+    v_shape0,
+    v_shape1,
+    v_shape2,
+    eps,
+    BLOCK_ROW_SIZE: tl.constexpr,
+    BLOCK_COL_SIZE: tl.constexpr,
+):
+    tid_m = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    pid = tle.program_id(axis=0) * BLOCK_ROW_SIZE
+    row_offset = pid + tid_m
+    row_mask = row_offset < v_shape1
+
+    g_value = tl.load(g + row_offset, mask=row_mask).to(tl.float32)
+    norm_value = tl.load(norm + row_offset, mask=row_mask).to(tl.float32)
+
+    tid_n = tl.arange(0, BLOCK_COL_SIZE)[None, :]
+
+    v_block = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    for base in range(0, v_shape0 * v_shape2, BLOCK_COL_SIZE):
+        col_offset = base + tid_n
+        m_idx = col_offset // v_shape2
+        n_idx = row_offset
+        k_idx = col_offset % v_shape2
+
+        mask = m_idx < v_shape0 and row_mask
+
+        v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
+        v_value = tl.load(v + v_offsets, mask=mask).to(tl.float32)
+        grad_value = tl.load(grad + v_offsets, mask=mask).to(tl.float32)
+        v_block += v_value * grad_value
+    vw_sum = tl.sum(v_block, axis=1)[:, None]
+
+    for base in range(0, v_shape0 * v_shape2, BLOCK_COL_SIZE):
+        col_offset = base + tid_n
+        m_idx = col_offset // v_shape2
+        n_idx = row_offset
+        k_idx = col_offset % v_shape2
+
+        mask = m_idx < v_shape0 and row_mask
+
+        v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
+        v_value = tl.load(v + v_offsets, mask=mask).to(tl.float32)
+        grad_value = tl.load(grad + v_offsets, mask=mask).to(tl.float32)
+        v_grad_value = g_value * (
+            grad_value / (norm_value + eps)
+            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
+        )
+        tl.store(v_grad + v_offsets, v_grad_value, mask=mask)
+
+    g_grad_value = vw_sum / (norm_value + eps)
+    tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
+
+
+class WeightNormExceptDim(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, v, dim):
+    def forward(ctx, v, g, dim):
         logging.debug("GEMS NORM FORWARD")
         v = v.contiguous()
-        output = torch.empty(
-            *[1 if i != dim else v.shape[dim] for i in range(v.ndim)],
-            dtype=v.dtype,
-            device=v.device,
-        )
+        output = torch.empty_like(v)
+        norm = torch.empty_like(g)
         v_shape = [
             math.prod(v.shape[:dim]),
             v.shape[dim],
@@ -371,38 +409,43 @@ class Norm(torch.autograd.Function):
         grid = lambda META: (triton.cdiv(v_shape[1], META["BLOCK_ROW_SIZE"]),)
 
         with torch_device_fn.device(v.device):
-            norm_kernel[grid](
+            weight_norm_except_dim_kernel[grid](
                 output,
+                norm,
                 v,
+                g,
                 v_shape[0],
                 v_shape[1],
                 v_shape[2],
                 eps=torch.finfo(torch.float32).tiny,
             )
-        ctx.save_for_backward(v, output)
+        ctx.save_for_backward(v, g, norm)
         ctx.V_SHAPE = v_shape
         return output
 
     @staticmethod
-    def backward(ctx, norm_grad):
+    def backward(ctx, grad):
         logging.debug("GEMS NORM BACKWARD")
-        norm_grad = norm_grad.contiguous()
-        v, norm = ctx.saved_tensors
+        grad = grad.contiguous()
+        v, g, norm = ctx.saved_tensors
         v_grad = torch.empty_like(v)
+        g_grad = torch.empty_like(g)
 
         grid = lambda META: (triton.cdiv(ctx.V_SHAPE[1], META["BLOCK_ROW_SIZE"]),)
         with torch_device_fn.device(v.device):
-            norm_bwd_kernel[grid](
+            weight_norm_except_dim_bwd_kernel[grid](
                 v_grad,
-                norm_grad,
+                g_grad,
+                grad,
                 v,
+                g,
                 norm,
                 ctx.V_SHAPE[0],
                 ctx.V_SHAPE[1],
                 ctx.V_SHAPE[2],
                 eps=torch.finfo(torch.float32).tiny,
             )
-        return v_grad, None
+        return v_grad, g_grad, None
 
 
 def weight_norm_interface(v, g, dim=0):
@@ -411,10 +454,9 @@ def weight_norm_interface(v, g, dim=0):
 
 def weight_norm(v, g, dim=0):
     dim = dim % v.ndim
-    has_half_dtype = v.dtype == torch.float16 or g.dtype == torch.float16
-    can_use_fused = (not has_half_dtype) and (dim == 0 or dim == v.ndim - 1)
+    can_use_fused = dim == 0 or dim == v.ndim - 1
     if can_use_fused:
         output, _ = weight_norm_interface(v, g, dim)
         return output
     else:
-        return v * (g / Norm.apply(v, dim))
+        return WeightNormExceptDim.apply(v, g, dim)
