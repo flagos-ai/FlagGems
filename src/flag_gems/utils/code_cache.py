@@ -22,6 +22,18 @@ def cache_dir() -> Path:
     return _cache_dir
 
 
+def code_cache_dir() -> Path:
+    _code_cache_dir = cache_dir() / "code_cache"
+    os.makedirs(_code_cache_dir, exist_ok=True)
+    return _code_cache_dir
+
+
+def config_cache_dir() -> Path:
+    _config_cache_dir = cache_dir() / "config_cache"
+    os.makedirs(_config_cache_dir, exist_ok=True)
+    return _config_cache_dir
+
+
 def clear_cache():
     """Clear the cache directory for code cache."""
     _cache_dir = cache_dir_path()

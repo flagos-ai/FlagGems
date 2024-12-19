@@ -4,13 +4,26 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
 
+def heur_block_m(args):
+    return min(4, triton.next_power_of_2(triton.cdiv(256, args["N"])))
+
+
+def heur_block_n(args):
+    m = min(triton.next_power_of_2(triton.cdiv(args["N"], 16)), 512)
+    return max(m, 16)
+
+
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("index_select"), key=["M", "N"])
+@triton.heuristics(
+    {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit
 def index_select_kernel(
     inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
