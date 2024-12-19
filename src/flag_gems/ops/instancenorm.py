@@ -6,6 +6,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils.type_utils import get_accumulator_dtype
 
@@ -20,7 +22,7 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_triton_config("instancenorm"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -70,7 +72,7 @@ def instance_norm_persistent_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_triton_config("instancenorm"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -124,11 +126,7 @@ def instance_norm_persistent_kernel_multiline(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"TILE_N": tile_n}, num_warps=w)
-        for tile_n in [1024, 2048, 4096, 8192]
-        for w in [4, 8, 16]
-    ],
+    configs=runtime.get_triton_config("instance_norm_loop"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -220,7 +218,7 @@ def instance_norm_loop_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_triton_config("instancenorm"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -314,11 +312,7 @@ def update_running_stats_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        for m in [1, 2, 4, 8]
-        for w in [4, 8, 16]
-    ],
+    configs=runtime.get_triton_config("instance_norm_backward"),
     key=["M", "N", "C"],
 )
 @triton.jit
@@ -385,11 +379,7 @@ def instance_norm_backward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_BATCH_SIZE": b, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        for b in [1, 2, 4, 8]
-        for w in [4, 8, 16]
-    ],
+    configs=runtime.get_triton_config("instance_norm_weight_bias_backward"),
     key=["N", "B", "C"],
 )
 @triton.jit
@@ -495,7 +485,7 @@ class InstanceNorm(torch.autograd.Function):
         mean = torch.empty(size=(B, C), dtype=acc_type, device=x.device)
         rstd = torch.empty(size=(B, C), dtype=acc_type, device=x.device)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             if use_input_stats:
                 if N <= 128:
                     TILE_N = triton.next_power_of_2(N)
@@ -602,7 +592,7 @@ class InstanceNorm(torch.autograd.Function):
         C = ctx.C
         B = M // C
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             in_grad = torch.empty_like(x)
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
             instance_norm_backward_kernel[grid](

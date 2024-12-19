@@ -5,21 +5,16 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime import device
+from .. import runtime
+from ..runtime import device, torch_device_fn
 from ..utils import triton_lang_extension as tle
 
 device = device.name
 
 
-def configs():
-    block = [1024, 2048]
-    warps = [4, 8]
-    return [
-        triton.Config({"BLOCK_SIZE": bs}, num_warps=wp) for bs in block for wp in warps
-    ]
-
-
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.autotune(
+    configs=runtime.get_triton_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
+)
 @triton.heuristics(
     {
         "SAME_H": lambda args: args["OH"] == args["IH"],
@@ -87,7 +82,8 @@ def upsample_nearest2d(
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
     total_threads = N * C * OH * OW
     grid = lambda META: (triton.cdiv(total_threads, META["BLOCK_SIZE"]),)
-    upsample_nearest2d_kernel[grid](
-        output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
-    )
+    with torch_device_fn.device(input.device):
+        upsample_nearest2d_kernel[grid](
+            output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
+        )
     return output

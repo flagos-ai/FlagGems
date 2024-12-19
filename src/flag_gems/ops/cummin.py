@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -118,7 +119,7 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
     partial_min_indices = torch.empty(part_num, dtype=torch.int64, device=inp.device)
 
     grid = (part_num,)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         scan_part_min_kernel[grid](
             inp,
             out,
@@ -134,7 +135,7 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
         scan_then_fan_col(
             partial_min, partial_min, partial_min_indices, part_num, dtype
         )
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             add_base_min_kernel[grid](
                 out, out_indices, partial_min, partial_min_indices, n_ele, BLOCK_SIZE
             )
@@ -258,7 +259,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
     )
 
     grid = (A, part_num, C)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         scan_part_min_abc_kernel[grid](
             inp,
             out,
@@ -276,7 +277,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
         scan_then_fan(
             partial_min, partial_min, partial_min_indices, A, part_num, C, dtype
         )
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             add_base_min_abc_kernel[grid](
                 out,
                 out_indices,

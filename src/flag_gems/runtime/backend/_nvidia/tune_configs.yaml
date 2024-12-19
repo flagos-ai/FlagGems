@@ -542,6 +542,106 @@ mean:
   - 2
   - 4
   - 8
+
+instancenorm:
+- gen: true
+  param_map:
+    META: {}
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+
+instance_norm_loop:
+- gen: true
+  param_map:
+    META:
+      TILE_N: tile_n
+    num_warps: warps
+  warps:
+    - 4
+    - 8
+    - 16
+  tile_n:
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+instance_norm_backward:
+- gen : true
+  param_map:
+    META:
+      BLOCK_ROW_SIZE: block_m
+      BLOCK_COL_SIZE: 2048
+    num_warps: warps
+  warps:
+    - 4
+    - 8
+    - 16
+  block_m:
+    - 1
+    - 2
+    - 4
+    - 8
+
+instance_norm_weight_bias_backward:
+- gen : true
+  param_map:
+    META:
+      BLOCK_BATCH_SIZE: block_m
+      BLOCK_COL_SIZE: 2048
+    num_warps: warps
+  warps:
+    - 4
+    - 8
+    - 16
+  block_m:
+    - 1
+    - 2
+    - 4
+    - 8
+
+count_nonzero:
+- gen : true
+  param_map:
+    META:
+      BLOCK_SIZE: block_m
+    num_warps: 4
+  block_m:
+    - 1024
+    - 2048
+    - 4096
+cross_entropy_loss_sum_and_scale:
+- gen : true
+  param_map:
+    META:
+      BLOCK_N: block_n
+  block_n:
+  - 64
+  - 256
+  - 1024
+
+upsample_nearest2d:
+- gen : true
+  param_map:
+    META:
+      BLOCK_SIZE: block_n
+    num_warps: warps
+  block_n: [1024, 2048]
+  warps: [4, 8]
+
+upsample_bicubic2d_aa:
+- gen : true
+  param_map:
+    META:
+      BLOCK_X: block_x
+      BLOCK_Y: block_y
+    num_warps: warps
+  block_x: [512, 256, 128, 64]
+  block_y: [2, 1]
+  warps: [4, 8]
+
 mv:
 - gen: true
   param_map:

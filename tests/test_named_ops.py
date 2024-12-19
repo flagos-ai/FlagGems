@@ -3,6 +3,8 @@ import logging
 
 import pytest
 
+import flag_gems
+
 # This is a collection of unit test by op name for testing the
 # accuracy of each op.
 
@@ -195,9 +197,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--device",
         action="store",
-        default="cuda",
-        choices=["cuda", "cpu"],
-        help="device to run reference tests on. Choose 'cuda' or 'cpu'. Default is 'cuda'.",
+        default=flag_gems.device,
+        choices=[flag_gems.device, "cpu"],
+        help=f"device to run reference tests on. Choose {flag_gems.device} or 'cpu'. Default is {flag_gems.device}.",
     )
     args = parser.parse_args()
 

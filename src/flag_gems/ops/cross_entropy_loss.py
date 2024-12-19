@@ -463,7 +463,7 @@ def celoss_indices_smooth_bwd(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({"BLOCK_N": n}) for n in [64, 256, 1024]],
+    configs=runtime.get_triton_config("cross_entropy_loss_sum_and_scale"),
     key=[
         "N",
     ],
