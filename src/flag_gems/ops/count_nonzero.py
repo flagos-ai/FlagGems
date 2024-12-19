@@ -4,17 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
-
-
-def cfggen():
-    BLOCK_SIZE = [1024, 2048, 4096]
-    configs = [
-        triton.Config({"BLOCK_SIZE": block_size}, num_warps=4)
-        for block_size in BLOCK_SIZE
-    ]
-    return configs
 
 
 @libentry()
@@ -31,7 +23,7 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["numel"])
+@triton.autotune(configs=runtime.get_triton_config("count_nonzero"), key=["numel"])
 @triton.jit
 def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0)
@@ -49,7 +41,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["numel"])
+@triton.autotune(configs=runtime.get_triton_config("count_nonzero"), key=["numel"])
 @triton.jit
 def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0)

@@ -219,9 +219,9 @@ CUMMIN_SHAPES = (
 def test_accuracy_cummin(shape, dtype):
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
-        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+        inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
     else:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.cummin(ref_inp, dim=dim)
@@ -260,11 +260,13 @@ def test_accuracy_nonzero(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
 def test_accuracy_count_nonzero(shape, dtype):
     if dtype == torch.bool:
-        inp = torch.randint(0, 2, shape, dtype=torch.int, device="cuda").to(dtype)
+        inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+            dtype
+        )
     elif dtype in INT_DTYPES:
-        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+        inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
     else:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, False)
     dim = random.choice([None] + list(range(inp.ndim)))
     ref_out = torch.count_nonzero(ref_inp, dim)
@@ -695,9 +697,9 @@ SHAPE_CONV1D = [
 @pytest.mark.parametrize("padding", [1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
-    weight = torch.randn(kernel, dtype=dtype, device="cuda")
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
     ref_weight = to_reference(weight, True)
     ref_out = torch.nn.functional.conv1d(
         ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
@@ -746,10 +748,10 @@ SHAPE_CONV2D = [
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("dilation", [1, 2, 3])
 def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
-    weight = torch.randn(kernel, dtype=dtype, device="cuda")
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
     ref_weight = to_reference(weight, True)
     ref_out = torch.nn.functional.conv2d(
@@ -772,7 +774,7 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
         dilation=dilation,
     )
     gems_assert_close(res_out, ref_out, dtype)
-    out_grad = torch.randn_like(ref_out).to("cuda")
+    out_grad = torch.randn_like(ref_out).to(flag_gems.device)
     ref_grad = to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
@@ -806,10 +808,12 @@ SHAPE_DEPTHWISE = [
 def test_accuracy_depthwise2d(
     shape_input, shape_weight, kernel, stride, padding, dtype
 ):
-    inp = torch.randn(shape_input, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(
+        shape_input, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
     ref_inp = to_reference(inp, False)
     torch.backends.cudnn.allow_tf32 = False
-    weight = torch.randn(shape_weight, dtype=dtype, device="cuda")
+    weight = torch.randn(shape_weight, dtype=dtype, device=flag_gems.device)
     ref_weight = to_reference(weight, False)
     ref_out = torch._C._nn._conv_depthwise2d(
         ref_inp,

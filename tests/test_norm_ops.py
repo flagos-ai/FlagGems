@@ -180,19 +180,24 @@ def test_accuracy_instancenorm(
         return
 
     B, C = shape[:2]
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     if has_weight_bias:
-        weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
-        bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+        weight = torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
+        bias = torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
     else:
         weight, bias = None, None
     running_mean = (
-        torch.randn(size=(C,), dtype=torch.float32, device="cuda")
+        torch.randn(size=(C,), dtype=torch.float32, device=flag_gems.device)
         if has_running_stats
         else None
     )
     running_var = (
-        torch.randn(size=(C,), dtype=torch.float32, device="cuda").abs() + 1e-5
+        torch.randn(size=(C,), dtype=torch.float32, device=flag_gems.device).abs()
+        + 1e-5
         if has_running_stats
         else None
     )
