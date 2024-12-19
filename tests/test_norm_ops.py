@@ -264,13 +264,12 @@ def test_accuracy_instancenorm(
             gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N)
 
 
-WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
-    zip(REDUCTION_SHAPES, FLOAT_DTYPES, [-1] if QUICK_MODE else [0, -1, -1])
-)
+WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, 1]))
 
 
 @pytest.mark.weight_norm
-@pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
+@pytest.mark.parametrize("shape, dim", WEIGHT_NORM_SHAPE_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm(shape, dtype, dim):
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
@@ -282,8 +281,8 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     )
     reduce_size = v.numel() // shape[dim]
 
-    ref_v = to_reference(v, False)
-    ref_g = to_reference(g, False)
+    ref_v = to_reference(v, True)
+    ref_g = to_reference(g, True)
     ref_w_out = torch._weight_norm(ref_v, ref_g, dim)
     with flag_gems.use_gems():
         res_w_out = torch._weight_norm(v, g, dim)
@@ -292,7 +291,7 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     res_w_grad = torch.randn(
         shape, dtype=dtype, device=flag_gems.device, requires_grad=True
     )
-    ref_w_grad = to_reference(res_w_grad, False)
+    ref_w_grad = to_reference(res_w_grad, True)
 
     ref_v_grad, ref_g_grad = torch.autograd.grad(
         ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
@@ -304,8 +303,14 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
 
 
+WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
+    zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, -1])
+)
+
+
 @pytest.mark.weight_norm_interface
-@pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
+@pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm_interface(shape, dtype, dim):
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
