@@ -196,6 +196,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("diag", diag, Autograd.disable),
             ("diag_embed", diag_embed, Autograd.disable),
             ("diagonal_backward", diagonal_backward, Autograd.disable),
+            ("index_add", index_add, Autograd.disable),
             ("count_nonzero", count_nonzero, Autograd.disable),
             ("logical_or", logical_or, Autograd.disable),
             ("logical_and", logical_and, Autograd.disable),

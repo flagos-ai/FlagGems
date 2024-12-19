@@ -642,6 +642,31 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
 
 
 # TODO: failed at (200, 40999, 3)
+@pytest.mark.index_add
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_add(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    src_shape = list(inp.shape)
+    index_max = src_shape[dim]
+    index_len = index_max
+    index = torch.randperm(index_len, device="cuda")
+    src_shape[dim] = index_len
+    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    alpha = 2
+
+    ref_inp = to_reference(inp)
+    ref_src = to_reference(src)
+    ref_index = to_reference(index)
+    ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=alpha)
+    with flag_gems.use_gems():
+        res_out = torch.index_add(inp, dim, index, src, alpha=alpha)
+
+    gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
+
+
 @pytest.mark.index_select
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
