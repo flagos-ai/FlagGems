@@ -7,7 +7,7 @@ from .ops import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
 
-__version__ = "2.1"
+__version__ = "2.2"
 device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register

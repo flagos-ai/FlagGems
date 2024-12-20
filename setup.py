@@ -65,7 +65,7 @@ triton_package_name = (
 # ----------------------------- Setup -----------------------------
 setup(
     name="flag_gems",
-    version="2.0",
+    version="2.2",
     authors=[
         {"name": "Zhixin Li", "email": "strongspoon@outlook.com"},
         {"name": "Tongxin Bai", "email": "waffle.bai@gmail.com"},
