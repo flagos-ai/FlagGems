@@ -54,8 +54,14 @@ def layer_norm_persistent_kernel(
     tl.store(out_mean_ptr + pid, m)
     tl.store(out_rstd_ptr + pid, rstd)
 
-    w = tl.load(weight_ptr + n_offsets, mask=mask)
-    b = tl.load(bias_ptr + n_offsets, mask=mask)
+    if weight_ptr is None:
+        w = 1
+    else:
+        w = tl.load(weight_ptr + n_offsets, mask=mask)
+    if bias_ptr is None:
+        b = 0
+    else:
+        b = tl.load(bias_ptr + n_offsets, mask=mask)
     out = (x - m) * rstd * w + b
 
     tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
@@ -102,8 +108,14 @@ def layer_norm_persistent_kernel_multiline(
     tl.store(out_mean_ptr + m_offsets, m, mask=m_mask)
     tl.store(out_rstd_ptr + m_offsets, rstd, mask=m_mask)
 
-    w = tl.load(weight_ptr + n_offsets, mask=n_mask)
-    b = tl.load(bias_ptr + n_offsets, mask=n_mask)
+    if weight_ptr is None:
+        w = 1
+    else:
+        w = tl.load(weight_ptr + n_offsets, mask=n_mask)
+    if bias_ptr is None:
+        b = 0
+    else:
+        b = tl.load(bias_ptr + n_offsets, mask=n_mask)
     out = (x - m[:, None]) * rstd[:, None] * w + b
 
     tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
@@ -178,8 +190,14 @@ def layer_norm_loop_kernel(
             other=0.0,
             eviction_policy="evict_first",
         ).to(tl.float32)
-        w = tl.load(weight_ptr + n_offsets, mask=mask)
-        b = tl.load(bias_ptr + n_offsets, mask=mask)
+        if weight_ptr is None:
+            w = 1
+        else:
+            w = tl.load(weight_ptr + n_offsets, mask=mask)
+        if bias_ptr is None:
+            b = 0
+        else:
+            b = tl.load(bias_ptr + n_offsets, mask=mask)
         out = w * (x - m) * rstd + b
         tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
 
@@ -188,8 +206,14 @@ def layer_norm_loop_kernel(
         x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(
             tl.float32
         )
-        w = tl.load(weight_ptr + n_offsets)
-        b = tl.load(bias_ptr + n_offsets)
+        if weight_ptr is None:
+            w = 1
+        else:
+            w = tl.load(weight_ptr + n_offsets)
+        if bias_ptr is None:
+            b = 0
+        else:
+            b = tl.load(bias_ptr + n_offsets)
         out = w * (x - m) * rstd + b
         tl.store(out_ptr + pid * N + n_offsets, out)
 
@@ -234,7 +258,10 @@ def layer_norm_backward_kernel(
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
-        w = tl.load(W + cols, mask=cols < N).to(tl.float32)
+        if W is None:
+            w = 1
+        else:
+            w = tl.load(W + cols, mask=cols < N).to(tl.float32)
         dx_hat = dy * w
         dx_part2 += dx_hat
         dx_part3 += dx_hat * x_hat
@@ -248,7 +275,10 @@ def layer_norm_backward_kernel(
         mask = row_mask and col_mask
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
-        w = tl.load(W + cols, mask=cols < N).to(tl.float32)
+        if W is None:
+            w = 1
+        else:
+            w = tl.load(W + cols, mask=cols < N).to(tl.float32)
         x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
         dx_hat = dy * w
@@ -278,8 +308,6 @@ def weight_bias_backward_kernel(
     col_mask = pid < N
     dY += pid
     X += pid
-    dW += pid
-    dB += pid
     accW = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     accB = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     for off in range(0, M, BLOCK_ROW_SIZE):
@@ -294,10 +322,12 @@ def weight_bias_backward_kernel(
         x_hat = x * rstd
         accW += dy * x_hat
         accB += dy
-    dw = tl.sum(accW, axis=0)
-    db = tl.sum(accB, axis=0)
-    tl.store(dW, dw[None, :], mask=col_mask)
-    tl.store(dB, db[None, :], mask=col_mask)
+    if dW is not None:
+        dw = tl.sum(accW, axis=0)
+        tl.store(dW + pid, dw[None, :], mask=col_mask)
+    if dB is not None:
+        db = tl.sum(accB, axis=0)
+        tl.store(dB + pid, db[None, :], mask=col_mask)
 
 
 class LayerNorm(torch.autograd.Function):
@@ -310,8 +340,10 @@ class LayerNorm(torch.autograd.Function):
         M = x.numel() // N
 
         x = x.contiguous()
-        weight = weight.contiguous()
-        bias = bias.contiguous()
+        if weight is not None:
+            weight = weight.contiguous()
+        if bias is not None:
+            bias = bias.contiguous()
         y = torch.empty_like(x)
 
         # NOTE: when the input is half-precision(either float16 or bfloat16)
@@ -366,16 +398,17 @@ class LayerNorm(torch.autograd.Function):
                     N,
                     eps,
                 )
-        ctx.save_for_backward(x, weight, mean, rstd)
-        ctx.M = M
-        ctx.N = N
+        if x.requires_grad:
+            ctx.save_for_backward(x, weight, bias, mean, rstd)
+            ctx.M = M
+            ctx.N = N
         return y, mean, rstd
 
     @staticmethod
     def backward(ctx, out_grad, mean_grad, rstd_grad):
         logging.debug("GEMS LAYERNORM BACKWARD")
         out_grad = out_grad.contiguous()
-        (x, weight, mean, rstd) = ctx.saved_tensors
+        (x, weight, bias, mean, rstd) = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
 
@@ -386,14 +419,20 @@ class LayerNorm(torch.autograd.Function):
                 out_grad, x, weight, mean, rstd, in_grad, M, N
             )
 
+        if weight is None and bias is None:
+            return in_grad, None, None, None, None, None
+
+        with torch_device_fn.device(x.device):
             grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
-            weight_grad = torch.empty_like(weight)
-            bias_grad = torch.empty_like(weight)
+            weight_grad = None if weight is None else torch.empty_like(weight)
+            bias_grad = None if bias is None else torch.empty_like(bias)
             weight_bias_backward_kernel[grid](
                 out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
             )
         return in_grad, None, weight_grad, bias_grad, None, None
 
 
-def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
+def layer_norm(
+    x, normalized_shape, weight=None, bias=None, eps=1e-5, cudnn_enable=True
+):
     return LayerNorm.apply(x, normalized_shape, weight, bias, eps, cudnn_enable)
