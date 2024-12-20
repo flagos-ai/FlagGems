@@ -3,7 +3,6 @@ from enum import Enum
 from .backend import backend_utils
 
 Autograd = backend_utils.Autograd
-autograd_str = "Autograd"
 
 
 class vendors(Enum):

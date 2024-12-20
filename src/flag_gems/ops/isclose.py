@@ -4,12 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime.moduel_tool import tl_extra_module
-from ..utils import pointwise_dynamic
+from ..utils import pointwise_dynamic, tl_extra_shim
 from .all import all
 
-_isfinited = tl_extra_module.isfinited
-_finitef = tl_extra_module.finitef
+_isfinited = tl_extra_shim.isfinited
+_finitef = tl_extra_shim.finitef
 
 
 @pointwise_dynamic(

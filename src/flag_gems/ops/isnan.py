@@ -3,10 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..runtime import tl_extra_module
-from ..utils import pointwise_dynamic
+from ..utils import pointwise_dynamic, tl_extra_shim
 
-_isnan = tl_extra_module.isnan
+_isnan = tl_extra_shim.isnan
 
 
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])

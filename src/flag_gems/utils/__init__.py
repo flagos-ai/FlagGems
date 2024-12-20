@@ -7,6 +7,7 @@ from .shape_utils import (
     offsetCalculator,
     restride_dim,
 )
+from .triton_lang_helper import tl_extra_shim
 
 __all__ = [
     "libentry",
@@ -17,4 +18,5 @@ __all__ = [
     "offsetCalculator",
     "broadcastable_to",
     "broadcastable",
+    "tl_extra_shim",
 ]
