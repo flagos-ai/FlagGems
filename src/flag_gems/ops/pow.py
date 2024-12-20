@@ -3,10 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..runtime import tl_extra_module
-from ..utils import pointwise_dynamic
+from ..utils import pointwise_dynamic, tl_extra_shim
 
-_pow = tl_extra_module.pow
+_pow = tl_extra_shim.pow
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])

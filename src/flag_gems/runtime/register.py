@@ -14,7 +14,7 @@ class Register:
         self.lib = lib
         # reg_key like 'CUDA', reg_bac_key like AutogradCUDA
         self.reg_key = self.device.name.upper()
-        self.reg_bac_key = commom_utils.autograd_str + self.reg_key
+        self.reg_bac_key = "Autograd" + self.reg_key
         self.all_ops = []
         self.vendor_extend_configs = self.get_vendor_extend_op()
         self.vendor_unused_ops_list = self.get_vendor_unused_op()
