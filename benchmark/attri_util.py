@@ -177,7 +177,7 @@ class BenchmarkResult:
             f"level={self.level})\n"
         )
         col_names = [
-            f"{'Size':<10}",
+            f"{'Status':<10}",
             f"{'Torch Latency (ms)':>20}",
             f"{'Gems Latency (ms)':>20}",
             f"{'Gems Speedup':>20}",
