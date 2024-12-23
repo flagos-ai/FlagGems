@@ -9,7 +9,6 @@ import triton
 import yaml
 
 import flag_gems
-from flag_gems.runtime import torch_backend_device, torch_device_fn
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -25,8 +24,10 @@ from .attri_util import (
 )
 from .conftest import Config
 
-torch_backend_device.matmul.allow_tf32 = False
+torch_backend_device = flag_gems.runtime.torch_backend_device
+torch_device_fn = flag_gems.runtime.torch_device_fn
 device = flag_gems.device
+torch_backend_device.matmul.allow_tf32 = False
 
 
 class Benchmark:
@@ -103,7 +104,7 @@ class Benchmark:
 
     def set_more_metrics(self):
         """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
-        return None
+        return []
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
         # Validate user-specified dtypes
