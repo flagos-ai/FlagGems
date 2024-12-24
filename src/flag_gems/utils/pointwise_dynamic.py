@@ -1,6 +1,5 @@
 import importlib
 import os
-from dataclasses import dataclass
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
@@ -17,6 +16,8 @@ from flag_gems.utils.shape_utils import (
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
+
+from .codegen_config_utils import CodeGenConfig, get_codegen_config
 
 
 # ------------------ Operation Description ---------------------------
@@ -213,22 +214,6 @@ class FunctionSchema:
 
     def __str__(self) -> str:
         return self.signature(outputs_in_arg=False)
-
-
-@dataclass
-class CodeGenConfig:
-    max_tile_size: int
-    max_grid_size: Tuple[int, int, int]
-    max_num_warps_per_cta: int
-
-    prefer_block_pointer: bool
-    prefer_1d_tile: bool
-    # gen_configs: -> configs
-    # prune_config: (as jit function, ) cofigs -> configs
-
-    def __post_init__(self):
-        if self.prefer_1d_tile:
-            self.prefer_block_pointer = False
 
 
 class KernelGenerator:
@@ -1089,13 +1074,7 @@ class PointwiseDynamicFunction:
         self._scalar_fn_cache_key = scalar_fn.cache_key
         self.pid = os.getpid()
 
-        self.config: CodeGenConfig = config or CodeGenConfig(
-            512,
-            (65536, 65536, 65536),
-            32,
-            True,
-            prefer_1d_tile=int(triton.__version__[0]) < 3,
-        )
+        self.config: CodeGenConfig = config or get_codegen_config()
 
         # instantiated & cached overloads
         self.overloads: Mapping[int, Callable] = {}
