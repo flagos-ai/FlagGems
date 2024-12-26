@@ -56,7 +56,7 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("sum"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("sum"), key=["M", "N"])
 @triton.jit
 def sum_kernel(
     inp,

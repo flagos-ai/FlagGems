@@ -22,7 +22,7 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("instancenorm"),
+    configs=runtime.get_tuned_config("instancenorm"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -72,7 +72,7 @@ def instance_norm_persistent_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("instancenorm"),
+    configs=runtime.get_tuned_config("instancenorm"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -126,7 +126,7 @@ def instance_norm_persistent_kernel_multiline(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("instance_norm_loop"),
+    configs=runtime.get_tuned_config("instance_norm_loop"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -218,7 +218,7 @@ def instance_norm_loop_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("instancenorm"),
+    configs=runtime.get_tuned_config("instancenorm"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -312,7 +312,7 @@ def update_running_stats_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("instance_norm_backward"),
+    configs=runtime.get_tuned_config("instance_norm_backward"),
     key=["M", "N", "C"],
 )
 @triton.jit
@@ -379,7 +379,7 @@ def instance_norm_backward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("instance_norm_weight_bias_backward"),
+    configs=runtime.get_tuned_config("instance_norm_weight_bias_backward"),
     key=["N", "B", "C"],
 )
 @triton.jit

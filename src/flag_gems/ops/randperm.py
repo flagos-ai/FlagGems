@@ -155,7 +155,7 @@ def digit_hist_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("randperm"),
+    configs=runtime.get_tuned_config("randperm"),
     key=["n_elements"],
 )
 @triton.jit

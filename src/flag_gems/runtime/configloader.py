@@ -21,6 +21,7 @@ class ConfigLoader(object):
             # primitive_yaml_config is simply the dictionary returned by yaml
             # and is reserved from being an attr for vendor customizability
             self.primitive_yaml_config = self.get_vendor_tune_config()
+            self.heuristics_config = self.get_vendor_heuristics_config()
             # gen_key is an identifier that indicates whether the current config needs to be generated automatically
             self.gen_key = "gen"
             # loaded_triton_config is wrapped in triton.Config according to primitive_yaml_config
@@ -34,7 +35,10 @@ class ConfigLoader(object):
 
     def load_all(self):
         for key in self.primitive_yaml_config:
-            self.loaded_triton_config[key] = self.get_triton_config(key)
+            self.loaded_triton_config[key] = self.get_tuned_config(key)
+
+    def get_vendor_heuristics_config(self):
+        return backend.get_heuristic_config(self.device.vendor_name)
 
     def get_vendor_tune_config(self):
         return backend.get_tune_config(self.device.vendor_name)
@@ -103,7 +107,7 @@ class ConfigLoader(object):
             current_config,
         )
 
-    def get_triton_config(self, op_name):
+    def get_tuned_config(self, op_name):
         if op_name in self.loaded_triton_config:
             return self.loaded_triton_config[op_name]
 

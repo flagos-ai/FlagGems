@@ -23,7 +23,7 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("count_nonzero"), key=["numel"])
+@triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
 @triton.jit
 def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0)
@@ -41,7 +41,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("count_nonzero"), key=["numel"])
+@triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
 @triton.jit
 def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0)

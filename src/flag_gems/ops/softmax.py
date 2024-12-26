@@ -9,52 +9,9 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
-MAX_TILE_K = 8192
-NUM_SMS = torch_device_fn.get_device_properties(
-    torch_device_fn.current_device()
-).multi_processor_count
-
-
-def heur_tile_k(args):
-    tile_k = 1
-    upper_bound = min(args["K"], MAX_TILE_K)
-    while tile_k <= upper_bound:
-        num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
-        num_waves = num_blocks / NUM_SMS
-        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
-            tile_k *= 2
-        else:
-            break
-    return tile_k
-
-
-def heur_tile_n_non_inner(args):
-    return triton.cdiv(8192, args["TILE_K"])
-
-
-def heur_one_tile_per_cta(args):
-    return args["TILE_N"] >= args["N"]
-
-
-def heur_num_warps_non_inner(args):
-    tile_size = args["TILE_N"] * args["TILE_K"]
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
-
 
 @libentry()
-@triton.heuristics(
-    {
-        "TILE_K": heur_tile_k,
-        "TILE_N": heur_tile_n_non_inner,
-        "ONE_TILE_PER_CTA": heur_one_tile_per_cta,
-        "num_warps": heur_num_warps_non_inner,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
 @triton.jit
 def softmax_kernel_non_inner(
     output_ptr,
@@ -125,31 +82,8 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
-def heur_tile_n_inner(args):
-    if args["N"] <= (32 * 1024):
-        return triton.next_power_of_2(args["N"])
-    else:
-        return 4096
-
-
-def heur_num_warps_inner(args):
-    tile_size = args["TILE_N"]
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
-
-
 @libentry()
-@triton.heuristics(
-    {
-        "TILE_N": heur_tile_n_inner,
-        "ONE_TILE_PER_CTA": heur_one_tile_per_cta,
-        "num_warps": heur_num_warps_inner,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
 @triton.jit
 def softmax_kernel_inner(
     output_ptr,
@@ -223,26 +157,17 @@ def softmax_kernel_inner(
             tl.store(output_ptr + n_offsets, o)
 
 
-def heur_tile_n_bwd_non_inner(args):
-    return max(1, 1024 // args["TILE_K"])
-
-
 # ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("softmax_non_inner"),
+    configs=runtime.get_tuned_config("softmax_non_inner"),
     key=[
         "M",
         "N",
         "K",
     ],
 )
-@triton.heuristics(
-    {
-        "TILE_N": heur_tile_n_bwd_non_inner,
-        "ONE_TILE_PER_CTA": heur_one_tile_per_cta,
-    },
-)
+@triton.heuristics(runtime.get_heuristic_config("softmax_backward_non_inner"))
 @triton.jit
 def softmax_backward_kernel_non_inner(
     out_ptr,
@@ -293,20 +218,13 @@ def softmax_backward_kernel_non_inner(
             offsets += TILE_N * K
 
 
-def heru_tile_m(args):
-    return max(1, 1024 // args["TILE_N"])
-
-
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("softmax_inner"),
+    configs=runtime.get_tuned_config("softmax_inner"),
     key=["M", "N"],
 )
 @triton.heuristics(
-    values={
-        "TILE_M": heru_tile_m,
-        "ONE_TILE_PER_CTA": heur_one_tile_per_cta,
-    },
+    values=runtime.get_heuristic_config("softmax_backward_inner"),
 )
 @triton.jit
 def softmax_backward_kernel_inner(

@@ -9,31 +9,11 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
+from .. import runtime
 from ..runtime import torch_device_fn
 
 
-def heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
-
-
-def heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
-
-
-@triton.heuristics(
-    {
-        "BLOCK": heur_block,
-        "num_warps": heur_num_warps,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("dropout"))
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_forward_kernel(
     X,
@@ -85,12 +65,7 @@ def dropout_forward_kernel(
     tl.store(Y + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
 
 
-@triton.heuristics(
-    {
-        "BLOCK": heur_block,
-        "num_warps": heur_num_warps,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("dropout"))
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_backward_kernel(
     DY,

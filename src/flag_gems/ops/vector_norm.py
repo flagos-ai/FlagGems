@@ -14,7 +14,7 @@ pow = tl_extra_shim.pow
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -62,7 +62,7 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -110,7 +110,7 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -158,7 +158,7 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -206,7 +206,7 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.jit(do_not_specialize=["ord"])
 def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]

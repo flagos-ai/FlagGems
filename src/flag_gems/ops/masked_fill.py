@@ -10,7 +10,7 @@ from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("masked_fill"), key=["N"])
+@triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(axis=0)
@@ -24,7 +24,7 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("masked_fill"), key=["N"])
+@triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(axis=0)

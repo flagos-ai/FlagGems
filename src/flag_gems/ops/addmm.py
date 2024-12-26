@@ -12,7 +12,7 @@ from ..utils import triton_lang_extension as tle
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("addmm"),
+    configs=runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
