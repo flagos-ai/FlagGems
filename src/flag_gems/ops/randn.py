@@ -10,6 +10,7 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
+from .. import runtime
 from ..runtime import device, torch_device_fn
 
 try:
@@ -28,28 +29,7 @@ except AttributeError:
 device_ = device
 
 
-def heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
-
-
-def heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
-
-
-@triton.heuristics(
-    {
-        "BLOCK": heur_block,
-        "num_warps": heur_num_warps,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("randn"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
     out_ptr,

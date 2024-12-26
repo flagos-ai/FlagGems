@@ -47,7 +47,7 @@ def heur_block_n(args):
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("min"),
+    configs=runtime.get_tuned_config("min"),
     key=[
         "M",
         "N",

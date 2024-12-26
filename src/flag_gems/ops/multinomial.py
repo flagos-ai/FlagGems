@@ -9,15 +9,9 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
 
 @libentry()
-@triton.heuristics(
-    {
-        "NBLOCK": lambda args: 128,
-        "num_warps": lambda args: 4,
-    }
-)
 @triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
 def multinomial_with_replacement(
-    cdf_ptr, out_ptr, K, N, philox_seed, philox_offset, NBLOCK: tl.constexpr
+    cdf_ptr, out_ptr, K, N, philox_seed, philox_offset, NBLOCK: tl.constexpr = 128
 ):
     # The computation is arranged in a 2d grid of blocks, each producing
     # a batch of samples for a particular distribution.

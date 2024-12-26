@@ -21,7 +21,7 @@ def reduce_any(a, b):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("any"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
 @triton.jit
 def any_kernel_dim(
     inp,

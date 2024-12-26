@@ -12,7 +12,7 @@ from ..utils import triton_lang_extension as tle
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("nonzero"),
+    configs=runtime.get_tuned_config("nonzero"),
     key=[
         "n_elements",
     ],

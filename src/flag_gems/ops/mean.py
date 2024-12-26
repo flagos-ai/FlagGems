@@ -60,7 +60,7 @@ def mean(inp, *, dtype=None):
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("mean"),
+    configs=runtime.get_tuned_config("mean"),
     key=["M", "N"],
 )
 @triton.jit

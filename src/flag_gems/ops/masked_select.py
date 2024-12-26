@@ -11,7 +11,7 @@ from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("masked_select"), key=["n_elements"])
+@triton.autotune(configs=runtime.get_tuned_config("masked_select"), key=["n_elements"])
 @triton.jit
 def masked_select_kernel(
     inp_ptr,

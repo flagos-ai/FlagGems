@@ -1,5 +1,6 @@
 from backend_utils import Autograd, VendorInfoBase  # noqa: E402
 
+from .heuristics_config_utils import HEURISTICS_CONFIGS
 from .ops import *  # noqa: F403
 
 vendor_info = VendorInfoBase(
@@ -15,4 +16,4 @@ def get_unused_op():
     return ("cumsum", "cos")
 
 
-__all__ = ["*"]
+__all__ = ["*", "HEURISTICS_CONFIGS"]

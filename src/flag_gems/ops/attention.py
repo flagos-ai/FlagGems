@@ -123,7 +123,7 @@ def early_config_prune(configs, nargs, **kwargs):
 
 
 @triton.autotune(
-    configs=runtime.get_triton_config("attention"),
+    configs=runtime.get_tuned_config("attention"),
     key=["KV_CTX", "HEAD_DIM"],
     prune_configs_by={
         "early_config_prune": early_config_prune,

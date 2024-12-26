@@ -124,6 +124,12 @@ def get_curent_device_unused_op(vendor_name=None):
     return list(vendor_module.get_unused_op())
 
 
+def get_heuristic_config(vendor_name=None):
+    global vendor_module
+    get_vendor_module(vendor_name)
+    return vendor_module.HEURISTICS_CONFIGS
+
+
 def get_tune_config(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
