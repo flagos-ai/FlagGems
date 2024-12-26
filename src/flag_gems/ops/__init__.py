@@ -6,6 +6,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
+from .attention import scaled_dot_product_attention
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_tensor,
@@ -274,6 +275,7 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "scaled_dot_product_attention",
     "conv2d",
     "conv1d",
     "_conv_depthwise2d",
