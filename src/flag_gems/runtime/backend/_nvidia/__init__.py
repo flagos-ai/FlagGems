@@ -1,19 +1,20 @@
-from backend_utils import Autograd, VendorInfoBase  # noqa: E402
+from backend_utils import VendorInfoBase  # noqa: E402
 
 from .heuristics_config_utils import HEURISTICS_CONFIGS
-from .ops import *  # noqa: F403
 
+global specific_ops, unused_ops
 vendor_info = VendorInfoBase(
     vendor_name="nvidia", device_name="cuda", device_query_cmd="nvidia-smi"
 )
 
 
-def get_register_op_config():
-    return (("add.Tensor", add, Autograd.disable),)
+def OpLoader():
+    global specific_ops, unused_ops
+    if specific_ops is None:
+        from . import ops  # noqa: F403
+
+        specific_ops = ops.get_specific_ops()
+        unused_ops = ops.get_unused_ops()
 
 
-def get_unused_op():
-    return ("cumsum", "cos")
-
-
-__all__ = ["*", "HEURISTICS_CONFIGS"]
+__all__ = ["HEURISTICS_CONFIGS", "vendor_info", "OpLoader"]
