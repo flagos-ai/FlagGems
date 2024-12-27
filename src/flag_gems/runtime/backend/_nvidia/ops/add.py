@@ -34,7 +34,7 @@ def add_kernel(
 
 def add(x: torch.Tensor, y: torch.Tensor):
     # We need to preallocate the output.
-    print("\n.......test for mutibackend........\n")
+    print("\n.......test for mutibackend specific add........\n")
     output = torch.empty_like(x)
     n_elements = output.numel()
     # The SPMD launch grid denotes the number of kernel instances that run in parallel.

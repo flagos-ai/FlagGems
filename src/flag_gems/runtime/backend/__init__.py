@@ -115,13 +115,15 @@ def get_vendor_infos():
 def get_curent_device_extend_op(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
-    return vendor_module.get_register_op_config()
+    vendor_module.OpLoader()
+    return vendor_module.specific_ops
 
 
 def get_curent_device_unused_op(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
-    return list(vendor_module.get_unused_op())
+    vendor_module.OpLoader()
+    return list(vendor_module.unused_ops)
 
 
 def get_heuristic_config(vendor_name=None):
