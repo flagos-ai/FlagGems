@@ -238,7 +238,7 @@ if __name__ == "__main__":
                     for ut in uts:
                         cmd = f"{file_name}::{ut}"
                         print(cmd)
-                        result = pytest.main(["-s", cmd, "--device", device])
+                        result = pytest.main(["-s", cmd, "--ref", device])
                         final_result += result
         print("final_result: ", final_result)
         exit(final_result)
