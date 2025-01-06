@@ -1236,7 +1236,7 @@ class PointwiseDynamicFunction:
         # library, but we find generating a module simpler, since we can generating 2 functions
         # the kernel and the wrapper, and the wrapper calls the kernel.
         file_name = (
-            f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{ndim}_"
+            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
             f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
             f"{'bptr_' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
             f"pid_{self.pid}.py"
