@@ -21,8 +21,8 @@ def test_accuracy_bert(prompt, dtype):
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
     ref_model = copy.deepcopy(model)
-    ref_model.to(torch.float64).to(device).eval()
-    ref_inputs = copy.deepcopy(inputs).to(torch.float64)
+    ref_model.to(torch.float32).to(device).eval()
+    ref_inputs = copy.deepcopy(inputs).to(torch.float32)
     with torch.no_grad():
         ref_outputs = ref_model(**ref_inputs).last_hidden_state.to(dtype)
 
