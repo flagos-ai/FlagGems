@@ -7,6 +7,8 @@ import flag_gems
 
 from .conftest import QUICK_MODE, TO_CPU
 
+fp64_is_supported = flag_gems.runtime.device.support_fp64
+
 
 def SkipVersion(module_name, skip_pattern):
     cmp = skip_pattern[0]
@@ -113,7 +115,7 @@ UPSAMPLE_SHAPES = [
 
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
+ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
 INT_DTYPES = [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64]
 BOOL_TYPES = [torch.bool]

@@ -1,10 +1,18 @@
 import os
 import subprocess
+import threading
+from queue import Queue
 
 import torch  # noqa: F401
 
 from .. import backend, error
-from ..commom_utils import vendors_map
+from ..commom_utils import vendors, vendors_map
+
+UNSUPPORT_FP64 = [
+    vendors.CAMBRICON,
+    vendors.ILUVATAR,
+    vendors.KUNLUNXIN,
+]
 
 
 # A singleton class to manage device context.
@@ -32,6 +40,7 @@ class DeviceDetector(object):
             self.device_count = backend.gen_torch_device_object(
                 self.vendor_name
             ).device_count()
+            self.support_fp64 = self.vendor not in UNSUPPORT_FP64
 
     def get_vendor(self, vendor_name=None) -> tuple:
         # Try to get the vendor name from a quick special command like 'torch.mlu'.
@@ -64,14 +73,32 @@ class DeviceDetector(object):
 
     def _get_vendor_from_sys(self):
         vendor_infos = backend.get_vendor_infos()
+        result_single_info = Queue()
+
+        def runcmd(single_info):
+            device_query_cmd = single_info.device_query_cmd
+            try:
+                result = subprocess.run(
+                    [device_query_cmd], capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    result_single_info.put(single_info)
+            except:  # noqa: E722
+                pass
+
+        threads = []
         for single_info in vendor_infos:
             # Get the vendor information by running system commands.
-            result = subprocess.run(
-                [single_info.device_query_cmd], capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                return single_info
-        error.device_not_found()
+            thread = threading.Thread(target=runcmd, args=(single_info,))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+        if result_single_info.empty():
+            error.device_not_found()
+        else:
+            return result_single_info.get()
 
     def get_vendor_name(self):
         return self.vendor_name
