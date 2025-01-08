@@ -127,6 +127,8 @@ def early_config_prune(configs, nargs, **kwargs):
     key=["KV_CTX", "HEAD_DIM"],
     prune_configs_by={
         "early_config_prune": early_config_prune,
+        "perf_model": None,
+        "top_k": 1.0,
     },
 )
 @triton.jit
