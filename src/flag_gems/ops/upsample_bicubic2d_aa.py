@@ -390,8 +390,14 @@ def general_interpolate_bicubic2d_aa_kernel(
     ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
     oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
 
-    support_w = 2 * reciprocal_scale_w if (reciprocal_scale_w >= 1.0) else 2.0
-    support_h = 2 * reciprocal_scale_h if (reciprocal_scale_h >= 1.0) else 2.0
+    if reciprocal_scale_w >= 1.0:
+        support_w = 2 * reciprocal_scale_w
+    else:
+        support_w = 2.0
+    if reciprocal_scale_h >= 1.0:
+        support_h = 2 * reciprocal_scale_h
+    else:
+        support_h = 2.0
 
     interpolate_w = (support_w + 0.5).to(tl.int32) * 2 + 1
     interpolate_h = (support_h + 0.5).to(tl.int32) * 2 + 1
@@ -408,8 +414,14 @@ def general_interpolate_bicubic2d_aa_kernel(
         tl.int32
     )
 
-    invscale_w = 1.0 / reciprocal_scale_w if (reciprocal_scale_w >= 1.0) else 1.0
-    invscale_h = 1.0 / reciprocal_scale_h if (reciprocal_scale_h >= 1.0) else 1.0
+    if reciprocal_scale_w >= 1.0:
+        invscale_w = 1.0 / reciprocal_scale_w
+    else:
+        invscale_w = 1.0
+    if reciprocal_scale_h >= 1.0:
+        invscale_h = 1.0 / reciprocal_scale_h
+    else:
+        invscale_h = 1.0
     start_minus_center_w = span_start_w - center_w
     start_minus_center_h = span_start_h - center_h
 
