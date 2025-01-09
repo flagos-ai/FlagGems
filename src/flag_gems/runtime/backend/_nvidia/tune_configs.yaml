@@ -950,3 +950,15 @@ var_mean:
   - 4
   - 8
   - 16
+batch_norm:
+- gen: true
+  param_map:
+    META: {}
+    num_warps: warps
+  warps:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32

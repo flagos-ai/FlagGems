@@ -24,6 +24,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("arange.start_step", arange_start, Autograd.disable),
             ("arange.start", arange_start, Autograd.disable),
             ("arange", arange, Autograd.disable),
+            ("batch_norm", batch_norm, Autograd.enable),
             ("bitwise_and.Tensor", bitwise_and_tensor, Autograd.disable),
             ("bitwise_and.Scalar", bitwise_and_scalar, Autograd.disable),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, Autograd.disable),
