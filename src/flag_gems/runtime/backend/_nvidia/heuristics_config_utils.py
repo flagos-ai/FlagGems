@@ -195,6 +195,17 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
+def batch_norm_heur_block_m(args):
+    return min(2048, triton.next_power_of_2(args["batch_dim"]))
+
+
+def batch_norm_heur_block_n(args):
+    # A maximum of 16384 elements are loaded at once.
+    BLOCK_M = batch_norm_heur_block_m(args)
+    BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
+    return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -261,5 +272,9 @@ HEURISTICS_CONFIGS = {
     },
     "var_mean": {
         "BLOCK_N": var_mean_heur_block_n,
+    },
+    "batch_norm": {
+        "BLOCK_M": batch_norm_heur_block_m,
+        "BLOCK_N": batch_norm_heur_block_n,
     },
 }

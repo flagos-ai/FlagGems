@@ -7,6 +7,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
 from .attention import scaled_dot_product_attention
+from .batch_norm import batch_norm
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_tensor,
@@ -139,6 +140,7 @@ __all__ = [
     "addmm",
     "arange",
     "arange_start",
+    "batch_norm",
     "bitwise_and_tensor",
     "bitwise_and_scalar",
     "bitwise_and_scalar_tensor",
