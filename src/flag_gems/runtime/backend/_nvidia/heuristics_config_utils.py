@@ -10,6 +10,14 @@ def argmax_heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
 
 
+def argmin_heur_block_m(args):
+    return 4 if args["M"] < 4096 else 8
+
+
+def argmin_heur_block_n(args):
+    return min(4096, triton.next_power_of_2(args["N"]))
+
+
 def bmm_heur_divisible_m(args):
     return args["M"] % args["TILE_M"] == 0
 
@@ -210,6 +218,10 @@ HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
         "BLOCK_N": argmax_heur_block_n,
+    },
+    "argmin": {
+        "BLOCK_M": argmin_heur_block_m,
+        "BLOCK_N": argmin_heur_block_n,
     },
     "bmm": {
         "DIVISIBLE_M": bmm_heur_divisible_m,

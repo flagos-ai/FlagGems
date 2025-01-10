@@ -51,6 +51,7 @@
 - tanh
 - amax
 - argmax
+- argmin
 - max
 - min
 - outer
