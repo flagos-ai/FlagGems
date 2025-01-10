@@ -143,6 +143,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("min.dim", min_dim, Autograd.disable),
             ("amax", amax, Autograd.disable),
             ("argmax", argmax, Autograd.disable),
+            ("argmin", argmin, Autograd.disable),
             ("prod", prod, Autograd.disable),
             ("prod.dim_int", prod_dim, Autograd.disable),
             ("sum", sum, Autograd.disable),

@@ -119,6 +119,16 @@ argmax:
 - META:
     BLOCK_M: 32
   num_warps: 8
+argmin:
+- META:
+    BLOCK_M: 8
+  num_warps: 8
+- META:
+    BLOCK_M: 16
+  num_warps: 8
+- META:
+    BLOCK_M: 32
+  num_warps: 8
 log_softmax:
 - META:
     BLOCK_M: 8

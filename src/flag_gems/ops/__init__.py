@@ -6,6 +6,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
+from .argmin import argmin
 from .attention import scaled_dot_product_attention
 from .batch_norm import batch_norm
 from .bitwise_and import (
@@ -249,6 +250,7 @@ __all__ = [
     "sum_dim",
     "amax",
     "argmax",
+    "argmin",
     "prod",
     "prod_dim",
     "var_mean",
