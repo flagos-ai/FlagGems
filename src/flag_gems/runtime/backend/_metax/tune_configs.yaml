@@ -120,6 +120,16 @@ argmax:
 - META:
     BLOCK_M: 32
   num_warps: 8
+argmin:
+- META:
+    BLOCK_M: 8
+  num_warps: 8
+- META:
+    BLOCK_M: 16
+  num_warps: 8
+- META:
+    BLOCK_M: 32
+  num_warps: 8
 log_softmax:
 - META:
     BLOCK_M: 1
@@ -961,3 +971,15 @@ var_mean:
   - 4
   - 8
   - 16
+batch_norm:
+- gen: true
+  param_map:
+    META: {}
+    num_warps: warps
+  warps:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
