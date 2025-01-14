@@ -78,24 +78,36 @@ def log_softmax_backward_kernel(
     K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    BLOCK_N_SPLIT: tl.constexpr,
 ):
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    n_split_offset = tl.arange(0, BLOCK_N_SPLIT)
     n_offset = tl.arange(0, BLOCK_N)
+    all_offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    out_grad_ptrs_all = out_grad_ptr + all_offsets
+    all_mask = m_offset[:, None] < M and n_offset[None, :] < N
+    out_grad_all = tl.load(out_grad_ptrs_all, mask=all_mask).to(tl.float32)
+    scale = tl.sum(out_grad_all, 1)
+    # use for loop to split N dim to reduce register cost
+    for n in range(0, tl.cdiv(BLOCK_N, BLOCK_N_SPLIT)):
+        offsets = (
+            m_offset[:, None] * N * K
+            + n_split_offset[None, :] * K
+            + n * BLOCK_N_SPLIT * K
+            + pid_k
+        )
+        mask = m_offset[:, None] < M and n_split_offset[None, :] + n * BLOCK_N_SPLIT < N
+        out_ptrs = out_ptr + offsets
+        out = tl.load(out_ptrs, mask=mask).to(tl.float32)
+        exp_out = tl.exp(out.to(tl.float32))
+        out_grad_ptrs = out_grad_ptr + offsets
+        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
 
-    offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    out_ptrs = out_ptr + offsets
-    out = tl.load(out_ptrs, mask=mask).to(tl.float32)
-    out_grad_ptrs = out_grad_ptr + offsets
-    out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
-
-    scale = tl.sum(out_grad, 1)
-    in_grad = out_grad - tl.exp(out.to(tl.float32)) * scale[:, None]
-
-    in_grad_ptrs = in_grad_ptr + offsets
-    tl.store(in_grad_ptrs, in_grad, mask=mask)
+        in_grad = out_grad - exp_out * scale[:, None]
+        in_grad_ptrs = in_grad_ptr + offsets
+        tl.store(in_grad_ptrs, in_grad, mask=mask)
 
 
 class LogSoftmax(torch.autograd.Function):
@@ -150,12 +162,7 @@ class LogSoftmax(torch.autograd.Function):
         )
         with torch_device_fn.device(in_grad.device):
             log_softmax_backward_kernel[grid](
-                out,
-                out_grad,
-                in_grad,
-                M,
-                N,
-                K,
+                out, out_grad, in_grad, M, N, K, BLOCK_N_SPLIT=1024
             )
         return in_grad, None, None
 

@@ -36,8 +36,6 @@ def group_norm_kernel(
 
     wb_offset = group * group_size + group_offset
     wb_mask = wb_offset < C
-    W_ptr = W + wb_offset
-    B_ptr = B + wb_offset
 
     xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
     xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
@@ -56,8 +54,14 @@ def group_norm_kernel(
     rstd = rsqrt(var + eps)
     x_hat = x * rstd
 
-    weight = tl.load(W_ptr, mask=wb_mask, other=0.0)[:, None]
-    bias = tl.load(B_ptr, mask=wb_mask, other=0.0)[:, None]
+    if W is None:
+        weight = 1
+    else:
+        weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0)[:, None]
+    if B is None:
+        bias = 0
+    else:
+        bias = tl.load(B + wb_offset, mask=wb_mask, other=0.0)[:, None]
     Y_val = x_hat * weight + bias
 
     tl.store(Y_ptr, Y_val, mask=xy_mask)
@@ -90,7 +94,6 @@ def group_norm_backward_kernel(
     wb_offset = group * group_size + group_offset
 
     wb_mask = wb_offset < C
-    W_ptr = W + wb_offset
 
     xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
     xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
@@ -105,7 +108,11 @@ def group_norm_backward_kernel(
     mean = tl.load(Mean_ptr).to(tl.float32)
     dY_val = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
     X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    weight = tl.load(W_ptr, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
+
+    if W is None:
+        weight = 1
+    else:
+        weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
 
     dx_hat = weight * dY_val
 
@@ -144,9 +151,6 @@ def weight_bias_backward_kernel(
     xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
     mr_mask = n_offset < N
 
-    dW_ptr = dW + pid
-    dB_ptr = dB + pid
-
     mean_ptr = Mean + group + n_offset * num_groups
     rstd_ptr = Rstd + group + n_offset * num_groups
 
@@ -159,17 +163,19 @@ def weight_bias_backward_kernel(
     mean = tl.load(mean_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
     rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
 
-    dB = tl.sum(grad_y, 1)
-    dB = tl.sum(dB)
-    dW = tl.sum((x_f32 - mean) * rstd * grad_y, 1)
-    dW = tl.sum(dW)
-    tl.store(dW_ptr, dW.to(x.dtype))
-    tl.store(dB_ptr, dB.to(x.dtype))
+    if dW is not None:
+        dw = tl.sum((x_f32 - mean) * rstd * grad_y, 1)
+        dw = tl.sum(dw)
+        tl.store(dW + pid, dw.to(x.dtype))
+    if dB is not None:
+        db = tl.sum(grad_y, 1)
+        db = tl.sum(db)
+        tl.store(dB + pid, db.to(x.dtype))
 
 
 class GroupNorm(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, weight, bias, N, C, HW, num_groups, eps):
+    def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
         logging.debug("GEMS GROUPNORM FORWARD")
         group_size = C // num_groups
         x = x.contiguous()
@@ -198,27 +204,26 @@ class GroupNorm(torch.autograd.Function):
                 BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
                 BLOCK_HW_SIZE=triton.next_power_of_2(HW),
             )
-        ctx.save_for_backward(x, weight, mean, rstd)
-        ctx.num_groups = num_groups
-        ctx.group_size = group_size
-        ctx.N = N
-        ctx.C = C
-        ctx.HW = HW
+        if x.requires_grad:
+            ctx.save_for_backward(x, weight, bias, mean, rstd)
+            ctx.num_groups = num_groups
+            ctx.group_size = group_size
+            ctx.N = N
+            ctx.C = C
+            ctx.HW = HW
         return y, mean, rstd
 
     @staticmethod
     def backward(ctx, y_grad, mean_grad, rstd_grad):
         logging.debug("GEMS GROUPNORM BACKWARD")
         y_grad = y_grad.contiguous()
-        (x, weight, mean, rstd) = ctx.saved_tensors
+        (x, weight, bias, mean, rstd) = ctx.saved_tensors
         num_groups = ctx.num_groups
         group_size = ctx.group_size
         N = ctx.N
         C = ctx.C
         HW = ctx.HW
         x_grad = torch.empty_like(x)
-        weight_grad = torch.empty_like(weight)
-        bias_grad = torch.empty_like(weight)
         grid = (N * num_groups,)
         with torch_device_fn.device(x.device):
             group_norm_backward_kernel[grid](
@@ -235,23 +240,29 @@ class GroupNorm(torch.autograd.Function):
                 BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
                 BLOCK_HW_SIZE=triton.next_power_of_2(HW),
             )
-        weight_bias_backward_kernel[(C, 1, 1)](
-            y_grad,
-            x,
-            mean,
-            rstd,
-            weight_grad,
-            bias_grad,
-            num_groups,
-            group_size,
-            N,
-            C,
-            HW,
-            BLOCK_N=triton.next_power_of_2(N),
-            BLOCK_HW=triton.next_power_of_2(HW),
-        )
-        return x_grad, weight_grad, bias_grad, None, None, None, None, None
+        if weight is None and bias is None:
+            return x_grad, None, None, None, None, None, None, None
+
+        weight_grad = None if weight is None else torch.empty_like(weight)
+        bias_grad = None if bias is None else torch.empty_like(bias)
+        with torch_device_fn.device(x.device):
+            weight_bias_backward_kernel[(C, 1, 1)](
+                y_grad,
+                x,
+                mean,
+                rstd,
+                weight_grad,
+                bias_grad,
+                num_groups,
+                group_size,
+                N,
+                C,
+                HW,
+                BLOCK_N=triton.next_power_of_2(N),
+                BLOCK_HW=triton.next_power_of_2(HW),
+            )
+        return x_grad, None, None, None, None, weight_grad, bias_grad, None
 
 
 def group_norm(x, weight, bias, N, C, HW, num_groups, eps):
-    return GroupNorm.apply(x, weight, bias, N, C, HW, num_groups, eps)
+    return GroupNorm.apply(x, N, C, HW, num_groups, weight, bias, eps)
