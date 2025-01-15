@@ -175,24 +175,24 @@ class LibEntry(triton.KernelInterface):
         self.lock = threading.Lock()
 
     def key(self, spec_args, dns_args, const_args):
-        spec_key = [
-            (arg.dtype, arg.data_ptr() % self.divisibility == 0)
-            if hasattr(arg, "data_ptr")
-            else (type(arg), arg)
-            for arg in spec_args
-        ]
-        dns_key = [
-            arg.dtype
-            if hasattr(arg, "data_ptr")
-            else type(arg)
-            if not isinstance(arg, int)
-            else "i32"
-            if -(2**31) <= arg and arg <= 2**31 - 1
-            else "u64"
-            if 2**63 <= arg and arg <= 2**64 - 1
-            else "i64"
-            for arg in dns_args
-        ]
+        def spec_arg(arg):
+            if hasattr(arg, "data_ptr"):
+                return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+            return (type(arg), arg)
+
+        def dns_arg(arg):
+            if hasattr(arg, "data_ptr"):
+                return arg.dtype
+            if not isinstance(arg, int):
+                return type(arg)
+            if -(2**31) <= arg and arg <= 2**31 - 1:
+                return "i32"
+            if 2**63 <= arg and arg <= 2**64 - 1:
+                return "u64"
+            return "i64"
+
+        spec_key = [spec_arg(arg) for arg in spec_args]
+        dns_key = [dns_arg(arg) for arg in dns_args]
         # const args passed by position
         return tuple(spec_key + dns_key + const_args)
 

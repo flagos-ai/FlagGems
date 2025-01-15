@@ -148,9 +148,11 @@ class Embedding(torch.autograd.Function):
         grad_inputs = torch.zeros(
             (ctx.num_weights, grad_outputs.shape[-1]),
             device=grad_outputs.device,
-            dtype=torch.float32
-            if grad_outputs.dtype is torch.bfloat16
-            else grad_outputs.dtype,
+            dtype=(
+                torch.float32
+                if grad_outputs.dtype is torch.bfloat16
+                else grad_outputs.dtype
+            ),
         )
 
         if ctx.scale_grad_by_freq:
@@ -191,9 +193,11 @@ class Embedding(torch.autograd.Function):
                     grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
                 )
         return (
-            grad_inputs.to(torch.bfloat16)
-            if grad_outputs.dtype is torch.bfloat16
-            else grad_inputs,
+            (
+                grad_inputs.to(torch.bfloat16)
+                if grad_outputs.dtype is torch.bfloat16
+                else grad_inputs
+            ),
             None,
             None,
             None,
