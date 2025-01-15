@@ -41,27 +41,8 @@ You should configure  `triton.autotune` params in `FlagGems/src/flag_gems/runtim
 ##### step 2.4  `ops`
 The `ops` directory is where `vendor-customized operator` implementations are stored. For instance, if you want to create a custom `add operation`, you should place the implementation in `ops/add.py`. Following that, you should configure ops/__init__.py accordingly.
 ```python
-from backend_utils import Autograd
+from .add import add
+from .gelu import gelu
 
-from . import add, gelu
-
-def get_specific_ops():
-    return (
-        ("add.Tensor", add.add, Autograd.disable),
-        ("gelu", gelu.gelu, Autograd.enable),
-    )
-
-
-def get_unused_ops():
-    return ("cumsum", "cos")
+__all__= ["add", "gelu"]
 ```
-- The `get_specific_ops` function is designed to retrieve vendor-customized operators. If this feature is not required, the function can return an `empty tuple: ()`. An item such as `"add.Tensor"`, `add.add`, `Autograd.disable` is used to describe operator registration details.
-
-
-    - `"add.Tensor"` denotes the name of the Aten operation you wish to replace.
-
-    - `add.add` represents the implementation of the add operator using Triton.
-
-    - `Autograd.enable/Autograd.disable` indicates whether the operator supports backward computation (gradient calculation) or not.
-
-- The `get_unused_ops()` function is intended to obtain a list of operations that vendors prefer users not to utilize. If this functionality is not needed, the function can also return an `empty tuple: ()`. An item such as `"cumsum"`  is a string type represents the name of op you don't want users to use it.

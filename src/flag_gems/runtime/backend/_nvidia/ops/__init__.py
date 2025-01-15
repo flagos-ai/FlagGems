@@ -1,17 +1,4 @@
-from backend_utils import Autograd
+from .add import add
+from .gelu import gelu
 
-from . import add, gelu
-
-
-def get_specific_ops():
-    return (
-        ("add.Tensor", add.add, Autograd.disable),
-        ("gelu", gelu.gelu, Autograd.enable),
-    )
-
-
-def get_unused_ops():
-    return ("cumsum", "cos")
-
-
-__all__ = ["get_specific_ops", "get_unused_ops"]
+__all__ = ["add", "gelu"]

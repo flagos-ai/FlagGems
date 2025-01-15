@@ -1,6 +1,7 @@
 import ast
 import functools
 import importlib
+import inspect
 import os
 import sys
 
@@ -12,7 +13,28 @@ device_name = None
 torch_device_object = None
 torch_device_fn_device = None
 tl_extra_backend_module = None
+ops_module = None
+fused_module = None
+heuristic_config_module = None
+vendor_extra_lib_imported = False
 device_fn_cache = {}
+customized_ops = None
+
+
+def import_vendor_extra_lib(vendor_name=None):
+    global vendor_extra_lib_imported
+    if vendor_extra_lib_imported is True:
+        return
+    global ops_module, fused_module, heuristic_config_module
+    try:
+        ops_module = importlib.import_module(f"_{vendor_name}.ops")
+    except RuntimeError:
+        pass
+    try:
+        fused_module = importlib.import_module(f"_{vendor_name}.fused")
+    except RuntimeError:
+        pass
+    vendor_extra_lib_imported = True
 
 
 def get_codegen_result(code, result_key):
@@ -112,24 +134,36 @@ def get_vendor_infos():
     return infos
 
 
-def get_curent_device_extend_op(vendor_name=None):
-    global vendor_module
-    get_vendor_module(vendor_name)
-    vendor_module.OpLoader()
-    return vendor_module.specific_ops
+def get_current_device_extend_op(vendor_name=None):
+    import_vendor_extra_lib(vendor_name)
+    global ops_module, fused_module, customized_ops
+    if customized_ops is not None:
+        return customized_ops
+    customized_ops = []
+    if ops_module is not None:
+        ops = inspect.getmembers(ops_module, inspect.isfunction)
+        customized_ops += ops
+    if fused_module is not None:
+        fused_ops = inspect.getmembers(fused_module, inspect.isfunction)
+        customized_ops += fused_ops
+    return customized_ops
 
 
 def get_curent_device_unused_op(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
-    vendor_module.OpLoader()
-    return list(vendor_module.unused_ops)
+    return list(vendor_module.CUSTOMIZED_UNUSED_OPS)
 
 
 def get_heuristic_config(vendor_name=None):
-    global vendor_module
-    get_vendor_module(vendor_name)
-    return vendor_module.HEURISTICS_CONFIGS
+    # import_vendor_extra_lib(vendor_name)
+    global heuristic_config_module
+    heuristic_config_module = importlib.import_module(
+        f"_{vendor_name}.heuristics_config_utils"
+    )
+    if hasattr(heuristic_config_module, "HEURISTICS_CONFIGS"):
+        return heuristic_config_module.HEURISTICS_CONFIGS
+    return None
 
 
 def get_tune_config(vendor_name=None):
