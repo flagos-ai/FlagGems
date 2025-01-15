@@ -1,4 +1,5 @@
 import copy
+import warnings
 
 import triton
 
@@ -22,6 +23,11 @@ class ConfigLoader(object):
             # and is reserved from being an attr for vendor customizability
             self.primitive_yaml_config = self.get_vendor_tune_config()
             self.heuristics_config = self.get_vendor_heuristics_config()
+            if self.heuristics_config is None:
+                vendorname = self.device.vendor_name
+                warnings.warn(
+                    f"The {vendorname} configuration of heuristics_config is None"
+                )
             # gen_key is an identifier that indicates whether the current config needs to be generated automatically
             self.gen_key = "gen"
             # loaded_triton_config is wrapped in triton.Config according to primitive_yaml_config

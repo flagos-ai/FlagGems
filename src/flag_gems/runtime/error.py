@@ -13,3 +13,9 @@ def register_error(e):
     raise RuntimeError(
         e, "An error was encountered while registering the triton operator."
     )
+
+
+def customized_op_replace_error(e):
+    raise RuntimeError(
+        e, "An exception occurred while replacing the customization operator."
+    )

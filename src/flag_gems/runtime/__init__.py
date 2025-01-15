@@ -1,4 +1,4 @@
-from . import backend, commom_utils
+from . import backend, commom_utils, error
 from .backend.device import DeviceDetector
 from .configloader import ConfigLoader
 
@@ -25,10 +25,14 @@ def get_heuristic_config(op_name):
     return config_loader.heuristics_config[op_name]
 
 
-__all__ = [
-    "commom_utils",
-    "backend",
-    "device",
-    "get_tuned_config",
-    "get_heuristic_config",
-]
+def replace_customized_ops(_globals):
+    if device.vendor != commom_utils.vendors.NVIDIA:
+        customized_op_infos = backend.get_current_device_extend_op(device.vendor_name)
+        try:
+            for fn_name, fn in customized_op_infos:
+                _globals[fn_name] = fn
+        except RuntimeError as e:
+            error.customized_op_replace_error(e)
+
+
+__all__ = ["*"]
