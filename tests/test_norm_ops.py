@@ -89,15 +89,17 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
     "shape",
-    [(1, 40999)]
-    if QUICK_MODE
-    else [
-        (200, 36),
-        (4096, 100),
-        (1, 40999),
-        (100, 40499),
-        (4096, 256),
-    ],
+    (
+        [(1, 40999)]
+        if QUICK_MODE
+        else [
+            (200, 36),
+            (4096, 100),
+            (1, 40999),
+            (100, 40499),
+            (4096, 256),
+        ]
+    ),
 )
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -166,22 +168,24 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 @pytest.mark.native_instance_norm
 @pytest.mark.parametrize(
     "shape",
-    [
-        (2, 1, 2, 1),
-    ]
-    if QUICK_MODE
-    else [
-        (1, 1, 2, 2),
-        (2, 1, 2, 2),
-        (2, 3, 2, 2),
-        (2, 3, 128, 128),
-        (4, 16, 8, 8),
-        (2, 3, 1024),
-        (2, 3, 2048),
-        (2, 3, 4096),
-        (2, 3, 8192),
-        (2, 3, 10240),
-    ],
+    (
+        [
+            (2, 1, 2, 1),
+        ]
+        if QUICK_MODE
+        else [
+            (1, 1, 2, 2),
+            (2, 1, 2, 2),
+            (2, 3, 2, 2),
+            (2, 3, 128, 128),
+            (4, 16, 8, 8),
+            (2, 3, 1024),
+            (2, 3, 2048),
+            (2, 3, 4096),
+            (2, 3, 8192),
+            (2, 3, 10240),
+        ]
+    ),
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("has_weight_bias", [True] if QUICK_MODE else [False, True])
