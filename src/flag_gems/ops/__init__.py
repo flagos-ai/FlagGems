@@ -41,7 +41,7 @@ from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
 from .full_like import full_like
-from .gather import gather
+from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -185,6 +185,7 @@ __all__ = [
     "fill_tensor",
     "exponential_",
     "gather",
+    "gather_backward",
     "flip",
     "ones_like",
     "full_like",

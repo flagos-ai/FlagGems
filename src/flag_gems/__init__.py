@@ -170,6 +170,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("scatter.src", scatter, Autograd.disable),
             ("scatter.reduce", scatter, Autograd.disable),
             ("gather", gather, Autograd.disable),
+            ("gather_backward", gather_backward, Autograd.disable),
             ("isclose", isclose, Autograd.disable),
             ("allclose", allclose, Autograd.disable),
             ("fill.Scalar", fill_scalar, Autograd.disable),

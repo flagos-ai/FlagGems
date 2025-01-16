@@ -4,7 +4,7 @@ import torch
 import triton
 
 from ..ops.copy import copy
-from ..utils.shape_utils import MemOverlap, has_internal_overlapping
+from ..utils.shape_utils import has_internal_overlapping
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
@@ -25,7 +25,7 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
         list(src.shape) == valid_shape
     ), "Expected src to have a size equal to the slice of self"
 
-    if has_internal_overlapping(inp) == MemOverlap.Yes:
+    if has_internal_overlapping(inp):
         out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
     else:
         out = torch.empty_strided(
