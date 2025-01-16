@@ -44,20 +44,35 @@ def test_scaled_dot_product_attention(
     ref_query = to_reference(query, False)
     ref_key = to_reference(key, False)
     ref_value = to_reference(value, False)
+    ref_attn_bias = to_reference(attn_bias, False) if add_bias else None
 
     scale = float(1.0 / np.sqrt(head_size))
 
-    torch_result = torch.nn.functional.scaled_dot_product_attention(
-        ref_query,
-        ref_key,
-        ref_value,
-        attn_mask=attn_bias,
-        scale=scale,
-        is_causal=is_causal,
-    )
-    with flag_gems.use_gems():
-        flaggem_result = torch.nn.functional.scaled_dot_product_attention(
-            query, key, value, attn_mask=attn_bias, scale=scale, is_causal=is_causal
+    if is_causal:
+        torch_result = torch.nn.functional.scaled_dot_product_attention(
+            ref_query,
+            ref_key,
+            ref_value,
+            scale=scale,
+            is_causal=is_causal,
+        )
+    else:
+        torch_result = torch.nn.functional.scaled_dot_product_attention(
+            ref_query,
+            ref_key,
+            ref_value,
+            attn_mask=ref_attn_bias,
+            scale=scale,
+            is_causal=is_causal,
         )
 
-    gems_assert_close(torch_result, flaggem_result, dtype)
+    with flag_gems.use_gems():
+        if is_causal:
+            flaggem_result = torch.nn.functional.scaled_dot_product_attention(
+                query, key, value, scale=scale, is_causal=is_causal
+            )
+        else:
+            flaggem_result = torch.nn.functional.scaled_dot_product_attention(
+                query, key, value, attn_mask=attn_bias, scale=scale, is_causal=is_causal
+            )
+    gems_assert_close(flaggem_result, torch_result, dtype)
