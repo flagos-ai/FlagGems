@@ -339,8 +339,8 @@ def instance_norm_backward_kernel(
     Mean += pid
     Rstd += pid
 
-    mean = tl.load(Mean).to(tl.float32)
-    rstd = tl.load(Rstd).to(tl.float32)
+    mean = tl.load(Mean, mask=row_mask, other=0.0).to(tl.float32)
+    rstd = tl.load(Rstd, mask=row_mask, other=1.0).to(tl.float32)
     if HAS_WEIGHT_BIAS:
         w = tl.load(W + c_offsets, mask=row_mask).to(tl.float32)
     else:
@@ -408,9 +408,9 @@ def weight_bias_backward_kernel(
     for b_off in range(0, B, BLOCK_BATCH_SIZE):
         bid = b_off + tl.arange(0, BLOCK_BATCH_SIZE)[:, None]
         mid = bid * C + cid
-        row_mask = mid < M
-        mean = tl.load(Mean + mid).to(tl.float32)
-        rstd = tl.load(Rstd + mid).to(tl.float32)
+        row_mask = bid < B
+        mean = tl.load(Mean + mid, mask=row_mask).to(tl.float32)
+        rstd = tl.load(Rstd + mid, mask=row_mask).to(tl.float32)
         for off in range(0, N, BLOCK_COL_SIZE):
             cols = off + tl.arange(0, BLOCK_COL_SIZE)
             col_mask = cols[None, :] < N
