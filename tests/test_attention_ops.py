@@ -11,7 +11,7 @@ from .accuracy_utils import gems_assert_close, to_reference
 @pytest.mark.parametrize("batch", [8, 16])
 @pytest.mark.parametrize("num_head", [1, 8])
 @pytest.mark.parametrize("q_seq_len", [17, 64, 128])
-@pytest.mark.parametrize("kv_seq_len", [128])
+@pytest.mark.parametrize("kv_seq_len", [128, 2048])
 @pytest.mark.parametrize("head_size", [64, 128])
 @pytest.mark.parametrize("add_bias", [True, False])
 @pytest.mark.parametrize("is_causal", [True, False])
