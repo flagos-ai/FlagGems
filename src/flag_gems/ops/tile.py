@@ -6,7 +6,7 @@ from typing import Callable, List, Mapping
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
+from flag_gems.utils.code_utils import IndentedBuffer
 
 
 # --------------------------- tile wrapper genration -----------------------------------
@@ -220,58 +220,43 @@ def generate_tile_kernel(
 
     # signature
     code.writeline(f"def {kernel_name}(")
-    function_ns = NameSpace()
     with code.indent():
         # signature: inputs ptrs & non tensor inputs
         code.writeline("in0_ptr: tl.tensor, # of tl.pointer_type")
-        function_ns.create_name("in0_ptr")
 
         # signature: output ptrs
         code.writeline("out0_ptr: tl.tensor, # of tl.pointer_type")
-        function_ns.create_name("out0_ptr")
 
         # signature: strides, for each tensor arguments
         # only add this arguments when rank > 0
         if rank > 0:
             # strides for inputs
-            for j in range(rank):
-                function_ns.create_name(f"in0_stride{j}")
             stride_args = ", ".join(f"in0_stride{j}: int" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for in0")
 
             # strides for outputs
-            for j in range(rank):
-                function_ns.create_name(f"out0_stride{j}")
             stride_args = ", ".join(f"out0_stride{j}: int" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index
             task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
-            for i in range(rank):
-                function_ns.create_name(f"s{i}")
             code.writeline(f"{task_space_args}, # task_space")
 
             task_space_args2 = ", ".join(f"in_s{i}: int" for i in range(rank))
-            for i in range(rank):
-                function_ns.create_name(f"in_s{i}")
             code.writeline(
                 f"{task_space_args2}, # task_space2 used when input and output tensor has different shape"
             )
 
             # number of tasks, used to compute mask
             code.writeline("num_tasks: int,")
-            function_ns.create_name("num_tasks")
 
         # tile size & tiles_per_cta, gsl style
         if rank > 0:
             code.writeline("tiles_per_cta,")
-            function_ns.create_name("tiles_per_cta")
 
             code.writeline("tile_size: tl.constexpr,")
-            function_ns.create_name("tile_size")
 
             code.writeline("one_tile_per_cta: tl.constexpr,")
-            function_ns.create_name("one_tile_per_cta")
     code.writeline("):")
 
     with code.indent():
@@ -279,28 +264,23 @@ def generate_tile_kernel(
         code.writeline("# task id & masking")
         pid_stmt = "pid = tle.program_id(0)"
         code.writeline(pid_stmt)
-        function_ns.create_name("pid")
 
         code.writeline("num_ctas = tle.num_programs(0)")
-        function_ns.create_name("num_ctas")
 
         # get tid (a.k.a task id)
         tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
         code.writeline(tid_stmt)
-        function_ns.create_name("init_tid")
 
         # one-tile-per-cta, monolithic kernel style
         code.writeline("if one_tile_per_cta: # monolitic kernel style")
         with code.indent():
             tid_stmt = "tid = init_tid"
             code.writeline(tid_stmt)
-            function_ns.create_name("tid")
 
             # only apply masking when rank > 0
             # since we only load a value instead of a block of values when the rank is 0
             mask_stmt: str = "mask = tid < num_tasks"
             code.writeline(mask_stmt)
-            function_ns.create_name("mask")
             code.newline()
 
             # reconstruct multi index
@@ -311,7 +291,6 @@ def generate_tile_kernel(
                     code.writeline(f"tid //= s{i}")
                 else:
                     code.writeline(f"i{i} = tid")
-                function_ns.create_name(f"{i}")
             code.newline()
 
             # loads
@@ -321,7 +300,6 @@ def generate_tile_kernel(
             )
             ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
             load_stmt: str = f"in0 = tl.load({ptrs_expr}, mask=mask)"
-            function_ns.create_name("in0")  # add to the namespace
             code.writeline(load_stmt)
             code.newline()
 
@@ -341,17 +319,14 @@ def generate_tile_kernel(
         code.writeline("else: # grid-stride-loop style kernel")
         with code.indent():
             code.writeline("for j in range(0, tiles_per_cta):")
-            function_ns.create_name("j")
             with code.indent():
                 tid_stmt = "tid = init_tid + j * tile_size * num_ctas"
                 code.writeline(tid_stmt)
-                function_ns.create_name("tid")
 
                 # only apply masking when rank > 0
                 # since we only load a value instead of a block of values when the rank is 0
                 mask_stmt: str = "mask = tid < num_tasks"
                 code.writeline(mask_stmt)
-                function_ns.create_name("mask")
                 code.newline()
 
                 # reconstruct multi index
@@ -362,7 +337,6 @@ def generate_tile_kernel(
                         code.writeline(f"tid //= s{i}")
                     else:
                         code.writeline(f"i{i} = tid")
-                    function_ns.create_name(f"{i}")
                 code.newline()
 
                 # loads
@@ -372,7 +346,6 @@ def generate_tile_kernel(
                 )
                 ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
                 load_stmt: str = f"in0 = tl.load({ptrs_expr}, mask=mask)"
-                function_ns.create_name("in0")  # add to the namespace
                 code.writeline(load_stmt)
                 code.newline()
 

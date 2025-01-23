@@ -6,7 +6,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
+from flag_gems.utils.code_utils import IndentedBuffer
 
 
 # --------------------------- padding wrapper genration -----------------------------------
@@ -222,42 +222,29 @@ def generate_pad_kernel(
 
     # signature
     code.writeline(f"def {kernel_name}(")
-    function_ns = NameSpace()
     with code.indent():
         code.writeline("in0_ptr: tl.tensor, # of tl.pointer_type")
-        function_ns.create_name("in0_ptr")
 
         code.writeline("out0_ptr: tl.tensor, # of tl.pointer_type")
-        function_ns.create_name("out0_ptr")
 
         if rank > 0:
             # shape for inputs
-            for j in range(rank):
-                function_ns.create_name(f"x_shape{j}")
             shape_args = ", ".join(f"x_shape{j}: int" for j in range(rank))
             code.writeline(f"{shape_args}, # shape for x")
 
             # shape for inputs
-            for j in range(rank):
-                function_ns.create_name(f"in_strides{j}")
             stride_args = ", ".join(f"in_strides{j}: int" for j in range(rank))
             code.writeline(f"{stride_args}, # stride for x")
 
             # shape for inputs
-            for j in range(rank):
-                function_ns.create_name(f"out_strides{j}")
             stride_args = ", ".join(f"out_strides{j}: int" for j in range(rank))
             code.writeline(f"{stride_args}, # stride for out")
 
             # shape for inputs
-            for j in range(rank):
-                function_ns.create_name(f"valid_dim{j}_start")
             stride_args = ", ".join(f"valid_dim{j}_start: int" for j in range(rank))
             code.writeline(f"{stride_args}, # valid dim start")
 
             # shape for inputs
-            for j in range(rank):
-                function_ns.create_name(f"valid_dim{j}_end")
             stride_args = ", ".join(f"valid_dim{j}_end: int" for j in range(rank))
             code.writeline(f"{stride_args}, # valid dim end")
 
