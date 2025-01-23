@@ -6,7 +6,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
+from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import has_internal_overlapping, restride_dim
 
 
@@ -66,35 +66,22 @@ def generate_scatter_kernel(
 
     # signature
     code.writeline(f"def {kernel_name}(")
-    function_ns = NameSpace()
     with code.indent():
         if rank > 0:
             code.writeline("src_strided,")
-            function_ns.create_name("src_strided")
             code.writeline("index,")
-            function_ns.create_name("index")
             code.writeline("inp,")
-            function_ns.create_name("inp")
             code.writeline("out,")
-            function_ns.create_name("out")
 
-            for i in range(rank):
-                function_ns.create_name(f"inp_stride_{i}")
             stride_args = ", ".join(f"inp_stride_{i}: int" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for inp")
 
-            for i in range(rank):
-                function_ns.create_name(f"index_stride_{i}")
             stride_args = ", ".join(f"index_stride_{i}: int" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for index")
 
-            for i in range(rank):
-                function_ns.create_name(f"src_stride_{i}")
             stride_args = ", ".join(f"src_stride_{i}: int" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for src")
 
-            for i in range(rank):
-                function_ns.create_name(f"shape_{i}")
             shape_args = ", ".join(f"shape_{i}: int" for i in range(rank))
             code.writeline(f"{shape_args}, # shape")
             code.writeline("inp_size_dim,")
