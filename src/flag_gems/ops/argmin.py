@@ -86,6 +86,8 @@ def argmin_kernel(
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     # min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
+    if tl_dtype is tl.int16:
+        tl_dtype = tl.int32
     min_values = tl.full([BLOCK_M], dtype=tl_dtype, value=dtype_max_value)
     argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
     for start_n in range(0, N, BLOCK_N):
