@@ -27,12 +27,13 @@ def argmin_kernel_1(
     mid_index,
     M,
     BLOCK_SIZE: tl.constexpr,
+    dtype_max_value: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+    inp_val = tl.load(inp_ptrs, mask=mask, other=dtype_max_value)
     min_val, min_index = tl.min(inp_val, axis=0, return_indices=True)
     min_index = min_index + pid * BLOCK_SIZE
     mid_value_ptr = mid_value + pid
@@ -43,11 +44,18 @@ def argmin_kernel_1(
 
 @libentry()
 @triton.jit
-def argmin_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
+def argmin_kernel_2(
+    mid_value,
+    mid_index,
+    out,
+    mid_size,
+    BLOCK_MID: tl.constexpr,
+    dtype_max_value: tl.constexpr,
+):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid_value + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=float("inf"))
+    mid_val = tl.load(mid_ptrs, mask=mask, other=dtype_max_value)
     index_val = tl.argmin(mid_val, axis=0)
     mid_index_ptrs = mid_index + index_val
     out_val = tl.load(mid_index_ptrs)
@@ -122,6 +130,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
+        tl_dtype, dtype_max_value = torch_dtype_to_tl_dtype_and_max_value[inp.dtype]
         with torch_device_fn.device(inp.device):
             argmin_kernel_1[(mid_size, 1, 1)](
                 inp,
@@ -129,8 +138,16 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 mid_index,
                 M,
                 block_size,
+                dtype_max_value,
             )
-            argmin_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+            argmin_kernel_2[(1, 1, 1)](
+                mid_value,
+                mid_index,
+                out,
+                mid_size,
+                block_mid,
+                dtype_max_value,
+            )
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
