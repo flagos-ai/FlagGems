@@ -12,7 +12,7 @@ from .outer import outer
 from .prod import prod, prod_dim
 from .sigmoid import sigmoid
 from .tanh import tanh
-from .unique import unique
+from .unique import _unique2
 from .zeros import zeros
 
 __all__ = [
@@ -34,6 +34,6 @@ __all__ = [
     "prod_dim",
     "sigmoid",
     "tanh",
-    "unique",
+    "_unique2",
     "zeros",
 ]
