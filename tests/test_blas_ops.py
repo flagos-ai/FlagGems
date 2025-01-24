@@ -3,7 +3,13 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES, SCALARS, gems_assert_close, to_reference
+from .accuracy_utils import (
+    FLOAT_DTYPES,
+    SCALARS,
+    UT_SHAPES_1D,
+    gems_assert_close,
+    to_reference,
+)
 from .conftest import QUICK_MODE
 
 MN_SHAPES = [(1, 32)] if QUICK_MODE else [(1, 32), (160, 1024), (5333, 497)]
@@ -109,3 +115,33 @@ def test_accuracy_outer(M, N, dtype):
     res_in1_grad, res_in2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
     gems_assert_close(res_in1_grad, ref_in1_grad, dtype)
     gems_assert_close(res_in2_grad, ref_in2_grad, dtype)
+
+
+@pytest.mark.vdot
+@pytest.mark.parametrize("M", UT_SHAPES_1D)
+@pytest.mark.parametrize(
+    "is_conj", [(False, False), (False, True), (True, False), (True, True)]
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.cfloat])
+@pytest.mark.parametrize("stride", [1, 2])
+def test_accuracy_vdot(M, is_conj, dtype, stride):
+    inp1_is_conj, inp2_is_conj = is_conj
+
+    inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+
+    inp1 = inp1[::stride]
+    inp2 = inp2[::stride]
+
+    if inp1_is_conj:
+        inp1 = inp1.conj()
+    if inp2_is_conj:
+        inp2 = inp2.conj()
+
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    with flag_gems.use_gems():
+        res_out = torch.vdot(inp1, inp2)
+    ref_out = torch.vdot(ref_inp1, ref_inp2)
+    gems_assert_close(res_out, ref_out, dtype)
