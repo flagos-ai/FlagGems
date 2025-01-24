@@ -6,7 +6,7 @@ outer:
     - [8192, 8192]
     - [10240, 10240]  #from perf
 
-randperm:
+single_dim_shapes: &single_dim_shapes
   shapes:
     - [64]
     - [1024]
@@ -14,6 +14,12 @@ randperm:
     - [4096]
     - [65536]
   shape_desc: "M"
+
+vdot:
+  <<: *single_dim_shapes
+
+randperm:
+  <<: *single_dim_shapes
 
 gelu backward:
   shapes:
