@@ -295,3 +295,62 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     if dim == []:
         _dim = inp.numel()
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
+
+
+QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]
+QUANTILE_FLOAT_DTYPES = [torch.float32]
+QUANTILE_Q = (
+    [(0.2, 0.5, 0.8)]
+    if QUICK_MODE
+    else [(0.4), (0.0, 0.2, 0.5, 0.8, 1.0), (0.662, 0.8, 0.104, 0.99, 0.347, 0.255)]
+)
+QUANTILE_INTERPOLATION = (
+    ["linear"] if QUICK_MODE else ["linear", "lower", "higher", "nearest", "midpoint"]
+)
+
+
+@pytest.mark.quantile
+@pytest.mark.parametrize("shape", QUANTILE_SHAPES)
+@pytest.mark.parametrize("dtype", QUANTILE_FLOAT_DTYPES)
+@pytest.mark.parametrize("q", QUANTILE_Q)
+@pytest.mark.parametrize("interpolation", QUANTILE_INTERPOLATION)
+def test_accuracy_quantile_without_dim(shape, dtype, q, interpolation):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    q = torch.tensor(q, dtype=dtype, device=inp.device)
+    ref_q = to_reference(q)
+
+    ref_out = torch.quantile(ref_inp, ref_q, interpolation=interpolation)
+    with flag_gems.use_gems():
+        res_out = torch.quantile(inp, q, interpolation=interpolation)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
+
+
+@pytest.mark.quantile
+@pytest.mark.parametrize("shape", QUANTILE_SHAPES)
+@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
+@pytest.mark.parametrize("dtype", QUANTILE_FLOAT_DTYPES)
+@pytest.mark.parametrize("q", QUANTILE_Q)
+@pytest.mark.parametrize("interpolation", QUANTILE_INTERPOLATION)
+def test_accuracy_quantile_dim(shape, dim, keepdim, dtype, q, interpolation):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    q = torch.tensor(q, dtype=dtype, device=inp.device)
+    ref_q = to_reference(q)
+
+    ref_out = torch.quantile(
+        ref_inp, ref_q, dim=dim, keepdim=keepdim, interpolation=interpolation
+    )
+    with flag_gems.use_gems():
+        res_out = torch.quantile(
+            inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation
+        )
+
+    if isinstance(dim, int):
+        dim = [dim]
+    dim = [d % inp.ndim for d in dim]
+    _dim = 1
+    for d in dim:
+        _dim *= shape[d]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
