@@ -131,7 +131,10 @@ def to_reference(inp, upcast=False):
     if TO_CPU:
         ref_inp = ref_inp.to("cpu")
     if upcast:
-        ref_inp = ref_inp.to(torch.float64)
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
     return ref_inp
 
 

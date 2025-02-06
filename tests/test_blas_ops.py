@@ -138,8 +138,8 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
     if inp2_is_conj:
         inp2 = inp2.conj()
 
-    ref_inp1 = to_reference(inp1, False)
-    ref_inp2 = to_reference(inp2, False)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
 
     with flag_gems.use_gems():
         res_out = torch.vdot(inp1, inp2)
