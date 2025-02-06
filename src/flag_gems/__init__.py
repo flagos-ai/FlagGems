@@ -160,6 +160,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("any", any, Autograd.disable),
             ("any.dim", any_dim, Autograd.disable),
             ("any.dims", any_dims, Autograd.disable),
+            ("quantile", quantile, Autograd.disable),
             ("log_softmax.int", log_softmax, Autograd.enable),
             ("outer", outer, Autograd.enable),
             ("cross_entropy_loss", cross_entropy_loss, Autograd.enable),
