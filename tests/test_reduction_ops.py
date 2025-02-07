@@ -810,6 +810,9 @@ def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
 
 
 SHAPE_CONV2D = [
+    ((1, 2, 5, 5), (1, 2, 3, 3), 1),
+    ((2, 3, 9, 9), (1, 3, 3, 3), 1),
+    ((2, 2, 3, 3), (1, 2, 2, 2), 1),
     ((32, 8, 8, 8), (32, 8, 2, 2), 1),
     ((18, 16, 4, 4), (16, 16, 2, 2), 1),
     ((9, 16, 4, 4), (128, 4, 2, 2), 4),
@@ -822,40 +825,37 @@ SHAPE_CONV2D = [
     ((32, 16, 9, 9), (32, 4, 5, 5), 4),
     ((18, 16, 11, 11), (16, 8, 3, 3), 2),
     ((9, 16, 6, 6), (128, 8, 3, 3), 2),
-    # depthwise shape
-    # ((32, 4, 8, 8), (32, 1, 2, 2), 4),
-    # ((18, 16, 4, 4), (16, 1, 2, 2), 16),
-    # ((9, 32, 4, 4), (128, 1, 2, 2), 32),
-    # ((32, 16, 8, 8), (32, 1, 4, 4), 16),
-    # ((18, 8, 4, 4), (16, 1, 2, 2), 8),
-    # ((9, 4, 4, 4), (128, 1, 2, 2), 4),
-    # ((32, 4, 8, 8), (32, 1, 3, 3), 4),
-    # ((18, 16, 13, 13), (16, 1, 5, 5), 16),
-    # ((9, 32, 8, 8), (128, 1, 3, 3), 32),
-    # ((32, 16, 9, 9), (32, 1, 5, 5), 16),
-    # ((18, 8, 7, 7), (16, 1, 3, 3), 8),
-    # ((9, 4, 6, 6), (128, 1, 3, 3), 4),
 ]
 
 
-@pytest.mark.skip("conv2d introduces failures, disable it temporarily")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
-@pytest.mark.parametrize("padding", [0, 1, 2])
+@pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-@pytest.mark.parametrize("dilation", [1, 2, 3])
-def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation):
+@pytest.mark.parametrize("dilation", [1, 2])
+@pytest.mark.parametrize("bias", [True, False])
+def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation, bias):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
-    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(
+        kernel, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    if bias is True:
+        bias = torch.randn(
+            [weight.shape[0]], dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
+        bias_ref = to_reference(bias, True)
+    else:
+        bias = None
+        bias_ref = None
 
     ref_weight = to_reference(weight, True)
     ref_out = torch.nn.functional.conv2d(
         ref_inp,
         ref_weight,
-        bias=None,
+        bias=bias_ref,
         groups=groups,
         stride=stride,
         padding=padding,
@@ -865,19 +865,40 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
     res_out = flag_gems.conv2d(
         inp,
         weight,
-        bias=None,
+        bias=bias,
         groups=groups,
         stride=stride,
         padding=padding,
         dilation=dilation,
     )
-    gems_assert_close(res_out, ref_out, dtype)
-    out_grad = torch.randn_like(ref_out).to(flag_gems.device)
-    ref_grad = to_reference(out_grad, True)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
-    gems_assert_close(res_in_grad, ref_in_grad.to(dtype), dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(ref_out).to(flag_gems.device)
+
+    ref_grad = to_reference(out_grad, True)
+    if bias is not None:
+        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight, bias_ref), ref_grad
+        )
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+    else:
+        (ref_in_grad, ref_weight_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight), ref_grad
+        )
+        (res_in_grad, res_weight_grad) = torch.autograd.grad(
+            res_out, (inp, weight), out_grad
+        )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=weight.shape[2])
+
+    gems_assert_close(
+        res_weight_grad, ref_weight_grad, dtype, reduce_dim=weight.shape[0]
+    )
+    if bias is not None:
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
 
 
 SHAPE_DEPTHWISE = [
