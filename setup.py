@@ -102,7 +102,7 @@ setup(
     package_dir={"": "src"},
     include_package_data=True,  # To include non-Python files, e.g., README
     package_data={
-        "flag_gems.runtime": ["**/*.yaml"],
+        "flag_gems.runtime": ["*/**/*.yaml"],
     },
     setup_requires=["setuptools"],
 )
