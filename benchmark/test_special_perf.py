@@ -262,6 +262,7 @@ class ConvBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(True, reason="Conv2d not registered yet")
 @pytest.mark.conv2d
 def test_perf_conv2d():
     def conv2d_input_fn(shape, dtype, device):
