@@ -216,6 +216,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("logical_and", logical_and, Autograd.disable),
             ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
+            ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
         ),
