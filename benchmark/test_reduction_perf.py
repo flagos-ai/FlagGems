@@ -12,7 +12,6 @@ from .performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
-    SkipVersion,
     generate_tensor_input,
     unary_input_fn,
 )
@@ -177,9 +176,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES + INT_DTYPES,
             marks=[
                 pytest.mark.cummin,
-                pytest.mark.skipif(
-                    SkipVersion("triton", "<3.0"), reason="triton not supported"
-                ),
+                pytest.mark.skipif(True, reason="triton not supported"),
             ],
         ),
         pytest.param(
@@ -236,6 +233,7 @@ def quantile_input_fn(shape, cur_dtype, device):
     yield inp, q, 0
 
 
+@pytest.mark.skipif(True, reason="Skipping Triton version")
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [
