@@ -215,6 +215,27 @@ def test_accuracy_sigmoid(shape, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
+SPECIAL_VALUES = [float("-inf"), float("inf"), -300]
+
+
+@pytest.mark.log_sigmoid
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log_sigmoid(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    if len(shape) == 1:
+        special_inputs = torch.tensor(
+            SPECIAL_VALUES, dtype=dtype, device=flag_gems.device
+        )
+        inp = torch.cat((inp, special_inputs))
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.logsigmoid(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.logsigmoid(inp)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.silu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

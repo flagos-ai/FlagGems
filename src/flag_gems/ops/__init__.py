@@ -57,6 +57,7 @@ from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
 from .le import le, le_scalar
+from .log_sigmoid import log_sigmoid
 from .log_softmax import log_softmax
 from .logical_and import logical_and
 from .logical_not import logical_not
@@ -138,6 +139,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "log_sigmoid",
     "all",
     "all_dim",
     "all_dims",
