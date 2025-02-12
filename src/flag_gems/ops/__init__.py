@@ -71,6 +71,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm
+from .mse_loss import mse_loss
 from .mul import mul
 from .multinomial import multinomial
 from .mv import mv
@@ -304,4 +305,5 @@ __all__ = [
     "nll_loss2d_forward",
     "nll_loss2d_backward",
     "vdot",
+    "mse_loss",
 ]

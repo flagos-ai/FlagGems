@@ -948,3 +948,21 @@ def test_accuracy_depthwise2d(
         inp, weight, kernel, bias=None, stride=stride, padding=padding, dilation=1
     )
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mse_loss
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_mse_loss(shape, dtype, reduction):
+    dim = 1
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    target = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.mse_loss(ref_inp, ref_target, reduction=reduction)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.mse_loss(inp, target, reduction=reduction)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
