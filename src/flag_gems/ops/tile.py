@@ -404,7 +404,7 @@ class TileFunction:
                 ndim,
                 "_wrapper",
                 "_wrapper_out",
-                "_jit_function",
+                "_tile_flaggems_jit_function",
                 code,
             )
 

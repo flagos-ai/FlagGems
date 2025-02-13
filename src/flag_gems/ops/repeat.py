@@ -404,7 +404,7 @@ class RepeatFunction:
                 ndim,
                 "_wrapper",
                 "_wrapper_out",
-                "_jit_function",
+                "_repeat_flaggems_jit_function",
                 code,
             )
 

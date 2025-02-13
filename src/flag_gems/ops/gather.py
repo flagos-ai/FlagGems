@@ -199,7 +199,7 @@ class GatherFunction:
             code = generate_code(
                 args,
                 "_gather_wrapper",
-                "_gather_jit_function",
+                "_gather_flaggems_jit_function",
                 code,
             )
 
