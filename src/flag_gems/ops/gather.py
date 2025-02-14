@@ -1,7 +1,7 @@
 import importlib
 import logging
 import os
-from typing import Any, Callable, List, Mapping, Tuple
+from typing import Any, Callable, Mapping, Tuple
 
 import torch
 
@@ -34,92 +34,54 @@ def generate_gather_kernel(
     # make the inlined function visible in the context
     code.newline()
 
-    # the decorators
     code.writeline("@libentry()")
-    code.writeline("@triton.heuristics(")
-    with code.indent():
-        code.writeline("runtime.get_heuristic_config('gather')")
-    code.writeline(")")
+    code.writeline("@triton.heuristics({'BLOCK_SIZE_N': lambda args: 512})")
     code.writeline("@triton.jit")
-
-    # signature
     code.writeline(f"def {kernel_name}(")
     with code.indent():
-        if rank > 0:
-            code.writeline("inp,")
-            code.writeline("out,")
-            code.writeline("index,")
-
-            stride_args = ", ".join(f"inp_stride_{i}: int" for i in range(rank))
-            code.writeline(f"{stride_args}, # stride for inp")
-
-            stride_args = ", ".join(f"index_stride_{i}: int" for i in range(rank))
-            code.writeline(f"{stride_args}, # stride for index")
-
-            shape_args = ", ".join(f"index_shape_{i}: int" for i in range(rank))
-            code.writeline(f"{shape_args}, # shape for index")
-
-            code.writeline("dim,")
-            code.writeline("stride_dim,")
-            code.writeline("M,")
-            code.writeline("N,")
-            code.writeline("BLOCK_M: tl.constexpr,")
-            code.writeline("BLOCK_N: tl.constexpr,")
+        args = [
+            "inp, ",
+            "index, ",
+            "out, ",
+        ]
+        args += [f"inp_shape{i}," for i in range(rank)]
+        args += [f"index_shape{i}, " for i in range(rank)]
+        args += [f"out_shape{i}, " for i in range(rank)]
+        args += [f"inp_stride{i}, " for i in range(rank)]
+        args += [f"index_stride{i}, " for i in range(rank)]
+        args += [f"out_stride{i}, " for i in range(rank)]
+        args += ["dim, ", "dim_stride, ", "N, ", "BLOCK_SIZE_N: tl.constexpr, "]
+        code.writelines(args)
     code.writeline("):")
 
-    # Kernel Code
     with code.indent():
-        code.writeline("pid_x = tle.program_id(0)")
-        code.writeline("pid_y = tle.program_id(1)")
+        code.writeline("pid = tle.program_id(0)")
         code.writeline(
-            "rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]"
+            "offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)"
         )
-        code.writeline(
-            "cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]"
-        )
-        code.writeline("rows_mask = rows_offsets < M")
-        code.writeline("cols_mask = cols_offsets < N")
-
-        code.writeline("offsets = (rows_offsets * N + cols_offsets).to(tl.int64)")
-        code.writeline("mask = rows_mask & cols_mask")
-
-        #   1. Calculate inp_offsets and idx_offsets
-        code.writeline("inp_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int64)")
-        code.writeline("idx_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int64)")
-        code.writeline("cur_idx = rows_offsets * N + cols_offsets")
-
-        #   2. snippets
-        for i in range(rank):
-            code.writeline(f"mod = cur_idx % index_shape_{i}")
-            code.writeline(f"inp_offsets += mod * inp_stride_{i}")
-            code.writeline(f"idx_offsets += mod * index_stride_{i}")
-            if i != (rank - 1):
-                code.writeline(f"cur_idx //= index_shape_{i}")
-
-        # Use offsets to gather
-        code.writeline("cur_index = tl.load(index + idx_offsets, mask=mask, other=0)")
-        code.writeline("inp_offsets += cur_index * stride_dim")
-        code.writeline("cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)")
-        code.writeline("tl.store(out + idx_offsets, cur_inp, mask=mask)")
+        code.newline()
+        code.writeline("cur_offset = offset")
+        for i in range(rank - 1, -1, -1):
+            code.writeline(f"index_idx{i} = cur_offset % index_shape{i}")
+            code.writeline(f"cur_offset = cur_offset // index_shape{i}")
+        code.newline()
+        comp = [f"index_idx{i} * index_stride{i}" for i in range(rank)]
+        code.writeline(f"index_offset = {' + '.join(comp)}")
+        code.writeline("mask = offset < N")
+        code.writeline("cur_index = tl.load(index + index_offset, mask=mask, other=0)")
+        code.newline()
+        comp = [f"index_idx{i} * inp_stride{i}" for i in range(rank)]
+        code.writeline(f"inp_offset = {' + '.join(comp)}")
+        code.writeline("inp_offset += cur_index * dim_stride")
+        code.writeline("cur_inp = tl.load(inp + inp_offset, mask=mask, other=0)")
+        code.newline()
+        comp = [f"index_idx{i} * out_stride{i}" for i in range(rank)]
+        code.writeline(f"out_offset = {' + '.join(comp)}")
+        code.writeline("tl.store(out + out_offset, value=cur_inp, mask=mask)")
 
     code.newline()
     code.newline()
     return code
-
-
-def parameter_for_wrapper() -> str:
-    # inp_strided, out, index, dim, stride_dim, M, N
-    parameters: List[str] = []
-
-    parameters.append("inp_strided")
-    parameters.append("out")
-    parameters.append("index")
-    parameters.append("dim")
-    parameters.append("stride_dim")
-    parameters.append("M")
-    parameters.append("N")
-
-    return ", ".join(parameters)
 
 
 def generate_gather_wrapper(
@@ -128,44 +90,38 @@ def generate_gather_wrapper(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    parameters: str = parameter_for_wrapper()
-    wrapper_signature: str = f"def {wrapper_name}({parameters}):"
-    code.writeline(wrapper_signature)
-
+    code.writeline(f"def {wrapper_name}(inp, dim, index, out, dim_stride, N):")
     with code.indent():
-        code.writeline("inp_strides = inp_strided.stride()")
-        code.writeline("index_strides = index.stride()")
-        code.writeline("index_shapes = list(index.shape)")
-
-        # kernel launch
-        code.writeline("grid = lambda meta: (")
+        code.writeline("inp_shape = inp.shape")
+        code.writeline("inp_stride = inp.stride()")
+        code.writeline("index_shape = index.shape")
+        code.writeline("index_stride = index.stride()")
+        code.writeline("out_shape = out.shape")
+        code.writeline("out_stride = out.stride()")
+        code.writeline("grid = lambda meta: (triton.cdiv(N, meta['BLOCK_SIZE_N']), )")
+        code.writeline(f"{kernel_name}[grid](")
         with code.indent():
-            code.writeline('triton.cdiv(M, meta["BLOCK_M"]),')
-            code.writeline('triton.cdiv(N, meta["BLOCK_N"])')
-        code.writeline(")")
-
-        kernel_launch: str = f"{kernel_name}[grid]("
-        code.writeline(kernel_launch)
-
-        with code.indent():
-            code.writeline("inp_strided, out, index, ")
-            if rank > 0:
-                s = ", ".join(f"inp_strides[{i}]" for i in range(rank))
-                code.writeline(f"{s},")
-
-                s = ", ".join(f"index_strides[{i}]" for i in range(rank))
-                code.writeline(f"{s},")
-
-                s = ", ".join(f"index_shapes[{i}]" for i in range(rank))
-                code.writeline(f"{s},")
-
-                code.writeline("dim,")
-                code.writeline("stride_dim,")
-                code.writeline("M,")
-                code.writeline("N,")
+            args = [
+                "inp, ",
+                "index, ",
+                "out, ",
+            ]
+            args += [f"inp_shape[{i}], " for i in range(rank)]
+            args += [f"index_shape[{i}], " for i in range(rank)]
+            args += [f"out_shape[{i}], " for i in range(rank)]
+            args += [f"inp_stride[{i}], " for i in range(rank)]
+            args += [f"index_stride[{i}], " for i in range(rank)]
+            args += [f"out_stride[{i}], " for i in range(rank)]
+            args += [
+                "dim, ",
+                "dim_stride, ",
+                "N, ",
+            ]
+            code.writelines(args)
         code.writeline(")")
         code.writeline("return out")
-
+    code.newline()
+    code.newline()
     return code
 
 
@@ -175,9 +131,7 @@ def generate_code(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    # inputs: inp_strided, out, index, dim, stride_dim, M, N
-    shape = inputs[2].shape
-    rank = len(shape)
+    rank = inputs[0].ndim
 
     code = generate_imports(code)
     code = generate_gather_kernel(rank, kernel_name, code)
@@ -222,9 +176,7 @@ class GatherFunction:
         return overload(*args, **kwargs)
 
     def arg_key(self, *args):
-        tensors = [item for item in args if torch.is_tensor(item)]
-        max_rank = max(item.ndim for item in tensors)
-        return max_rank
+        return args[0].ndim
 
 
 _gather_func = GatherFunction()
@@ -232,19 +184,12 @@ _gather_func = GatherFunction()
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
     logging.debug("GEMS GATHER")
-    inp = inp.contiguous()
-    index = index.contiguous()
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
-    out = out.contiguous()
-    stride_dim = inp.stride(dim)
-
+    dim_stride = inp.stride(dim)
     inp_strided = restride_dim(inp, dim, index.shape)
-    # plain_idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
-    N = list(index.shape)[index.ndim - 1]
-    M = index.numel() // N
-
-    _gather_func(inp_strided, out, index, dim, stride_dim, M, N)
+    N = index.numel()
+    _gather_func(inp_strided, dim, index, out, dim_stride, N)
     return out
 
 
