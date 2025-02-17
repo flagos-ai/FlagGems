@@ -11,7 +11,15 @@ from ..runtime import torch_device_fn
 from .code_cache import config_cache_dir
 
 DEVICE_COUNT = runtime.device.device_count
-major_version = eval(triton.__version__.split(".")[0])
+ATTRS = {
+    (2, 2): 5,
+    (2, 3): 5,
+    (3, 0): 4,
+    (3, 1): 4,
+    (3, 2): 8,
+}
+version = triton.__version__.split(".")
+major_version, minor_version = eval(version[0]), eval(version[1])
 
 
 class LibTuner(triton.runtime.Autotuner):
@@ -78,19 +86,14 @@ class LibTuner(triton.runtime.Autotuner):
             key = [eval(k) for k in key_str[1:-1].split(", ")]
 
             cfg_ls = [item.split(": ") for item in config_str.split(", ")]
-            config = triton.Config({})
-            attrs = -5 if major_version == 2 else -4
-            for k, v in cfg_ls[:attrs]:
-                config.kwargs[k] = eval(v)
-            config.num_warps = eval(cfg_ls[attrs][1])
-            config.num_ctas = eval(cfg_ls[attrs + 1][1])
-            config.num_stages = eval(cfg_ls[attrs + 2][1])
-            if major_version == 2:
-                config.enable_warp_specialization = eval(cfg_ls[attrs + 3][1])
-                config.enable_persistent = eval(cfg_ls[attrs + 4][1])
-            else:
-                config.maxnreg = eval(cfg_ls[attrs + 3][1])
-
+            kwargs = {}
+            numargs = {}
+            attrs = ATTRS[(major_version, minor_version)]
+            for k, v in cfg_ls[:-attrs]:
+                kwargs[k] = eval(v)
+            for k, v in cfg_ls[-attrs:]:
+                numargs[k] = eval(v)
+            config = triton.Config(kwargs, **numargs)
             self.cache[tuple(key)] = config
 
         connect.close()
