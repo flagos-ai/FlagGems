@@ -1,9 +1,16 @@
 import json
 import logging
+import os
+from datetime import datetime
+
+import pytest
 
 import flag_gems
 
 device = flag_gems.device
+
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f"test_detail_and_result_{timestamp}.json"
 
 
 def pytest_addoption(parser):
@@ -96,3 +103,35 @@ def pytest_runtest_teardown(item, nextitem):
 def pytest_sessionfinish(session, exitstatus):
     if RECORD_LOG:
         logging.info(json.dumps(RUNTEST_INFO, indent=2))
+
+
+test_results = {}
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol(item, nextitem):
+    test_results[item.nodeid] = {"params": None, "result": None}
+    param_values = {}
+    request = item._request
+    if hasattr(request, "node") and hasattr(request.node, "callspec"):
+        param_values = request.node.callspec.params
+
+    test_results[item.nodeid]["params"] = param_values
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logreport(report):
+    if report.when == "call":
+        test_results[report.nodeid]["result"] = report.outcome
+
+
+def pytest_terminal_summary(terminalreporter):
+    if os.path.exists(filename):
+        with open(filename, "r") as json_file:
+            existing_data = json.load(json_file)
+        existing_data.update(test_results)
+    else:
+        existing_data = test_results
+
+    with open("result.json", "w") as json_file:
+        json.dump(existing_data, json_file, indent=4, default=str)
