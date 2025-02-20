@@ -21,8 +21,10 @@ class ConfigLoader(object):
             self.device = DeviceDetector()
             # primitive_yaml_config is simply the dictionary returned by yaml
             # and is reserved from being an attr for vendor customizability
-            self.primitive_yaml_config = self.get_vendor_tune_config()
+            self.vendor_primitive_yaml_config = self.get_vendor_tune_config()
+            self.default_primitive_yaml_config = self.get_default_tune_config()
             self.heuristics_config = self.get_vendor_heuristics_config()
+
             if self.heuristics_config is None:
                 vendorname = self.device.vendor_name
                 warnings.warn(
@@ -40,11 +42,14 @@ class ConfigLoader(object):
             self.load_all()
 
     def load_all(self):
-        for key in self.primitive_yaml_config:
+        for key in self.vendor_primitive_yaml_config:
             self.loaded_triton_config[key] = self.get_tuned_config(key)
 
     def get_vendor_heuristics_config(self):
         return backend.get_heuristic_config(self.device.vendor_name)
+
+    def get_default_tune_config(self):
+        return backend.get_tune_config("nvidia")
 
     def get_vendor_tune_config(self):
         return backend.get_tune_config(self.device.vendor_name)
@@ -117,7 +122,11 @@ class ConfigLoader(object):
         if op_name in self.loaded_triton_config:
             return self.loaded_triton_config[op_name]
 
-        current_op_configs = self.primitive_yaml_config[op_name]
+        if op_name in self.vendor_primitive_yaml_config:
+            current_op_configs = self.vendor_primitive_yaml_config[op_name]
+        else:
+            current_op_configs = self.default_primitive_yaml_config[op_name]
+
         configs = []
         if len(current_op_configs) == 0:
             return configs
