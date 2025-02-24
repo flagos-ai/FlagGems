@@ -59,6 +59,6 @@ def index_select(inp, dim, index):
     if dim != out.ndim - 1:
         order = [i for i in range(out.ndim - 1)]
         order.insert(dim, out.ndim - 1)
-        return out.permute(order)
+        return out.permute(order).contiguous()
     else:
         return out
