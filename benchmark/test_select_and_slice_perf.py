@@ -1,12 +1,17 @@
 import random
 
+import numpy as np
 import pytest
 import torch
 
 from flag_gems.utils import shape_utils
 
 from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark2DOnly, generate_tensor_input
+from .performance_utils import (
+    GenericBenchmark,
+    GenericBenchmark2DOnly,
+    generate_tensor_input,
+)
 
 
 class TensorSelectBenchmark(GenericBenchmark2DOnly):
@@ -272,5 +277,97 @@ def test_index_add_perf():
         torch_op=torch.index_add,
         input_fn=index_add_input_fn,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def gen_indices(input_shape, indices_shape, accumulate):
+    indices = []
+    for i, shape in enumerate(indices_shape):
+        index = np.random.choice(
+            np.arange(input_shape[i]), size=shape, replace=accumulate
+        )
+        indices.append(torch.tensor(index, device="cuda"))
+    return indices
+
+
+def index_put_input_fn(accumulate):
+    def inner(shapes, dtype, device):
+        input_shape, indices_shape, values_shape = shapes
+        inp = torch.randn(input_shape, dtype=dtype, device="cuda", requires_grad=False)
+        indices = gen_indices(input_shape, indices_shape, accumulate)
+        values = torch.randn(
+            values_shape, dtype=dtype, device="cuda", requires_grad=False
+        )
+        yield inp, indices, values, accumulate
+
+    return inner
+
+
+@pytest.mark.index_put
+def test_index_put_acc_false_perf():
+    class IndexPutBenchmark(GenericBenchmark):
+        def set_more_shapes(self):
+            INDEX_PUT_SHAPE = (
+                ((2**28,), ((2**16,),), (2**16,)),
+                ((32, 32), ((8,), (8,)), (8,)),
+                ((32, 32), ((8,), (2, 8)), (8,)),
+                ((32, 32), ((2, 8),), (32,)),
+                ((1024, 1024), ((64,), (64,)), (64,)),
+                (
+                    (1024, 1024),
+                    (
+                        (64,),
+                        (
+                            4,
+                            64,
+                        ),
+                    ),
+                    (64,),
+                ),
+                (
+                    (1024, 1024),
+                    (
+                        (
+                            4,
+                            64,
+                        ),
+                    ),
+                    (1024,),
+                ),
+                ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
+                ((512, 512, 512), ((2, 128), (128,), (128,)), (128,)),
+                ((512, 512, 512), ((2, 128),), (512,)),
+            )
+            self.shapes = INDEX_PUT_SHAPE
+            return None
+
+    bench = IndexPutBenchmark(
+        op_name="index_put",
+        torch_op=torch.index_put,
+        input_fn=index_put_input_fn(False),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.index_put
+def test_index_put_acc_true_perf():
+    class IndexPutBenchmark(GenericBenchmark):
+        def set_more_shapes(self):
+            INDEX_PUT_SHAPE = (
+                ((2**28,), ((2**16,),), (2**16,)),
+                ((32, 32), ((8,), (8,)), (8,)),
+                ((1024, 1024), ((64,), (64,)), (64,)),
+                ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
+            )
+            self.shapes = INDEX_PUT_SHAPE
+            return None
+
+    bench = IndexPutBenchmark(
+        op_name="index_put",
+        torch_op=torch.index_put,
+        input_fn=index_put_input_fn(True),
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()
