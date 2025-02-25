@@ -60,7 +60,7 @@ def test_type_promotion_no_opmath(shape, float_type):
 def test_type_promotion_int_to_float(shape, float_type):
     # arg0:float
     inp_float = torch.randn(shape, dtype=float_type, device=flag_gems.device)
-    ref_inp = to_reference(inp_float)
+    ref_inp = to_reference(inp_float, True)
     ref_out = torch.sin(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.sin(inp_float)
@@ -68,7 +68,7 @@ def test_type_promotion_int_to_float(shape, float_type):
 
     # arg0:int
     inp_int = torch.randint(10, shape, device=flag_gems.device)
-    ref_inp_int = to_reference(inp_int)
+    ref_inp_int = to_reference(inp_int, True)
     ref_out = torch.sin(ref_inp_int)
     with flag_gems.use_gems():
         res_out = torch.sin(inp_int)

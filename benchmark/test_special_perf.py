@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from .conftest import vendor_name
 from .performance_utils import (
     Config,
     GenericBenchmark,
@@ -82,7 +83,7 @@ def test_isin_perf():
         input_fn=isin_input_fn,
         op_name="isin",
         torch_op=torch.isin,
-        dtypes=INT_DTYPES,
+        dtypes=[torch.int32] if vendor_name == "cambricon" else INT_DTYPES,
     )
     bench.run()
 
@@ -97,7 +98,7 @@ def test_perf_unique():
         input_fn=unique_input_fn,
         op_name="unique",
         torch_op=torch.unique,
-        dtypes=INT_DTYPES,
+        dtypes=[torch.int32] if vendor_name == "cambricon" else INT_DTYPES,
     )
     bench.run()
 
@@ -224,7 +225,7 @@ def test_perf_upsample_bicubic2d_aa():
         input_fn=upsample_bicubic2d_aa_input_fn,
         op_name="upsample_bicubic2d_aa",
         torch_op=torch._C._nn._upsample_bicubic2d_aa,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float32] if vendor_name == "cambricon" else FLOAT_DTYPES,
     )
     bench.run()
 

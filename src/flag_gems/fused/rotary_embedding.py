@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 import torch
@@ -121,6 +122,7 @@ def apply_rotary_pos_emb(
         q_embed: (*, q_heads, head_dim)
         k_embed: (*, k_heads, head_dim)
     """
+    logging.debug("GEMS ROTARY POS EMBEDDING")
     assert (
         k.shape[-1] == q.shape[-1]
     ), f"q and k must have the same last dimension, got {q.shape} and {k.shape}"

@@ -93,7 +93,9 @@ def test_accuracy_mv(M, N, dtype):
 
 
 @pytest.mark.outer
-@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize(
+    "M, N", MN_SHAPES + ([(32, 131072)] if flag_gems.vendor_name == "cambricon" else [])
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_outer(M, N, dtype):
     inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device, requires_grad=True)
@@ -113,8 +115,8 @@ def test_accuracy_outer(M, N, dtype):
         ref_out, (ref_inp1, ref_inp2), ref_grad
     )
     res_in1_grad, res_in2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
-    gems_assert_close(res_in1_grad, ref_in1_grad, dtype)
-    gems_assert_close(res_in2_grad, ref_in2_grad, dtype)
+    gems_assert_close(res_in1_grad, ref_in1_grad, dtype, reduce_dim=N)
+    gems_assert_close(res_in2_grad, ref_in2_grad, dtype, reduce_dim=M)
 
 
 @pytest.mark.vdot

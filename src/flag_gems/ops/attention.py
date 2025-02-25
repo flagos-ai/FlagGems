@@ -47,7 +47,6 @@ def _attn_fwd_inner(
 
     K_block_ptr += lo * stride_k_seqlen
     V_block_ptr += lo * stride_v_seqlen
-    kv_load_mask = lo + offs_n < KV_CTX
     if HAS_ATTN_MASK:
         mask_block_ptr += lo * stride_attn_mask_kv_seqlen
 
@@ -55,6 +54,7 @@ def _attn_fwd_inner(
 
     # loop over k, v and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
+        kv_load_mask = (start_n + offs_n) < KV_CTX
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         k = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
@@ -62,6 +62,8 @@ def _attn_fwd_inner(
             v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
         qk = tl.dot(q, k, allow_tf32=False)
+        # incase not divisible.
+        qk = tl.where(kv_load_mask[None, :], qk, -float("inf"))
         # qk = qk.to(tl.float32)
 
         if HAS_ATTN_MASK:
@@ -84,13 +86,12 @@ def _attn_fwd_inner(
             m_ij = tl.maximum(m_i, tl.max(qk, 1))
             qk -= m_ij[:, None]
         else:
-            m_ij = tl.maximum(m_i, tl.max(qk, 1) * qk_scale)
+            qk *= qk_scale * LOG2E
             if HAS_ATTN_MASK:
-                qk = qk * qk_scale + attn_mask
-                qk *= LOG2E
-                qk = qk - m_ij[:, None]
-            else:
-                qk = qk * qk_scale * LOG2E - m_ij[:, None]
+                qk = qk + attn_mask
+            m_ij = tl.maximum(m_i, tl.max(qk, 1))
+            qk = qk - m_ij[:, None]
+
         p = tl.math.exp2(qk)
         l_ij = tl.sum(p, 1)
         # -- update m_i and l_i
@@ -182,6 +183,9 @@ def _attn_fwd(
     q_offset = (
         batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
     )
+    o_offset = (
+        batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
+    )
     kv_offset = (
         batch_id.to(tl.int64) * stride_k_batch + kv_head_id.to(tl.int64) * stride_k_head
     )
@@ -228,7 +232,7 @@ def _attn_fwd(
 
     O_block_ptr = (
         Out
-        + q_offset
+        + o_offset
         + offs_m[:, None] * stride_o_seqlen
         + offs_headsize[None, :] * stride_o_headsize
     )
@@ -343,6 +347,8 @@ def scaled_dot_product_attention(
 
     if attn_mask is not None:
         HAS_ATTN_MASK = True
+        if attn_mask.dtype == torch.bool:
+            attn_mask = attn_mask.to(query.dtype) * -1.0e6
         stride_attn_mask_batch = attn_mask.stride(0)
         stride_attn_mask_head = attn_mask.stride(1)
         stride_attn_mask_q_seqlen = attn_mask.stride(2)

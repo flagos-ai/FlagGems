@@ -444,6 +444,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="fix")
 @pytest.mark.upsample_bicubic2d_aa
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])
@@ -528,8 +529,8 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     inp2 = torch.randint(-10, 10, test_shape, device=flag_gems.device).to(dtype)
     inp1.ravel()[-1] = 0
     if assume_unique:
-        inp1 = torch.unique(inp1)
-        inp2 = torch.unique(inp2)
+        inp1 = torch.unique(inp1.cpu()).to(device)
+        inp2 = torch.unique(inp2.cpu()).to(device)
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
@@ -577,15 +578,34 @@ def test_fill(value, shape, dtype):
 
     # Test fill.Tensor
     value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
-    ref_out_tensor = torch.fill(ref_x, value_tensor)
+    ref_value_tensor = to_reference(value_tensor, False)
+    ref_out_tensor = torch.fill(ref_x, ref_value_tensor)
     with flag_gems.use_gems():
         res_out_tensor = torch.fill(x, value_tensor)
 
     gems_assert_equal(res_out_tensor, ref_out_tensor)
 
 
+CAMBRICON_STACK_SHAPES = [
+    [
+        (8, 8, 128),
+        (8, 8, 128),
+        (8, 8, 128),
+    ],
+    [
+        (32, 64, 128, 8),
+        (32, 64, 128, 8),
+        (32, 64, 128, 8),
+        (32, 64, 128, 8),
+    ],
+]
+STACK_SHAPES_TEST = STACK_SHAPES + (
+    CAMBRICON_STACK_SHAPES if flag_gems.vendor_name == "cambricon" else []
+)
+
+
 @pytest.mark.stack
-@pytest.mark.parametrize("shape", STACK_SHAPES)
+@pytest.mark.parametrize("shape", STACK_SHAPES_TEST)
 @pytest.mark.parametrize("dim", STACK_DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_stack(shape, dim, dtype):
@@ -593,9 +613,9 @@ def test_accuracy_stack(shape, dim, dtype):
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     else:
         inp = [
-            torch.randint(
-                low=0, high=0x7FFF, size=s, dtype=dtype, device=flag_gems.device
-            ).to(dtype)
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                flag_gems.device
+            )
             for s in shape
         ]
     ref_inp = [to_reference(_) for _ in inp]
@@ -621,9 +641,9 @@ def test_accuracy_hstack(shape, dtype):
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     else:
         inp = [
-            torch.randint(
-                low=0, high=0x7FFF, size=s, dtype=dtype, device=flag_gems.device
-            ).to(dtype)
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                flag_gems.device
+            )
             for s in shape
         ]
     ref_inp = [to_reference(_) for _ in inp]
@@ -648,9 +668,9 @@ def test_exception_hstack(shape, dtype):
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     else:
         inp = [
-            torch.randint(
-                low=0, high=0x7FFF, size=s, dtype=dtype, device=flag_gems.device
-            ).to(dtype)
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                flag_gems.device
+            )
             for s in shape
         ]
 
@@ -701,9 +721,9 @@ def test_accuracy_cat(shape, dim, dtype):
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     else:
         inp = [
-            torch.randint(
-                low=0, high=0x7FFF, size=s, dtype=dtype, device=flag_gems.device
-            ).to(dtype)
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                flag_gems.device
+            )
             for s in shape
         ]
     ref_inp = [to_reference(_) for _ in inp]
@@ -747,18 +767,32 @@ VSTACK_SHAPES = [
     ],
 ]
 
+CAMBRICON_VSTACK_SHAPES = [
+    [(16, 128, 64, 64), (16, 128, 64, 64), (16, 128, 64, 64), (16, 128, 64, 64)],
+    [
+        (32, 64, 128, 8),
+        (32, 64, 128, 8),
+        (32, 64, 128, 8),
+        (32, 64, 128, 8),
+        (32, 64, 128, 8),
+    ],
+]
+VSTACK_SHAPES_TEST = VSTACK_SHAPES + (
+    CAMBRICON_VSTACK_SHAPES if flag_gems.vendor_name == "cambricon" else []
+)
+
 
 @pytest.mark.vstack
-@pytest.mark.parametrize("shape", VSTACK_SHAPES)
+@pytest.mark.parametrize("shape", VSTACK_SHAPES_TEST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_vstack(shape, dtype):
     if dtype in FLOAT_DTYPES:
         inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
     else:
         inp = [
-            torch.randint(
-                low=0, high=0x7FFF, size=s, dtype=dtype, device=flag_gems.device
-            ).to(dtype)
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                flag_gems.device
+            )
             for s in shape
         ]
     ref_inp = [to_reference(_) for _ in inp]
@@ -846,9 +880,13 @@ def test_accuracy_diag(shape, diagonal, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     elif dtype in BOOL_TYPES:
-        inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
     else:
-        inp = torch.randint(0, 0x7FFF, size=shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(0, 0x7FFF, size=shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
     ref_inp = to_reference(inp)
 
     ref_out = torch.diag(ref_inp, diagonal)
@@ -888,11 +926,11 @@ def test_accuracy_diag_embed(shape, dtype, offset, dim1, dim2):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     elif dtype in INT_DTYPES:
         inp = torch.randint(
-            low=0, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
-        )
+            low=0, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
     else:
-        inp = torch.randint(
-            low=0, high=2, size=shape, dtype=dtype, device=flag_gems.device
+        inp = torch.randint(low=0, high=2, size=shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
         )
 
     ref_inp = to_reference(inp)

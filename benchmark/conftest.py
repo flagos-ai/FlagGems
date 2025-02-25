@@ -21,6 +21,7 @@ from .attri_util import (
 )
 
 device = flag_gems.device
+vendor_name = flag_gems.vendor_name
 
 
 class BenchConfig:

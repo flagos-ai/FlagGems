@@ -7,8 +7,11 @@ import triton.language as tl
 from ..utils import pointwise_dynamic, tl_extra_shim
 from .all import all
 
-_isfinited = tl_extra_shim.isfinited
-_finitef = tl_extra_shim.finitef
+try:
+    _isfinited = tl_extra_shim.isfinited
+    _finitef = tl_extra_shim.finitef
+except Exception:
+    pass
 
 
 @pointwise_dynamic(

@@ -9,6 +9,7 @@ from .runtime.register import Register
 
 __version__ = "2.2"
 device = runtime.device.name
+vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None

@@ -159,7 +159,9 @@ def conv2d_forward_kernel(
         weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
 
         accum += tl.dot(input_block, weight_block, allow_tf32=False)
-    bias_pointer += pid_group * out_per_group_c[None, :] + output_c_offset[None, :]
+    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
+        None, :
+    ]
     mask_bias = (output_c_offset < out_per_group_c)[None, :]
     bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
     accum += bias
@@ -253,7 +255,7 @@ def conv2d_backward_kernel_weight(
     # caculate init pointer info of tensors
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
     out_grad_pointer += (output_c_offset * output_c_stride)[None, :] + (
-        pid_groups * output_c_stride * out_c
+        pid_groups[None] * output_c_stride * out_c
     )[:, None]
 
     weight_pointer += (
@@ -266,8 +268,8 @@ def conv2d_backward_kernel_weight(
         :, None
     ]
 
-    input_pointer += (ci_point_value * input_c_stride)[:, None] + (
-        pid_groups * input_c_stride * input_c
+    input_pointer += (ci_point_value * input_c_stride[None])[:, None] + (
+        pid_groups[None] * input_c_stride * input_c
     )[None, :]
 
     # calculate the values of the input based on the width and height of the output by looping
