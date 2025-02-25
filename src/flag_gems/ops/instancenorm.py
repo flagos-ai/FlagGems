@@ -397,7 +397,8 @@ def weight_bias_backward_kernel(
     BLOCK_BATCH_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    cid = tl.program_id(0)[:, None]
+    cid = tl.program_id(0)[None]
+    cid = cid[:, None]
     dW += cid
     dB += cid
     c_mask = cid < C

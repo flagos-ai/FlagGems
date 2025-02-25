@@ -1,5 +1,6 @@
 import torch
 
+from flag_gems.runtime import device
 from flag_gems.utils import shape_utils
 
 
@@ -94,6 +95,11 @@ def test_heuristics_for_tile_size():
 
 
 def test_heuristics_for_num_warps():
-    assert shape_utils.heuristics_for_num_warps(1024) == 4
-    assert shape_utils.heuristics_for_num_warps(2048) == 8
-    assert shape_utils.heuristics_for_num_warps(4096) == 16
+    if device.vendor_name == "cambricon":
+        assert shape_utils.heuristics_for_num_warps(1024) == 1
+        assert shape_utils.heuristics_for_num_warps(2048) == 1
+        assert shape_utils.heuristics_for_num_warps(4096) == 1
+    else:
+        assert shape_utils.heuristics_for_num_warps(1024) == 4
+        assert shape_utils.heuristics_for_num_warps(2048) == 8
+        assert shape_utils.heuristics_for_num_warps(4096) == 16

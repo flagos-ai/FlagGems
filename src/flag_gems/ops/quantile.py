@@ -6,7 +6,7 @@ import triton.language as tl
 from torch import Tensor
 
 from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry
+from ..utils import dim_compress, libentry, tl_extra_shim
 from ..utils import triton_lang_extension as tle
 
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
@@ -79,7 +79,7 @@ def quantile_kernel(
         tl.store(out_ptrs, inp_upper, mask_out)
 
     elif interpolation == "nearest":
-        q_round = tl.extra.cuda.libdevice.rint(q_block)
+        q_round = tl_extra_shim.rint(q_block)
         out_block = tl.where(q_round == q_upper, inp_upper, inp_lower)
         tl.store(out_ptrs, out_block, mask_out)
 

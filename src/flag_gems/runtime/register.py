@@ -14,6 +14,9 @@ class Register:
         self.lib = lib
         # reg_key like 'CUDA', reg_bac_key like AutogradCUDA
         self.reg_key = self.device.name.upper()
+        # Cambricon device has a different reg_key.
+        if self.device.vendor_name == "cambricon":
+            self.reg_key = "PrivateUse1"
         self.reg_bac_key = "Autograd" + self.reg_key
         self.all_ops = []
         self.vendor_unused_ops_list = self.get_vendor_unused_op()

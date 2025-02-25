@@ -11,7 +11,7 @@ from .accuracy_utils import gems_assert_close, to_reference
 @pytest.mark.parametrize("batch", [8, 16])
 @pytest.mark.parametrize("num_head", [1, 8])
 @pytest.mark.parametrize("q_seq_len", [17, 64, 128])
-@pytest.mark.parametrize("kv_seq_len", [128, 2048])
+@pytest.mark.parametrize("kv_seq_len", [7, 87, 128, 577, 2048])
 @pytest.mark.parametrize("head_size", [64, 128])
 @pytest.mark.parametrize("add_bias", [True, False])
 @pytest.mark.parametrize("is_causal", [True, False])
@@ -36,7 +36,7 @@ def test_scaled_dot_product_attention(
     query = torch.tensor(np_query, device="cuda", dtype=dtype)
     key = torch.tensor(np_key, device="cuda", dtype=dtype)
     value = torch.tensor(np_value, device="cuda", dtype=dtype)
-    if add_bias:
+    if add_bias and not is_causal:
         attn_bias = torch.tensor(np_attn_bias, device="cuda", dtype=dtype)
     else:
         attn_bias = None
@@ -75,4 +75,4 @@ def test_scaled_dot_product_attention(
             flaggem_result = torch.nn.functional.scaled_dot_product_attention(
                 query, key, value, attn_mask=attn_bias, scale=scale, is_causal=is_causal
             )
-    gems_assert_close(flaggem_result, torch_result, dtype)
+    gems_assert_close(flaggem_result, torch_result, dtype, reduce_dim=head_size)

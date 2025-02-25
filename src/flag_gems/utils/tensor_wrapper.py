@@ -16,6 +16,9 @@ class TypedPtr:
     def data_ptr(self) -> int:
         return self.ptr
 
+    def untyped_storage(self):
+        return self
+
     @classmethod
     def from_tensor(cls, tensor: torch.Tensor, offset: int = 0):
         return cls(tensor.data_ptr() + tensor.element_size() * offset, tensor.dtype)
@@ -77,3 +80,6 @@ class StridedBuffer:
 
     def data_ptr(self):
         return self._data_ptr
+
+    def untyped_storage(self):
+        return self._base.untyped_storage()

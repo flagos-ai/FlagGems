@@ -457,10 +457,10 @@ def generate_tensor_input(shape, dtype, device):
             torch.iinfo(dtype).max,
             shape,
             dtype=dtype,
-            device=device,
-        )
+            device="cpu",
+        ).to(device)
     elif dtype in BOOL_DTYPES:
-        return torch.randint(0, 2, size=shape, dtype=dtype, device=device)
+        return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
 
 
 def binary_input_fn(shape, cur_dtype, device):

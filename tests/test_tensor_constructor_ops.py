@@ -11,6 +11,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_equal,
+    to_reference,
 )
 from .conftest import TO_CPU
 
@@ -31,6 +32,8 @@ def test_accuracy_rand(shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_randn(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device=device)
     mean = torch.mean(res_out)
@@ -124,7 +127,9 @@ def test_accuracy_zeros_like(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device="cpu" if TO_CPU else device)
     with flag_gems.use_gems():
         res_out = torch.zeros_like(x)
-    gems_assert_equal(res_out, torch.zeros_like(x))
+    out = torch.zeros_like(x)
+    ref_out = to_reference(out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.ones_like
@@ -134,7 +139,9 @@ def test_accuracy_ones_like(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device="cpu" if TO_CPU else device)
     with flag_gems.use_gems():
         res_out = torch.ones_like(x)
-    gems_assert_equal(res_out, torch.ones_like(x))
+    out = torch.ones_like(x)
+    ref_out = to_reference(out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.full_like

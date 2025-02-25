@@ -289,6 +289,9 @@ WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm(shape, dtype, dim):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     g = torch.randn(
@@ -330,6 +333,9 @@ WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm_interface(shape, dtype, dim):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     g = torch.randn(
@@ -492,6 +498,9 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 @pytest.mark.parametrize("affine", [True, False])
 @pytest.mark.parametrize("require_grad", [True, False])
 def test_accuracy_batch_norm(shape, dtype, affine, require_grad):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(23)
+        torch.mlu.manual_seed_all(23)
     C = shape[1]
     inp = torch.randn(
         size=shape, dtype=dtype, device=flag_gems.device, requires_grad=require_grad

@@ -98,6 +98,14 @@ class IndentedBuffer:
         else:
             self._lines.append("")
 
+    def tpl(self, format_str, **kwargs):
+        assert isinstance(format_str, str), "format_str must be string of type."
+        format_str = format_str.format(**kwargs)
+        lines = format_str.strip().splitlines()
+        for line in lines:
+            line = line.replace("\t", " " * self.tabwidth)
+            self.writeline(line)
+
     def writelines(self, lines):
         for line in lines:
             self.writeline(line)

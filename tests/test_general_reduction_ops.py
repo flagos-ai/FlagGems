@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    ALL_INT_DTYPES,
     FLOAT_DTYPES,
     REDUCTION_SHAPES,
     REDUCTION_SMALL_SHAPES,
@@ -45,7 +46,7 @@ def test_accuracy_all_without_dim(shape, dtype, kind):
     if kind == "allTrue":
         inp = torch.ones(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.all(ref_inp)
@@ -63,7 +64,7 @@ def test_accuracy_all_dims(shape, dim, keepdim, dtype, kind):
     if kind == "allTrue":
         inp = torch.ones(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.all(ref_inp, dim=dim, keepdim=keepdim)
@@ -81,7 +82,7 @@ def test_accuracy_any_without_dim(shape, dtype, kind):
     if kind == "allFalse":
         inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.any(ref_inp)
@@ -99,7 +100,7 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
     if kind == "allFalse":
         inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
@@ -114,6 +115,24 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_without_dim(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.max(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.max(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+# cambricon add
+@pytest.mark.max
+@pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="cambricon test only")
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + [[1]])
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
+def test_accuracy_max_int(shape, dtype):
+    inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
     ref_inp = to_reference(inp)
 
     ref_out = torch.max(ref_inp)
