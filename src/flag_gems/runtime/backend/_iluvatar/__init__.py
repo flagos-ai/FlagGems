@@ -4,6 +4,6 @@ vendor_info = VendorInfoBase(
     vendor_name="iluvatar", device_name="cuda", device_query_cmd="ixsmi"
 )
 
-CUSTOMIZED_UNUSED_OPS = ("randperm", "topk", "sort", "multinomial")
+CUSTOMIZED_UNUSED_OPS = ("scatter", "quantile", "randperm", "mv")
 
 __all__ = ["*"]
