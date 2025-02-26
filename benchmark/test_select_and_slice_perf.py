@@ -304,45 +304,46 @@ def index_put_input_fn(accumulate):
     return inner
 
 
+class IndexPutAccFalseBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        INDEX_PUT_SHAPE = (
+            ((2**28,), ((2**16,),), (2**16,)),
+            ((32, 32), ((8,), (8,)), (8,)),
+            ((32, 32), ((8,), (2, 8)), (8,)),
+            ((32, 32), ((2, 8),), (32,)),
+            ((1024, 1024), ((64,), (64,)), (64,)),
+            (
+                (1024, 1024),
+                (
+                    (64,),
+                    (
+                        4,
+                        64,
+                    ),
+                ),
+                (64,),
+            ),
+            (
+                (1024, 1024),
+                (
+                    (
+                        4,
+                        64,
+                    ),
+                ),
+                (1024,),
+            ),
+            ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
+            ((512, 512, 512), ((2, 128), (128,), (128,)), (128,)),
+            ((512, 512, 512), ((2, 128),), (512,)),
+        )
+        self.shapes = INDEX_PUT_SHAPE
+        return None
+
+
 @pytest.mark.index_put
 def test_index_put_acc_false_perf():
-    class IndexPutBenchmark(GenericBenchmark):
-        def set_more_shapes(self):
-            INDEX_PUT_SHAPE = (
-                ((2**28,), ((2**16,),), (2**16,)),
-                ((32, 32), ((8,), (8,)), (8,)),
-                ((32, 32), ((8,), (2, 8)), (8,)),
-                ((32, 32), ((2, 8),), (32,)),
-                ((1024, 1024), ((64,), (64,)), (64,)),
-                (
-                    (1024, 1024),
-                    (
-                        (64,),
-                        (
-                            4,
-                            64,
-                        ),
-                    ),
-                    (64,),
-                ),
-                (
-                    (1024, 1024),
-                    (
-                        (
-                            4,
-                            64,
-                        ),
-                    ),
-                    (1024,),
-                ),
-                ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
-                ((512, 512, 512), ((2, 128), (128,), (128,)), (128,)),
-                ((512, 512, 512), ((2, 128),), (512,)),
-            )
-            self.shapes = INDEX_PUT_SHAPE
-            return None
-
-    bench = IndexPutBenchmark(
+    bench = IndexPutAccFalseBenchmark(
         op_name="index_put",
         torch_op=torch.index_put,
         input_fn=index_put_input_fn(False),
@@ -351,20 +352,22 @@ def test_index_put_acc_false_perf():
     bench.run()
 
 
+class IndexPutAccTrueBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        INDEX_PUT_SHAPE = (
+            ((2**28,), ((2**16,),), (2**16,)),
+            ((32, 32), ((8,), (8,)), (8,)),
+            ((1024, 1024), ((64,), (64,)), (64,)),
+            ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
+            ((512, 512, 512), ((2, 128), (2, 128), (2, 128)), (2, 128)),
+        )
+        self.shapes = INDEX_PUT_SHAPE
+        return None
+
+
 @pytest.mark.index_put
 def test_index_put_acc_true_perf():
-    class IndexPutBenchmark(GenericBenchmark):
-        def set_more_shapes(self):
-            INDEX_PUT_SHAPE = (
-                ((2**28,), ((2**16,),), (2**16,)),
-                ((32, 32), ((8,), (8,)), (8,)),
-                ((1024, 1024), ((64,), (64,)), (64,)),
-                ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
-            )
-            self.shapes = INDEX_PUT_SHAPE
-            return None
-
-    bench = IndexPutBenchmark(
+    bench = IndexPutAccTrueBenchmark(
         op_name="index_put",
         torch_op=torch.index_put,
         input_fn=index_put_input_fn(True),
