@@ -93,6 +93,9 @@ class LibTuner(triton.runtime.Autotuner):
                 kwargs[k] = eval(v)
             for k, v in cfg_ls[-attrs:]:
                 numargs[k] = eval(v)
+            # In Triton v2.2 and v2.3, enable_persistent is stored in config cache
+            # but not defined as initialization parameter
+            numargs.pop("enable_persistent", None)
             config = triton.Config(kwargs, **numargs)
             self.cache[tuple(key)] = config
 
