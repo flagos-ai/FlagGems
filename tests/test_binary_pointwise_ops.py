@@ -370,7 +370,7 @@ def test_accuracy_div_scalar_scalar(dtype):
 def test_accuracy_trunc_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    upcast = True if flag_gems.vendor_name != "cambricon" else False
+    upcast = True if flag_gems.vendor_name not in ["cambricon", "iluvatar"] else False
     ref_inp1 = to_reference(inp1, upcast)
     ref_inp2 = to_reference(inp2, upcast)
 

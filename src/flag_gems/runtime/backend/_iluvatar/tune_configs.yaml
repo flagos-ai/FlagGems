@@ -3235,7 +3235,6 @@ var_mean:
   - 8
   block_n:
   - 1024
-  - 2048
   warps:
   - 4
   - 8
