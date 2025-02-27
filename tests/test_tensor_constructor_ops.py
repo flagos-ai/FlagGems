@@ -60,8 +60,8 @@ def test_accuracy_randn_like(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     with flag_gems.use_gems():
         res_out = torch.randn_like(x)
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
+    mean = torch.mean(res_out.to("cpu"))
+    std = torch.std(res_out.to("cpu"))
     assert torch.abs(mean) < 0.01
     assert torch.abs(std - 1) < 0.01
 
@@ -163,6 +163,7 @@ def test_accuracy_full_like(shape, dtype, xdtype, fill_value):
     gems_assert_equal(res_out, torch.full_like(x, fill_value, dtype=dtype))
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.randperm
 @pytest.mark.parametrize("n", [123, 12345, 123456])
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES)

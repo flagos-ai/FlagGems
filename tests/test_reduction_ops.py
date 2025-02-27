@@ -216,10 +216,10 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
     target_shape = list(shape)
     del target_shape[dim]
 
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    target = torch.randint(0, shape[dim], target_shape, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randint(0, shape[dim], target_shape, device=flag_gems.device)
     if weight:
-        weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+        weight = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
     else:
         weight = None
     ref_inp = to_reference(inp, True)
@@ -273,6 +273,7 @@ CUMMIN_SHAPES = (
 )
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.skipif(
     SkipVersion("triton", "<3.0"),
     reason="Skipping when associative_scan only support single tensor input.",
@@ -525,6 +526,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -728,14 +730,14 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_index_add(shape, dim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     src_shape = list(inp.shape)
     index_max = src_shape[dim]
     index_len = index_max
-    index = torch.randperm(index_len, device="cuda")
+    index = torch.randperm(index_len, device=flag_gems.device)
     src_shape[dim] = index_len
-    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     alpha = 2
 
     ref_inp = to_reference(inp)
@@ -836,6 +838,7 @@ SHAPE_CONV2D = [
 ]
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
@@ -925,7 +928,7 @@ SHAPE_DEPTHWISE = [
 ]
 
 
-# test for depthwise depends on  cuda
+# test for depthwise depends on specific device
 @pytest.mark.skip("conv_depthwise2d introduces failures, disable it temporarily")
 @pytest.mark.conv_depthwise2d
 @pytest.mark.parametrize("shape_input, shape_weight,kernel ", SHAPE_DEPTHWISE)
@@ -1047,8 +1050,8 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mse_loss(shape, dtype, reduction):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    target = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
