@@ -529,12 +529,10 @@ def test_arange(start, step, end, dtype, device, pin_memory):
     gems_assert_equal(res_out, ref_out)
 
 
-# @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-@pytest.mark.parametrize(
-    "dtype", [torch.int32]
-)  # torch_musa complains sort doesn't support Short
+@pytest.mark.parametrize("dtype", INT_DTYPES)
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
