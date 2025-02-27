@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import Benchmark, generate_tensor_input
 
@@ -47,8 +49,12 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("mul", torch.mul, FLOAT_DTYPES),
             ("pow", torch.pow, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
-            ("floor_divide", torch.floor_divide, INT_DTYPES),
-            ("remainder", torch.remainder, INT_DTYPES),
+            ("floor_divide", torch.floor_divide, INT_DTYPES)
+            if flag_gems.device_name != "musa"
+            else (),
+            ("remainder", torch.remainder, INT_DTYPES)
+            if flag_gems.device_name != "musa"
+            else (),
             ("rsub", torch.rsub, FLOAT_DTYPES),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
             ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),

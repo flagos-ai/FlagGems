@@ -72,6 +72,8 @@ class BenchmarkMetrics:
     tflops: Optional[float] = None
     # Utilization (not implemented yet)
     utilization: Optional[float] = None
+    # Speedup compared to base data
+    compared_speedup: Optional[float] = None
     # Error message
     error_msg: Optional[str] = None
 

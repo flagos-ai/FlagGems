@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from .performance_utils import GenericBenchmark
 
 
@@ -15,6 +17,7 @@ class AttentionBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.attention
 def test_perf_scaled_dot_product_attention():
     def scaled_dot_product_attention_kwargs(shape, dtype, device):

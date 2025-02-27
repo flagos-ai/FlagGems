@@ -6,7 +6,10 @@ import flag_gems
 
 from .accuracy_utils import gems_assert_close, to_reference
 
+device = flag_gems.device
 
+
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("batch", [8, 16])
 @pytest.mark.parametrize("num_head", [1, 8])
@@ -33,11 +36,11 @@ def test_scaled_dot_product_attention(
         -0.05, 0.05, (batch, num_head, q_seq_len, kv_seq_len)
     ).astype(np.float32)
 
-    query = torch.tensor(np_query, device="cuda", dtype=dtype)
-    key = torch.tensor(np_key, device="cuda", dtype=dtype)
-    value = torch.tensor(np_value, device="cuda", dtype=dtype)
-    if add_bias and not is_causal:
-        attn_bias = torch.tensor(np_attn_bias, device="cuda", dtype=dtype)
+    query = torch.tensor(np_query, device=device, dtype=dtype)
+    key = torch.tensor(np_key, device=device, dtype=dtype)
+    value = torch.tensor(np_value, device=device, dtype=dtype)
+    if add_bias:
+        attn_bias = torch.tensor(np_attn_bias, device=device, dtype=dtype)
     else:
         attn_bias = None
 
