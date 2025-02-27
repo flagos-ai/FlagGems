@@ -1457,3 +1457,21 @@ conv2d_backward_weight:
     BLOCK_NO: 32
   num_stages: 3
   num_warps: 4
+#######################################
+index_put:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE0: block_size0
+      BLOCK_SIZE1: block_size1
+    num_warps: 1
+  block_size0:
+  - 1
+  - 2
+  - 4
+  - 8
+  block_size1:
+  - 1024
+  - 2048
+  - 4096
+  - 8192
