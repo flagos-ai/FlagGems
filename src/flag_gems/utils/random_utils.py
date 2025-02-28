@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 from ..runtime import torch_device_fn
 
 try:
@@ -38,7 +40,12 @@ def philox_backend_seed_offset(increment, device=None):
     device = device or torch_device_fn.current_device()
     gen = torch_device_fn.default_generators[device]
     state_copy = gen.get_state()
-    c0, c1 = state_copy.view(torch.int64)
+    # TODO[kunlunxin]: we will upgrade torch version in 2025.04
+    if flag_gems.vendor_name == "kunlunxin":
+        c0, c1 = state_copy.view(torch.int64)[-2], state_copy.view(torch.int64)[-1]
+    else:
+        c0, c1 = state_copy.view(torch.int64)
+
     seed, offset = int(c0), int(c1)
     increment = (increment + 3) // 4 * 4
     c1 += increment

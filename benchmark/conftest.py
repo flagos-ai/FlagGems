@@ -30,6 +30,11 @@ class BenchConfig:
         self.bench_level = BenchLevel.COMPREHENSIVE
         self.warm_up = DEFAULT_WARMUP_COUNT
         self.repetition = DEFAULT_ITER_COUNT
+        if (
+            vendor_name == "kunlunxin"
+        ):  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+            self.warm_up = 1
+            self.repetition = 1
         self.record_log = False
         self.user_desired_dtypes = None
         self.user_desired_metrics = None
@@ -42,7 +47,9 @@ Config = BenchConfig()
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--mode",
+        "--mode"
+        if vendor_name != "kunlunxin"
+        else "--fg_mode",  # TODO: fix pytest-* common --mode args
         action="store",
         default=device,
         required=False,

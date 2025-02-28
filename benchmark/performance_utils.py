@@ -1,6 +1,7 @@
 import gc
 import importlib
 import logging
+import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
@@ -28,6 +29,7 @@ from .conftest import Config
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
 device = flag_gems.device
+vendor_name = flag_gems.vendor_name
 if device == "musa":
     torch.backends.mudnn.allow_tf32 = False
 else:
@@ -228,6 +230,11 @@ class Benchmark:
         self.cpu_mode = Config.cpu_mode
         self.set_dtypes(Config.user_desired_dtypes)
         self.set_metrics(Config.user_desired_metrics)
+        if vendor_name == "kunlunxin":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml",
+            )  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
         self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):

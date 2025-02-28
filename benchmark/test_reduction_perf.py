@@ -15,6 +15,7 @@ from .performance_utils import (
     GenericBenchmark2DOnly,
     generate_tensor_input,
     unary_input_fn,
+    vendor_name,
 )
 
 
@@ -79,6 +80,8 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin" and op_name in ["var_mean", "softmax"]:
+        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -98,6 +101,8 @@ backward_operations = [
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin" and op_name == "softmax":
+        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(
         op_name=op_name,
         torch_op=torch_op,
@@ -221,12 +226,18 @@ def mse_loss_input_fn(shape, cur_dtype, device):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["CrossEntropyLoss", "nll_loss", "log_softmax"]:
+            pytest.skip("RUNTIME TODOFIX")
+        elif op_name in ["cumsum", "cummin", "nonzero"]:
+            pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():

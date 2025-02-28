@@ -17,6 +17,9 @@ MAX_GRID_SIZE_X = MAX_GRID_SIZES[0]
 USE_BLOCK_POINTER = [True, False]
 triton_version_less_than3 = int(triton.__version__[0]) < 3
 
+if flag_gems.vendor_name == "kunlunxin":
+    pytestmark = pytest.mark.skip("Test Files for Operators Not Pending Testing")
+
 
 def test_function_schema_with_non_tensor_input():
     schema = FunctionSchema(

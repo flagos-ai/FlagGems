@@ -2,6 +2,8 @@ import math
 
 import torch
 
+import flag_gems
+
 
 class TypedPtr:
     """This is a minimal requirement for a type to be treated as a tensor in triton jit
@@ -50,10 +52,23 @@ class StridedBuffer:
     ):
         self._base = base
         self.dtype = dtype or base.dtype
+
         if offset == 0:
             self._data_ptr = self._base.data_ptr()
         else:
-            offset = self.dtype.itemsize * offset
+            # TODO[kunlunxin]: we will upgrade torch version in 2025.04
+            if flag_gems.vendor_name == "kunlunxin":
+
+                def get_dtype_bytes(dtype):
+                    if dtype.is_floating_point:
+                        return int(torch.finfo(dtype).bits / 8)
+                    else:
+                        return int(torch.iinfo(dtype).bits / 8)
+
+                offset = get_dtype_bytes(self.dtype) * offset
+            else:
+                offset = self.dtype.itemsize * offset
+
             self._data_ptr = self._base.data_ptr() + offset
         self.shape = tuple(shape if shape is not None else self._base.shape)
         self._strides = tuple(strides if strides is not None else self._base.stride())

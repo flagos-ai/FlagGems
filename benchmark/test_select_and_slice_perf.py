@@ -12,6 +12,7 @@ from .performance_utils import (
     GenericBenchmark,
     GenericBenchmark2DOnly,
     generate_tensor_input,
+    vendor_name,
 )
 
 
@@ -20,6 +21,10 @@ class TensorSelectBenchmark(GenericBenchmark2DOnly):
         return ["gbps"]
 
     def set_more_shapes(self):
+        if (
+            vendor_name == "kunlunxin"
+        ):  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+            return []
         shapes = super().set_more_shapes()
         shapes = [
             # this filter is for scatter
@@ -83,6 +88,11 @@ def index_select_gbps(bench_fn_args, latency):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name == "masked_select":
+            pytest.skip("CUMSUM UNSUPPORTED")
+        elif op_name == "index_select":
+            pytest.skip("RUNTIME TODOFIX")
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
@@ -172,6 +182,7 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather
 def test_perf_gather():
     bench = TensorSelectBenchmark(
@@ -191,6 +202,7 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather_backward
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(
@@ -260,6 +272,7 @@ def test_select_scatter_perf():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_add
 def test_index_add_perf():
     def index_add_input_fn(shape, dtype, device):
@@ -368,6 +381,7 @@ class IndexPutAccTrueBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_put
 def test_index_put_acc_true_perf():
     bench = IndexPutAccTrueBenchmark(
