@@ -17,6 +17,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
+    code.writeline("import flag_gems")
     # code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
@@ -35,6 +36,9 @@ def generate_scatter_kernel(
 
     code.writeline("def heur_block(args):")
     with code.indent():
+        code.writeline("if(flag_gems.vendor_name=='metax'):")
+        with code.indent():
+            code.writeline("return 256")
         code.writeline("return 128")
     code.newline()
     code.newline()

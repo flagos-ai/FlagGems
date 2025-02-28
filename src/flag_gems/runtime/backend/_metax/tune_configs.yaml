@@ -22,8 +22,7 @@ attention:
   - 8
   stages:
   - 1
-  - 2
-  - 3
+
 bmm:
 - META:
     TILE_M: 32
