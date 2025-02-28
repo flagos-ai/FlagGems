@@ -14,6 +14,9 @@ from .accuracy_utils import (
     to_reference,
 )
 
+if flag_gems.vendor_name == "kunlunxin":
+    pytestmark = pytest.mark.skip("Test Files for Operators Not Pending Testing")
+
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)

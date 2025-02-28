@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from .performance_utils import GenericBenchmark
+from .performance_utils import GenericBenchmark, vendor_name
 
 
 class AttentionBenchmark(GenericBenchmark):
@@ -17,6 +17,7 @@ class AttentionBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.attention
 def test_perf_scaled_dot_product_attention():

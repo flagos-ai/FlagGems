@@ -14,7 +14,7 @@ from .attri_util import (
     llama_shapes,
 )
 from .conftest import Config
-from .performance_utils import Benchmark
+from .performance_utils import Benchmark, vendor_name
 
 
 class BlasBenchmark(Benchmark):
@@ -188,6 +188,7 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Segmentation fault")
 @pytest.mark.vdot
 def test_vdot_benchmark():

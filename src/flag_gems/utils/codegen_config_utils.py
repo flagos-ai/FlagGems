@@ -77,6 +77,13 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
+    vendors.KUNLUNXIN: CodeGenConfig(
+        512,
+        (65536, 65536, 65536),
+        32,
+        True,
+        prefer_1d_tile=True,
+    ),
 }
 
 HEURISTICS_CONFIG = {

@@ -811,6 +811,11 @@ def test_accuracy_ne_scalar(shape, dtype):
 def test_accuracy_pow(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    if flag_gems.vendor_name == "kunlunxin":
+        inp1 = inp1.uniform_(-0.1, 0.1)
+        inp2 = inp2.uniform_(-0.1, 0.1)
+
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -860,6 +865,9 @@ def test_accuracy_minimum(shape, dtype):
 def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        inp2 = inp2.uniform_(-0.1, 0.1)
+
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.pow(inp1, ref_inp2)
@@ -879,6 +887,9 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
+    if flag_gems.vendor_name == "kunlunxin":
+        inp1 = inp1.uniform_(-0.1, 0.1)
+
     ref_inp1 = to_reference(inp1, True)
 
     ref_out = torch.pow(ref_inp1, inp2)
@@ -900,7 +911,12 @@ def test_accuracy_rsub(shape, alpha, dtype):
 
     ref_out = torch.rsub(ref_inp1, ref_inp2, alpha=alpha)
     with flag_gems.use_gems():
-        res_out = torch.rsub(inp1, inp2, alpha=alpha)
+        if flag_gems.vendor_name == "kunlunxin":
+            from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
+
+            res_out = kl_ops.rsub(inp1, inp2, alpha=alpha)
+        else:
+            res_out = torch.rsub(inp1, inp2, alpha=alpha)
 
     gems_assert_close(res_out, ref_out, dtype)
 

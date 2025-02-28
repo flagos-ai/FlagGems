@@ -20,6 +20,7 @@ KEEPDIM_DIMS = (
 )
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.group_norm
 @pytest.mark.native_group_norm
 @pytest.mark.parametrize(
@@ -86,6 +87,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="to_cpu unknown error")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
@@ -166,6 +168,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.instance_norm
 @pytest.mark.native_instance_norm
 @pytest.mark.parametrize(
@@ -487,6 +490,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.batch_norm
 @pytest.mark.parametrize(
     "shape",

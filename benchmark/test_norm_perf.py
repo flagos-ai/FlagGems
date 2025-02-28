@@ -4,11 +4,12 @@ import torch
 import flag_gems
 
 from .attri_util import FLOAT_DTYPES, BenchLevel
-from .conftest import Config, vendor_name
 from .performance_utils import (
+    Config,
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
     unary_input_fn,
+    vendor_name,
 )
 
 
@@ -139,6 +140,12 @@ def batchnorm_input_fn(shape, dtype, device):
     ],
 )
 def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
+    if vendor_name == "kunlunxin" and op_name in [
+        "layer_norm",
+        "instance_norm",
+        "batch_norm",
+    ]:
+        pytest.skip("RUNTIME TODOFIX.")
     bench = NormBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )

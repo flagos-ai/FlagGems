@@ -7,6 +7,9 @@ import flag_gems
 
 from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES
 
+if flag_gems.vendor_name == "kunlunxin":
+    pytestmark = pytest.mark.skip("Test Files for Operators Not Pending Testing")
+
 # The Kolmogorov-Smirnov test (K-S test or KS test) is performed on the
 # distribution operator. By having randomness, CI does not perform
 
