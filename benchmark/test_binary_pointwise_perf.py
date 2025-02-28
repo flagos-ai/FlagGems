@@ -50,10 +50,10 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("pow", torch.pow, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
             ("floor_divide", torch.floor_divide, INT_DTYPES)
-            if flag_gems.device_name != "musa"
+            if flag_gems.device != "musa"
             else (),
             ("remainder", torch.remainder, INT_DTYPES)
-            if flag_gems.device_name != "musa"
+            if flag_gems.device != "musa"
             else (),
             ("rsub", torch.rsub, FLOAT_DTYPES),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),

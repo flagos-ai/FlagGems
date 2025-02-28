@@ -43,10 +43,10 @@ special_operations = [
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
     # Complex Operations
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn)
-    if flag_gems.device_name != "musa"
+    if flag_gems.device != "musa"
     else (),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn)
-    if flag_gems.device_name != "musa"
+    if flag_gems.device != "musa"
     else (),
 ]
 
