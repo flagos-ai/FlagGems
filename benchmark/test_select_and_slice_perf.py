@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.utils import shape_utils
 
 from .attri_util import FLOAT_DTYPES
@@ -287,17 +288,19 @@ def gen_indices(input_shape, indices_shape, accumulate):
         index = np.random.choice(
             np.arange(input_shape[i]), size=shape, replace=accumulate
         )
-        indices.append(torch.tensor(index, device="cuda"))
+        indices.append(torch.tensor(index, device=flag_gems.device))
     return indices
 
 
 def index_put_input_fn(accumulate):
     def inner(shapes, dtype, device):
         input_shape, indices_shape, values_shape = shapes
-        inp = torch.randn(input_shape, dtype=dtype, device="cuda", requires_grad=False)
+        inp = torch.randn(
+            input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
         indices = gen_indices(input_shape, indices_shape, accumulate)
         values = torch.randn(
-            values_shape, dtype=dtype, device="cuda", requires_grad=False
+            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
         )
         yield inp, indices, values, accumulate
 
