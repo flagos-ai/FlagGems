@@ -313,6 +313,7 @@ class ScatterFunction:
 
 
 _scatter_func = ScatterFunction()
+_scatter_inplace_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
@@ -371,7 +372,7 @@ def scatter_(inp, dim, index, src, reduce=None):
 
     int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
     use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
-    _scatter_func(
+    _scatter_inplace_func(
         src_restrided,
         index,
         inp_restrided,

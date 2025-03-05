@@ -1075,6 +1075,10 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mse_loss(shape, dtype, reduction):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     dim = 1
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
