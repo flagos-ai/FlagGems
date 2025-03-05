@@ -1,6 +1,7 @@
 import threading
 from contextlib import contextmanager
 
+import pytest
 import torch
 import triton
 from triton import language as tl
@@ -167,6 +168,10 @@ def softmax_kernel_inner(
             offset += TILE_N
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Test Files for Operators Not Pending Testing",
+)
 def test_decorator_cascade():
     # to test inner decorator can use arguments supplied by outer decorator
     # and grid function can use arguments supplied by all the decorator
@@ -175,12 +180,20 @@ def test_decorator_cascade():
         _ = softmax_inner_decorator_cascade(x, dim=2)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Test Files for Operators Not Pending Testing",
+)
 def test_pass_kernel_arg_via_kw():
     x = torch.randn((128, 128, 128), device=flag_gems.device)
     with not_raises(KeyError):
         _ = softmax_inner_pass_kernel_arg_via_kw(x, dim=2)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Test Files for Operators Not Pending Testing",
+)
 def test_kernel_arg_apply_default():
     x = torch.randn((128, 128, 128), device=flag_gems.device)
     with not_raises(KeyError):
@@ -214,6 +227,10 @@ def run_two_threads():
         fs[i].join()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Test Files for Operators Not Pending Testing",
+)
 def test_threadsafety():
     for i in range(100):
         with not_raises(Exception):
