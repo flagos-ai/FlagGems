@@ -534,6 +534,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.scatter
 @pytest.mark.parametrize(

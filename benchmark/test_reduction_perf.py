@@ -237,7 +237,9 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
+)
 @pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():

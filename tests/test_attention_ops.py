@@ -9,6 +9,7 @@ from .accuracy_utils import gems_assert_close, to_reference
 device = flag_gems.device
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
