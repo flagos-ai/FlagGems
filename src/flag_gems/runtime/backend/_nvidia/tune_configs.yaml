@@ -1083,7 +1083,6 @@ conv2d_forward:
   num_stages: 5
   num_warps: 2
 
-
 conv2d_backward_weight:
 - META:
     BLOCK_CI_HK_WK: 32
@@ -1139,6 +1138,25 @@ batch_norm:
   - 8
   - 16
   - 32
+kron:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+    num_warps: warps
+  block_m:
+  - 1
+  - 2
+  - 4
+  - 8
+  block_n:
+  - 1024
+  - 2048
+  warps:
+  - 4
+  - 8
+  - 16
 
 index_put:
 - gen: true

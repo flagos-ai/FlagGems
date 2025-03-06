@@ -379,3 +379,24 @@ def test_perf_diagonal_backward():
     )
 
     bench.run()
+
+
+@pytest.mark.kron
+def test_perf_kron():
+    class KronBenchmark(GenericBenchmark2DOnly):
+        def set_more_shapes(self):
+            return None
+
+    def kron_input_fn(shape, dtype, device):
+        inp1 = generate_tensor_input(shape, dtype, device)
+        inp2 = generate_tensor_input(shape, dtype, device)
+        yield inp1, inp2
+
+    bench = KronBenchmark(
+        input_fn=kron_input_fn,
+        op_name="kron",
+        torch_op=torch.kron,
+        dtypes=FLOAT_DTYPES,
+    )
+
+    bench.run()

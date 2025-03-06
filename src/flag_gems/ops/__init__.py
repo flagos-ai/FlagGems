@@ -57,6 +57,7 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
+from .kron import kron
 from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_sigmoid import log_sigmoid
@@ -305,6 +306,7 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "kron",
     "nll_loss_forward",
     "nll_loss_backward",
     "nll_loss2d_forward",
