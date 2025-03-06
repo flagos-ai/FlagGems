@@ -12,6 +12,7 @@ from .accuracy_utils import (
     BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
+    KRON_SHAPES,
     SPECIAL_SHAPES,
     STACK_DIM_LIST,
     STACK_SHAPES,
@@ -1050,3 +1051,31 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 
     gems_assert_close(res_value, ref_value, dtype)
     gems_assert_equal(res_index, ref_index)
+
+
+@pytest.mark.kron
+@pytest.mark.parametrize("shape", KRON_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
+def test_accuracy_kron(shape, dtype):
+    if dtype in INT_DTYPES:
+        inp1 = torch.randint(
+            low=-10, high=10, size=shape[0], dtype=dtype, device=flag_gems.device
+        )
+        inp2 = torch.randint(
+            low=-10, high=10, size=shape[1], dtype=dtype, device=flag_gems.device
+        )
+    elif dtype in FLOAT_DTYPES:
+        inp1 = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randn(shape[1], dtype=dtype, device=flag_gems.device)
+    else:
+        inp1 = torch.randint(0, 2, size=shape[0], dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randint(0, 2, size=shape[1], dtype=dtype, device=flag_gems.device)
+
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.kron(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.kron(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
