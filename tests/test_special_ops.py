@@ -908,6 +908,10 @@ def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
 @pytest.mark.parametrize("diagonal", [-2, -1, 0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
 def test_accuracy_diag(shape, diagonal, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     elif dtype in BOOL_TYPES:
