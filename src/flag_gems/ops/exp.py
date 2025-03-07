@@ -15,3 +15,8 @@ def exp_func(x):
 def exp(A):
     logging.debug("GEMS EXP")
     return exp_func(A)
+
+
+def exp_(A):
+    logging.debug("GEMS EXP_")
+    return exp_func(A, out0=A)

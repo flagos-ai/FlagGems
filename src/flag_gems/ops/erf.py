@@ -16,3 +16,8 @@ def erf_func(x):
 def erf(x):
     logging.debug("GEMS ERF")
     return erf_func(x)
+
+
+def erf_(x):
+    logging.debug("GEMS ERF_")
+    return erf_func(x, out0=x)
