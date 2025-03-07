@@ -14,3 +14,8 @@ def neg_func(x):
 def neg(A):
     logging.debug("GEMS NEG")
     return neg_func(A)
+
+
+def neg_(A):
+    logging.debug("GEMS NEG_")
+    return neg_func(A, out0=A)

@@ -15,3 +15,9 @@ def abs_func(x):
 def abs(A):
     logging.debug("GEMS ABS")
     return abs_func(A)
+
+
+def abs_(A):
+    logging.debug("GEMS ABS_")
+    abs_func(A, out0=A)
+    return A

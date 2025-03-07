@@ -15,3 +15,8 @@ def rsqrt_func(x):
 def rsqrt(A):
     logging.debug("GEMS RSQRT")
     return rsqrt_func(A)
+
+
+def rsqrt_(A):
+    logging.debug("GEMS RSQRT_")
+    return rsqrt_func(A, out0=A)

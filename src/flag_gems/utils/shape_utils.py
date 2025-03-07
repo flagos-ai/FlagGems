@@ -341,6 +341,39 @@ def offset_calculator(inp, idx, strides, dim, isInp):
     return offsets if not isInp else (offsets - idx_dim)
 
 
+def check_tensor_attributes(data_list, is_tensor_list):
+    """
+    Checks if each element in data_list is a tensor and validates whether the corresponding
+    boolean value in is_tensor_list is correct.
+
+    Parameters:
+    - data_list: A list containing tensor and non-tensor objects.
+    - is_tensor_list: A list of boolean values indicating whether the corresponding element in data_list is a tensor.
+
+    Returns:
+    - True if all elements' types match their corresponding boolean values in is_tensor_list.
+    - Raise Error otherwise, and prints the index and element that do not match.
+    """
+    # Check if both lists have the same length
+    if len(data_list) != len(is_tensor_list):
+        raise ValueError(
+            "Error: The lists of inputs and is_tensor must have the same length."
+        )
+
+    for i, (data, is_tensor) in enumerate(zip(data_list, is_tensor_list)):
+        actual_is_tensor = isinstance(data, torch.Tensor)
+
+        if actual_is_tensor != is_tensor:
+            raise ValueError(
+                f"Element at index {i} is incorrect. Expected {is_tensor}, but got {actual_is_tensor}."
+            )
+
+    return True
+
+
+_initial_missing = object()
+
+
 def offsetCalculator(inp, idx, strides, dim, isInp):
     ndim = inp.ndim
     shape = list(inp.shape)

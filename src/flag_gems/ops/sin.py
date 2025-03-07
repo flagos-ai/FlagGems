@@ -15,3 +15,9 @@ def sin_func(x):
 def sin(A):
     logging.debug("GEMS SIN")
     return sin_func(A)
+
+
+def sin_(A):
+    logging.debug("GEMS SIN_")
+    sin_func(A, out0=A)
+    return A
