@@ -15,3 +15,9 @@ def cos_func(x):
 def cos(A):
     logging.debug("GEMS COS")
     return cos_func(A)
+
+
+def cos_(A):
+    logging.debug("GEMS COS_")
+    cos_func(A, out0=A)
+    return A

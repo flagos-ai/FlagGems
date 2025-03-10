@@ -46,3 +46,29 @@ class Tanh(torch.autograd.Function):
 
 def tanh(A):
     return Tanh.apply(A)
+
+
+class InplaceTanh(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        logging.debug("GEMS TANH_ FORWARD")
+        if A.requires_grad is True:
+            out = tanh_forward(A.to(torch.float32))
+            ctx.save_for_backward(out)
+            A.copy_(out.to(A.dtype))
+            ctx.mark_dirty(A)
+        else:
+            tanh_forward(A, out0=A)
+        return A
+
+    @staticmethod
+    def backward(ctx, out_grad):
+        logging.debug("GEMS TANH_ BACKWARD")
+        (out,) = ctx.saved_tensors
+        in_grad = tanh_backward(out, out_grad)
+        return in_grad
+
+
+def tanh_(A):
+    InplaceTanh.apply(A)
+    return A
