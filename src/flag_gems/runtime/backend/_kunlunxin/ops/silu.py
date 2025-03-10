@@ -47,3 +47,25 @@ class Silu(torch.autograd.Function):
 
 def silu(A):
     return Silu.apply(A)
+
+
+class InplaceSilu(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        logging.debug("GEMS SILU_ FORWARD")
+        ctx.save_for_backward(A.clone())
+        ctx.mark_dirty(A)
+        out = silu_forward(A, out0=A)
+        return out
+
+    @staticmethod
+    def backward(ctx, out_grad):
+        logging.debug("GEMS SILU_ BACKWARD")
+        (inp,) = ctx.saved_tensors
+        in_grad = silu_backward(inp, out_grad)
+        return in_grad
+
+
+def silu_(A):
+    InplaceSilu.apply(A)
+    return A

@@ -15,3 +15,8 @@ def reciprocal_func(x):
 def reciprocal(A):
     logging.debug("GEMS RECIPROCAL")
     return reciprocal_func(A)
+
+
+def reciprocal_(A):
+    logging.debug("GEMS RECIPROCAL_")
+    return reciprocal_func(A, out0=A)

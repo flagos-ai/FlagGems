@@ -614,10 +614,15 @@ def test_accuracy_trunc_div(shape, dtype):
 # Note : tl.math.div_rz only support float32, cast will cause diff
 # with torch, so we only do float32 test for now.
 def test_accuracy_trunc_div_(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp1 = to_reference(inp1.clone(), True)
-    ref_inp2 = to_reference(inp2, True)
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
+    inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    upcast = True if flag_gems.vendor_name not in ["kunlunxin"] else False
+    ref_inp1 = to_reference(inp1, upcast)
+    ref_inp2 = to_reference(inp2, upcast)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode="trunc")
     with flag_gems.use_gems():
@@ -1210,6 +1215,11 @@ def test_accuracy_pow(shape, dtype):
 def test_accuracy_pow_(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+
+    if flag_gems.vendor_name == "kunlunxin":
+        inp1 = inp1.uniform_(-0.1, 0.1)
+        inp2 = inp2.uniform_(-0.1, 0.1)
+
     ref_inp1 = to_reference(inp1.clone(), True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -1259,6 +1269,7 @@ def test_accuracy_minimum(shape, dtype):
 def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
     if flag_gems.vendor_name == "kunlunxin":
         inp2 = inp2.uniform_(-0.1, 0.1)
 
@@ -1281,6 +1292,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
+
     if flag_gems.vendor_name == "kunlunxin":
         inp1 = inp1.uniform_(-0.1, 0.1)
 
@@ -1301,6 +1313,10 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
 def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = scalar
+
+    if flag_gems.vendor_name == "kunlunxin":
+        inp1 = inp1.uniform_(-0.1, 0.1)
+
     ref_inp1 = to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.pow_(inp2)

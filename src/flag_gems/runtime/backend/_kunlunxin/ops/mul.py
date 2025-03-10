@@ -29,3 +29,11 @@ def mul(A, B):
     else:
         # Both scalar
         return torch.tensor(A * B)
+
+
+def mul_(A, B):
+    logging.debug("GEMS MUL_")
+    if isinstance(B, torch.Tensor):
+        return mul_func(A, B, out0=A)
+    else:
+        return mul_func_scalar(A, B, out0=A)
