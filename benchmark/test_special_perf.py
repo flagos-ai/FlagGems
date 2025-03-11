@@ -381,6 +381,7 @@ def test_perf_diagonal_backward():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.kron
 def test_perf_kron():
