@@ -72,7 +72,11 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
+    mid = torch.empty(
+        (mid_size,),
+        dtype=torch.float32 if (dtype == torch.bfloat16 and mid_size > 1024) else dtype,
+        device=inp.device,
+    )
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     import os
@@ -81,6 +85,8 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
 
     with torch_device_fn.device(inp.device):
         kernel_1[(mid_size, 1, 1)](inp, target, mid, M, block_size, reduction)
+        if mid_size == 1:
+            return mid.reshape([])
         kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
 
     if "TRITONXPU_OTHER_SIM" in os.environ:
