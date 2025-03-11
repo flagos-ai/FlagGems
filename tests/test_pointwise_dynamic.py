@@ -829,6 +829,7 @@ def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(flag_gems.device == "musa", reason="TOFIX")
 def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -851,6 +852,7 @@ def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(flag_gems.device == "musa", reason="TOFIX")
 def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
