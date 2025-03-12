@@ -200,9 +200,6 @@ KronBenchmark:
   - [128,128]
   - [256,256]
   - [4, 8, 16, 32]
-  - [4, 8, 32, 32]
-  - [4, 8, 64, 32]
-  - [4, 8, 128, 32]
 
 IndexPutAccFalseBenchmark:
   shapes:
