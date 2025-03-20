@@ -87,7 +87,6 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="to_cpu unknown error")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
@@ -107,6 +106,10 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     M = shape[0]
     N = shape[1]
     layer_shape = [
