@@ -254,7 +254,6 @@ def test_accuracy_resolve_neg(shape, dtype):
     assert not out.is_neg()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.topk
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128, 256])
@@ -276,7 +275,16 @@ def test_topk(
         col_indices = torch.randperm(x.size(1))
         x[bsz, :] = x[bsz, col_indices]
     ref_x = to_reference(x)
+
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float16:
+        ref_x = ref_x.cuda()
+
     ref_value, ref_index = torch.topk(ref_x, topk, largest=largest)
+
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float16:
+        if TO_CPU:
+            ref_value = ref_value.cpu()
+            ref_index = ref_index.cpu()
 
     with flag_gems.use_gems():
         res_value, res_index = torch.topk(x, topk, largest=largest)
