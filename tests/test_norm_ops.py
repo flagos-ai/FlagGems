@@ -20,7 +20,6 @@ KEEPDIM_DIMS = (
 )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.group_norm
 @pytest.mark.native_group_norm
 @pytest.mark.parametrize(
@@ -38,6 +37,10 @@ KEEPDIM_DIMS = (
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     HW = H * W
     inp = torch.randn(
         size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True
