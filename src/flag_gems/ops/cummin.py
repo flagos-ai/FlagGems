@@ -8,6 +8,7 @@ import triton.language as tl
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
+from ..utils.limits import get_dtype_max
 
 
 @triton.jit
@@ -76,8 +77,9 @@ def scan_part_min_kernel(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
+    max_value = get_dtype_max(inp.type.element_ty)
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -169,7 +171,8 @@ def scan_part_min_abc_kernel(
 
     mask = b_idx < B
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+    max_value = get_dtype_max(inp.type.element_ty)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
