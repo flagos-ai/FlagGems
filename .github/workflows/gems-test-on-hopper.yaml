@@ -1,0 +1,65 @@
+name: flag-gems-test-on-hopper
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  op-test-on-hopper:
+    runs-on: hopper
+    concurrency:
+      group: op-test-on-hopper-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: FlagGems reduction ops on hopper
+        shell: bash
+        run: |
+          source tools/run_command.sh
+          run_command pytest -s tests/test_reduction_ops.py && \
+          run_command pytest -s tests/test_general_reduction_ops.py && \
+          run_command pytest -s tests/test_norm_ops.py
+
+      - name: FlagGems pointwise ops on hopper
+        shell: bash
+        run: |
+          source tools/run_command.sh
+          run_command pytest -s tests/test_pointwise_dynamic.py && \
+          run_command pytest -s tests/test_unary_pointwise_ops.py && \
+          run_command pytest -s tests/test_binary_pointwise_ops.py && \
+          run_command pytest -s tests/test_pointwise_type_promotion.py && \
+          run_command pytest -s tests/test_tensor_constructor_ops.py
+
+      - name: FlagGems blas ops on hopper
+        shell: bash
+        run: |
+          source tools/run_command.sh
+          # FIXME(zhiyuan): Fix sharedencoding on Hopper
+          # run_command pytest -s tests/test_attention_ops.py && \
+          run_command pytest -s tests/test_blas_ops.py
+
+      - name: FlagGems special ops on hopper
+        shell: bash
+        run: |
+          source tools/run_command.sh
+          run_command pytest -s tests/test_special_ops.py && \
+          run_command pytest -s tests/test_distribution_ops.py
+
+      - name: FlagGems utils on hopper
+        shell: bash
+        run: |
+          source tools/run_command.sh
+          run_command pytest -s tests/test_libentry.py && \
+          run_command pytest -s tests/test_shape_utils.py && \
+          run_command pytest -s tests/test_tensor_wrapper.py
+
+      - name: FlagGems examples on hopper
+        shell: bash
+        run: |
+          source tools/run_command.sh
+          # FIXME(zhiyuan): OSError: [Errno 101] Network is unreachable
+          # run_command pytest -s examples/model_bert_test.py
