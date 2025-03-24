@@ -1062,9 +1062,9 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
         values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
 
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, upcast=True)
     ref_indices = [to_reference(index) for index in indices]
-    ref_values = to_reference(values)
+    ref_values = to_reference(values, upcast=True)
     ref_out = torch.index_put(ref_inp, ref_indices, ref_values, accumulate)
     out = flag_gems.index_put(inp, indices, values, accumulate)
     gems_assert_close(out, ref_out, dtype)

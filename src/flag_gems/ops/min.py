@@ -10,6 +10,7 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
+from ..utils.limits import get_dtype_max
 
 
 @libentry()
@@ -24,7 +25,8 @@ def min_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+    max_value = get_dtype_max(inp.type.element_ty)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=max_value)
     min_val = tl.min(inp_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, min_val)
@@ -36,7 +38,8 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=float("inf"))
+    max_value = get_dtype_max(mid.type.element_ty)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=max_value)
     min_val = tl.min(mid_val)
     tl.store(out, min_val)
 
@@ -69,14 +72,18 @@ def min_kernel(
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
+    dtype = inp.type.element_ty
+    # you just cannot create a function that return a tl.dtype in triton lang
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    max_value = get_dtype_max(dtype)
+    min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_value)
     argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
         local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
         # if return indices is not supported, call a tl.argmax in addition
         # local_argmin = tl.argmin(inp_vals, 1)

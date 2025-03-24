@@ -9,6 +9,7 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
+from ..utils.limits import get_dtype_min
 
 
 @libentry()
@@ -24,7 +25,8 @@ def amax_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+    min_value = get_dtype_min(inp.type.element_ty)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
     amax_val = tl.max(inp_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, amax_val)
@@ -36,7 +38,8 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
+    min_value = get_dtype_min(mid.type.element_ty)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
     amax_val = tl.max(mid_val)
     tl.store(out, amax_val)
 
@@ -52,6 +55,9 @@ def amax_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
+    dtype = inp.type.element_ty
+    min_value = get_dtype_min(dtype)
+
     # Map the program id to the row of inp it should compute.
     pid = tle.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -59,13 +65,13 @@ def amax_kernel(
     out = out + rows
     row_mask = rows < M
 
-    _all = tl.full([BLOCK_M, BLOCK_N], value=-float("inf"), dtype=tl.float32)
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    _all = tl.full([BLOCK_M, BLOCK_N], value=min_value, dtype=acc_type)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
-
-        a = tl.load(inp + cols, mask, other=-float("inf")).to(tl.float32)
+        a = tl.load(inp + cols, mask, other=min_value)
         _all = tl.maximum(_all, a)
     all = tl.max(_all, axis=1)[:, None]
     tl.store(out, all, row_mask)
