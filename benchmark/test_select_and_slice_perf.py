@@ -91,8 +91,6 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtype
     if vendor_name == "kunlunxin":
         if op_name == "masked_select":
             pytest.skip("CUMSUM UNSUPPORTED")
-        elif op_name == "index_select":
-            pytest.skip("RUNTIME TODOFIX")
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
