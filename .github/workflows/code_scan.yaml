@@ -1,0 +1,45 @@
+name: code-scan
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  scan-code-and-report:
+    runs-on: scan
+    concurrency:
+      group: scan-code-and-report-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Scan gems repo
+        shell: bash
+        run: |
+          git config --global --add safe.directory ../FlagGems
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
+            PR_ID=${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            echo "This is a push event. The relate PR number is ${PR_NUMBER}"
+            PR_ID=${PR_NUMBER}
+          fi
+
+          python /work/flag_gems/code_can/scan_code.py --pr ${PR_ID} --hash ${GITHUB_SHA} --attempt ${GITHUB_RUN_ATTEMPT}
+
+      - name: Code Scan Report
+        shell: bash
+        run: |
+          git config --global --add safe.directory ../FlagGems
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            PR_ID=${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            PR_ID=${PR_NUMBER}
+          fi
+          echo "Repo Scan report:"
+          echo "http://120.92.44.177/gems_scan_report/PR${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}.html"
