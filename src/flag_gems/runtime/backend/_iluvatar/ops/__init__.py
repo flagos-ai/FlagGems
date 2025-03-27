@@ -1,5 +1,10 @@
 from .bmm import bmm
-from .div import div_mode, floor_divide, remainder, true_divide
+from .div import div_mode, div_mode_
 from .mm import mm
 
-__all__ = ["bmm", "mm", "div_mode", "floor_divide", "remainder", "true_divide"]
+__all__ = [
+    "bmm",
+    "mm",
+    "div_mode",
+    "div_mode_",
+]

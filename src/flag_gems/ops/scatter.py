@@ -36,7 +36,7 @@ def generate_scatter_kernel(
 
     code.writeline("def heur_block(args):")
     with code.indent():
-        code.writeline("if(flag_gems.vendor_name=='metax'):")
+        code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
         with code.indent():
             code.writeline("return 256")
         code.writeline("return 128")
