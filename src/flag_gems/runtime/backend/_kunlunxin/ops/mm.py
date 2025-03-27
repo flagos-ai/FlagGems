@@ -18,6 +18,13 @@ def heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
 
+def heur_group_m(args):
+    if args["BLOCK_M"] > args["BLOCK_N"]:
+        return 1
+    else:
+        return (args["M"] + args["BLOCK_M"] - 1) // args["BLOCK_M"]
+
+
 @libentry()
 @triton.autotune(
     configs=[],
@@ -28,6 +35,7 @@ def heur_even_k(args):
     {
         "SPLIT_K": heur_split_k,
         "EVEN_K": heur_even_k,
+        "GROUP_M": heur_group_m,
     }
 )
 @triton.jit
@@ -154,6 +162,5 @@ def mm(a, b):
             c.stride(0),
             c.stride(1),
             dot_out_dtype=dot_out_dtype,
-            GROUP_M=8,
         )
     return c
