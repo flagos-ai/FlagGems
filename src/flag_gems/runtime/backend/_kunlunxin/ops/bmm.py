@@ -11,10 +11,10 @@ from flag_gems.utils import triton_lang_extension as tle
 
 
 def heur_group_m(args):
-    if args["BLOCK_M"] > args["BLOCK_N"]:
+    if args["TILE_M"] > args["TILE_N"]:
         return 1
     else:
-        return (args["M"] + args["BLOCK_M"] - 1) // args["BLOCK_M"]
+        return (args["M"] + args["TILE_M"] - 1) // args["TILE_M"]
 
 
 def heur_divisible_m(args):
