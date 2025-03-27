@@ -620,7 +620,7 @@ def test_accuracy_trunc_div_(shape, dtype):
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
-    upcast = True if flag_gems.vendor_name not in ["kunlunxin"] else False
+    upcast = True if flag_gems.vendor_name not in ["kunlunxin", "iluvatar"] else False
     ref_inp1 = to_reference(inp1, upcast)
     ref_inp2 = to_reference(inp2, upcast)
 

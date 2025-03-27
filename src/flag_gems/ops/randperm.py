@@ -215,7 +215,7 @@ def radix_sortbykey_scatter_kernel(
             + ((portion_id * passes + p) * max_tiles_per_portion + pid0) * bins
             + bin_id,
             partial_counter,
-            cache_modifier=".wt",
+            cache_modifier=".cg",
         )
         bin_offset = p * (bins + 1) + bin_id
         prefix_offsets = tl.load(
@@ -242,7 +242,7 @@ def radix_sortbykey_scatter_kernel(
             + ((portion_id * passes + p) * max_tiles_per_portion + pid0) * bins
             + bin_id,
             global_counter,
-            cache_modifier=".wt",
+            cache_modifier=".cg",
         )
         inc_bucket_offset = prefix_offsets.to(tl.int64) + inc_sum.to(tl.int64)
         if last_block and portion_id < num_portions - 1:

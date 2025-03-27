@@ -3415,3 +3415,21 @@ batch_norm:
   - 8
   - 16
   - 32
+kron:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+    num_warps: warps
+  block_m:
+  - 1
+  - 2
+  - 4
+  - 8
+  block_n:
+  - 1024
+  - 2048
+  warps:
+  - 4
+  - 8
