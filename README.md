@@ -196,7 +196,7 @@ Operators will be implemented according to [OperatorList.md](./OperatorList.md).
 
 | Platform | float16 | float32 | bfloat16 |
 | :---: | :---: | :---: | :---: |
-| Nvidia A100 | ✓ | ✓ | ✓ |
+| Nvidia GPU | ✓ | ✓ | ✓ |
 
 ## Performance
 

@@ -193,7 +193,7 @@ pip install .
 
 | Platform | float16 | float32 | bfloat16 |
 | :---: | :---: | :---: | :---: |
-| Nvidia A100 | ✓ | ✓ | ✓ |
+| Nvidia GPU | ✓ | ✓ | ✓ |
 
 ## 性能表现
 
