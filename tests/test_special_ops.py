@@ -554,6 +554,41 @@ def test_arange(start, step, end, dtype, device, pin_memory):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.linspace
+@pytest.mark.parametrize("start", [0, 2, 4])
+@pytest.mark.parametrize("end", [256, 2048, 4096])
+@pytest.mark.parametrize("steps", [1, 256, 512])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
+@pytest.mark.parametrize("device", [device, None])
+@pytest.mark.parametrize("pin_memory", [False, None])
+def test_linspace(start, end, steps, dtype, device, pin_memory):
+    if TO_CPU:
+        return
+    ref_out = torch.linspace(
+        start,
+        end,
+        steps,
+        dtype=dtype,
+        layout=None,
+        device=device,
+        pin_memory=pin_memory,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.linspace(
+            start,
+            end,
+            steps,
+            dtype=dtype,
+            layout=None,
+            device=device,
+            pin_memory=pin_memory,
+        )
+    if dtype in [torch.float16, torch.bfloat16]:
+        gems_assert_close(res_out, ref_out, dtype=dtype)
+    else:
+        gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.isin

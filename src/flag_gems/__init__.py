@@ -140,6 +140,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("zeros_like", zeros_like, Autograd.disable),
             ("ones_like", ones_like, Autograd.disable),
             ("full_like", full_like, Autograd.disable),
+            ("linspace", linspace, Autograd.disable),
             ("resolve_neg", resolve_neg, Autograd.disable),
             ("resolve_conj", resolve_conj, Autograd.disable),
             ("normal.Tensor_float", normal_tensor_float, Autograd.disable),
