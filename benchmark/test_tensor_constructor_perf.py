@@ -1,4 +1,5 @@
 import math
+import random
 
 import pytest
 import torch
@@ -56,6 +57,18 @@ def arange_input_fn(shape, dtype, device):
         },
 
 
+def linspace_input_fn(shape, dtype, device):
+    limit = torch.finfo(dtype).max - 1
+    num = int(min(limit, math.prod(shape)))
+    yield {
+        "start": 0,
+        "end": num,
+        "steps": random.randint(1, num),
+        "dtype": dtype,
+        "device": device,
+    },
+
+
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
     # generic tensor constructor
@@ -75,6 +88,8 @@ tensor_constructor_operations = [
     ("full_like", torch.full_like, full_like_input_fn),
     # arange
     ("arange", torch.arange, arange_input_fn),
+    # linspace
+    ("linspace", torch.linspace, linspace_input_fn),
 ]
 
 
