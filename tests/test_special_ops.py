@@ -1132,3 +1132,29 @@ def test_accuracy_kron(shape, dtype):
         res_out = torch.kron(inp1, inp2)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.contiguous
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
+def test_accuracy_contiguous(shape, dtype):
+    if shape[0] <= 2:
+        return
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(
+            low=-10000, high=10000, size=shape, dtype=dtype, device=flag_gems.device
+        )
+    inp = inp[::2]
+    assert inp.is_contiguous() is False
+
+    ref_inp = to_reference(inp)
+    ref_out = ref_inp.contiguous()
+    with flag_gems.use_gems():
+        res_out = inp.contiguous()
+
+    assert res_out.is_contiguous() is True
+    assert res_out.is_contiguous() is True
+    assert res_out.stride() == ref_out.stride()
+    gems_assert_equal(res_out, ref_out)
