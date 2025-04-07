@@ -27,6 +27,7 @@ from .bitwise_or import (
 from .bmm import bmm
 from .cat import cat
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
@@ -202,6 +203,7 @@ __all__ = [
     "cos",
     "cos_",
     "count_nonzero",
+    "contiguous",
     "diag",
     "diag_embed",
     "diagonal_backward",

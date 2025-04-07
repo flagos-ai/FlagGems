@@ -399,3 +399,25 @@ def test_perf_kron():
     )
 
     bench.run()
+
+
+@pytest.mark.contiguous
+def test_perf_contiguous():
+    def contiguous_input_fn(shape, dtype, device):
+        if dtype in FLOAT_DTYPES:
+            inp = torch.randn(shape, dtype=dtype, device=device)
+        else:
+            inp = torch.randint(
+                low=-10000, high=10000, size=shape, dtype=dtype, device=device
+            )
+        inp = inp[::2]
+        yield inp,
+
+    bench = GenericBenchmark(
+        input_fn=contiguous_input_fn,
+        op_name="torch.Tensor.contiguous",
+        torch_op=torch.Tensor.contiguous,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
+    )
+
+    bench.run()
