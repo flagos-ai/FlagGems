@@ -227,6 +227,8 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("allclose", allclose, Autograd.disable),
             ("fill.Scalar", fill_scalar, Autograd.disable),
             ("fill.Tensor", fill_tensor, Autograd.disable),
+            ("fill_.Scalar", fill_scalar_, Autograd.disable),
+            ("fill_.Tensor", fill_tensor_, Autograd.disable),
             ("flip", flip, Autograd.disable),
             ("slice_scatter", slice_scatter, Autograd.disable),
             ("select_scatter", select_scatter, Autograd.disable),

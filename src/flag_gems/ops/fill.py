@@ -40,6 +40,10 @@ def fill_tensor_kernel(
 
 def fill_tensor(input, value):
     logging.debug("GEMS FILL")
+    if value.ndim != 0:
+        raise RuntimeError(
+            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+        )
     out = torch.empty_like(input)
     N = out.numel()
     BLOCK_SIZE = 512
@@ -60,3 +64,29 @@ def fill_scalar(input, value):
     with torch_device_fn.device(input.device):
         fill_scalar_kernel[grid,](out, N, value, BLOCK_SIZE)
     return out
+
+
+def fill_tensor_(self, value):
+    logging.debug("GEMS FILL_TENSOR_")
+    if value.ndim != 0:
+        raise RuntimeError(
+            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+        )
+    N = self.numel()
+    BLOCK_SIZE = 512
+    grid = triton.cdiv(N, BLOCK_SIZE)
+
+    with torch_device_fn.device(self.device):
+        fill_tensor_kernel[grid,](self, N, value, BLOCK_SIZE)
+    return self
+
+
+def fill_scalar_(self, value):
+    logging.debug("GEMS FILL_SCALAR_")
+    N = self.numel()
+    BLOCK_SIZE = 512
+    grid = triton.cdiv(N, BLOCK_SIZE)
+
+    with torch_device_fn.device(self.device):
+        fill_scalar_kernel[grid,](self, N, value, BLOCK_SIZE)
+    return self

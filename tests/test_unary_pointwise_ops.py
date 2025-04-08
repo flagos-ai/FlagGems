@@ -10,6 +10,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    SPECIAL_SHAPES,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -777,3 +778,29 @@ def test_accuracy_logical_not(shape, dtype):
         res_out = torch.logical_not(inp)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.fill_
+@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_fill_(value, shape, dtype):
+    # Test fill_.Scalar
+    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = to_reference(x.clone(), False)
+
+    ref_x.fill_(value)
+    with flag_gems.use_gems():
+        x.fill_(value)
+
+    gems_assert_equal(x, ref_x)
+
+    # Test fill_.Tensor
+    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = to_reference(x.clone(), False)
+    value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
+    ref_x.fill_(value_tensor)
+    with flag_gems.use_gems():
+        x.fill_(value_tensor)
+
+    gems_assert_equal(x, ref_x)
