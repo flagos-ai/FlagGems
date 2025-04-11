@@ -129,6 +129,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("le.Scalar", le_scalar, Autograd.disable),
             ("lt.Tensor", lt, Autograd.disable),
             ("lt.Scalar", lt_scalar, Autograd.disable),
+            ("log", log, Autograd.disable),
             ("rms_norm", rms_norm, Autograd.disable),
             ("rand", rand, Autograd.disable),
             ("randn", randn, Autograd.disable),

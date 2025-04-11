@@ -79,6 +79,7 @@ from .kron import kron
 from .layernorm import layer_norm
 from .le import le, le_scalar
 from .linspace import linspace
+from .log import log
 from .log_sigmoid import log_sigmoid
 from .log_softmax import log_softmax
 from .logical_and import logical_and
@@ -372,4 +373,5 @@ __all__ = [
     "index_put",
     "vdot",
     "mse_loss",
+    "log",
 ]
