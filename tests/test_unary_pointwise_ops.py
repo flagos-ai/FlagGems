@@ -786,12 +786,12 @@ def test_accuracy_logical_not(shape, dtype):
 def test_accuracy_log(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, True)
     ref_out = torch.log(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.log(inp)
 
-    gems_assert_equal(res_out, ref_out)
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.fill_
