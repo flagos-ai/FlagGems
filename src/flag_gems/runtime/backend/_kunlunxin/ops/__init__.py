@@ -27,6 +27,7 @@ from .bitwise_or import (
 from .bmm import bmm
 from .cat import cat
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
@@ -55,7 +56,7 @@ from .eq import eq, eq_scalar
 from .erf import erf, erf_
 from .exp import exp, exp_
 from .exponential_ import exponential_
-from .fill import fill_scalar, fill_tensor
+from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -203,6 +204,7 @@ __all__ = [
     "cos",
     "cos_",
     "count_nonzero",
+    "contiguous",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -234,6 +236,8 @@ __all__ = [
     "exp_",
     "fill_scalar",
     "fill_tensor",
+    "fill_scalar_",
+    "fill_tensor_",
     "exponential_",
     "gather",
     "gather_backward",

@@ -813,7 +813,16 @@ def test_accuracy_fill_(value, shape, dtype):
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     ref_x = to_reference(x.clone(), False)
     value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
-    ref_x.fill_(value_tensor)
+    if flag_gems.vendor_name == "kunlunxin":
+        from .conftest import TO_CPU
+
+        if TO_CPU:
+            ref_x = ref_x.cuda()
+            value_tensor = value_tensor.cuda()
+            ref_x.fill_(value_tensor)
+            ref_x = ref_x.cpu()
+    else:
+        ref_x.fill_(value_tensor)
     with flag_gems.use_gems():
         x.fill_(value_tensor)
 
