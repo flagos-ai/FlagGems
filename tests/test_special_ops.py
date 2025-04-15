@@ -416,7 +416,6 @@ def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
             assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.multinomial
 @pytest.mark.parametrize("pool", UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -482,7 +481,6 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="fix")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="torch not supports half yet")
 @pytest.mark.upsample_bicubic2d_aa
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])

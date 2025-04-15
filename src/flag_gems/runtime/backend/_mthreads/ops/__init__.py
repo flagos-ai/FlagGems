@@ -9,5 +9,7 @@ __all__ = [
 ]
 
 if get_device_capability(current_device())[0] >= 3:
+    from .gelu import gelu
+    from .tanh import tanh
     __all__.append("gelu")
     __all__.append("tanh")

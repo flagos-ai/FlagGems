@@ -851,7 +851,10 @@ def test_accuracy_fill_(value, shape, dtype):
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     ref_x = to_reference(x.clone(), False)
     value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
-    ref_x.fill_(value_tensor)
+    if flag_gems.device == "musa":
+        ref_x.fill_(value_tensor.cpu())
+    else:
+        ref_x.fill_(value_tensor)
     with flag_gems.use_gems():
         x.fill_(value_tensor)
 
