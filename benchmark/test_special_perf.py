@@ -133,7 +133,6 @@ def test_perf_sort():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):

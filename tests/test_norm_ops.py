@@ -341,7 +341,6 @@ WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
 )
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="Op fault")
 @pytest.mark.weight_norm_interface
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
