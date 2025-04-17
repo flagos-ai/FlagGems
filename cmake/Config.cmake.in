@@ -1,0 +1,13 @@
+@PACKAGE_INIT@
+
+# Leave Public Dependency Resolution Later
+include(CMakeFindDependencyMacro)
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+find_dependency(Torch MODULE REQUIRED)
+
+if (NOT TARGET FlagGems::operators)
+  include("${CMAKE_CURRENT_LIST_DIR}/FlagGemsTargets.cmake")
+endif()
+
+check_required_components(FlagGems)
