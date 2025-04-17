@@ -253,11 +253,14 @@ CUMSUM_SHAPES = (
 )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.cumsum
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
         inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
@@ -267,8 +270,13 @@ def test_accuracy_cumsum(shape, dtype):
         ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.cumsum(inp, dim=dim)
+    if flag_gems.vendor_name == "kunlunxin":
+        from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
+
+        res_out = kl_ops.cumsum(inp, dim=dim)
+    else:
+        with flag_gems.use_gems():
+            res_out = torch.cumsum(inp, dim=dim)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
