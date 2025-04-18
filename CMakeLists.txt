@@ -6,11 +6,14 @@ project(FlagGems
 include(cmake/Options.cmake)
 include(cmake/Settings.cmake)
 
-if (${FLAGGEMS_BUILD_EXTENSIONS})
+if (BUILD_C_EXTENSIONS)
   message(STATUS "Building flag gems with C extensions")
   include(cmake/Dependencies.cmake)
   add_subdirectory(lib)
-  add_subdirectory(ctests)
+  if(BUILD_CTESTS)
+    enable_testing()
+    add_subdirectory(ctests)
+  endif()
 
   include(CMakePackageConfigHelpers)
   configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Config.cmake.in

@@ -1,17 +1,17 @@
-add_executable(test_triton_add test_triton_add.cpp)
-target_link_libraries(test_triton_add PRIVATE Torch::Torch operators)
+add_executable(test_triton_pointwise test_triton_pointwise.cpp)
+target_link_libraries(test_triton_pointwise PRIVATE Torch::Torch operators gtest gtest_main)
 # executable are installed to "${CMAKE_INSTALL_PREFIX}/bin",
 # so they links libraries in "../lib" for portability
-set_target_properties(test_triton_add PROPERTIES
+set_target_properties(test_triton_pointwise PROPERTIES
   INSTALL_RPATH "${_rpath_portable_origin}/../lib"
   BUILD_WITH_INSTALL_RPATH FALSE
 )
+add_test(NAME test_triton_pointwise COMMAND test_triton_pointwise)
 
-add_executable(test_triton_sum test_triton_sum.cpp)
-target_link_libraries(test_triton_sum PRIVATE Torch::Torch operators)
-set_target_properties(test_triton_sum PROPERTIES
+add_executable(test_triton_reduction test_triton_reduction.cpp)
+target_link_libraries(test_triton_reduction PRIVATE Torch::Torch operators gtest gtest_main)
+set_target_properties(test_triton_reduction PROPERTIES
   INSTALL_RPATH "${_rpath_portable_origin}/../lib"
   BUILD_WITH_INSTALL_RPATH FALSE
 )
-
-install(TARGETS test_triton_add test_triton_sum)
+add_test(NAME test_triton_reduction COMMAND test_triton_reduction)
