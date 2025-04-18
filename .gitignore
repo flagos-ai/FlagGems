@@ -12,6 +12,7 @@ __pycache__/
 # Distribution files
 build/
 *.egg-info/
+dist
 
 # Executables
 *.swf
