@@ -88,9 +88,6 @@ def index_select_gbps(bench_fn_args, latency):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
-    if vendor_name == "kunlunxin":
-        if op_name == "masked_select":
-            pytest.skip("CUMSUM UNSUPPORTED")
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
