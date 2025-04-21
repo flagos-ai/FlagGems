@@ -220,8 +220,8 @@ def layer_norm_loop_kernel(
 
 
 def layer_norm_backward_kernel_heur_block_row_size(args):
-    if args["dX"].dtype == torch.bfloat16 and args["M"] == 100 and args["N"] == 40499:
-        return args["M"]
+    # if args["dX"].dtype == torch.bfloat16 and args["M"] == 100 and args["N"] == 40499:
+    #     return args["M"]
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
     # return 1
 
@@ -406,6 +406,8 @@ class LayerNorm(torch.autograd.Function):
                 TILE_N = 4096  # register pressure
             elif M > 1 and N == 40499:  # [100, 40499]
                 TILE_N = 2048  # register pressure
+            elif M == 200 and N == 36:
+                TILE_N = 4096  # register pressure
             else:
                 TILE_N = 8192  # triton.next_power_of_2(N)
             grid = (M, 1, 1)
@@ -470,8 +472,9 @@ class LayerNorm(torch.autograd.Function):
 
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-            if x.dtype == torch.bfloat16 and M == 100 and N == 40499:
-                os.environ["TRITONXPU_CLOSE_OPTIMIZE"] = "1"
+            os.environ["TRITONXPU_DTYPE_CONVERT"] = "1"
+            # if x.dtype == torch.bfloat16 and M == 100 and N == 40499:
+            #     os.environ["TRITONXPU_CLOSE_OPTIMIZE"] = "1"
 
             if M == 100 and N == 40499:
                 isCloseUnrollControl = True
@@ -498,6 +501,8 @@ class LayerNorm(torch.autograd.Function):
                 del os.environ["TRITONXPU_OTHER_SIM"]
             if "TRITONXPU_STORE_MASK_SIM" in os.environ:
                 del os.environ["TRITONXPU_STORE_MASK_SIM"]
+            if "TRITONXPU_DTYPE_CONVERT" in os.environ:
+                del os.environ["TRITONXPU_DTYPE_CONVERT"]
             if "TRITONXPU_CLOSE_OPTIMIZE" in os.environ:
                 del os.environ["TRITONXPU_CLOSE_OPTIMIZE"]
 
