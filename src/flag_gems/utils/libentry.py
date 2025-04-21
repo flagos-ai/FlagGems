@@ -218,6 +218,8 @@ class LibEntry(triton.KernelInterface):
                 k_args.append(arg)
                 dns_args.append(arg)
             else:
+                if major_version == 3 and minor_version == 3:
+                    k_args.append(arg)
                 const_args.append(arg)
         for p in self.jit_function.params[len(args) :]:
             if p.name in kwargs:
@@ -229,6 +231,8 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
+                if major_version == 3 and minor_version == 3:
+                    k_args.append(arg)
             elif p.do_not_specialize:
                 dns_args.append(val)
                 k_args.append(val)
