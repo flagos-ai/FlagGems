@@ -131,7 +131,7 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    global Config
+    global Config  # noqa: F824
     mode_value = config.getoption("--mode")
     Config.cpu_mode = mode_value == "cpu"
 
