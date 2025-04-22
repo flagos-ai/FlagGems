@@ -257,7 +257,7 @@ def rms_norm_grad_dw_kernel(
 
 class RmsNorm(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, normalized_shape, weight, ref_inv_rms, eps=1e-5):
+    def forward(ctx, x, normalized_shape, weight, eps=1e-5):
         logging.debug("GEMS LAYERNORM FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
@@ -283,12 +283,12 @@ class RmsNorm(torch.autograd.Function):
                     y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
                 )
 
-        print(f"ref_inv_rms = {ref_inv_rms.cpu()}")
-        print(f"inv_rms = {inv_rms.cpu()}")
-        from tests.accuracy_utils import gems_assert_close
+        # print(f"ref_inv_rms = {ref_inv_rms.cpu()}")
+        # print(f"inv_rms = {inv_rms.cpu()}")
+        # from tests.accuracy_utils import gems_assert_close
 
-        gems_assert_close(ref_inv_rms.cpu(), inv_rms.cpu(), torch.float32)
-        print("inv_rms pass!")
+        # gems_assert_close(ref_inv_rms.cpu(), inv_rms.cpu(), torch.float32)
+        # print("inv_rms pass!")
         ctx.save_for_backward(x, inv_rms, weight)
         ctx.normalized_shape = normalized_shape
         ctx.eps = eps
@@ -314,11 +314,11 @@ class RmsNorm(torch.autograd.Function):
             # import os
             # os.environ["TRITONXPU_OTHER_SIM"] = "1"
             # os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-            print(f"x.shape = {x.shape}")
-            print(f"dy.shape = {dy.shape}")
-            print(f"inv_rms.shape = {inv_rms.shape}")
-            print(f"dx.shape = {dx.shape}")
-            print(f"weight.shape = {weight.shape}")
+            # print(f"x.shape = {x.shape}")
+            # print(f"dy.shape = {dy.shape}")
+            # print(f"inv_rms.shape = {inv_rms.shape}")
+            # print(f"dx.shape = {dx.shape}")
+            # print(f"weight.shape = {weight.shape}")
             if N > 64 * 128:
                 rms_norm_grad_dx_kernel_tile[M,](
                     x,
@@ -388,5 +388,5 @@ class RmsNorm(torch.autograd.Function):
         return dx, None, dw, None, None
 
 
-def rms_norm(x, normalized_shape, weight, ref_inv_rms, eps=1e-5):
-    return RmsNorm.apply(x, normalized_shape, weight, ref_inv_rms, eps)
+def rms_norm(x, normalized_shape, weight, eps=1e-5):
+    return RmsNorm.apply(x, normalized_shape, weight, eps)
