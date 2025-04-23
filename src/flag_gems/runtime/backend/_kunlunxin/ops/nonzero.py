@@ -31,7 +31,7 @@ def nonzero_kernel(
     inp,
     prefix_sum,
     out,
-    n_elements,
+    n_elements: tl.constexpr,
     shape,
     ndim: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
@@ -51,7 +51,9 @@ def nonzero_kernel(
         dim_size = tl.load(shape + dim)
         remainder = idx_flat % dim_size
         idx_flat //= dim_size
-        tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
+        final_out_offset = out_offset * ndim + dim
+        final_out_offset = tl.where(nonzero_mask, final_out_offset, -1)
+        tl.store(out + final_out_offset, remainder, mask=nonzero_mask)
 
 
 def nonzero(inp, *, as_tuple=False):
@@ -67,7 +69,7 @@ def nonzero(inp, *, as_tuple=False):
 
     inp_bool = inp_view
     if inp_view.dtype != torch.bool:
-        inp_bool = inp_view != 0
+        inp_bool = inp_view.bool()
 
     prefix_sum = inp_bool.cumsum(axis=0)
 
@@ -75,8 +77,27 @@ def nonzero(inp, *, as_tuple=False):
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    import os
+
+    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+
     with torch_device_fn.device(inp.device):
-        nonzero_kernel[grid](inp_bool, prefix_sum, out, n_elements, shape, inp_ndim)
+        nonzero_kernel[grid](
+            inp_bool,
+            prefix_sum,
+            out,
+            n_elements,
+            shape,
+            inp_ndim,
+            isCloseUnrollControl=True,
+        )
+
+    if "TRITONXPU_OTHER_SIM" in os.environ:
+        del os.environ["TRITONXPU_OTHER_SIM"]
+    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+        del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
     num_nonzeros = prefix_sum[n_elements - 1].item()
     out = out[0:num_nonzeros]
