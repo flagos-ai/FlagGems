@@ -267,16 +267,22 @@ def test_select_scatter_perf():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+def index_add_gbps(bench_fn_args, latency):
+    index = bench_fn_args[2]
+    src = bench_fn_args[3]
+    io_amount = sum([shape_utils.size_in_bytes(item) for item in [index, src, src]])
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
 @pytest.mark.index_add
 def test_index_add_perf():
     def index_add_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
-        dim = 0
+        dim = 0 if len(shape) == 1 else 1
         src_shape = list(inp.shape)
         index_max = src_shape[dim]
-        index_len = index_max // 2
-        index = torch.randint(0, index_max, (index_len,), device=device)
+        index_len = index_max // 2 if index_max >= 2 else 1
+        index = torch.randperm(index_len, device=device)
         src_shape[dim] = index_len
         src = torch.randn(src_shape, dtype=dtype, device=device)
         yield inp, dim, index, src
@@ -285,7 +291,8 @@ def test_index_add_perf():
         op_name="index_add",
         torch_op=torch.index_add,
         input_fn=index_add_input_fn,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
     )
     bench.run()
 
