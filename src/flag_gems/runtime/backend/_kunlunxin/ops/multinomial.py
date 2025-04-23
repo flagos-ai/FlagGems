@@ -35,7 +35,7 @@ def multinomial_with_replacement(
     cdf_ptr += tl.program_id(1) * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)
     end = tl.zeros((NBLOCK,), dtype=tl.int32) + K - 1
-    steps = tl.math.log2(K.to(tl.float32)).to(tl.int32) + 1
+    steps = tl.extra.xpu.libdevice.log2(K.to(tl.float32)).to(tl.int32) + 1
     for _ in range(steps):
         mid = start + (end - start) // 2
         x = tl.load(cdf_ptr + mid, mask=n < N)
@@ -71,9 +71,14 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
             vals, indices = torch.topk(s, n_samples, dim=-1)
             return indices.to(torch.int64)
 
-    from flag_gems.ops import normed_cumsum
+    from _kunlunxin.ops import normed_cumsum
 
-    cum_prob = normed_cumsum(prob, dim=-1)
+    if len(prob.shape) == 2 and prob.shape[1] > 8192:
+        cum_prob_mid = torch.cumsum(prob, dim=-1)
+        row_sums = prob.sum(dim=-1, keepdim=True)
+        cum_prob = cum_prob_mid / row_sums
+    else:
+        cum_prob = normed_cumsum(prob, dim=-1)
 
     if cum_prob.dim() == 1:
         n_dist = 1

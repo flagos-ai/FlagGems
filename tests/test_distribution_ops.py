@@ -59,7 +59,6 @@ def test_accuracy_exponential_(shape, dtype):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="TO FIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", [(1024, 10)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

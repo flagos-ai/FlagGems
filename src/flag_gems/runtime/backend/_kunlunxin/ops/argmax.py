@@ -145,6 +145,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
+        isCloseCoreTiling = False
+        if inp.shape == (1024, 1):
+            isCloseCoreTiling = True
         with torch_device_fn.device(inp.device):
             argmax_kernel[grid](
                 inp,
@@ -152,6 +155,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 N,
                 K,
+                isCloseCoreTiling=isCloseCoreTiling,
             )
 
         return out_index
