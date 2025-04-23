@@ -16,4 +16,4 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("sum.dim_IntList", TORCH_FN(sum_dim));
   m.impl("add_tensor", TORCH_FN(add_tensor));
 }
-}  // namespace flaggems
+}  // namespace flag_gems

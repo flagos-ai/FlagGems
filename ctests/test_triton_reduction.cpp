@@ -1,5 +1,5 @@
-#include "flag_gems/operators.h"
 #include <gtest/gtest.h>
+#include "flag_gems/operators.h"
 #include "torch/torch.h"
 
 TEST(reduction_op_test, sum) {
