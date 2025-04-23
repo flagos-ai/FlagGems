@@ -313,7 +313,6 @@ def test_accuracy_cummin(shape, dtype):
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.nonzero
 @pytest.mark.parametrize("shape", NONZERO_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
@@ -805,7 +804,6 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
