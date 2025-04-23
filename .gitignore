@@ -12,7 +12,13 @@ __pycache__/
 # Distribution files
 build/
 *.egg-info/
-dist
+.eggs/
+dist/
+
+# scikit-build-core
+.skbuild-info.json
+CMakeInit.txt
+
 
 # Executables
 *.swf
