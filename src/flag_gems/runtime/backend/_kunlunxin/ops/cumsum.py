@@ -397,14 +397,14 @@ def block_cumsum_kernel(
     inp,
     out,
     sums,
-    r,
-    t,
-    R,
-    K,
-    r_stride,
-    k_stride,
-    out_r_stride,
-    out_k_stride,
+    r: tl.constexpr,
+    t: tl.constexpr,
+    R: tl.constexpr,
+    K: tl.constexpr,
+    r_stride: tl.constexpr,
+    k_stride: tl.constexpr,
+    out_r_stride: tl.constexpr,
+    out_k_stride: tl.constexpr,
     OUTPUT_SUMS: tl.constexpr,
     NORMALIZE: tl.constexpr,
     HAS_OUT_LAYOUT: tl.constexpr,
@@ -528,7 +528,7 @@ def normed_cumsum(inp, dim=-1):
     with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
         num_sms = torch_device_fn.get_device_properties(device).multi_processor_count
-        TILE = 2048
+        TILE = 8192
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.
         n_rows = N // K
@@ -561,6 +561,7 @@ def normed_cumsum(inp, dim=-1):
                 NORMALIZE=True,
                 HAS_OUT_LAYOUT=False,
                 TILE=TILE,
+                isCloseUnrollControl=True,
             )
             return out
 
@@ -584,6 +585,7 @@ def normed_cumsum(inp, dim=-1):
             NORMALIZE=False,
             HAS_OUT_LAYOUT=False,
             TILE=TILE,
+            isCloseUnrollControl=True,
         )
         # Pass two, scan partial cumsums
         block_cumsum_kernel[(1, n_batch)](
@@ -602,6 +604,7 @@ def normed_cumsum(inp, dim=-1):
             NORMALIZE=False,
             HAS_OUT_LAYOUT=True,
             TILE=TILE,
+            isCloseUnrollControl=True,
         )
         # print(sums)
         rscale = cumsums[..., -1]

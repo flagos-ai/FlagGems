@@ -7,7 +7,6 @@ vendor_info = VendorInfoBase(
 CUSTOMIZED_UNUSED_OPS = (
     "cumsum",
     "unique",
-    "multinomial",
     "isin",
     "randperm",
     "cummin",
