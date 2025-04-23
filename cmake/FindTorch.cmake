@@ -31,3 +31,8 @@ if (NOT TARGET Torch::Torch)
   target_link_libraries(Torch::Torch INTERFACE ${TORCH_LIBRARIES})
   target_compile_options(Torch::Torch INTERFACE ${TORCH_CXX_FLAGS})
 endif()
+
+# Since multiple libraries or executables need to link each other, while the torch
+# we use is a pre-built library, we need to ensure ABI consistency
+add_compile_options(${TORCH_CXX_FLAGS})
+message(STATUS "Using ABI for the whole project from torch: ${TORCH_CXX_FLAGS}")
