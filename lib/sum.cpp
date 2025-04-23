@@ -3,8 +3,8 @@
 
 #include <iostream>
 #include "c10/cuda/CUDAStream.h"
-#include "triton_jit/triton_jit_function.h"
 #include "torch/torch.h"
+#include "triton_jit/triton_jit_function.h"
 
 #include <filesystem>
 #include "ATen/WrapDimUtils.h"

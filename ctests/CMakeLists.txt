@@ -17,3 +17,11 @@ set_target_properties(test_triton_reduction PROPERTIES
   BUILD_WITH_INSTALL_RPATH FALSE
 )
 add_test(NAME test_triton_reduction COMMAND test_triton_reduction)
+
+add_executable(test_triton_blas test_triton_blas.cpp)
+target_link_libraries(test_triton_blas PRIVATE Torch::Torch operators gtest gtest_main)
+set_target_properties(test_triton_blas PROPERTIES
+  INSTALL_RPATH "${_rpath_portable_origin}/../lib"
+  BUILD_WITH_INSTALL_RPATH FALSE
+)
+add_test(NAME test_triton_blas COMMAND test_triton_blas)
