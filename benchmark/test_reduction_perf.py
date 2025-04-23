@@ -258,6 +258,24 @@ def test_perf_count_nonzero():
     bench.run()
 
 
+@pytest.mark.dot
+def test_perf_dot():
+    def dot_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype=dtype, device=device)
+        if inp.dim() > 1:
+            inp = inp.flatten()
+        yield inp, inp
+
+    bench = GenericBenchmark(
+        input_fn=dot_input_fn,
+        op_name="dot",
+        torch_op=torch.dot,
+        dtypes=FLOAT_DTYPES,
+    )
+
+    bench.run()
+
+
 class quantileBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         more_shapes_1d = [(4,), (1024,), (65535)]
