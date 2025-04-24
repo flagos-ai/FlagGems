@@ -10,10 +10,14 @@ namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
   m.def("sum.dim_IntList(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor");
   m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
+  // Norm
+  m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("sum.dim_IntList", TORCH_FN(sum_dim));
   m.impl("add_tensor", TORCH_FN(add_tensor));
+  // Norm
+  m.impl("rms_norm", TORCH_FN(rms_norm));
 }
 }  // namespace flag_gems

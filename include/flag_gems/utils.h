@@ -12,4 +12,5 @@
 namespace flag_gems::utils {
 std::filesystem::path get_path_of_this_library();
 std::filesystem::path get_triton_src_path();
+int64_t next_power_of_2(int64_t n);
 }  // namespace flag_gems::utils
