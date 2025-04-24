@@ -282,6 +282,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("dot", dot, Autograd.disable),
             ("kron", kron, Autograd.disable),
             ("elu", elu, Autograd.disable),
+            ("index_put_", index_put_, Autograd.disable),
             ("index_put", index_put, Autograd.disable),
             ("contiguous", contiguous, Autograd.disable),
             ("log_sigmoid", log_sigmoid, Autograd.disable),

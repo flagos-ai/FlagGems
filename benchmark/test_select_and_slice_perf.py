@@ -370,6 +370,17 @@ def test_index_put_acc_false_perf():
     bench.run()
 
 
+@pytest.mark.index_put_
+def test_index_put__acc_false_perf():
+    bench = IndexPutAccFalseBenchmark(
+        op_name="index_put_",
+        torch_op=torch.index_put_,
+        input_fn=index_put_input_fn(False),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 class IndexPutAccTrueBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         INDEX_PUT_SHAPE = (
@@ -389,6 +400,18 @@ def test_index_put_acc_true_perf():
     bench = IndexPutAccTrueBenchmark(
         op_name="index_put",
         torch_op=torch.index_put,
+        input_fn=index_put_input_fn(True),
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_put_
+def test_index_put__acc_true_perf():
+    bench = IndexPutAccTrueBenchmark(
+        op_name="index_put_",
+        torch_op=torch.index_put_,
         input_fn=index_put_input_fn(True),
         dtypes=[torch.float16, torch.float32],
     )

@@ -1079,6 +1079,53 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
     gems_assert_close(out, ref_out, dtype)
 
 
+@pytest.mark.index_put_
+@pytest.mark.parametrize(
+    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_FALSE
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_put__acc_false(input_shape, indices_shape, values_shape, dtype):
+    accumulate = False
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_indices(input_shape, indices_shape, accumulate)
+    values = torch.randn(
+        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+
+    ref_inp = to_reference(inp)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values)
+    torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)
+    flag_gems.index_put_(inp, indices, values, accumulate)
+    gems_assert_close(inp, ref_inp, dtype)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_put_
+@pytest.mark.parametrize(
+    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
+    accumulate = True
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_indices(input_shape, indices_shape, accumulate)
+    values = torch.randn(
+        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+
+    ref_inp = to_reference(inp, upcast=True)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values, upcast=True)
+    torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)
+    flag_gems.index_put_(inp, indices, values, accumulate)
+    gems_assert_close(inp, ref_inp, dtype)
+
+
 @pytest.mark.mse_loss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)

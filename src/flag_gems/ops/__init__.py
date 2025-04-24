@@ -68,7 +68,7 @@ from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_add import index_add
-from .index_put import index_put
+from .index_put import index_put, index_put_
 from .index_select import index_select
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
@@ -374,6 +374,7 @@ __all__ = [
     "nll_loss_backward",
     "nll_loss2d_forward",
     "nll_loss2d_backward",
+    "index_put_",
     "index_put",
     "vdot",
     "mse_loss",
