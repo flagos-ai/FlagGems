@@ -28,8 +28,9 @@ at::Tensor rms_norm(const at::Tensor& input,   // [..., hidden_size]
                                      "rms_norm_kernel");
 
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   c10::DeviceGuard guard(out.device());
+  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+  CUstream raw_stream = static_cast<CUstream>(stream.stream());
 
   /* siguature info
   def rms_norm_kernel(
@@ -45,7 +46,7 @@ at::Tensor rms_norm(const at::Tensor& input,   // [..., hidden_size]
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr
   ) */
-  f(stream,
+  f(raw_stream,
     M,
     1,
     1,

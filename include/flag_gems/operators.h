@@ -11,5 +11,8 @@ at::Tensor sum_dim(const at::Tensor &self,
                    ::std::optional<at::ScalarType> dtype = ::std::nullopt);
 
 at::Tensor rms_norm(const at::Tensor &input, const at::Tensor &weight, double epsilon = 1e-5);
-
+at::Tensor fused_add_rms_norm(const at::Tensor &input,
+                              const at::Tensor &residual,
+                              const at::Tensor &weight,
+                              double epsilon = 1e-5);
 }  // namespace flag_gems
