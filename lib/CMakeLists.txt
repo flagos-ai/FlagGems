@@ -4,7 +4,8 @@ add_library(operators
             add.cpp
             sum.cpp
             mm.cpp
-            rms_norm.cpp)
+            rms_norm.cpp
+            fused_add_rms_norm.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
