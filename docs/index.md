@@ -1,18 +1,10 @@
-[中文版](./README_cn.md)
-
 ![img_v3_02gp_8115f603-cc89-4e96-ae9d-f01b4fef796g](https://github.com/user-attachments/assets/97950fc6-62bb-4b6a-b8d5-5751c14492fa)
 
-## Introduction
+## About
 
 FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It aims to provide a suite of kernel functions to accelerate LLM training and inference.
 
 By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing users to switch to the Triton function library without the need to modify their model code. Users can still utilize the ATen backend as usual while experiencing significant performance enhancement. The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
-
-We created WeChat group for FlagGems. Scan the QR code to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
-
-<p align="center">
- <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
-</p>
 
 ## Features
 
@@ -22,7 +14,7 @@ FlagGems supports a wide range of hardware platforms and has been extensively te
 ### Automatic Codegen
 FlagGems provides an automatic code generation mechanism that enables developers to easily generate both pointwise and fused operators.
 The auto-generation system supports a variety of needs, including standard element-wise computations, non-tensor parameters, and specifying output types.
-For more details, please refer to pointwise_dynamic(docs/pointwise_dynamic.md).
+For more details, please refer to pointwise_dynamic(pointwise_dynamic.md).
 
 ### LibEntry
 FlagGems introduces `LibEntry`, which independently manages the kernel cache and bypasses the runtime of `Autotuner`, `Heuristics`, and `JitFunction`. To use it, simply decorate the Triton kernel with LibEntry.
@@ -31,7 +23,7 @@ FlagGems introduces `LibEntry`, which independently manages the kernel cache and
 
 ### C++ Runtime
 FlagGems can be installed either as a pure Python package or as a package with C++ extensions. The C++ runtime is designed to address the overhead of the Python runtime and improve end-to-end performance.
-For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_extensions.md).
+For more details, please refer to [c++ extensions](build_flaggems_with_c_extensions.md).
 
 ## Changelog
 
@@ -55,11 +47,11 @@ For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_ex
 
 ## Get Start
 
-For a quick start with installing and using flag_gems, please refer to the documentation [GetStart](docs/get_start_with_flaggems.md).
+For a quick start with installing and using flag_gems, please refer to the documentation [Get Start](get_start_with_flaggems.md).
 
 ## Supported Operators
 
-Operators will be implemented according to [OperatorList](docs/operator_list.md).
+Operators will be implemented according to [OperatorList](operator_list.md).
 
 ## Supported Models
 
@@ -77,16 +69,21 @@ Operators will be implemented according to [OperatorList](docs/operator_list.md)
 
 The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode. The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
 
-![Operator Speedup](./docs/assets/speedup-20250423.png)
+![Operator Speedup](assets/speedup-20250423.png)
 
 ## Contributions
 
-If you are interested in contributing to the FlagGems project, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md). Any contributions would be highly appreciated.
+If you are interested in contributing to the FlagGems project, please refer to [Countributing Guide](code_countribution.md). Any contributions would be highly appreciated.
 
 ## Contact us
 
 If you have any questions about our project, please submit an issue, or contact us through <a href="mailto:flaggems@baai.ac.cn">flaggems@baai.ac.cn</a>.
 
+We also created WeChat group for FlagGems. Scan the QR code to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
+
+<p align="center">
+ <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
+</p>
 ## License
 
-The FlagGems project is based on [Apache 2.0](./LICENSE).
+The FlagGems project is based on [Apache 2.0](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE).

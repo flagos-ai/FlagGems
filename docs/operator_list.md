@@ -1,5 +1,3 @@
-## Operator List
-
 ## v1.0
 - addmm
 - bmm
@@ -27,6 +25,8 @@
 - rsub
 - sub
 - mean
+
+---
 
 ## v2.0
 - all
@@ -64,6 +64,8 @@
 - log_softmax
 - native_group_norm
 - sigmoid
+
+---
 
 ## v3.0
 - _conv_depthwise2d
@@ -135,6 +137,8 @@
 - where
 - zeros
 
+---
+
 ## v4.0
 - rms_norm
 - skip_rms_norm
@@ -142,6 +146,8 @@
 - gelu_and_mul
 - silu_and_mul
 - apply_rotary_pos_emb
+
+---
 
 ## v5.0
 - unique
