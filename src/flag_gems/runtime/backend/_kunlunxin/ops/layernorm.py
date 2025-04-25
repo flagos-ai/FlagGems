@@ -470,6 +470,7 @@ class LayerNorm(torch.autograd.Function):
                 XBLOCK=triton.next_power_of_2(triton.cdiv(M, 12)),
                 RBLOCK=8192,
                 isCloseUnrollControl=True,
+                buffer_size_limit=512,
             )
 
             # print(f'mean = {mean.cpu()}')
