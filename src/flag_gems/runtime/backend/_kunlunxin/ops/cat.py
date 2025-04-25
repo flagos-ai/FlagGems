@@ -16,7 +16,6 @@ config_ = CodeGenConfig(
     32,
     True,
     prefer_1d_tile=True,
-    is_scatter_slice=True,
 )
 
 
