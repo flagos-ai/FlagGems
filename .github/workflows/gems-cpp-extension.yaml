@@ -1,0 +1,25 @@
+name: gems-cpp-extension
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build-C-extension:
+    runs-on: cpp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build FlagGems with C-extension
+        shell: bash
+        run: |
+          SKBUILD_CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON;-DBUILD_CTESTS=ON" pip install --no-build-isolation -v -e .
+
+      - name: Run FlagGems CTests
+        shell: bash
+        run: |
+          cd build/cpython-311/ctests
+          ctest -V
