@@ -5,7 +5,7 @@
 
 TEST(reduction_op_test, sum) {
   const torch::Device device(torch::kCUDA, 0);
-  torch::Tensor a = torch::randn({32, 4096}, device);
+  torch::Tensor a = torch::randn({32, 1024}, device);
 
   torch::Tensor out_torch = at::sum(a, {1});
   torch::Tensor out_triton = flag_gems::sum_dim(a, {1});

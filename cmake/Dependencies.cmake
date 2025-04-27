@@ -12,7 +12,8 @@ if (USE_EXTERNAL_TRITON_JIT)
 else()
     FetchContent_Declare(TritonJIT
       GIT_REPOSITORY https://github.com/iclementine/libtorch_example.git
-      # SOURCE_DIR /home/clement/projects/libtorch_example # use local source dir in development
+      GIT_TAG c37865ac600b81c05a41619900ee773dc4e68405        # Update the commit ID after full testing
+      # SOURCE_DIR /home/clement/projects/libtorch_example    # use local source dir in development
     )
     FetchContent_MakeAvailable(TritonJIT)
 endif()
