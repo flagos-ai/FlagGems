@@ -559,7 +559,6 @@ masked_select:
   - 4
   - 8
   - 16
-  - 32
   blocks:
   - 256
   - 512
@@ -712,7 +711,6 @@ nonzero:
   - 4
   - 8
   - 16
-  - 32
   blocks:
   - 256
   - 512
@@ -785,7 +783,6 @@ vstack:
   - 4
   - 8
   - 16
-  - 32
   blocks:
   - 512
   - 1024
@@ -850,7 +847,6 @@ triu:
   - 4
   - 8
   - 16
-  - 32
 triu_batch:
 - gen: true
   param_map:
@@ -864,7 +860,6 @@ triu_batch:
   - 4
   - 8
   - 16
-  - 32
 weight_norm_kernel_last:
 - gen: true
   param_map:
@@ -1138,7 +1133,6 @@ batch_norm:
   - 4
   - 8
   - 16
-  - 32
 
 index_put:
 - gen: true
