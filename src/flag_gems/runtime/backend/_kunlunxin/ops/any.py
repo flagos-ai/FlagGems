@@ -1,11 +1,9 @@
 import logging
-import math
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -14,6 +12,27 @@ from flag_gems.utils import triton_lang_extension as tle
 #            is not BOOL, then test if any elements in input evaluate to non-zero value
 # In triton function, test if any elements in input evaluate to non-zero value is ok.
 
+cluster_num = 12
+core_num = 64
+thread_num = core_num * cluster_num
+buf_len_per_core = 2048
+
+
+def get_block(n: int) -> int:
+    if n < cluster_num:
+        res = cluster_num
+    else:
+        res = cluster_num * triton.cdiv(n, cluster_num)
+    return res
+
+
+def heur_m_block_size(args):
+    return triton.next_power_of_2(min(triton.cdiv(args["M"], cluster_num), core_num))
+
+
+def heur_n_block_size(args):
+    return triton.next_power_of_2(min(args["N"], triton.cdiv(buf_len_per_core, 4)))
+
 
 @triton.jit
 def reduce_any(a, b):
@@ -21,7 +40,13 @@ def reduce_any(a, b):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
 @triton.jit
 def any_kernel_dim(
     inp,
@@ -30,6 +55,7 @@ def any_kernel_dim(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
     pid = tle.program_id(0)
@@ -58,6 +84,7 @@ def any_kernel_1(
     n_elements,
     mid_size,
     BLOCK_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -71,7 +98,9 @@ def any_kernel_1(
 
 @libentry()
 @triton.jit
-def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
+def any_kernel_2(
+    mid, out, MID_SIZE, BLOCK_MID: tl.constexpr, buffer_size_limit: tl.constexpr
+):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
@@ -83,7 +112,8 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 def any(inp):
     logging.debug("GEMS ANY")
     n_elements = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
+
+    block_size = triton.cdiv(get_block(n_elements), cluster_num)
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
@@ -91,10 +121,12 @@ def any(inp):
     out = torch.empty([], dtype=torch.bool, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
+        any_kernel_1[(mid_size, 1)](
+            inp, mid, n_elements, mid_size, block_size, buffer_size_limit=2048
+        )
         if mid_size == 1:
             return mid.reshape([])
-        any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+        any_kernel_2[(1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
 
     return out
 
@@ -118,7 +150,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
-            any_kernel_dim[grid](inp, out, M, N)
+            any_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
         if not keepdim:
             out = out.squeeze(dim=dim)
     return out
