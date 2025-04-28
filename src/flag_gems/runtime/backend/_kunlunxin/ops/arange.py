@@ -12,7 +12,15 @@ from flag_gems.utils import triton_lang_extension as tle
 
 @libentry()
 @triton.jit
-def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
+def arange_func(
+    y_ptr,
+    start,
+    end,
+    step,
+    size,
+    BLOCK_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
     pid = tle.program_id(0)
     y_ptr += pid * BLOCK_SIZE
     step_offset = pid * BLOCK_SIZE * step
@@ -33,7 +41,12 @@ def arange_start(
     else:
         size = math.ceil((end - start) / step)
 
-    BLOCK_SIZE = triton.cdiv(size, 12)
+    cluster_num = 12
+    tmp = torch.tensor([], dtype=dtype)
+    BLOCK_SIZE = min(
+        triton.next_power_of_2(triton.cdiv(size, cluster_num)),
+        int(2048 * 64 / tmp.element_size()),
+    )
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     if dtype is None:
@@ -48,7 +61,9 @@ def arange_start(
         )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
-    arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
+    arange_func[grid,](
+        result, start, end, step, size, BLOCK_SIZE, buffer_size_limit=2048
+    )
     return result
 
 
