@@ -14,6 +14,10 @@ bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
 
 
+def TestForwardOnly():
+    return flag_gems.vendor_name in []
+
+
 def SkipVersion(module_name, skip_pattern):
     cmp = skip_pattern[0]
     assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"

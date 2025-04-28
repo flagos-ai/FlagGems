@@ -18,7 +18,10 @@ except ImportError:
     pass
 
 vendor_info = VendorInfoBase(
-    vendor_name="cambricon", device_name="mlu", device_query_cmd="cnmon"
+    vendor_name="cambricon",
+    device_name="mlu",
+    device_query_cmd="cnmon",
+    dispatch_key="PrivateUse1",
 )
 
 CUSTOMIZED_UNUSED_OPS = (
