@@ -1,8 +1,9 @@
 from typing import Generator
 
-import flag_gems
 import pytest
 import torch
+
+import flag_gems
 
 from .attri_util import (
     BOOL_DTYPES,
