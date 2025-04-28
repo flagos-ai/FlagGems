@@ -12,13 +12,13 @@ To enable C extension building in FlagGems, a CMake options has to be passed to 
 For example,
 
 ```sh
-SKBUILD_CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON;-DBUILD_CTESTS=ON" pip install --no-build-isolation -e .`
+SKBUILD_CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON;-DBUILD_CTESTS=ON" pip install --no-build-isolation -e .
 ```
 
 or
 
 ```sh
-CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON -DBUILD_CTESTS=ON" pip install --no-build-isolation -e .`
+CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON -DBUILD_CTESTS=ON" pip install --no-build-isolation -e .
 ```
 
 Note that for environment variable `SKBUILD_CMAKE_ARGS`, multiple options are separated by semi-colons(`;`), while for `CMAKE_ARGS`, multiple options are separated by spaces.
