@@ -4,10 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.libentry import libentry
 
-from ..runtime import torch_device_fn
-from ..utils import triton_lang_extension as tle
 from .all import reduce_all
 from .any import reduce_any
 from .unique import _unique2
