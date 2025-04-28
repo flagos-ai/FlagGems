@@ -6,7 +6,7 @@ from queue import Queue
 import torch  # noqa: F401
 
 from .. import backend, error
-from ..commom_utils import vendors, vendors_map
+from ..commom_utils import vendors
 
 UNSUPPORT_FP64 = [
     vendors.CAMBRICON,
@@ -36,7 +36,7 @@ class DeviceDetector(object):
         if not hasattr(self, "initialized"):
             self.initialized = True
             # A list of all available vendor names.
-            self.vendor_list = vendors_map.keys()
+            self.vendor_list = vendors.get_all_vendors().keys()
 
             # A dataclass instance, get the vendor information based on the provided or default vendor name.
             self.info = self.get_vendor(vendor_name)
@@ -44,7 +44,13 @@ class DeviceDetector(object):
             # vendor_name is like 'nvidia', device_name is like 'cuda'.
             self.vendor_name = self.info.vendor_name
             self.name = self.info.device_name
-            self.vendor = vendors_map[self.vendor_name]
+            self.vendor = vendors.get_all_vendors()[self.vendor_name]
+            self.forward_only = self.info.forward_only
+            self.dispatch_key = (
+                self.name.upper()
+                if self.info.dispatch_key is None
+                else self.info.dispatch_key
+            )
             self.device_count = backend.gen_torch_device_object(
                 self.vendor_name
             ).device_count()

@@ -5,7 +5,7 @@ import inspect
 import os
 import sys
 
-from ..commom_utils import vendors_map
+from ..commom_utils import vendors
 from . import backend_utils
 
 vendor_module = None
@@ -60,12 +60,10 @@ res = {tensor}.{attr_name}
 
 def set_tl_extra_backend_module(vendor_name=None):
     global device_name, tl_extra_backend_module
-    device_name = device_name or get_vendor_info(vendor_name).device_name
-    if vendor_name == "kunlunxin":  # runtime device_name != libdevice device_name
-        device_name = "xpu"
-    if vendor_name == "hygon":
-        device_name = "hip"
-    module_str = f"triton.language.extra.{device_name}.libdevice"
+    vendor_info = get_vendor_info(vendor_name)
+    device_name = device_name or vendor_info.device_name
+    extra_name = vendor_info.triton_extra_name or device_name
+    module_str = f"triton.language.extra.{extra_name}.libdevice"
     tl_extra_backend_module = importlib.import_module(module_str)
 
 
@@ -128,7 +126,7 @@ def get_vendor_info(vendor_name=None, query=False):
 
 def get_vendor_infos():
     infos = []
-    for vendor_name in vendors_map:
+    for vendor_name in vendors.get_all_vendors():
         vendor_name = "_" + vendor_name
         try:
             single_info = get_vendor_info(vendor_name, query=True)
@@ -141,7 +139,7 @@ def get_vendor_infos():
 
 def get_current_device_extend_op(vendor_name=None):
     import_vendor_extra_lib(vendor_name)
-    global ops_module, fused_module, customized_ops  # noqa: F824
+    global customized_ops
     if customized_ops is not None:
         return customized_ops
     customized_ops = []
@@ -161,11 +159,15 @@ def get_curent_device_unused_op(vendor_name=None):
 
 
 def get_heuristic_config(vendor_name=None):
-    # import_vendor_extra_lib(vendor_name)
     global heuristic_config_module
-    heuristic_config_module = importlib.import_module(
-        f"_{vendor_name}.heuristics_config_utils"
-    )
+    try:
+        heuristic_config_module = importlib.import_module(
+            f"_{vendor_name}.heuristics_config_utils"
+        )
+    except:  # noqa E722
+        heuristic_config_module = importlib.import_module(
+            "_nvidia.heuristics_config_utils"
+        )
     if hasattr(heuristic_config_module, "HEURISTICS_CONFIGS"):
         return heuristic_config_module.HEURISTICS_CONFIGS
     return None

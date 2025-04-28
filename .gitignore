@@ -19,6 +19,9 @@ dist/
 .skbuild-info.json
 CMakeInit.txt
 
+# An auxiliary product of unittests
+tests/*.json
+
 
 # Executables
 *.swf

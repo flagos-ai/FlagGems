@@ -41,7 +41,13 @@ class LogOncePerLocationFilter(logging.Filter):
 
 
 def enable(
-    lib=aten_lib, unused=None, registrar=registrar, record=False, once=False, path=None
+    lib=aten_lib,
+    unused=None,
+    registrar=registrar,
+    record=False,
+    once=False,
+    path=None,
+    forward_only=False,
 ):
     global current_work_registrar
     current_work_registrar = registrar(
@@ -310,6 +316,7 @@ def enable(
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
+        forward_only=forward_only,
     )
     if record:
         filename = (
@@ -327,13 +334,16 @@ def enable(
 
 
 class use_gems:
-    def __init__(self, unused=None, record=False, once=False, path=None):
+    def __init__(
+        self, unused=None, record=False, once=False, path=None, forward_only=False
+    ):
         self.lib = torch.library.Library("aten", "IMPL")
         self.unused = [] if unused is None else unused
         self.registrar = Register
         self.record = record
         self.once = once
         self.path = path
+        self.forward_only = forward_only
 
     def __enter__(self):
         enable(
@@ -343,6 +353,7 @@ class use_gems:
             record=self.record,
             once=self.once,
             path=self.path,
+            forward_only=self.forward_only,
         )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -351,6 +362,7 @@ class use_gems:
         del self.unused
         del self.registrar
         del current_work_registrar
+        del self.forward_only
         if self.record:
             for handler in logging.root.handlers[:]:
                 logging.root.removeHandler(handler)
