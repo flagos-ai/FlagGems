@@ -1,4 +1,5 @@
 import logging
+import math
 import random
 
 import numpy as np
@@ -1867,3 +1868,21 @@ def test_accuracy_logical_xor(shape, dtype):
         res_out = torch.logical_xor(inp1, inp2)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.polar
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_polar(shape, dtype):
+    abs = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 5
+    angle = (torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.5) * (
+        8 * math.pi
+    )
+    ref_abs = to_reference(abs)
+    ref_angle = to_reference(angle)
+    ref_out = torch.polar(ref_abs, ref_angle)
+    with flag_gems.use_gems():
+        res_out = torch.polar(abs, angle)
+
+    gems_assert_close(res_out.real, ref_out.real, dtype)
+    gems_assert_close(res_out.imag, ref_out.imag, dtype)

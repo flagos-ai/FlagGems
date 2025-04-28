@@ -7,6 +7,7 @@ RESOLUTION = {
     torch.float16: 1e-3,
     torch.float32: 1.3e-6,
     torch.bfloat16: 0.016,
+    torch.float64: 1e-7,
     torch.complex32: 1e-3,
     torch.complex64: 1.3e-6,
 }
