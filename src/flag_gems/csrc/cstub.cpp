@@ -20,6 +20,6 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("add_tensor", TORCH_FN(add_tensor));
   // Norm
   m.impl("rms_norm", TORCH_FN(rms_norm));
-  m.impl("fused_add_rms_norm", TORCH_FN(rms_norm));
+  m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
 }
 }  // namespace flag_gems
