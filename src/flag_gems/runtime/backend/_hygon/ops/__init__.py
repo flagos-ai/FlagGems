@@ -1,3 +1,5 @@
+from .all import all, all_dim, all_dims
+from .any import any, any_dim, any_dims
 from .div import (
     div_mode,
     div_mode_,
@@ -18,8 +20,15 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .silu import silu, silu_
+from .unique import _unique2
 
 __all__ = [
+    "all",
+    "all_dim",
+    "all_dims",
+    "any",
+    "any_dim",
+    "any_dims",
     "true_divide",
     "true_divide_",
     "div_mode",
@@ -38,4 +47,5 @@ __all__ = [
     "pow_tensor_tensor_",
     "silu",
     "silu_",
+    "_unique2",
 ]
