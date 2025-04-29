@@ -57,6 +57,7 @@ def enable(
             ("add.Tensor", add, Autograd.disable),
             ("add_.Tensor", add_, Autograd.disable),
             ("addmm", addmm, Autograd.disable),
+            ("angle", angle, Autograd.disable),
             ("arange.start_step", arange_start, Autograd.disable),
             ("arange.start", arange_start, Autograd.disable),
             ("arange", arange, Autograd.disable),
