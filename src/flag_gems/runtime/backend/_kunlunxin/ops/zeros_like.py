@@ -18,6 +18,8 @@ def zeros_like(
         dtype = x.dtype
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
+    if N == 0:
+        return out
     grid_fn = (12, 1, 1)
     block_size = triton.next_power_of_2(triton.cdiv(N, 12))
     with torch_device_fn.device(x.device):

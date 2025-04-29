@@ -184,6 +184,14 @@ class Benchmark:
                         self.shapes = self.DEFAULT_SHAPES
 
             self.shapes = [tuple(shape) for shape in self.shapes]
+            if vendor_name == "kunlunxin":
+                if self.op_name == "isin":  # isin oom
+                    import math
+
+                    self.shapes = [
+                        shape for shape in self.shapes if math.prod(shape) < 1024 * 1024
+                    ]
+
             # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
             if (
                 hasattr(self, "set_more_shapes")

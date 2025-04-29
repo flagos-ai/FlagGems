@@ -29,8 +29,10 @@ def masked_fill_kernel(
 
     fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
     cur_inp = tl.load(inp + offsets, mask=(not fill_mask) and mask, other=0)
-    tl.store(out + offsets, cur_inp, (not fill_mask) and mask)
-    tl.store(out + offsets, value, fill_mask and mask)
+    out_offset_1 = tl.where((not fill_mask) and mask, offsets, -1)
+    tl.store(out + out_offset_1, cur_inp, (not fill_mask) and mask)
+    out_offset_2 = tl.where(fill_mask and mask, offsets, -1)
+    tl.store(out + out_offset_2, value, fill_mask and mask)
 
 
 def masked_fill_kernel_self_heur_block_size(args):

@@ -1,4 +1,5 @@
 import math
+import os
 
 import torch
 import triton
@@ -155,7 +156,8 @@ def isin_by_search_impl(
         while_mask = start < end
 
     # store out
-    tl.store(out_ptr + i0, not out if invert else out, mask=mask)
+    out_offset = tl.where(mask, i0, M + 1)
+    tl.store(out_ptr + out_offset, not out if invert else out, mask=mask)
 
 
 @libentry()
@@ -196,14 +198,17 @@ def isin_by_search(
     unique_in0: bool,
     unique_in1: bool,
 ):
+    # import pudb; pudb.set_trace()
     # unique or sort or ravel
     if unique_in0:
+        print("hit _unique2!!!")
         in0_ravel, unique_order, _ = _unique2(
             in0, sorted=True, return_inverse=True, return_counts=False
         )
     else:
         in0_ravel = in0.contiguous().ravel()
     if unique_in1:
+        print("hit _unique2!!!")
         in1_ravel, _, _ = _unique2(
             in1, sorted=True, return_inverse=False, return_counts=False
         )
@@ -225,9 +230,16 @@ def isin_by_search(
     log_n = int(math.log2(N)) + 1
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
+    # print(f"M = {M}")
+    # print(f"BLOCK_M = {BLOCK_M}")
+    # print(f"ctas_num = {ctas_num}")
+    # print(f"tiles_per_cta = {tiles_per_cta}")
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
     with torch_device_fn.device(in0_ravel.device.index):
+        os.environ["TRITONXPU_OTHER_SIM"] = "1"
+        os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+        os.environ["TRITONXPU_INTERLEAVE"] = "0"
         isin_by_search_kernel[grid](
             in0_ravel,
             in1_ravel,  # in
@@ -239,7 +251,15 @@ def isin_by_search(
             tiles_per_cta=tiles_per_cta,
             invert=invert,
             num_warps=num_warps,
+            isCloseUnrollControl=True,
         )
+        if "TRITONXPU_OTHER_SIM" in os.environ:
+            del os.environ["TRITONXPU_OTHER_SIM"]
+        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            del os.environ["TRITONXPU_STORE_MASK_SIM"]
+        if "TRITONXPU_INTERLEAVE" in os.environ:
+            del os.environ["TRITONXPU_INTERLEAVE"]
+
     if unique_in0:
         out = torch.gather(out, 0, unique_order.ravel().to(torch.int64))
     return out.view_as(in0)
@@ -261,8 +281,11 @@ def isin(
     if in0.numel() == 0 or in1.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
     elif in0.numel() <= 12288 and in1.numel() <= 12288:  # 1024 * 12
+        # print("hit isin_by_comparation!")
         return isin_by_comparation(in0, in1, invert)
     elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096
+        # print("hit isin_by_search unique_in1=False!")
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=False)
     else:
+        # print("hit isin_by_search unique_in1=True!")
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=True)
