@@ -201,14 +201,14 @@ def isin_by_search(
     # import pudb; pudb.set_trace()
     # unique or sort or ravel
     if unique_in0:
-        print("hit _unique2!!!")
+        # print("hit _unique2!!!")
         in0_ravel, unique_order, _ = _unique2(
             in0, sorted=True, return_inverse=True, return_counts=False
         )
     else:
         in0_ravel = in0.contiguous().ravel()
     if unique_in1:
-        print("hit _unique2!!!")
+        # print("hit _unique2!!!")
         in1_ravel, _, _ = _unique2(
             in1, sorted=True, return_inverse=False, return_counts=False
         )

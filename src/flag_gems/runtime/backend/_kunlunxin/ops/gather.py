@@ -59,7 +59,7 @@ def generate_gather_kernel(
 
     code.writeline("def heur_block_n(args):")
     with code.indent():
-        code.writeline('return builtins.min(triton.next_power_of_2(args["N"]), 8192)')
+        code.writeline('return builtins.min(triton.next_power_of_2(args["N"]), 4096)')
 
     code.newline()
     code.newline()
@@ -100,10 +100,10 @@ def generate_gather_kernel(
             )
             code.writeline(f"{shape_args}, # shape for index")
 
-            code.writeline("dim,")
-            code.writeline("stride_dim,")
-            code.writeline("M,")
-            code.writeline("N,")
+            code.writeline("dim: tl.constexpr,")
+            code.writeline("stride_dim: tl.constexpr,")
+            code.writeline("M: tl.constexpr,")
+            code.writeline("N: tl.constexpr,")
             code.writeline("BLOCK_M: tl.constexpr,")
             code.writeline("BLOCK_N: tl.constexpr,")
     code.writeline("):")

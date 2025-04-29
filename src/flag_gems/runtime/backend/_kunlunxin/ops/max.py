@@ -139,6 +139,8 @@ def max(inp):
         if "TRITONXPU_STORE_MASK_SIM" in os.environ:
             del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
+    if "TRITONXPU_FROM_MAX" in os.environ:
+        del os.environ["TRITONXPU_FROM_MAX"]
     return out
 
 
