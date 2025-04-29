@@ -14,6 +14,7 @@ import flag_gems
 
 from .attri_util import (
     BOOL_DTYPES,
+    COMPLEX_DTYPES,
     DEFAULT_METRICS,
     DEFAULT_SHAPES,
     FLOAT_DTYPES,
@@ -476,6 +477,8 @@ def generate_tensor_input(shape, dtype, device):
         ).to(device)
     elif dtype in BOOL_DTYPES:
         return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
+    elif dtype in COMPLEX_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=device)
 
 
 def binary_input_fn(shape, cur_dtype, device):
