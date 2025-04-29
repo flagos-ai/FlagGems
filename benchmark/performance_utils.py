@@ -185,7 +185,8 @@ class Benchmark:
 
             self.shapes = [tuple(shape) for shape in self.shapes]
             if vendor_name == "kunlunxin":
-                if self.op_name == "isin":  # isin oom
+                if self.op_name in ["isin", "nonzero"]:
+                    # isin oom  # nonzero oot
                     import math
 
                     self.shapes = [

@@ -177,7 +177,6 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather
 def test_perf_gather():
     bench = TensorSelectBenchmark(
