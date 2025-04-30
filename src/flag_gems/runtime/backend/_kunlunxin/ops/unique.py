@@ -641,7 +641,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
         if "TRITONXPU_STORE_MASK_SIM" in os.environ:
             del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
-        if num_tasks < 2**27:
+        if num_tasks < 2**26:
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
             os.environ["TRITONXPU_INTERLEAVE"] = "0"
@@ -1285,7 +1285,7 @@ def sorted_indices_unique_flat(
         if "TRITONXPU_INTERLEAVE" in os.environ:
             del os.environ["TRITONXPU_INTERLEAVE"]
 
-        if num_tasks < 2**27:
+        if num_tasks < 2**26:
             # print(f"ne_result.shape = {ne_result.shape}")
             # print(f"tile_sum.shape = {tile_sum.shape}")
             # print(f'tile_sum.cpu() = {tile_sum.cpu()}')
