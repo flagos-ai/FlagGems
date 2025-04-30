@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 
 import torch
 import triton
@@ -456,22 +457,39 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
         with torch_device_fn.device(x.device):
-            grid = (12, 1, 1)
-            layernorm_fwd_kernel[grid](
-                x,
-                y,
-                weight,
-                bias,
-                eps,
-                mean,
-                rstd,
-                M,
-                N,
-                XBLOCK=triton.next_power_of_2(triton.cdiv(M, 12)),
-                RBLOCK=8192,
-                isCloseUnrollControl=True,
-                buffer_size_limit=512,
-            )
+            if x.dtype == torch.float16 and x.shape == (4096, 100):
+                TILE_N = 8192  # triton.next_power_of_2(N)
+                grid = (M, 1, 1)
+                layer_norm_loop_kernel[grid](
+                    x,
+                    y,
+                    weight,
+                    bias,
+                    mean,
+                    rstd,
+                    M,
+                    N,
+                    eps,
+                    TILE_N,
+                    isCloseUnrollControl=True,
+                )
+            else:
+                grid = (12, 1, 1)
+                layernorm_fwd_kernel[grid](
+                    x,
+                    y,
+                    weight,
+                    bias,
+                    eps,
+                    mean,
+                    rstd,
+                    M,
+                    N,
+                    XBLOCK=triton.next_power_of_2(triton.cdiv(M, 12)),
+                    RBLOCK=8192,
+                    isCloseUnrollControl=True,
+                    buffer_size_limit=512,
+                )
 
             # print(f'mean = {mean.cpu()}')
             # print(f'rstd = {rstd.cpu()}')
@@ -500,8 +518,6 @@ class LayerNorm(torch.autograd.Function):
             # print(f'in_grad.shape = {in_grad.shape}')
             # print(f'in_grad = {in_grad.cpu()}')
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
-
-            import os
 
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
