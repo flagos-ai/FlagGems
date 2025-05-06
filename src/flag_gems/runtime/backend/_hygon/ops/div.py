@@ -52,6 +52,8 @@ def true_divide_(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
+    x = x.to(tl.float64)
+    y = y.to(tl.float64)
     return trunc((x / y))
 
 
