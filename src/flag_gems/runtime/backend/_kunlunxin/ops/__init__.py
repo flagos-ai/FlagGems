@@ -3,6 +3,7 @@ from .add import add, add_
 from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
+from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
@@ -49,6 +50,7 @@ from .div import (
     true_divide,
     true_divide_,
 )
+from .dot import dot
 from .dropout import native_dropout
 from .elu import elu
 from .embedding import embedding
@@ -67,7 +69,7 @@ from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_add import index_add
-from .index_put import index_put
+from .index_put import index_put, index_put_
 from .index_select import index_select
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
@@ -99,6 +101,7 @@ from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
+from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nllloss import (
@@ -113,6 +116,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
 from .pad import constant_pad_nd, pad
+from .polar import polar
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -174,6 +178,7 @@ __all__ = [
     "all_dim",
     "all_dims",
     "allclose",
+    "angle",
     "any",
     "any_dim",
     "any_dims",
@@ -205,6 +210,7 @@ __all__ = [
     "cos",
     "cos_",
     "count_nonzero",
+    "polar",
     "contiguous",
     "diag",
     "diag_embed",
@@ -288,6 +294,7 @@ __all__ = [
     "normal_tensor_tensor",
     "uniform_",
     "mv",
+    "nan_to_num",
     "ne",
     "ne_scalar",
     "neg",
@@ -367,11 +374,13 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "dot",
     "kron",
     "nll_loss_forward",
     "nll_loss_backward",
     "nll_loss2d_forward",
     "nll_loss2d_backward",
+    "index_put_",
     "index_put",
     "vdot",
     "mse_loss",
