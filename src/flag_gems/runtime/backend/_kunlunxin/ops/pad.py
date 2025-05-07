@@ -461,7 +461,6 @@ _pad_func = PadFunction()
 
 
 def pad(self, pad, mode="constant", value=None):
-    os.environ["TRITONXPU_FROM_PAD"] = "1"
     logging.debug("GEMS CONSTANT PAD ND")
 
     ndim = self.ndim
@@ -499,8 +498,6 @@ def pad(self, pad, mode="constant", value=None):
             ), "Padding value causes wrapping around more than once."
 
     out = _pad_func(self, pad, mode, float(value))
-    if "TRITONXPU_FROM_PAD" in os.environ:
-        del os.environ["TRITONXPU_FROM_PAD"]
     return out
 
 
