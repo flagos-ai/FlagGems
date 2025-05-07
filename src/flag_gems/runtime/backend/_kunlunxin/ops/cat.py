@@ -1,6 +1,5 @@
 import itertools
 import logging
-import os
 from typing import List, Tuple, Union
 
 import torch
@@ -11,17 +10,12 @@ from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-is_scatter_slice = True
-if "TRITONXPU_FROM_PAD" in os.environ:
-    is_scatter_slice = False
-
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
     32,
     True,
     prefer_1d_tile=True,
-    is_scatter_slice=is_scatter_slice,
 )
 
 

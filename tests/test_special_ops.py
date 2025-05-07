@@ -448,7 +448,10 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     if not contiguous:
-        x = x[::2, ::2]
+        if flag_gems.vendor_name == "kunlunxin":
+            x = x.cpu()[::2, ::2].to(flag_gems.device)
+        else:
+            x = x[::2, ::2]
 
     ref_x = to_reference(x)
     if ref_x.dtype == torch.float16:
