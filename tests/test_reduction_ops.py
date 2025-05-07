@@ -1054,7 +1054,6 @@ INDEX_PUT_SHAPE_ACC_TRUE = (
 )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_put
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
@@ -1102,13 +1101,16 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, dtype):
     gems_assert_close(inp, ref_inp, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_put_
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     accumulate = True
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
@@ -1152,6 +1154,10 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
 @pytest.mark.parametrize("shape", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dot_tensor_tensor(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)

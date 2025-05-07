@@ -55,6 +55,10 @@ def test_accuracy_abs_(shape, dtype):
     "dtype", COMPLEX_DTYPES + FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES
 )
 def test_accuracy_angle(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     if dtype in BOOL_TYPES:
         inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
     elif dtype in ALL_INT_DTYPES:
@@ -62,7 +66,7 @@ def test_accuracy_angle(shape, dtype):
             low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
         )
     elif dtype in COMPLEX_DTYPES + FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = to_reference(inp)
     try:
         ref_out = torch.angle(ref_inp)

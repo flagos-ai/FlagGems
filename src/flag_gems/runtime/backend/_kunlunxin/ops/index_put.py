@@ -285,3 +285,16 @@ def index_put(inp, indices, values, accumulate=False):
     out = inp.clone()
     _index_put_func(out, indices, values, accumulate)
     return out
+
+
+def index_put_(inp, indices, values, accumulate=False):
+    logging.debug("GEMS INDEX PUT")
+
+    indices = list(indices)
+    target_shape = get_max_rank_shape(indices)
+    broadcast_indices(indices, target_shape)
+    target_shape += inp.shape[len(indices) :]
+    values = torch.broadcast_to(values, target_shape)
+
+    _index_put_func(inp, indices, values, accumulate)
+    return inp
