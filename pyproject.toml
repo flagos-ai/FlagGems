@@ -23,6 +23,8 @@ classifiers = [
 ]
 dependencies = [
     "torch>=2.2.0",
+    "packaging",
+    "pybind11",
     "PyYAML",
 ]
 

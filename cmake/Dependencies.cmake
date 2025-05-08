@@ -3,6 +3,10 @@ include(FetchContent)
 # dependencies: cuda toolkit
 find_package(CUDAToolkit REQUIRED)
 
+# dependencies: python
+find_package(Python REQUIRED COMPONENTS Interpreter Development)
+
+# torch
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
 find_package(Torch MODULE REQUIRED) # This is the FindTorch.cmake
 
@@ -12,7 +16,6 @@ if (USE_EXTERNAL_TRITON_JIT)
 else()
     FetchContent_Declare(TritonJIT
       GIT_REPOSITORY https://github.com/iclementine/libtorch_example.git
-      GIT_TAG c37865ac600b81c05a41619900ee773dc4e68405        # Update the commit ID after full testing
       # SOURCE_DIR /home/clement/projects/libtorch_example    # use local source dir in development
     )
     FetchContent_MakeAvailable(TritonJIT)
@@ -22,8 +25,7 @@ if (USE_EXTERNAL_PYBIND11)
   execute_process(COMMAND ${Python_EXECUTABLE} -m pybind11 --cmakedir
     OUTPUT_VARIABLE pybind11_ROOT
     OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ECHO STDOUT
-    ECHO_OUTPUT_VARIABLE)
+  )
   find_package(pybind11 CONFIG REQUIRED)
 else()
   FetchContent_Declare(pybind11

@@ -23,6 +23,10 @@ CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON -DBUILD_CTESTS=ON" pip install --no-build-is
 
 Note that for environment variable `SKBUILD_CMAKE_ARGS`, multiple options are separated by semi-colons(`;`), while for `CMAKE_ARGS`, multiple options are separated by spaces.
 
+To build without isolation, you have to install build dependency manually
+
+`pip install -U scikit-build-core ninja cmake pybind11`
+
 To make a debug build, add environment variable `SKBUILD_CMAKE_BUILD_TYPE=Debug`.
 
 Here is the compilation options table

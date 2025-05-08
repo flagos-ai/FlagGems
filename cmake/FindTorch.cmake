@@ -1,7 +1,6 @@
 # dependencies: torch
 # use the current python interpreter's torch installation
 if (NOT DEFINED Torch_ROOT)
-  find_package(Python REQUIRED COMPONENTS Interpreter Development)
   execute_process(COMMAND ${Python_EXECUTABLE} "-c" "import torch;print(torch.utils.cmake_prefix_path)"
                   OUTPUT_VARIABLE Torch_ROOT
                   OUTPUT_STRIP_TRAILING_WHITESPACE
