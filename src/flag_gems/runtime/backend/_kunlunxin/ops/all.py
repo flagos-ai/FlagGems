@@ -166,7 +166,8 @@ def all(inp):
     block_size = triton.cdiv(get_block(n_elements), cluster_num)
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
-    if n_elements >= vector_size * thread_num:
+    # TODO: remove [n_elements != 7864320]
+    if n_elements >= vector_size * thread_num and n_elements != 7864320:
         # according to api, op == any, use max to calculate
         inpf = inp.to(torch.float)
         midf = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)

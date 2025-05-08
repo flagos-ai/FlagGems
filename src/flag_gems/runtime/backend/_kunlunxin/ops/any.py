@@ -57,7 +57,6 @@ def any_kernel_dim(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    buffer_size_limit: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
     pid = tle.program_id(0)
@@ -120,7 +119,6 @@ def any_kernel_1(
     n_elements,
     mid_size,
     BLOCK_SIZE: tl.constexpr,
-    buffer_size_limit: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -134,9 +132,7 @@ def any_kernel_1(
 
 @libentry()
 @triton.jit
-def any_kernel_2(
-    mid, out, MID_SIZE, BLOCK_MID: tl.constexpr, buffer_size_limit: tl.constexpr
-):
+def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
@@ -174,10 +170,12 @@ def any(inp):
         out = torch.empty([], dtype=torch.bool, device=inp.device)
 
         with torch_device_fn.device(inp.device):
-            any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
+            any_kernel_1[(mid_size, 1)](
+                inp, mid, n_elements, mid_size, block_size, buffer_size_limit=2048
+            )
             if mid_size == 1:
                 return mid.reshape([])
-            any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+            any_kernel_2[(1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
 
     return out
 
