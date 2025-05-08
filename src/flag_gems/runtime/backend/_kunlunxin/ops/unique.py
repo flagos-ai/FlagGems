@@ -663,6 +663,12 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
                 isCloseVectorization=True,
                 # buffer_size_limit=128,
             )
+            if "TRITONXPU_OTHER_SIM" in os.environ:
+                del os.environ["TRITONXPU_OTHER_SIM"]
+            if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+                del os.environ["TRITONXPU_STORE_MASK_SIM"]
+            if "TRITONXPU_INTERLEAVE" in os.environ:
+                del os.environ["TRITONXPU_INTERLEAVE"]
         else:
             # print(f'tile_sum.shape = {tile_sum.shape}')
             # print(f'tile_sum.cpu() = {tile_sum.cpu()}')
@@ -1411,7 +1417,7 @@ def sorted_indices_unique_flat(
         if return_counts:
             idx = idx[:out_size]
             counts = torch.empty_like(idx)
-            print("i am here!!!!")
+            # print("i am here!!!!")
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
             os.environ["TRITONXPU_INTERLEAVE"] = "0"
