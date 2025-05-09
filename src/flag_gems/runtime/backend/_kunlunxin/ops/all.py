@@ -70,7 +70,6 @@ def all_kernel_dim(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    buffer_size_limit: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
     pid = tle.program_id(0)
@@ -106,7 +105,6 @@ def min_kernel_dim(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    buffer_size_limit: tl.constexpr,
 ):
     xoffset = tl.program_id(0) * BLOCK_M
     xindex = xoffset + tl.arange(0, BLOCK_M)[:, None]
@@ -134,7 +132,6 @@ def all_kernel_1(
     n_elements,
     mid_size,
     BLOCK_SIZE: tl.constexpr,
-    buffer_size_limit: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -149,7 +146,10 @@ def all_kernel_1(
 @libentry()
 @triton.jit
 def all_kernel_2(
-    mid, out, MID_SIZE, BLOCK_MID: tl.constexpr, buffer_size_limit: tl.constexpr
+    mid,
+    out,
+    MID_SIZE,
+    BLOCK_MID: tl.constexpr,
 ):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
@@ -163,12 +163,15 @@ def all(inp):
     logging.debug("GEMS ALL")
     n_elements = inp.numel()
     # block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
-    block_size = triton.cdiv(get_block(n_elements), cluster_num)
+    block_size = min(
+        triton.cdiv(get_block(n_elements), cluster_num),
+        triton.cdiv(buf_len_per_core * core_num, 4),
+    )
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
-    # TODO: remove [n_elements != 7864320]
-    if n_elements >= vector_size * thread_num and n_elements != 7864320:
-        # according to api, op == any, use max to calculate
+
+    if n_elements >= vector_size * thread_num:
+        # according to api, op == all, use min to calculate
         inpf = inp.to(torch.float)
         midf = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
         outf = torch.empty([], dtype=torch.float, device=inp.device)
@@ -214,7 +217,7 @@ def all_dim(inp, dim=None, keepdim=False):
         M = inp.numel() // N
 
         if N >= vector_size * vector_size:
-            # according to api, op == any, use max to calculate
+            # according to api, op == all, use min to calculate
             inpf = inp.to(torch.float)
             outf = torch.empty(shape, dtype=torch.float, device=inp.device)
 
@@ -250,7 +253,7 @@ def all_dims(inp, dim=None, keepdim=False):
     M = inp.numel() // N
 
     if N >= vector_size * core_num:
-        # according to api, op == any, use max to calculate
+        # according to api, op == all, use min to calculate
         inpf = inp.to(torch.float)
         outf = torch.empty(shape, dtype=torch.float, device=inp.device)
 
