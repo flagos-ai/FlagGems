@@ -105,7 +105,7 @@ def min_kernel(
 
 
 def min(inp):
-    logging.debug("GEMS MIN")
+    logging.debug("METAX GEMS MIN")
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
@@ -122,7 +122,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS MIN DIM")
+    logging.debug("METAX GEMS MIN DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
