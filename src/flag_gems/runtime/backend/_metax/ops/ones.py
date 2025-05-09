@@ -51,7 +51,7 @@ def ones_kernel(
 
 
 def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS ONES")
+    logging.debug("METAX GEMS ONES")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

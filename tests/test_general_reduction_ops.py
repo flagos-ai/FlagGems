@@ -145,7 +145,10 @@ def test_accuracy_max_without_dim_all_neg_inf(shape, dtype):
 
 # cambricon add
 @pytest.mark.max
-@pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="cambricon test only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "cambricon" and flag_gems.vendor_name != "metax",
+    reason="cambricon and metax test only",
+)
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES + [[1]])
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
 def test_accuracy_max_int(shape, dtype):

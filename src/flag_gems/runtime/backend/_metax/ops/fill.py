@@ -63,7 +63,7 @@ def fill_tensor_kernel(
 
 
 def fill_tensor(input, value):
-    logging.debug("GEMS FILL")
+    logging.debug("METAX GEMS FILL")
     out = torch.empty_like(input)
     N = out.numel()
     BLOCK_SIZE = 512
@@ -75,7 +75,7 @@ def fill_tensor(input, value):
 
 
 def fill_scalar(input, value):
-    logging.debug("GEMS FILL")
+    logging.debug("METAX GEMS FILL")
     out = torch.empty_like(input)
     N = out.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)

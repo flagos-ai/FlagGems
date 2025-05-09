@@ -113,7 +113,7 @@ def log_softmax_backward_kernel(
 class LogSoftmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, dim, dtype):
-        logging.debug("GEMS LOG_SOFTMAX")
+        logging.debug("METAX GEMS LOG_SOFTMAX")
 
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         dim = dim % x.ndim
@@ -140,7 +140,7 @@ class LogSoftmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS LOG_SOFTMAX VJP")
+        logging.debug("METAX GEMS LOG_SOFTMAX VJP")
 
         dim = ctx.dim
         (out,) = ctx.saved_tensors

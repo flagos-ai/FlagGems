@@ -15,7 +15,7 @@ def full_like(
     pin_memory=None,
     memory_format=None,
 ):
-    logging.debug("GEMS FULL_LIKE")
+    logging.debug("METAX GEMS FULL_LIKE")
     if device is None:
         device = x.device
     if dtype is None:

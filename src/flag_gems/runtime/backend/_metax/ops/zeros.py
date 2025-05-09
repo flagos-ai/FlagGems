@@ -49,7 +49,7 @@ def zeros_kernel(
 
 
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS ZEROS")
+    logging.debug("METAX GEMS ZEROS")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
