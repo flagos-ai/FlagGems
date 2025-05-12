@@ -11,6 +11,7 @@ from .div import (
     true_divide_,
 )
 from .gelu import gelu, gelu_
+from .isclose import allclose, isclose
 from .isin import isin
 from .pow import (
     pow_scalar,
@@ -26,6 +27,7 @@ __all__ = [
     "all",
     "all_dim",
     "all_dims",
+    "allclose",
     "any",
     "any_dim",
     "any_dims",
@@ -40,6 +42,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "isin",
+    "isclose",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_tensor",
