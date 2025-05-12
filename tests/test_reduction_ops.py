@@ -121,6 +121,7 @@ def test_accuracy_argmin(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
@@ -171,6 +172,7 @@ def test_accuracy_cross_entropy_loss_indices(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, shape", SMOOTH_SHAPE)

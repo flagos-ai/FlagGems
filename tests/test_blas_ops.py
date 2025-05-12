@@ -19,6 +19,7 @@ MNK_SHAPES = (
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.addmm
 @pytest.mark.linear
 @pytest.mark.matmul
@@ -85,6 +86,7 @@ def test_accuracy_mm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.mv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

@@ -15,6 +15,7 @@ class vendors(Enum):
     HYGON = 6
     AMD = 7
     AIPU = 8
+    ASCEND = 9
 
     @classmethod
     def get_all_vendors(cls) -> dict:
