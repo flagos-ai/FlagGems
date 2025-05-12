@@ -14,6 +14,7 @@ UNSUPPORT_FP64 = [
     vendors.KUNLUNXIN,
     vendors.MTHREADS,
     vendors.AIPU,
+    vendors.ASCEND,
 ]
 UNSUPPORT_BF16 = [
     vendors.AIPU,
@@ -78,10 +79,19 @@ class DeviceDetector(object):
             "cambricon": "mlu",
             "mthreads": "musa",
             "iluvatar": "corex",
+            "ascend": "npu",
         }
         for vendor_name, flag in cmd.items():
             if hasattr(torch, flag):
                 return vendor_name
+        try:
+            import torch_npu
+
+            for vendor_name, flag in cmd.items():
+                if hasattr(torch_npu, flag):
+                    return vendor_name
+        except:  # noqa: E722
+            pass
         return None
 
     def _get_vendor_from_env(self):

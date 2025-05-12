@@ -10,7 +10,10 @@ from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry, tl_extra_shim
 from ..utils import triton_lang_extension as tle
 
-pow = tl_extra_shim.pow
+try:
+    import torch_npu  # noqa: F401
+except:  # noqa: E722
+    pow = tl_extra_shim.pow
 
 
 @libentry()
