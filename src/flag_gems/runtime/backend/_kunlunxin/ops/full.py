@@ -46,8 +46,6 @@ def check_dtype(fill_value, dtype, device):
         raise RuntimeError(
             f"value cannot be converted to type {dtype} without overflow"
         )
-    if dtype in ALL_FLOAT_DTYPES:
-        fill_value = torch.tensor(fill_value, dtype=dtype, device=device)
     return fill_value
 
 
@@ -69,17 +67,12 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
     N = volume(size)
     grid_fn = (12, 1, 1)
     block_size = triton.next_power_of_2(triton.cdiv(N, 12))
-    fill_value_is_ptr = isinstance(fill_value, torch.Tensor)
-    if isinstance(fill_value, torch.Tensor):
-        if fill_value.numel() == 1:
-            fill_value_is_ptr = False
-            fill_value = fill_value.item()
     with torch_device_fn.device(device):
         full_kernel[grid_fn](
             out,
             N,
             fill_value,
-            FILL_VALUE_IS_PTR=fill_value_is_ptr,
+            FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
             BLOCK_SIZE=block_size,
             buffer_size_limit=2048,
         )
