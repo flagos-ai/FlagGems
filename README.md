@@ -83,6 +83,20 @@ The following chart shows the speedup of FlagGems compared with PyTorch ATen lib
 
 If you are interested in contributing to the FlagGems project, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md). Any contributions would be highly appreciated.
 
+## Citation
+
+If you find our work useful, please consider citing our project:
+
+```bibtex
+@misc{flaggems2024,
+    title={FlagOpen/FlagGems: FlagGems is an operator library for large language models implemented in the Triton language.},
+    url={https://github.com/FlagOpen/FlagGems},
+    journal={GitHub},
+    author={BAAI FlagOpen team},
+    year={2024}
+}
+```
+
 ## Contact us
 
 If you have any questions about our project, please submit an issue, or contact us through <a href="mailto:flaggems@baai.ac.cn">flaggems@baai.ac.cn</a>.
