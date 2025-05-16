@@ -21,5 +21,12 @@ def ones_like(
     grid_fn = (12, 1, 1)
     block_size = triton.next_power_of_2(triton.cdiv(N, 12))
     with torch_device_fn.device(x.device):
-        ones_kernel[grid_fn](out, N, BLOCK_SIZE=block_size)
+        ones_kernel[grid_fn](
+            out,
+            N,
+            1.0,
+            BLOCK_SIZE=block_size,
+            buffer_size_limit=2048,
+            isCloseDtypeConvert=True,
+        )
     return out
