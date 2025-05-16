@@ -1,3 +1,6 @@
+import concurrent.futures
+import multiprocessing
+
 import pytest
 import torch
 import triton
@@ -874,3 +877,68 @@ def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer)
     y = torch.randn_like(x)
     out = f(x, y)
     torch.testing.assert_close(out, x * 2.0 + y)
+
+
+def f_for_concurrency_test(x, alpha, use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=MAX_GRID_SIZES,
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
+    )
+    @triton.jit
+    def axpy(x, y, alpha):
+        return alpha * x + y
+
+    y = torch.zeros_like(x)
+    out = axpy(x, y, alpha)
+    return out
+
+
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_multithread(use_block_pointer):
+    shape = [128]
+    alpha = 2.0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        inputs = [torch.randn(shape, device=flag_gems.device) for _ in range(32)]
+        expected_outs = [item * alpha for item in inputs]
+        outs = []
+        for item in inputs:
+            out_future = executor.submit(
+                f_for_concurrency_test, item, alpha, use_block_pointer
+            )
+            outs.append(out_future)
+        outs = [item.result() for item in outs]
+
+    for out, expected_out in zip(outs, expected_outs):
+        torch.testing.assert_close(out, expected_out)
+
+
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_multiprocess(use_block_pointer):
+    shape = [128]
+    alpha = 2.0
+    ctx = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=8, mp_context=ctx
+    ) as executor:
+        inputs = [torch.randn(shape, device=flag_gems.device) for _ in range(32)]
+        expected_outs = [item * alpha for item in inputs]
+        outs = []
+        for item in inputs:
+            out_future = executor.submit(
+                f_for_concurrency_test, item, alpha, use_block_pointer
+            )
+            outs.append(out_future)
+        outs = [item.result() for item in outs]
+
+        for out, expected_out in zip(outs, expected_outs):
+            torch.testing.assert_close(out, expected_out)

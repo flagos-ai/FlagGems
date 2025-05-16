@@ -7,7 +7,7 @@ import triton
 from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
     all_c_contiguous,
     all_the_same_shape,
@@ -1262,16 +1262,17 @@ class PointwiseDynamicFunction:
         file_name = (
             f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
             f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
-            f"{'bptr_' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
-            f"pid_{self.pid}.py"
+            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
+            ".py"
         )
-        with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
-            f.write(code.getvalue())
+
+        file_path = code_cache_dir() / file_name
+        write_atomic(file_path, code.getvalue())
 
         # load
         spec = importlib.util.spec_from_file_location(
-            f"_gen_module_{self._scalar_fn_cache_key}_rank_{ndim}_pid_{self.pid}",
-            f.name,
+            f"_gen_module_{self._scalar_fn_cache_key}_rank_{ndim}",
+            file_path,
         )
         m = importlib.util.module_from_spec(spec)
         # do not expose it to sys.modules
