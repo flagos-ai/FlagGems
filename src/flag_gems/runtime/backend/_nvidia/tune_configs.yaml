@@ -537,7 +537,7 @@ weight_bias_backward:
 - gen: true
   param_map:
     META:
-      BLOCK_ROW_SIZE: 2048
+      BLOCK_ROW_SIZE: 128
       BLOCK_COL_SIZE: block_c
     num_warps: warps
   warps:
@@ -1132,12 +1132,9 @@ batch_norm:
     META: {}
     num_warps: warps
   warps:
-  - 1
-  - 2
   - 4
   - 8
   - 16
-  - 32
 kron:
 - gen: true
   param_map:

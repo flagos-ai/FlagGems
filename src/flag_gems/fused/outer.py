@@ -2,8 +2,7 @@ import logging
 
 import torch
 
-from .mul import mul
-from .mv import mv
+from ..ops import mul, mv
 
 
 class Outer(torch.autograd.Function):
