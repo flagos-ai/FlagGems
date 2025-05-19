@@ -9,7 +9,6 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
-from ..utils.type_utils import get_accumulator_dtype
 
 
 @triton.jit
@@ -304,135 +303,136 @@ def weight_bias_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+    pid = tle.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)
     col_mask = pid < N
-    dY += pid
-    X += pid
+    dY += pid[None, :]
+    X += pid[None, :]
     accW = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     accB = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     for off in range(0, M, BLOCK_ROW_SIZE):
-        rows = off + tl.arange(0, BLOCK_ROW_SIZE)
-        row_mask = rows[:, None] < M
-        mask = row_mask and col_mask
-        dy = tl.load(dY + rows[:, None] * N, mask).to(tl.float32)
-        x = tl.load(X + rows[:, None] * N, mask).to(tl.float32)
-        mean = tl.load(Mean + rows, mask=rows < M)[:, None].to(tl.float32)
-        rstd = tl.load(Rstd + rows, mask=rows < M)[:, None].to(tl.float32)
-        x = tl.where(col_mask, x - mean, 0.0)
-        x_hat = x * rstd
-        accW += dy * x_hat
+        rows = off + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+        row_mask = rows < M
+        mask = row_mask and col_mask[None, :]
+        dy = tl.load(dY + rows * N, mask).to(tl.float32)
+        x = tl.load(X + rows * N, mask).to(tl.float32)
+        mean = tl.load(Mean + rows, mask=rows < M).to(tl.float32)
+        rstd = tl.load(Rstd + rows, mask=rows < M).to(tl.float32)
+        x = tl.where(mask, x - mean, 0.0)
+        accW += dy * x * rstd
         accB += dy
-    if dW is not None:
+    if dW:
         dw = tl.sum(accW, axis=0)
-        tl.store(dW + pid, dw[None, :], mask=col_mask)
-    if dB is not None:
+        tl.store(dW + pid, dw, mask=col_mask)
+    if dB:
         db = tl.sum(accB, axis=0)
-        tl.store(dB + pid, db[None, :], mask=col_mask)
+        tl.store(dB + pid, db, mask=col_mask)
 
 
-class LayerNorm(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-        logging.debug("GEMS LAYERNORM FORWARD")
-        # dim = x.ndim - len(normalized_shape)
-        # M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
-        M = x.numel() // N
+def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+    logging.debug("GEMS LAYERNORM FORWARD")
 
-        x = x.contiguous()
-        if weight is not None:
-            weight = weight.contiguous()
-        if bias is not None:
-            bias = bias.contiguous()
-        y = torch.empty_like(x)
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
 
-        # NOTE: when the input is half-precision(either float16 or bfloat16)
-        # these statistical data saved for backward is in single precision
-        acc_type = get_accumulator_dtype(x.dtype)
-        mean = torch.empty(M, dtype=acc_type, device=x.device)
-        rstd = torch.empty(M, dtype=acc_type, device=x.device)
+    input = input.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    bias = None if bias is None else bias.contiguous()
+    y = torch.empty_like(input)
 
-        with torch_device_fn.device(x.device):
-            if N <= 128:
-                TILE_N = triton.next_power_of_2(N)
-                TILE_M = triton.cdiv(1024, TILE_N)
-                grid = (triton.cdiv(M, TILE_M), 1, 1)
-                layer_norm_persistent_kernel_multiline[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                    TILE_M,
-                    TILE_N,
-                )
-            elif N <= 4096:
-                TILE_N = triton.next_power_of_2(N)
-                grid = (M, 1, 1)
-                layer_norm_persistent_kernel[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                    TILE_N,
-                )
-            else:
-                grid = (M, 1, 1)
-                layer_norm_loop_kernel[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                )
-        if x.requires_grad:
-            ctx.save_for_backward(x, weight, bias, mean, rstd)
-            ctx.M = M
-            ctx.N = N
-        return y, mean, rstd
+    # NOTE: when the input is half-precision(either float16 or bfloat16)
+    # these statistical data saved for backward is in single precision
+    mean = torch.empty(M, dtype=input.dtype, device=input.device)
+    rstd = torch.empty(M, dtype=input.dtype, device=input.device)
 
-    @staticmethod
-    def backward(ctx, out_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS LAYERNORM BACKWARD")
-        out_grad = out_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
-        M = ctx.M
-        N = ctx.N
-
-        with torch_device_fn.device(x.device):
-            in_grad = torch.empty_like(x)
-            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
-            layer_norm_backward_kernel[grid](
-                out_grad, x, weight, mean, rstd, in_grad, M, N
+    with torch_device_fn.device(input.device):
+        if N <= 128:
+            TILE_N = triton.next_power_of_2(N)
+            TILE_M = triton.cdiv(1024, TILE_N)
+            grid = (triton.cdiv(M, TILE_M), 1, 1)
+            layer_norm_persistent_kernel_multiline[grid](
+                input,
+                y,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                TILE_M,
+                TILE_N,
             )
-
-        if weight is None and bias is None:
-            return in_grad, None, None, None, None, None
-
-        with torch_device_fn.device(x.device):
-            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
-            weight_grad = None if weight is None else torch.empty_like(weight)
-            bias_grad = None if bias is None else torch.empty_like(bias)
-            weight_bias_backward_kernel[grid](
-                out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
+        elif N <= 4096:
+            TILE_N = triton.next_power_of_2(N)
+            grid = (M, 1, 1)
+            layer_norm_persistent_kernel[grid](
+                input,
+                y,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                TILE_N,
             )
-        return in_grad, None, weight_grad, bias_grad, None, None
+        else:
+            grid = (M, 1, 1)
+            layer_norm_loop_kernel[grid](
+                input,
+                y,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+            )
+    return y, mean, rstd
 
 
-def layer_norm(
-    x, normalized_shape, weight=None, bias=None, eps=1e-5, cudnn_enable=True
+def layer_norm_backward(
+    grad_out,
+    input,
+    normalized_shape,
+    mean,
+    rstd,
+    weight=None,
+    bias=None,
+    output_mask=None,
 ):
-    return LayerNorm.apply(x, normalized_shape, weight, bias, eps, cudnn_enable)
+    logging.debug("GEMS LAYERNORM BACKWARD")
+
+    grad_out = grad_out.contiguous()
+    input = input.contiguous()
+    mean = mean.contiguous()
+    rstd = rstd.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    bias = None if bias is None else bias.contiguous()
+
+    M = input.shape[0]
+    N = input.numel() // M
+
+    if output_mask[0]:
+        in_grad = torch.empty_like(input)
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
+        with torch_device_fn.device(input.device):
+            layer_norm_backward_kernel[grid](
+                grad_out, input, weight, mean, rstd, in_grad, M, N
+            )
+    else:
+        in_grad = None
+
+    if output_mask[1] is False and output_mask[2] is False:
+        return in_grad, None, None
+
+    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
+    weight_grad = torch.empty_like(weight) if output_mask[1] else None
+    bias_grad = torch.empty_like(bias) if output_mask[2] else None
+    with torch_device_fn.device(input.device):
+        weight_bias_backward_kernel[grid](
+            grad_out, input, mean, rstd, weight_grad, bias_grad, M, N
+        )
+    return in_grad, weight_grad, bias_grad

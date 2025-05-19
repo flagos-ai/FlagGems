@@ -115,8 +115,7 @@ def test_accuracy_outer(M, N, dtype):
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.outer(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.outer(inp1, inp2)
+    res_out = flag_gems.outer(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out)
