@@ -9,6 +9,8 @@ from flag_gems.utils import libentry
 from ..utils import TOTAL_CORE_NUM
 from .mv import mv
 
+logger = logging.getLogger(__name__)
+
 
 # The outer kernel requires 3 parameters to determine the splitting method,
 # but during actual tuning, you only need to determine the total size of the split blocks.
@@ -124,7 +126,7 @@ def outer_(lhs, rhs):
 class Outer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, weight):
-        logging.debug("GEMS_CAMBRICON OUTER")
+        logger.debug("GEMS_CAMBRICON OUTER")
         assert inp.ndim == 1 and weight.ndim == 1, "Invalid input"
         out = outer_(inp, weight)
         ctx.save_for_backward(inp, weight)
@@ -132,7 +134,7 @@ class Outer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_CAMBRICON OUTER VJP")
+        logger.debug("GEMS_CAMBRICON OUTER VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
 
         inp, weight = ctx.saved_tensors

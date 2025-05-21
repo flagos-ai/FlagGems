@@ -8,6 +8,8 @@ from flag_gems.runtime import torch_device_fn
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 @triton.autotune(
     configs=[
@@ -63,7 +65,7 @@ def fill_tensor_kernel(
 
 
 def fill_tensor(input, value):
-    logging.debug("GEMS_CAMBRICON FILL TENSOR")
+    logger.debug("GEMS_CAMBRICON FILL TENSOR")
     out = torch.empty_like(input)
     N = out.numel()
     # grid = triton.cdiv(N, BLOCK_SIZE)
@@ -75,7 +77,7 @@ def fill_tensor(input, value):
 
 
 def fill_scalar(input, value):
-    logging.debug("GEMS_CAMBRICON FILL SCALAR")
+    logger.debug("GEMS_CAMBRICON FILL SCALAR")
     out = torch.empty_like(input)
     N = out.numel()
     # grid = triton.cdiv(N, BLOCK_SIZE)

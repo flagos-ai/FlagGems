@@ -9,6 +9,8 @@ from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -19,7 +21,7 @@ def copy_func(x):
 def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logging.debug("GEMS_CAMBRICON CAT")
+    logger.debug("GEMS_CAMBRICON CAT")
 
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")

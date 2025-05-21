@@ -13,6 +13,8 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -111,7 +113,7 @@ def max_kernel(
 
 
 def max(inp):
-    logging.debug("GEMS MAX")
+    logger.debug("GEMS MAX")
     os.environ["TRITONXPU_FROM_MAX"] = "1"
     inp = inp.contiguous()
     M = inp.numel()
@@ -145,7 +147,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS MAX DIM")
+    logger.debug("GEMS MAX DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

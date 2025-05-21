@@ -6,6 +6,7 @@ from flag_gems.runtime import device
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -21,7 +22,7 @@ def eq(A, B):
             B = B.to(A.device)
         else:
             A = A.to(B.device)
-    logging.debug("GEMS_CAMBRICON EQ")
+    logger.debug("GEMS_CAMBRICON EQ")
     return eq_func(A, B)
 
 
@@ -32,5 +33,5 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logging.debug("GEMS_CAMBRICON EQ SCALAR")
+    logger.debug("GEMS_CAMBRICON EQ SCALAR")
     return eq_func_scalar(A, B)

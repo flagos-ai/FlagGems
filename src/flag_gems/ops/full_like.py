@@ -6,6 +6,8 @@ import triton
 from ..runtime import torch_device_fn
 from .full import check_dtype, full_kernel
 
+logger = logging.getLogger(__name__)
+
 
 def full_like(
     x,
@@ -17,7 +19,7 @@ def full_like(
     pin_memory=None,
     memory_format=None,
 ):
-    logging.debug("GEMS FULL_LIKE")
+    logger.debug("GEMS FULL_LIKE")
     if device is None:
         device = x.device
     if dtype is None:

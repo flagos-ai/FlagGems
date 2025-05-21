@@ -11,6 +11,7 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 _MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
 _MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
 _MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
@@ -238,7 +239,7 @@ def topk_bubble_kernel(
 
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
-    logging.debug("GEMS_CAMBRICON TOPK")
+    logger.debug("GEMS_CAMBRICON TOPK")
     # If dim equals to last dim, we set it to -1.
     if dim < 0:
         dim = dim + x.ndim
@@ -255,7 +256,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     out_shape = x.shape[:-1] + (k,)
 
     if k <= math.log2(topk_elem_cnt):
-        logging.debug("GEMS_CAMBRICON TOPK USING BUBBLE")
+        logger.debug("GEMS_CAMBRICON TOPK USING BUBBLE")
         topk_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         topk_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
@@ -275,7 +276,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         )
         return (topk_out, topk_out_idx)
     else:
-        logging.debug("GEMS_CAMBRICON TOPK USING SORT")
+        logger.debug("GEMS_CAMBRICON TOPK USING SORT")
         # Note(Zhengzekang): Maybe we should add a heuristic search in selecting a proper chunk size.
         if topk_elem_cnt < 1024:
             chunk_size = 256

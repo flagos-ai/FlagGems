@@ -1,3 +1,4 @@
+import logging
 import math
 
 import torch
@@ -10,6 +11,8 @@ try:
     import torch_npu  # noqa: F401
 except:  # noqa: E722
     atan2 = tl_extra_shim.atan2
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
@@ -35,6 +38,7 @@ def angle_float_and_int(real):
 
 
 def angle(input_tensor: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS ANGLE")
     if input_tensor.dtype == torch.complex32 or input_tensor.dtype == torch.complex64:
         real = input_tensor.real
         imag = input_tensor.imag

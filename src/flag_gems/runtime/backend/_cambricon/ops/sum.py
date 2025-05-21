@@ -10,6 +10,8 @@ from flag_gems.utils import dim_compress, libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=["out"])
@@ -82,7 +84,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON SUM")
+    logger.debug("GEMS_CAMBRICON SUM")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -99,7 +101,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON SUM DIM")
+    logger.debug("GEMS_CAMBRICON SUM DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:

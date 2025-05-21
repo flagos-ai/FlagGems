@@ -9,6 +9,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
@@ -279,7 +281,7 @@ def softmax_backward_kernel_inner(
 
 
 def softmax(self, dim, half_to_float=False):
-    logging.debug("GEMS SOFTMAX")
+    logger.debug("GEMS SOFTMAX")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim
@@ -317,7 +319,7 @@ def softmax(self, dim, half_to_float=False):
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    logging.debug("GEMS SOFTMAX VJP")
+    logger.debug("GEMS SOFTMAX VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim

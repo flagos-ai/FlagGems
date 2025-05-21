@@ -6,6 +6,8 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
@@ -23,7 +25,7 @@ def isfinite_func(x):
 def isfinite(
     A: torch.Tensor,
 ) -> torch.Tensor:
-    logging.debug("GEMS_CAMBRICON ISFINITE")
+    logger.debug("GEMS_CAMBRICON ISFINITE")
     if A.is_floating_point():
         legal_dtype = [torch.float32, torch.float16, torch.bfloat16]
         assert (

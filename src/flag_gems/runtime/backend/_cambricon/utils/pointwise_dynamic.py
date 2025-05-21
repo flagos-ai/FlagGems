@@ -1,5 +1,4 @@
 import importlib
-import logging
 import os
 from typing import Callable, List, Mapping, Optional, Tuple
 
@@ -1071,7 +1070,6 @@ class PointwiseDynamicFunction:
         self.overloads: Mapping[int, Callable] = {}
 
     def __call__(self, *args, **kwargs):
-        logging.debug("GEMS_CAMBRICON POINTWISE TEMPLATE")
         # inputs must be passed by position, outputs must be passed by keyword
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
         overload = self.instantiate(ndim)

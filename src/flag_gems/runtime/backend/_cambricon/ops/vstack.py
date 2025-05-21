@@ -11,6 +11,8 @@ from flag_gems.utils.code_utils import IndentedBuffer
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 class VstackKernelCode(IndentedBuffer):
     """
@@ -147,16 +149,16 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                         self.writeline(f"if pid_x == {i} and pid_x == i:")
                         with self.indent():
                             self.writeline(
-                                f"for num in range(0, idx_{i+1} - idx_{i}, BLOCK_SIZE):"
+                                f"for num in range(0, idx_{i + 1} - idx_{i}, BLOCK_SIZE):"
                             )
                             with self.indent():
                                 self.writeline("in_offset = num + block")
                                 self.writeline(f"dst_offset = idx_{i} + num + block")
                                 self.writeline(
-                                    f"x = tl.load(input_{i} + in_offset, mask = in_offset < idx_{i+1} - idx_{i})"
+                                    f"x = tl.load(input_{i} + in_offset, mask = in_offset < idx_{i + 1} - idx_{i})"
                                 )
                                 self.writeline(
-                                    f"tl.store(output + dst_offset, x, mask = dst_offset < idx_{i+1})"
+                                    f"tl.store(output + dst_offset, x, mask = dst_offset < idx_{i + 1})"
                                 )
             self.writeline("else:")
             with self.indent():
@@ -345,6 +347,6 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
 
 
 def vstack(tensors: list):
-    logging.debug("GEMS_CAMBRICON VSTACK")
+    logger.debug("GEMS_CAMBRICON VSTACK")
 
     return VstackKernelCode()(tensors)

@@ -2,9 +2,11 @@ import logging
 
 from .conv2d import conv2d
 
+logger = logging.getLogger(__name__)
+
 
 def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilation):
-    logging.debug("GEMS DEPTHWISE")
+    logger.debug("GEMS DEPTHWISE")
     assert (
         input.ndim == 4
     ), "Invalid input tensor must be 4D, recevied shape {input.shape}"

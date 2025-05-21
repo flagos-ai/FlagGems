@@ -9,6 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 
@@ -231,7 +232,7 @@ class GroupNorm(torch.autograd.Function):
         # 1, 64, 32, 32
         #    64
         # import pudb; pudb.set_trace()
-        logging.debug("GEMS GROUPNORM FORWARD")
+        logger.debug("GEMS GROUPNORM FORWARD")
         group_size = C // num_groups  # 64 // 64 = 1
         x = x.contiguous()  # [1, 64, 32, 32]
         if weight is not None:
@@ -285,7 +286,7 @@ class GroupNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS GROUPNORM BACKWARD")
+        logger.debug("GEMS GROUPNORM BACKWARD")
         y_grad = y_grad.contiguous()
         (x, weight, bias, mean, rstd) = ctx.saved_tensors
         num_groups = ctx.num_groups

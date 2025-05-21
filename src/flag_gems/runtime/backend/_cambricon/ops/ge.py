@@ -4,6 +4,8 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
@@ -12,7 +14,7 @@ def ge_func(x, y):
 
 
 def ge(A, B):
-    logging.debug("GEMS_CAMBRICON GE")
+    logger.debug("GEMS_CAMBRICON GE")
     return ge_func(A, B)
 
 
@@ -23,5 +25,5 @@ def ge_func_scalar(x, y):
 
 
 def ge_scalar(A, B):
-    logging.debug("GEMS_CAMBRICON GE SCALAR")
+    logger.debug("GEMS_CAMBRICON GE SCALAR")
     return ge_func_scalar(A, B)

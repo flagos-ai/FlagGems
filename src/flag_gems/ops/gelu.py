@@ -14,6 +14,9 @@ except:  # noqa: E722
 tanh = tl_extra_shim.tanh
 
 
+logger = logging.getLogger(__name__)
+
+
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_none(x):
@@ -60,7 +63,7 @@ def gelu_backward_tanh(x, dy):
 
 
 def gelu(self, *, approximate="none"):
-    logging.debug("GEMS GELU FORWARD")
+    logger.debug("GEMS GELU FORWARD")
     if approximate == "tanh":
         out = gelu_tanh(self)
     else:
@@ -69,7 +72,7 @@ def gelu(self, *, approximate="none"):
 
 
 def gelu_backward(grad_output, self, *, approximate="none"):
-    logging.debug("GEMS GELU BACKWARD")
+    logger.debug("GEMS GELU BACKWARD")
     if approximate == "tanh":
         in_grad = gelu_backward_tanh(self, grad_output)
     else:
@@ -78,7 +81,7 @@ def gelu_backward(grad_output, self, *, approximate="none"):
 
 
 def gelu_(A, *, approximate="none"):
-    logging.debug("GEMS GELU_ FORWARD")
+    logger.debug("GEMS GELU_ FORWARD")
     if approximate == "tanh":
         out = gelu_tanh(A, out0=A)
     else:

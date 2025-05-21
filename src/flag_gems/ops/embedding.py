@@ -8,6 +8,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -109,7 +111,7 @@ def embedding_grad_scale_kernel(
 
 
 def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
-    logging.debug("GEMS EMBEDDING FORWARD")
+    logger.debug("GEMS EMBEDDING FORWARD")
     assert not sparse, "Currently do not support sparse format"
 
     M = indices.numel()
@@ -135,7 +137,7 @@ def embedding_backward(
     scale_grad_by_freq=False,
     sparse=False,
 ):
-    logging.debug("GEMS EMBEDDING BACKWARD")
+    logger.debug("GEMS EMBEDDING BACKWARD")
     assert not sparse, "Currently do not support sparse format"
 
     M = indices.numel()

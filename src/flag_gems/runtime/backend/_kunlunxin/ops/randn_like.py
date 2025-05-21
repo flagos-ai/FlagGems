@@ -9,13 +9,14 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .randn import choose_unroll, randn_kernel_1, randn_kernel_2
 
+logger = logging.getLogger(__name__)
 # UNROLL = 4
 
 
 def randn_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
 ):
-    logging.debug("GEMS RANDN_LIKE")
+    logger.debug("GEMS RANDN_LIKE")
     if device is None:
         device = x.device.index
     if dtype is None:

@@ -9,6 +9,8 @@ from flag_gems import runtime
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(
@@ -110,7 +112,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logging.debug("GEMS MM")
+    logger.debug("GEMS MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:

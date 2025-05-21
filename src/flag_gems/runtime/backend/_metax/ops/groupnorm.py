@@ -10,6 +10,8 @@ from flag_gems.utils import triton_lang_extension as tle
 
 rsqrt = tl_extra_shim.rsqrt
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
@@ -176,7 +178,7 @@ def weight_bias_backward_kernel(
 class GroupNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
-        logging.debug("METAX GEMS GROUPNORM FORWARD")
+        logger.debug("METAX GEMS GROUPNORM FORWARD")
         group_size = C // num_groups
         x = x.contiguous()
         if weight is not None:
@@ -215,7 +217,7 @@ class GroupNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logging.debug("METAX GEMS GROUPNORM BACKWARD")
+        logger.debug("METAX GEMS GROUPNORM BACKWARD")
         y_grad = y_grad.contiguous()
         (x, weight, bias, mean, rstd) = ctx.saved_tensors
         num_groups = ctx.num_groups

@@ -10,6 +10,7 @@ try:
 except:  # noqa: E722
     pow = tl_extra_shim.pow
 _tanh = tl_extra_shim.tanh
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -26,18 +27,18 @@ def tanh_backward_kernel(y, dy):
 
 
 def tanh(self):
-    logging.debug("GEMS TANH FORWARD")
+    logger.debug("GEMS TANH FORWARD")
     out = tanh_kernel(self)
     return out
 
 
 def tanh_backward(grad_output, output):
-    logging.debug("GEMS TANH BACKWARD")
+    logger.debug("GEMS TANH BACKWARD")
     in_grad = tanh_backward_kernel(output, grad_output)
     return in_grad
 
 
 def tanh_(A):
-    logging.debug("GEMS TANH_ FORWARD")
+    logger.debug("GEMS TANH_ FORWARD")
     out = tanh_kernel(A, out0=A)
     return out

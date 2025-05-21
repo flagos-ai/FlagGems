@@ -9,6 +9,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 def nonzero_kernel_heur_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["n_elements"], 12))  # cluster_num
@@ -57,7 +59,7 @@ def nonzero_kernel(
 
 
 def nonzero(inp, *, as_tuple=False):
-    logging.debug("GEMS NONZERO")
+    logger.debug("GEMS NONZERO")
 
     inp_ndim = inp.ndim
 

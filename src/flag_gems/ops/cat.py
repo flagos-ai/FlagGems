@@ -8,6 +8,8 @@ import triton
 from ..utils import pointwise_dynamic
 from ..utils.tensor_wrapper import StridedBuffer
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -18,7 +20,7 @@ def copy_func(x):
 def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logging.debug("GEMS CAT")
+    logger.debug("GEMS CAT")
 
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")

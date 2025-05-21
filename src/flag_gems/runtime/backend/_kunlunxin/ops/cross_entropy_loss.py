@@ -9,6 +9,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 def heur_block_m(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
@@ -521,7 +523,7 @@ def sum_and_scale(
 class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index, label_smoothing):
-        logging.debug("GEMS CrossEntropyLoss")
+        logger.debug("GEMS CrossEntropyLoss")
 
         shape = list(inp.shape)
         dim = inp.ndim
@@ -609,7 +611,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS CrossEntropyLoss VJP")
+        logger.debug("GEMS CrossEntropyLoss VJP")
 
         inp, tgt, weight = ctx.saved_tensors
         N = ctx.N

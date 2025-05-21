@@ -12,6 +12,8 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, get_triton_dtype, should_enable_sqmma
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -162,7 +164,7 @@ def get_mm_config():
 
 
 def addmm_sqmma(bias, mat1, mat2, *, beta=1, alpha=1):
-    logging.debug("GEMS ADDMM SQMMA")
+    logger.debug("GEMS ADDMM SQMMA")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -219,7 +221,7 @@ def addmm_sqmma(bias, mat1, mat2, *, beta=1, alpha=1):
 
 
 def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
-    logging.debug("GEMS ADDMM FMA")
+    logger.debug("GEMS ADDMM FMA")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])

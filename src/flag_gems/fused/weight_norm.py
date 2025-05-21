@@ -11,6 +11,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(
@@ -134,7 +136,7 @@ def weight_norm_except_dim_bwd_kernel(
 
 
 def weight_norm_except_dim(v, g, dim):
-    logging.debug("GEMS WEIGHT NORM EXCEPT DIM FORWARD")
+    logger.debug("GEMS WEIGHT NORM EXCEPT DIM FORWARD")
     v = v.contiguous()
     output = torch.empty_like(v)
     norm = torch.empty_like(g, dtype=torch.float32)
@@ -161,7 +163,7 @@ def weight_norm_except_dim(v, g, dim):
 
 
 def weight_norm_except_dim_backward(grad, v, g, norm, dim):
-    logging.debug("GEMS WEIGHT NORM EXCEPT DIM BACKWARD")
+    logger.debug("GEMS WEIGHT NORM EXCEPT DIM BACKWARD")
     grad = grad.contiguous()
     v_grad = torch.empty_like(v)
     g_grad = torch.empty_like(g)
@@ -189,7 +191,7 @@ def weight_norm_except_dim_backward(grad, v, g, norm, dim):
 class WeightNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, v, g, dim=0):
-        logging.debug("GEMS WEIGHT NORM")
+        logger.debug("GEMS WEIGHT NORM")
         dim = dim % v.ndim
         can_use_fused = dim == 0 or dim == v.ndim - 1
         if can_use_fused:
@@ -203,7 +205,7 @@ class WeightNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad):
-        logging.debug("GEMS WEIGHT NORM BACKWARD")
+        logger.debug("GEMS WEIGHT NORM BACKWARD")
         v, g, norm = ctx.saved_tensors
         dim = ctx.dim
         if ctx.can_use_fused:

@@ -17,6 +17,7 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 _MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
 _MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
 _MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
@@ -274,7 +275,7 @@ def topk_stage2_kernel(
 
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
-    logging.debug("GEMS TOPK")
+    logger.debug("GEMS TOPK")
     # If dim equals to last dim, we set it to -1.
     if dim < 0:
         dim = dim + x.ndim

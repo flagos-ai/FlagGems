@@ -9,6 +9,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -122,7 +124,7 @@ def apply_rotary_pos_emb(
         q_embed: (*, q_heads, head_dim)
         k_embed: (*, k_heads, head_dim)
     """
-    logging.debug("GEMS ROTARY POS EMBEDDING")
+    logger.debug("GEMS ROTARY POS EMBEDDING")
     assert (
         k.shape[-1] == q.shape[-1]
     ), f"q and k must have the same last dimension, got {q.shape} and {k.shape}"

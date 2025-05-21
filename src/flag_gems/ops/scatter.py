@@ -9,6 +9,8 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import has_internal_overlapping, restride_dim
 
+logger = logging.getLogger(__name__)
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
@@ -322,7 +324,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
-    logging.debug("GEMS SCATTER")
+    logger.debug("GEMS SCATTER")
     out = inp.clone()
 
     if reduce is not None:
@@ -357,7 +359,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
 
 def scatter_(inp, dim, index, src, reduce=None):
-    logging.debug("GEMS SCATTER_")
+    logger.debug("GEMS SCATTER_")
     out = inp
 
     if reduce is not None:

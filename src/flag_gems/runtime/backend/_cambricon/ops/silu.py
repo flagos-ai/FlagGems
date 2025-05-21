@@ -8,6 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
 
 
@@ -32,14 +33,14 @@ def silu_backward(x, dy):
 class Silu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS_CAMBRICON SILU FORWARD")
+        logger.debug("GEMS_CAMBRICON SILU FORWARD")
         out = silu_forward(A)
         ctx.save_for_backward(A)
         return out
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_CAMBRICON SILU BACKWARD")
+        logger.debug("GEMS_CAMBRICON SILU BACKWARD")
         out_grad = out_grad.contiguous()
         (inp,) = ctx.saved_tensors
         in_grad = silu_backward(inp, out_grad)

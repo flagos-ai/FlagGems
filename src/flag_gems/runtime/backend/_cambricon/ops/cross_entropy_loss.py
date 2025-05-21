@@ -11,6 +11,8 @@ from flag_gems.utils import libentry
 from ..utils import TOTAL_CORE_NUM
 from .sum import sum
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(
@@ -801,7 +803,7 @@ def celoss_indices_smooth_bwd(
 class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index, label_smoothing):
-        logging.debug("GEMS_CAMBRICON CrossEntropyLoss")
+        logger.debug("GEMS_CAMBRICON CrossEntropyLoss")
 
         shape = list(inp.shape)
         dim = inp.ndim
@@ -935,7 +937,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_CAMBRICON CrossEntropyLoss VJP")
+        logger.debug("GEMS_CAMBRICON CrossEntropyLoss VJP")
 
         inp, tgt, weight, final_max, final_sum = ctx.saved_tensors
         N = ctx.N

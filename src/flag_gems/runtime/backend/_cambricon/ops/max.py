@@ -12,6 +12,8 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -201,7 +203,7 @@ def max_kernel(
 
 
 def max(inp):
-    logging.debug("GEMS_CAMBRICON MAX")
+    logger.debug("GEMS_CAMBRICON MAX")
     inp = inp.contiguous()
     M = inp.numel()
     dtype = inp.dtype
@@ -238,7 +240,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS_CAMBRICON MAX DIM")
+    logger.debug("GEMS_CAMBRICON MAX DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

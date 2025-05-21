@@ -8,6 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 exp2 = tl_extra_shim.exp2
 
 
@@ -32,7 +33,7 @@ def sigmoid_backward(y, dy):
 class Sigmoid(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS SIGMOID FORWARD")
+        logger.debug("GEMS SIGMOID FORWARD")
         if A.requires_grad is True:
             out = sigmoid_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -43,7 +44,7 @@ class Sigmoid(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS SIGMOID BACKWARD")
+        logger.debug("GEMS SIGMOID BACKWARD")
         (out,) = ctx.saved_tensors
         in_grad = sigmoid_backward(out, out_grad)
         return in_grad
@@ -56,7 +57,7 @@ def sigmoid(A):
 class InplaceSigmoid(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS SIGMOID_ FORWARD")
+        logger.debug("GEMS SIGMOID_ FORWARD")
         if A.requires_grad is True:
             out = sigmoid_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -68,7 +69,7 @@ class InplaceSigmoid(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS SIGMOID_ BACKWARD")
+        logger.debug("GEMS SIGMOID_ BACKWARD")
         (out,) = ctx.saved_tensors
         in_grad = sigmoid_backward(out, out_grad)
         return in_grad

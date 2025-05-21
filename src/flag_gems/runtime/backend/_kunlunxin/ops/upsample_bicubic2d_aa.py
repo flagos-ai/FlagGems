@@ -9,6 +9,7 @@ import triton.language as tl
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -532,7 +533,7 @@ def _upsample_bicubic2d_aa(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ):
-    logging.debug("GEMS UPSAMPLE BICUBIC2D AA")
+    logger.debug("GEMS UPSAMPLE BICUBIC2D AA")
     assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"

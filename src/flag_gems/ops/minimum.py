@@ -6,6 +6,7 @@ import triton.language as tl
 from ..runtime import device
 from ..utils import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -19,6 +20,6 @@ def minimum_kernel(X, Y):
 
 
 def minimum(X, Y):
-    logging.debug("GEMS MINIMUM")
+    logger.debug("GEMS MINIMUM")
     assert X.device.type == device and Y.device.type == device
     return minimum_kernel(X, Y)

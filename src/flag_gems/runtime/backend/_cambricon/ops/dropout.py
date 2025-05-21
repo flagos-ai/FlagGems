@@ -15,6 +15,8 @@ from flag_gems.utils.random_utils import (
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
@@ -99,7 +101,7 @@ UNROLL = 4
 class NativeDropout(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, p, train):
-        logging.debug("GEMS_CAMBRICON NATIVE DROPOUT FORWARD")
+        logger.debug("GEMS_CAMBRICON NATIVE DROPOUT FORWARD")
         assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
         device = x.device
         x = x.contiguous()
@@ -123,7 +125,7 @@ class NativeDropout(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_outputs, kwargs):
-        logging.debug("GEMS_CAMBRICON NATIVE DROPOUT BACKWARD")
+        logger.debug("GEMS_CAMBRICON NATIVE DROPOUT BACKWARD")
         device = grad_outputs.device
         grad_outputs = grad_outputs.contiguous()
         grad_inputs = torch.empty_like(grad_outputs)

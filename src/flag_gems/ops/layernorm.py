@@ -10,6 +10,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @triton.jit
 def prev_multiple_of(a, b):
@@ -329,7 +331,7 @@ def weight_bias_backward_kernel(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logging.debug("GEMS LAYERNORM FORWARD")
+    logger.debug("GEMS LAYERNORM FORWARD")
 
     N = math.prod(normalized_shape)
     M = input.numel() // N
@@ -403,7 +405,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logging.debug("GEMS LAYERNORM BACKWARD")
+    logger.debug("GEMS LAYERNORM BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

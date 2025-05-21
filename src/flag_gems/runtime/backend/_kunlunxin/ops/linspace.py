@@ -7,6 +7,8 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -34,7 +36,7 @@ def linspace_kernel(
 def linspace(
     start, end, steps, *, dtype=None, layout=None, device=None, pin_memory=None
 ) -> torch.Tensor:
-    logging.debug("GEMS LINSPACE")
+    logger.debug("GEMS LINSPACE")
     print("kunlunxin linspace")
     assert steps >= 1, "steps must be >= 1"
 

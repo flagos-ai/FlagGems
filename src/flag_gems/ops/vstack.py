@@ -9,6 +9,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(
@@ -62,7 +64,7 @@ def vstack_kernel(
 
 
 def vstack(tensors: list):
-    logging.debug("GEMS VSTACK")
+    logger.debug("GEMS VSTACK")
 
     tensors = torch.atleast_2d(tensors)
     num_tensors = len(tensors)

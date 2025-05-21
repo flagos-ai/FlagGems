@@ -7,6 +7,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 _isinf = tl_extra_shim.isinf
 
 
@@ -17,5 +18,5 @@ def isinf_func(x):
 
 
 def isinf(A):
-    logging.debug("GEMS_CAMBRICON ISINF")
+    logger.debug("GEMS_CAMBRICON ISINF")
     return isinf_func(A)

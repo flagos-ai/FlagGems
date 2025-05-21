@@ -8,6 +8,8 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @libtuner(
@@ -106,7 +108,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logging.debug("GEMS_CAMBRICON MM")
+    logger.debug("GEMS_CAMBRICON MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:

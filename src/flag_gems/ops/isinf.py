@@ -10,6 +10,8 @@ try:
 except:  # noqa: E722
     _isinf = tl_extra_shim.isinf
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
@@ -18,5 +20,5 @@ def isinf_func(x):
 
 
 def isinf(A):
-    logging.debug("GEMS ISINF")
+    logger.debug("GEMS ISINF")
     return isinf_func(A)

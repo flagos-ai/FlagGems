@@ -4,6 +4,8 @@ import torch
 
 from .full import check_dtype, full_
 
+logger = logging.getLogger(__name__)
+
 
 def full_like(
     x,
@@ -15,7 +17,7 @@ def full_like(
     pin_memory=None,
     memory_format=None,
 ):
-    logging.debug("METAX GEMS FULL_LIKE")
+    logger.debug("METAX GEMS FULL_LIKE")
     if device is None:
         device = x.device
     if dtype is None:

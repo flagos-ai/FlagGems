@@ -8,6 +8,8 @@ import triton.language as tl
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -95,7 +97,7 @@ def count_nonzero_combin_kernel(
 
 
 def count_nonzero(x, dim=None):
-    logging.debug("GEMS COUNT NONZERO")
+    logger.debug("GEMS COUNT NONZERO")
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape

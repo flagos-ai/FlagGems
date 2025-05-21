@@ -12,6 +12,8 @@ from flag_gems.utils.random_utils import (
 from .. import runtime
 from ..runtime import torch_device_fn
 
+logger = logging.getLogger(__name__)
+
 
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
@@ -95,7 +97,7 @@ UNROLL = 4
 
 
 def dropout(input, p, train=True):
-    logging.debug("GEMS NATIVE DROPOUT FORWARD")
+    logger.debug("GEMS NATIVE DROPOUT FORWARD")
     if not train or p == 0:
         out = input.clone()
         mask = torch.ones_like(input, dtype=torch.bool)
@@ -124,7 +126,7 @@ def dropout(input, p, train=True):
 
 
 def dropout_backward(grad_output, mask, scale):
-    logging.debug("GEMS NATIVE DROPOUT BACKWARD")
+    logger.debug("GEMS NATIVE DROPOUT BACKWARD")
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()

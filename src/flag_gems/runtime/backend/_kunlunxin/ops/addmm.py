@@ -9,6 +9,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(
@@ -69,7 +71,7 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
-    logging.debug("GEMS ADDMM")
+    logger.debug("GEMS ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])

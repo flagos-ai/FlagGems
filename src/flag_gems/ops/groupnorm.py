@@ -9,6 +9,7 @@ from ..utils import libentry, tl_extra_shim
 from ..utils import triton_lang_extension as tle
 
 rsqrt = tl_extra_shim.rsqrt
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -181,7 +182,7 @@ def weight_bias_backward_kernel(
 
 
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
-    logging.debug("GEMS GROUPNORM FORWARD")
+    logger.debug("GEMS GROUPNORM FORWARD")
 
     group_size = triton.cdiv(C, group)
     input = input.contiguous()
@@ -215,7 +216,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
 def group_norm_backward(
     grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
 ):
-    logging.debug("GEMS GROUPNORM BACKWARD")
+    logger.debug("GEMS GROUPNORM BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

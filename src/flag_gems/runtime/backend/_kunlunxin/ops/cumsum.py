@@ -10,6 +10,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -339,7 +340,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
 
 def cumsum(inp, dim=1, *, dtype=None):
-    logging.debug("GEMS CUMSUM")
+    logger.debug("GEMS CUMSUM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -512,7 +513,7 @@ GRID_Y_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
-    logging.debug("GEMS NORMED_CUMSUM")
+    logger.debug("GEMS NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()

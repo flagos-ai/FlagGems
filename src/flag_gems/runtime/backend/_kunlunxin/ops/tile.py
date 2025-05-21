@@ -8,6 +8,8 @@ import torch
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
+logger = logging.getLogger(__name__)
+
 
 # --------------------------- tile wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
@@ -440,7 +442,7 @@ _tile_func = TileFunction()
 
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
-    logging.debug("GEMS TILE")
+    logger.debug("GEMS TILE")
 
     out = _tile_func(inp, dims)
     return out

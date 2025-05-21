@@ -12,6 +12,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
+logger = logging.getLogger(__name__)
 # def heur_block(args):
 #     if args["N"] <= 512:
 #         return 512
@@ -107,7 +108,7 @@ def transform_exponential(u, lambd, eps):
 
 
 def exponential_(x, lambd: float = 1.0, *, gen=None):
-    logging.debug("GEMS EXPONENTIAL_")
+    logger.debug("GEMS EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()

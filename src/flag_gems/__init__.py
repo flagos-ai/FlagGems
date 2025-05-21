@@ -1,5 +1,4 @@
 import logging
-import os
 
 import torch
 
@@ -14,6 +13,7 @@ except ImportError:
 from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
+from .logging_utils import setup_flaggems_logging
 from .ops import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
@@ -25,19 +25,6 @@ aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
-
-
-class LogOncePerLocationFilter(logging.Filter):
-    def __init__(self):
-        super().__init__()
-        self.logged_locations = set()
-
-    def filter(self, record):
-        key = (record.pathname, record.lineno)
-        if key in self.logged_locations:
-            return False
-        self.logged_locations.add(key)
-        return True
 
 
 def enable(
@@ -277,7 +264,7 @@ def enable(
             ("fill.Scalar", fill_scalar, Autograd.disable),
             ("fill.Tensor", fill_tensor, Autograd.disable),
             ("fill_.Scalar", fill_scalar_, Autograd.disable),
-            ("fill_.Tensor", fill_tensor_, Autograd.disable),
+            # ("fill_.Tensor", fill_tensor_, Autograd.disable),
             ("flip", flip, Autograd.disable),
             ("slice_scatter", slice_scatter, Autograd.disable),
             ("select_scatter", select_scatter, Autograd.disable),
@@ -333,19 +320,7 @@ def enable(
         lib=lib,
         forward_only=forward_only,
     )
-    if record:
-        filename = (
-            os.environ.get("HOME") + "/.flaggems/oplist.log" if path is None else path
-        )
-        handler = logging.FileHandler(filename, mode="w")
-        if once:
-            handler.addFilter(LogOncePerLocationFilter())
-        logging.basicConfig(
-            level=logging.DEBUG,
-            handlers=[
-                handler,
-            ],
-        )
+    setup_flaggems_logging(path=path, record=record, once=once)
 
 
 class use_gems:

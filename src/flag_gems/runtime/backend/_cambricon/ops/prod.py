@@ -11,6 +11,8 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op2, count_divisible_by_2
 
+logger = logging.getLogger(__name__)
+
 
 @triton.jit
 def reduce_mul(a, b):
@@ -70,7 +72,7 @@ def prod_kernel_result(mid, out, mid_size: tl.constexpr, loop_num: tl.constexpr)
 
 
 def prod(inp, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON PROD")
+    logger.debug("GEMS_CAMBRICON PROD")
     if dtype is None:
         dtype = inp.dtype
 
@@ -134,7 +136,7 @@ def prod_kernel(
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON PROD DIM")
+    logger.debug("GEMS_CAMBRICON PROD DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape

@@ -12,6 +12,8 @@ from flag_gems.utils.shape_utils import can_use_int32_index
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 def cfggen_reduce_op():
     return runtime.get_tuned_config("argmax_kernel_1")
@@ -134,7 +136,7 @@ def argmax_kernel(
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON ARGMAX")
+    logger.debug("GEMS_CAMBRICON ARGMAX")
     if dim is None:
         M = inp.numel()
         if dtype is None:

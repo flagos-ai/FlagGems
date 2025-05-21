@@ -9,6 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if any elements in input evaluate to non-zero value
 # In triton function, test if any elements in input evaluate to non-zero value is ok.
@@ -141,7 +142,7 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def any(inp):
-    logging.debug("GEMS ANY")
+    logger.debug("GEMS ANY")
     n_elements = inp.numel()
     block_size = min(
         triton.cdiv(get_block(n_elements), cluster_num),
@@ -182,7 +183,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ANY DIM")
+    logger.debug("GEMS ANY DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -217,7 +218,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ANY DIMS")
+    logger.debug("GEMS ANY DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)

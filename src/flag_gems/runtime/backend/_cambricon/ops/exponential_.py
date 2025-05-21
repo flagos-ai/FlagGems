@@ -14,6 +14,8 @@ from flag_gems.utils.random_utils import (
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 @triton.heuristics(runtime.get_heuristic_config("exponential_"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
@@ -76,7 +78,7 @@ def transform_exponential(u, lambd, eps):
 
 
 def exponential_(x, lambd: float = 1.0, *, gen=None):
-    logging.debug("GEMS_CAMBRICON EXPONENTIAL_")
+    logger.debug("GEMS_CAMBRICON EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()

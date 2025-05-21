@@ -8,6 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
 pow = tl_extra_shim.pow
@@ -64,7 +65,7 @@ def gelu_backward_tanh(x, dy):
 class Gelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, approximate):
-        logging.debug("GEMS GELU FORWARD")
+        logger.debug("GEMS GELU FORWARD")
         if approximate == "tanh":
             out = gelu_tanh(A)
         else:
@@ -75,7 +76,7 @@ class Gelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS GELU BACKWARD")
+        logger.debug("GEMS GELU BACKWARD")
         (inp,) = ctx.saved_tensors
         approximate = ctx.approximate
         if approximate == "tanh":
@@ -92,7 +93,7 @@ def gelu(A, *, approximate="none"):
 class InplaceGelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, approximate):
-        logging.debug("GEMS GELU_ FORWARD")
+        logger.debug("GEMS GELU_ FORWARD")
         ctx.save_for_backward(A.clone())
         ctx.mark_dirty(A)
         ctx.approximate = approximate
@@ -105,7 +106,7 @@ class InplaceGelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS GELU_ BACKWARD")
+        logger.debug("GEMS GELU_ BACKWARD")
         (inp,) = ctx.saved_tensors
         approximate = ctx.approximate
         if approximate == "tanh":

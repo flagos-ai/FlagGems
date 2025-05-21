@@ -8,6 +8,8 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
+logger = logging.getLogger(__name__)
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
@@ -269,7 +271,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
-    logging.debug("GEMS_CAMBRICON SCATTER")
+    logger.debug("GEMS_CAMBRICON SCATTER")
     inp = inp.contiguous()
     index = index.contiguous()
     src = src.contiguous()

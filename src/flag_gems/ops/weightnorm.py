@@ -10,6 +10,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(
@@ -200,7 +202,7 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logging.debug("GEMS WEIGHT NORM INTERFACE FORWARD")
+    logger.debug("GEMS WEIGHT NORM INTERFACE FORWARD")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
@@ -225,7 +227,7 @@ def weight_norm_interface(v, g, dim=0):
 
 
 def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
-    logging.debug("GEMS WEIGHT NORM INTERFACE BACKWARD")
+    logger.debug("GEMS WEIGHT NORM INTERFACE BACKWARD")
     w_grad = w_grad.contiguous()
     saved_v = saved_v.contiguous()
     saved_g = saved_g.contiguous()

@@ -5,6 +5,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
+logger = logging.getLogger(__name__)
 _pow = tl_extra_shim.pow
 
 
@@ -20,12 +21,12 @@ def pow_func(x, exponent):
 
 
 def pow_tensor_tensor(A, exponent):
-    logging.debug("GEMS POW_TENSOR_TENSOR")
+    logger.debug("GEMS POW_TENSOR_TENSOR")
     return pow_func(A, exponent)
 
 
 def pow_tensor_tensor_(A, exponent):
-    logging.debug("GEMS POW_TENSOR_TENSOR_")
+    logger.debug("GEMS POW_TENSOR_TENSOR_")
     return pow_func(A, exponent, out0=A)
 
 
@@ -41,12 +42,12 @@ def pow_func_tensor_scalar(x, exponent):
 
 
 def pow_tensor_scalar(A, exponent):
-    logging.debug("GEMS POW_TENSOR_SCALAR")
+    logger.debug("GEMS POW_TENSOR_SCALAR")
     return pow_func_tensor_scalar(A, exponent)
 
 
 def pow_tensor_scalar_(A, exponent):
-    logging.debug("GEMS POW_TENSOR_SCALAR_")
+    logger.debug("GEMS POW_TENSOR_SCALAR_")
     return pow_func_tensor_scalar(A, exponent, out0=A)
 
 
@@ -62,5 +63,5 @@ def pow_func_scalar_tensor(x, exponent):
 
 
 def pow_scalar(A, exponent):
-    logging.debug("GEMS POW_SCALAR")
+    logger.debug("GEMS POW_SCALAR")
     return pow_func_scalar_tensor(A, exponent)

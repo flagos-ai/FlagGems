@@ -10,6 +10,8 @@ from flag_gems.utils import libentry
 
 from ..utils import cfggen_reduce_op
 
+logger = logging.getLogger(__name__)
+
 MAX_NRAM_C_FORWARD = 16384 * 2
 
 
@@ -87,7 +89,7 @@ def rms_norm_kernel_C_split(
 class RmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, eps=1e-5):
-        logging.debug("GEMS_CAMBRICON RMSNORM FORWARD")
+        logger.debug("GEMS_CAMBRICON RMSNORM FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
@@ -99,10 +101,10 @@ class RmsNorm(torch.autograd.Function):
 
         with torch_device_fn.device(x.device):
             if BLOCK_SIZE <= MAX_NRAM_C_FORWARD:
-                logging.debug("GEMS_CAMBRICON RMSNORM FORWARD NOT USING C SPLIT")
+                logger.debug("GEMS_CAMBRICON RMSNORM FORWARD NOT USING C SPLIT")
                 rms_norm_kernel[M,](y, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
             else:
-                logging.debug("GEMS_CAMBRICON RMSNORM FORWARD USING C SPLIT")
+                logger.debug("GEMS_CAMBRICON RMSNORM FORWARD USING C SPLIT")
                 rms_norm_kernel_C_split[M,](y, x, weight, N, 1, N, 1, N, eps)
         return y
 

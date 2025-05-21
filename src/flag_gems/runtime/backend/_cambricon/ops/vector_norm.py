@@ -10,6 +10,7 @@ from flag_gems.utils import dim_compress, libentry, tl_extra_shim
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
 
+logger = logging.getLogger(__name__)
 pow = tl_extra_shim.pow
 
 
@@ -390,7 +391,7 @@ def l1_norm_kernel_2(
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logging.debug("GEMS_CAMBRICON VECTOR NORM")
+    logger.debug("GEMS_CAMBRICON VECTOR NORM")
     if dtype is not None:
         dtype = torch.dtype(dtype)
     else:

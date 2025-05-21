@@ -10,6 +10,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 def weight_norm_kernel_last_block_row(args):
     return 1
@@ -262,7 +264,7 @@ def weight_norm_bwd_kernel_first(
 class WeightNormInterface(torch.autograd.Function):
     @staticmethod
     def forward(ctx, v, g, dim):
-        logging.debug("GEMS WEIGHTNORM FORWARD")
+        logger.debug("GEMS WEIGHTNORM FORWARD")
         v = v.contiguous()
         g = g.contiguous()
         output = torch.empty_like(v)
@@ -289,7 +291,7 @@ class WeightNormInterface(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, w_grad, norm_grad):
-        logging.debug("GEMS WEIGHTNORM BACKWARD")
+        logger.debug("GEMS WEIGHTNORM BACKWARD")
         v, g, norm = ctx.saved_tensors
         dim = ctx.DIM
         w_grad = w_grad.contiguous()
@@ -476,7 +478,7 @@ def weight_norm_except_dim_bwd_kernel(
 class WeightNormExceptDim(torch.autograd.Function):
     @staticmethod
     def forward(ctx, v, g, dim):
-        logging.debug("GEMS NORM FORWARD")
+        logger.debug("GEMS NORM FORWARD")
         v = v.contiguous()
         output = torch.empty_like(v)
         norm = torch.empty_like(g, dtype=torch.float32)
@@ -505,7 +507,7 @@ class WeightNormExceptDim(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad):
-        logging.debug("GEMS NORM BACKWARD")
+        logger.debug("GEMS NORM BACKWARD")
         grad = grad.contiguous()
         v, g, norm = ctx.saved_tensors
         v_grad = torch.empty_like(v)
