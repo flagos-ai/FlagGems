@@ -7,6 +7,8 @@ import triton.language as tl
 from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 def masked_fill_kernel_heur_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # cluster_num
@@ -57,7 +59,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr
 
 
 def masked_fill(inp, mask, value):
-    logging.debug("GEMS MASKED FILL")
+    logger.debug("GEMS MASKED FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -112,7 +114,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logging.debug("GEMS MASKED FILL")
+    logger.debug("GEMS MASKED FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)

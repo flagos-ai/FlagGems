@@ -6,11 +6,13 @@ import triton
 from ..runtime import torch_device_fn
 from .ones import ones_kernel
 
+logger = logging.getLogger(__name__)
+
 
 def ones_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
 ):
-    logging.debug("GEMS ONES_LIKE")
+    logger.debug("GEMS ONES_LIKE")
     if device is None:
         device = x.device
     if dtype is None:

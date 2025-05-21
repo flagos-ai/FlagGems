@@ -6,6 +6,8 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -22,14 +24,14 @@ def relu_backward(x, dy):
 class Relu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS RELU FORWARD")
+        logger.debug("GEMS RELU FORWARD")
         out = relu_forward(A)
         ctx.save_for_backward(A)
         return out
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS RELU BACKWARD")
+        logger.debug("GEMS RELU BACKWARD")
         (inp,) = ctx.saved_tensors
         in_grad = relu_backward(inp, out_grad)
         return in_grad
@@ -42,7 +44,7 @@ def relu(A):
 class InplaceRelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS RELU_ FORWARD")
+        logger.debug("GEMS RELU_ FORWARD")
         ctx.save_for_backward(A.clone())
         ctx.mark_dirty(A)
         out = relu_forward(A, out0=A)
@@ -50,7 +52,7 @@ class InplaceRelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS RELU_ BACKWARD")
+        logger.debug("GEMS RELU_ BACKWARD")
         (inp,) = ctx.saved_tensors
         in_grad = relu_backward(inp, out_grad)
         return in_grad

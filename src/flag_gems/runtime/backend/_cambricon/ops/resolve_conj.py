@@ -5,6 +5,8 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -13,7 +15,7 @@ def conj_func(x):
 
 
 def resolve_conj(A: torch.Tensor):
-    logging.debug("GEMS_CAMBRICON RESOLVE_CONJ")
+    logger.debug("GEMS_CAMBRICON RESOLVE_CONJ")
     assert (
         A.dtype == torch.cfloat
     ), "The `resolve_conj` operation in FlagGems currently only supports the `torch.cfloat` type"

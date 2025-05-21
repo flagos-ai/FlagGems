@@ -11,6 +11,8 @@ from flag_gems.utils.shape_utils import restride_dim
 
 from .scatter import scatter_
 
+logger = logging.getLogger(__name__)
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
@@ -272,7 +274,7 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logging.debug("GEMS GATHER")
+    logger.debug("GEMS GATHER")
     inp = inp.contiguous()
     index = index.contiguous()
     if out is None:
@@ -290,6 +292,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logging.debug("GEMS GATHER BACKWARD")
+    logger.debug("GEMS GATHER BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

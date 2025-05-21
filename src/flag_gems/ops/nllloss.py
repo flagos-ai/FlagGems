@@ -7,6 +7,8 @@ import triton.language as tl
 from ..runtime import torch_device_fn
 from ..utils import libentry
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -239,7 +241,7 @@ def nll_loss2d_backward_kernel(
 
 # 1d & 2d tensor
 def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
-    logging.debug("GEMS NLL Loss FWD")
+    logger.debug("GEMS NLL Loss FWD")
     assert self.ndim <= 2, "Invalid input ndim"
     shape = list(target.shape)
     N = 1 if self.ndim == 1 else self.shape[0]
@@ -301,7 +303,7 @@ def nll_loss_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logging.debug("GEMS NLL Loss BWD")
+    logger.debug("GEMS NLL Loss BWD")
     N = 1 if self.ndim == 1 else self.shape[0]
     C = self.shape[-1]
 
@@ -330,7 +332,7 @@ def nll_loss_backward(
 
 # 3d+ tensor
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
-    logging.debug("GEMS NLL Loss2d FWD")
+    logger.debug("GEMS NLL Loss2d FWD")
     assert self.ndim == 4, "Invalid input ndim"
 
     shape = list(target.shape)
@@ -384,7 +386,7 @@ def nll_loss2d_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logging.debug("GEMS NLL Loss2d BWD")
+    logger.debug("GEMS NLL Loss2d BWD")
     N, C, _, D = self.shape
 
     grad_output = grad_output.contiguous()

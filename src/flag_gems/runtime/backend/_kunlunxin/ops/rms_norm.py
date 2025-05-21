@@ -10,6 +10,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
@@ -258,7 +260,7 @@ def rms_norm_grad_dw_kernel(
 class RmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, eps=1e-5):
-        logging.debug("GEMS LAYERNORM FORWARD")
+        logger.debug("GEMS LAYERNORM FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
@@ -296,7 +298,7 @@ class RmsNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dy):
-        logging.debug("GEMS LAYERNORM BACKWARD")
+        logger.debug("GEMS LAYERNORM BACKWARD")
         x, inv_rms, weight = ctx.saved_tensors
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps

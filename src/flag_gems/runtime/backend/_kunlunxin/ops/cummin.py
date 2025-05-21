@@ -9,6 +9,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @triton.jit
 def tl_cummin(input, index, axis=0):
@@ -291,7 +293,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
 
 
 def cummin(inp, dim=1, *, dtype=None):
-    logging.debug("GEMS cummin")
+    logger.debug("GEMS cummin")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

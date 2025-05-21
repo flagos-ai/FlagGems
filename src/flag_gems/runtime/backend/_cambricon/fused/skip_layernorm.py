@@ -10,6 +10,7 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 # When the reduced dimension is greater than MAX_C_MLU_SKIP_LAYERNORM_FORWARD,
 # it is necessary to split the reduced dimension.
 MAX_C_MLU_SKIP_LAYERNORM_FORWARD = 8192
@@ -169,7 +170,7 @@ def skip_layer_norm_kernel(
 class SkipLayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, residual, normalized_shape, weight, bias, eps=1e-5):
-        logging.debug("GEMS_CAMBRICON SKIP LAYERNORM FORWARD")
+        logger.debug("GEMS_CAMBRICON SKIP LAYERNORM FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)

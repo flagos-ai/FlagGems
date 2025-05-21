@@ -10,6 +10,7 @@ from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import volume
 
 device_ = device
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -27,7 +28,7 @@ def ones_kernel(
 
 
 def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS ONES")
+    logger.debug("GEMS ONES")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

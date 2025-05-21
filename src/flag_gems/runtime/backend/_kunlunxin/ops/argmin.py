@@ -10,6 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 torch_dtype_to_tl_dtype_and_max_value = {
     torch.int16: (tl.int16, torch.iinfo(torch.int16).max),
     torch.int32: (tl.int32, torch.iinfo(torch.int32).max),
@@ -105,7 +106,7 @@ def argmin_kernel(
 
 
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS argmin")
+    logger.debug("GEMS argmin")
     if dim is None:
         M = inp.numel()
         if dtype is None:

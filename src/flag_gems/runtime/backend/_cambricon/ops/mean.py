@@ -10,6 +10,8 @@ from flag_gems.utils import dim_compress, libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=["out"])
@@ -37,7 +39,7 @@ def mean_kernel_1(
 
 
 def mean(inp, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON MEAN")
+    logger.debug("GEMS_CAMBRICON MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -83,7 +85,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON MEAN DIM")
+    logger.debug("GEMS_CAMBRICON MEAN DIM")
 
     if dtype is None:
         dtype = x.dtype

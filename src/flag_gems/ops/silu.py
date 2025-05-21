@@ -7,6 +7,8 @@ from ..utils import pointwise_dynamic, tl_extra_shim
 
 div_rn = tl_extra_shim.div_rn
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -27,18 +29,18 @@ def silu_backward_kernel(x, dy):
 
 
 def silu(self):
-    logging.debug("GEMS SILU FORWARD")
+    logger.debug("GEMS SILU FORWARD")
     output = silu_forward(self)
     return output
 
 
 def silu_backward(grad_output, self):
-    logging.debug("GEMS SILU BACKWARD")
+    logger.debug("GEMS SILU BACKWARD")
     grad_input = silu_backward_kernel(self, grad_output)
     return grad_input
 
 
 def silu_(A):
-    logging.debug("GEMS SILU_ FORWARD")
+    logger.debug("GEMS SILU_ FORWARD")
     out = silu_forward(A, out0=A)
     return out

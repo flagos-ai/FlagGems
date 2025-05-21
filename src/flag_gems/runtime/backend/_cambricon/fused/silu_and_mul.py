@@ -6,6 +6,8 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
@@ -18,7 +20,7 @@ def silu_and_mul_kernel(x, y):
 class SiluAndMul(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, B):
-        logging.debug("GEMS_CAMBRICON SILU AND MUL FORWARD")
+        logger.debug("GEMS_CAMBRICON SILU AND MUL FORWARD")
         return silu_and_mul_kernel(A, B)
 
 

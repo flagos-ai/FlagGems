@@ -11,6 +11,7 @@ from flag_gems.runtime import torch_device_fn
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 MAX_N = 16384
 
 
@@ -609,7 +610,7 @@ def softmax_backward_kernel_inner(
 class Softmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, dim, dtype):
-        logging.debug("GEMS_CAMBRICON SOFTMAX")
+        logger.debug("GEMS_CAMBRICON SOFTMAX")
 
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         dim = dim % x.ndim
@@ -625,7 +626,7 @@ class Softmax(torch.autograd.Function):
 
         with torch_device_fn.device(inp.device):
             if K > 1:
-                logging.debug("GEMS_CAMBRICON SOFTMAX USE NON INNER")
+                logger.debug("GEMS_CAMBRICON SOFTMAX USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
                 softmax_kernel_non_inner[grid](
                     out,
@@ -635,7 +636,7 @@ class Softmax(torch.autograd.Function):
                     K,
                 )
             else:
-                logging.debug("GEMS_CAMBRICON SOFTMAX USE INNER")
+                logger.debug("GEMS_CAMBRICON SOFTMAX USE INNER")
                 softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     out,
                     inp,
@@ -648,7 +649,7 @@ class Softmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_CAMBRICON SOFTMAX VJP")
+        logger.debug("GEMS_CAMBRICON SOFTMAX VJP")
         dim = ctx.dim
         (out,) = ctx.saved_tensors
 
@@ -665,7 +666,7 @@ class Softmax(torch.autograd.Function):
 
         with torch_device_fn.device(in_grad.device):
             if K > 1:
-                logging.debug("GEMS_CAMBRICON SOFTMAX VJP USE NON INNER")
+                logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
                 softmax_backward_kernel_non_inner[grid](
                     out,
@@ -676,7 +677,7 @@ class Softmax(torch.autograd.Function):
                     K,
                 )
             else:
-                logging.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
+                logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
                 softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     out,
                     out_grad,

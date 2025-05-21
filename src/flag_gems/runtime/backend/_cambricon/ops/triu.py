@@ -11,6 +11,8 @@ from flag_gems.utils.shape_utils import can_use_int32_index
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("triu"), key=["M", "N"])
@@ -103,7 +105,7 @@ INT32_MAX = torch.iinfo(torch.int32).max
 
 
 def triu(A, diagonal=0):
-    logging.debug("GEMS_CAMBRICON TRIU")
+    logger.debug("GEMS_CAMBRICON TRIU")
     A = A.contiguous()
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"

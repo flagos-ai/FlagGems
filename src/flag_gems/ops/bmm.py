@@ -9,6 +9,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(
@@ -116,7 +118,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logging.debug("GEMS BMM")
+    logger.debug("GEMS BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

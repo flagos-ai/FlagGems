@@ -8,6 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 fast_erf = tl_extra_shim.fast_erf
 fast_tanh = tl_extra_shim.fast_tanh
 
@@ -35,7 +36,7 @@ def gelu_tanh_and_mul_kernel(x, y):
 class GeluAndMul(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, B, approximate="none"):
-        logging.debug("GEMS_CAMBRICON GELU AND MUL FORWARD")
+        logger.debug("GEMS_CAMBRICON GELU AND MUL FORWARD")
         if approximate == "none":
             return gelu_none_and_mul_kernel(A, B)
         elif approximate == "tanh":

@@ -9,6 +9,7 @@ from flag_gems.utils import libentry, tl_extra_shim
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 
@@ -578,7 +579,7 @@ def weight_bias_backward_kernel_opt(
 class GroupNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
-        logging.debug("GEMS_CAMBRICON GROUPNORM FORWARD")
+        logger.debug("GEMS_CAMBRICON GROUPNORM FORWARD")
         group_size = C // num_groups
         x = x.contiguous()
         if weight is not None:
@@ -616,7 +617,7 @@ class GroupNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS_CAMBRICON GROUPNORM BACKWARD")
+        logger.debug("GEMS_CAMBRICON GROUPNORM BACKWARD")
         y_grad = y_grad.contiguous()
         (x, weight, bias, mean, rstd) = ctx.saved_tensors
         num_groups = ctx.num_groups

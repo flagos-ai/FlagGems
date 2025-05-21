@@ -8,6 +8,8 @@ from torch import Tensor
 from .. import runtime
 from ..utils import libentry
 
+logger = logging.getLogger(__name__)
+
 
 @triton.jit
 def compute_vdot(
@@ -113,7 +115,7 @@ def dot_kernel(
 
 
 def vdot(input: Tensor, other: Tensor):
-    logging.debug("GEMS VDOT")
+    logger.debug("GEMS VDOT")
 
     assert (
         input.dtype == other.dtype

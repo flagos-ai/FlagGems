@@ -8,6 +8,8 @@ import torch
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
+logger = logging.getLogger(__name__)
+
 
 class FlipKernelCode(IndentedBuffer):
     """
@@ -237,16 +239,16 @@ def get_w_dim(args):
             self.writeline("else:")
             with self.indent():
                 self.writeline("offset = tl.arange(0, W_DIM)")
-                self.writeline(f"iter = merge_shape_{self.merge_dim_size-1} // W_DIM")
-                self.writeline(f"tail = merge_shape_{self.merge_dim_size-1} % W_DIM")
+                self.writeline(f"iter = merge_shape_{self.merge_dim_size - 1} // W_DIM")
+                self.writeline(f"tail = merge_shape_{self.merge_dim_size - 1} % W_DIM")
                 self.writeline("src = tl.zeros((W_DIM,), dtype=x_ptr.dtype.element_ty)")
                 self.writeline("for i in range(0, step):")
                 with self.indent():
                     self.writeline(
-                        f"in_offset = src_offset + i * merge_shape_{self.merge_dim_size-1}"
+                        f"in_offset = src_offset + i * merge_shape_{self.merge_dim_size - 1}"
                     )
                     self.writeline(
-                        f"out_offset = dst_offset + (step - i - 1) * merge_shape_{self.merge_dim_size-1}"
+                        f"out_offset = dst_offset + (step - i - 1) * merge_shape_{self.merge_dim_size - 1}"
                     )
                     self.writeline("for j in range(0, iter):")
                     with self.indent():
@@ -308,15 +310,15 @@ def get_w_dim(args):
             with self.indent():
                 self.writeline("offset = tl.arange(0, W_DIM)")
                 self.writeline("src = tl.zeros((W_DIM,), dtype=x_ptr.dtype.element_ty)")
-                self.writeline(f"tail = merge_shape_{self.merge_dim_size-1} % W_DIM")
-                self.writeline(f"iter = merge_shape_{self.merge_dim_size-1} // W_DIM")
+                self.writeline(f"tail = merge_shape_{self.merge_dim_size - 1} % W_DIM")
+                self.writeline(f"iter = merge_shape_{self.merge_dim_size - 1} // W_DIM")
                 self.writeline("for i in range(0, step):")
                 with self.indent():
                     self.writeline(
-                        f"in_offset = src_offset + i * merge_shape_{self.merge_dim_size-1}"
+                        f"in_offset = src_offset + i * merge_shape_{self.merge_dim_size - 1}"
                     )
                     self.writeline(
-                        f"out_offset = dst_offset + i * merge_shape_{self.merge_dim_size-1}"
+                        f"out_offset = dst_offset + i * merge_shape_{self.merge_dim_size - 1}"
                     )
                     self.writeline("if tail > 0:")
                     with self.indent():
@@ -522,7 +524,7 @@ def get_w_dim(args):
 
 
 def flip(A: torch.Tensor, dims) -> torch.Tensor:
-    logging.debug("GEMS_CAMBRICON FLIP")
+    logger.debug("GEMS_CAMBRICON FLIP")
     if not A.is_contiguous():
         A = A.contiguous()
     return FlipKernelCode()(A, dims)

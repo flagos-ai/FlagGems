@@ -12,6 +12,8 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 from ..utils.limits import get_dtype_max
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -100,7 +102,7 @@ def min_kernel(
 
 
 def min(inp):
-    logging.debug("GEMS MIN")
+    logger.debug("GEMS MIN")
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
@@ -117,7 +119,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS MIN DIM")
+    logger.debug("GEMS MIN DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

@@ -8,6 +8,8 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(
@@ -95,7 +97,7 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    logging.debug("GEMS_CAMBRICON ADDMM")
+    logger.debug("GEMS_CAMBRICON ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     M, K = mat1.shape
     _, N = mat2.shape

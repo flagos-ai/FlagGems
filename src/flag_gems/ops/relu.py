@@ -5,6 +5,8 @@ import triton.language as tl
 
 from ..utils import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -19,12 +21,12 @@ def relu_backward(x, dy):
 
 
 def relu(self):
-    logging.debug("GEMS RELU FORWARD")
+    logger.debug("GEMS RELU FORWARD")
     output = relu_forward(self)
     return output
 
 
 def relu_(A):
-    logging.debug("GEMS RELU_ FORWARD")
+    logger.debug("GEMS RELU_ FORWARD")
     out = relu_forward(A, out0=A)
     return out

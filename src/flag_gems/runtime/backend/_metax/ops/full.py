@@ -8,6 +8,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.shape_utils import volume
 
+logger = logging.getLogger(__name__)
+
 
 @triton.jit(do_not_specialize=["fill_value_or_ptr"])
 def full_kernel(
@@ -106,7 +108,7 @@ def full_(out, N, dtype, device, fill_value):
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("METAX GEMS FULL")
+    logger.debug("METAX GEMS FULL")
     if device is None:
         device = torch.device("cpu")
     if dtype is None:

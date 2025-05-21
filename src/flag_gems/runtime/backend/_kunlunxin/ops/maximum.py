@@ -7,6 +7,7 @@ from flag_gems.runtime import device
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -21,6 +22,6 @@ def maximum_kernel(X, Y):
 
 
 def maximum(X, Y):
-    logging.debug("GEMS MAXIMUM")
+    logger.debug("GEMS MAXIMUM")
     assert X.device.type == device and Y.device.type == device
     return maximum_kernel(X, Y)

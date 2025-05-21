@@ -4,6 +4,8 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
@@ -12,12 +14,12 @@ def bitwise_and_func(x, y):
 
 
 def bitwise_and_tensor(A, B):
-    logging.debug("GEMS BITWISE AND")
+    logger.debug("GEMS BITWISE AND")
     return bitwise_and_func(A, B)
 
 
 def bitwise_and_tensor_(A, B):
-    logging.debug("GEMS BITWISE AND_")
+    logger.debug("GEMS BITWISE AND_")
     return bitwise_and_func(A, B, out0=A)
 
 
@@ -28,15 +30,15 @@ def bitwise_and_func_scalar(x, y):
 
 
 def bitwise_and_scalar(A, B):
-    logging.debug("GEMS BITWISE AND SCALAR")
+    logger.debug("GEMS BITWISE AND SCALAR")
     return bitwise_and_func_scalar(A, B)
 
 
 def bitwise_and_scalar_(A, B):
-    logging.debug("GEMS BITWISE AND_ SCALAR")
+    logger.debug("GEMS BITWISE AND_ SCALAR")
     return bitwise_and_func_scalar(A, B, out0=A)
 
 
 def bitwise_and_scalar_tensor(A, B):
-    logging.debug("GEMS BITWISE AND SCALAR TENSOR")
+    logger.debug("GEMS BITWISE AND SCALAR TENSOR")
     return bitwise_and_func_scalar(B, A)

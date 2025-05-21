@@ -10,6 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils.type_utils import get_accumulator_dtype
 
+logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 
@@ -329,7 +330,7 @@ class BatchNorm(torch.autograd.Function):
         eps=1e-05,
         cudnn_enable=True,
     ):
-        logging.debug("GEMS BATCHNORM FORWARD")
+        logger.debug("GEMS BATCHNORM FORWARD")
 
         input_3d = make_3d_for_bn(input)
 
@@ -384,7 +385,7 @@ class BatchNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, output_grad):
-        logging.debug("GEMS BATCHNORM BACKWARD")
+        logger.debug("GEMS BATCHNORM BACKWARD")
         (input, mean, inv_std, weight) = ctx.saved_tensors
         input_3d = make_3d_for_bn(input)
         output_grad_3d = make_3d_for_bn(output_grad)

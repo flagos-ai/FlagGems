@@ -12,6 +12,7 @@ from flag_gems.utils.type_utils import get_accumulator_dtype
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 MAX_C_MLU_LAYERNORM_FORWARD = 8192
 MAX_C_MLU_LAYERNORM_BACKWARD = 5120
 
@@ -490,7 +491,7 @@ def layer_norm_backward_kernel_middle_n(
 class LayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-        logging.debug("GEMS_CAMBRICON LAYERNORM FORWARD")
+        logger.debug("GEMS_CAMBRICON LAYERNORM FORWARD")
         # dim = x.ndim - len(normalized_shape)
         # M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
@@ -524,7 +525,7 @@ class LayerNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS_CAMBRICON LAYERNORM BACKWARD")
+        logger.debug("GEMS_CAMBRICON LAYERNORM BACKWARD")
         out_grad = out_grad.contiguous()
         x, weight, bias, mean, rstd = ctx.saved_tensors
         M, N = ctx.M, ctx.N

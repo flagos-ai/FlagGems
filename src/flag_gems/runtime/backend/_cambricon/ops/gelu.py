@@ -8,6 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 fast_erf = tl_extra_shim.fast_erf
 exp = tl_extra_shim.exp
 fast_tanh = tl_extra_shim.fast_tanh
@@ -62,7 +63,7 @@ def gelu_backward_tanh(x, dy):
 class Gelu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, approximate):
-        logging.debug("GEMS_CAMBRICON GELU FORWARD")
+        logger.debug("GEMS_CAMBRICON GELU FORWARD")
         if approximate == "tanh":
             out = gelu_tanh(A)
         else:
@@ -73,7 +74,7 @@ class Gelu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_CAMBRICON GELU BACKWARD")
+        logger.debug("GEMS_CAMBRICON GELU BACKWARD")
         (inp,) = ctx.saved_tensors
         approximate = ctx.approximate
         if approximate == "tanh":

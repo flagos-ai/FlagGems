@@ -11,6 +11,7 @@ from ..runtime import device, torch_device_fn
 from ..utils import libentry
 from .topk import argsort
 
+logger = logging.getLogger(__name__)
 device_ = device
 
 _MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
@@ -419,7 +420,7 @@ def randperm(
     requires_grad=False,
     pin_memory=False,
 ):
-    logging.debug("GEMS RANDPERM")
+    logger.debug("GEMS RANDPERM")
     assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64
     assert n <= _MAX_INT64_VAL, "n exceeds maximum int64"
 

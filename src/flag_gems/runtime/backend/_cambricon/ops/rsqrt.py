@@ -5,6 +5,8 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
@@ -13,5 +15,5 @@ def rsqrt_func(x):
 
 
 def rsqrt(A):
-    logging.debug("GEMS_CAMBRICON RSQRT")
+    logger.debug("GEMS_CAMBRICON RSQRT")
     return rsqrt_func(A)

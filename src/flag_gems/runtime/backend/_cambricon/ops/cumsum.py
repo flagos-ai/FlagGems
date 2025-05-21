@@ -11,6 +11,7 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_GRID_SIZE_Y, TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 MAX_C_MLU_CUMSUM = 8192
@@ -403,7 +404,7 @@ def cumsum_kernel_result(
 
 
 def cumsum(inp, dim=1, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON CUMSUM")
+    logger.debug("GEMS_CAMBRICON CUMSUM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -600,7 +601,7 @@ GRID_Y_LIMIT = MAX_GRID_SIZE_Y
 
 
 def normed_cumsum(inp, dim=-1):
-    logging.debug("GEMS_CAMBRICON NORMED_CUMSUM")
+    logger.debug("GEMS_CAMBRICON NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()

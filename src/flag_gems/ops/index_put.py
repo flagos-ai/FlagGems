@@ -8,6 +8,8 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
+logger = logging.getLogger(__name__)
+
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
     max_rank = max([len(index.shape) for index in indices])
@@ -119,7 +121,7 @@ def generate_index_put_kernel(
         code.writeline(f"input_offset = {' + '.join(comp)}")
         comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
         comp += [
-            f"input_idx{indices_len+i} * values_stride{index_rank+i}"
+            f"input_idx{indices_len + i} * values_stride{index_rank + i}"
             for i in range(inp_rank - indices_len)
         ]
         code.writeline(f"values_offset = {' + '.join(comp)}")
@@ -250,7 +252,7 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logging.debug("GEMS INDEX PUT")
+    logger.debug("GEMS INDEX PUT")
 
     indices = list(indices)
     target_shape = get_max_rank_shape(indices)
@@ -264,7 +266,7 @@ def index_put(inp, indices, values, accumulate=False):
 
 
 def index_put_(inp, indices, values, accumulate=False):
-    logging.debug("GEMS INDEX PUT")
+    logger.debug("GEMS INDEX PUT")
 
     indices = list(indices)
     target_shape = get_max_rank_shape(indices)

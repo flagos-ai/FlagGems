@@ -10,6 +10,8 @@ from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -92,7 +94,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    logging.debug("GEMS SUM")
+    logger.debug("GEMS SUM")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -113,7 +115,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS SUM DIM")
+    logger.debug("GEMS SUM DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:

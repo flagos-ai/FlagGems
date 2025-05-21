@@ -10,6 +10,7 @@ from flag_gems.runtime import device, torch_device_fn
 
 from ..utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -165,7 +166,7 @@ def upsample_nearest2d(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logging.debug("GEMS_CAMBRICON UPSAMPLE NEAREST2D")
+    logger.debug("GEMS_CAMBRICON UPSAMPLE NEAREST2D")
     assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"

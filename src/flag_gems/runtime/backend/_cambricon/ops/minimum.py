@@ -8,6 +8,7 @@ from flag_gems.runtime import device
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 device = device.name
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 0, "DEFAULT")])
@@ -20,6 +21,6 @@ def minimum_kernel(X, Y):
 
 
 def minimum(X, Y):
-    logging.debug("GEMS_CAMBRICON MINIMUM")
+    logger.debug("GEMS_CAMBRICON MINIMUM")
     assert X.device.type == device and Y.device.type == device
     return minimum_kernel(X, Y)

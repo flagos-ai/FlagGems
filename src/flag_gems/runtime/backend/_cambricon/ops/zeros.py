@@ -9,6 +9,7 @@ from flag_gems.utils.shape_utils import volume
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 device_ = device
 
 
@@ -39,7 +40,7 @@ def zeros_kernel(
 
 
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS_CAMBRICON ZEROS")
+    logger.debug("GEMS_CAMBRICON ZEROS")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

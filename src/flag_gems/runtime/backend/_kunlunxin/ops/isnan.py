@@ -7,6 +7,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 _isnan = tl_extra_shim.isnan
 
 
@@ -17,5 +18,5 @@ def isnan_func(x):
 
 
 def isnan(A):
-    logging.debug("GEMS ISNAN")
+    logger.debug("GEMS ISNAN")
     return isnan_func(A)

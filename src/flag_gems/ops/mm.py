@@ -9,6 +9,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @libtuner(
@@ -105,7 +107,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logging.debug("GEMS MM")
+    logger.debug("GEMS MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:

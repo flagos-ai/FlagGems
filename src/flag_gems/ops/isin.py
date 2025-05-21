@@ -1,3 +1,4 @@
+import logging
 import math
 
 import torch
@@ -11,6 +12,8 @@ from ..utils import triton_lang_extension as tle
 from .all import reduce_all
 from .any import reduce_any
 from .unique import _unique2
+
+logger = logging.getLogger(__name__)
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -252,6 +255,7 @@ def isin(
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
+    logger.debug("GEMS ISIN")
     if not torch.is_tensor(in0):
         assert torch.is_tensor(in1)
         in0 = torch.tensor(in0, device=in1.device)

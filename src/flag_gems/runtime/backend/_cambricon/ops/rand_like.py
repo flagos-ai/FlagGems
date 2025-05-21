@@ -9,13 +9,15 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 from ..utils import TOTAL_CORE_NUM
 from .rand import rand_kernel
 
+logger = logging.getLogger(__name__)
+
 UNROLL = 4
 
 
 def rand_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
 ):
-    logging.debug("GEMS_CAMBRICON RAND_LIKE")
+    logger.debug("GEMS_CAMBRICON RAND_LIKE")
     if device is None:
         device = x.device
     if dtype is None:

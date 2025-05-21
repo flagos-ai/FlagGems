@@ -10,6 +10,8 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 def get_max_block_size(dtype_size):
     return MAX_NRAM_SIZE // 3 // dtype_size
@@ -290,7 +292,7 @@ def multi_batch_index_select_kernel(
 
 
 def index_select(inp, dim, index):
-    logging.debug("GEMS_CAMBRICON INDEX SELECT")
+    logger.debug("GEMS_CAMBRICON INDEX SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
     # TODO: index is on device, should it be a kernel (like cnnl __assert_fail__) to check this?

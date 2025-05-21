@@ -10,6 +10,8 @@ from flag_gems.utils import broadcastable, libentry
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("masked_select"), key=["n_elements"])
@@ -80,7 +82,7 @@ def cast_bool2float_kernel(
 
 
 def masked_select(inp, mask):
-    logging.debug("GEMS_CAMBRICON MASKED SELECT")
+    logger.debug("GEMS_CAMBRICON MASKED SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)

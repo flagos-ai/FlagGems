@@ -5,6 +5,8 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -13,7 +15,7 @@ def copy_func(x):
 
 
 def diag_embed(x, offset=0, dim1=-2, dim2=-1):
-    logging.debug("GEMS_CAMBRICON DIAG_EMBED")
+    logger.debug("GEMS_CAMBRICON DIAG_EMBED")
 
     rank = x.ndim + 1
 

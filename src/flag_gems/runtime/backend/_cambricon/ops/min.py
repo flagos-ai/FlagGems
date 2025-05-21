@@ -12,6 +12,8 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -202,7 +204,7 @@ def min_kernel(
 
 
 def min(inp):
-    logging.debug("GEMS_CAMBRICON MIN")
+    logger.debug("GEMS_CAMBRICON MIN")
     M = inp.numel()
     mid_size = TOTAL_CORE_NUM
     dtype = inp.dtype
@@ -237,7 +239,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS_CAMBRICON MIN DIM")
+    logger.debug("GEMS_CAMBRICON MIN DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

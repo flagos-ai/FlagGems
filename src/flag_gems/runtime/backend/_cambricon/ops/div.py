@@ -8,6 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
 div_rz = tl_extra_shim.div_rz
 fmod = tl_extra_shim.fmod
@@ -35,7 +36,7 @@ def true_div_func_scalar_tensor(x, y):
 
 
 def true_divide(A, B):
-    logging.debug("GEMS_CAMBRICON TRUE_DIVIDE")
+    logger.debug("GEMS_CAMBRICON TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -66,7 +67,7 @@ def trunc_div_func_scalar_tensor(x, y):
 
 
 def trunc_divide(A, B):
-    logging.debug("GEMS_CAMBRICON TRUNC_DIVIDE")
+    logger.debug("GEMS_CAMBRICON TRUNC_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -161,7 +162,7 @@ def floor_div_func_scalar_tensor(x, y):
 
 
 def floor_divide(A, B):
-    logging.debug("GEMS_CAMBRICON FLOOR_DIVIDE")
+    logger.debug("GEMS_CAMBRICON FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -212,7 +213,7 @@ def rem_st(x, y):
 
 
 def remainder(A, B):
-    logging.debug("GEMS_CAMBRICON FLOOR_DIVIDE")
+    logger.debug("GEMS_CAMBRICON FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rem_tt(A, B)
     elif isinstance(A, torch.Tensor):

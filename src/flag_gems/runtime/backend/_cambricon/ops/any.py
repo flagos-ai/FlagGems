@@ -10,6 +10,7 @@ from flag_gems.utils import dim_compress, libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op2
 
+logger = logging.getLogger(__name__)
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if any elements in input evaluate to non-zero value
 # In triton function, test if any elements in input evaluate to non-zero value is ok.
@@ -83,7 +84,7 @@ def any_kernel_1(
 
 
 def any(inp):
-    logging.debug("GEMS_CAMBRICON ANY")
+    logger.debug("GEMS_CAMBRICON ANY")
     M = inp.numel()
     grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 
@@ -96,7 +97,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS_CAMBRICON ANY DIM")
+    logger.debug("GEMS_CAMBRICON ANY DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -121,7 +122,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logging.debug("GEMS_CAMBRICON ANY DIMS")
+    logger.debug("GEMS_CAMBRICON ANY DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)

@@ -13,6 +13,8 @@ from flag_gems.utils.code_utils import IndentedBuffer
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 # --------------------------- repeat wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
@@ -497,7 +499,7 @@ def repeat_2d_kernel(
 
 
 def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
-    logging.debug("GEMS_CAMBRICON REPEAT")
+    logger.debug("GEMS_CAMBRICON REPEAT")
 
     inp_rank = inp.dim()
     sizes_rank = len(sizes)

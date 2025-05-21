@@ -9,6 +9,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit()
@@ -45,7 +47,7 @@ def sort_kernel(
 
 
 def sort(inp, dim=-1, descending=False):
-    logging.debug("GEMS SORT")
+    logger.debug("GEMS SORT")
     sort_elem_cnt = inp.shape[dim]
     if sort_elem_cnt == 1:
         return inp, torch.zeros_like(inp, dtype=torch.int64)

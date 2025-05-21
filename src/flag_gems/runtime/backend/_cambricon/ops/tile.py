@@ -13,6 +13,8 @@ from flag_gems.utils.code_utils import IndentedBuffer
 
 from ..utils import TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
+
 
 # --------------------------- tile wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
@@ -497,7 +499,7 @@ def tile_2d_kernel(
 
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
-    logging.debug("GEMS_CAMBRICON TILE")
+    logger.debug("GEMS_CAMBRICON TILE")
 
     inp_rank = inp.dim()
     dims_rank = len(dims)
