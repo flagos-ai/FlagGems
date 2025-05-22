@@ -17,6 +17,7 @@ ATTRS = {
     (3, 0): 4,
     (3, 1): 4,
     (3, 2): 8,
+    (3, 3): 8,
 }
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
@@ -232,7 +233,7 @@ class LibEntry(triton.KernelInterface):
             if p.is_constexpr:
                 const_args.append(val)
                 if major_version == 3 and minor_version == 3:
-                    k_args.append(arg)
+                    k_args.append(val)
             elif p.do_not_specialize:
                 dns_args.append(val)
                 k_args.append(val)
@@ -253,6 +254,8 @@ class LibEntry(triton.KernelInterface):
                 fn = self.fn
                 # collect constexpr arguments for grid computation
                 constexprs = {}
+                tune_constexprs = {}
+                heur_constexprs = {}
                 while not isinstance(fn, triton.runtime.JITFunction):
                     if isinstance(fn, triton.runtime.Autotuner):
                         config = fn.best_config
@@ -260,15 +263,17 @@ class LibEntry(triton.KernelInterface):
                         constexprs["num_stages"] = config.num_stages
                         constexprs["num_ctas"] = config.num_ctas
                         constexprs = {**constexprs, **config.kwargs}
+                        tune_constexprs = {**tune_constexprs, **config.kwargs}
                     elif isinstance(fn, triton.runtime.Heuristics):
                         for v, heur in fn.values.items():
-                            constexprs[v] = heur(
+                            heur_constexprs[v] = heur(
                                 {
                                     **dict(zip(fn.arg_names, args)),
                                     **kwargs,
                                     **constexprs,
                                 }
                             )
+                            constexprs[v] = heur_constexprs[v]
                     else:
                         raise RuntimeError("Invalid Runtime Function")
                     fn = fn.fn
@@ -279,10 +284,15 @@ class LibEntry(triton.KernelInterface):
                         and (p.default is not inspect._empty)
                     ):
                         constexprs[p.name] = p.default
-                cache[entry_key] = (kernel, constexprs)
+                cache[entry_key] = (
+                    kernel,
+                    constexprs,
+                    tune_constexprs,
+                    heur_constexprs,
+                )
             return kernel, constexprs
 
-        kernel, constexprs = cache[entry_key]
+        kernel, constexprs, tune_constexprs, heur_constexprs = cache[entry_key]
 
         if callable(grid):
             # collect all arguments to the grid fn，ie:
@@ -294,7 +304,10 @@ class LibEntry(triton.KernelInterface):
             grid = grid(meta)
         grid = grid + (1, 1)
 
-        kernel[grid[0:3]](*k_args)
+        if major_version == 3 and minor_version == 3:
+            kernel[grid[0:3]](*k_args, *tune_constexprs, *heur_constexprs)
+        else:
+            kernel[grid[0:3]](*k_args)
         return kernel, constexprs
 
 
