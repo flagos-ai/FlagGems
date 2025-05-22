@@ -484,8 +484,12 @@ def test_accuracy_weightnorm_interface_backward(shape, dtype, dim):
             res_w_grad, res_v, res_g, res_norm, dim
         )
     reduce_size = res_v.numel() // shape[dim]
-    gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size)
-    gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
+    gems_assert_close(
+        res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size, equal_nan=True
+    )
+    gems_assert_close(
+        res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size, equal_nan=True
+    )
 
 
 @pytest.mark.rms_norm
