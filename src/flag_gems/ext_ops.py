@@ -1,6 +1,12 @@
+import os
+from pathlib import Path
+
 import torch
 
-from flag_gems import c_operators  # noqa: F401
+# set FLAGGEMS_SOURCE_DIR to be used for c_operators
+os.environ["FLAGGEMS_SOURCE_DIR"] = str(Path(__file__).parent.absolute())
+
+from flag_gems import c_operators  # noqa: F401, E402
 
 
 @torch.library.register_fake("flag_gems::add_tensor")
