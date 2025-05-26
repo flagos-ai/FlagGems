@@ -8,7 +8,7 @@ std::filesystem::path get_path_of_this_library() {
   // there is no build system generator to take care of this.
   static const std::filesystem::path cached_path = []() {
     Dl_info dl_info;
-    if (dladdr(reinterpret_cast<void *>(&get_path_of_this_library), &dl_info) && dl_info.dli_fname) {
+    if (dladdr(reinterpret_cast<void*>(&get_path_of_this_library), &dl_info) && dl_info.dli_fname) {
       return std::filesystem::canonical(dl_info.dli_fname);  // Ensure absolute, resolved path
     } else {
       throw std::runtime_error("cannot get the path of libjit_utils.so");
@@ -30,6 +30,14 @@ std::filesystem::path get_triton_src_path() {
     }
   }();
   return triton_src_dir;
+}
+
+std::filesystem::path get_flag_gems_src_path() {
+  const static std::filesystem::path flag_gems_src_dir = []() {
+    const char* flag_gems_dir = std::getenv("FLAGGEMS_SOURCE_DIR");
+    return std::filesystem::path(flag_gems_dir);
+  }();
+  return flag_gems_src_dir;
 }
 
 int64_t next_power_of_2(int64_t n) {

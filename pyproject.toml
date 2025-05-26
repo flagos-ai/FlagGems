@@ -26,6 +26,7 @@ dependencies = [
     "packaging",
     "pybind11",
     "PyYAML",
+    "packaging",
 ]
 
 [project.optional-dependencies]

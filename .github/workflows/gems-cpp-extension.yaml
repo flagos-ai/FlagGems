@@ -16,7 +16,7 @@ jobs:
       - name: Build FlagGems with C-extension
         shell: bash
         run: |
-          SKBUILD_CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON;-DBUILD_CTESTS=ON" pip install --no-build-isolation -v -e .
+          SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
 
       - name: Run FlagGems CTests
         shell: bash
