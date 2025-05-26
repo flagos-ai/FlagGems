@@ -7,7 +7,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry
+from ..utils import dim_compress, libentry, libtuner
 from ..utils import triton_lang_extension as tle
 from ..utils.limits import get_dtype_min
 
@@ -47,7 +47,11 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("amax"), key=["M", "N"])
+@libtuner(
+    configs=runtime.get_tuned_config("naive_reduction"),
+    key=["M", "N"],
+    share="naive_reduction",
+)
 @triton.jit
 def amax_kernel(
     inp,

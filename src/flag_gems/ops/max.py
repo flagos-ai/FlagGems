@@ -8,7 +8,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import libentry
+from ..utils import dim_compress, libentry, libtuner
 from ..utils import triton_lang_extension as tle
 from ..utils.limits import get_dtype_min
 
@@ -51,12 +51,10 @@ def heur_block_n(args):
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("max"),
-    key=[
-        "M",
-        "N",
-    ],
+@libtuner(
+    configs=runtime.get_tuned_config("naive_reduction"),
+    key=["M", "N"],
+    share="naive_reduction",
 )
 @triton.jit
 def max_kernel(
@@ -65,13 +63,11 @@ def max_kernel(
     out_index,
     M,
     N,
-    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     # set offset
     pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     dtype = inp.type.element_ty
@@ -81,7 +77,7 @@ def max_kernel(
     result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        offset = m_offset[:, None] * N + n_offset[None, :]
         # set mask
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
@@ -91,7 +87,7 @@ def max_kernel(
         result_value = tl.where(update_mask, max_value, result_value)
         result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
-    offset_index = m_offset * K + pid_k
+    offset_index = m_offset
     out_value_ptrs = out_value + offset_index
     out_index_ptrs = out_index + offset_index
 
@@ -120,29 +116,23 @@ def max(inp):
 def max_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS MAX DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
+    shape = list(inp.shape)
     dim = dim % inp.ndim
+    inp = dim_compress(inp, dim)
     N = shape[dim]
-    M = math.prod(shape[:dim])
-    K = inp.numel() // M // N
+    shape[dim] = 1
+    M = inp.numel() // N
 
-    inp = inp.contiguous()
-
-    shape_list = list(shape)
-    shape_list[dim] = 1
-    out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+    out_value = torch.empty(shape, dtype=inp.dtype, device=inp.device)
+    out_index = torch.empty(shape, dtype=torch.int64, device=inp.device)
 
     if not keepdim:
         out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        K,
-    )
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
-        max_kernel[grid](inp, out_value, out_index, M, N, K)
+        max_kernel[grid](inp, out_value, out_index, M, N)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)
     return out

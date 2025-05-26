@@ -109,26 +109,6 @@ bmm:
     GROUP_M: 2
   num_warps: 4
   num_stages: 3
-argmax:
-- META:
-    BLOCK_M: 8
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-  num_warps: 8
-argmin:
-- META:
-    BLOCK_M: 8
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-  num_warps: 8
 log_softmax:
 - META:
     BLOCK_M: 8
@@ -284,58 +264,6 @@ softmax_inner:
     TILE_N: 256
 - META:
     TILE_N: 1024
-test_libentry:
-- META:
-    TILE_N: 32
-- META:
-    TILE_N: 64
-- META:
-    TILE_N: 128
-- META:
-    TILE_N: 256
-- META:
-    TILE_N: 512
-- META:
-    TILE_N: 1024
-min:
-- META:
-    BLOCK_M: 8
-    BLOCK_N: 256
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 512
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 512
-  num_warps: 8
-prod:
-- META:
-    BLOCK_M: 8
-    BLOCK_N: 256
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 512
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 512
-  num_warps: 8
-max:
-- META:
-    BLOCK_M: 8
-    BLOCK_N: 256
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 512
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 512
-  num_warps: 8
 addmm:
 - META:
     BLOCK_SIZE_M: 128
@@ -436,7 +364,7 @@ masked_fill:
   - 4
   - 8
   - 16
-all:
+naive_reduction:
 - gen: true
   param_map:
     META:
@@ -450,49 +378,6 @@ all:
   - 8
   block_n:
   - 1024
-amax:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 1024
-any:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 1024
-index_select:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  block_n:
-  - 1024
-  - 2048
-  - 4096
 layer_norm_persistent:
 - gen: true
   param_map:
@@ -566,18 +451,6 @@ masked_select:
   - 1024
   - 2048
   - 4096
-mean:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: 1024
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
 
 instancenorm:
 - gen: true
@@ -729,52 +602,6 @@ randperm:
   - 4
   - 8
   - 16
-select_scatter:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: 1024
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-select_scatter_inner:
-- META:
-    R: 1
-    C: 512
-  num_warps: 4
-- META:
-    R: 32
-    C: 32
-  num_warps: 4
-- META:
-    R: 64
-    C: 64
-  num_warps: 4
-- META:
-    R: 4
-    C: 512
-  num_warps: 4
-- META:
-    R: 16
-    C: 128
-  num_warps: 4
-softmax:
-- META:
-    TILE_K: 32
-- META:
-    TILE_K: 64
-- META:
-    TILE_K: 128
-- META:
-    TILE_K: 256
-- META:
-    TILE_K: 512
-- META:
-    TILE_K: 1024
 vstack:
 - gen: true
   param_map:
@@ -791,52 +618,6 @@ vstack:
   - 1024
   - 2048
   - 4096
-gather:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 256
-  - 512
-  - 1024
-  - 2048
-scatter:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 256
-  - 512
-  - 1024
-  - 2048
-sum:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: 1024
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
 triu:
 - gen: true
   param_map:

@@ -7,7 +7,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry
+from ..utils import dim_compress, libentry, libtuner
 from ..utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,11 @@ def reduce_any(a, b):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
+@libtuner(
+    configs=runtime.get_tuned_config("naive_reduction"),
+    key=["M", "N"],
+    share="naive_reduction",
+)
 @triton.jit
 def any_kernel_dim(
     inp,
