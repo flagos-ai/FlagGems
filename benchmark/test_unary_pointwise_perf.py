@@ -125,3 +125,20 @@ def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
         is_backward=True,
     )
     bench.run()
+
+
+class ToDtypeBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=torch.float32, device=self.device)
+            yield inp, cur_dtype
+
+
+@pytest.mark.to_dtype
+def test_to_dtype_perf():
+    bench = ToDtypeBenchmark(
+        op_name="to_dtype",
+        torch_op=torch.Tensor.to,
+        dtypes=[torch.float16, torch.bfloat16, torch.float64],
+    )
+    bench.run()
