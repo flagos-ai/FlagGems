@@ -108,6 +108,14 @@ bmm:
     GROUP_M: 2
   num_warps: 4
   num_stages: 3
+- META:
+    TILE_M: 128
+    TILE_N: 128
+    TILE_K: 128
+    GROUP_M: 32
+    pipeline: "cpasync"
+  num_warps: 4
+  num_stages: 4
 
 argmax:
 - META:
@@ -132,12 +140,16 @@ argmin:
 log_softmax:
 - META:
     BLOCK_M: 1
+    BLOCK_N: 256
 - META:
     BLOCK_M: 2
+    BLOCK_N: 512
 - META:
     BLOCK_M: 4
+    BLOCK_N: 512
 - META:
     BLOCK_M: 8
+    BLOCK_N: 512
 mm:
 - META:
     BLOCK_M: 128
@@ -272,6 +284,42 @@ mm:
     SPLIT_K: 1
   num_stages: 2
   num_warps: 8
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 32
+    BLOCK_K: 64
+    SPLIT_K: 1
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 64
+    BLOCK_K: 64
+    SPLIT_K: 1
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 32
+    BLOCK_K: 32
+    SPLIT_K: 1
+  num_stages: 4
+  num_warps: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+    SPLIT_K: 1
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 128
+    SPLIT_K: 1
+    pipeline: "cpasync"
+  num_stages: 4
+  num_warps: 4
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -401,6 +449,43 @@ addmm:
     BLOCK_SIZE_K: 32
   num_stages: 2
   num_warps: 8
+- META:
+    BLOCK_SIZE_M: 32
+    BLOCK_SIZE_N: 32
+    BLOCK_SIZE_K: 64
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_SIZE_M: 32
+    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_K: 64
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 32
+    BLOCK_SIZE_K: 32
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 32
+    BLOCK_SIZE_K: 32
+  num_stages: 4
+  num_warps: 8
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_K: 32
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 128
+    pipeline: "cpasync"
+  num_stages: 4
+  num_warps: 4
 cross_entropy_loss:
 - META:
     BLOCK_C: 256
