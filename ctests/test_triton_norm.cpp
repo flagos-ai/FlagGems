@@ -55,7 +55,8 @@ TEST_P(NormOpTest, fused_add_rms_norm) {
   };
 
   torch::Tensor out_torch = compute_ref(input, residual, weight, eps);
-  torch::Tensor out_triton = flag_gems::fused_add_rms_norm(input, residual, weight, eps);
+  flag_gems::fused_add_rms_norm(input, residual, weight, eps);
+  torch::Tensor out_triton = input;  // The input tensor is modified in-place
 
   EXPECT_TRUE(torch::allclose(out_torch, out_triton, /*rtol=*/1e-2, /*atol=*/1e-3));
 }

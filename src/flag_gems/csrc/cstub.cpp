@@ -12,7 +12,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
-  m.def("fused_add_rms_norm(Tensor input, Tensor residual, Tensor weight, float epsilon) -> Tensor");
+  m.def("fused_add_rms_norm(Tensor! input, Tensor! residual, Tensor weight, float epsilon) -> ()");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
