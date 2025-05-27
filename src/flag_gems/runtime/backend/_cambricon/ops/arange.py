@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM
 
@@ -14,15 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=3, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=3, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 8192}, num_stages=3, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 16384}, num_stages=3, num_warps=1),
-        triton.Config(kwargs={"BLOCK_SIZE": 65536}, num_stages=3, num_warps=1),
     ],
     key=["size"],
+    strategy=["log"],
 )
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):

@@ -19,7 +19,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
     code.newline()
-    code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
 
@@ -41,7 +41,7 @@ def generate_gather_kernel(
     # the decorators
     code.writeline("@libentry()")
     code.writeline(
-        '@triton.autotune(configs=runtime.get_tuned_config("gather"), key=["N"])'
+        '@libtuner(configs=runtime.get_tuned_config("gather"), key=["N"], strategy=["log"])'
     )
     code.writeline("@triton.jit")
 

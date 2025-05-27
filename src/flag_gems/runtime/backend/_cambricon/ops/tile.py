@@ -7,7 +7,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
@@ -64,7 +64,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.runtime import torch_device_fn")
     code.writeline("from flag_gems.utils.shape_utils import volume")
-    code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems.runtime.backend import vendor_module")
     code.writeline("MAX_GRID_SIZE_X = vendor_module.MAX_GRID_SIZE_X")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
@@ -447,11 +447,12 @@ _tile_func = TileFunction()
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
         triton.Config({"BLOCK_C": 2**n}, num_stages=3) for n in range(10, 17, 2)
     ],
     key=["C"],
+    strategy=["log"],
 )
 @triton.jit
 def tile_2d_kernel(
