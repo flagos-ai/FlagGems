@@ -72,6 +72,7 @@ def enable(
             ("pad", pad, Autograd.disable),
             ("constant_pad_nd", constant_pad_nd, Autograd.disable),
             ("cumsum", cumsum, Autograd.disable),
+            ("cumsum.out", cumsum_out, Autograd.disable),
             ("cummin", cummin, Autograd.disable),
             ("div.Tensor", true_divide, Autograd.disable),
             ("div_.Tensor", true_divide_, Autograd.disable),
