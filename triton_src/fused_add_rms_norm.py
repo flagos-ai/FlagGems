@@ -4,12 +4,9 @@ import triton.language as tl
 
 @triton.jit(do_not_specialize=["eps"])
 def fused_add_rms_norm_kernel(
-    out_ptr,  # pointer to the output
     in_ptr,  # pointer to the input
     re_ptr,  # pointer to the residual
     w_ptr,  # pointer to the weights
-    out_stride_r,
-    out_stride_c,
     in_stride_r,  # how much to increase the pointer when moving by 1 row
     in_stride_c,  # how much to increase the pointer when moving by 1 col
     r_stride_r,  # how much to increase the pointer when moving by 1 row
@@ -26,7 +23,6 @@ def fused_add_rms_norm_kernel(
         cdtype = in_ptr.dtype.element_ty
 
     pid = tl.program_id(0)
-    out_ptr += pid * out_stride_r
     in_ptr += pid * in_stride_r
     re_ptr += pid * r_stride_r
 
@@ -36,10 +32,13 @@ def fused_add_rms_norm_kernel(
     r = tl.load(re_ptr + cols * r_stride_c, mask, other=0.0).to(cdtype)
 
     x += r
+    # write back to residual
+    tl.store(re_ptr + cols * r_stride_c, x, mask=mask)
 
     var = tl.sum(x * x / N, axis=0)
     rrms = 1 / tl.sqrt(var + eps)
 
     w = tl.load(w_ptr + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
     y = (x * rrms * w).to(cdtype)
-    tl.store(out_ptr + cols * out_stride_c, y, mask=mask)
+    # write back to input
+    tl.store(in_ptr + cols * in_stride_c, y, mask=mask)

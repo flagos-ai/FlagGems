@@ -8,10 +8,13 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor fused_add_rms_norm(const at::Tensor& input,     // [..., hidden_size]
-                              const at::Tensor& residual,  // [..., hidden_size]
-                              const at::Tensor& weight,    // [hidden_size]
-                              double epsilon) {            //  default 1e-5
+// TODO(flaggems): Only supports 2D inputs and 1D weight (last-dim norm).
+// Extend to support higher-rank inputs and generalized weight shapes
+
+void fused_add_rms_norm(at::Tensor& input,         // [..., hidden_size]
+                        at::Tensor& residual,      // [..., hidden_size]
+                        const at::Tensor& weight,  // [hidden_size]
+                        double epsilon) {          //  default 1e-5
 
   TORCH_CHECK(input.sizes() == residual.sizes(),
               "Input and residual must have the same shape, but got ",
@@ -23,29 +26,23 @@ at::Tensor fused_add_rms_norm(const at::Tensor& input,     // [..., hidden_size]
   int64_t N = weight.size(0);  // assumes 1D weight
   int64_t BLOCK_SIZE = utils::next_power_of_2(N);
 
-  at::Tensor out = at::empty(input.sizes(), input.options());
-
   auto input_strides = input.strides();
   auto residual_strides = residual.strides();
-  auto output_strides = out.strides();
 
   const TritonJITFunction& f =
       TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "fused_add_rms_norm.py"),
                                      "fused_add_rms_norm_kernel");
 
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
-  c10::DeviceGuard guard(out.device());
+  c10::DeviceGuard guard(input.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
 
   /* siguature info
 def fused_add_rms_norm_kernel(
-    out_ptr,  # pointer to the output
     in_ptr,  # pointer to the input
     re_ptr,  # pointer to the residual
     w_ptr,  # pointer to the weights
-    out_stride_r,
-    out_stride_c,
     in_stride_r,  # how much to increase the pointer when moving by 1 row
     in_stride_c,  # how much to increase the pointer when moving by 1 col
     r_stride_r,  # how much to increase the pointer when moving by 1 row
@@ -60,12 +57,9 @@ def fused_add_rms_norm_kernel(
     1,
     /* num_warps */ 8,
     /* num_stages */ 1,
-    out,
     input,
     residual,
     weight,
-    output_strides[0],
-    output_strides[1],
     input_strides[0],
     input_strides[1],
     residual_strides[0],
@@ -74,6 +68,6 @@ def fused_add_rms_norm_kernel(
     epsilon,
     BLOCK_SIZE);
 
-  return out;
+  return;
 }
 }  // namespace flag_gems
