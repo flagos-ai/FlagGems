@@ -193,8 +193,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
             add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
 
-def cumsum(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS CUMSUM")
+def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -209,7 +208,8 @@ def cumsum(inp, dim=1, *, dtype=None):
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int64
-    out = torch.empty_like(inp, dtype=dtype)
+    if out is None:
+        out = torch.empty_like(inp, dtype=dtype)
 
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
@@ -220,6 +220,16 @@ def cumsum(inp, dim=1, *, dtype=None):
     else:
         scan_then_fan(inp, out, M, N, K, compute_dtype)
     return out
+
+
+def cumsum(inp, dim=1, *, dtype=None):
+    logger.debug("GEMS CUMSUM")
+    return cumsum_wrapper(inp, dim, dtype)
+
+
+def cumsum_out(inp, dim=1, *, dtype=None, out):
+    logger.debug("GEMS CUMSUM_OUT")
+    return cumsum_wrapper(inp, dim, dtype, out)
 
 
 @libentry()
