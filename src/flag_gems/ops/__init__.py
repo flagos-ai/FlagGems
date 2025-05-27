@@ -154,6 +154,7 @@ from .sum import sum, sum_dim
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
+from .to import to_dtype
 from .topk import topk
 from .triu import triu
 from .uniform import uniform_
@@ -391,4 +392,5 @@ __all__ = [
     "vdot",
     "mse_loss",
     "log",
+    "to_dtype",
 ]

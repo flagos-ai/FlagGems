@@ -864,3 +864,15 @@ def test_accuracy_fill_(value, shape, dtype):
         x.fill_(value_tensor)
 
     gems_assert_equal(x, ref_x)
+
+
+@pytest.mark.to_dtype
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+def test_accuracy_to_dtype(shape, dtype):
+    x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_x = to_reference(x)
+    ref_out = ref_x.to(dtype)
+    with flag_gems.use_gems():
+        out = x.to(dtype)
+    gems_assert_equal(out, ref_out)

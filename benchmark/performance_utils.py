@@ -323,6 +323,7 @@ class Benchmark:
                 or isinstance(item, (int, float))
                 or item is None
                 or isinstance(item, (list, tuple))
+                or isinstance(item, torch.dtype)
             ):
                 args.append(item)
             elif isinstance(item, dict):
