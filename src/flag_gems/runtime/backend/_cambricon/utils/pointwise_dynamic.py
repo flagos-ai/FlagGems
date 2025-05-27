@@ -214,7 +214,7 @@ class KernelGenerator:
     def gen_decorators(self, code):
         code.writeline("@libentry()")
         if self.ndim == 1 and (not self.config.prefer_1d_tile):
-            code.writeline("@triton.autotune(")
+            code.writeline("@libtuner(")
             with code.indent():
                 code.writeline("configs=[")
                 with code.indent():
@@ -231,6 +231,7 @@ class KernelGenerator:
                     )
                 code.writeline("],")
                 code.writeline("key=['num_tasks'],")
+                code.writeline("strategy=['log'],")
             code.writeline(")")
 
         num_non_tensor_args = self.fx.num_non_tensor_args()
@@ -1031,7 +1032,7 @@ class ModuleGenerator:
         code.writeline("    stride_order,")
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
-        code.writeline("from flag_gems.utils.libentry import libentry")
+        code.writeline("from flag_gems.utils.libentry import libentry, libtuner")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         code.newline()

@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
@@ -55,13 +55,14 @@ def ld_st_1(indices, N: tl.constexpr, weight_ptr, in_mask, in_offsets, out_ptr):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
         # [512, 65536]
         triton.Config(kwargs={"BLOCK_SIZE": 512 * 2**i}, num_stages=1, num_warps=1)
-        for i in range(8)
+        for i in range(0, 8, 2)
     ],
     key=["N", "in_n_elements"],
+    strategy=["log", "log"],
     prune_configs_by={
         "early_config_prune": config_prune,
     },
@@ -195,9 +196,10 @@ def ld_st_2(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("index_select"),
     key=["batch_dim", "index_dim", "c_dim"],
+    strategy=["log", "log", "log"],
     prune_configs_by={"early_config_prune": config_prune},
 )
 @triton.jit
@@ -309,6 +311,7 @@ def index_select(inp, dim, index):
     # input  [batch_dim, select_dim, c_dim]
     # output [batch_dim, index_dim, c_dim]
     inp = inp.contiguous()
+    index = index.contiguous()
     inp_numel = inp.numel()
     batch_dim = math.prod(inp_shape[:dim])
     select_dim = inp_shape[dim]

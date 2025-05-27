@@ -8,6 +8,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
@@ -88,12 +89,14 @@ def softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K):
         return 2
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=runtime.get_tuned_config("softmax_non_inner"),
     key=[
         "N",
         "K",
     ],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune1},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
@@ -246,12 +249,14 @@ def softmax_tile_mode_for_inner(args):
         return 2
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=runtime.get_tuned_config("softmax_inner"),
     key=[
         "M",
         "N",
     ],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune2},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
@@ -403,12 +408,14 @@ def config_prune3(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=runtime.get_tuned_config("softmax_non_inner_bw"),
     key=[
         "N",
         "K",
     ],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune3},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_backward_non_inner"))
@@ -533,12 +540,14 @@ def config_prune4(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=runtime.get_tuned_config("softmax_inner_bw"),
     key=[
         "M",
         "N",
     ],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune4},
 )
 @triton.heuristics(

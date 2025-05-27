@@ -7,7 +7,7 @@ import triton.language as tl
 
 from flag_gems.ops.topk import topk_stage1_kernel, topk_stage2_kernel
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM
 
@@ -103,8 +103,8 @@ def get_topk_bubble_res(
     return ret, ret_ind
 
 
-BLOCK_BATCH = [1, 4, 16, 64]
-BLOCK_N = [128, 256, 512, 1024, 2048]
+BLOCK_BATCH = [1, 16]
+BLOCK_N = [128, 512, 1024, 2048]
 
 
 def topk_cfggen():
@@ -156,7 +156,7 @@ def topk_config_prune(configs, named_args, **kwargs):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=topk_cfggen(),
     key=["k", "N", "M", "BLOCK_M", "DESCENDING"],
     prune_configs_by={"early_config_prune": topk_config_prune},

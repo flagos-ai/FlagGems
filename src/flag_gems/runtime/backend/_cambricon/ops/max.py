@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
 
@@ -29,9 +29,10 @@ def max_kernel_float_once(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=cfggen_reduce_op(),
     key=["M"],
+    strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
 @triton.heuristics(
@@ -68,9 +69,10 @@ def max_kernel_float(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=cfggen_reduce_op(),
     key=["M"],
+    strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
 @triton.heuristics(
@@ -106,9 +108,10 @@ def max_kernel_int(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=cfggen_reduce_op(),
     key=["M"],
+    strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
 @triton.heuristics(
@@ -158,12 +161,13 @@ def heur_block_n(args):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("max"),
     key=[
         "M",
         "N",
     ],
+    strategy=["log", "log"],
 )
 @triton.jit
 def max_kernel(
