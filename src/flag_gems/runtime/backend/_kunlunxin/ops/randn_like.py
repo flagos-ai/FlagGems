@@ -7,10 +7,10 @@ import triton
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
-from .randn import choose_unroll, randn_kernel_1, randn_kernel_2
+from .randn import randn_kernel
 
 logger = logging.getLogger(__name__)
-# UNROLL = 4
+UNROLL = 4
 
 
 def randn_like(
@@ -23,9 +23,7 @@ def randn_like(
         dtype = x.dtype
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
-    # grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     cluster_num = 12
-    UNROLL = choose_unroll(N)
     BLOCK_SIZE = min(triton.next_power_of_2(triton.cdiv(N, cluster_num * UNROLL)), 1024)
     grid_fn = triton.cdiv(N, BLOCK_SIZE * UNROLL)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
@@ -33,12 +31,5 @@ def randn_like(
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(x.device):
-        if UNROLL == 4:
-            randn_kernel_1[(grid_fn,)](
-                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
-            )
-        else:
-            randn_kernel_2[(grid_fn,)](
-                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
-            )
+        randn_kernel[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE)
     return out
