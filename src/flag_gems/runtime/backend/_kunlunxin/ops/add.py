@@ -31,7 +31,7 @@ def add_func_scalar_tensor(x, y, alpha):
 
 
 def add(A, B, *, alpha=1):
-    print("\n.......test for mutibackend specific add........\n")
+    # print("\n.......test for mutibackend specific add........\n")
     logger.debug("GEMS ADD")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return add_func(A, B, alpha)

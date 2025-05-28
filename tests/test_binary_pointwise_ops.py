@@ -1224,8 +1224,8 @@ def test_accuracy_pow(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp1 = inp1.uniform_(-1, 1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
@@ -1246,8 +1246,8 @@ def test_accuracy_pow_(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp1 = inp1.uniform_(-1, 1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp1 = to_reference(inp1.clone(), True)
     ref_inp2 = to_reference(inp2, True)
@@ -1301,7 +1301,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp2 = to_reference(inp2, True)
 
@@ -1321,11 +1321,18 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(1)
+        torch.cuda.manual_seed_all(1)
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
+        if scalar == -0.999:
+            inp1 = inp1.uniform_(-1, 1)
+        else:
+            inp1 = inp1.uniform_(-0.1, 0.1)
 
     ref_inp1 = to_reference(inp1, True)
 
@@ -1342,11 +1349,18 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(1)
+        torch.cuda.manual_seed_all(1)
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
+        if scalar == -0.999:
+            inp1 = inp1.uniform_(-1, 1)
+        else:
+            inp1 = inp1.uniform_(-0.1, 0.1)
 
     ref_inp1 = to_reference(inp1.clone(), True)
 
