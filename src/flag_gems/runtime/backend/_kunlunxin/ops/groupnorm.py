@@ -226,184 +226,125 @@ def weight_bias_backward_kernel_loop(
     tl.store(dB + pid, db)
 
 
-class GroupNorm(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
-        # 1, 64, 32, 32
-        #    64
-        # import pudb; pudb.set_trace()
-        logger.debug("GEMS GROUPNORM FORWARD")
-        group_size = C // num_groups  # 64 // 64 = 1
-        x = x.contiguous()  # [1, 64, 32, 32]
-        if weight is not None:
-            weight = weight.contiguous()
-        if bias is not None:
-            bias = bias.contiguous()
-        y = torch.empty_like(x)  # [1, 64, 32, 32]
-        mean = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)  # [1, 64]
-        rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)  # [1, 64]
-        grid = (N * num_groups,)  # 64
+def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
+    logger.debug("GEMS GROUPNORM FORWARD")
 
-        with torch_device_fn.device(x.device):
-            if N == 1 and C == 64 and HW == 1024 and num_groups == 64:
-                os.environ["TRITONXPU_OTHER_SIM"] = "1"
-                os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+    group_size = triton.cdiv(C, group)
+    input = input.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    bias = None if bias is None else bias.contiguous()
 
-            group_norm_kernel[grid](
-                x,  # [1, 64, 32, 32]
-                y,  # [1, 64, 32, 32]
-                weight,  # [64]
-                bias,  # [64]
-                mean,  # [1, 64]
-                rstd,  # [1, 64]
-                group_size,  # 1
-                C,  # 64
-                HW,  # 1024
-                num_groups,  # 64
-                eps,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),  # 1
-                BLOCK_HW_SIZE=triton.next_power_of_2(HW),  # 1024
-            )
+    y = torch.empty_like(input)
+    mean = torch.empty((N, group), dtype=input.dtype, device=input.device)
+    rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
 
-            if "TRITONXPU_OTHER_SIM" in os.environ:
-                del os.environ["TRITONXPU_OTHER_SIM"]
-            if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-                del os.environ["TRITONXPU_STORE_MASK_SIM"]
+    grid = (N * group,)
+    with torch_device_fn.device(input.device):
+        if N == 1 and C == 64 and HxW == 1024 and group == 64:
+            os.environ["TRITONXPU_OTHER_SIM"] = "1"
+            os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+        group_norm_kernel[grid](
+            input,
+            y,
+            weight,
+            bias,
+            mean,
+            rstd,
+            group_size,
+            C,
+            HxW,
+            group,
+            eps,
+            BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
+            BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
+        )
+        if "TRITONXPU_OTHER_SIM" in os.environ:
+            del os.environ["TRITONXPU_OTHER_SIM"]
+        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
-        if x.requires_grad:
-            ctx.save_for_backward(x, weight, bias, mean, rstd)
-            ctx.num_groups = num_groups
-            ctx.group_size = group_size
-            ctx.N = N
-            ctx.C = C
-            ctx.HW = HW
+    return y, mean, rstd
 
-        # print(f"mean.shape = {mean.shape}")
-        # print(f'mean = {mean.cpu()}')
-        # print(f'rstd.shape = {rstd.shape}')
-        # print(f'rstd = {rstd.cpu()}')
-        return y, mean, rstd
 
-    @staticmethod
-    def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logger.debug("GEMS GROUPNORM BACKWARD")
-        y_grad = y_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
-        num_groups = ctx.num_groups
-        group_size = ctx.group_size
-        N = ctx.N
-        C = ctx.C
-        HW = ctx.HW
-        x_grad = torch.empty_like(x)
-        grid = (N * num_groups,)
-        with torch_device_fn.device(x.device):
+def group_norm_backward(
+    grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
+):
+    logger.debug("GEMS GROUPNORM BACKWARD")
+
+    grad_out = grad_out.contiguous()
+    input = input.contiguous()
+    mean = mean.contiguous()
+    rstd = rstd.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    group_size = triton.cdiv(C, group)
+
+    if output_mask[0]:
+        grad_inp = torch.empty_like(input)
+        grid = (N * group,)
+        with torch_device_fn.device(input.device):
             isCloseUnrollControl = False
-            if weight is not None and bias is not None:
+            if output_mask[1] is True and output_mask[2] is True:
                 isCloseUnrollControl = True
-            # os.environ["TRITONXPU_OTHER_SIM"] = "1"
-            # os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-            # print(f'before x_grad = {x_grad.cpu()}')
+
             group_norm_backward_kernel[grid](
-                y_grad,
-                x,
+                grad_out,
+                input,
                 weight,
                 mean,
                 rstd,
-                num_groups,
+                group,
                 group_size,
-                x_grad,
+                grad_inp,
                 C,
-                HW,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
-                BLOCK_HW_SIZE=triton.next_power_of_2(HW),
+                HxW,
+                BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
+                BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
                 isCloseUnrollControl=isCloseUnrollControl,
             )
-            # tmp_W = weight.view(1, C, 1, 1)
-            # # dx_hat = weight * dY_val
-            # tmp_dx_hat = tmp_W.cpu() * y_grad.cpu()
-            # # print(f'dx_hat = {tmp_dx_hat}')
-            # tmp_mean = mean.view(1, C, 1, 1)
-            # # x = tl.where(xy_mask, X_val - mean, 0.0)
-            # tmp_x = x.cpu() - tmp_mean.cpu()
-            # # print(f'X_val - mean = {tmp_x}')
-            # # print(f'pre_sum = dx_hat * x = {tmp_dx_hat * tmp_x}')
+    else:
+        grad_inp = None
 
-            # pre_sum = tmp_W.cpu() * tmp_x
-            # # print(f'pre_sum.shape = {pre_sum.shape}')
-            # # print(f'pre_sum[0][0] = {pre_sum[0][0]}')
-            # # print(f'pre_sum[0][0].shape = {pre_sum[0][0].shape}')
-            # # print(f'sum pre_sum[0][0] = {torch.sum(pre_sum[0][0])}')
+    if output_mask[1] is False and output_mask[2] is False:
+        return grad_inp, None, None
 
-            # tmp_grad_std = torch.sum(pre_sum, dim=[0, 2, 3])
-            # # print(f'tmp_grad_std.shape = {tmp_grad_std.shape}')
-            # # print(f'torch.sum(tmp_W * tmp_x) = {tmp_grad_std}')
-
-        if weight is None and bias is None:
-            return x_grad, None, None, None, None, None, None, None
-
-        weight_grad = None if weight is None else torch.empty_like(weight)
-        bias_grad = None if bias is None else torch.zeros_like(bias)
-        # import os
-        # os.environ["TRITON_INTERPRET"] = 1
-        # os.environ["TRITONXPU_OTHER_SIM"] = "1"
-        # os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-
-        with torch_device_fn.device(x.device):
-            # if N == 1 and C == 64 and HW == 1024 and num_groups == 64:
-            #     os.environ["TRITONXPU_OTHER_SIM"] = "1"
-            #     os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-            if weight is not None and bias is not None:
+    weight_grad = torch.empty_like(weight) if output_mask[1] else None
+    bias_grad = torch.empty_like(weight) if output_mask[2] else None
+    with torch_device_fn.device(input.device):
+        if N == 32 and C == 32 and HxW == 1024 and group == 8:
+            weight_bias_backward_kernel_loop[(C, 1, 1)](
+                grad_out,
+                input,
+                mean,
+                rstd,
+                weight_grad,
+                bias_grad,
+                group,
+                group_size,
+                N,
+                C,
+                HxW,
+                BLOCK_N=1,
+                BLOCK_HW=triton.next_power_of_2(HxW),
+                isCloseUnrollControl=True,
+                isCloseCoreTiling=True,
+            )
+        else:
+            if output_mask[1] is True and output_mask[2] is True:
                 isCloseUnrollControl = True
-
-            if N == 32 and C == 32 and HW == 1024 and num_groups == 8:
-                weight_bias_backward_kernel_loop[(C, 1, 1)](
-                    y_grad,
-                    x,
-                    mean,
-                    rstd,
-                    weight_grad,
-                    bias_grad,
-                    num_groups,
-                    group_size,
-                    N,
-                    C,
-                    HW,
-                    BLOCK_N=1,
-                    BLOCK_HW=triton.next_power_of_2(HW),
-                    isCloseUnrollControl=True,
-                    isCloseCoreTiling=True,
-                )
-            else:
-                weight_bias_backward_kernel[(C, 1, 1)](
-                    y_grad,
-                    x,
-                    mean,
-                    rstd,
-                    weight_grad,
-                    bias_grad,
-                    num_groups,
-                    group_size,
-                    N,
-                    C,
-                    HW,
-                    BLOCK_N=triton.next_power_of_2(N),
-                    BLOCK_HW=triton.next_power_of_2(HW),
-                    isCloseUnrollControl=isCloseUnrollControl,
-                )
-
-            # if "TRITONXPU_OTHER_SIM" in os.environ:
-            #     del os.environ["TRITONXPU_OTHER_SIM"]
-            # if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-            #     del os.environ["TRITONXPU_STORE_MASK_SIM"]
-
-        # if "TRITON_INTERPRET" in os.environ:
-        #     del os.environ["TRITON_INTERPRET"]
-        # if "TRITONXPU_OTHER_SIM" in os.environ:
-        #     del os.environ["TRITONXPU_OTHER_SIM"]
-        # if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-        #     del os.environ["TRITONXPU_STORE_MASK_SIM"]
-        return x_grad, None, None, None, None, weight_grad, bias_grad, None
-
-
-def group_norm(x, weight, bias, N, C, HW, num_groups, eps):
-    return GroupNorm.apply(x, N, C, HW, num_groups, weight, bias, eps)
+            weight_bias_backward_kernel[(C, 1, 1)](
+                grad_out,
+                input,
+                mean,
+                rstd,
+                weight_grad,
+                bias_grad,
+                group,
+                group_size,
+                N,
+                C,
+                HxW,
+                BLOCK_N=triton.next_power_of_2(N),
+                BLOCK_HW=triton.next_power_of_2(HxW),
+                isCloseUnrollControl=isCloseUnrollControl,
+            )
+    return grad_inp, weight_grad, bias_grad

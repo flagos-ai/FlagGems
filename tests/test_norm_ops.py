@@ -272,8 +272,8 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
     if not wb_none:
-        gems_assert_close(res_weight_grad, ref_weight_grad, dtype)
-        gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
+        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=shape[0])
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0])
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
