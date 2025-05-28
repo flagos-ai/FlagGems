@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -111,105 +110,92 @@ def embedding_grad_scale_kernel(
         tl.store(grad_out + row_idx * N + cols, scaled_embedding_grad, mask=mask)
 
 
-class Embedding(torch.autograd.Function):
-    @staticmethod
-    def forward(
-        ctx, weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False
-    ):
-        logger.debug("GEMS EMBEDDING FORWARD")
-        assert not sparse, "Currently do not support sparse format"
+def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
+    logger.debug("GEMS EMBEDDING FORWARD")
+    assert not sparse, "Currently do not support sparse format"
 
-        M = math.prod(indices.shape)
-        N = weight.shape[-1]
+    M = indices.numel()
+    N = weight.shape[-1]
 
-        BLOCK_SIZE = triton.next_power_of_2(N)
-        indices = indices.contiguous()
-        weight = weight.contiguous()
-        output = torch.empty(
-            (*indices.shape, N), device=indices.device, dtype=weight.dtype
-        )
+    BLOCK_SIZE = triton.next_power_of_2(N)
+    # TODO: remove contiguous enforcement
+    indices = indices.contiguous()
+    weight = weight.contiguous()
+    output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
 
-        with torch_device_fn.device(weight.device):
-            embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+    with torch_device_fn.device(weight.device):
+        embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
 
-        ctx.M = M
-        ctx.N = N
-        ctx.num_weights = weight.shape[0]
-        ctx.padding_idx = padding_idx
-        ctx.scale_grad_by_freq = scale_grad_by_freq
-        ctx.sparse = sparse
-        ctx.indices = indices
+    return output
 
-        return output
 
-    @staticmethod
-    def backward(ctx, grad_outputs):
-        logger.debug("GEMS EMBEDDING BACKWARD")
-        assert not ctx.sparse, "Currently do not support sparse format"
+def embedding_backward(
+    grad_outputs,
+    indices,
+    num_weights,
+    padding_idx=-1,
+    scale_grad_by_freq=False,
+    sparse=False,
+):
+    logger.debug("GEMS EMBEDDING BACKWARD")
+    assert not sparse, "Currently do not support sparse format"
 
-        grad_inputs = torch.zeros(
-            (ctx.num_weights, grad_outputs.shape[-1]),
+    M = indices.numel()
+    N = grad_outputs.shape[-1]
+
+    grad_inputs = torch.zeros(
+        (num_weights, grad_outputs.shape[-1]),
+        device=grad_outputs.device,
+        dtype=(
+            torch.float32
+            if grad_outputs.dtype is torch.bfloat16
+            else grad_outputs.dtype
+        ),
+    )
+
+    if scale_grad_by_freq:
+        indice_freq = torch.zeros(
+            (num_weights,),
+            requires_grad=False,
             device=grad_outputs.device,
-            dtype=(
-                torch.float32
-                if grad_outputs.dtype is torch.bfloat16
-                else grad_outputs.dtype
-            ),
+            dtype=torch.int32,
         )
-
-        if ctx.scale_grad_by_freq:
-            indice_freq = torch.zeros(
-                (ctx.num_weights,),
-                requires_grad=False,
-                device=grad_outputs.device,
-                dtype=torch.int32,
-            )
-            INDICE_BLOCK_SIZE = 256
-            indice_grid = lambda meta: (triton.cdiv(ctx.M, INDICE_BLOCK_SIZE),)
-
-            with torch_device_fn.device(grad_outputs.device):
-                indice_freq_kernel[indice_grid](
-                    indice_freq,
-                    ctx.indices,
-                    ctx.M,
-                    INDICE_BLOCK_SIZE,
-                    isCLOSE_TTXPU_O_ATOMIC_SIM=True,
-                )
-        else:
-            indice_freq = None
-
-        BLOCK_SIZE = triton.next_power_of_2(ctx.N)
-
-        HAS_PADDING_IDX = ctx.padding_idx is not None
+        INDICE_BLOCK_SIZE = 256
+        indice_grid = (triton.cdiv(M, INDICE_BLOCK_SIZE),)
 
         with torch_device_fn.device(grad_outputs.device):
-            embedding_backward_kernel[ctx.M,](
-                grad_inputs,
-                grad_outputs,
-                ctx.indices,
-                ctx.padding_idx,
-                HAS_PADDING_IDX,
-                ctx.N,
-                BLOCK_SIZE,
+            indice_freq_kernel[indice_grid](
+                indice_freq,
+                indices,
+                M,
+                INDICE_BLOCK_SIZE,
+                isCLOSE_TTXPU_O_ATOMIC_SIM=True,
             )
+    else:
+        indice_freq = None
 
-        if ctx.scale_grad_by_freq:
-            with torch_device_fn.device(grad_outputs.device):
-                embedding_grad_scale_kernel[ctx.M,](
-                    grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
-                )
-        return (
-            (
-                grad_inputs.to(torch.bfloat16)
-                if grad_outputs.dtype is torch.bfloat16
-                else grad_inputs
-            ),
-            None,
-            None,
-            None,
-            None,
+    BLOCK_SIZE = triton.next_power_of_2(N)
+
+    HAS_PADDING_IDX = padding_idx is not None
+
+    with torch_device_fn.device(grad_outputs.device):
+        embedding_backward_kernel[M,](
+            grad_inputs,
+            grad_outputs,
+            indices,
+            padding_idx,
+            HAS_PADDING_IDX,
+            N,
+            BLOCK_SIZE,
         )
 
-
-def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
-    return Embedding.apply(weight, indices, padding_idx, scale_grad_by_freq, sparse)
+    if scale_grad_by_freq:
+        with torch_device_fn.device(grad_outputs.device):
+            embedding_grad_scale_kernel[M,](
+                grad_inputs, indice_freq, num_weights, N, BLOCK_SIZE
+            )
+    return (
+        grad_inputs.to(torch.bfloat16)
+        if grad_outputs.dtype is torch.bfloat16
+        else grad_inputs
+    )

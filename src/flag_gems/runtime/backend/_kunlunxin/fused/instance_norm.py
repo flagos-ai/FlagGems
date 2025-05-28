@@ -125,10 +125,22 @@ def instance_norm_persistent_kernel_multiline(
     tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
 
 
+def instance_norm_loop_kernel_heur_tile_n(args):
+    return 8192
+    import builtins
+
+    return builtins.min(args["N"], 8192)
+
+
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("instance_norm_loop"),
-    key=["M", "N"],
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("instance_norm_loop"),
+#     key=["M", "N"],
+# )
+@triton.heuristics(
+    values={
+        "TILE_N": instance_norm_loop_kernel_heur_tile_n,
+    },
 )
 @triton.jit(do_not_specialize=["eps"])
 def instance_norm_loop_kernel(
@@ -217,10 +229,22 @@ def instance_norm_loop_kernel(
         tl.store(out_ptr + pid * N + n_offsets, out)
 
 
+def instance_norm_use_running_stats_kernel_heur_tile_n(args):
+    return 8192
+    import builtins
+
+    return builtins.min(args["N"], 8192)
+
+
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("instancenorm"),
-    key=["M", "N"],
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("instancenorm"),
+#     key=["M", "N"],
+# )
+@triton.heuristics(
+    values={
+        "TILE_N": instance_norm_use_running_stats_kernel_heur_tile_n,
+    },
 )
 @triton.jit(do_not_specialize=["eps"])
 def instance_norm_use_running_stats_kernel(
@@ -312,11 +336,11 @@ def update_running_stats_kernel(
 
 
 def instance_norm_backward_kernel_heur_block_row_size(args):
+    return 1
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
 
 def instance_norm_backward_kernel_heur_block_col_size(args):
-    return 128
     import builtins
 
     return builtins.min(triton.next_power_of_2(args["N"]), 8192)
@@ -395,10 +419,27 @@ def instance_norm_backward_kernel(
         tl.store(dX + cols, dx, mask=mask)
 
 
+def weight_bias_backward_kernel_heur_block_batch_size(args):
+    return 128
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+
+
+def weight_bias_backward_kernel_heur_block_col_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["C"], 12))  # cluster_num
+
+
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("instance_norm_weight_bias_backward"),
-    key=["N", "B", "C"],
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("instance_norm_weight_bias_backward"),
+#     key=["N", "B", "C"],
+# )
+@triton.heuristics(
+    values={
+        "BLOCK_BATCH_SIZE": weight_bias_backward_kernel_heur_block_batch_size,
+        "BLOCK_COL_SIZE": weight_bias_backward_kernel_heur_block_col_size,
+    },
 )
 @triton.jit
 def weight_bias_backward_kernel(
@@ -505,57 +546,21 @@ class InstanceNorm(torch.autograd.Function):
 
         with torch_device_fn.device(x.device):
             if use_input_stats:
-                if N <= 128:
-                    TILE_N = triton.next_power_of_2(N)
-                    TILE_M = triton.cdiv(1024, TILE_N)
-                    grid = (triton.cdiv(M, TILE_M), 1, 1)
-                    instance_norm_persistent_kernel_multiline[grid](
-                        x,
-                        y,
-                        weight,
-                        bias,
-                        mean,
-                        rstd,
-                        M,
-                        N,
-                        C,
-                        eps,
-                        TILE_M,
-                        TILE_N,
-                        HAS_WEIGHT_BIAS=has_weight_bias,
-                    )
-                elif N <= 4096:
-                    TILE_N = triton.next_power_of_2(N)
-                    grid = (M, 1, 1)
-                    instance_norm_persistent_kernel[grid](
-                        x,
-                        y,
-                        weight,
-                        bias,
-                        mean,
-                        rstd,
-                        M,
-                        N,
-                        C,
-                        eps,
-                        TILE_N,
-                        HAS_WEIGHT_BIAS=has_weight_bias,
-                    )
-                else:
-                    grid = (M, 1, 1)
-                    instance_norm_loop_kernel[grid](
-                        x,
-                        y,
-                        weight,
-                        bias,
-                        mean,
-                        rstd,
-                        M,
-                        N,
-                        C,
-                        eps,
-                        HAS_WEIGHT_BIAS=has_weight_bias,
-                    )
+                grid = (M, 1, 1)
+                instance_norm_loop_kernel[grid](
+                    x,
+                    y,
+                    weight,
+                    bias,
+                    mean,
+                    rstd,
+                    M,
+                    N,
+                    C,
+                    eps,
+                    HAS_WEIGHT_BIAS=has_weight_bias,
+                    isCloseUnrollControl=True,
+                )
                 if has_running_stats and use_input_stats:  # update running stats
                     grid = lambda meta: (
                         triton.cdiv(C, meta["BLOCK_CHANNEL_SIZE"]),
@@ -572,6 +577,9 @@ class InstanceNorm(torch.autograd.Function):
                         C,
                         N,
                         eps,
+                        isCloseCoreTiling=True,
+                        isCloseVectorization=True,
+                        isCloseUnrollControl=True,
                     )
             else:  # use running stats instead of input stats
                 TILE_N = triton.next_power_of_2(N)
@@ -613,6 +621,12 @@ class InstanceNorm(torch.autograd.Function):
         with torch_device_fn.device(x.device):
             in_grad = torch.empty_like(x)
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
+
+            import os
+
+            os.environ["TRITONXPU_OTHER_SIM"] = "1"
+            os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+
             instance_norm_backward_kernel[grid](
                 out_grad,
                 x,
@@ -624,7 +638,13 @@ class InstanceNorm(torch.autograd.Function):
                 N,
                 C,
                 HAS_WEIGHT_BIAS=ctx.has_weight_bias,
+                isCloseCoreTiling=True,
             )
+
+            if "TRITONXPU_OTHER_SIM" in os.environ:
+                del os.environ["TRITONXPU_OTHER_SIM"]
+            if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+                del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
             if ctx.has_weight_bias:
                 grid = lambda meta: (C, 1, 1)

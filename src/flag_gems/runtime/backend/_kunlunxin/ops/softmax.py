@@ -183,102 +183,80 @@ def softmax_backward_kernel_inner(
             offsets += TILE_N
 
 
-class Softmax(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, dim, dtype):
-        logger.debug("GEMS SOFTMAX")
+def softmax(self, dim, half_to_float=False):
+    logger.debug("GEMS SOFTMAX")
 
-        assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
-        dim = dim % x.ndim
-        M = 1
-        N = x.shape[dim]
-        for i in range(dim):
-            M *= x.shape[i]  # pre_dim
-        inp = x.contiguous()
-        if dtype is None:
-            dtype = x.dtype
-        out = torch.empty_like(inp, dtype=dtype)
-        K = inp.numel() // M // N  # post_dim
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    M = 1
+    N = self.shape[dim]
+    for i in range(dim):
+        M *= self.shape[i]  # pre_dim
+    self = self.contiguous()
+    if half_to_float:
+        dtype = torch.float32
+    else:
+        dtype = self.dtype
+    out = torch.empty_like(self, dtype=dtype)
+    K = self.numel() // M // N  # post_dim
 
-        with torch_device_fn.device(inp.device):
-            if K > 1:
-                # 重新排列输入数据为 [M, K, N]
-                inp_view = inp.view(M, N, K).transpose(1, 2).contiguous()
-                # 合并 M 和 K 维为 M' = M * K
-                inp_reshaped = inp_view.view(M * K, N)
-                # 分配输出的视图
-                out_view = out.view(M, N, K).transpose(1, 2).contiguous()
-                out_reshaped = out_view.view(M * K, N)
-
-                grid = lambda meta: (M * K, 1, 1)
-
-                # 调用 Triton 前向内核
-                softmax_kernel_inner[grid](out_reshaped, inp_reshaped, M * K, N)
-
-                # 将输出恢复到原始布局
-                out_view.copy_(out_reshaped.view(M, K, N).transpose(1, 2))
-            else:
-                grid = (M, 1, 1)
-                softmax_kernel_inner[grid](
-                    out,
-                    inp,
-                    M,
-                    N,
-                )
-        ctx.save_for_backward(out)
-        ctx.dim = dim
-        return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logger.debug("GEMS SOFTMAX VJP")
-        dim = ctx.dim
-        (out,) = ctx.saved_tensors
-
-        assert dim >= -out.ndim and dim < out.ndim, "Invalid dim"
-        dim = dim % out.ndim
-        M = 1
-        N = out.shape[dim]
-        for i in range(dim):
-            M *= out.shape[i]
-
-        out_grad = out_grad.contiguous()
-        in_grad = torch.empty_like(out)
-        K = out.numel() // M // N
-
-        with torch_device_fn.device(in_grad.device):
-            if K > 1:
-                # how to use softmax_backward_kernel_inner?
-                # some transpose and continuous
-                out_grad_view = out_grad.view(M, N, K).transpose(1, 2).contiguous()
-                out_view = out.view(M, N, K).transpose(1, 2).contiguous()
-                # 合并 M 和 K 维为 M' = M * K
-                out_grad_reshaped = out_grad_view.view(M * K, N)
-                out_reshaped = out_view.view(M * K, N)
-                # 分配输入梯度的视图
-                in_grad_view = in_grad.view(M, N, K).transpose(1, 2).contiguous()
-                in_grad_reshaped = in_grad_view.view(M * K, N)
-
-                grid = lambda meta: (triton.cdiv(M * K, meta["TILE_M"]), 1, 1)
-
-                # 调用 Triton 反向内核
-                softmax_backward_kernel_inner[grid](
-                    out_reshaped, out_grad_reshaped, in_grad_reshaped, M * K, N
-                )
-
-                # 将输入梯度恢复到原始布局
-                in_grad_view.copy_(in_grad_reshaped.view(M, K, N).transpose(1, 2))
-            else:
-                grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
-                softmax_backward_kernel_inner[grid](
-                    out,
-                    out_grad,
-                    in_grad,
-                    M,
-                    N,
-                )
-        return in_grad, None, None
+    with torch_device_fn.device(self.device):
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            print("add transpose")
+            assert 0
+            # softmax_kernel_non_inner[grid](
+            #     out,
+            #     self,
+            #     M,
+            #     N,
+            #     K,
+            # )
+        else:
+            grid = (M, 1, 1)
+            softmax_kernel_inner[grid](
+                out,
+                self,
+                M,
+                N,
+            )
+    return out
 
 
-def softmax(x, dim=-1, dtype=None):
-    return Softmax.apply(x, dim, dtype)
+def softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS SOFTMAX VJP")
+
+    assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
+    dim = dim % output.ndim
+    M = 1
+    N = output.shape[dim]
+    for i in range(dim):
+        M *= output.shape[i]
+
+    grad_output = grad_output.contiguous()
+    in_grad = torch.empty_like(output, dtype=input_dtype)
+    K = output.numel() // M // N
+
+    with torch_device_fn.device(in_grad.device):
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            print("add transpose")
+            assert 0
+            # softmax_backward_kernel_non_inner[grid](
+            #     output,
+            #     grad_output,
+            #     in_grad,
+            #     M,
+            #     N,
+            #     K,
+            # )
+        else:
+            grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+            softmax_backward_kernel_inner[grid](
+                output,
+                grad_output,
+                in_grad,
+                M,
+                N,
+            )
+    return in_grad
