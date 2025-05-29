@@ -67,6 +67,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hstack import hstack
+from .index import index
 from .index_add import index_add
 from .index_put import index_put, index_put_
 from .index_select import index_select
@@ -390,6 +391,7 @@ __all__ = [
     "nll_loss2d_backward",
     "index_put_",
     "index_put",
+    "index",
     "vdot",
     "mse_loss",
     "log",

@@ -950,3 +950,18 @@ index_put:
   - 1024
   - 2048
   - 4096
+
+index:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE0: block_size0
+      BLOCK_SIZE1: block_size1
+  block_size0:
+  - 1
+  - 2
+  - 4
+  block_size1:
+  - 1024
+  - 2048
+  - 4096
