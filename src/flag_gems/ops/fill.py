@@ -41,6 +41,8 @@ def fill_tensor_kernel(
 
 
 def fill_tensor(input, value):
+    if not value.is_cuda:
+        return fill_scalar(input, value.item())
     logger.debug("GEMS FILL")
     if value.ndim != 0:
         raise RuntimeError(
