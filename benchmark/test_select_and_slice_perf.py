@@ -412,3 +412,49 @@ def test_index_put__acc_true_perf():
         dtypes=[torch.float16, torch.float32],
     )
     bench.run()
+
+
+class IndexAccBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        INDEX_SHAPE = (
+            ((2**28,), ((2**16,),)),
+            ((32, 32), ((8,), (8,))),
+            ((32, 32), ((8,), (2, 8))),
+            ((32, 32), ((2, 8),)),
+            ((1024, 1024), ((64,), (64,))),
+            ((512, 512, 512), ((128,), (128,), (128,))),
+            ((512, 512, 512), ((2, 128), (2, 128), (2, 128))),
+            ((512, 512, 512), ((2, 128), (128,), (128,))),
+            ((512, 512, 512), ((2, 128),)),
+            (
+                (64, 64, 64),
+                (
+                    (2, 8),
+                    (2, 8),
+                ),
+            ),
+        )
+        self.shapes = INDEX_SHAPE
+        return None
+
+
+def index_input_fn(shapes, dtype, device):
+    input_shape, indices_shape = shapes
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_indices(input_shape, indices_shape, True)
+    yield inp, indices
+
+
+@pytest.mark.index
+def test_index_acc_perf():
+    gems_op = flag_gems.index
+    bench = IndexAccBenchmark(
+        op_name="index",
+        torch_op=torch.ops.aten.index,
+        input_fn=index_input_fn,
+        dtypes=[torch.float16, torch.float32, torch.bfloat16],
+    )
+    bench.set_gems(gems_op)
+    bench.run()
