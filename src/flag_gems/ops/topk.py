@@ -281,7 +281,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         dim = dim + x.ndim
 
     assert dim == x.ndim - 1, "Currently only support topk in last dimension"
-    assert sorted, "Currently only support sorted == True"
+    # assert sorted, "Currently only support sorted == True"
 
     descending = True
     if not largest:
