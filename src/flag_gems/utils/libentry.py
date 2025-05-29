@@ -26,6 +26,29 @@ ATTRS = {
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
 
+if major_version == 2:
+
+    def all_kwargs(self):
+        return {
+            **self.kwargs,
+            **{
+                k: getattr(self, k)
+                for k in (
+                    "num_warps",
+                    "num_ctas",
+                    "num_stages",
+                    "num_buffers_warp_spec",
+                    "num_consumer_groups",
+                    "reg_dec_producer",
+                    "reg_inc_consumer",
+                    "maxnreg",
+                )
+                if hasattr(self, k)
+            },
+        }
+
+    setattr(triton.Config, "all_kwargs", all_kwargs)
+
 
 STRATEGY = {
     None: lambda v: v,
@@ -204,7 +227,11 @@ class LibTuner(triton.runtime.Autotuner):
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
                 self.cache[key] = builtins.min(timings, key=timings.get)
-                full_nargs = {**self.nargs, **kwargs, **self.cache[key].all_kwargs()}
+                full_nargs = {
+                    **self.nargs,
+                    **kwargs,
+                    **self.cache[key].all_kwargs(),
+                }
                 self.pre_hook(full_nargs, reset_only=True)
                 self.configs_timings = timings
             config = self.cache[key]
