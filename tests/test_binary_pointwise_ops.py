@@ -1331,6 +1331,8 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         if scalar == -0.999:
             inp1 = inp1.uniform_(-1, 1)
+        elif scalar == -111.999 and dtype == torch.float16:
+            inp1 = inp1.uniform_(-1, 1)
         else:
             inp1 = inp1.uniform_(-0.1, 0.1)
 
@@ -1358,6 +1360,8 @@ def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
 
     if flag_gems.vendor_name == "kunlunxin":
         if scalar == -0.999:
+            inp1 = inp1.uniform_(-1, 1)
+        elif scalar == -111.999 and dtype == torch.float16:
             inp1 = inp1.uniform_(-1, 1)
         else:
             inp1 = inp1.uniform_(-0.1, 0.1)

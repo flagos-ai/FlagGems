@@ -12,7 +12,7 @@
 
 import logging
 import numbers
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -39,7 +39,7 @@ __all__ = [
 
 def gems_rms_forward(
     x: torch.Tensor, residual: Optional[torch.Tensor], weight: torch.Tensor, eps: float
-) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     add_residual = residual is not None
     if add_residual:
         logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
@@ -72,7 +72,7 @@ class GemsRMSNorm(nn.Module):
     """
 
     __constants__ = ["normalized_shape", "eps", "elementwise_affine"]
-    normalized_shape: Union[int, list[int], Size]
+    normalized_shape: Union[int, List[int], Size]
     eps: Optional[float]
     elementwise_affine: bool
 

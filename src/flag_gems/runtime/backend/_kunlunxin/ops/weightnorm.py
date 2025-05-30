@@ -133,7 +133,7 @@ def heur_block_m_weight_norm_bwd_kernel_last(args):
     return 1
 
 
-def heur_block_weight_norm_bwd_kernel_last(args):
+def heur_block_n_weight_norm_bwd_kernel_last(args):
     return triton.next_power_of_2(triton.cdiv(args["N"], 12))
 
 
@@ -144,7 +144,7 @@ def heur_block_weight_norm_bwd_kernel_last(args):
 @triton.heuristics(
     values={
         "BLOCK_ROW_SIZE": heur_block_m_weight_norm_bwd_kernel_last,
-        "BLOCK_COL_SIZE": heur_block_weight_norm_bwd_kernel_last,
+        "BLOCK_COL_SIZE": heur_block_n_weight_norm_bwd_kernel_last,
     },
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -199,7 +199,7 @@ def heur_block_m_weight_norm_bwd_kernel_first(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
 
 
-def heur_block_weight_norm_bwd_kernel_first(args):
+def heur_block_n_weight_norm_bwd_kernel_first(args):
     return 1
 
 
@@ -210,7 +210,7 @@ def heur_block_weight_norm_bwd_kernel_first(args):
 @triton.heuristics(
     values={
         "BLOCK_ROW_SIZE": heur_block_m_weight_norm_bwd_kernel_first,
-        "BLOCK_COL_SIZE": heur_block_weight_norm_bwd_kernel_first,
+        "BLOCK_COL_SIZE": heur_block_n_weight_norm_bwd_kernel_first,
     },
 )
 @triton.jit(do_not_specialize=["eps"])
