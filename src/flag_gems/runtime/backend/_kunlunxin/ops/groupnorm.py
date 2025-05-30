@@ -83,7 +83,7 @@ def group_norm_backward_kernel(
     group_size,
     grad_x,
     C,
-    HW,
+    HW: tl.constexpr,
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
@@ -92,44 +92,51 @@ def group_norm_backward_kernel(
     num_elements = group_size * HW
 
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
-    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
     wb_offset = group * group_size + group_offset
 
     wb_mask = wb_offset < C
 
-    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
-
-    Mean_ptr = Mean + pid
-    Rstd_ptr = Rstd + pid
-    X_ptr = X + xy_offset
-    dY_ptr = grad_y + xy_offset
-    dX_ptr = grad_x + xy_offset
-
-    rstd = tl.load(Rstd_ptr).to(tl.float32)
-    mean = tl.load(Mean_ptr).to(tl.float32)
-    dY_val = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-
+    rstd = tl.load(Rstd + pid).to(tl.float32)
+    mean = tl.load(Mean + pid).to(tl.float32)
     if W is None:
         weight = 1
     else:
         weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
 
-    dx_hat = weight * dY_val  # -0.1208, -0.7044, -0.6529
+    dx_part2 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
+    dx_part3 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
+    for off in range(0, HW, BLOCK_HW_SIZE):
+        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
+        hw_mask = hw_offset < HW
+        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+        xy_mask = wb_mask[:, None] & hw_mask[None, :]
 
-    x = tl.where(xy_mask, X_val - mean, 0.0)  # 6.7863e-03,  6.7863e-03, -7.9882e-01
-    pre_sum = dx_hat * x
-    # import pudb; pudb.set_trace()
-    grad_std = tl.sum(pre_sum)
-    # tl.store(dX_ptr, grad_std, mask=xy_mask) # [-7.1525574e-07
+        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
+        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
 
-    grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / (HW * group_size)
-    grad_distance = 2 * x * grad_var
-    grad_centered_mean = dx_hat * rstd + grad_distance
-    grad_mean = -tl.sum(grad_centered_mean) / num_elements
-    grad_X = grad_centered_mean + grad_mean
-    tl.store(dX_ptr, grad_X, mask=xy_mask)
+        x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
+        dx_hat = weight * dY_val
+        dx_part2 += dx_hat
+        dx_part3 += dx_hat * x_hat
+
+    dx_2 = tl.sum(dx_part2)
+    dx_3 = tl.sum(dx_part3)
+
+    for off in range(0, HW, BLOCK_HW_SIZE):
+        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
+        hw_mask = hw_offset < HW
+        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+        xy_mask = wb_mask[:, None] & hw_mask[None, :]
+
+        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
+        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
+
+        x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
+        dx_hat = weight * dY_val
+        dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / num_elements)
+        grad_x_offset = tl.where(xy_mask, xy_offset, -1)
+
+        tl.store(grad_x + grad_x_offset, dx, xy_mask)
 
 
 @libentry()
@@ -282,10 +289,10 @@ def group_norm_backward(
         grad_inp = torch.empty_like(input)
         grid = (N * group,)
         with torch_device_fn.device(input.device):
-            isCloseUnrollControl = False
-            if output_mask[1] is True and output_mask[2] is True:
-                isCloseUnrollControl = True
+            import os
 
+            os.environ["TRITONXPU_OTHER_SIM"] = "1"
+            os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
             group_norm_backward_kernel[grid](
                 grad_out,
                 input,
@@ -299,8 +306,13 @@ def group_norm_backward(
                 HxW,
                 BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
                 BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
-                isCloseUnrollControl=isCloseUnrollControl,
+                isCloseUnrollControl=True,
             )
+            if "TRITONXPU_OTHER_SIM" in os.environ:
+                del os.environ["TRITONXPU_OTHER_SIM"]
+            if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+                del os.environ["TRITONXPU_STORE_MASK_SIM"]
+
     else:
         grad_inp = None
 
