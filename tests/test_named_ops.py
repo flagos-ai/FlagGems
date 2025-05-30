@@ -73,6 +73,7 @@ unary_pointwise_ops_ut_map = {
     "cos": ("test_accuracy_cos",),
     "exp": ("test_accuracy_exp",),
     "gelu": ("test_accuracy_gelu",),
+    "glu": ("test_accuracy_glu",),
     "isinf": ("test_accuracy_isinf",),
     "isnan": ("test_accuracy_isnan",),
     "neg": ("test_accuracy_neg",),

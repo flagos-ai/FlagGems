@@ -142,3 +142,18 @@ def test_to_dtype_perf():
         dtypes=[torch.float16, torch.bfloat16, torch.float64],
     )
     bench.run()
+
+
+class GluBenchmark(UnaryPointwiseBenchmark):
+    def set_more_shapes(self):
+        return
+
+
+@pytest.mark.to_dtype
+def test_glu_perf():
+    bench = GluBenchmark(
+        op_name="glu",
+        torch_op=torch.nn.functional.glu,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

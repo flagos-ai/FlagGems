@@ -136,6 +136,7 @@ def enable(
             ("gelu", gelu, Autograd.disable),
             ("gelu_", gelu_, Autograd.disable),
             ("gelu_backward", gelu_backward, Autograd.disable),
+            ("glu", glu, Autograd.disable),
             ("native_group_norm", group_norm, Autograd.disable),
             ("native_group_norm_backward", group_norm_backward, Autograd.disable),
             ("_weight_norm_interface", weight_norm_interface, Autograd.disable),
