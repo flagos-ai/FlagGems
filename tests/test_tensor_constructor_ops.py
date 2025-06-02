@@ -1,5 +1,6 @@
 import pytest
 import torch
+from packaging import version
 
 import flag_gems
 
@@ -179,3 +180,51 @@ def test_accuracy_randperm(n, dtype):
     sorted_ref, _ = torch.sort(ref_out)
     sorted_res, _ = torch.sort(res_out)
     gems_assert_equal(sorted_res, sorted_ref)
+
+
+@pytest.mark.eye
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (256, 1024),
+        (1024, 256),
+        (8192, 4096),
+        (4096, 8192),
+    ]
+    + [(2**d, 2**d) for d in range(7, 13)],
+)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
+def test_accuracy_eye(shape, dtype):
+    if (
+        TO_CPU
+        and dtype == torch.bfloat16
+        and version.parse(torch.__version__) < version.parse("2.5.0")
+    ):
+        pytest.skip("BFloat16 not supported on CPU in torch<2.5.0")
+    n, m = shape
+
+    # test eye(n, m) without dtype
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, m, device=flag_gems.device)
+    gems_assert_equal(res_out, torch.eye(n, m, device="cpu" if TO_CPU else device))
+
+    # with dtype
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
+    gems_assert_equal(
+        res_out,
+        torch.eye(n, m, dtype=dtype, device="cpu" if TO_CPU else device),
+    )
+
+    # test eye(n)
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, device=flag_gems.device)
+    gems_assert_equal(res_out, torch.eye(n, device="cpu" if TO_CPU else device))
+
+    # with dtype
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    gems_assert_equal(
+        res_out,
+        torch.eye(n, dtype=dtype, device="cpu" if TO_CPU else device),
+    )
