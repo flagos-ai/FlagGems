@@ -394,7 +394,6 @@ def test_accuracy_log_softmax_backward(shape, dtype, dim):
 
 
 # TODO: failed at (1, 2) (200, 40999, 3)
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Unsupported")
 @pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
@@ -414,7 +413,6 @@ def test_accuracy_softmax(shape, dtype, dim, neg_inf):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
