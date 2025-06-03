@@ -58,11 +58,42 @@ def custom_gems_rope_forward_cuda(
     return query, key
 
 
+def custom_gems_write_to_paged_cache(
+    key,
+    value,
+    key_cache,
+    value_cache,
+    slot_mapping,
+    kv_cache_dtype,
+    k_scale,
+    v_scale,
+):
+    from flag_gems.fused.reshape_and_cache import reshape_and_cache
+
+    reshape_and_cache(
+        key,
+        value,
+        key_cache,
+        value_cache,
+        slot_mapping.flatten(),
+        kv_cache_dtype,
+        k_scale,
+        v_scale,
+    )
+
+
 def apply_gems_patches_to_vllm(verbose=True):
+    from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.layernorm import RMSNorm
     from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
 
     patch_module_method(RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda, verbose)
     patch_module_method(
         RotaryEmbedding, "forward_cuda", custom_gems_rope_forward_cuda, verbose
+    )
+    patch_module_method(
+        PagedAttention,
+        "write_to_paged_cache",
+        custom_gems_write_to_paged_cache,
+        verbose,
     )
