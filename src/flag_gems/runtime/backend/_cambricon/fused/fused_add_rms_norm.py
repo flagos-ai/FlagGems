@@ -1,7 +1,6 @@
 import logging
 import math
 
-import torch
 import triton
 import triton.language as tl
 
@@ -34,9 +33,8 @@ def get_configs():
 )
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
-def skip_rms_norm_kernel(
+def fused_add_rms_norm_kernel(
     x_ptr,
-    y_ptr,
     r_ptr,
     w_ptr,
     eps,
@@ -56,7 +54,6 @@ def skip_rms_norm_kernel(
         m_offset = m_start + tl.arange(0, M_BLOCK)
         mx_ptr = x_ptr + stride * m_offset
         mr_ptr = r_ptr + stride * m_offset
-        my_ptr = y_ptr + stride * m_offset
         _mean = tl.zeros([M_BLOCK, BLOCK_SIZE], dtype=tl.float32)
         for offset in range(0, N_COLS, BLOCK_SIZE):
             cols = offset + tl.arange(0, BLOCK_SIZE)
@@ -103,29 +100,29 @@ def skip_rms_norm_kernel(
                 other=0.0,
                 eviction_policy="evict_first",
             )
-            y = (x * rrms[:, None]).to(y_ptr.dtype.element_ty) * w
-            tl.store(my_ptr[:, None] + cols[None, :], y, mask=mask)
+            y = (x * rrms[:, None]).to(x_ptr.dtype.element_ty) * w
+            # write back to residual and input
+            tl.store(mr_ptr[:, None] + cols[None, :], x, mask=mask)
+            tl.store(mx_ptr[:, None] + cols[None, :], y, mask=mask)
 
 
-class SkipRmsNorm(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, residual, normalized_shape, weight, eps=1e-5):
-        logger.debug("GEMS_CAMBRICON SKIP RMSNORM FORWARD")
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
+def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
+    """
+    This function performs fused residual addition and RMS normalization **in-place**.
+    Both `x` and `residual` tensors will be modified. Use with caution if these tensors
+    are reused elsewhere or require gradients.
+    """
+    logger.debug("GEMS_CAMBRICON FUSED_ADD_RMSNORM FORWARD")
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
 
-        x = x.contiguous()
-        residual = residual.contiguous()
-        weight = weight.contiguous()
-        y = torch.empty_like(x)
+    x = x.contiguous()
+    residual = residual.contiguous()
+    weight = weight.contiguous()
 
-        with torch_device_fn.device(x.device):
-            skip_rms_norm_kernel[TOTAL_CORE_NUM,](
-                x, y, residual, weight, eps, x.stride(dim - 1), M, N
-            )
-        return y
-
-
-def skip_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
-    return SkipRmsNorm.apply(x, residual, normalized_shape, weight, eps)
+    with torch_device_fn.device(x.device):
+        fused_add_rms_norm_kernel[TOTAL_CORE_NUM,](
+            x, residual, weight, eps, x.stride(dim - 1), M, N
+        )
+    return x, residual

@@ -1,23 +1,14 @@
-import importlib
-
 import numpy as np
 import pytest
 import torch
-from packaging import version
 
 import flag_gems
 from flag_gems.modules import GemsRMSNorm
 from flag_gems.testing import assert_close
 
+from .module_test_util import has_c_extension, has_vllm, is_torch_version_ge
+
 device = flag_gems.device
-
-
-def is_torch_version_ge(min_ver: str) -> bool:
-    return version.parse(torch.__version__) >= version.parse(min_ver)
-
-
-def has_vllm() -> bool:
-    return importlib.util.find_spec("vllm") is not None
 
 
 # TODO(flaggems): Current implementation only supports 2D input tensors and a 1D `normalized_shape` (given as int).
@@ -62,11 +53,12 @@ def test_gems_rmsnorm(shape, dtype):
     else:
         pytest.skip("Skipping vLLM RMSNorm comparison: vLLM not installed")
 
-    torch.library.opcheck(
-        torch.ops.flag_gems.rms_norm,
-        (inp, target.weight.data, target.eps),
-        test_utils=("test_schema", "test_autograd_registration"),
-    )
+    if has_c_extension():
+        torch.library.opcheck(
+            torch.ops.flag_gems.rms_norm,
+            (inp, target.weight.data, target.eps),
+            test_utils=("test_schema", "test_autograd_registration"),
+        )
 
 
 @pytest.mark.parametrize("shape", [(4, 64), (8, 128), (1024, 1024)])
@@ -119,8 +111,9 @@ def test_gems_rmsnorm_with_residual(shape, dtype):
     else:
         pytest.skip("Skipping vLLM RMSNorm comparison: vLLM not installed")
 
-    torch.library.opcheck(
-        torch.ops.flag_gems.fused_add_rms_norm,
-        (inp, residual, target.weight.data, target.eps),
-        test_utils=("test_schema", "test_autograd_registration"),
-    )
+    if has_c_extension():
+        torch.library.opcheck(
+            torch.ops.flag_gems.fused_add_rms_norm,
+            (inp, residual, target.weight.data, target.eps),
+            test_utils=("test_schema", "test_autograd_registration"),
+        )

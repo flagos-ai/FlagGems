@@ -1,5 +1,5 @@
-from .skip_rms_norm import skip_rms_norm
+from .fused_add_rms_norm import fused_add_rms_norm
 
 __all__ = [
-    "skip_rms_norm",
+    "fused_add_rms_norm",
 ]

@@ -141,7 +141,7 @@
 
 ## v4.0
 - rms_norm
-- skip_rms_norm
+- fused_add_rms_norm
 - skip_layer_norm
 - gelu_and_mul
 - silu_and_mul
