@@ -965,6 +965,8 @@ class WrapperGenerator:
                     code.writeline("buffer_size_limit=512,")
                 else:
                     code.writeline("buffer_size_limit=2048,")
+                if self.config.isCloseVectorization:
+                    code.writeline("isCloseVectorization=True,")
                 if os.getenv("XPU_cmp_nan") == "1":
                     code.writeline("isOpenCmpNan=True,")
             code.writeline(")")
@@ -1020,6 +1022,8 @@ class WrapperGenerator:
                     code.writeline("buffer_size_limit=512,")
                 else:
                     code.writeline("buffer_size_limit=2048,")
+                if self.config.isCloseVectorization:
+                    code.writeline("isCloseVectorization=True,")
                 if os.getenv("XPU_cmp_nan") == "1":
                     code.writeline("isOpenCmpNan=True,")
             code.writeline(")")

@@ -42,6 +42,7 @@ class CodeGenConfig:
     # prune_config: (as jit function, ) cofigs -> configs
     is_scatter_slice: bool = False
     is_cat: bool = False
+    isCloseVectorization: bool = False
 
     def __post_init__(self):
         if self.prefer_1d_tile:
