@@ -69,9 +69,9 @@ def test_perf_skip_layernorm():
     bench.run()
 
 
-@pytest.mark.skip_rmsnorm
-def test_perf_skip_rmsnorm():
-    def skip_rmsnorm_input_fn(shape, dtype, device):
+@pytest.mark.fused_add_rms_norm
+def test_perf_fused_add_rms_norm():
+    def fused_add_rms_norm_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
         residual = torch.randn(shape, dtype=dtype, device=device)
         layer_shape = (shape[-1],)
@@ -84,11 +84,11 @@ def test_perf_skip_rmsnorm():
         hidden_states = x * torch.rsqrt(variance + eps)
         return weight * hidden_states
 
-    gems_op = flag_gems.skip_rms_norm
+    gems_op = flag_gems.fused_add_rms_norm
 
     bench = GenericBenchmarkExcluse1D(
-        input_fn=skip_rmsnorm_input_fn,
-        op_name="skip_rmsnorm",
+        input_fn=fused_add_rms_norm_input_fn,
+        op_name="fused_add_rms_norm",
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )

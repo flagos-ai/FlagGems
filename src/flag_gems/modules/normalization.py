@@ -30,7 +30,6 @@ try:
 except ImportError:
     has_c_extension = False
 
-
 __all__ = [
     "gems_rms_forward",
     "GemsRMSNorm",
@@ -47,10 +46,8 @@ def gems_rms_forward(
             torch.ops.flag_gems.fused_add_rms_norm(x, residual, weight, eps)
             return x, residual
         else:
-            residual = x + residual
-            return (
-                flag_gems.rms_norm(residual, list(weight.size()), weight, eps),
-                residual,
+            return flag_gems.fused_add_rms_norm(
+                x, residual, list(weight.size()), weight, eps
             )
     else:
         logger.debug("GEMS CUSTOM RMS_NORM")
