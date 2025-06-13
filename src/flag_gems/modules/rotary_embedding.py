@@ -9,14 +9,14 @@
 # - yarn_find_correction_range
 # - yarn_get_mscale
 # - yarn_linear_ramp_mask
-# - _set_cos_sin_cache method in `GemsDeepseekV3YarnRoPE`
+# - _set_cos_sin_cache method in `GemsDeepseekYarnRoPE`
 #
 # Source: https://huggingface.co/deepseek-ai/DeepSeek-R1/blob/main/modeling_deepseek.py
 # License: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
 
 import logging
 import math
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -29,7 +29,8 @@ has_c_extension = False  # Disable C extension for now, as we have not implement
 
 __all__ = [
     "gems_rope_forward",
-    "GemsDeepseekV3YarnRoPE",
+    "GemsDeepseekYarnRoPE",
+    "GemsRope",
 ]
 
 
@@ -40,12 +41,107 @@ def gems_rope_forward(
     sin: torch.Tensor,
     position_ids: Optional[torch.IntTensor] = None,
     rotary_interleaved: bool = False,
+    inplace: bool = False,
 ) -> Union[torch.Tensor, torch.Tensor]:
     logger.debug("GEMS CUSTOM ROPE FORWARD")
     # TODO: Implement C++ wrapper for rotary_embedding
     return flag_gems.apply_rotary_pos_emb(
-        query, key, cos, sin, position_ids, rotary_interleaved
+        query, key, cos, sin, position_ids, rotary_interleaved, inplace
     )
+
+
+class GemsRope(nn.Module):
+    """
+    Base class for Rotary Position Embedding (RoPE) modules.
+    This class is intended to be subclassed for specific RoPE implementations.
+
+    Args:
+        rotary_dim (int): The rotary embedding dimension (typically equal to head_dim).
+        max_position_embeddings (int): Initial maximum position length to precompute cache.
+        base (float): Frequency base used to compute inverse frequencies (default 10000).
+        device (torch.device or None): Device to place initial buffers on.
+        dtype (torch.dtype): Data type for the cos/sin cache buffers.
+        rotary_interleaved (bool): Whether to use interleaved rotary layout (GPT-NeoX-style).
+
+    Inputs:
+        query (torch.Tensor): Shape (..., q_heads, head_dim)
+        key (torch.Tensor): Shape (..., k_heads, head_dim)
+        position_ids (torch.IntTensor, optional): Shape (..., seq_len), positions for cos/sin lookup.
+        inplace (bool): If True, modifies query and key in place (default False).
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Transformed (query, key) tensors with RoPE applied.
+    """
+
+    def __init__(
+        self,
+        rotary_dim,
+        max_position_embeddings,
+        base,
+        rotary_interleaved,
+        dtype,
+        device,
+    ):
+        super().__init__()
+        self.rotary_dim = rotary_dim
+        self.max_position_embeddings = max_position_embeddings
+        self.base = base
+        self.rotary_interleaved = rotary_interleaved
+        self.dtype = dtype
+        self.device = device
+        self._set_cos_sin_cache()
+
+    def _compute_inv_freq(self) -> torch.Tensor:
+        """
+        Compute the inverse frequency tensor: shape [dim/2]
+        """
+        return 1.0 / (
+            self.base
+            ** (
+                torch.arange(
+                    0, self.rotary_dim, 2, dtype=torch.float32, device=self.device
+                )
+                / self.rotary_dim
+            )
+        )
+
+    def _set_cos_sin_cache(self):
+        """
+        Default implementation of rotary embeddings (vanilla RoPE).
+        Can be overridden in subclasses for NTK, YaRN, etc.
+        """
+        inv_freq = self._compute_inv_freq()
+        t = torch.arange(
+            self.max_position_embeddings, device=self.device, dtype=torch.float32
+        )
+        freqs = torch.outer(t, inv_freq)  # [max_position_embeddings, rotary_dim // 2]
+
+        self.register_buffer(
+            "cos_cached", freqs.cos().to(self.dtype), persistent=False
+        )  # [max_position_embeddings, rotary_dim // 2]
+        self.register_buffer(
+            "sin_cached", freqs.sin().to(self.dtype), persistent=False
+        )  # [max_position_embeddings, rotary_dim // 2]
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        position_ids: Optional[torch.IntTensor] = None,
+        inplace: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if not hasattr(self, "cos_cached") or not hasattr(self, "sin_cached"):
+            self._set_cos_sin_cache()
+
+        return gems_rope_forward(
+            query,
+            key,
+            self.cos_cached,
+            self.sin_cached,
+            position_ids,
+            self.rotary_interleaved,
+            inplace,
+        )
 
 
 # Inverse dim formula to find dim based on number of rotations
@@ -85,149 +181,100 @@ def yarn_linear_ramp_mask(min, max, dim):
     return ramp_func
 
 
-class GemsDeepseekV3YarnRoPE(nn.Module):
+class GemsDeepseekYarnRoPE(GemsRope):
     """
-    Rotary Position Embedding (RoPE) module for Deepseek-V3 with Yarn enhancements.
-
-    This module implements a RoPE variant that supports:
-    - Dynamic position cache construction and updating (used in HuggingFace-like models)
-    - Position interpolation and extrapolation via YARN (Yield-Aware RoPE Normalization)
-    - Optional forward-only mode to freeze cache size for inference
-    - Interleaved rotary layout (e.g., GPT-NeoX style) support
-
-    Compared to static RoPE (as used in some vLLM versions), this module builds
-    position-dependent cosine/sine caches dynamically at runtime, enabling generality
-    for long-context fine-tuning and inference.
-
+    Yarn-based Rotary Position Embedding (RoPE) for DeepSeek models.
     Args:
-        dim (int): The rotary embedding dimension (typically equal to head_dim).
-        max_position_embeddings (int): Initial maximum position length to precompute cache.
-        base (float): Frequency base used to compute inverse frequencies (default 10000).
-        device (torch.device or None): Device to place initial buffers on.
-        scaling_factor (float): Scaling factor for position extrapolation in Yarn.
+        scaling_factor (float): Scaling factor for Yarn extrapolation.
         original_max_position_embeddings (int): Original pretraining context size.
-        beta_fast (float): Yarn parameter controlling short-term frequency decay.
-        beta_slow (float): Yarn parameter controlling long-term frequency floor.
-        mscale (float): Yarn multiplier for frequency scaling (usually 1.0).
-        mscale_all_dim (float): Yarn scaling baseline across all dims (usually 0 or 1).
-        forward_only (bool): If True, disables runtime cache resizing (for inference-only use).
-
-    Inputs:
-        query (torch.Tensor): Shape (..., seq_len, head_dim)
-        key (torch.Tensor): Shape (..., seq_len, head_dim)
-        position_ids (torch.IntTensor, optional): Shape (..., seq_len), positions for cos/sin lookup.
-        rotary_interleaved (bool): Whether inputs use interleaved layout (GPT-NeoX-style).
-        seq_len (int, optional): Current sequence length (defaults to query.shape[-2])
-
-    Returns:
-        Tuple[torch.Tensor, torch.Tensor]: Transformed (query, key) tensors with RoPE applied.
-
-    Usage:
-        rope = GemsDeepseekV3YarnRoPE(dim=128, forward_only=False)
-        q, k = rope(q, k, seq_len=q.shape[-2])
+        beta_fast (float): Controls rapid frequency decay.
+        beta_slow (float): Controls slow frequency decay.
+        mscale (float): Multiplicative scale factor for selected frequencies.
+        mscale_all_dim (float): Global multiplicative baseline.
     """
 
     def __init__(
         self,
-        dim,
-        max_position_embeddings=2048,
-        base=10000,
-        device=None,
-        scaling_factor=1.0,
-        original_max_position_embeddings=4096,
-        beta_fast=32,
-        beta_slow=1,
-        mscale=1,
-        mscale_all_dim=0,
-        forward_only=False,
+        rotary_dim: int,
+        max_position_embeddings: int = 2048,
+        base: float = 10000,
+        rotary_interleaved: bool = False,
+        dtype: torch.dtype = torch.float32,
+        device: Optional[torch.device] = None,
+        scaling_factor: float = 1.0,
+        original_max_position_embeddings: int = 4096,
+        beta_fast: float = 32.0,
+        beta_slow: float = 1.0,
+        mscale: float = 1.0,
+        mscale_all_dim: float = 0.0,
     ):
-        super().__init__()
         self.scaling_factor = scaling_factor
         self.original_max_position_embeddings = original_max_position_embeddings
         self.beta_fast = beta_fast
         self.beta_slow = beta_slow
         self.mscale = mscale
         self.mscale_all_dim = mscale_all_dim
-        self.dim = dim
-        self.max_position_embeddings = max_position_embeddings
-        self.base = base
-        self.forward_only = forward_only
-
-        # Build here to make `torch.jit.trace` work.
-        self._set_cos_sin_cache(
-            seq_len=max_position_embeddings,
+        super().__init__(
+            rotary_dim=rotary_dim,
+            max_position_embeddings=max_position_embeddings,
+            base=base,
+            rotary_interleaved=rotary_interleaved,
+            dtype=dtype,
             device=device,
-            dtype=torch.get_default_dtype(),
         )
-        self.max_seq_len_cached = max_position_embeddings if forward_only else None
 
-    def _set_cos_sin_cache(self, seq_len, device, dtype):
-        self.max_seq_len_cached = seq_len
-        dim = self.dim
-
+    def _compute_inv_freq(self) -> torch.Tensor:
         freq_extra = 1.0 / (
             self.base
-            ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim)
+            ** (
+                torch.arange(
+                    0, self.rotary_dim, 2, dtype=torch.float32, device=self.device
+                )
+                / self.rotary_dim
+            )
         )
         freq_inter = 1.0 / (
             self.scaling_factor
             * self.base
-            ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim)
+            ** (
+                torch.arange(
+                    0, self.rotary_dim, 2, dtype=torch.float32, device=self.device
+                )
+                / self.rotary_dim
+            )
         )
 
         low, high = yarn_find_correction_range(
             self.beta_fast,
             self.beta_slow,
-            dim,
+            self.rotary_dim,
             self.base,
             self.original_max_position_embeddings,
         )
-        inv_freq_mask = 1.0 - yarn_linear_ramp_mask(low, high, dim // 2).to(
-            device=device, dtype=torch.float32
+
+        inv_freq_mask = 1.0 - yarn_linear_ramp_mask(low, high, self.rotary_dim // 2).to(
+            device=self.device, dtype=torch.float32
         )
         inv_freq = freq_inter * (1 - inv_freq_mask) + freq_extra * inv_freq_mask
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        return inv_freq
 
-        t = torch.arange(seq_len, device=device, dtype=torch.float32)
+    def _set_cos_sin_cache(self):
+        inv_freq = self._compute_inv_freq()
+        # self.register_buffer("inv_freq", inv_freq, persistent=False)
 
-        freqs = torch.outer(t, inv_freq)
+        t = torch.arange(
+            self.max_position_embeddings, device=self.device, dtype=torch.float32
+        )
+        freqs = torch.outer(t, inv_freq)  # [max_position_embeddings, rotary_dim // 2]
 
         _mscale = float(
             yarn_get_mscale(self.scaling_factor, self.mscale)
             / yarn_get_mscale(self.scaling_factor, self.mscale_all_dim)
         )
 
-        emb = torch.cat((freqs, freqs), dim=-1)
         self.register_buffer(
-            "cos_cached", (emb.cos() * _mscale).to(dtype), persistent=False
+            "cos_cached", (freqs.cos() * _mscale).to(self.dtype), persistent=False
         )
         self.register_buffer(
-            "sin_cached", (emb.sin() * _mscale).to(dtype), persistent=False
-        )
-
-    def forward(
-        self,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        position_ids: Optional[torch.IntTensor] = None,
-        rotary_interleaved: bool = False,
-        seq_len: Optional[int] = None,
-    ) -> Union[torch.Tensor, torch.Tensor]:
-        if seq_len is None:
-            seq_len = query.shape[-2]
-
-        if self.max_seq_len_cached is None or seq_len > self.max_seq_len_cached:
-            if self.forward_only:
-                raise ValueError(
-                    f"Requested seq_len={seq_len} exceeds cached length in forward-only mode."
-                )
-            self._set_cos_sin_cache(
-                seq_len=seq_len, device=query.device, dtype=query.dtype
-            )
-
-        cos = self.cos_cached[:seq_len].to(dtype=query.dtype)
-        sin = self.sin_cached[:seq_len].to(dtype=query.dtype)
-
-        return flag_gems.apply_rotary_pos_emb(
-            query, key, cos, sin, position_ids, rotary_interleaved
+            "sin_cached", (freqs.sin() * _mscale).to(self.dtype), persistent=False
         )
