@@ -14,18 +14,18 @@ from .topk import argsort
 logger = logging.getLogger(__name__)
 device_ = device
 
-_MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
-_MAX_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).max
-_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
-_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
-_MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
-_MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
-_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
-_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
-_MAX_UINT32_VAL: tl.constexpr = (1 << 32) - 1
-_MIN_UINT32_VAL: tl.constexpr = 0
-_MIN_INT24_VAL: tl.constexpr = -(2**23)
-_MAX_INT24_VAL: tl.constexpr = 2**23 - 1
+_MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
+_MAX_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).max)
+_MIN_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).min)
+_MAX_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).max)
+_MIN_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).min)
+_MAX_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).max)
+_MIN_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).min)
+_MAX_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).max)
+_MAX_UINT32_VAL = tl.constexpr((1 << 32) - 1)
+_MIN_UINT32_VAL = tl.constexpr(0)
+_MIN_INT24_VAL = tl.constexpr(-(2**23))
+_MAX_INT24_VAL = tl.constexpr(2**23 - 1)
 
 
 @triton.jit
@@ -96,20 +96,17 @@ def bitonic_sortbykey_kernel(
 
 @triton.jit
 def radix_type_convert(k):
+    ik = k.to(tl.int64)
     if tl.constexpr(k.dtype == tl.int8):
-        ik = k.to(tl.int8, bitcast=True)
         mask = (ik >> 7) & 0x1
         o = tl.where(mask, ik & 0x7F, ik | 0x80)
     elif tl.constexpr(k.dtype == tl.int16):
-        ik = k.to(tl.int16, bitcast=True)
         mask = (ik >> 15) & 0x1
         o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
     elif tl.constexpr(k.dtype == tl.int32):
-        ik = k.to(tl.int32, bitcast=True)
         mask = (ik >> 31) & 0x1
         o = tl.where(mask, ik & 0x7FFFFFFF, ik | 0x80000000)
     elif tl.constexpr(k.dtype == tl.int64):
-        ik = k.to(tl.int64, bitcast=True)
         mask = (ik >> 63) & 0x1
         o = tl.where(mask, ik & 0x7FFFFFFFFFFFFFFF, ik | 0x8000000000000000)
     else:
