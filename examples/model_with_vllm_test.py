@@ -1,16 +1,33 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import os
+import random
 import time
 
+import numpy as np
+import torch
 from vllm import LLM, SamplingParams
 
 import flag_gems
 
+os.environ["VLLM_ENABLE_MOE_ALIGN_BLOCK_SIZE_TRITON"] = "1"
+
+# flag_gems.enable()
 flag_gems.apply_gems_patches_to_vllm(verbose=True)
 
 
-# enable torch profiler, can also be set on cmd line
-# os.environ["VLLM_TORCH_PROFILER_DIR"] = "./vllm_profile"
+def set_seed(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+set_seed(42)
+
 
 # Sample prompts.
 prompts = [
@@ -19,6 +36,7 @@ prompts = [
     "The capital of France is",
     "The future of AI is",
 ]
+
 # Create a sampling params object.
 sampling_params = SamplingParams(temperature=0.8, top_p=0.95, max_tokens=120)
 
@@ -30,7 +48,7 @@ def main():
         tensor_parallel_size=1,
         max_model_len=1024,
         gpu_memory_utilization=0.98,
-        enforce_eager=True,
+        # enforce_eager=True,
     )
 
     # Generate texts from the prompts. The output is a list of RequestOutput

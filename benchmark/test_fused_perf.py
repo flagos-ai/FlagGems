@@ -94,6 +94,3 @@ def test_perf_fused_add_rms_norm():
     )
     bench.set_gems(gems_op)
     bench.run()
-
-
-# TODO: apply_rotary_pos_emb

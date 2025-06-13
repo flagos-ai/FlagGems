@@ -46,6 +46,7 @@ def custom_gems_rope_forward_cuda(
         sin,
         position_ids=positions,
         rotary_interleaved=not self.is_neox_style,
+        inplace=True,  # set inplace to True for vLLM compatibility
     )
 
     if self.rotary_dim < self.head_size:
@@ -56,6 +57,14 @@ def custom_gems_rope_forward_cuda(
         key = k_embed.reshape(key_shape)
 
     return query, key
+
+
+def custom_gems_silu_and_mul(self, x: torch.Tensor) -> torch.Tensor:
+    from flag_gems.modules.activation import gems_silu_and_mul
+
+    d = x.shape[-1] // 2
+    x1, x2 = x[..., :d], x[..., d:]
+    return gems_silu_and_mul(x1, x2)
 
 
 def custom_gems_write_to_paged_cache(
@@ -84,6 +93,7 @@ def custom_gems_write_to_paged_cache(
 
 def apply_gems_patches_to_vllm(verbose=True):
     from vllm.attention.ops.paged_attn import PagedAttention
+    from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
     from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
 
@@ -97,3 +107,4 @@ def apply_gems_patches_to_vllm(verbose=True):
         custom_gems_write_to_paged_cache,
         verbose,
     )
+    patch_module_method(SiluAndMul, "forward_cuda", custom_gems_silu_and_mul, verbose)

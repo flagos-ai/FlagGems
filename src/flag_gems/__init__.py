@@ -14,6 +14,7 @@ from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
 from .logging_utils import setup_flaggems_logging
+from .modules import *  # noqa: F403
 from .ops import *  # noqa: F403
 from .patches import *  # noqa: F403
 from .runtime.commom_utils import Autograd
