@@ -71,7 +71,7 @@ def nonzero(inp, *, as_tuple=False):
 
     inp_bool = inp_view
     if inp_view.dtype != torch.bool:
-        inp_bool = inp_view.bool()
+        inp_bool = inp_view != 0
 
     prefix_sum = inp_bool.cumsum(axis=0)
 
