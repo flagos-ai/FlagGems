@@ -125,11 +125,11 @@ def test_accuracy_full(shape, dtype, fill_value):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_zeros_like(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device="cpu" if TO_CPU else device)
+    inp = torch.empty(size=shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.zeros_like(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.zeros_like(x)
-    out = torch.zeros_like(x)
-    ref_out = to_reference(out)
+        res_out = torch.zeros_like(inp)
     gems_assert_equal(res_out, ref_out)
 
 
@@ -137,11 +137,11 @@ def test_accuracy_zeros_like(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_ones_like(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device="cpu" if TO_CPU else device)
+    inp = torch.empty(size=shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.ones_like(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.ones_like(x)
-    out = torch.ones_like(x)
-    ref_out = to_reference(out)
+        res_out = torch.ones_like(inp)
     gems_assert_equal(res_out, ref_out)
 
 
@@ -151,17 +151,20 @@ def test_accuracy_ones_like(shape, dtype):
 @pytest.mark.parametrize("xdtype", BOOL_TYPES + ALL_INT_DTYPES + ALL_FLOAT_DTYPES)
 @pytest.mark.parametrize("fill_value", [3.1415926, 2, False])
 def test_accuracy_full_like(shape, dtype, xdtype, fill_value):
-    x = torch.empty(size=shape, dtype=xdtype, device="cpu" if TO_CPU else device)
+    inp = torch.empty(size=shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
 
     # without dtype
+    ref_out = torch.full_like(ref_inp, fill_value)
     with flag_gems.use_gems():
-        res_out = torch.full_like(x, fill_value)
-    gems_assert_equal(res_out, torch.full_like(x, fill_value))
+        res_out = torch.full_like(inp, fill_value)
+    gems_assert_equal(res_out, ref_out)
 
     # with dtype
+    ref_out = torch.full_like(ref_inp, fill_value, dtype=dtype)
     with flag_gems.use_gems():
-        res_out = torch.full_like(x, fill_value, dtype=dtype)
-    gems_assert_equal(res_out, torch.full_like(x, fill_value, dtype=dtype))
+        res_out = torch.full_like(inp, fill_value, dtype=dtype)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
