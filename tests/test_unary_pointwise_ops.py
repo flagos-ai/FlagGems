@@ -753,7 +753,7 @@ def test_accuracy_masked_fill(shape, dtype, threshold, value):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.masked_fill
+@pytest.mark.masked_fill_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
