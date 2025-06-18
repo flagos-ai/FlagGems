@@ -6,7 +6,7 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import get_device_properties
 from flag_gems.utils.pointwise_dynamic import (
     CodeGenConfig,
     FunctionSchema,
@@ -781,7 +781,7 @@ def test_dynamic_function_gsl(use_block_pointer):
 
 
 @pytest.mark.skipif(
-    torch_device_fn.get_device_properties(0).total_memory < (80 * 1024**3),
+    get_device_properties(0).total_memory < (80 * 1024**3),
     reason="This test requires a lot of memory.",
 )
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
