@@ -5,6 +5,17 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+    paths:
+      - '**.py'
+      - '**.cpp'
+      - '**.cu'
+      - '**.h'
+      - '**.hpp'
+      - '**.cc'
+      - 'CMakeLists.txt'
+      - '**/*.cmake'
+      - '**/*.mk'
+      - 'Makefile'
 
 jobs:
   build-C-extension:
