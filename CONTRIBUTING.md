@@ -27,13 +27,16 @@ The documentation for FlagGems is stored in the `docs` directory and is currentl
 FlagGems
 ├── src                  // python source code
 │   └──flag_gems
-│       ├──utils         // python automatic code generation utilities
+│       ├──csrc          // C source
+│       ├──utils         // python utilities
 │       ├──ops           // python single operators
 │       ├──fused         // python fused operators
+│       ├──modules       // python modules
+│       ├──patches       // patching scripts
 │       ├──testing       // python testing utility
 ├── tests                // python accuracy test files
 ├── benchmark            // python performance test files
-├── examples             // python model test files
+├── examples             // examples
 ├── cmake                // c++ cmake files for C-extension
 ├── include              // c++ headers
 ├── lib                  // c++ source code for operator lib

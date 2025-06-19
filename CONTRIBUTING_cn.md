@@ -24,10 +24,13 @@ FlagGems 的文档存放在 `docs` 目录下，并且当前使用 [MkDocs](https
 FlagGems
 ├── src                  // python 源码
 │   └──flag_gems
-│       ├──utils         // python 自动代码生成
-│       ├──ops           // python 单个算子
+│       ├──csrc          // C 源文件
+│       ├──utils         // python utils
+│       ├──ops           // python 独立算子
 │       ├──fused         // python 融合算子
-│       ├──testing       // python 算子测试组件
+│       ├──modules       // python 模块
+│       ├──patches       // 布丁脚本
+│       ├──testing       // python 测试
 ├── tests                // python 算子精度测试
 ├── benchmark            // python 算子性能测试
 ├── examples             // python 模型性能测试
