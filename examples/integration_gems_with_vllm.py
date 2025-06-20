@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-
-import os
 import random
 import time
 
@@ -10,10 +8,8 @@ from vllm import LLM, SamplingParams
 
 import flag_gems
 
-os.environ["VLLM_ENABLE_MOE_ALIGN_BLOCK_SIZE_TRITON"] = "1"
-
-# flag_gems.enable()
-flag_gems.apply_gems_patches_to_vllm(verbose=True)
+flag_gems.enable()  # Enable gems for PyTorch (aten) operators
+flag_gems.apply_gems_patches_to_vllm(verbose=True)  # Patch vLLM custom ops
 
 
 def set_seed(seed: int = 42):

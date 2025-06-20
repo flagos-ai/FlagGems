@@ -1,4 +1,3 @@
-
 # How To Use FlagGems
 ## Basic Usage
 To use the `FlagGems` operator library, import it and enable acceleration before running computations. You can enable it globally or temporarily.
@@ -80,11 +79,8 @@ $ cat ./gems_debug.log
 ## Running FlagGems on Non-NVIDIA Hardware
 
 ### Supported Platforms
-| Vendor        | Platform Examples                  | Backend Notes                  |
-|---------------|------------------------------------|--------------------------------|
-| NVIDIA        | A100, H100                         | Default Triton backend         |
-| Others        | -                                  | Coming soon                    |
-
+FlagGems supports a range of AI chips beyond NVIDIA. For an up-to-date list of validated platforms, please refer to the following section in our main documentation:
+👉 [See Supported Platforms](https://github.com/FlagOpen/FlagGems/tree/master?tab=readme-ov-file#supported-platforms)
 
 ### Unified Usage Interface
 
@@ -241,7 +237,8 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
     # Other post-step operations omitted
 ```
 
-This ensures that only the forward and backward computation logic runs with `flag_gems` acceleration, while other components such as data loading and optimizer steps remain unchanged. A full example of the integration described above is available at: `examples/model_with_megatron_test.py`
+This ensures that only the forward and backward computation logic runs with `flag_gems` acceleration, while other components such as data loading and optimizer steps remain unchanged.
+
 #### Scope and Limitations
 While `flag_gems.enable()` is sufficient in most frameworks, we observed that applying it early in Megatron’s pipeline can sometimes cause unexpected behavior, especially during the data loading phase. For better stability, we recommend using `flag_gems.use_gems()` as a context manager limited to the computation stage.
 
@@ -277,9 +274,9 @@ Here’s how to enable `flag_gems` in a distributed vLLM + DeepSeek deployment:
     import os
 	if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
 	try:
-		import flag_gems
+        import flag_gems
         flag_gems.enable()
-		flag_gems.apply_gems_patches_to_vllm(verbose=True)
+        flag_gems.apply_gems_patches_to_vllm(verbose=True)
         logger.info("Successfully enabled flag_gems as default ops implementation.")
     except ImportError:
         logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
@@ -338,22 +335,32 @@ These issues can occasionally offset the benefits of highly optimized kernels. T
 
 ### Pre-tuning Model Shapes for Inference Scenarios
 
-`flag_gems` integrates with [libtune](https://github.com/FlagOpen/FlagGems/tree/master/src/flag_gems/libtune), a lightweight tuning cache mechanism that helps mitigate Triton’s runtime autotuning overhead. Instead of tuning operators on the fly—potentially during the first few inference requests—`libtune` allows you to **pre-tune critical operators for known shapes** and persist the best configurations.
+`flag_gems` integrates with [`LibTuner`](https://github.com/FlagOpen/FlagGems/blob/master/src/flag_gems/utils/libentry.py#L139), a lightweight enhancement to Triton’s autotuning system. `libtuner` introduces a **persistent, per-device tuning cache** that helps mitigate runtime overhead from Triton’s default autotuning process.
 
-Key characteristics:
+#### Why Pre-tuning?
 
-- Caches best autotune configs in a **per-device, cross-process database**.
-- Eliminates redundant tuning during runtime, which is especially beneficial for large models and high-throughput systems.
-- Especially useful for operators like `mm` and `addmm`, which are often heavily autotuned.
+Triton typically performs autotuning during the first few executions of a new input shape, which may cause latency spikes—especially in latency-sensitive inference systems. `libtune` addresses this with:
 
-To use pre-tuning:
+- Persistent caching: Best autotune configs are saved across runs.
+- Cross-process sharing: Cache is shared across processes on the same device.
+- Reduced runtime overhead: Once tuned, operators skip tuning in future runs.
 
-1. Identify the key shapes used in your inference scenario.
-2. Use the [`examples/pretune.py`](https://github.com/FlagOpen/FlagGems/blob/master/examples/pretune.py) script to warm up and store the best configs ahead of time.
-3. Run your inference workloads with autotuning disabled or minimal, relying on the cached best configs.
+This is particularly useful for operators like `mm` and `addmm`, which often trigger Triton autotune logic.
 
-> Note: In some frameworks like vLLM (e.g., `v0.8.5`), a built-in model warmup step is available when using `--compile-mode`. If `flag_gems` is integrated, this warmup implicitly triggers pre-tuning via `libtune`.
 
+#### How to Use Pre-tuning
+
+To proactively warm up your system and populate the cache:
+
+1. Identify key input shapes used in your production workload.
+2. Run the pre-tuning script to benchmark and cache best configs:`python examples/pretune.py`
+3. Deploy normally, and `flag_gems` will automatically pick the optimal config from cache during inference.
+
+> ✅ `pretune.py` accepts example shapes and workloads to simulate your model's actual use cases. You can customize it for batch sizes, sequence lengths, etc.
+
+> 💡 In frameworks like **vLLM** (`v0.8.5+`), enabling `--compile-mode` automatically performs a warmup step. If `flag_gems` is integrated, this also triggers `libtuner`-based pre-tuning implicitly.
+
+For more details or to customize your tuning cache path and settings, refer to the [examples/pretune.py](https://github.com/FlagOpen/FlagGems/blob/master/examples/pretune.py).
 
 ### Using C++-Based Operator Wrappers for Further Performance Gains
 
