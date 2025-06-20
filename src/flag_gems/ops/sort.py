@@ -33,10 +33,10 @@ def sort_kernel(
     if IS_FLOAT:
         mask_val = _get_finfo_val(in_ptr.dtype.element_ty, return_max=not DESCENDING)
         in_val = tl.load(in_ptr, mask=mask, other=mask_val)
-        in_val = tl.where(in_val.dtype.is_fp64(), in_val, in_val.to(tl.float32))
     else:
         mask_val = _get_iinfo_val(in_ptr.dtype.element_ty, return_max=not DESCENDING)
-        in_val = tl.load(in_ptr, mask=mask, other=mask_val).to(tl.int32)
+        in_val = tl.load(in_ptr, mask=mask, other=mask_val)
+
     index_val = tl.arange(0, BLOCK_SIZE)
 
     sorted_in_val, sorted_index_val = argsort(
