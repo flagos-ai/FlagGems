@@ -171,6 +171,7 @@ def test_outer_benchmark():
         torch_op=torch.Tensor.outer,
         dtypes=FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems.outer)
     bench.run()
 
 

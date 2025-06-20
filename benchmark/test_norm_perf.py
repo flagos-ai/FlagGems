@@ -148,6 +148,8 @@ def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn
     bench = NormBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
+    if op_name == "instance_norm":
+        bench.set_gems(flag_gems.instance_norm)
     bench.run()
 
 
@@ -190,4 +192,6 @@ def test_weight_vector_norm_benchmark(op_name, torch_op, input_fn):
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op
     )
+    if op_name == "weight_norm":
+        bench.set_gems(flag_gems.weight_norm)
     bench.run()
