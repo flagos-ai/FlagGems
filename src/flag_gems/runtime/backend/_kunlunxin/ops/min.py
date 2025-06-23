@@ -12,6 +12,8 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
 
+from ..utils.block_size_utils import get_block_size_1d
+
 logger = logging.getLogger(__name__)
 
 
@@ -116,7 +118,8 @@ def min_kernel(
 def min(inp):
     logger.debug("GEMS MIN")
     M = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    block_size = get_block_size_1d(M, inp.element_size())
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
@@ -125,7 +128,7 @@ def min(inp):
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
         if mid_size == 1:
             return mid.reshape([])
 
@@ -134,7 +137,7 @@ def min(inp):
         os.environ["TRITONXPU_OTHER_SIM"] = "1"
         os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
 
-        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
 
         if "TRITONXPU_OTHER_SIM" in os.environ:
             del os.environ["TRITONXPU_OTHER_SIM"]

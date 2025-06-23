@@ -1,6 +1,5 @@
 import builtins
 import logging
-import math
 
 import torch
 import triton
@@ -10,6 +9,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
+
+from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,8 @@ def mean(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    block_size = get_block_size_1d(M, inp.element_size())
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
@@ -56,10 +58,12 @@ def mean(inp, *, dtype=None):
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
         if mid_size == 1:
             return (mid / M).reshape([])
-        mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
+        mean_kernel_2[(1, 1, 1)](
+            mid, out, M, mid_size, block_mid, buffer_size_limit=2048
+        )
     return out
 
 
@@ -127,7 +131,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
     with torch_device_fn.device(x.device):
-        mean_dim_kernel[grid](x, out, M, N)
+        mean_dim_kernel[grid](x, out, M, N, buffer_size_limit=2048)
     if not keepdim:
         out = out.squeeze(dim)
     return out
