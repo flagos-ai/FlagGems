@@ -82,6 +82,7 @@ from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
+from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
@@ -280,6 +281,10 @@ __all__ = [
     "weight_norm_interface_backward",
     "le",
     "le_scalar",
+    "lerp_scalar",
+    "lerp_scalar_",
+    "lerp_tensor",
+    "lerp_tensor_",
     "lt",
     "lt_scalar",
     "rms_norm",
