@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -9,6 +8,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
+
+from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,8 @@ def prod(inp, *, dtype=None):
         dtype = inp.dtype
 
     M = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    block_size = get_block_size_1d(M, inp.element_size())
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
@@ -61,10 +63,14 @@ def prod(inp, *, dtype=None):
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
+        prod_kernel_mid[(mid_size, 1, 1)](
+            inp, mid, M, block_size, buffer_size_limit=2048
+        )
         if mid_size == 1:
             return mid.reshape([])
-        prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid)
+        prod_kernel_result[(1, 1, 1)](
+            mid, out, mid_size, block_mid, buffer_size_limit=2048
+        )
     return out
 
 
@@ -140,7 +146,7 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     out = torch.empty(shape, dtype=dtype, device=inp.device)
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch.cuda.device(inp.device):
-        prod_kernel[grid](inp, out, M, N)
+        prod_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out
