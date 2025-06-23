@@ -16,7 +16,21 @@ def lt_func(x, y):
 
 def lt(A, B):
     logger.debug("GEMS LT")
-    return lt_func(A, B)
+    import os
+
+    import torch
+
+    container = [
+        torch.Size([64, 64]),
+        torch.Size([4096, 4096]),
+        torch.Size([64, 512, 512]),
+    ]
+    if A.shape in container:
+        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    res = lt_func(A, B)
+    if "TRITONXPU_COMPARE_FUSION" in os.environ:
+        del os.environ["TRITONXPU_COMPARE_FUSION"]
+    return res
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
