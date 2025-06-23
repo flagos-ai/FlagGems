@@ -696,6 +696,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
                 return_counts=return_counts,
                 num_warps=num_warps,
                 isCloseVectorization=True,
+                buffer_size_limit=128,
             )
             if "TRITONXPU_OTHER_SIM" in os.environ:
                 del os.environ["TRITONXPU_OTHER_SIM"]
