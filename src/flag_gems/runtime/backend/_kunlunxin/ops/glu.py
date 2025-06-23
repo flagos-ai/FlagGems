@@ -8,6 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
 exp = tl_extra_shim.exp
 
 
@@ -22,7 +23,7 @@ def glu_kernel(a, b):
 
 def glu(self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
-    logging.debug("GLU FORWARD")
+    logger.debug("GLU FORWARD")
     # Split into a and b
     a, b = torch.chunk(self, 2, dim=dim)
     out = glu_kernel(a, b)
