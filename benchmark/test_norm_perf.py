@@ -144,7 +144,7 @@ def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn
         "instance_norm",
         "batch_norm",
     ]:
-        pytest.skip("RUNTIME TODOFIX.")
+        pytest.skip("RUNTIME TODOFIX.(batch_norm unsupported in torch)")
     bench = NormBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )

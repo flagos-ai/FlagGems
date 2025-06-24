@@ -110,7 +110,7 @@ def softmax_backward_kernel_inner_heur_tile_m(args):
 def softmax_backward_kernel_inner_heru_tile_n(args):
     import builtins
 
-    return builtins.min(args["N"], 8192)
+    return builtins.min(args["N"], 4096)
     # return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
 
@@ -222,7 +222,13 @@ def softmax(self, dim, half_to_float=False):
             grid = lambda meta: (M * K, 1, 1)
 
             # 调用 Triton 前向内核
-            softmax_kernel_inner[grid](out_reshaped, inp_reshaped, M * K, N)
+            softmax_kernel_inner[grid](
+                out_reshaped,
+                inp_reshaped,
+                M * K,
+                N,
+                buffer_size_limit=2048,
+            )
 
             # 将输出恢复到原始布局
             # out_view.copy_(out_reshaped.view(M, K, N).transpose(1, 2))
@@ -239,6 +245,8 @@ def softmax(self, dim, half_to_float=False):
                 self,
                 M,
                 N,
+                buffer_size_limit=2048,
+                isCloseVectorization=True,
             )
     return out
 
@@ -275,7 +283,13 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
             # 调用 Triton 反向内核
             softmax_backward_kernel_inner[grid](
-                out_reshaped, out_grad_reshaped, in_grad_reshaped, M * K, N
+                out_reshaped,
+                out_grad_reshaped,
+                in_grad_reshaped,
+                M * K,
+                N,
+                buffer_size_limit=2048,
+                isCloseUnrollControl=True,
             )
             # 将输入梯度恢复到原始布局
             # in_grad_view.copy_(in_grad_reshaped.view(M, K, N).transpose(1, 2))
@@ -299,5 +313,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 in_grad,
                 M,
                 N,
+                buffer_size_limit=2048,
+                isCloseUnrollControl=True,
             )
     return in_grad.to(input_dtype)
