@@ -225,7 +225,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
-        if op_name in ["cross_entropy_loss", "nll_loss"]:
+        if op_name in ["nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
         elif op_name in ["cummin"]:
             pytest.skip("CUMSUM UNSUPPORTED")
