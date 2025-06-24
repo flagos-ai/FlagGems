@@ -338,53 +338,10 @@ max:
   num_warps: 8
 addmm:
 - META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 64
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-  num_stages: 5
-  num_warps: 2
-- META:
     BLOCK_SIZE_M: 32
-    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_N: 32
     BLOCK_SIZE_K: 32
-  num_stages: 5
-  num_warps: 2
+  num_warps: 4
 cross_entropy_loss:
 - META:
     BLOCK_C: 256
@@ -431,7 +388,6 @@ masked_fill:
   block_n:
   - 1024
   - 2048
-  - 4096
   warps:
   - 4
   - 8
@@ -515,8 +471,6 @@ layer_norm_loop:
   tile_n:
   - 1024
   - 2048
-  - 4096
-  - 8192
 layer_norm_backward:
 - gen: true
   param_map:

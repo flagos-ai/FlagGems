@@ -42,7 +42,7 @@ def philox_backend_seed_offset(increment, generator=None):
         generator = torch_device_fn.default_generators[device]
     state_copy = generator.get_state()
     # TODO[kunlunxin]: we will upgrade torch version in 2025.04
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in ("kunlunxin", "aipu"):
         c0, c1 = state_copy.view(torch.int64)[-2], state_copy.view(torch.int64)[-1]
     else:
         c0, c1 = state_copy.view(torch.int64)
