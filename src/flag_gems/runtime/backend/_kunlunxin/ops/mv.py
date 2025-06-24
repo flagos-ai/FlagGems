@@ -1,8 +1,11 @@
 import logging
+import os
 
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.ops.mm import mm
 
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -75,16 +78,23 @@ def mv(inp, vec):
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(inp.device):
-        mv_kernel[grid](
-            inp,
-            vec,
-            out,
-            N,
-            M,
-            inp.stride(0),
-            inp.stride(1),
-            vec.stride(0),
-            out.stride(0),
-            buffer_size_limit=256,
-        )
+        if M == 1:
+            mv_kernel[grid](
+                inp,
+                vec,
+                out,
+                N,
+                M,
+                inp.stride(0),
+                inp.stride(1),
+                vec.stride(0),
+                out.stride(0),
+                buffer_size_limit=256,
+            )
+        else:
+            os.environ["XMLIR_MATMUL_FAST_MODE"] = "1"
+            vec = vec[:, None]
+            out = mm(inp, vec)
+            out = out.squeeze()
+            del os.environ["XMLIR_MATMUL_FAST_MODE"]
     return out
