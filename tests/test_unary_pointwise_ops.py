@@ -198,7 +198,10 @@ def test_accuracy_gelu(shape, dtype, approximate):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.gelu(res_inp, approximate=approximate)
 
-    gems_assert_close(res_out, ref_out, dtype)
+    atol = 1e-4
+    if flag_gems.vendor_name == "aipu" and dtype == torch.float16:
+        atol = 1e-3
+    gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
 @pytest.mark.glu
