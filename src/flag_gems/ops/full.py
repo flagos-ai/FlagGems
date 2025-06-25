@@ -4,30 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime import torch_device_fn
-from ..utils import triton_lang_extension as tle
-from ..utils.shape_utils import volume
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
-
-
-@triton.jit(do_not_specialize=["fill_value_or_ptr"])
-def full_kernel(
-    output_ptr,
-    n_elements,
-    fill_value_or_ptr,
-    FILL_VALUE_IS_PTR: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tle.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    if FILL_VALUE_IS_PTR:
-        fill_value = tl.load(fill_value_or_ptr)
-    else:
-        fill_value = fill_value_or_ptr
-    tl.store(output_ptr + offsets, fill_value, mask=mask)
 
 
 ALL_INT_DTYPES = (torch.int8, torch.int16, torch.int32, torch.int64)
@@ -48,9 +27,21 @@ def check_dtype(fill_value, dtype, device):
         raise RuntimeError(
             f"value cannot be converted to type {dtype} without overflow"
         )
-    if dtype in ALL_FLOAT_DTYPES:
+    if dtype == torch.float64:
         fill_value = torch.tensor(fill_value, dtype=dtype, device=device)
     return fill_value
+
+
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def full_func(out, fill_value):
+    return fill_value
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def full_func_scalar(out, fill_value):
+    return tl.full(out.shape, fill_value, out.dtype)
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
@@ -68,14 +59,8 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
         fill_value = check_dtype(fill_value, dtype, device)
 
     out = torch.empty(size, device=device, dtype=dtype)
-    N = volume(size)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(device):
-        full_kernel[grid_fn](
-            out,
-            N,
-            fill_value,
-            FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
-            BLOCK_SIZE=1024,
-        )
-    return out
+
+    if isinstance(fill_value, torch.Tensor):
+        return full_func(out, fill_value, out0=out)
+    else:
+        return full_func_scalar(out, fill_value, out0=out)
