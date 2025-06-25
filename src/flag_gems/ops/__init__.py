@@ -100,7 +100,7 @@ from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
-from .mm import mm
+from .mm import mm, mm_out
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
@@ -156,7 +156,7 @@ from .softmax import softmax, softmax_backward
 from .sort import sort
 from .stack import stack
 from .sub import sub, sub_
-from .sum import sum, sum_dim
+from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
@@ -293,6 +293,7 @@ __all__ = [
     "mean",
     "mean_dim",
     "mm",
+    "mm_out",
     "mul",
     "mul_",
     "multinomial",
@@ -353,7 +354,9 @@ __all__ = [
     "min",
     "min_dim",
     "sum",
+    "sum_out",
     "sum_dim",
+    "sum_dim_out",
     "amax",
     "argmax",
     "argmin",
