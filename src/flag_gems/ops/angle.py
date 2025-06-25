@@ -7,10 +7,7 @@ import triton.language as tl
 
 from ..utils import pointwise_dynamic, tl_extra_shim
 
-try:
-    import torch_npu  # noqa: F401
-except:  # noqa: E722
-    atan2 = tl_extra_shim.atan2
+atan2 = tl_extra_shim.atan2
 
 logger = logging.getLogger(__name__)
 
