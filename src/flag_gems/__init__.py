@@ -189,6 +189,7 @@ def enable(
             ("mean", mean, Autograd.disable),
             ("mean.dim", mean_dim, Autograd.disable),
             ("mm", mm, Autograd.disable),
+            ("mm.out", mm_out, Autograd.disable),
             ("mul.Tensor", mul, Autograd.disable),
             ("mul_.Tensor", mul_, Autograd.disable),
             ("multinomial", multinomial, Autograd.disable),
@@ -245,7 +246,9 @@ def enable(
             ("prod", prod, Autograd.disable),
             ("prod.dim_int", prod_dim, Autograd.disable),
             ("sum", sum, Autograd.disable),
+            ("sum.out", sum_out, Autograd.disable),
             ("sum.dim_IntList", sum_dim, Autograd.disable),
+            ("sum.IntList_out", sum_dim_out, Autograd.disable),
             (
                 "scaled_dot_product_attention",
                 scaled_dot_product_attention,
