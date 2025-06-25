@@ -76,6 +76,7 @@ def enable(
             ("cumsum", cumsum, Autograd.disable),
             ("cumsum.out", cumsum_out, Autograd.disable),
             ("cummin", cummin, Autograd.disable),
+            ("cummax", cummax, Autograd.disable),
             ("div.Tensor", true_divide, Autograd.disable),
             ("div_.Tensor", true_divide_, Autograd.disable),
             ("div.Scalar", true_divide, Autograd.disable),
