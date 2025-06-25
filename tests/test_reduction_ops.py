@@ -306,6 +306,34 @@ def test_accuracy_cummin(shape, dtype):
     gems_assert_equal(res_out.indices, ref_out.indices)
 
 
+CUMMAX_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
+
+
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(
+    SkipVersion("triton", "<3.0"),
+    reason="Skipping when associative_scan only support single tensor input.",
+)
+@pytest.mark.cummax
+@pytest.mark.parametrize("shape", CUMMAX_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_cummax(shape, dtype):
+    dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
+    if dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cummax(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cummax(inp, dim=dim)
+    gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
+    gems_assert_equal(res_out.indices, ref_out.indices)
+
+
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
