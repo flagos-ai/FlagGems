@@ -5,10 +5,7 @@ import triton.language as tl
 
 from ..utils import pointwise_dynamic, tl_extra_shim
 
-try:
-    import torch_npu  # noqa: F401
-except:  # noqa: E722
-    _isinf = tl_extra_shim.isinf
+_isinf = tl_extra_shim.isinf
 
 logger = logging.getLogger(__name__)
 

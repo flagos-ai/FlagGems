@@ -47,9 +47,9 @@ Config = BenchConfig()
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--mode"
-        if vendor_name != "kunlunxin"
-        else "--fg_mode",  # TODO: fix pytest-* common --mode args
+        (
+            "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+        ),  # TODO: fix pytest-* common --mode args
         action="store",
         default=device,
         required=False,
