@@ -10,6 +10,7 @@ from triton.runtime.jit import JITFunction
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import (
+    MemOverlap,
     all_c_contiguous,
     all_the_same_shape,
     all_the_same_stride,
@@ -1215,15 +1216,13 @@ class PointwiseDynamicFunction:
             if out_tensors:
                 for index, item in enumerate(out_tensors):
                     if list(item.shape) != list(task_shape):
-                        raise ValueError(
+                        raise RuntimeError(
                             f"out tensor at index {index} shape is invalid, should be {task_shape} but is {item.shape}!"
                         )
-                    # output arguments must be dense and no overlapping for pointwise operation
-                    if has_internal_overlapping(item) and any(
-                        item is t for t in in_tensors
-                    ):
-                        raise ValueError(
-                            "Pointwise Input arguments must be dense and no overlapping."
+                    # output arguments must not have internal overlapping for pointwise operation
+                    if has_internal_overlapping(item) == MemOverlap.Yes:
+                        raise RuntimeError(
+                            "Pointwise Input arguments should not have internal overlapping."
                         )
 
             ndim = len(task_shape)

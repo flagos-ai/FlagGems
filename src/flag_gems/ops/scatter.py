@@ -7,7 +7,11 @@ import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
-from flag_gems.utils.shape_utils import has_internal_overlapping, restride_dim
+from flag_gems.utils.shape_utils import (
+    MemOverlap,
+    has_internal_overlapping,
+    restride_dim,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +336,7 @@ def scatter(inp, dim, index, src, reduce=None):
             torch.bfloat16,
         ), "Unsupported operation: reduce scatter bfloat tensors."
 
-    if has_internal_overlapping(out):
+    if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
 
     src_strided = src.as_strided(index.shape, src.stride())
@@ -367,8 +371,8 @@ def scatter_(inp, dim, index, src, reduce=None):
             torch.bfloat16,
         ), "Unsupported operation: reduce scatter bfloat tensors."
 
-    assert not has_internal_overlapping(
-        out
+    assert (
+        has_internal_overlapping(out) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
     src_restrided = src.as_strided(index.shape, src.stride())
