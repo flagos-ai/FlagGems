@@ -98,3 +98,25 @@ def mv(inp, vec):
             out = out.squeeze()
             del os.environ["XMLIR_MATMUL_FAST_MODE"]
     return out
+
+
+def mv_cluster(inp, vec):
+    logger.debug("GEMS MV")
+    assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
+    N, M = inp.shape
+    out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
+    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
+    with torch_device_fn.device(inp.device):
+        mv_kernel[grid](
+            inp,
+            vec,
+            out,
+            N,
+            M,
+            inp.stride(0),
+            inp.stride(1),
+            vec.stride(0),
+            out.stride(0),
+            buffer_size_limit=256,
+        )
+    return out

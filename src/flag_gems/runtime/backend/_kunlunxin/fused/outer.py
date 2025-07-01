@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-from ..ops import mul, mv
+from ..ops import mul, mv_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,8 @@ class Outer(torch.autograd.Function):
 
         inp, weight = ctx.saved_tensors
 
-        inp_grad = mv(out_grad, weight)
-        weight_grad = mv(out_grad.t().contiguous(), inp)
+        inp_grad = mv_cluster(out_grad, weight)
+        weight_grad = mv_cluster(out_grad.t().contiguous(), inp)
 
         return inp_grad, weight_grad
 

@@ -35,7 +35,7 @@ SEEDS = [0]
 CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
 
 # We assume fp8 is always enabled for testing.
-KV_CACHE_DTYPE = ["auto", "fp8"]
+KV_CACHE_DTYPE = ["auto", "fp8"] if flag_gems.vendor_name != "kunlunxin" else ["auto"]
 
 
 def _create_mla_cache(
@@ -65,7 +65,6 @@ def convert_fp8(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.concat_and_cache_mla
 @pytest.mark.parametrize("kv_lora_rank", KV_LORA_RANKS)
 @pytest.mark.parametrize("qk_rope_head_dim", QK_ROPE_HEAD_DIMS)

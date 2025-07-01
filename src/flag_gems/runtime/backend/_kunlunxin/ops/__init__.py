@@ -104,7 +104,7 @@ from .mm import mm
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
-from .mv import mv
+from .mv import mv, mv_cluster
 from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
@@ -311,6 +311,7 @@ __all__ = [
     "normal_tensor_tensor",
     "uniform_",
     "mv",
+    "mv_cluster",
     "nan_to_num",
     "ne",
     "ne_scalar",

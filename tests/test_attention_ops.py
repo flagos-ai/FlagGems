@@ -127,7 +127,6 @@ def convert_fp8(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.concat_and_cache_mla
 @pytest.mark.parametrize("kv_lora_rank", KV_LORA_RANKS)
 @pytest.mark.parametrize("qk_rope_head_dim", QK_ROPE_HEAD_DIMS)
