@@ -148,13 +148,19 @@ class LibTuner(triton.runtime.Autotuner):
         pre_hook=None,
         post_hook=None,
         prune_configs_by: Optional[Dict] = None,
-        warmup=25,
-        rep=100,
+        warmup=None,
+        rep=None,
         use_cuda_graph=False,
         do_bench=None,
         strategy=None,
         share=None,
     ):
+        # NOTE(zhengyang): See discussion in https://github.com/triton-lang/triton/pull/4496
+        if major_version == 2 or (major_version == 3 and minor_version <= 1):
+            if warmup is None:
+                warmup = 25
+            if rep is None:
+                rep = 100
         if major_version == 2:
             super().__init__(
                 fn,
