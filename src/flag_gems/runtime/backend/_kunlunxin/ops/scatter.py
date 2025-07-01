@@ -6,7 +6,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
     MemOverlap,
     has_internal_overlapping,
@@ -23,6 +23,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
+    code.writeline("import flag_gems")
     # code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
@@ -159,17 +160,13 @@ def generate_scatter_kernel(
             code.writeline("if IS_ADD: ")
             with code.indent():
                 code.writeline(
-                    "cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)"
+                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
                 )
-                code.writeline("res = cur_inp + cur_src")
-                code.writeline("tl.store(out + inp_offsets, res, mask=mask)")
             code.writeline("elif IS_MUL: ")
             with code.indent():
                 code.writeline(
-                    "cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)"
+                    "tl.atomic_mul(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
                 )
-                code.writeline("res = cur_inp * cur_src")
-                code.writeline("tl.store(out + inp_offsets, res, mask=mask)")
 
             code.writeline("else: ")
             with code.indent():
@@ -252,6 +249,7 @@ def generate_destination_passing_wrapper(
                 code.writeline("IS_ADD,")
                 code.writeline("IS_MUL,")
                 code.writeline("INT32_OFFSET=int32_offset,")
+                # code.writeline("buffer_size_limit=512,")
                 # code.writeline("isCloseUnrollControl=True,")
 
         code.writeline(")")
@@ -294,15 +292,14 @@ class ScatterFunction:
                 code,
             )
 
-            file_name = f"scatter_rank_{key}_pid_{self.pid}.py"
-
-            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getvalue())
+            file_name = f"scatter_rank_{key}.py"
+            file_path = code_cache_dir() / file_name
+            write_atomic(file_path, code.getvalue())
 
             # load
             spec = importlib.util.spec_from_file_location(
-                f"_gen_module_rank_{key}_pid_{self.pid}",
-                f.name,
+                f"_gen_module_rank_{key}",
+                file_path,
             )
 
             m = importlib.util.module_from_spec(spec)
@@ -319,7 +316,6 @@ class ScatterFunction:
 
 
 _scatter_func = ScatterFunction()
-_scatter_inplace_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
@@ -378,7 +374,7 @@ def scatter_(inp, dim, index, src, reduce=None):
 
     int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
     use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
-    _scatter_inplace_func(
+    _scatter_func(
         src_restrided,
         index,
         inp_restrided,
