@@ -14,6 +14,8 @@ These functions can be used in kernel progamming and are not bound to any grid.
 import triton
 from triton import language as tl
 
+from .triton_lang_helper import use_tl_extra
+
 
 @triton.jit
 def program_id(
@@ -70,3 +72,34 @@ def maximum_with_index_tie_break_right(a_value, a_index, b_value, b_index):
     # Prefer highest index if values are equal
     mask |= equal & (a_index > b_index)
     return tl.where(mask, a_value, b_value), tl.where(mask, a_index, b_index)
+
+
+@use_tl_extra
+@triton.jit
+def div_rn(x, y):
+    """div_rn default - round to nearest"""
+    result = x / y
+    return tl.floor(result + 0.5)
+
+
+@use_tl_extra
+@triton.jit
+def div_rz(x, y):
+    """div_rz default - round toward zero"""
+    result = x / y
+    return tl.where(result >= 0, tl.floor(result), tl.ceil(result))
+
+
+@use_tl_extra
+@triton.jit
+def fmod(x, y):
+    """fmod default - floating point modulo"""
+    quotient = div_rz(x, y)
+    return x - y * quotient
+
+
+@use_tl_extra
+@triton.jit
+def trunc(x):
+    """trunc default - truncate to integer"""
+    return tl.where(x >= 0, tl.floor(x), tl.ceil(x))

@@ -20,3 +20,23 @@ except ImportError:
         tl_extra_shim = triton.language.math
     except ImportError:
         tl_extra_shim = triton.language.libdevice
+
+
+def use_backend(module):
+    """using backend module impl"""
+
+    def decorator(func):
+        func_name = func.__name__
+        if hasattr(module, func_name):
+            try:
+                return getattr(module, func_name)
+            except Exception:
+                pass
+        return func
+
+    return decorator
+
+
+def use_tl_extra(func):
+    """backend function shim"""
+    return use_backend(tl_extra_shim)(func)

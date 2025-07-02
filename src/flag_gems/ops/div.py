@@ -4,12 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic, tl_extra_shim
+from ..utils import pointwise_dynamic
+from ..utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
 
-div_rn = tl_extra_shim.div_rn
-div_rz = tl_extra_shim.div_rz
-fmod = tl_extra_shim.fmod
-trunc = tl_extra_shim.trunc
 logger = logging.getLogger(__name__)
 
 
