@@ -1111,44 +1111,35 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize("hiddensize", [1, 256, 2048, 9333, 65536])
+@pytest.mark.parametrize(
+    "hiddensize", [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
+)
 @pytest.mark.parametrize("descending", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 @pytest.mark.parametrize("dim", [0, -1])
 def test_sort(batch_size, hiddensize, descending, dtype, dim):
-    if dtype in FLOAT_DTYPES:
-        x = torch.empty((hiddensize,), dtype=dtype, device=flag_gems.device)
-        tmp = torch.tensor(0, dtype=dtype)
-        inf = torch.tensor(float("inf"), dtype=dtype)
-        for i in range(0, hiddensize):
-            x[i] = tmp.item()
-            tmp = torch.nextafter(tmp, inf)
-            if tmp.item() == inf.item():
-                hiddensize = i
-                x = x[:hiddensize]
-                break
+    if dtype in BOOL_TYPES:
+        y = torch.randint(
+            0, 2, (batch_size, hiddensize), dtype=dtype, device=flag_gems.device
+        )
+    elif dtype in ALL_INT_DTYPES:
+        min_v, max_v = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+        y = torch.randint(
+            min_v, max_v, (batch_size, hiddensize), dtype=dtype, device=flag_gems.device
+        )
     else:
-        if flag_gems.device == "musa" and dtype == torch.int16:
-            # arange short type on torch of mthreads not supported yet.
-            x = torch.arange(hiddensize, dtype=torch.int32, device=flag_gems.device).to(
-                dtype
-            )
-        else:
-            x = torch.arange(hiddensize, dtype=dtype, device=flag_gems.device)
-    y = torch.empty((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
+        y = torch.randn((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
 
-    # Each row use different shuffled index.
-    col_indices = torch.randperm(x.size(0))
-    for bsz in range(batch_size):
-        col_indices = torch.randperm(x.size(0))
-        y[bsz, :] = x[col_indices]
-    if dim == 0:
-        y = torch.movedim(y, dim, -1)
     ref_y = to_reference(y)
-    ref_value, ref_index = torch.sort(ref_y, dim=dim, descending=descending)
+    # we only implement stable sort, non-stable sort is undefined
+    ref_value, ref_index = torch.sort(
+        ref_y, dim=dim, stable=True, descending=descending
+    )
 
     with flag_gems.use_gems():
-        res_value, res_index = torch.sort(y, dim=dim, descending=descending)
+        res_value, res_index = torch.sort(
+            y, dim=dim, stable=True, descending=descending
+        )
 
     gems_assert_close(res_value, ref_value, dtype)
     gems_assert_equal(res_index, ref_index)
