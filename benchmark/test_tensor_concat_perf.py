@@ -197,7 +197,6 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
 def test_tensor_repeat_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin" and op_name in [
         "repeat_interleave_self_tensor",
-        "repeat_interleave_tensor",
     ]:
         pytest.skip("RUNTIME TODOFIX")
     bench = TensorRepeatBenchmark(

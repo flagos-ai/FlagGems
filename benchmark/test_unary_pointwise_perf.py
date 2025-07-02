@@ -12,7 +12,7 @@ from .attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from .performance_utils import Benchmark, generate_tensor_input, vendor_name
+from .performance_utils import Benchmark, generate_tensor_input
 
 
 class UnaryPointwiseBenchmark(Benchmark):
@@ -94,8 +94,6 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name == "elu":
-        pytest.skip("RUNTIME TODOFIX")
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
