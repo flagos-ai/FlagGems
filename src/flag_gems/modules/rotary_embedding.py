@@ -25,7 +25,12 @@ import flag_gems
 
 logger = logging.getLogger(__name__)
 
-has_c_extension = False  # Disable C extension for now, as we have not implemented c++ wrapper for rotary_embedding yet.
+try:
+    from flag_gems import ext_ops  # noqa: F401
+
+    has_c_extension = True
+except ImportError:
+    has_c_extension = False
 
 __all__ = [
     "gems_rope_forward",
@@ -44,10 +49,21 @@ def gems_rope_forward(
     inplace: bool = False,
 ) -> Union[torch.Tensor, torch.Tensor]:
     logger.debug("GEMS CUSTOM ROPE FORWARD")
-    # TODO: Implement C++ wrapper for rotary_embedding
-    return flag_gems.apply_rotary_pos_emb(
-        query, key, cos, sin, position_ids, rotary_interleaved, inplace
-    )
+    if has_c_extension:
+        if inplace:
+            torch.ops.flag_gems.rotary_embedding_inplace(
+                query, key, cos, sin, position_ids, rotary_interleaved
+            )
+            return query, key
+        else:
+            return torch.ops.flag_gems.rotary_embedding(
+                query, key, cos, sin, position_ids, rotary_interleaved
+            )
+    else:
+        # Fallback to pure python implementation
+        return flag_gems.apply_rotary_pos_emb(
+            query, key, cos, sin, position_ids, rotary_interleaved, inplace
+        )
 
 
 class GemsRope(nn.Module):

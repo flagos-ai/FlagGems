@@ -13,6 +13,13 @@ TORCH_LIBRARY(flag_gems, m) {
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
   m.def("fused_add_rms_norm(Tensor! input, Tensor! residual, Tensor weight, float epsilon) -> ()");
+  // rotary_embedding
+  m.def(
+      "rotary_embedding_inplace(Tensor! q, Tensor! k, Tensor cos, Tensor sin, Tensor? position_ids=None, "
+      "bool rotary_interleaved=False) -> ()");
+  m.def(
+      "rotary_embedding(Tensor q, Tensor k, Tensor cos, Tensor sin, Tensor? position_ids=None, "
+      "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -21,5 +28,8 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   // Norm
   m.impl("rms_norm", TORCH_FN(rms_norm));
   m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
+  // Rotary embedding
+  m.impl("rotary_embedding", TORCH_FN(rotary_embedding));
+  m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
 }
 }  // namespace flag_gems
