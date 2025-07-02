@@ -203,7 +203,6 @@ def test_apply_rotary_pos_emb(
         position_ids=ref_position_ids if has_pos_id else None,
         rotary_interleaved=rotary_interleaved,
     )
-
     q_embed_out, k_embed_out = flag_gems.apply_rotary_pos_emb(
         q=q,
         k=k,
