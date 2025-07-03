@@ -55,6 +55,17 @@ def philox_backend_seed_offset(increment, generator=None):
     return seed, offset
 
 
+def set_philox_state(seed, offset, device=None):
+    assert offset % 4 == 0
+    device = device or torch_device_fn.current_device()
+    gen = torch_device_fn.default_generators[device]
+    state_copy = gen.get_state()
+    state_copy.view(torch.int64)[0] = seed
+    state_copy.view(torch.int64)[1] = offset
+    gen.set_state(state_copy)
+    return
+
+
 def per_thread_offset(N, num_blocks, num_warps, warp_threads=32):
     block_threads = num_warps * warp_threads
     max_threads = num_blocks * block_threads
