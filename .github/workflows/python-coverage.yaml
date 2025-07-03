@@ -3,8 +3,30 @@ name: python-coverage
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - '**.py'
+      - '**.cpp'
+      - '**.cu'
+      - '**.h'
+      - '**.hpp'
+      - '**.cc'
+      - 'CMakeLists.txt'
+      - '**/*.cmake'
+      - '**/*.mk'
+      - 'Makefile'
   pull_request:
     branches: [ "master" ]
+    paths:
+      - '**.py'
+      - '**.cpp'
+      - '**.cu'
+      - '**.h'
+      - '**.hpp'
+      - '**.cc'
+      - 'CMakeLists.txt'
+      - '**/*.cmake'
+      - '**/*.mk'
+      - 'Makefile'
 
 jobs:
   blas-op-test:

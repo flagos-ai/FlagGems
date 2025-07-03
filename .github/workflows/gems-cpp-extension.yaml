@@ -3,6 +3,17 @@ name: gems-cpp-extension
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - '**.py'
+      - '**.cpp'
+      - '**.cu'
+      - '**.h'
+      - '**.hpp'
+      - '**.cc'
+      - 'CMakeLists.txt'
+      - '**/*.cmake'
+      - '**/*.mk'
+      - 'Makefile'
   pull_request:
     branches: [ "master" ]
     paths:
