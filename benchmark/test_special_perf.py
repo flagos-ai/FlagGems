@@ -128,7 +128,7 @@ def test_perf_sort():
         input_fn=sort_input_fn,
         op_name="sort",
         torch_op=torch.sort,
-        dtypes=BOOL_DTYPES + INT_DTYPES + FLOAT_DTYPES,
+        dtypes=INT_DTYPES + FLOAT_DTYPES,
     )
     bench.run()
 
