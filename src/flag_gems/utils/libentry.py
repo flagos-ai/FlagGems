@@ -1,5 +1,6 @@
 import builtins
 import inspect
+import logging
 import math
 import os
 import sqlite3
@@ -15,13 +16,15 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from .code_cache import config_cache_dir
 
+logger = logging.getLogger(__name__)
+
 DEVICE_COUNT = runtime.device.device_count
 ATTRS = {
     (2, 2): 5,
     (2, 3): 5,
     (3, 0): 4,
     (3, 1): 4,
-    (3, 2): 8,
+    (3, 2): 4,
     (3, 3): 8,
 }
 version = triton.__version__.split(".")
@@ -455,6 +458,7 @@ class LibEntry(triton.KernelInterface):
 
         if major_version == 3 and minor_version == 3:
             all_args = []
+            missing_keys = []
             for key in list(self.signature.parameters.keys()):
                 if key in k_args:
                     all_args.append(k_args[key])
@@ -462,6 +466,14 @@ class LibEntry(triton.KernelInterface):
                     all_args.append(tune_constexprs[key])
                 elif key in heur_constexprs:
                     all_args.append(heur_constexprs[key])
+                elif key in constexprs:
+                    all_args.append(constexprs[key])
+                else:
+                    missing_keys.append(key)
+                if len(missing_keys):
+                    raise RuntimeError(
+                        f"[libentry]: probably a bug, the following kernel params where not captured: {missing_keys}"
+                    )
             kernel[grid[0:3]](*all_args)
         else:
             kernel[grid[0:3]](*k_args.values())

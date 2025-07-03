@@ -53,6 +53,8 @@
 - eye
 - fill
 - fill\_
+- flash_attention_forward
+- flash_attn_varlen_func
 - flip
 - floor_divide
 - floor_divide\_

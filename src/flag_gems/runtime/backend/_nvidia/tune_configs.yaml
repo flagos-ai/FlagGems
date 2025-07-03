@@ -8,6 +8,7 @@ attention:
     num_warps: warps
     num_stages: stages
   block_m:
+  - 32
   - 64
   - 128
   block_n:
@@ -21,9 +22,9 @@ attention:
   - 4
   - 8
   stages:
-  - 1
   - 2
   - 3
+  - 4
 bmm:
 - META:
     TILE_M: 32

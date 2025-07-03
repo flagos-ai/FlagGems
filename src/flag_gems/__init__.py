@@ -250,8 +250,8 @@ def enable(
             ("sum.dim_IntList", sum_dim, Autograd.disable),
             ("sum.IntList_out", sum_dim_out, Autograd.disable),
             (
-                "scaled_dot_product_attention",
-                scaled_dot_product_attention,
+                "_flash_attention_forward",
+                flash_attention_forward,
                 Autograd.disable,
             ),
             ("all", all, Autograd.disable),

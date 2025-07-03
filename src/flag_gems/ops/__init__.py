@@ -8,7 +8,11 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
-from .attention import scaled_dot_product_attention
+from .attention import (
+    flash_attention_forward,
+    flash_attn_varlen_func,
+    scaled_dot_product_attention,
+)
 from .batch_norm import batch_norm, batch_norm_backward
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -388,6 +392,8 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "flash_attention_forward",
+    "flash_attn_varlen_func",
     "scaled_dot_product_attention",
     "conv2d",
     "conv1d",
