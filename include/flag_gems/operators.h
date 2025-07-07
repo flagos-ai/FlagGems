@@ -29,4 +29,6 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     const at::Tensor &sin,
     const std::optional<at::Tensor> &position_ids = std::nullopt,
     bool rotary_interleaved = false);
+
+at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
 }  // namespace flag_gems
