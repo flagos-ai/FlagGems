@@ -3,7 +3,7 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 

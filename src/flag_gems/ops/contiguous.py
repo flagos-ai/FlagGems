@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-from ..ops.copy import copy
+from flag_gems.ops.copy import copy
 
 logger = logging.getLogger(__name__)
 

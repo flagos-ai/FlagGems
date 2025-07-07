@@ -3,8 +3,8 @@ import logging
 import torch
 import triton
 
-from ..runtime import device, torch_device_fn
-from .eye_m import eye_kernel
+from flag_gems.ops.eye_m import eye_kernel
+from flag_gems.runtime import device, torch_device_fn
 
 logger = logging.getLogger(__name__)
 device_ = device

@@ -4,8 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..utils import libentry
+from flag_gems import runtime
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 

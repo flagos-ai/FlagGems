@@ -4,11 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
+from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
-
-from .. import runtime
-from .flash_api import mha_fwd, mha_varlan_fwd
-from .flash_kernel import keep
 
 logger = logging.getLogger(__name__)
 

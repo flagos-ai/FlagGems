@@ -3,14 +3,13 @@ import logging
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
 )
 from flag_gems.utils.shape_utils import volume
-
-from .. import runtime
-from ..runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 

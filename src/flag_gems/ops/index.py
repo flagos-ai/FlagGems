@@ -5,10 +5,9 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
+from flag_gems.ops.gather import gather
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
-
-from .gather import gather
 
 logger = logging.getLogger(__name__)
 

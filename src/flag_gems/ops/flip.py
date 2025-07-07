@@ -3,8 +3,8 @@ import logging
 import torch
 import triton
 
-from ..utils import pointwise_dynamic
-from ..utils.tensor_wrapper import StridedBuffer
+from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 logger = logging.getLogger(__name__)
 

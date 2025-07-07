@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-from .full import check_dtype, full_func, full_func_scalar
+from flag_gems.ops.full import check_dtype, full_func, full_func_scalar
 
 logger = logging.getLogger(__name__)
 

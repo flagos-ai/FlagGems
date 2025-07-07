@@ -1,6 +1,6 @@
 import logging
 
-from .conv2d import conv2d
+from flag_gems.ops.conv2d import conv2d
 
 logger = logging.getLogger(__name__)
 

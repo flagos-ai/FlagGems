@@ -12,8 +12,9 @@ from typing import Dict, Optional
 
 import triton
 
-from .. import runtime
-from ..runtime import torch_device_fn
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+
 from .code_cache import config_cache_dir
 
 logger = logging.getLogger(__name__)
