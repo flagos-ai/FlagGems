@@ -1,5 +1,5 @@
 try:
-    from ..runtime import torch_device_fn
+    from flag_gems.runtime import torch_device_fn
 
     get_device_properties = torch_device_fn.get_device_properties
 except AttributeError:

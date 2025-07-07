@@ -3,8 +3,7 @@ import triton
 import triton.language as tl
 
 import flag_gems
-
-from ..runtime import torch_device_fn
+from flag_gems.runtime import torch_device_fn
 
 try:
     uint_to_uniform_float = tl.uint_to_uniform_float

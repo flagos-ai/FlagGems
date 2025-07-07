@@ -5,9 +5,9 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry, tl_extra_shim
-from ..utils import triton_lang_extension as tle
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import dim_compress, libentry, tl_extra_shim
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 

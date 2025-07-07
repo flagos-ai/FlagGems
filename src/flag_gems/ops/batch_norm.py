@@ -5,9 +5,9 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry, tl_extra_shim
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt

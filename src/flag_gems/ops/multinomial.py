@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops import normed_cumsum
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
@@ -72,8 +73,6 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
         else:
             vals, indices = torch.topk(s, n_samples, dim=-1)
             return indices.to(torch.int64)
-
-    from flag_gems.ops import normed_cumsum
 
     cum_prob = normed_cumsum(prob, dim=-1)
 

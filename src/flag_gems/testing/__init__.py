@@ -1,6 +1,6 @@
 import torch
 
-from .. import runtime
+from flag_gems import runtime
 
 if runtime.device.vendor_name == "kunlunxin":
     RESOLUTION = {

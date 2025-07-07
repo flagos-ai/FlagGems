@@ -3,11 +3,11 @@ import logging
 import torch
 import triton
 
-from ..runtime import torch_device_fn
-from ..utils import pointwise_dynamic
-from ..utils.random_utils import philox_backend_seed_offset
-from ..utils.shape_utils import broadcast_shapes, volume
-from .randn import randn_kernel
+from flag_gems.ops.randn import randn_kernel
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.random_utils import philox_backend_seed_offset
+from flag_gems.utils.shape_utils import broadcast_shapes, volume
 
 logger = logging.getLogger(__name__)
 UNROLL = 4

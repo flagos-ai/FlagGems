@@ -3,8 +3,8 @@ import logging
 import torch
 import triton
 
-from ..runtime import torch_device_fn
-from .zeros import zeros_kernel
+from flag_gems.ops.zeros import zeros_kernel
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 

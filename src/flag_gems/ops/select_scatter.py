@@ -2,8 +2,8 @@ import logging
 
 import torch
 
-from ..ops.copy import copy
-from ..utils.shape_utils import MemOverlap, has_internal_overlapping
+from flag_gems.ops.copy import copy
+from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
 logger = logging.getLogger(__name__)
 

@@ -3,8 +3,8 @@ import logging
 import triton
 import triton.language as tl
 
-from ..runtime import device
-from ..utils import pointwise_dynamic
+from flag_gems.runtime import device
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 device = device.name
