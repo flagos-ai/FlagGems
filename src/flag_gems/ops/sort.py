@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.language.core import _unwrap_if_constexpr
 
 from ..runtime import torch_device_fn
 from ..utils import libentry
@@ -12,22 +11,26 @@ from .topk import _get_finfo_val, _get_iinfo_val, argsort
 logger = logging.getLogger(__name__)
 
 
+def unwrap_if_constexpr(o):
+    return o.value if isinstance(o, tl.constexpr) else o
+
+
 @tl.constexpr
 def get_int_t(num_bits: tl.constexpr, signed: tl.constexpr) -> tl.dtype:
-    num_bits = _unwrap_if_constexpr(num_bits)
-    signed = _unwrap_if_constexpr(signed)
+    num_bits = unwrap_if_constexpr(num_bits)
+    signed = unwrap_if_constexpr(signed)
     return tl.core.get_int_dtype(num_bits, signed)
 
 
 @tl.constexpr
 def one_zeros(num_bits: tl.constexpr) -> int:
-    num_bits = _unwrap_if_constexpr(num_bits)
+    num_bits = unwrap_if_constexpr(num_bits)
     return 1 << (num_bits - 1)
 
 
 @tl.constexpr
 def zero_ones(num_bits: tl.constexpr) -> int:
-    num_bits = _unwrap_if_constexpr(num_bits)
+    num_bits = unwrap_if_constexpr(num_bits)
     return (1 << (num_bits - 1)) - 1
 
 
