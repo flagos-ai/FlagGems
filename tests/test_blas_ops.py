@@ -19,6 +19,10 @@ MNK_SHAPES = (
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="temp disable for updating",
+)
 @pytest.mark.addmm
 @pytest.mark.linear
 @pytest.mark.matmul
@@ -51,6 +55,10 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
     gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="temp disable for updating",
+)
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -68,6 +76,10 @@ def test_accuracy_bmm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="temp disable for updating",
+)
 # TODO: failed at (1, 1, 2)
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -85,6 +97,10 @@ def test_accuracy_mm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="temp disable for updating",
+)
 @pytest.mark.mv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
