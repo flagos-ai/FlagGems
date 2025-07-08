@@ -5,6 +5,7 @@ from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.outer import outer
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
+from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
 from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
 from flag_gems.fused.silu_and_mul import silu_and_mul
 from flag_gems.fused.skip_layernorm import skip_layer_norm
@@ -22,4 +23,5 @@ __all__ = [
     "weight_norm",
     "concat_and_cache_mla",
     "reshape_and_cache",
+    "reshape_and_cache_flash",
 ]
