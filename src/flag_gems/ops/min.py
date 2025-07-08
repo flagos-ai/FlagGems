@@ -54,7 +54,6 @@ def heur_block_n(args):
 @libtuner(
     configs=runtime.get_tuned_config("naive_reduction"),
     key=["M", "N"],
-    share="naive_reduction",
 )
 @triton.jit
 def min_kernel(

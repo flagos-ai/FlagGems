@@ -26,7 +26,6 @@ def reduce_any(a, b):
 @libtuner(
     configs=runtime.get_tuned_config("naive_reduction"),
     key=["M", "N"],
-    share="naive_reduction",
 )
 @triton.jit
 def any_kernel_dim(

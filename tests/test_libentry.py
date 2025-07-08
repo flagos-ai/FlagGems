@@ -8,7 +8,7 @@ from triton import language as tl
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
@@ -235,3 +235,57 @@ def test_threadsafety():
     for i in range(100):
         with not_raises(Exception):
             run_two_threads()
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Test Files for Operators Not Pending Testing",
+)
+def test_hash_generation():
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+            triton.Config({"TILE_N": 128}),
+            triton.Config({"TILE_N": 256}),
+            triton.Config({"TILE_N": 512}),
+            triton.Config({"TILE_N": 1024}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def kernel_a(x, y):
+        return x + y + 1
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+            triton.Config({"TILE_N": 128}),
+            triton.Config({"TILE_N": 256}),
+            triton.Config({"TILE_N": 512}),
+            triton.Config({"TILE_N": 1024}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def kernel_b(x, y):
+        return x + y
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+            triton.Config({"TILE_N": 128}),
+            triton.Config({"TILE_N": 256}),
+            triton.Config({"TILE_N": 512}),
+            triton.Config({"TILE_N": 1024}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def kernel_a_copy(x, y):
+        return x + y + 1
+
+    assert kernel_a.kernel_hash != kernel_a_copy.kernel_hash
+    assert kernel_a.kernel_hash != kernel_b.kernel_hash
