@@ -9,6 +9,9 @@ bin-release/
 __pycache__/
 .vscode/
 
+# Python venv directory
+.venv
+
 # Distribution files
 build/
 *.egg-info/
