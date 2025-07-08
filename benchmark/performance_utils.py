@@ -258,7 +258,11 @@ class Benchmark:
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)
-            fn = lambda: out.backward(dout, retain_graph=True)
+            # fn = lambda: out.backward(dout, retain_graph=True)
+            xs = list(filter(lambda x: torch.is_tensor(x) and x.requires_grad, args))
+            fn = lambda: torch.autograd.grad(
+                (out,), xs, grad_outputs=(dout,), retain_graph=True
+            )
         if Config.cpu_mode:
             for i in range(Config.warm_up):
                 fn()
@@ -280,6 +284,7 @@ class Benchmark:
                 warmup=Config.warm_up,
                 rep=Config.repetition,
                 return_mode="median",
+                grad_to_none=xs if self.is_backward else None,
             )
         # average latency in ms
         return latency

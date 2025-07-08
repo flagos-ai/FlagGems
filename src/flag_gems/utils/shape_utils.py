@@ -16,6 +16,10 @@ MultiIndex = Tuple[int]
 Perm = Tuple[int]
 
 
+def bracket_next_power_of_2(N, lower, upper):
+    return min(max(triton.next_power_of_2(N), lower), upper)
+
+
 def broadcast(s1: Shape, s2: Shape) -> Shape:
     _s1, _s2 = s1, s2
     r1 = len(s1)
