@@ -64,7 +64,6 @@ def mean(inp, *, dtype=None):
 @libtuner(
     configs=runtime.get_tuned_config("naive_reduction"),
     key=["M", "N"],
-    share="naive_reduction",
 )
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):

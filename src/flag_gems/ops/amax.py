@@ -50,7 +50,6 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 @libtuner(
     configs=runtime.get_tuned_config("naive_reduction"),
     key=["M", "N"],
-    share="naive_reduction",
 )
 @triton.jit
 def amax_kernel(
