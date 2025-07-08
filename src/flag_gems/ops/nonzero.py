@@ -13,12 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("nonzero"),
-    key=[
-        "n_elements",
-    ],
-)
+@triton.heuristics(runtime.get_heuristic_config("elementwise_generic"))
 @triton.jit
 def nonzero_kernel(
     inp,
@@ -34,10 +29,10 @@ def nonzero_kernel(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp_vals = tl.load(inp + offset, mask=mask)
+    inp_vals = tl.load(inp + offset, mask=mask).to(tl.int1)
     out_offset = tl.load(prefix_sum + offset, mask=mask) - 1
 
-    nonzero_mask = mask and inp_vals == True  # noqa
+    nonzero_mask = mask and inp_vals  # noqa
 
     idx_flat = offset
     for dim in range(ndim - 1, -1, -1):

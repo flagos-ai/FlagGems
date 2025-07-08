@@ -66,6 +66,7 @@ def index_select_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.index_select
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",
     [
@@ -77,6 +78,23 @@ def index_select_gbps(bench_fn_args, latency):
             FLOAT_DTYPES,
             marks=pytest.mark.index_select,
         ),
+    ],
+)
+def test_perf_index_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
+    bench = TensorSelectBenchmark(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        get_gbps=gbps_fn,
+    )
+    bench.run()
+
+
+@pytest.mark.masked_select
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, gbps_fn, dtypes",
+    [
         pytest.param(
             "masked_select",
             torch.masked_select,
@@ -87,7 +105,7 @@ def index_select_gbps(bench_fn_args, latency):
         ),
     ],
 )
-def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
+def test_perf_masked_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
