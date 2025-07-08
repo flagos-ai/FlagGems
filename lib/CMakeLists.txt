@@ -6,6 +6,7 @@ add_library(operators
             mm.cpp
             rms_norm.cpp
             fused_add_rms_norm.cpp
+            nonzero.cpp
             rotary_embedding.cpp
             bmm.cpp)
 target_include_directories(operators
