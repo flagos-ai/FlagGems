@@ -583,8 +583,6 @@ def flash_attn_varlen_func(
 
     assert fa_version == 2, "Only FA2 is implemented."
 
-    out = torch.empty_like(q)
-
     out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
         q,
         k,
