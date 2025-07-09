@@ -21,6 +21,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def(
       "rotary_embedding(Tensor q, Tensor k, Tensor cos, Tensor sin, Tensor? position_ids=None, "
       "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
+  m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
 }
 
@@ -34,6 +35,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   // Rotary embedding
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));
   m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
+  m.impl("cat", TORCH_FN(cat));
   m.impl("bmm", TORCH_FN(bmm));
 }
 }  // namespace flag_gems
