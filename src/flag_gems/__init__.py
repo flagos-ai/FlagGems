@@ -268,6 +268,7 @@ def enable(
             ("sin_", sin_),
             ("slice_scatter", slice_scatter),
             ("sort", sort),
+            ("sort.stable", sort_stable),
             ("stack", stack),
             ("sub.Tensor", sub),
             ("sub_.Tensor", sub_),

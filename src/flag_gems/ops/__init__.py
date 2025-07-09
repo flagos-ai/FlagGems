@@ -161,7 +161,7 @@ from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.softmax import softmax, softmax_backward
-from flag_gems.ops.sort import sort
+from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.stack import stack
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
@@ -399,6 +399,7 @@ __all__ = [
     "softmax",
     "softmax_backward",
     "sort",
+    "sort_stable",
     "stack",
     "sub",
     "sub_",
