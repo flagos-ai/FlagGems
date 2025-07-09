@@ -33,18 +33,6 @@ version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
 
 
-def get_kernel_hash(func, configs):
-    if hasattr(func, "fn"):
-        original_func = func.fn
-    else:
-        original_func = func
-
-    source_code = inspect.getsource(original_func)
-    config_strs = [str(config) for config in configs]
-    combined_content = f"{source_code}{config_strs}"
-    return hashlib.md5(combined_content.encode("utf-8")).hexdigest()[:8]
-
-
 if major_version == 2:
 
     def all_kwargs(self):
@@ -211,12 +199,23 @@ class LibTuner(triton.runtime.Autotuner):
         self.__name__ = self.base_fn.__name__
         self.keys = key
         self.strategy = strategy
-        self.kernel_hash = get_kernel_hash(self.base_fn, self.configs)
         # Use table name with hash instead of hash in key
-        self.table_name = f"{self.__name__}_{self.kernel_hash}"
+        self.kernel_hash = None
+        self.table_name = f"{self.__name__}_{self.get_kernel_hash()}"
         self.cache = libcache[self.table_name]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
+
+    def get_kernel_hash(self):
+        if self.kernel_hash is None:
+            jit_fn = self.fn
+            while not isinstance(jit_fn, triton.runtime.JITFunction):
+                jit_fn = jit_fn.fn
+            func_hash = jit_fn.cache_key
+            config_strs = [str(config) for config in self.configs]
+            combined_content = f"{func_hash}{config_strs}"
+            self.kernel_hash = hashlib.md5(combined_content.encode("utf-8")).hexdigest()
+        return self.kernel_hash
 
     def get_key(self, args):
         if self.strategy is None:

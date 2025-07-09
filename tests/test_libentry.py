@@ -237,10 +237,6 @@ def test_threadsafety():
             run_two_threads()
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
-)
 def test_hash_generation():
     @libtuner(
         configs=[
@@ -289,3 +285,66 @@ def test_hash_generation():
 
     assert kernel_a.kernel_hash != kernel_a_copy.kernel_hash
     assert kernel_a.kernel_hash != kernel_b.kernel_hash
+
+
+def test_hash_changes_when_dependency_modified():
+    @triton.jit
+    def sub_func(x, y):
+        return x + y
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def main_kernel(x, y):
+        return sub_func(x, y) * 2
+
+    original_hash = main_kernel.kernel_hash
+
+    @triton.jit
+    def sub_func(x, y):  # noqa:F811
+        return x + y + 1
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def main_kernel(x, y):
+        return sub_func(x, y) * 2
+
+    modified_hash = main_kernel.kernel_hash
+
+    assert original_hash != modified_hash, (
+        f"Expected different hashes when sub-function changes, "
+        f"but got same hash: {original_hash}"
+    )
+    original_hash = modified_hash
+
+    @triton.jit
+    def sub_func(x, y, z=0):  # noqa:F811
+        return x + y + z
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def main_kernel(x, y):
+        return sub_func(x, y) * 2
+
+    modified_hash = main_kernel.kernel_hash
+    assert original_hash != modified_hash, (
+        f"Expected different hashes when sub-function changes, "
+        f"but got same hash: {original_hash}"
+    )
