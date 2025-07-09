@@ -35,10 +35,6 @@ VendorInfoBase(
 ###### Optional fields:
 - `dispatch_key` is The operator registration field of torch.library.Library in pytorch, like `PrivateUse1`
 
-- `forward_only` is if vendor only want to enable the forward operator, they can config it like
-`VendorInfoBase(..., forward_only=True)`
-to enable only forward operator
-
 ##### step 2.2  `heuristics_config_utils.py`
 
 You should configure  `triton.heuristics` params in `FlagGems/src/flag_gems/runtime/backend/_vendorname/heuristics_config_utils.py`and you can  refer to `FlagGems/src/flag_gems/runtime/backend/_nvidia/heuristics_config_utils.py`

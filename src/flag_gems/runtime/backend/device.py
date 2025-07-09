@@ -46,7 +46,6 @@ class DeviceDetector(object):
             self.vendor_name = self.info.vendor_name
             self.name = self.info.device_name
             self.vendor = vendors.get_all_vendors()[self.vendor_name]
-            self.forward_only = self.info.forward_only
             self.dispatch_key = (
                 self.name.upper()
                 if self.info.dispatch_key is None

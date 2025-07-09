@@ -30,7 +30,6 @@ device = flag_gems.device
 
 
 @pytest.mark.dropout
-@pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -77,7 +76,6 @@ def test_accuracy_dropout(shape, p, dtype):
 
 
 @pytest.mark.dropout
-@pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -481,7 +479,6 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
 
 @pytest.mark.pad
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
-# @pytest.mark.parametrize("dtype", [torch.float32] if TO_CPU else FLOAT_DTYPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
 @pytest.mark.parametrize("contiguous", [True, False])
@@ -526,7 +523,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="fix")
-@pytest.mark.upsample_bicubic2d_aa
+@pytest.mark.upsample
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])
 @pytest.mark.parametrize(
@@ -564,7 +561,7 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
-@pytest.mark.upsample_nearest2d
+@pytest.mark.upsample
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1085,7 +1082,7 @@ def get_diagonal_backward_shape_and_dims():
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="MUSA error: unknown error")
-@pytest.mark.diagonal_backward
+@pytest.mark.diagonal
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

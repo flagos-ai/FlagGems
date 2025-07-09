@@ -217,7 +217,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             nll_loss_input_fn,
             FLOAT_DTYPES,
             marks=[
-                pytest.mark.NLLLoss,
+                pytest.mark.nll_loss,
                 pytest.mark.skipif(
                     flag_gems.device == "musa", reason="ZeroDivisionError"
                 ),
@@ -229,7 +229,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             mse_loss_input_fn,
             FLOAT_DTYPES,
             marks=[
-                pytest.mark.MSELoss,
+                pytest.mark.mse_loss,
                 pytest.mark.skipif(
                     flag_gems.device == "musa", reason="ZeroDivisionError"
                 ),

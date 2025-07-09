@@ -668,7 +668,7 @@ def ref_paged_attn(
     return torch.cat(outputs, dim=0)
 
 
-@pytest.mark.varlen_fwd_paged
+@pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
 @pytest.mark.parametrize("head_size", [128, 256])
@@ -679,7 +679,7 @@ def ref_paged_attn(
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("num_blocks", [32768, 2048])
 @torch.inference_mode()
-def test_varlen_paged(
+def test_flash_attn_varlen_func(
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -772,7 +772,7 @@ def test_varlen_paged(
     ), f"{torch.max(torch.abs(output - ref_output))}"
 
 
-@pytest.mark.varlen_fwd_paged
+@pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
 @pytest.mark.parametrize("head_size", [128])
@@ -782,7 +782,7 @@ def test_varlen_paged(
 @pytest.mark.parametrize("soft_cap", [None, 10.0])
 @pytest.mark.parametrize("num_blocks", [2048])
 @torch.inference_mode()
-def test_varlen_paged_swap_qg(
+def test_flash_attn_varlen_func_swap_qg(
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -1007,7 +1007,7 @@ def create_kv_caches_with_random(
     return key_caches, value_caches
 
 
-@pytest.mark.test_reshape_and_cache
+@pytest.mark.reshape_and_cache
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("head_size", [64, 80, 120, 256])
@@ -1142,7 +1142,7 @@ def create_kv_caches_with_random_flash(
     return key_caches, value_caches
 
 
-@pytest.mark.test_reshape_and_cache_flash
+@pytest.mark.reshape_and_cache_flash
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("head_size", [64, 80, 120, 256])

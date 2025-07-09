@@ -24,7 +24,7 @@ class AttentionBenchmark(GenericBenchmark):
 @pytest.mark.skipif(
     flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
 )
-@pytest.mark.attention
+@pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0, 0.25])
 @pytest.mark.parametrize("is_causal", [True, False])
 def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
