@@ -140,6 +140,22 @@ class LibCache:
 
 
 libcache = LibCache()
+SEARCH_STRATEGIES = {}
+
+
+def register_search_strategy(name):
+    def decorator(fn):
+        SEARCH_STRATEGIES[name] = fn
+        return fn
+
+    return decorator
+
+
+@register_search_strategy("brute")
+def default_search_strategy(bench_fn, configs, args, kwargs):
+    timings = {config: bench_fn(config) for config in configs}
+    best_config = builtins.min(timings, key=timings.get)
+    return best_config, timings
 
 
 class LibTuner(triton.runtime.Autotuner):
@@ -159,6 +175,7 @@ class LibTuner(triton.runtime.Autotuner):
         use_cuda_graph=False,
         do_bench=None,
         strategy=None,
+        search_strategy=None,
     ):
         # NOTE(zhengyang): See discussion in https://github.com/triton-lang/triton/pull/4496
         if major_version == 2 or (major_version == 3 and minor_version <= 1):
@@ -205,6 +222,10 @@ class LibTuner(triton.runtime.Autotuner):
         self.cache = libcache[self.table_name]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
+        assert (
+            isinstance(search_strategy, str) and search_strategy in SEARCH_STRATEGIES
+        ), "Invalid search strategy"
+        self.search_strategy = SEARCH_STRATEGIES[search_strategy]
 
     def get_kernel_hash(self):
         if self.kernel_hash is None:
@@ -245,13 +266,16 @@ class LibTuner(triton.runtime.Autotuner):
                 used_cached_result = False
                 pruned_configs = self.prune_configs(kwargs)
                 bench_start = time.time()
-                timings = {
-                    config: self._bench(*args, config=config, **kwargs)
-                    for config in pruned_configs
-                }
+
+                def bench_fn(config):
+                    return self._bench(*args, config=config, **kwargs)
+
+                best_config, timings = self.search_strategy(
+                    bench_fn, pruned_configs, args, kwargs
+                )
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
-                self.cache[key] = builtins.min(timings, key=timings.get)
+                self.cache[key] = best_config
                 full_nargs = {
                     **self.nargs,
                     **kwargs,
@@ -293,6 +317,7 @@ def libtuner(
     use_cuda_graph=False,
     do_bench=None,
     strategy=None,
+    search_strategy="brute",
 ):
     """
     Decorator for triton library autotuner.
@@ -314,6 +339,7 @@ def libtuner(
             use_cuda_graph=use_cuda_graph,
             do_bench=do_bench,
             strategy=strategy,
+            search_strategy=search_strategy,
         )
 
     return decorator
