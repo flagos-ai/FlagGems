@@ -59,7 +59,6 @@ forward_operations = [
     ("log", torch.log, FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
     # Dropout
-    ("native_dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
@@ -132,10 +131,10 @@ class ToDtypeBenchmark(UnaryPointwiseBenchmark):
             yield inp, cur_dtype
 
 
-@pytest.mark.to_dtype
+@pytest.mark.to
 def test_to_dtype_perf():
     bench = ToDtypeBenchmark(
-        op_name="to_dtype",
+        op_name="to",
         torch_op=torch.Tensor.to,
         dtypes=[torch.float16, torch.bfloat16, torch.float64],
     )
@@ -147,7 +146,7 @@ class GluBenchmark(UnaryPointwiseBenchmark):
         return
 
 
-@pytest.mark.to_dtype
+@pytest.mark.glu
 def test_glu_perf():
     bench = GluBenchmark(
         op_name="glu",

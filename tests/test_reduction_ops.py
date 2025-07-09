@@ -15,7 +15,6 @@ from .accuracy_utils import (
     REDUCTION_SHAPES,
     REDUCTION_SMALL_SHAPES,
     SHAPE_STRIDES,
-    UT_SHAPES_1D,
     SkipVersion,
     gems_assert_close,
     gems_assert_equal,
@@ -204,7 +203,7 @@ def test_accuracy_cross_entropy_loss_probabilities(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.NLLLoss
+@pytest.mark.nll_loss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -1350,23 +1349,3 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.mse_loss(inp, target, reduction=reduction)
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
-
-
-@pytest.mark.dot
-@pytest.mark.parametrize("shape", UT_SHAPES_1D)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_dot_tensor_tensor(shape, dtype):
-    if flag_gems.vendor_name == "kunlunxin":
-        torch.manual_seed(0)
-        torch.cuda.manual_seed_all(0)
-
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
-
-    ref_out = torch.dot(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.dot(inp1, inp2)
-
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

@@ -22,7 +22,6 @@ KEEPDIM_DIMS = (
 
 
 @pytest.mark.group_norm
-@pytest.mark.native_group_norm
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
@@ -68,7 +67,6 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 
 
 @pytest.mark.group_norm
-@pytest.mark.native_group_norm
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
@@ -150,7 +148,6 @@ def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="to_cpu unknown error")
 @pytest.mark.layer_norm
-@pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
     "shape",
     (
@@ -205,7 +202,6 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 
 
 @pytest.mark.layer_norm
-@pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
     "shape",
     (
@@ -288,7 +284,6 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.instance_norm
-@pytest.mark.native_instance_norm
 @pytest.mark.parametrize(
     "shape",
     (
@@ -454,7 +449,7 @@ WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
 )
 
 
-@pytest.mark.weight_norm_interface
+@pytest.mark.weight_norm
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm_interface(shape, dtype, dim):
@@ -479,7 +474,7 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
 @pytest.mark.skipif(
     True, reason="Temporarely skip for ci"
 )  # todo: improve backward precision
-@pytest.mark.weight_norm_interface
+@pytest.mark.weight_norm
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm_interface_backward(shape, dtype, dim):

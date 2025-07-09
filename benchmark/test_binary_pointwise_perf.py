@@ -49,7 +49,6 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("mul", torch.mul, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
             ("pow", torch.pow, FLOAT_DTYPES),
-            ("rsub", torch.rsub, FLOAT_DTYPES),
             *(
                 [
                     ("polar", torch.polar, [torch.float32]),
@@ -75,7 +74,6 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
-            ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),

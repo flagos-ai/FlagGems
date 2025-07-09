@@ -1,9 +1,5 @@
 from enum import Enum
 
-from .backend import backend_utils
-
-Autograd = backend_utils.Autograd
-
 
 class vendors(Enum):
     NVIDIA = 0

@@ -6,7 +6,6 @@ vendor_info = VendorInfoBase(
     device_name="aipu",
     device_query_cmd="aipu",
     dispatch_key="PrivateUse1",
-    forward_only=True,
 )
 
 # The aipu backend is loaded dynamically, so here need to active first.
