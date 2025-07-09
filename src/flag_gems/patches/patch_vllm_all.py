@@ -91,11 +91,59 @@ def custom_gems_write_to_paged_cache(
     )
 
 
+def custom_gems_flash_mla_forward(
+    self,
+    q_nope,
+    q_pe,
+    kv_c_and_k_pe_cache,
+    attn_metadata,
+) -> torch.Tensor:
+    from flag_gems.fused import flash_mla
+
+    assert kv_c_and_k_pe_cache.numel() > 0
+    assert attn_metadata.decode is not None
+
+    if self.kv_cache_dtype.startswith("fp8"):
+        raise NotImplementedError("FP8 Triton MLA not yet supported")
+
+    batch, num_head_q, head_dim_v = q_nope.shape
+    seqlen_q = 1
+
+    q = torch.cat([q_nope, q_pe], dim=-1)
+    head_dim = q.shape[-1]
+    q = q.view(batch, seqlen_q, num_head_q, head_dim)
+
+    # Add a head dim of 1
+    kv_c_and_k_pe_cache = kv_c_and_k_pe_cache.unsqueeze(2)
+    PAGE_SIZE = kv_c_and_k_pe_cache.size(1)
+
+    block_table = attn_metadata.decode.block_table
+    output = flash_mla(
+        q,
+        block_table,
+        kv_c_and_k_pe_cache,
+        None,
+        PAGE_SIZE,
+        batch,
+        seqlen_q,
+        attn_metadata.decode.seq_lens,
+        num_head_q,
+        None,
+        head_dim,
+        head_dim_v,
+        True,
+    )
+
+    o = self._v_up_proj_and_o_proj(output)
+    return o
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
     from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
+    from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
 
     patch_module_method(RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda, verbose)
     patch_module_method(
@@ -108,3 +156,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         verbose,
     )
     patch_module_method(SiluAndMul, "forward_cuda", custom_gems_silu_and_mul, verbose)
+    patch_module_method(
+        TritonMLAImpl, "_forward_decode", custom_gems_flash_mla_forward, verbose
+    )
