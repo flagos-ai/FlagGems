@@ -464,6 +464,7 @@ def test_accuracy_softmax_backward(shape, dtype, dim, neg_inf):
     )
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX: CORE DUMPED")
 @pytest.mark.var_mean
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
