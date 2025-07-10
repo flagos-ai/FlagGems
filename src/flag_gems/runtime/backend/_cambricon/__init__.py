@@ -29,9 +29,7 @@ CUSTOMIZED_UNUSED_OPS = (
     "sort",  # skip now
     "multinomial",  # skip now
     "_upsample_bicubic2d_aa",  # skip now
-    "batch_norm",  #
-    "pad",
-    "constant_pad_nd",  #
+    "sort_stable",
 )
 
 __all__ = ["*"]

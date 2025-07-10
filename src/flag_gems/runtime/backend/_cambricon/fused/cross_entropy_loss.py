@@ -3,13 +3,14 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from torch.nn import _reduction as _Reduction
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+from ..ops import sum
 from ..utils import TOTAL_CORE_NUM
-from .sum import sum
 
 logger = logging.getLogger(__name__)
 
@@ -999,8 +1000,13 @@ class CrossEntropyLoss(torch.autograd.Function):
 
 
 def cross_entropy_loss(
-    inp, target, weight=None, reduction=1, ignore_index=-100, label_smoothing=0.0
+    inp, target, weight=None, reduction="mean", ignore_index=-100, label_smoothing=0.0
 ):
     return CrossEntropyLoss.apply(
-        inp, target, weight, reduction, ignore_index, label_smoothing
+        inp,
+        target,
+        weight,
+        _Reduction.get_enum(reduction),
+        ignore_index,
+        label_smoothing,
     )

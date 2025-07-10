@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -22,7 +21,7 @@ def silu_forward(x):
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def silu_backward(x, dy):
+def silu_backward_kernel(x, dy):
     dy_fp32 = dy.to(tl.float32)
     x_fp32 = x.to(tl.float32)
     sigma = 1.0 / (1.0 + tl.exp(-x_fp32))
@@ -30,22 +29,19 @@ def silu_backward(x, dy):
     return dx
 
 
-class Silu(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, A):
-        logger.debug("GEMS_CAMBRICON SILU FORWARD")
-        out = silu_forward(A)
-        ctx.save_for_backward(A)
-        return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON SILU BACKWARD")
-        out_grad = out_grad.contiguous()
-        (inp,) = ctx.saved_tensors
-        in_grad = silu_backward(inp, out_grad)
-        return in_grad
+def silu(self):
+    logger.debug("GEMS_CAMBRICON SILU FORWARD")
+    output = silu_forward(self)
+    return output
 
 
-def silu(A):
-    return Silu.apply(A)
+def silu_backward(grad_output, self):
+    logger.debug("GEMS_CAMBRICON SILU BACKWARD")
+    grad_input = silu_backward_kernel(self, grad_output)
+    return grad_input
+
+
+def silu_(A):
+    logger.debug("GEMS_CAMBRICON SILU_ FORWARD")
+    out = silu_forward(A, out0=A)
+    return out

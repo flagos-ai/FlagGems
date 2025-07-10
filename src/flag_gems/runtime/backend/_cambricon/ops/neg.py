@@ -16,3 +16,8 @@ def neg_func(x):
 def neg(A):
     logger.debug("GEMS_CAMBRICON NEG")
     return neg_func(A)
+
+
+def neg_(A):
+    logger.debug("GEMS_CAMBRICON NEG_")
+    return neg_func(A, out0=A)

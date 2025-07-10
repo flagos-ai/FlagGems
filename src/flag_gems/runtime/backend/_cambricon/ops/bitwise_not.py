@@ -16,3 +16,9 @@ def bitwise_not_func(x):
 def bitwise_not(A):
     logger.debug("GEMS_CAMBRICON BITWISE NOT")
     return bitwise_not_func(A)
+
+
+def bitwise_not_(A):
+    logger.debug("GEMS_CAMBRICON BITWISE NOT_")
+    bitwise_not_func(A, out0=A)
+    return A

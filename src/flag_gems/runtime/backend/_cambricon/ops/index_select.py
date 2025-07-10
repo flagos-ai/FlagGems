@@ -62,7 +62,6 @@ def ld_st_1(indices, N: tl.constexpr, weight_ptr, in_mask, in_offsets, out_ptr):
         for i in range(0, 8, 2)
     ],
     key=["N", "in_n_elements"],
-    strategy=["log", "log"],
     prune_configs_by={
         "early_config_prune": config_prune,
     },
@@ -199,7 +198,6 @@ def ld_st_2(
 @libtuner(
     configs=runtime.get_tuned_config("index_select"),
     key=["batch_dim", "index_dim", "c_dim"],
-    strategy=["log", "log", "log"],
     prune_configs_by={"early_config_prune": config_prune},
 )
 @triton.jit

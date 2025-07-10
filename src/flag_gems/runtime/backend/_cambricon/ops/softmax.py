@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
@@ -90,13 +90,12 @@ def softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K):
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=runtime.get_tuned_config("softmax_non_inner"),
     key=[
         "N",
         "K",
     ],
-    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune1},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
@@ -250,13 +249,12 @@ def softmax_tile_mode_for_inner(args):
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=runtime.get_tuned_config("softmax_inner"),
     key=[
         "M",
         "N",
     ],
-    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune2},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
@@ -409,13 +407,12 @@ def config_prune3(configs, named_args, **kwargs):
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=runtime.get_tuned_config("softmax_non_inner_bw"),
     key=[
         "N",
         "K",
     ],
-    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune3},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_backward_non_inner"))
@@ -541,13 +538,12 @@ def config_prune4(configs, named_args, **kwargs):
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=runtime.get_tuned_config("softmax_inner_bw"),
     key=[
         "M",
         "N",
     ],
-    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune4},
 )
 @triton.heuristics(
@@ -616,86 +612,78 @@ def softmax_backward_kernel_inner(
                 tl.store(in_grad_ptr + offset, in_grad_tile, mask=mask)
 
 
-class Softmax(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, dim, dtype):
-        logger.debug("GEMS_CAMBRICON SOFTMAX")
+def softmax(self, dim, half_to_float=False):
+    logger.debug("GEMS_CAMBRICON SOFTMAX")
 
-        assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
-        dim = dim % x.ndim
-        M = 1
-        N = x.shape[dim]
-        for i in range(dim):
-            M *= x.shape[i]  # pre_dim
-        inp = x.contiguous()
-        if dtype is None:
-            dtype = x.dtype
-        out = torch.empty_like(inp, dtype=dtype)
-        K = inp.numel() // M // N  # post_dim
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    M = 1
+    N = self.shape[dim]
+    for i in range(dim):
+        M *= self.shape[i]  # pre_dim
+    self = self.contiguous()
+    if half_to_float:
+        dtype = torch.float32
+    else:
+        dtype = self.dtype
+    out = torch.empty_like(self, dtype=dtype)
+    K = self.numel() // M // N  # post_dim
 
-        with torch_device_fn.device(inp.device):
-            if K > 1:
-                logger.debug("GEMS_CAMBRICON SOFTMAX USE NON INNER")
-                grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
-                softmax_kernel_non_inner[grid](
-                    out,
-                    inp,
-                    M,
-                    N,
-                    K,
-                )
-            else:
-                logger.debug("GEMS_CAMBRICON SOFTMAX USE INNER")
-                softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
-                    out,
-                    inp,
-                    M,
-                    N,
-                )
-        ctx.save_for_backward(out)
-        ctx.dim = dim
-        return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON SOFTMAX VJP")
-        dim = ctx.dim
-        (out,) = ctx.saved_tensors
-
-        assert dim >= -out.ndim and dim < out.ndim, "Invalid dim"
-        dim = dim % out.ndim
-        M = 1
-        N = out.shape[dim]
-        for i in range(dim):
-            M *= out.shape[i]
-
-        out_grad = out_grad.contiguous()
-        in_grad = torch.empty_like(out)
-        K = out.numel() // M // N
-
-        with torch_device_fn.device(in_grad.device):
-            if K > 1:
-                logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE NON INNER")
-                grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
-                softmax_backward_kernel_non_inner[grid](
-                    out,
-                    out_grad,
-                    in_grad,
-                    M,
-                    N,
-                    K,
-                )
-            else:
-                logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
-                softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
-                    out,
-                    out_grad,
-                    in_grad,
-                    M,
-                    N,
-                )
-        return in_grad, None, None
+    with torch_device_fn.device(self.device):
+        if K > 1:
+            logger.debug("GEMS_CAMBRICON SOFTMAX USE NON INNER")
+            grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
+            softmax_kernel_non_inner[grid](
+                out,
+                self,
+                M,
+                N,
+                K,
+            )
+        else:
+            logger.debug("GEMS_CAMBRICON SOFTMAX USE INNER")
+            softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
+                out,
+                self,
+                M,
+                N,
+            )
+    return out
 
 
-def softmax(x, dim=-1, dtype=None):
-    return Softmax.apply(x, dim, dtype)
+def softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS_CAMBRICON SOFTMAX VJP")
+
+    assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
+    dim = dim % output.ndim
+    M = 1
+    N = output.shape[dim]
+    for i in range(dim):
+        M *= output.shape[i]
+
+    grad_output = grad_output.contiguous()
+    in_grad = torch.empty_like(output)
+    K = output.numel() // M // N
+
+    with torch_device_fn.device(in_grad.device):
+        if K > 1:
+            logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE NON INNER")
+            grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
+            softmax_backward_kernel_non_inner[grid](
+                output,
+                grad_output,
+                in_grad,
+                M,
+                N,
+                K,
+            )
+        else:
+            logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
+            softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
+                output,
+                grad_output,
+                in_grad,
+                M,
+                N,
+            )
+    return in_grad

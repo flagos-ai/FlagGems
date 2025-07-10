@@ -40,3 +40,15 @@ def add(A, B, *, alpha=1):
         return add_func_scalar_tensor(A, B, alpha)
     else:
         return torch.tensor(A + B * alpha)
+
+
+def add_(A, B, *, alpha=1):
+    logger.debug("GEMS_CAMBRICON ADD_")
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return add_func(A, B, alpha, out0=A)
+    elif isinstance(A, torch.Tensor):
+        return add_func_tensor_scalar(A, B, alpha, out0=A)
+    # elif isinstance(B, torch.Tensor):
+    #     return add_func_scalar_tensor(A, B, alpha, out0=A)
+    else:
+        raise ValueError("Unreachable.")

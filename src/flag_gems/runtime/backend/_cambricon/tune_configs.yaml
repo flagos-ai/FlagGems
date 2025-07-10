@@ -815,7 +815,6 @@ masked_select:
   - 4096
   - 8192
   - 16384
-  - 32768
 #######################################
 mean:
 - gen: true
@@ -1376,3 +1375,58 @@ index_put:
   - 2048
   - 4096
   - 8192
+#######################################
+kron:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+    num_warps: warps
+  block_m:
+  - 1
+  - 4
+  - 8
+  - 16
+  block_n:
+  - 1024
+  - 2048
+  - 4096
+  - 8192
+  warps:
+  - 1
+#######################################
+linspace:
+- gen: true
+  param_map:
+    META:
+      INNER_BLOCK_SIZE: block_m
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  - 4096
+  - 8192
+  warps:
+  - 1
+  stages:
+  - 1
+  - 3
+#######################################
+index:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE0: block_size0
+      BLOCK_SIZE1: block_size1
+    num_warps: warps
+  block_size0:
+  - 1
+  - 2
+  - 4
+  block_size1:
+  - 1024
+  - 2048
+  - 4096
+  warps:
+  - 1

@@ -23,7 +23,7 @@ def amax_kernel_once(
 ):
     offset = tl.arange(0, M)
     inp_val = tl.load(inp + offset)
-    amax_val = tl.max(inp_val, 0, return_indices=True)
+    amax_val = tl.max(inp_val, 0)
     tl.store(out, amax_val)
 
 
@@ -48,7 +48,7 @@ def amax_kernel_1(
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
         inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
-        amax_val = tl.max(inp_val, 0, return_indices=True)
+        (amax_val,) = tl.max(inp_val, 0, return_indices=True)
         if amax_val > _tmp:
             _tmp = amax_val.to(tl.float32)
     tl.atomic_max(out, _tmp)
@@ -84,7 +84,7 @@ def amax_kernel_opt(
         inp_ptrs = inp + row_idx * N + offset_n
         mask = offset_n < N
         inps = tl.load(inp_ptrs, mask, other=-float("inf"))
-        max_val = tl.max(inps, 0, return_indices=True)
+        (max_val,) = tl.max(inps, 0, return_indices=True)
         new_out = out + row_idx
         tl.atomic_max(new_out, max_val)
 

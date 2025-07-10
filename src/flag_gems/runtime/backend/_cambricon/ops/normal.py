@@ -7,6 +7,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems.utils.shape_utils import broadcast_shapes, volume
 
+from ..utils import TOTAL_CORE_NUM
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .randn import randn_kernel
 
@@ -50,7 +51,9 @@ def transform_func_float_float(val, std, mean):
 def normal_distribution(shape, device, *, generator=None):
     out = torch.empty(shape, device=device, dtype=torch.float32)
     N = volume(shape)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    grid_fn = lambda meta: (
+        min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
+    )
 
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(

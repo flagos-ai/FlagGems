@@ -17,3 +17,8 @@ def reciprocal_func(x):
 def reciprocal(A):
     logger.debug("GEMS_CAMBRICON RECIPROCAL")
     return reciprocal_func(A)
+
+
+def reciprocal_(A):
+    logger.debug("GEMS_CAMBRICON RECIPROCAL_")
+    return reciprocal_func(A, out0=A)

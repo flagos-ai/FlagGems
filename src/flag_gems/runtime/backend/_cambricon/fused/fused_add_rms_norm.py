@@ -30,6 +30,7 @@ def get_configs():
 @triton.autotune(
     configs=get_configs(),
     key=["M", "N_COLS"],
+    restore_value=["x_ptr", "r_ptr"],
 )
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
@@ -57,52 +58,37 @@ def fused_add_rms_norm_kernel(
         _mean = tl.zeros([M_BLOCK, BLOCK_SIZE], dtype=tl.float32)
         for offset in range(0, N_COLS, BLOCK_SIZE):
             cols = offset + tl.arange(0, BLOCK_SIZE)
-            mask = (m_offset < M)[:, None] & (cols < N_COLS)[None, :]
-            x = tl.load(
-                mx_ptr[:, None] + cols[None, :],
-                mask=mask,
-                other=0.0,
-                eviction_policy="evict_last",
-            ).to(tl.float32)
-            r = tl.load(
-                mr_ptr[:, None] + cols[None, :],
-                mask=mask,
-                other=0.0,
-                eviction_policy="evict_last",
-            ).to(tl.float32)
-            x += r
-            _mean += x * x
+            row_mask = m_offset < ub
+            col_mask = cols < N_COLS
+            mask = row_mask[:, None] & col_mask[None, :]
+            x = tl.load(mx_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(
+                tl.float32
+            )
+            r = tl.load(mr_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(
+                tl.float32
+            )
+            xpr = x + r
+            tl.store(mr_ptr[:, None] + cols[None, :], xpr, mask=mask)
+            _mean += xpr * xpr
 
         # Since `_mean * (1 / N_COLS)` performs better, make this change.
         # var = tl.sum(_mean / N_COLS, axis=1)
-        var = tl.sum(_mean * (1 / N_COLS), axis=1)
-        rrms = 1 / tl.sqrt(var + eps)
+        var = tl.sum(_mean * (1.0 / N_COLS), axis=1)
+        rrms = 1.0 / tl.sqrt(var + eps)
 
         for offset in range(0, N_COLS, BLOCK_SIZE):
             cols = offset + tl.arange(0, BLOCK_SIZE)
-            mask = (m_offset < M)[:, None] & (cols < N_COLS)[None, :]
-            x = tl.load(
-                mx_ptr[:, None] + cols[None, :],
-                mask=mask,
-                other=0.0,
-                eviction_policy="evict_first",
-            ).to(tl.float32)
-            r = tl.load(
-                mr_ptr[:, None] + cols[None, :],
-                mask=mask,
-                other=0.0,
-                eviction_policy="evict_last",
-            ).to(tl.float32)
-            x += r
-            w = tl.load(
-                w_ptr + cols,
-                mask=cols < N_COLS,
-                other=0.0,
-                eviction_policy="evict_first",
+            row_mask = m_offset < ub
+            col_mask = cols < N_COLS
+            mask = row_mask[:, None] & col_mask[None, :]
+
+            xpr = tl.load(mr_ptr[:, None] + cols[None, :], mask=mask, other=0.0).to(
+                tl.float32
             )
-            y = (x * rrms[:, None]).to(x_ptr.dtype.element_ty) * w
-            # write back to residual and input
-            tl.store(mr_ptr[:, None] + cols[None, :], x, mask=mask)
+            w = tl.load(w_ptr + cols, mask=col_mask, other=0.0).to(tl.float32)
+            y = xpr * rrms[:, None]
+            y = y * w
+            y = y.to(x_ptr.dtype.element_ty)
             tl.store(mx_ptr[:, None] + cols[None, :], y, mask=mask)
 
 

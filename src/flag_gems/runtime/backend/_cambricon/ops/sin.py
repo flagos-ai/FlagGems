@@ -17,3 +17,9 @@ def sin_func(x):
 def sin(A):
     logger.debug("GEMS_CAMBRICON SIN")
     return sin_func(A)
+
+
+def sin_(A):
+    logger.debug("GEMS_CAMBRICON SIN_")
+    sin_func(A, out0=A)
+    return A

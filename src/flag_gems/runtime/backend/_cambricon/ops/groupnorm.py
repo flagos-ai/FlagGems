@@ -230,9 +230,10 @@ def group_norm_backward_kernel_opt(
     hw_iter = tl.cdiv(HW, BLOCK_HW_SIZE)
 
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
-    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
     if BLOCK_HW_SIZE >= HW:
         hw_offset = tl.arange(0, HW)
+    else:
+        hw_offset = tl.arange(0, BLOCK_HW_SIZE)
 
     if W is None:
         W_ptr = None
@@ -267,27 +268,25 @@ def group_norm_backward_kernel_opt(
         if BLOCK_HW_SIZE >= HW:
             dY_val = tl.load(grad_y + xy_offset, cache_modifier=".cg").to(tl.float32)
             X_val = tl.load(X + xy_offset, cache_modifier=".cg").to(tl.float32)
+
+            x_hat = rstd * (X_val - mean)
             dx_hat = weight * dY_val
 
-            x = X_val - mean
+            grad_dx_hat_sum = tl.sum(dx_hat)
+            grad_x_hat_sum = tl.sum(dx_hat * x_hat)
 
-            grad_std = tl.sum(dx_hat * x)
-            grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / real_num_elements
-            grad_distance = 2 * x * grad_var
-            grad_centered_mean = dx_hat * rstd + grad_distance
-            grad_mean = -tl.sum(grad_centered_mean) / real_num_elements
-            grad_X = grad_centered_mean + grad_mean
+            dx = rstd * (
+                dx_hat - (grad_dx_hat_sum + x_hat * grad_x_hat_sum) / real_num_elements
+            )
 
-            tl.store(grad_x + xy_offset, grad_X)
+            tl.store(grad_x + xy_offset, dx)
         else:
-            dx_hat = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
-            x = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
-            dx_hat_x = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
+            grad_dx_hat_accum = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
+            grad_x_hat_accum = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
 
             for idy in range(0, hw_iter):
-                xy_mask = (
-                    group_offset[:, None] < C
-                    and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+                xy_mask = (group_offset[:, None] < C) & (
+                    (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
                 )
                 dY_val = tl.load(
                     grad_y + idy * BLOCK_HW_SIZE + xy_offset,
@@ -301,42 +300,40 @@ def group_norm_backward_kernel_opt(
                     other=0.0,
                     cache_modifier=".cg",
                 ).to(tl.float32)
-                dx_hat_tmp = weight * dY_val
-                dx_hat += dx_hat_tmp
-                x_tmp = tl.where(xy_mask, X_val - mean, 0.0)
-                x += x_tmp
-                dx_hat_x += dx_hat_tmp * x_tmp
 
-            grad_std = tl.sum(dx_hat_x)
-            grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / real_num_elements
-
-            grad_distance = 2 * x * grad_var
-            grad_centered_mean = dx_hat * rstd + grad_distance
-            grad_mean = -tl.sum(grad_centered_mean) / real_num_elements
-
-            for idy in range(0, hw_iter):
-                xy_mask = (
-                    group_offset[:, None] < C
-                    and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
-                )
-                dY_val = tl.load(
-                    grad_y + idy * BLOCK_HW_SIZE + xy_offset,
-                    mask=xy_mask,
-                    other=0.0,
-                    cache_modifier=".cg",
-                ).to(tl.float32)
-                X_val = tl.load(
-                    X + idy * BLOCK_HW_SIZE + xy_offset,
-                    mask=xy_mask,
-                    other=0.0,
-                    cache_modifier=".cg",
-                ).to(tl.float32)
+                x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
                 dx_hat = weight * dY_val
-                x = tl.where(xy_mask, X_val - mean, 0.0)
-                grad_distance = 2 * x * grad_var
-                grad_centered_mean = dx_hat * rstd + grad_distance
-                grad_X = grad_centered_mean + grad_mean
-                tl.store(grad_x + idy * BLOCK_HW_SIZE + xy_offset, grad_X, mask=xy_mask)
+                grad_dx_hat_accum += dx_hat
+                grad_x_hat_accum += dx_hat * x_hat
+
+            grad_dx_hat_total = tl.sum(grad_dx_hat_accum)
+            grad_x_hat_total = tl.sum(grad_x_hat_accum)
+
+            for idy in range(0, hw_iter):
+                xy_mask = (group_offset[:, None] < C) & (
+                    (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+                )
+                dY_val = tl.load(
+                    grad_y + idy * BLOCK_HW_SIZE + xy_offset,
+                    mask=xy_mask,
+                    other=0.0,
+                    cache_modifier=".cg",
+                ).to(tl.float32)
+                X_val = tl.load(
+                    X + idy * BLOCK_HW_SIZE + xy_offset,
+                    mask=xy_mask,
+                    other=0.0,
+                    cache_modifier=".cg",
+                ).to(tl.float32)
+
+                x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
+                dx_hat = weight * dY_val
+                dx = rstd * (
+                    dx_hat
+                    - (grad_dx_hat_total + x_hat * grad_x_hat_total) / real_num_elements
+                )
+
+                tl.store(grad_x + idy * BLOCK_HW_SIZE + xy_offset, dx, mask=xy_mask)
 
         xy_offset += real_num_elements
         group_offset += group_size
@@ -459,11 +456,11 @@ def weight_bias_backward_kernel_opt(
                 dW_val += tl.sum((x_f32 - mean) * rstd * grad_y)
 
             if dW is not None:
-                tl.store(dW + c_start, dW_val.to(x.dtype))
+                tl.store(dW + c_start, dW_val)
             if dB is not None:
-                tl.store(dB + c_start, dB_val.to(x.dtype))
+                tl.store(dB + c_start, dB_val)
         else:
-            xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+            xy_mask = (n_offset[:, None] < N) & (hw_offset[None, :] < HW)
 
             dY_ptr = dY + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
             x_ptr = X + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
@@ -482,9 +479,8 @@ def weight_bias_backward_kernel_opt(
             dW_val = tl.sum((x_f32 - mean) * rstd * grad_y)
 
             for idx in range(1, hw_iter):
-                xy_mask = (
-                    n_offset[:, None] < N
-                    and (idx * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+                xy_mask = (n_offset[:, None] < N) & (
+                    (idx * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
                 )
                 dY_ptr = (
                     dY
@@ -512,7 +508,7 @@ def weight_bias_backward_kernel_opt(
 
             for n_start in range(1, N_SPLIT):
                 new_n_offset = n_start * BLOCK_N + n_offset
-                xy_mask = new_n_offset[:, None] < N and hw_offset[None, :] < HW
+                xy_mask = (new_n_offset[:, None] < N) & (hw_offset[None, :] < HW)
 
                 dY_ptr = (
                     dY
@@ -543,9 +539,8 @@ def weight_bias_backward_kernel_opt(
                 dW_val += tl.sum((x_f32 - mean) * rstd * grad_y)
 
                 for idx in range(1, hw_iter):
-                    xy_mask = (
-                        new_n_offset[:, None] < N
-                        and (idx * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+                    xy_mask = (new_n_offset[:, None] < N) & (
+                        (idx * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
                     )
                     dY_ptr = (
                         dY
@@ -570,98 +565,92 @@ def weight_bias_backward_kernel_opt(
                     dB_val += tl.sum(grad_y)
                     x_f32 = tl.where(xy_mask, x_f32 - mean, 0.0)
                     dW_val += tl.sum(x_f32 * rstd * grad_y)
-                if dW is not None:
-                    tl.store(dW + c_start, dW_val.to(x.dtype))
-                if dB is not None:
-                    tl.store(dB + c_start, dB_val.to(x.dtype))
+            if dW is not None:
+                tl.store(dW + c_start, dW_val)
+            if dB is not None:
+                tl.store(dB + c_start, dB_val)
 
 
-class GroupNorm(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
-        logger.debug("GEMS_CAMBRICON GROUPNORM FORWARD")
-        group_size = C // num_groups
-        x = x.contiguous()
-        if weight is not None:
-            weight = weight.contiguous()
-        if bias is not None:
-            bias = bias.contiguous()
-        y = torch.empty_like(x)
-        mean = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
-        rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
-        grid = lambda meta: (N * triton.cdiv(num_groups, meta["SPLIT"]),)
+def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
+    logger.debug("GEMS_CAMBRICON GROUPNORM FORWARD")
+    group_size = C // group
+    input = input.contiguous()
+    if weight is not None:
+        weight = weight.contiguous()
+    if bias is not None:
+        bias = bias.contiguous()
+    y = torch.empty_like(input)
+    mean = torch.empty((N, group), dtype=input.dtype, device=input.device)
+    rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
+    grid = lambda meta: (N * triton.cdiv(group, meta["SPLIT"]),)
 
-        with torch_device_fn.device(x.device):
-            group_norm_kernel_opt[grid](
-                x,
-                y,
-                weight,
-                bias,
-                mean,
-                rstd,
-                group_size,
-                C,
-                num_groups,
-                eps,
-                HW=HW,
-                BLOCK_GROUP_SIZE=group_size,
-            )
-        if x.requires_grad:
-            ctx.save_for_backward(x, weight, bias, mean, rstd)
-            ctx.num_groups = num_groups
-            ctx.group_size = group_size
-            ctx.N = N
-            ctx.C = C
-            ctx.HW = HW
-        return y, mean, rstd
+    with torch_device_fn.device(input.device):
+        group_norm_kernel_opt[grid](
+            input,
+            y,
+            weight,
+            bias,
+            mean,
+            rstd,
+            group_size,
+            C,
+            group,
+            eps,
+            HW=HxW,
+            BLOCK_GROUP_SIZE=group_size,
+        )
+    return y, mean, rstd
 
-    @staticmethod
-    def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logger.debug("GEMS_CAMBRICON GROUPNORM BACKWARD")
-        y_grad = y_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
-        num_groups = ctx.num_groups
-        group_size = ctx.group_size
-        N = ctx.N
-        C = ctx.C
-        HW = ctx.HW
-        x_grad = torch.empty_like(x)
-        grid = lambda meta: (N * triton.cdiv(num_groups, meta["SPLIT"]),)
-        with torch_device_fn.device(x.device):
+
+def group_norm_backward(
+    grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
+):
+    logger.debug("GEMS_CAMBRICON GROUPNORM BACKWARD")
+
+    grad_out = grad_out.contiguous()
+    input = input.contiguous()
+    mean = mean.contiguous()
+    rstd = rstd.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    group_size = triton.cdiv(C, group)
+
+    if output_mask[0]:
+        grad_inp = torch.empty_like(input)
+        grid = lambda meta: (N * triton.cdiv(group, meta["SPLIT"]),)
+        with torch_device_fn.device(input.device):
             group_norm_backward_kernel_opt[grid](
-                y_grad,
-                x,
+                grad_out,
+                input,
                 weight,
                 mean,
                 rstd,
-                num_groups,
+                group,
                 group_size,
-                x_grad,
+                grad_inp,
                 C,
-                HW=HW,
+                HW=HxW,
                 BLOCK_GROUP_SIZE=group_size,
             )
-        if weight is None and bias is None:
-            return x_grad, None, None, None, None, None, None, None
+    else:
+        grad_inp = None
 
-        weight_grad = None if weight is None else torch.empty_like(weight)
-        bias_grad = None if bias is None else torch.empty_like(bias)
-        with torch_device_fn.device(x.device):
-            weight_bias_backward_kernel_opt[(TOTAL_CORE_NUM, 1, 1)](
-                y_grad,
-                x,
-                mean,
-                rstd,
-                weight_grad,
-                bias_grad,
-                num_groups,
-                group_size,
-                N,
-                C,
-                HW=HW,
-            )
-        return x_grad, None, None, None, None, weight_grad, bias_grad, None
+    if output_mask[1] is False and output_mask[2] is False:
+        return grad_inp, None, None
 
-
-def group_norm(x, weight, bias, N, C, HW, num_groups, eps):
-    return GroupNorm.apply(x, N, C, HW, num_groups, weight, bias, eps)
+    weight_grad = torch.empty_like(weight) if output_mask[1] else None
+    bias_grad = torch.empty_like(weight) if output_mask[2] else None
+    with torch_device_fn.device(input.device):
+        weight_bias_backward_kernel_opt[(TOTAL_CORE_NUM, 1, 1)](
+            grad_out,
+            input,
+            mean,
+            rstd,
+            weight_grad,
+            bias_grad,
+            group,
+            group_size,
+            N,
+            C,
+            HW=HxW,
+        )
+    return grad_inp, weight_grad, bias_grad

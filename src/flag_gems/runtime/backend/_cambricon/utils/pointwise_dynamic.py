@@ -20,10 +20,14 @@ from flag_gems.utils.pointwise_dynamic import (
     _type_name,
 )
 from flag_gems.utils.shape_utils import (
+    MemOverlap,
     all_c_contiguous,
     all_the_same_shape,
     all_the_same_stride,
+    broadcast_shapes,
     broadcasted_stride,
+    check_tensor_attributes,
+    has_internal_overlapping,
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
@@ -232,6 +236,11 @@ class KernelGenerator:
                 code.writeline("],")
                 code.writeline("key=['num_tasks'],")
                 code.writeline("strategy=['log'],")
+                output_params = [
+                    f"out{i}_ptr" for i in range(self.fx.num_output_tensors())
+                ]
+                output_elements = ", ".join(f"'{name}'" for name in output_params)
+                code.writeline(f"restore_value=[{output_elements}],")
             code.writeline(")")
 
         num_non_tensor_args = self.fx.num_non_tensor_args()
@@ -876,7 +885,7 @@ class WrapperGenerator:
             else:
                 code.writeline(f"out{i}_stride_order = (0,)")
 
-        code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
+        code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
@@ -938,7 +947,7 @@ class WrapperGenerator:
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
 
-        code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
+        code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
@@ -1106,6 +1115,11 @@ class PointwiseDynamicFunction:
             else:
                 outputs_that_need_allocation.append(i)
         # input arguments must be passed by position
+        if schema._is_tensor is not None:
+            if not check_tensor_attributes(args, (schema._is_tensor)):
+                raise ValueError(
+                    "Input arguments must be passed by position, and the corresponding dtype must be specified."
+                )
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
 
         # output dtype promotions
@@ -1145,8 +1159,22 @@ class PointwiseDynamicFunction:
             # a simple strategy: all the undefined tensors will follow the first
             # tensor that is not broadcated, no attempts to simplify task, no reordering,
             # no dimenion collapsing
-            shapes = tuple(item.shape for item in tensors)
-            task_shape = torch.broadcast_shapes(*shapes)
+            shapes = tuple(item.shape for item in in_tensors)
+
+            task_shape = broadcast_shapes(shapes)
+
+            if out_tensors:
+                for index, item in enumerate(out_tensors):
+                    if list(item.shape) != list(task_shape):
+                        raise RuntimeError(
+                            f"out tensor at index {index} shape is invalid, should be {task_shape} but is {item.shape}!"
+                        )
+                    # output arguments must not have internal overlapping for pointwise operation
+                    if has_internal_overlapping(item) == MemOverlap.Yes:
+                        raise RuntimeError(
+                            "Pointwise Input arguments should not have internal overlapping."
+                        )
+
             ndim = len(task_shape)
             for item in tensors:
                 if item.shape == task_shape:

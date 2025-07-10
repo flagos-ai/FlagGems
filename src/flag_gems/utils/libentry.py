@@ -15,6 +15,7 @@ import triton
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend import vendor_module
 
 from .code_cache import config_cache_dir
 
@@ -29,6 +30,10 @@ ATTRS = {
     (3, 2): 4,
     (3, 3): 8,
 }
+# Set (3, 2) to 9 for cambricon (special Autotune config)
+if vendor_module.vendor_info.vendor_name == "cambricon":
+    ATTRS[(3, 2)] = 9
+
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
 

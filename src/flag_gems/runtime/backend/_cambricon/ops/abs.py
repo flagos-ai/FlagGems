@@ -17,3 +17,9 @@ def abs_func(x):
 def abs(A):
     logger.debug("GEMS_CAMBRICON ABS")
     return abs_func(A)
+
+
+def abs_(A):
+    logger.debug("GEMS_CAMBRICON ABS_")
+    abs_func(A, out0=A)
+    return A

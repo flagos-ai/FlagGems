@@ -6,8 +6,8 @@ from triton import language as tl
 
 from flag_gems.utils import libentry
 
+from ..ops import mv
 from ..utils import TOTAL_CORE_NUM
-from .mv import mv
 
 logger = logging.getLogger(__name__)
 

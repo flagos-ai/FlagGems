@@ -19,3 +19,8 @@ def erf_func(x):
 def erf(x):
     logger.debug("GEMS_CAMBRICON ERF")
     return erf_func(x)
+
+
+def erf_(x):
+    logger.debug("GEMS_CAMBRICON ERF_")
+    return erf_func(x, out0=x)

@@ -1,5 +1,6 @@
 import itertools
 import random
+import time
 from typing import Optional
 
 import numpy as np
@@ -25,6 +26,9 @@ from .accuracy_utils import (
     to_reference,
 )
 from .conftest import TO_CPU
+
+# Make sure every thread has same seed.
+random.seed(time.time() // 100)
 
 device = flag_gems.device
 
@@ -440,6 +444,9 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("n_samples", [1000])
 def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     if shape[-1] == 1:
         dist = torch.rand(size=shape, dtype=dtype, device=flag_gems.device)
         with flag_gems.use_gems():
@@ -1122,8 +1129,8 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
     elif dtype in ALL_INT_DTYPES:
         min_v, max_v = torch.iinfo(dtype).min, torch.iinfo(dtype).max
         y = torch.randint(
-            min_v, max_v, (batch_size, hiddensize), dtype=dtype, device=flag_gems.device
-        )
+            min_v, max_v, (batch_size, hiddensize), dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
     else:
         y = torch.randn((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
 
@@ -1149,11 +1156,11 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 def test_accuracy_kron(shape, dtype):
     if dtype in INT_DTYPES:
         inp1 = torch.randint(
-            low=-10, high=10, size=shape[0], dtype=dtype, device=flag_gems.device
-        )
+            low=-10, high=10, size=shape[0], dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
         inp2 = torch.randint(
-            low=-10, high=10, size=shape[1], dtype=dtype, device=flag_gems.device
-        )
+            low=-10, high=10, size=shape[1], dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
     elif dtype in FLOAT_DTYPES:
         inp1 = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
         inp2 = torch.randn(shape[1], dtype=dtype, device=flag_gems.device)
@@ -1186,8 +1193,9 @@ def test_accuracy_contiguous(shape, dtype):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
         inp = torch.randint(
-            low=-10000, high=10000, size=shape, dtype=dtype, device=flag_gems.device
-        )
+            low=-10000, high=10000, size=shape, dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
+
     inp = inp[::2]
     assert inp.is_contiguous() is False
 

@@ -6,15 +6,16 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import broadcastable_to, libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
+    strategy=["log", "log", "log"],
 )
 @triton.heuristics(
     {
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 def addmm_kernel(
     a_ptr,
     b_ptr,
-    bias_ptr,
+    i_ptr,
     c_ptr,
     alpha,
     beta,
@@ -38,6 +39,8 @@ def addmm_kernel(
     stride_ak,
     stride_bk,
     stride_bn,
+    stride_im,
+    stride_in,
     stride_cm,
     stride_cn,
     BLOCK_SIZE_M: tl.constexpr,
@@ -55,11 +58,7 @@ def addmm_kernel(
     offs_k = tl.arange(0, BLOCK_SIZE_K)
     a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
-    bias_ptrs = bias_ptr + offs_bn
-    if EVEN_N:
-        bias = tl.load(bias_ptrs)
-    else:
-        bias = tl.load(bias_ptrs, mask=offs_bn < N, other=0.0)
+
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         k_remaining = K - k * BLOCK_SIZE_K
@@ -83,12 +82,20 @@ def addmm_kernel(
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
 
-    accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(bias.dtype)
-
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
+
+    if EVEN_M and EVEN_N:
+        bias = tl.load(i_ptrs)
+    else:
+        c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+        bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+
+    accumulator = accumulator * alpha + bias * beta
+    c = accumulator.to(bias.dtype)
+
     if EVEN_M and EVEN_N:
         tl.store(c_ptrs, c)
     else:
@@ -99,12 +106,17 @@ def addmm_kernel(
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     logger.debug("GEMS_CAMBRICON ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
+    assert broadcastable_to(
+        bias.shape, (mat1.shape[0], mat2.shape[1])
+    ), "Incompatible bias shape"
+
     M, K = mat1.shape
     _, N = mat2.shape
 
     mat1 = mat1.contiguous()
     mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    bias = bias.broadcast_to(out.shape).contiguous()
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
@@ -125,6 +137,8 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
             mat1.stride(1),
             mat2.stride(0),
             mat2.stride(1),
+            bias.stride(0),
+            bias.stride(1),
             out.stride(0),
             out.stride(1),
         )

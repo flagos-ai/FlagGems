@@ -17,3 +17,9 @@ def cos_func(x):
 def cos(A):
     logger.debug("GEMS_CAMBRICON COS")
     return cos_func(A)
+
+
+def cos_(A):
+    logger.debug("GEMS_CAMBRICON COS_")
+    cos_func(A, out0=A)
+    return A

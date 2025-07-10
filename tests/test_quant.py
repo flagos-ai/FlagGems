@@ -35,7 +35,10 @@ SEEDS = [0]
 CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
 
 # We assume fp8 is always enabled for testing.
-KV_CACHE_DTYPE = ["auto", "fp8"] if flag_gems.vendor_name != "kunlunxin" else ["auto"]
+if flag_gems.vendor_name in ["kunlunxin", "cambricon"]:
+    KV_CACHE_DTYPE = ["auto"]
+else:
+    KV_CACHE_DTYPE = ["auto", "fp8"]
 
 
 def _create_mla_cache(
@@ -89,50 +92,61 @@ def test_concat_and_cache_mla(
 ) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
-    torch.set_default_device(device)
 
-    total_slots = num_blocks * block_size
-    slot_mapping_lst = random.sample(range(total_slots), num_tokens)
-    slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+    with torch.device(device):
+        total_slots = num_blocks * block_size
+        slot_mapping_lst = random.sample(range(total_slots), num_tokens)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
 
-    kv_c = torch.randn(num_tokens, kv_lora_rank, dtype=dtype, device=device)
-    k_pe = torch.randn(num_tokens, qk_rope_head_dim, dtype=dtype, device=device)
-    entry_size = kv_lora_rank + qk_rope_head_dim
+        kv_c = torch.randn(num_tokens, kv_lora_rank, dtype=dtype, device=device)
+        k_pe = torch.randn(num_tokens, qk_rope_head_dim, dtype=dtype, device=device)
+        entry_size = kv_lora_rank + qk_rope_head_dim
 
-    scale = torch.tensor(0.1, dtype=torch.float32, device=device)
-    kv_cache = _create_mla_cache(
-        num_blocks, block_size, entry_size, dtype, kv_cache_dtype, device
-    )
-    ref_temp = to_reference(torch.zeros(*kv_cache.shape, dtype=dtype, device=device))
-
-    for i in range(num_tokens):
-        slot = slot_mapping[i].item()
-        block_idx = slot // block_size
-        block_offset = slot % block_size
-        ref_temp[block_idx, block_offset, :kv_lora_rank] = kv_c[i]
-        ref_temp[block_idx, block_offset, kv_lora_rank:] = k_pe[i]
-
-    if kv_cache_dtype == "fp8":
-        ref_kv_cache = to_reference(torch.empty_like(ref_temp, dtype=kv_cache.dtype))
-        convert_fp8(ref_kv_cache, ref_temp, scale.item(), kv_dtype=kv_cache_dtype)
-    else:
-        ref_kv_cache = to_reference(ref_temp)
-    with flag_gems.use_gems():
-        flag_gems.concat_and_cache_mla(
-            kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
+        scale = torch.tensor(0.1, dtype=torch.float32, device=device)
+        kv_cache = _create_mla_cache(
+            num_blocks, block_size, entry_size, dtype, kv_cache_dtype, device
+        )
+        ref_temp = to_reference(
+            torch.zeros(*kv_cache.shape, dtype=dtype, device=device)
         )
 
-    if kv_cache_dtype == "fp8":
-        result_temp = torch.empty_like(kv_cache, dtype=torch.uint8)
-        convert_fp8(
-            result_temp, kv_cache.contiguous(), scale.item(), kv_dtype=kv_cache_dtype
-        )
-        expected_temp = to_reference(torch.empty_like(ref_kv_cache, dtype=torch.uint8))
-        convert_fp8(expected_temp, ref_kv_cache, scale.item(), kv_dtype=kv_cache_dtype)
-        dtype = torch.float8_e4m3fn
-        # TODO: RuntimeError: Comparing
-        # maybe a bug in torch.testing.assert_close
-        # gems_assert_close(kv_cache.view(dtype), ref_kv_cache.view(dtype), dtype)
-        torch.testing.assert_close(result_temp, expected_temp, atol=0.001, rtol=0.1)
-    else:
-        gems_assert_close(kv_cache, ref_kv_cache, kv_cache.dtype)
+        for i in range(num_tokens):
+            slot = slot_mapping[i].item()
+            block_idx = slot // block_size
+            block_offset = slot % block_size
+            ref_temp[block_idx, block_offset, :kv_lora_rank] = kv_c[i]
+            ref_temp[block_idx, block_offset, kv_lora_rank:] = k_pe[i]
+
+        if kv_cache_dtype == "fp8":
+            ref_kv_cache = to_reference(
+                torch.empty_like(ref_temp, dtype=kv_cache.dtype)
+            )
+            convert_fp8(ref_kv_cache, ref_temp, scale.item(), kv_dtype=kv_cache_dtype)
+        else:
+            ref_kv_cache = to_reference(ref_temp)
+        with flag_gems.use_gems():
+            flag_gems.concat_and_cache_mla(
+                kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
+            )
+
+        if kv_cache_dtype == "fp8":
+            result_temp = torch.empty_like(kv_cache, dtype=torch.uint8)
+            convert_fp8(
+                result_temp,
+                kv_cache.contiguous(),
+                scale.item(),
+                kv_dtype=kv_cache_dtype,
+            )
+            expected_temp = to_reference(
+                torch.empty_like(ref_kv_cache, dtype=torch.uint8)
+            )
+            convert_fp8(
+                expected_temp, ref_kv_cache, scale.item(), kv_dtype=kv_cache_dtype
+            )
+            dtype = torch.float8_e4m3fn
+            # TODO: RuntimeError: Comparing
+            # maybe a bug in torch.testing.assert_close
+            # gems_assert_close(kv_cache.view(dtype), ref_kv_cache.view(dtype), dtype)
+            torch.testing.assert_close(result_temp, expected_temp, atol=0.001, rtol=0.1)
+        else:
+            gems_assert_close(kv_cache, ref_kv_cache, kv_cache.dtype)
