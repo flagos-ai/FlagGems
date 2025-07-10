@@ -168,7 +168,9 @@ def test_accuracy_max_without_dim(shape, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
     ref_inp = to_reference(inp)
 
     ref_out = torch.max(ref_inp)
@@ -222,9 +224,9 @@ def test_accuracy_max_without_dim_uncontiguous(shape, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2, ::2]
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)[
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu")[
             ::2, ::2
-        ]
+        ].to(flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.max(ref_inp)
@@ -243,7 +245,9 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
     ref_inp = to_reference(inp)
 
     ref_out_value, ref_out_index = torch.max(ref_inp, dim=dim, keepdim=keepdim)
@@ -262,7 +266,9 @@ def test_accuracy_max_dim_big_shape(shape, dim, keepdim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
     ref_inp = to_reference(inp)
 
     ref_out_value, ref_out_index = torch.max(ref_inp, dim=dim, keepdim=keepdim)
@@ -309,7 +315,9 @@ def test_accuracy_min_without_dim(shape, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
     ref_inp = to_reference(inp)
 
     ref_out = torch.min(ref_inp)
@@ -345,7 +353,9 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
-        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
     ref_inp = to_reference(inp)
 
     ref_out_value, ref_out_index = torch.min(ref_inp, dim=dim, keepdim=keepdim)

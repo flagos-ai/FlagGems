@@ -14,6 +14,8 @@ from .attri_util import (
 )
 from .performance_utils import Benchmark, generate_tensor_input
 
+fp64_is_supported = flag_gems.runtime.device.support_fp64
+
 
 class UnaryPointwiseBenchmark(Benchmark):
     """
@@ -136,7 +138,8 @@ def test_to_dtype_perf():
     bench = ToDtypeBenchmark(
         op_name="to",
         torch_op=torch.Tensor.to,
-        dtypes=[torch.float16, torch.bfloat16, torch.float64],
+        dtypes=[torch.float16, torch.bfloat16]
+        + ([torch.float64] if fp64_is_supported else []),
     )
     bench.run()
 

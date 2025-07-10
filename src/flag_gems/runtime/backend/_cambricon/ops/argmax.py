@@ -157,7 +157,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        if M <= 65536:
+        if M <= 65530:
             with torch_device_fn.device(inp.device):
                 argmax_kernel_once[(1, 1, 1)](inp, out, M)
         else:

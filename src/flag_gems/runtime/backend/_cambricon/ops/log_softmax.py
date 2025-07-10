@@ -648,88 +648,79 @@ def log_softmax_backward_kernel_inner(
                 tl.store(in_grad_ptr + offset, in_grad_tile, mask=mask)
 
 
-class LogSoftmax(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, dim, dtype):
-        logger.debug("GEMS_CAMBRICON LOG_SOFTMAX")
+def log_softmax(self, dim, half_to_float=False):
+    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX")
 
-        assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
-        dim = dim % x.ndim
-        M = 1
-        N = x.shape[dim]
-        for i in range(dim):
-            M *= x.shape[i]
-        inp = x.contiguous()
-        if dtype is None:
-            dtype = x.dtype
-        out = torch.empty_like(inp, dtype=dtype)
-        K = inp.numel() // M // N
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    M = 1
+    N = self.shape[dim]
+    for i in range(dim):
+        M *= self.shape[i]
+    inp = self.contiguous()
+    if half_to_float:
+        dtype = torch.float32
+    else:
+        dtype = self.dtype
+    out = torch.empty_like(inp, dtype=dtype)
+    K = inp.numel() // M // N
 
-        with torch_device_fn.device(inp.device):
-            if K > 1:
-                logger.debug("GEMS_CAMBRICON LOGSOFTMAX USE NON INNER")
-                grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
-                log_softmax_kernel_non_inner[grid](
-                    out,
-                    inp,
-                    M,
-                    N,
-                    K,
-                )
-            else:
-                logger.debug("GEMS_CAMBRICON LOGSOFTMAX USE INNER")
-                log_softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
-                    out,
-                    inp,
-                    M,
-                    N,
-                )
-        ctx.save_for_backward(out)
-        ctx.dim = dim
-        return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON LOG_SOFTMAX VJP")
-
-        dim = ctx.dim
-        (out,) = ctx.saved_tensors
-
-        assert dim >= -out.ndim and dim < out.ndim, "Invalid dim"
-        dim = dim % out.ndim
-        M = 1
-        N = out.shape[dim]
-        for i in range(dim):
-            M *= out.shape[i]
-
-        out_grad = out_grad.contiguous()
-        in_grad = torch.empty_like(out)
-        K = out.numel() // M // N
-
-        with torch_device_fn.device(in_grad.device):
-            if K > 1:
-                logger.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE NON INNER")
-                grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
-                log_softmax_backward_kernel_non_inner[grid](
-                    out,
-                    out_grad,
-                    in_grad,
-                    M,
-                    N,
-                    K,
-                )
-            else:
-                logger.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE INNER")
-                grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
-                log_softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
-                    out,
-                    out_grad,
-                    in_grad,
-                    M,
-                    N,
-                )
-        return in_grad, None, None
+    with torch_device_fn.device(inp.device):
+        if K > 1:
+            logger.debug("GEMS_CAMBRICON LOGSOFTMAX USE NON INNER")
+            grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
+            log_softmax_kernel_non_inner[grid](
+                out,
+                inp,
+                M,
+                N,
+                K,
+            )
+        else:
+            logger.debug("GEMS_CAMBRICON LOGSOFTMAX USE INNER")
+            log_softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
+                out,
+                inp,
+                M,
+                N,
+            )
+    return out
 
 
-def log_softmax(x, dim=-1, dtype=None):
-    return LogSoftmax.apply(x, dim, dtype)
+def log_softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX VJP")
+
+    assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
+    dim = dim % output.ndim
+    M = 1
+    N = output.shape[dim]
+    for i in range(dim):
+        M *= output.shape[i]
+
+    grad_output = grad_output.contiguous()
+    in_grad = torch.empty_like(output)
+    K = output.numel() // M // N
+
+    with torch_device_fn.device(in_grad.device):
+        if K > 1:
+            logger.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE NON INNER")
+            grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
+            log_softmax_backward_kernel_non_inner[grid](
+                output,
+                grad_output,
+                in_grad,
+                M,
+                N,
+                K,
+            )
+        else:
+            logger.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE INNER")
+            grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+            log_softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
+                output,
+                grad_output,
+                in_grad,
+                M,
+                N,
+            )
+    return in_grad

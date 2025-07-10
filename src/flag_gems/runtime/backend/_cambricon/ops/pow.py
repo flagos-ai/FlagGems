@@ -23,6 +23,11 @@ def pow_tensor_tensor(A, exponent):
     return pow_func(A, exponent)
 
 
+def pow_tensor_tensor_(A, exponent):
+    logger.debug("GEMS_CAMBRICON POW_TENSOR_TENSOR_")
+    return pow_func(A, exponent, out0=A)
+
+
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func_tensor_scalar(x, exponent):
@@ -63,6 +68,11 @@ def pow_tensor_scalar(A, exponent):
     if int(exponent) == exponent:
         return pow_func_tensor_scalar_int(A, exponent)
     return pow_func_tensor_scalar(A, exponent)
+
+
+def pow_tensor_scalar_(A, exponent):
+    logger.debug("GEMS_CAMBRICON POW_TENSOR_SCALAR_")
+    return pow_func_tensor_scalar(A, exponent, out0=A)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "BOOL_TO_LONG")])

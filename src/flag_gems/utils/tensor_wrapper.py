@@ -52,6 +52,7 @@ class StridedBuffer:
     ):
         self._base = base
         self.dtype = dtype or base.dtype
+        self.offset = offset
 
         if offset == 0:
             self._data_ptr = self._base.data_ptr()
@@ -98,3 +99,25 @@ class StridedBuffer:
 
     def untyped_storage(self):
         return self._base.untyped_storage()
+
+    def clone(self):
+        return StridedBuffer(
+            self._base.clone(),
+            shape=self.shape,
+            strides=self._strides,
+            dtype=self.dtype,
+            offset=self.offset,
+        )
+
+    def copy_(self, src):
+        if isinstance(src, StridedBuffer):
+            self._base.copy_(src._base)
+            self._strides = src._strides
+            self.shape = src.shape
+            self.dtype = src.dtype
+            self.device = src.device
+            self.offset = src.offset
+        else:
+            src_buffer = StridedBuffer(src)
+            self.copy_(src_buffer)
+        return self

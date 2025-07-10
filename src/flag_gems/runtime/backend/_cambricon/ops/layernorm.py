@@ -405,7 +405,7 @@ def cfggen_bw_middle_n():
 
 # Set [DW, DB] to zero, can't use reset_to_zero here for DW/DB could be None.
 def pre_hook(args, reset_only=True):
-    for i in [2, 3]:
+    for i in ["DW", "DB"]:
         if args[i] is not None:
             args[i].zero_()
 
@@ -488,122 +488,126 @@ def layer_norm_backward_kernel_middle_n(
         tl.atomic_add(DB + cols, db)
 
 
-class LayerNorm(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-        logger.debug("GEMS_CAMBRICON LAYERNORM FORWARD")
-        # dim = x.ndim - len(normalized_shape)
-        # M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
-        M = x.numel() // N
-        x = x.contiguous()
-        if weight is not None:
-            weight = weight.contiguous()
-        if bias is not None:
-            bias = bias.contiguous()
-        y = torch.empty_like(x)
-        acc_type = get_accumulator_dtype(x.dtype)
-        mean = torch.empty(M, dtype=acc_type, device=x.device)
-        rstd = torch.empty(M, dtype=acc_type, device=x.device)
-        if N <= MAX_C_MLU_LAYERNORM_FORWARD:
-            grid = lambda META: (
-                min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
+def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+    logger.debug("GEMS_CAMBRICON LAYERNORM FORWARD")
+    # dim = x.ndim - len(normalized_shape)
+    # M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
+    input = input.contiguous()
+    if weight is not None:
+        weight = weight.contiguous()
+    if bias is not None:
+        bias = bias.contiguous()
+    y = torch.empty_like(input)
+    acc_type = get_accumulator_dtype(input.dtype)
+    mean = torch.empty(M, dtype=acc_type, device=input.device)
+    rstd = torch.empty(M, dtype=acc_type, device=input.device)
+    if N <= MAX_C_MLU_LAYERNORM_FORWARD:
+        grid = lambda META: (
+            min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
+        )
+        with torch_device_fn.device(input.device):
+            layer_norm_kernel_middle_n[grid](
+                input, y, weight, bias, mean, rstd, M, eps, N
             )
-            with torch_device_fn.device(x.device):
-                layer_norm_kernel_middle_n[grid](
-                    x, y, weight, bias, mean, rstd, M, eps, N
-                )
-        else:
-            grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch_device_fn.device(x.device):
-                layer_norm_kernel_inner[grid](x, y, weight, bias, mean, rstd, M, eps, N)
-        if x.requires_grad:
-            ctx.save_for_backward(x, weight, bias, mean, rstd)
-            ctx.M = M
-            ctx.N = N
-        return y, mean, rstd
+    else:
+        grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
+        with torch_device_fn.device(input.device):
+            layer_norm_kernel_inner[grid](input, y, weight, bias, mean, rstd, M, eps, N)
+    return y, mean, rstd
 
-    @staticmethod
-    def backward(ctx, out_grad, mean_grad, rstd_grad):
-        logger.debug("GEMS_CAMBRICON LAYERNORM BACKWARD")
-        out_grad = out_grad.contiguous()
-        x, weight, bias, mean, rstd = ctx.saved_tensors
-        M, N = ctx.M, ctx.N
-        if N <= MAX_C_MLU_LAYERNORM_BACKWARD:
-            in_grad = torch.empty_like(out_grad)
-            if weight is None:
-                weight_grad = None
-            else:
-                weight_grad = torch.zeros(
-                    (weight.shape[0],), dtype=torch.float, device=weight.device
-                )
-            if bias is None:
-                bias_grad = None
-            else:
-                bias_grad = torch.zeros(
-                    (weight.shape[0],), dtype=torch.float, device=weight.device
-                )
-            # enqueue kernel using forward pass heuristics
-            # also compute partial sums for DW and DB
-            grid = lambda META: (
-                min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
-            )
-            with torch_device_fn.device(x.device):
-                layer_norm_backward_kernel_middle_n[grid](
-                    in_grad,
-                    out_grad,
-                    weight_grad,
-                    bias_grad,
-                    x,
-                    weight,
-                    mean,
-                    rstd,
-                    M=M,
-                    N=N,
-                )
-            if weight_grad is not None:
-                weight_grad = weight_grad.to(x.dtype)
-            if bias_grad is not None:
-                bias_grad = bias_grad.to(x.dtype)
+
+def layer_norm_backward(
+    grad_out,
+    input,
+    normalized_shape,
+    mean,
+    rstd,
+    weight=None,
+    bias=None,
+    output_mask=None,
+):
+    logger.debug("GEMS_CAMBRICON LAYERNORM BACKWARD")
+    grad_out = grad_out.contiguous()
+    input = input.contiguous()
+    mean = mean.contiguous()
+    rstd = rstd.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    bias = None if bias is None else bias.contiguous()
+
+    M = input.shape[0]
+    N = input.numel() // M
+
+    if N <= MAX_C_MLU_LAYERNORM_BACKWARD:
+        in_grad = torch.empty_like(grad_out)
+        if weight is None:
+            weight_grad = None
         else:
-            in_grad = torch.empty_like(x)
-            grid = lambda META: (
-                min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
+            weight_grad = torch.zeros(
+                (weight.shape[0],), dtype=torch.float, device=weight.device
             )
-            input_backward_kernel[grid](
-                out_grad,
-                x,
+        if bias is None:
+            bias_grad = None
+        else:
+            bias_grad = torch.zeros(
+                (weight.shape[0],), dtype=torch.float, device=weight.device
+            )
+        # enqueue kernel using forward pass heuristics
+        # also compute partial sums for DW and DB
+        grid = lambda META: (
+            min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
+        )
+        with torch_device_fn.device(input.device):
+            layer_norm_backward_kernel_middle_n[grid](
+                in_grad,
+                grad_out,
+                weight_grad,
+                bias_grad,
+                input,
                 weight,
                 mean,
                 rstd,
-                in_grad,
+                M=M,
+                N=N,
+            )
+        if weight_grad is not None:
+            weight_grad = weight_grad.to(input.dtype)
+        if bias_grad is not None:
+            bias_grad = bias_grad.to(input.dtype)
+    else:
+        in_grad = torch.empty_like(input)
+        grid = lambda META: (
+            min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
+        )
+        input_backward_kernel[grid](
+            grad_out,
+            input,
+            weight,
+            mean,
+            rstd,
+            in_grad,
+            M,
+            N,
+        )
+        if weight is None and bias is None:
+            return in_grad, None, None
+
+        with torch_device_fn.device(input.device):
+            grid = lambda META: (
+                min(triton.cdiv(N, META["BLOCK_COL_SIZE"]), TOTAL_CORE_NUM),
+            )
+            weight_grad = None if weight is None else torch.empty_like(weight)
+            bias_grad = None if bias is None else torch.empty_like(bias)
+            weight_bias_backward_kernel[grid](
+                grad_out,
+                input,
+                mean,
+                rstd,
+                weight_grad,
+                bias_grad,
                 M,
                 N,
             )
-            if weight is None and bias is None:
-                return in_grad, None, None, None, None, None
 
-            with torch_device_fn.device(x.device):
-                grid = lambda META: (
-                    min(triton.cdiv(N, META["BLOCK_COL_SIZE"]), TOTAL_CORE_NUM),
-                )
-                weight_grad = None if weight is None else torch.empty_like(weight)
-                bias_grad = None if bias is None else torch.empty_like(bias)
-                weight_bias_backward_kernel[grid](
-                    out_grad,
-                    x,
-                    mean,
-                    rstd,
-                    weight_grad,
-                    bias_grad,
-                    M,
-                    N,
-                )
-
-        return in_grad, None, weight_grad, bias_grad, None, None
-
-
-def layer_norm(
-    x, normalized_shape, weight=None, bias=None, eps=1e-5, cudnn_enable=True
-):
-    return LayerNorm.apply(x, normalized_shape, weight, bias, eps, cudnn_enable)
+    return in_grad, weight_grad, bias_grad

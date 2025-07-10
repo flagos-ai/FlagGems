@@ -42,8 +42,10 @@ def generate_scatter_kernel(
     # the decorators
     code.writeline("@libentry()")
     code.writeline(
-        '@libtuner(configs=runtime.get_tuned_config("scatter"), key=["N"], strategy=["log"])'
+        '@libtuner(configs=runtime.get_tuned_config("scatter"), key=["N"], strategy=["log"],'
     )
+    code.writeline('          restore_value=["out"], )')
+
     code.writeline("@triton.jit")
 
     # signature
@@ -297,3 +299,32 @@ def scatter(inp, dim, index, src, reduce=None):
         dim=dim,
     )
     return out
+
+
+def scatter_(inp, dim, index, src, reduce=None):
+    logger.debug("GEMS_CAMBRICON SCATTER_")
+    inp = inp.contiguous()
+    index = index.contiguous()
+    src = src.contiguous()
+    out = inp
+
+    N = index.numel()
+
+    large_tensor = (src.numel() * src.element_size() > 2**31) or (
+        out.numel() * out.element_size() > 2**31
+    )
+
+    _scatter_func(
+        src,
+        index,
+        inp,
+        out,
+        dim,
+        reduce,
+        N,
+        rank=len(index.shape),
+        large_tensor=large_tensor,
+        dim=dim,
+    )
+
+    return inp

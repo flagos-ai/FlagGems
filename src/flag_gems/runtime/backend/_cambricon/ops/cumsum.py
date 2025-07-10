@@ -134,7 +134,7 @@ def config_prune(configs, named_args, **kwargs):
         )
         for m in range(1, 20, 3)
         for n in range(7, 13, 1)
-        for t in range(1, 7, 1)
+        for t in range(0, 7, 1)
         for s in [1, 3]
     ],
     key=[

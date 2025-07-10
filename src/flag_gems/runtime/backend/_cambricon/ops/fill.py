@@ -89,3 +89,27 @@ def fill_scalar(input, value):
     with torch_device_fn.device(input.device):
         fill_scalar_kernel[grid_fn](out, N, value)
     return out
+
+
+def fill_tensor_(self, value):
+    logger.debug("GEMS_CAMBRICON FILL_TENSOR_")
+    if value.ndim != 0:
+        raise RuntimeError(
+            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+        )
+    N = self.numel()
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
+
+    with torch_device_fn.device(self.device):
+        fill_tensor_kernel[grid_fn](self, N, value)
+    return self
+
+
+def fill_scalar_(self, value):
+    logger.debug("GEMS_CAMBRICON FILL_SCALAR_")
+    N = self.numel()
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
+
+    with torch_device_fn.device(self.device):
+        fill_scalar_kernel[grid_fn](self, N, value)
+    return self

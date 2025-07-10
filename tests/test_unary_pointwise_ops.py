@@ -62,8 +62,8 @@ def test_accuracy_angle(shape, dtype):
         inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
     elif dtype in ALL_INT_DTYPES:
         inp = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
-        )
+            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
     elif dtype in COMPLEX_DTYPES + FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp = to_reference(inp)
@@ -115,8 +115,8 @@ def test_accuracy_bitwisenot_(shape, dtype):
         res_inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
     else:
         res_inp = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
-        )
+            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
     ref_inp = to_reference(res_inp.clone())
 
     ref_out = ref_inp.bitwise_not_()  # NOTE: there is no torch.bitwse_not_

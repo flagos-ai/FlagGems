@@ -170,6 +170,20 @@ def vdot_heur_block_size(args):
         return 1024
 
 
+def linspace_heur_inner_block_size(args):
+    n = args["BLOCK_SIZE"]
+    if n < 1024:
+        return 64
+    elif n < 8192:
+        return 1024
+    else:
+        return 8192
+
+
+def simple_elementwise_blocksize_heur(args):
+    return 1024
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -230,5 +244,12 @@ HEURISTICS_CONFIGS = {
     "batch_norm": {},
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "linspace": {
+        "INNER_BLOCK_SIZE": linspace_heur_inner_block_size,
+    },
+    "elementwise_generic": {
+        "BLOCK_SIZE": simple_elementwise_blocksize_heur,
+        "num_warps": lambda args: 8,
     },
 }

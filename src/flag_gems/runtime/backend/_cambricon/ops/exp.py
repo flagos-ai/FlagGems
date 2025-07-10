@@ -17,3 +17,8 @@ def exp_func(x):
 def exp(A):
     logger.debug("GEMS_CAMBRICON EXP")
     return exp_func(A)
+
+
+def exp_(A):
+    logger.debug("GEMS_CAMBRICON EXP_")
+    return exp_func(A, out0=A)

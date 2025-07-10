@@ -17,3 +17,8 @@ def rsqrt_func(x):
 def rsqrt(A):
     logger.debug("GEMS_CAMBRICON RSQRT")
     return rsqrt_func(A)
+
+
+def rsqrt_(A):
+    logger.debug("GEMS_CAMBRICON RSQRT_")
+    return rsqrt_func(A, out0=A)

@@ -9,6 +9,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.limits import get_dtype_max
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
 
@@ -24,7 +25,7 @@ def min_kernel_float_once(
 ):
     offset = tl.arange(0, M)
     inp_val = tl.load(inp + offset)
-    min_val = tl.min(inp_val, 0, return_indices=True)
+    min_val = tl.min(inp_val, 0)
     tl.store(out, min_val)
 
 
@@ -51,7 +52,7 @@ def min_kernel_float(
         offset = block_start + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
         inp_val = tl.load(inp + offset, mask=mask, other=float("inf"))
-        res = tl.min(inp_val, 0, return_indices=True)
+        (res,) = tl.min(inp_val, 0, return_indices=True)
     else:
         num_jobs = tl.num_programs(axis=0)
         step = num_jobs * BLOCK_SIZE
@@ -61,7 +62,7 @@ def min_kernel_float(
             mask = offset < M
             inp_val = tl.load(inp + offset, mask=mask, other=float("inf"))
             _tmp = tl.where((inp_val < _tmp), inp_val, _tmp)
-        res = tl.min(_tmp, 0, return_indices=True)
+        (res,) = tl.min(_tmp, 0, return_indices=True)
     tl.atomic_min(out, res)
 
 
@@ -182,12 +183,13 @@ def min_kernel(
 
     min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
     argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    max_value = get_dtype_max(inp.type.element_ty)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
         local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
         # if return indices is not supported, call a tl.argmax in addition
         # local_argmin = tl.argmin(inp_vals, 1)
@@ -216,12 +218,7 @@ def min(inp):
                 out = torch.empty([], dtype=dtype, device=device)
                 min_kernel_float_once[(1, 1, 1)](inp, out, M)
             else:
-                out = torch.full(
-                    [],
-                    torch.finfo(torch.float32).max,
-                    dtype=torch.float32,
-                    device=device,
-                )
+                out = torch.full([], float("inf"), dtype=torch.float32, device=device)
                 min_kernel_float[(mid_size, 1, 1)](inp, out, M)
         elif dtype == torch.int64:
             mid = torch.empty([mid_size], dtype=dtype, device=device)

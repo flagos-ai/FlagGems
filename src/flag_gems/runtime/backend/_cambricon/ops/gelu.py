@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -18,7 +17,8 @@ fast_tanh = tl_extra_shim.fast_tanh
 @triton.jit
 def gelu_none(x):
     scale: tl.constexpr = 0.7071067811
-    output = 0.5 * x * (1 + fast_erf(x * scale))
+    x_f32 = x.to(tl.float32)
+    output = 0.5 * x_f32 * (1 + fast_erf(x_f32 * scale))
     return output
 
 
@@ -26,7 +26,11 @@ def gelu_none(x):
 @triton.jit
 def gelu_tanh(x):
     x_f32 = x.to(tl.float32)
-    output = 0.5 * x * (1 + fast_tanh(x * 0.79788456 * (1 + 0.044715 * x_f32 * x_f32)))
+    output = (
+        0.5
+        * x_f32
+        * (1 + fast_tanh(x_f32 * 0.79788456 * (1 + 0.044715 * x_f32 * x_f32)))
+    )
     return output
 
 
@@ -60,29 +64,28 @@ def gelu_backward_tanh(x, dy):
     return dx
 
 
-class Gelu(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, A, approximate):
-        logger.debug("GEMS_CAMBRICON GELU FORWARD")
-        if approximate == "tanh":
-            out = gelu_tanh(A)
-        else:
-            out = gelu_none(A)
-        ctx.save_for_backward(A)
-        ctx.approximate = approximate
-        return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON GELU BACKWARD")
-        (inp,) = ctx.saved_tensors
-        approximate = ctx.approximate
-        if approximate == "tanh":
-            in_grad = gelu_backward_tanh(inp, out_grad)
-        else:
-            in_grad = gelu_backward_none(inp, out_grad)
-        return in_grad, None
+def gelu(self, *, approximate="none"):
+    logger.debug("GEMS_CAMBRICON GELU FORWARD")
+    if approximate == "tanh":
+        out = gelu_tanh(self)
+    else:
+        out = gelu_none(self)
+    return out
 
 
-def gelu(A, *, approximate="none"):
-    return Gelu.apply(A, approximate)
+def gelu_backward(grad_output, self, *, approximate="none"):
+    logger.debug("GEMS_CAMBRICON GELU BACKWARD")
+    if approximate == "tanh":
+        in_grad = gelu_backward_tanh(self, grad_output)
+    else:
+        in_grad = gelu_backward_none(self, grad_output)
+    return in_grad
+
+
+def gelu_(A, *, approximate="none"):
+    logger.debug("GEMS_CAMBRICON GELU_ FORWARD")
+    if approximate == "tanh":
+        out = gelu_tanh(A, out0=A)
+    else:
+        out = gelu_none(A, out0=A)
+    return out
