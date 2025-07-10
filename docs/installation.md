@@ -15,15 +15,15 @@ cd FlagGems/
 
 ### Build system
 
-FlagGems follows [PEP 518 ](https://peps.python.org/pep-0518/) and contains a `pyproject.toml` file to specify how to build the package.
+FlagGems follows [PEP 518](https://peps.python.org/pep-0518/) and contains a `pyproject.toml` file to specify how to build the package.
 
-The Python package `flag_gems` uses `scikit-build-core` as the [build backend](https://peps.python.org/pep-0517/#build-backend-interface). As a brief introduction, [`scikit-build-core`]([scikit-build-core 0.11.5.dev2 documentation](https://scikit-build-core.readthedocs.io/en/latest/)) is a build-backend that provides a bridge between CMake and the Python build system, making it easier to create Python modules with CMake. We use it to avoid wrapping CMake in `setup.py` ourselves. 
+The Python package `flag_gems` uses `scikit-build-core` as the [build backend](https://peps.python.org/pep-0517/#build-backend-interface). As a brief introduction, [`scikit-build-core`]([scikit-build-core 0.11.5.dev2 documentation](https://scikit-build-core.readthedocs.io/en/latest/)) is a build-backend that provides a bridge between CMake and the Python build system, making it easier to create Python modules with CMake. We use it to avoid wrapping CMake in `setup.py` ourselves.
 
 ### Build-isolation
 
-Following the [recommendations for build frontends](https://peps.python.org/pep-0517/#recommendations-for-build-frontends-non-normative) in PEP 517,  `pip` or other modern build frontends uses an isolated environment to build packages. This invole## Packagings creating a virtual environment and installing the build requirements in it before building the package.
+Following the [recommendations for build frontends](https://peps.python.org/pep-0517/#recommendations-for-build-frontends-non-normative) in PEP 517, `pip` or other modern build frontends uses an isolated environment to build packages. This involves creating a virtual environment and installing the build requirements in it before building the package.
 
-If you do not want build isolation (often in the case with editable installation), you can pass `--no-build-isolation` flag to `pip install`, but you will need install build-requirements in your current environment beforehand. Check the `[build-system.requires]` section in pyproject.toml and install the requires packages.
+If you do not want build isolation (often in the case with editable installation), you can pass `--no-build-isolation` flag to `pip install`, but you will need install build-requirements in your current environment beforehand. Check the `[build-system.requires]` section in pyproject.toml and install the required packages.
 
 Example command:
 
@@ -35,7 +35,7 @@ FlagGems can be installed as either a pure python package or a package with C ex
 
 ### Install as a pure Python package
 
-To install FlagGems as a pure Python package,  use the commands below.
+To install FlagGems as a pure Python package, use the commands below.
 
 ```shell
 # install to site-packages
@@ -61,11 +61,11 @@ The options for configuring FlagGems are listed below:
 | FLAGGEMS_BUILD_CTESTS            | Whether build CPP unit tests                | the value of FLAGGEMS_BUILD_C_EXTENSIONS |
 | FLAGGEMS_INSTALL                 | Whether to install FlagGems's cmake package | ON when it is the op level project       |
 
-The C extension of FlagGems depends on [TritonJIT](https://github.com/iclementine/libtorch_example/), which is a library that implements a Triton JIT runtime in C++ and enables the calling Triton jit functions from C++. Note that if you are building with an external TritonJIT, you should build and install it beforehand and pass the option `-DTritonJIT_ROOT=<install path>` to CMake.
+The C extension of FlagGems depends on [TritonJIT](https://github.com/iclementine/libtorch_example/), which is a library that implements a Triton JIT runtime in C++ and enables calling Triton jit functions from C++. Note that if you are building FlagGems with an external TritonJIT, you should build and install it beforehand and pass the option `-DTritonJIT_ROOT=<install path>` to CMake.
 
 Other commonly used environemnt variables that configures scikit-build-core are:
 
-1. `SKBUILD_CMAKE_BUILD_TYPE`,which is used to configure the build type of the project, valid values are `Release`, `Debug`, `RelWithDebInfo` and `MinSizeRel`;
+1. `SKBUILD_CMAKE_BUILD_TYPE`, which is used to configure the build type of the project. Valid values are `Release`, `Debug`, `RelWithDebInfo` and `MinSizeRel`;
 2. `SKBUILD_BUILD_DIR`, which configures the build directory of the project. The default value is `build/<cache_tag>`, which is defined in `pyproject.toml`.
 
 Commonly used pip options are:
@@ -73,7 +73,7 @@ Commonly used pip options are:
 1. `-v` to show the log of the configuration and building process;
 2. `-e` to create an editable installation. Note that in an editable installation, the C part(headers, libraries, cmake package files) is installed to the site-packages directory, while the Python part stays in situ and a loader is installed in the site-packages directory to find it. For more details about this installation mode, please refer to the [scikit-build-core's documentation](https://scikit-build-core.readthedocs.io/en/latest/configuration/index.html#editable-installs).
 3. `--no-build-isolation`：Do not to create a separate virtualenv to build the project. This is commonly used with an editable installation. Note that when building without isolation, you have to install the build dependencies manually.
-4. `--no-deps`： Do do not install package dependencies. This can be useful when you do not want the dependencies to be updated.
+4. `--no-deps`： Do not install package dependencies. This can be useful when you do not want the dependencies to be updated.
 
 Example recipes are provided for easy copy-and-paste.
 
@@ -95,7 +95,7 @@ pip install --no-build-isolation -v -e .
 
 ## Packaging
 
-Creating a source or binary distribution is similar to building and Installing from source. It involes invoking a build-frontend (such as pip and build) and pass the command to the build-backend (scikit-build-core here).
+Creating a source or binary distribution is similar to building and installing from source. It involves invoking a build-frontend (such as pip and build) and pass the command to the build-backend (scikit-build-core here).
 
 ### Use the Build frontend: build
 
@@ -106,7 +106,7 @@ pip install -U build
 python -m build --no-isolation --no-deps .
 ```
 
-This will first create a source distribution (sdist) and then build a bianry distribution (wheel) from the source distribution.
+This will first create a source distribution (sdist) and then build a binary distribution (wheel) from the source distribution.
 
 If you want to disable the default behavior (source_dir -> sdist -> wheel). You can
 
