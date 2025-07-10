@@ -306,6 +306,12 @@ HEURISTICS_CONFIGS = {
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
     },
+    "mha_varlen_fwd": {
+        "BLOCK_M": lambda args: 128,
+        "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
     "elementwise_generic": {
         "BLOCK_SIZE": simple_elementwise_blocksize_heur,
         "num_warps": lambda args: 8,

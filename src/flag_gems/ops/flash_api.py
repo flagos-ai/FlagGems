@@ -5,6 +5,7 @@ import torch
 import triton
 
 import flag_gems
+from flag_gems import runtime
 from flag_gems.ops.flash_kernel import (
     block_m_splitkv_heuristic,
     block_n_splitkv_heuristic,
@@ -517,9 +518,18 @@ def mha_varlan_fwd(
 
         # We have to forego parameter autotuning and particularly fix BLOCK_N
         # to avoid breaking a kv block onto multiple cache pages.
-        BLOCK_M, BLOCK_N = 128, 32
-        assert block_size % BLOCK_N == 0, f"block_size must be divisible by {BLOCK_N}."
-        kernel(*args, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=4, num_stages=3)
+        cfg = runtime.get_heuristic_config("mha_varlen_fwd")
+        cfg_params = {
+            "BLOCK_M": cfg["BLOCK_M"](args),
+            "BLOCK_N": cfg["BLOCK_N"](args),
+            "num_warps": cfg["num_warps"](args),
+            "num_stages": cfg["num_stages"](args),
+        }
+        # BLOCK_M, BLOCK_N, num_warps, num_stages = 128, 32, 4, 3
+        assert (
+            block_size % cfg_params["BLOCK_N"] == 0
+        ), f"block_size must be divisible by {cfg_params['BLOCK_N']}."
+        kernel(*args, **cfg_params)
 
         if seqlenq_ngroups_swapped:
             out = out.reshape(

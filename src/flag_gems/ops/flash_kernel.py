@@ -53,7 +53,7 @@ def apply_dropout_mask(
     if encode_dropout_in_sign_bit:
         P = tl.where(mask, -P, P)
     else:
-        P = tl.where(mask, P * 0, P)
+        P = tl.where(mask, (P * 0).to(P.dtype), P)
     return P
 
 
