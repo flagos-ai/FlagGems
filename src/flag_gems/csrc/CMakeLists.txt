@@ -1,5 +1,5 @@
 pybind11_add_module(c_operators cstub.cpp)
-target_link_libraries(c_operators PRIVATE operators)
+target_link_libraries(c_operators PUBLIC Torch::Torch_Python PRIVATE operators)
 set_target_properties(c_operators PROPERTIES
   INSTALL_RPATH "${_rpath_portable_origin}/${CMAKE_INSTALL_LIBDIR}")
 
