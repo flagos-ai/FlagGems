@@ -1,9 +1,20 @@
 #include <pybind11/pybind11.h>
+#include "torch/python.h"
+
 #include "flag_gems/operators.h"
 
 // TODO: use pytorch's argparse utilities to generate CPython bindings, since it is more efficient than
 // bindings provided by torch library, since it is in a boxed fashion
 PYBIND11_MODULE(c_operators, m) {
+  m.def("sum_dim", &flag_gems::sum_dim);
+  m.def("add_tensor", &flag_gems::add_tensor);
+  m.def("rms_norm", &flag_gems::rms_norm);
+  m.def("fused_add_rms_norm", &flag_gems::fused_add_rms_norm);
+  m.def("nonzero", &flag_gems::nonzero);
+  // Rotary embedding
+  m.def("rotary_embedding", &flag_gems::rotary_embedding);
+  m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
+  m.def("bmm", &flag_gems::bmm);
 }
 
 namespace flag_gems {
