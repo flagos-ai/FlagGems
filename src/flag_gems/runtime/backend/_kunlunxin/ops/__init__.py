@@ -8,7 +8,11 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
-from .attention import scaled_dot_product_attention
+from .attention import (
+    flash_attention_forward,
+    flash_attn_varlen_func,
+    scaled_dot_product_attention,
+)
 from .batch_norm import batch_norm, batch_norm_backward
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -100,7 +104,7 @@ from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
-from .mm import mm
+from .mm import mm, mm_out
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
@@ -157,7 +161,7 @@ from .softmax import softmax, softmax_backward
 from .sort import sort
 from .stack import stack
 from .sub import sub, sub_
-from .sum import sum, sum_dim
+from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
@@ -224,8 +228,8 @@ __all__ = [
     "elu",
     "pad",
     "constant_pad_nd",
-    "cummax",
     "cummin",
+    "cummax",
     "cumsum",
     "cumsum_out",
     "normed_cumsum",
@@ -294,6 +298,7 @@ __all__ = [
     "mean",
     "mean_dim",
     "mm",
+    "mm_out",
     "mul",
     "mul_",
     "multinomial",
@@ -356,7 +361,9 @@ __all__ = [
     "min",
     "min_dim",
     "sum",
+    "sum_out",
     "sum_dim",
+    "sum_dim_out",
     "amax",
     "argmax",
     "argmin",
@@ -388,6 +395,8 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "flash_attention_forward",
+    "flash_attn_varlen_func",
     "scaled_dot_product_attention",
     "conv2d",
     "conv1d",
