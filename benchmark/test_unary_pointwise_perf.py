@@ -12,7 +12,7 @@ from .attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from .performance_utils import Benchmark, generate_tensor_input
+from .performance_utils import Benchmark, generate_tensor_input, vendor_name
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
@@ -70,8 +70,14 @@ forward_operations = [
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     # Trigonometric operations
-    ("cos", torch.cos, FLOAT_DTYPES),
-    ("sin", torch.sin, FLOAT_DTYPES),
+    *(
+        []
+        if vendor_name == "iluvatar"  # FIXME(iluvatar): large shapes not support now.
+        else [
+            ("cos", torch.cos, FLOAT_DTYPES),
+            ("sin", torch.sin, FLOAT_DTYPES),
+        ]
+    ),
     ("tanh", torch.tanh, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),

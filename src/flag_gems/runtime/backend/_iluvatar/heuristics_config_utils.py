@@ -2,6 +2,10 @@ import torch
 import triton
 
 
+def simple_elementwise_blocksize_heur(args):
+    return 1024
+
+
 def argmax_heur_block_m(args):
     return 4 if args["M"] < 4096 else 8
 
@@ -109,10 +113,8 @@ def randn_heur_block(args):
 def randn_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
-    elif args["N"] <= 1024:
-        return 8
     else:
-        return 16
+        return 8
 
 
 def softmax_heur_tile_k(args):
@@ -301,5 +303,15 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "mha_varlen_fwd": {
+        "BLOCK_M": lambda args: 32,
+        "BLOCK_N": lambda args: 16,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "elementwise_generic": {
+        "BLOCK_SIZE": simple_elementwise_blocksize_heur,
+        "num_warps": lambda args: 16,
     },
 }
