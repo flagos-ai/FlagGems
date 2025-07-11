@@ -40,51 +40,53 @@ def concat_and_cache_mla_kernel(
     slot_idx = tl.load(slot_mapping_ptr + token_idx)
 
     # Skip padded tokens
-    if slot_idx >= 0:
-        # Calculate cache position
-        block_id = slot_idx // block_size
-        block_offset = slot_idx % block_size
-        cache_base = block_id * block_stride + block_offset * entry_stride
+    if slot_idx < 0:
+        return
 
-        # Preload scale if needed
+    # Calculate cache position
+    block_id = slot_idx // block_size
+    block_offset = slot_idx % block_size
+    cache_base = block_id * block_stride + block_offset * entry_stride
+
+    # Preload scale if needed
+    if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
+        scale_val = tl.load(scale_ptr)
+
+    # Process kv_c section
+    for i in range(0, kv_lora_rank, BLOCK_SIZE):
+        idx = i + tl.arange(0, BLOCK_SIZE)
+        mask = idx < kv_lora_rank
+
+        src_ptr = kv_c_ptr + token_idx * kv_c_stride + idx
+        dst_ptr = kv_cache_ptr + cache_base + idx
+
+        val = tl.load(src_ptr, mask=mask, other=0)
+
         if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
-            scale_val = tl.load(scale_ptr)
+            if kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E4M3:
+                val = (val / scale_val).to(tl.float8e4nv)
+            elif kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E5M2:
+                val = (val / scale_val).to(tl.float8e5)
+            val = val.to(tl.uint8, bitcast=True)
+        tl.store(dst_ptr, val, mask=mask)
 
-        # Process kv_c section
-        for i in range(0, kv_lora_rank, BLOCK_SIZE):
-            idx = i + tl.arange(0, BLOCK_SIZE)
-            mask = idx < kv_lora_rank
+    # Process k_pe section
+    for j in range(0, pe_dim, BLOCK_SIZE):
+        idx = j + tl.arange(0, BLOCK_SIZE)
+        mask = idx < pe_dim
 
-            src_ptr = kv_c_ptr + token_idx * kv_c_stride + idx
-            dst_ptr = kv_cache_ptr + cache_base + idx
+        src_ptr = k_pe_ptr + token_idx * k_pe_stride + idx
+        dst_ptr = kv_cache_ptr + cache_base + kv_lora_rank + idx
 
-            val = tl.load(src_ptr, mask=mask, other=0)
+        val = tl.load(src_ptr, mask=mask, other=0)
 
-            if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
-                if kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E4M3:
-                    val = (val / scale_val).to(tl.float8e4nv)
-                elif kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E5M2:
-                    val = (val / scale_val).to(tl.float8e5)
-                val = val.to(tl.uint8, bitcast=True)
-            tl.store(dst_ptr, val, mask=mask)
-
-        # Process k_pe section
-        for j in range(0, pe_dim, BLOCK_SIZE):
-            idx = j + tl.arange(0, BLOCK_SIZE)
-            mask = idx < pe_dim
-
-            src_ptr = k_pe_ptr + token_idx * k_pe_stride + idx
-            dst_ptr = kv_cache_ptr + cache_base + kv_lora_rank + idx
-
-            val = tl.load(src_ptr, mask=mask, other=0)
-
-            if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
-                if kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E4M3:
-                    val = (val / scale_val).to(tl.float8e4nv)
-                elif kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E5M2:
-                    val = (val / scale_val).to(tl.float8e5)
-                val = val.to(tl.uint8, bitcast=True)
-            tl.store(dst_ptr, val, mask=mask)
+        if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
+            if kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E4M3:
+                val = (val / scale_val).to(tl.float8e4nv)
+            elif kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E5M2:
+                val = (val / scale_val).to(tl.float8e5)
+            val = val.to(tl.uint8, bitcast=True)
+        tl.store(dst_ptr, val, mask=mask)
 
 
 class ConcatAndCacheMla(torch.autograd.Function):
