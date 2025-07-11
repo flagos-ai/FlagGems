@@ -66,11 +66,13 @@ def floating_to_uint(x, descending: tl.constexpr = False):
     sx = x.to(sdtype, bitcast=True)
     ux = x.to(udtype, bitcast=True)
 
-    sign_bit_mask: tl.constexpr = one_zeros(num_bits)
+    sign_bit_mask_v: tl.constexpr = one_zeros(num_bits)
+    sign_bit_mask = tl.full((), value=sign_bit_mask_v, dtype=udtype)
     # mind the dtype, right_shift for signed is arithmetic right shift
     # Fix for triton 3.1 or else `sx >> rshift_bits` is promoted to int32
     rshift_bits = tl.full((), value=num_bits - 1, dtype=sdtype)
     mask = sign_bit_mask | (sx >> rshift_bits).to(udtype, bitcast=True)
+    tl.static_assert(mask.dtype == udtype, "type mismatch")
     # 1000000000...0 for positive
     # 1111111111...1 for negative
     if descending:
