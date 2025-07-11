@@ -38,9 +38,6 @@ at::Tensor bmm(const at::Tensor& A, const at::Tensor& B) {
   const int K = A_sizes[2];
   unsigned int grid_x = (M + (TILE_M - 1)) / TILE_M;
   unsigned int grid_y = (N + (TILE_N - 1)) / TILE_N;
-  if (GROUP_M > 1) {
-    grid_x = std::max(grid_x, static_cast<unsigned int>(GROUP_M));
-  }
   bool DIVISIBLE_M = (M % TILE_M == 0);
   bool DIVISIBLE_N = (N % TILE_N == 0);
   bool DIVISIBLE_K = (K % TILE_K == 0);
