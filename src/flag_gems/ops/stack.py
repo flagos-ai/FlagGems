@@ -1,20 +1,76 @@
-import itertools
 import logging
 from typing import List, Tuple, Union
 
 import torch
 import triton
-
-from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils.tensor_wrapper import StridedBuffer
+import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def copy_func(x):
-    return x
+def stack_copy_func_kernel_4(
+    out_ptr,
+    in_ptr_a,
+    in_ptr_b,
+    in_ptr_c,
+    in_ptr_d,
+    dim_size_in_a,
+    dim_size_in_b,
+    dim_size_in_c,
+    dim_size_in_d,
+    dim_size_out,
+    dim_prod_post,
+    dim_offset_a,
+    dim_offset_b,
+    dim_offset_c,
+    dim_offset_d,
+    total_elements_a,
+    total_elements_b,
+    total_elements_c,
+    total_elements_d,
+    BLOCK_X: tl.constexpr,
+):
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+
+    if pid_y == 0:
+        in_ptr = in_ptr_a
+        dim_size_in = dim_size_in_a
+        dim_offset = dim_offset_a
+        total_elements = total_elements_a
+    elif pid_y == 1:
+        in_ptr = in_ptr_b
+        dim_size_in = dim_size_in_b
+        dim_offset = dim_offset_b
+        total_elements = total_elements_b
+    elif pid_y == 2:
+        in_ptr = in_ptr_c
+        dim_size_in = dim_size_in_c
+        dim_offset = dim_offset_c
+        total_elements = total_elements_c
+    else:
+        in_ptr = in_ptr_d
+        dim_size_in = dim_size_in_d
+        dim_offset = dim_offset_d
+        total_elements = total_elements_d
+
+    block_start = pid_x * BLOCK_X
+    offsets = tl.arange(0, BLOCK_X)
+    mask = block_start + offsets < total_elements
+
+    idx = block_start + offsets
+
+    pre_idx = idx // (dim_size_in * dim_prod_post)
+    post_idx = idx % dim_prod_post
+    pre_idx = idx // dim_prod_post
+
+    out_idx = (
+        pre_idx * dim_size_out * dim_prod_post + dim_offset * dim_prod_post + post_idx
+    )
+
+    data = tl.load(in_ptr + idx, mask=mask)
+    tl.store(out_ptr + out_idx, data, mask=mask)
 
 
 def stack(
@@ -42,18 +98,80 @@ def stack(
     if dim < 0:
         dim = dim + len(inp0_shape) + 1
 
-    in0_shape = inp0_shape[:dim] + [1] + inp0_shape[dim:]
+    dtype, device = tensors[0].dtype, tensors[0].device
     out_shape = inp0_shape[:dim] + [len(tensors)] + inp0_shape[dim:]
-    out0 = torch.empty(out_shape, dtype=tensors[0].dtype, device=tensors[0].device)
-    out0_strides = out0.stride()
-    out0_offsets = list(
-        itertools.accumulate([out0_strides[dim] for _ in inp_shapes[:-1]], initial=0)
-    )
+    out = torch.empty(out_shape, dtype=dtype, device=device)
 
-    for a, out0_offset in zip(tensors, out0_offsets):
-        a = a.reshape(in0_shape)
-        in_view = StridedBuffer(a, in0_shape, a.stride())
-        out_view = StridedBuffer(out0, in0_shape, out0.stride(), offset=out0_offset)
-        copy_func.instantiate(a.ndim)(in_view, out0=out_view)
+    dim_prod_post = 1
+    for s in inp0_shape[dim:]:
+        dim_prod_post *= s
 
-    return out0
+    BLOCK = 1024
+    i = 0
+    while i < len(tensors):
+        tensors_in_batch = tensors[i : i + 4]
+        num_tensors_in_batch = len(tensors_in_batch)
+
+        args = []
+        total_elements_list = []
+
+        for j in range(4):
+            if j < num_tensors_in_batch:
+                tensor = tensors_in_batch[j].contiguous()
+                total_elements = tensor.numel()
+                args.extend([tensor, 1, i + j, total_elements])
+                total_elements_list.append(total_elements)
+            else:
+                args.extend([tensors_in_batch[0], 0, 0, 0])
+                total_elements_list.append(0)
+
+        dim_size_out = len(tensors)
+
+        grid_y = num_tensors_in_batch
+        max_elements_in_batch = tensors[0].numel() if total_elements_list else 0
+        grid = (triton.cdiv(max_elements_in_batch, BLOCK), grid_y)
+
+        (
+            tensor_a,
+            dim_size_in_a,
+            dim_offset_a,
+            total_elements_a,
+            tensor_b,
+            dim_size_in_b,
+            dim_offset_b,
+            total_elements_b,
+            tensor_c,
+            dim_size_in_c,
+            dim_offset_c,
+            total_elements_c,
+            tensor_d,
+            dim_size_in_d,
+            dim_offset_d,
+            total_elements_d,
+        ) = args
+
+        stack_copy_func_kernel_4[grid](
+            out,
+            tensor_a,
+            tensor_b,
+            tensor_c,
+            tensor_d,
+            dim_size_in_a,
+            dim_size_in_b,
+            dim_size_in_c,
+            dim_size_in_d,
+            dim_size_out,
+            dim_prod_post,
+            dim_offset_a,
+            dim_offset_b,
+            dim_offset_c,
+            dim_offset_d,
+            total_elements_a,
+            total_elements_b,
+            total_elements_c,
+            total_elements_d,
+            BLOCK_X=BLOCK,
+        )
+        i += num_tensors_in_batch
+
+    return out
