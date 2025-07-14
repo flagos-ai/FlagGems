@@ -1,6 +1,7 @@
 # Build FlagGems with C extensions
 
 ## Build System
+
 FlagGems can be installed either as a pure python package or a package with C-extensions. By default, it does not build the C extensions, which is still an experimental feature.
 
 The python package `flag_gems` leverages the `scikit-build-core` backend to streamline the building and packaging process for C extensions, which are configured using the CMake build system.
@@ -21,13 +22,13 @@ Note that for environment variable `SKBUILD_CMAKE_ARGS`, multiple options are se
 
 Options to configure FlagGems are listed below:
 
-| Option                           | Description                                 | Default                                 |
-|----------------------------------|---------------------------------------------|-----------------------------------------|
-| FLAGGEMS_USE_EXTERNAL_TRITON_JIT | Whether to use external Triton JIT library  | OFF                                     |
-| FLAGGEMS_USE_EXTERNAL_PYBIND11   | Whether to use external pybind11 library    | ON                                      |
-| FLAGGEMS_BUILD_C_EXTENSIONS      | Whether to build C extension                | ON when it is the op level project      |
-| FLAGGEMS_BUILD_CTESTS            | Whether build CPP unit tests                | the value of FLAGGEMS_BUILD_C_EXTENSIONS|
-| FLAGGEMS_INSTALL                 | Whether to install FlagGems's cmake package | ON when it is the op level project      |
+| Option                           | Description                                 | Default                                  |
+| -------------------------------- | ------------------------------------------- | ---------------------------------------- |
+| FLAGGEMS_USE_EXTERNAL_TRITON_JIT | Whether to use external Triton JIT library  | OFF                                      |
+| FLAGGEMS_USE_EXTERNAL_PYBIND11   | Whether to use external pybind11 library    | ON                                       |
+| FLAGGEMS_BUILD_C_EXTENSIONS      | Whether to build C extension                | ON when it is the op level project       |
+| FLAGGEMS_BUILD_CTESTS            | Whether build CPP unit tests                | the value of FLAGGEMS_BUILD_C_EXTENSIONS |
+| FLAGGEMS_INSTALL                 | Whether to install FlagGems's cmake package | ON when it is the op level project       |
 
 Note that when build with external TritonJIT, you should build and install [libtriton_jit](https://github.com/iclementine/libtorch_example/) beforehand, and pass option `-DTritonJIT_ROOT=<install path>` to cmake.
 
@@ -62,7 +63,6 @@ Editable installation with TritonJIT as a sub-project via FetchContent
 CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
 pip install --no-build-isolation -v -e .
 ```
-
 
 ## How to build a wheel
 

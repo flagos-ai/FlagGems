@@ -20,7 +20,7 @@ FlagGems provides the following technical features.
 
 - A large collection of PyTorch compatible operators
 - Hand optimized performance for selective operators
-- Eager mode ready, independent of torch.compile
+- Eager mode ready, independent of `torch.compile`
 - Automatic pointwise operator codegen supporting arbitrary input types and layout
 - Fast per-function runtime kernel dispatching
 - Multi-backend interface enabling support of diverse hardware platforms
@@ -52,18 +52,11 @@ For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_ex
 
 ## Changelog
 
-### v1.0
+### v3.0
 
-- support BLAS operators: addmm, bmm, mm
-- support pointwise operators: abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
-- support reduction operators: cumsum, layernorm, mean, softmax
-
-### v2.0
-
-- support BLAS operators: mv, outer
-- support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
-- support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
-- support fused operators: fused_add_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+- support 184 operators in total, including custom operators used in large model inference
+- support more hardware platforms, add Ascend, AIPU, etc.
+- compatible with the vLLM framework, with the inference verification of DeepSeek model passed
 
 ### v2.1
 
@@ -72,6 +65,19 @@ For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_ex
 - support basic math operators: allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
 - support distribution operators: normal, uniform\_, exponential\_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
 - support science operators: erf, resolve_conj, resolve_neg
+
+### v2.0
+
+- support BLAS operators: mv, outer
+- support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
+- support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
+- support fused operators: fused_add_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+
+### v1.0
+
+- support BLAS operators: addmm, bmm, mm
+- support pointwise operators: abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
+- support reduction operators: cumsum, layernorm, mean, softmax
 
 ## Get Start
 
@@ -87,22 +93,21 @@ Operators will be implemented according to [OperatorList](docs/operator_list.md)
 - Llama-2-7b
 - Llava-1.5-7b
 
-
 ## Supported Platforms
 
-| vendor      | state | float16 | float32 | bfloat16 |
-| ----------- | ----------- |-----------|-----------|-----------|
-| aipu        | ✅  （Partial support）     |✅       |✅       |✅       |
-| ascend      | ✅    （Partial support）    |✅       |✅       |✅       |
-| cambricon   | ✅        |✅       |✅       |✅       |
-| hygon   | ✅        |✅       |✅       |✅       |
-| iluvatar   | ✅        |✅       |✅       |✅       |
-| kunlunxin   | ✅        |✅       |✅       |✅       |
-| metax   | ✅        |✅       |✅       |✅       |
-| mthreads   | ✅       |✅       |✅       |✅       |
-| nvidia   | ✅        |✅       |✅       |✅       |
-| arm(cpu)   | 🚧      |       |      |      |
-| tsingmicro   | 🚧        |       |      |     |
+| vendor     | state                  | float16 | float32 | bfloat16 |
+| ---------- | ---------------------- | ------- | ------- | -------- |
+| aipu       | ✅ （Partial support） | ✅      | ✅      | ✅       |
+| ascend     | ✅ （Partial support） | ✅      | ✅      | ✅       |
+| cambricon  | ✅                     | ✅      | ✅      | ✅       |
+| hygon      | ✅                     | ✅      | ✅      | ✅       |
+| iluvatar   | ✅                     | ✅      | ✅      | ✅       |
+| kunlunxin  | ✅                     | ✅      | ✅      | ✅       |
+| metax      | ✅                     | ✅      | ✅      | ✅       |
+| mthreads   | ✅                     | ✅      | ✅      | ✅       |
+| nvidia     | ✅                     | ✅      | ✅      | ✅       |
+| arm(cpu)   | 🚧                     |         |         |          |
+| tsingmicro | 🚧                     |         |         |          |
 
 ## Performance
 

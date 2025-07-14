@@ -9,40 +9,47 @@ By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless
 ## Features
 
 ### Multi-Backend Hardware Support
+
 FlagGems supports a wide range of hardware platforms and has been extensively tested across different hardware configurations.
 
 ### Automatic Codegen
+
 FlagGems provides an automatic code generation mechanism that enables developers to easily generate both pointwise and fused operators.
 The auto-generation system supports a variety of needs, including standard element-wise computations, non-tensor parameters, and specifying output types.
 For more details, please refer to pointwise_dynamic(pointwise_dynamic.md).
 
 ### LibEntry
+
 FlagGems introduces `LibEntry`, which independently manages the kernel cache and bypasses the runtime of `Autotuner`, `Heuristics`, and `JitFunction`. To use it, simply decorate the Triton kernel with LibEntry.
 
 `LibEntry` also supports direct wrapping of `Autotuner`, `Heuristics`, and `JitFunction`, preserving full tuning functionality. However, it avoids nested runtime type invocations, eliminating redundant parameter processing. This means no need for binding or type wrapping, resulting in a simplified cache key format and reduced unnecessary key computation.
 
 ### C++ Runtime
+
 FlagGems can be installed either as a pure Python package or as a package with C++ extensions. The C++ runtime is designed to address the overhead of the Python runtime and improve end-to-end performance.
 For more details, please refer to [c++ extensions](build_flaggems_with_c_extensions.md).
 
 ## Changelog
 
 ### v1.0
+
 - support BLAS operators: addmm, bmm, mm
 - support pointwise operators: abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
 - support reduction operators: cumsum, layernorm, mean, softmax
 
 ### v2.0
+
 - support BLAS operators: mv, outer
 - support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
 - support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
 - support fused operators: fused_add_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
 
 ### v2.1
+
 - support Tensor operators: where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
 - support neural network operator: embedding
 - support basic math operators: allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
-- support distribution operators: normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
+- support distribution operators: normal, uniform\_, exponential\_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
 - support science operators: erf, resolve_conj, resolve_neg
 
 ## Get Start
@@ -61,9 +68,9 @@ Operators will be implemented according to [OperatorList](operator_list.md).
 
 ## Supported Platforms
 
-| Platform | float16 | float32 | bfloat16 |
-| :---: | :---: | :---: | :---: |
-| Nvidia GPU | ✓ | ✓ | ✓ |
+|  Platform  | float16 | float32 | bfloat16 |
+| :--------: | :-----: | :-----: | :------: |
+| Nvidia GPU |    ✓    |    ✓    |    ✓     |
 
 ## Performance
 

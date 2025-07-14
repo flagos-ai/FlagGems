@@ -5,6 +5,7 @@
 Thank you for your interest in FlagGems! We use github to host code, manage issues and pull requests. Before contributing, please read the following guidelines.
 
 ## 1. Bug Report
+
 Please report bugs using Github's issues. When reporting bugs, please provide
 
 - a brief summary
@@ -13,12 +14,14 @@ Please report bugs using Github's issues. When reporting bugs, please provide
 - Some sample codes will be helpful too
 
 ## 2. Code Contribution
+
 In pull requests, contributor should describe what changed and why. Please also provide test cases if applicable.
-Pull requests require approvals from __one members__ before merging. Additionally, they must pass continuous integration checks. More details see [Code Contribution](docs/code_countribution.md)
+Pull requests require approvals from **one member** before merging. Additionally, they must pass continuous integration checks. More details see [Code Contribution](docs/code_countribution.md)
 
 Currently, continuous integration checks include four pipelines:
 
 ## 3. Documentation Supplement
+
 The documentation for FlagGems is stored in the `docs` directory and is currently built and deployed using [MkDocs](https://www.mkdocs.org/). The documentation undergoes nightly builds in the CI pipeline.
 
 # Project Structure
@@ -50,4 +53,5 @@ FlagGems
 ```
 
 # License
+
 Any contributions you make will be under the [Apache License](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE).
