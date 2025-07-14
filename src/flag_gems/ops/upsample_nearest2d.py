@@ -7,7 +7,6 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
 
 device = device.name
 logger = logging.getLogger(__name__)
@@ -32,13 +31,19 @@ def upsample_nearest2d_kernel(
     BLOCK_SIZE: tl.constexpr,
     SAME_H: tl.constexpr,
     SAME_W: tl.constexpr,
+    USE_INT32_IDX: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    if USE_INT32_IDX:
+        pid = tl.program_id(axis=0)
+    else:
+        pid = tl.program_id(axis=0).to(tl.int64)
+    nc_stride = tl.num_programs(axis=1)
+    NC = N * C
+    nc_iter = tl.program_id(axis=1)
+    pid = tl.program_id(axis=0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     ow = idx % OW
     oh = idx // OW % OH
-    c = idx // OW // OH % C
-    n = idx // OW // OH // C % N
     if SAME_H:
         ih = oh
     else:
@@ -48,10 +53,17 @@ def upsample_nearest2d_kernel(
         iw = ow
     else:
         iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
-    offset_o = ((n * C + c) * OH + oh) * OW + ow
-    offset_i = ((n * C + c) * IH + ih) * IW + iw
-    data = tl.load(ptr_i + offset_i)
-    tl.store(ptr_o + offset_o, data)
+
+    offset_o = (nc_iter * OH + oh) * OW + ow
+    offset_i = (nc_iter * IH + ih) * IW + iw
+    src_index_stride = nc_stride * IH * IW
+    dst_index_stride = nc_stride * OH * OW
+    while nc_iter < NC:
+        data = tl.load(ptr_i + offset_i)
+        tl.store(ptr_o + offset_o, data)
+        ptr_i += src_index_stride
+        ptr_o += dst_index_stride
+        nc_iter += nc_stride
 
 
 def upsample_nearest2d(
@@ -76,10 +88,23 @@ def upsample_nearest2d(
         reciprocal_scale_w = IW / OW
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    total_threads = N * C * OH * OW
-    grid = lambda META: (triton.cdiv(total_threads, META["BLOCK_SIZE"]),)
+    total_threads = OH * OW
+    grid = lambda META: (
+        triton.cdiv(total_threads, META["BLOCK_SIZE"]),
+        triton.cdiv(N * C, 4),
+    )
+
     with torch_device_fn.device(input.device):
         upsample_nearest2d_kernel[grid](
-            output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
+            output,
+            input,
+            N,
+            C,
+            OH,
+            OW,
+            IH,
+            IW,
+            reciprocal_scale_h,
+            reciprocal_scale_w,
         )
     return output
