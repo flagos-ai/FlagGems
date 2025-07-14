@@ -252,4 +252,10 @@ HEURISTICS_CONFIGS = {
         "BLOCK_SIZE": simple_elementwise_blocksize_heur,
         "num_warps": lambda args: 8,
     },
+    "mha_varlen_fwd": {
+        "BLOCK_M": lambda args: 128,
+        "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
 }
