@@ -27,6 +27,7 @@ pip install --no-build-isolation -e .
 ```
 
 Or build a wheel
+
 ```shell
 pip install -U build
 git clone https://github.com/FlagOpen/FlagGems.git
@@ -49,6 +50,7 @@ with flag_gems.use_gems():
 ```
 
 For example:
+
 ```python
 import torch
 import flag_gems

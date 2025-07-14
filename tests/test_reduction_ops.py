@@ -999,7 +999,6 @@ SHAPE_CONV1D = [
 ]
 
 
-@pytest.mark.skip("conv1d introduces failures, disable it temporarily")
 @pytest.mark.conv1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
 @pytest.mark.parametrize("stride", [2])

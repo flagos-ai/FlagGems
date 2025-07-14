@@ -6,7 +6,7 @@
 
 FlagGems 是一个使用 OpenAI 推出的[Triton 编程语言](https://github.com/openai/triton)实现的高性能通用算子库，旨在为大语言模型提供一系列可应用于 PyTorch 框架的算子，加速模型面向多种后端平台的推理与训练。
 
-FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算子库的无缝替换，一方面模型开发者能够在无需修改底层API的情况下平稳地切换到 triton 算子库，使用其熟悉的PyTorch API同时享受新硬件带来的加速能力，另一方面对 kernel 开发者而言，Triton 语言提供了更好的可读性和易用性，可媲美 CUDA 的性能，因此开发者只需付出较低的学习成本，即可参与 FlagGems 的算子开发与建设。
+FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算子库的无缝替换，一方面模型开发者能够在无需修改底层 API 的情况下平稳地切换到 triton 算子库，使用其熟悉的 PyTorch API 同时享受新硬件带来的加速能力，另一方面对 kernel 开发者而言，Triton 语言提供了更好的可读性和易用性，可媲美 CUDA 的性能，因此开发者只需付出较低的学习成本，即可参与 FlagGems 的算子开发与建设。
 
 我们为 FlagGems 创建了微信群。扫描二维码即可加入群聊！第一时间了解我们的动态和信息和新版本发布，或者有任何问题或想法，请立即加入我们！
 
@@ -18,11 +18,11 @@ FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算�
 
 - 支持的算子数量规模较大
 - 部分算子已经过深度性能调优
-- 可直接在Eager模式下使用, 无需通过torch.compile
-- Pointwise自动代码生成，灵活支持多种输入类型和内存排布
-- Triton kernel调用优化
+- 可直接在 Eager 模式下使用, 无需通过 `torch.compile`
+- Pointwise 自动代码生成，灵活支持多种输入类型和内存排布
+- Triton kernel 调用优化
 - 灵活的多后端支持机制
-- 代码库已集成10多种后端
+- 代码库已集成十余种后端
 - C++ Triton 函数派发 (开发中)
 
 ## 更多特性细节
@@ -45,18 +45,11 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 更新日志
 
-### v1.0
+### v3.0
 
-- 支持 BLAS 类算子：addmm, bmm, mm
-- 支持 pointwise 类算子：abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
-- 支持 reduction 类算子：cumsum, layernorm, mean, softmax
-
-### v2.0
-
-- 支持 BLAS 类算子: mv, outer
-- 支持 pointwise 类算子: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
-- 支持 reduction 类算子: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
-- 支持融合算子: fused_add_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+- 共计支持 184 个算子，包括大模型推理使用的定制算子
+- 支持更多的硬件平台，新增 Ascend、AIPU 等
+- 兼容 vllm 框架，DeepSeek 模型推理验证通过
 
 ### v2.1
 
@@ -65,6 +58,19 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 - 支持基础数学算子：allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
 - 支持分布类算子：normal, uniform\_, exponential\_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
 - 支持科学计算算子：erf, resolve_conj, resolve_neg
+
+### v2.0
+
+- 支持 BLAS 类算子: mv, outer
+- 支持 pointwise 类算子: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
+- 支持 reduction 类算子: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
+- 支持融合算子: fused_add_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+
+### v1.0
+
+- 支持 BLAS 类算子：addmm, bmm, mm
+- 支持 pointwise 类算子：abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
+- 支持 reduction 类算子：cumsum, layernorm, mean, softmax
 
 ## 快速入门
 
@@ -82,19 +88,19 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 支持平台
 
-| vendor      | state | float16 | float32 | bfloat16 |
-| ----------- | ----------- |-----------|-----------|-----------|
-| aipu        | ✅  （Partial support）     |✅       |✅       |✅       |
-| ascend      | ✅    （Partial support）    |✅       |✅       |✅       |
-| cambricon   | ✅        |✅       |✅       |✅       |
-| hygon   | ✅        |✅       |✅       |✅       |
-| iluvatar   | ✅        |✅       |✅       |✅       |
-| kunlunxin   | ✅        |✅       |✅       |✅       |
-| metax   | ✅        |✅       |✅       |✅       |
-| mthreads   | ✅       |✅       |✅       |✅       |
-| nvidia   | ✅        |✅       |✅       |✅       |
-| arm(cpu)   | 🚧      |       |      |      |
-| tsingmicro   | 🚧        |       |      |     |
+| vendor     | state                  | float16 | float32 | bfloat16 |
+| ---------- | ---------------------- | ------- | ------- | -------- |
+| aipu       | ✅ （Partial support） | ✅      | ✅      | ✅       |
+| ascend     | ✅ （Partial support） | ✅      | ✅      | ✅       |
+| cambricon  | ✅                     | ✅      | ✅      | ✅       |
+| hygon      | ✅                     | ✅      | ✅      | ✅       |
+| iluvatar   | ✅                     | ✅      | ✅      | ✅       |
+| kunlunxin  | ✅                     | ✅      | ✅      | ✅       |
+| metax      | ✅                     | ✅      | ✅      | ✅       |
+| mthreads   | ✅                     | ✅      | ✅      | ✅       |
+| nvidia     | ✅                     | ✅      | ✅      | ✅       |
+| arm(cpu)   | 🚧                     |         |         |          |
+| tsingmicro | 🚧                     |         |         |          |
 
 ## 性能表现
 
