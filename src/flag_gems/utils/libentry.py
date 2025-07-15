@@ -1,4 +1,3 @@
-import builtins
 import hashlib
 import inspect
 import logging
@@ -8,8 +7,10 @@ import sqlite3
 import threading
 import time
 import weakref
+from abc import abstractmethod
 from collections import OrderedDict
-from typing import Dict, Optional
+from itertools import starmap
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import triton
 
@@ -60,12 +61,6 @@ if major_version == 2:
         }
 
     setattr(triton.Config, "all_kwargs", all_kwargs)
-
-
-STRATEGY = {
-    None: lambda v: v,
-    "log": lambda v: math.ceil(math.log2(v)),
-}
 
 
 class LibCache:
@@ -145,25 +140,20 @@ class LibCache:
 
 
 libcache = LibCache()
-SEARCH_STRATEGIES = {}
-
-
-def register_search_strategy(name):
-    def decorator(fn):
-        SEARCH_STRATEGIES[name] = fn
-        return fn
-
-    return decorator
-
-
-@register_search_strategy("brute")
-def default_search_strategy(bench_fn, configs, args, kwargs):
-    timings = {config: bench_fn(config) for config in configs}
-    best_config = builtins.min(timings, key=timings.get)
-    return best_config, timings
 
 
 class LibTuner(triton.runtime.Autotuner):
+    """`LibTuner` is the base class for `FlagGems` library autotuner.
+
+    It could be extended in two ways, overriding the `policy` or `run` method in a subclass.
+    For `policy` extension, `LibTuner` provides a decorator `register_policy` to register a policy function quickly.
+    Please refer to the implementation of `default_policy` for an example.
+    """
+
+    # The dispatch table for `LibTuner` subclasses. It's shared across all instances.
+    _dispatch_table: Dict[str, Type["LibTuner"]] = {}
+    _strategy_table: Dict[str, Callable[[Any], Any]] = {}
+
     def __init__(
         self,
         fn,
@@ -180,7 +170,6 @@ class LibTuner(triton.runtime.Autotuner):
         use_cuda_graph=False,
         do_bench=None,
         strategy=None,
-        search_strategy=None,
     ):
         # NOTE(zhengyang): See discussion in https://github.com/triton-lang/triton/pull/4496
         if major_version == 2 or (major_version == 3 and minor_version <= 1):
@@ -220,17 +209,21 @@ class LibTuner(triton.runtime.Autotuner):
             )
         self.__name__ = self.base_fn.__name__
         self.keys = key
+        if isinstance(strategy, str):
+            strategy = LibTuner.get_strategy(strategy)
+        if not isinstance(strategy, (list, tuple)):
+            strategy = [strategy] * len(self.keys)
+        assert len(strategy) == len(
+            self.keys
+        ), f"the length of strategy {len(strategy)} must match the length of keys {len(self.keys)}"
+        strategy: List[Callable[[Any], Any]] = [
+            LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy
+        ]
         self.strategy = strategy
         # Use table name with hash instead of hash in key
         self.kernel_hash = None
         self.table_name = f"{self.__name__}_{self.get_kernel_hash()}"
         self.cache = libcache[self.table_name]
-        if strategy:
-            assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
-        assert (
-            isinstance(search_strategy, str) and search_strategy in SEARCH_STRATEGIES
-        ), "Invalid search strategy"
-        self.search_strategy = SEARCH_STRATEGIES[search_strategy]
 
     def get_kernel_hash(self):
         if self.kernel_hash is None:
@@ -245,38 +238,123 @@ class LibTuner(triton.runtime.Autotuner):
 
     def get_key(self, args):
         if self.strategy is None:
-            key = [args[k] for k in self.keys if k in args]
-            return key
-        key = []
-        for i, k in enumerate(self.keys):
-            s = STRATEGY[self.strategy[i]]
-            v = s(args[k])
-            key.append(v)
+            key = tuple(args[k] for k in self.keys if k in args)
+        else:
+            key = tuple(
+                starmap(
+                    lambda idx0, idx1: self.strategy[idx0](args[idx1]),
+                    enumerate(self.keys),
+                )
+            )
+        key += tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
         return key
 
+    @staticmethod
+    @abstractmethod
+    def policy(
+        self,
+        fn: triton.runtime.KernelInterface,
+        configs: Iterator[triton.Config],
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
+    ) -> Tuple[triton.Config, Dict[str, float]]:
+        raise NotImplementedError(
+            f"`policy` isn't implemented in {self.__class__.__name__}"
+        )
+
+    @classmethod
+    def register(cls, name: str):
+        """Register a subclass of `LibTuner` with a name.
+
+        Args:
+            name: The name of the subclass.
+        Returns:
+            A decorator that registers the subclass with the name.
+        """
+
+        def decorator(subclass):
+            cls._dispatch_table[name] = subclass
+            return subclass
+
+        return decorator
+
+    @classmethod
+    def get(cls, name: str):
+        return cls._dispatch_table[name]
+
+    @classmethod
+    def get_strategy(cls, name: str):
+        return cls._strategy_table[name]
+
+    @staticmethod
+    def register_policy(
+        name: str,
+    ) -> Type["LibTuner"]:
+        """A decorator to register a policy for `LibTuner`.
+
+        This decorator allows you to create a new `LibTuner` subclass without defining a new class explicitly.
+        The new subclass will have the `policy` method set to the provided policy function and will be registered under
+        the specified name in the `LibTuner` dispatch table.
+        """
+
+        def decorator(
+            policy_impl: Callable[
+                [
+                    triton.runtime.KernelInterface,
+                    Iterator[triton.Config],
+                    Tuple[Any],
+                    Dict[str, Any],
+                ],
+                Tuple[triton.Config, Dict[str, float]],
+            ],
+        ):
+            @LibTuner.register(name)
+            class AnonymousLibTunerImpl(LibTuner):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+
+                def policy(
+                    self,
+                    fn: triton.runtime.KernelInterface,
+                    configs: Iterator[triton.Config],
+                    args: Tuple[Any],
+                    kwargs: Dict[str, Any],
+                ) -> Tuple[triton.Config, Dict[str, float]]:
+                    return policy_impl(fn, configs, args, kwargs)
+
+            return AnonymousLibTunerImpl
+
+        return decorator
+
+    @staticmethod
+    def register_strategy(name: str):
+        def decorator(
+            strategy: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        ):
+            LibTuner._strategy_table[name] = strategy
+            return strategy
+
+        return decorator
+
     def run(self, *args, **kwargs):
+        # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
+        # so please make sure the orders of `arg_names` and `args` match.
         self.nargs = dict(zip(self.arg_names, args))
         used_cached_result = True
         if len(self.configs) > 1:
             all_args = {**self.nargs, **kwargs}
-            _args = {k: v for (k, v) in all_args.items() if k in self.arg_names}
-            # key = [_args[key] for key in self.keys if key in _args]
+            _args = {k: v for k, v in all_args.items() if k in self.arg_names}
             key = self.get_key(_args)
-            for _, arg in _args.items():
-                if hasattr(arg, "dtype"):
-                    key.append(str(arg.dtype))
-            key = tuple(key)
             if key not in self.cache:
                 # prune configs
                 used_cached_result = False
                 pruned_configs = self.prune_configs(kwargs)
                 bench_start = time.time()
-
-                def bench_fn(config):
-                    return self._bench(*args, config=config, **kwargs)
-
-                best_config, timings = self.search_strategy(
-                    bench_fn, pruned_configs, args, kwargs
+                best_config, timings = self.policy(
+                    lambda config: self._bench(*args, config=config, **kwargs),
+                    pruned_configs,
+                    args,
+                    kwargs,
                 )
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
@@ -309,6 +387,72 @@ class LibTuner(triton.runtime.Autotuner):
         return ret
 
 
+@LibTuner.register_strategy(None)
+@LibTuner.register_strategy("default")
+def default_strategy(key: Any) -> Any:
+    return key
+
+
+@LibTuner.register_strategy("log")
+def log2_strategy(key: Union[int, float]) -> float:
+    return math.ceil(math.log2(key))
+
+
+@LibTuner.register_policy("default")
+def default_policy(
+    bench_fn: triton.runtime.KernelInterface,
+    configs: Iterator[triton.Config],
+    args: Tuple[Any],
+    kwargs: Dict[str, Any],
+) -> Tuple[triton.Config, Dict[str, float]]:
+    """Default policy for offline autotuning.
+
+    Args:
+        bench_fn: The function to benchmark.
+        configs: The collection of the configuration search space.
+        args: Kernel launch arguments.
+        kwargs: Kernel launch arguments.
+    Returns:
+        A tuple containing the best configuration and a dictionary of timings for each configuration.
+
+    This is one way to implement a default policy for offline autotuning. It's equal to the following
+    ```
+    @LibTuner.register("default")
+    class DefaultLibTunerImpl(LibTuner):
+        def __init__(
+            self,
+            *args,
+            **kwargs,
+        ):
+            super().__init__(
+                *args,
+                **kwargs,
+            )
+
+        @staticmethod
+        def policy(
+            bench_fn: triton.runtime.KernelInterface,
+            configs: Iterator[triton.Config],
+            args: Tuple[Any],
+            kwargs: Dict[str, Any],
+        ) -> Tuple[triton.Config, Dict[str, float]]:
+            timings: Dict[triton.Config, int] = {
+                config: bench_fn(config) for config in configs
+            }
+            best_config: triton.Config = min(timings, key=timings.get)
+            return best_config, timings
+    ```
+    In this way policies could be extended by registering a definition function quickly,
+    or by creating a new subclass of `LibTuner` and overriding the `policy` method to have
+    more control over the autotuning process.
+    """
+    timings: Dict[triton.Config, float] = {
+        config: bench_fn(config) for config in configs
+    }
+    best_config: triton.Config = min(timings, key=timings.get)
+    return best_config, timings
+
+
 def libtuner(
     configs,
     key,
@@ -321,15 +465,29 @@ def libtuner(
     rep=100,
     use_cuda_graph=False,
     do_bench=None,
-    strategy=None,
-    search_strategy="brute",
+    strategy: Union[
+        str, Callable[[Any], Any], List[Union[str, Callable[[Any], Any]]]
+    ] = "default",
+    policy: Union[str, Type[LibTuner]] = "default",
 ):
-    """
-    Decorator for triton library autotuner.
+    """Decorator for triton library autotuner.
+
+    `strategy` is a function that takes a key and returns a value.
+    It accepts a string, which is the name of a registered strategy, or a callable function.
+    In this form it will be applied to each key in the `key` list.
+    If it's a tuple or list, it should have the same length as `key`,
+    and each element should be a string or a callable function that takes a key and returns a value.
+    `policy` accepts a string, which is the name of a registered `LibTuner` subclass, or a `LibTuner` subclass itself.
     """
 
+    if isinstance(policy, str):
+        policy = LibTuner.get(policy)
+    assert issubclass(
+        policy, LibTuner
+    ), f"the class of {policy.__name__} is {policy.__class__.__name__}, not a subclass of {LibTuner.__name__}"
+
     def decorator(fn):
-        return LibTuner(
+        return policy(
             fn,
             fn.arg_names,
             configs,
@@ -344,7 +502,6 @@ def libtuner(
             use_cuda_graph=use_cuda_graph,
             do_bench=do_bench,
             strategy=strategy,
-            search_strategy=search_strategy,
         )
 
     return decorator
@@ -525,9 +682,7 @@ class LibEntry(triton.KernelInterface):
 
 
 def libentry():
-    """
-    Decorator for triton library entries.
-    """
+    """Decorator for triton library entries."""
 
     def decorator(fn):
         return LibEntry(fn)
