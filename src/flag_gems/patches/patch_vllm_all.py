@@ -221,7 +221,7 @@ def custom_gems_flash_attention_impl_forwad(
             cu_seqlens_q=cu_seqlens_q,
             max_seqlen_q=max_seqlen_q,
             seqused_k=seqused_k,
-            max_seqlen_k=max_seqlen_k.item(),
+            max_seqlen_k=max_seqlen_k,
             softmax_scale=self.scale,
             causal=True,
             alibi_slopes=self.alibi_slopes,
