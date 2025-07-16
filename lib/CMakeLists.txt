@@ -12,6 +12,7 @@ add_library(operators
             rotary_embedding.cpp
             cat.cpp
             bmm.cpp
+            embedding.cpp
             argmax.cpp)
 target_include_directories(operators
   PUBLIC
