@@ -51,4 +51,30 @@ int64_t next_power_of_2(int64_t n) {
   n |= n >> 32;
   return n + 1;
 }
+
+bool broadcastable_to(at::IntArrayRef s1, at::IntArrayRef s2) {
+  size_t r1 = s1.size();
+  if (r1 == 0) {
+    return true;
+  }
+
+  size_t r2 = s2.size();
+  if (r2 == 0) {
+    return false;
+  }
+
+  if (r1 > r2) {
+    return false;
+  }
+
+  size_t d = r2 - r1;
+  for (size_t i = 0; i < r1; ++i) {
+    if (s1[i] == 1 || s1[i] == s2[d + i]) {
+      continue;
+    }
+    return false;
+  }
+
+  return true;
+}
 }  // namespace flag_gems::utils
