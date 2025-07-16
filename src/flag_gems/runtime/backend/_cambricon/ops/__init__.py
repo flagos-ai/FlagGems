@@ -117,9 +117,11 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
+from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
+from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
 from .stack import stack
 from .sub import sub, sub_
@@ -276,6 +278,7 @@ __all__ = [
     "rsqrt_",
     "scatter",
     "scatter_",
+    "select_scatter",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
@@ -284,6 +287,7 @@ __all__ = [
     "silu_backward",
     "sin",
     "sin_",
+    "slice_scatter",
     "softmax",
     "softmax_backward",
     "sub",
