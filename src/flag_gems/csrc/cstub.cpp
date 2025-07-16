@@ -19,6 +19,9 @@ PYBIND11_MODULE(c_operators, m) {
 
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
+  m.def(
+      "zeros(SymInt[] size, ScalarType? dtype=None,Layout? layout=None, Device? device=None, bool? "
+      "pin_memory=None) -> Tensor");
   m.def("sum.dim_IntList(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor");
   m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
   // Norm
@@ -37,6 +40,7 @@ TORCH_LIBRARY(flag_gems, m) {
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
+  m.impl("zeros", TORCH_FN(zeros));
   m.impl("sum.dim_IntList", TORCH_FN(sum_dim));
   m.impl("add_tensor", TORCH_FN(add_tensor));
   // Norm

@@ -2,7 +2,6 @@
 #include "c10/util/Logging.h"
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
-
 TEST(reduction_op_test, sum) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor a = torch::randn({32, 1024}, device);
