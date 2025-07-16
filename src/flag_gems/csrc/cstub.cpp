@@ -27,6 +27,7 @@ TORCH_LIBRARY(flag_gems, m) {
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
   m.def("fused_add_rms_norm(Tensor! input, Tensor! residual, Tensor weight, float epsilon) -> ()");
+  m.def("addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor");
   m.def("nonzero(Tensor self) -> Tensor");
   // rotary_embedding
   m.def(
@@ -46,6 +47,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   // Norm
   m.impl("rms_norm", TORCH_FN(rms_norm));
   m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
+  m.impl("addmm", TORCH_FN(addmm));
   m.impl("nonzero", TORCH_FN(nonzero));
   // Rotary embedding
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));

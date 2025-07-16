@@ -20,6 +20,11 @@ void fused_add_rms_norm(at::Tensor &input,
                         at::Tensor &residual,
                         const at::Tensor &weight,
                         double epsilon = 1e-5);
+at::Tensor addmm(const at::Tensor &self,
+                 const at::Tensor &mat1,
+                 const at::Tensor &mat2,
+                 const at::Scalar &beta = 1.0,
+                 const at::Scalar &alpha = 1.0);
 at::Tensor nonzero(const at::Tensor &inp);
 // Rotary embedding
 void rotary_embedding_inplace(at::Tensor &q,
