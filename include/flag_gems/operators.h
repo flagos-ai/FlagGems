@@ -42,7 +42,7 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     bool rotary_interleaved = false);
 std::tuple<at::Tensor, at::Tensor> topk(
     const at::Tensor &x, int64_t k, int64_t dim = -1, bool largest = true, bool sorted = true);
-
+at::Tensor contiguous(const at::Tensor &self, at::MemoryFormat memory_format = c10::MemoryFormat::Contiguous);
 at::Tensor cat(const at::TensorList &tensors, int64_t dim = 0);
 at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
 at::Tensor embedding(const at::Tensor &weight,
