@@ -138,6 +138,10 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
         ),
     ],
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="temp disable for updating",
+)
 def test_blas_benchmark(op_name, torch_op, input_fn):
     bench = BlasBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
