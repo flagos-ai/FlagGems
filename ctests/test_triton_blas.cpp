@@ -13,14 +13,31 @@ TEST(blas_op_test, mm) {
   EXPECT_TRUE(torch::allclose(out_torch, out_triton));
 }
 
-TEST(blas_op_test, addmm) {
-  const torch::Device device(torch::kCUDA, 0);
-  torch::Tensor bias = torch::randn({10, 10}, device);
-  torch::Tensor mat1 = torch::randn({10, 10}, device);
-  torch::Tensor mat2 = torch::randn({10, 10}, device);
+struct BmmTestParam {
+  int64_t m;
+  int64_t n;
+  int64_t k;
+  at::ScalarType dtype;
+};
 
-  torch::Tensor out_torch = at::addmm(bias, mat1, mat2);
-  torch::Tensor out_triton = flag_gems::addmm(bias, mat1, mat2);
+class BmmTest : public ::testing::TestWithParam<BmmTestParam> {};
+
+TEST_P(BmmTest, addmm) {
+  const BmmTestParam param = GetParam();
+  const torch::Device device(torch::kCUDA, 0);
+  const at::TensorOptions opt = at::TensorOptions().device(device).dtype(param.dtype);
+  const at::Tensor bias = at::randn({param.m, param.n}, opt);
+  const at::Tensor mat1 = at::randn({param.m, param.k}, opt);
+  const at::Tensor mat2 = at::randn({param.k, param.n}, opt);
+
+  at::Tensor out_torch = at::addmm(bias, mat1, mat2);
+  at::Tensor out_triton = flag_gems::addmm(bias, mat1, mat2);
 
   EXPECT_TRUE(torch::allclose(out_torch, out_triton));
 }
+
+INSTANTIATE_TEST_SUITE_P(BmmTests,
+                         BmmTest,
+                         ::testing::Values(BmmTestParam {10, 10, 10, at::ScalarType::Float},
+                                           BmmTestParam {10, 10, 10, at::ScalarType::Half},
+                                           BmmTestParam {10, 10, 10, at::ScalarType::BFloat16}));
