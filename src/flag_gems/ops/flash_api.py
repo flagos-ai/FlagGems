@@ -866,6 +866,11 @@ def mha_fwd(
             0,  # block_size,
         )
 
+        # Move TxD to last dims for correct stride in Triton tt.load
+        if flag_gems.vendor_name == "iluvatar":
+            params.q_ptr = q.transpose(1, 2)
+            params.k_ptr = k.transpose(1, 2)
+            params.v_ptr = v.transpose(1, 2)
         kernel = dispatch(batch_size, num_heads, seqlen_q, seqlen_k, head_size, params)
 
         if _debug:
