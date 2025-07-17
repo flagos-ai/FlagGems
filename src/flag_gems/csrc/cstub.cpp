@@ -15,6 +15,7 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
+  m.def("addmm", &flag_gems::addmm);
 }
 
 namespace flag_gems {
