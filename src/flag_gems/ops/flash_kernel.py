@@ -1057,15 +1057,26 @@ def flash_fwd_splitkv_combine_kernel(
 
 
 @triton.jit
-def block_to_cache_index(
-    n_block, page_table_ptr, block_size, page_stride, row_stride, BLOCK_N
+def virtual_to_cache(virtual_index, page_table_ptr, block_size):
+    # virtual_index is the kv sequence index in the current batch element
+    # page_table_ptr is already pointed at current batch element's block table entry
+    # block_size is the size of each block in the page table
+    virtual_page_index = virtual_index // block_size
+    page_offset = virtual_index % block_size
+    page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
+    return page_block_index * block_size + page_offset
+
+
+@triton.jit
+def load_from_kvcache(
+    i, page_table_ptr, k_ptr_base, v_ptr_base, block_size, d, k_row_stride
 ):
-    row_index = n_block * BLOCK_N
-    page_offset = row_index % block_size
-    virtual_page_index = row_index // block_size
-    # page_table_ptr is already pointed at the start of the current batch element
-    cache_page_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
-    return cache_page_index * block_size + page_offset
+    kvcache_idx = virtual_to_cache(i, page_table_ptr, block_size)
+    k_offset = tl.arange(0, d)[:, None] + kvcache_idx[None, :] * k_row_stride
+    v_offset = tl.arange(0, d)[None, :] + kvcache_idx[:, None] * k_row_stride
+    bK = tl.load(k_ptr_base + k_offset)
+    bV = tl.load(v_ptr_base + v_offset)
+    return bK, bV
 
 
 @libentry()
@@ -1210,10 +1221,15 @@ def flash_varlen_fwd_kernel(
         philox_seed = tl.load(philox_args).to(tl.uint64)
         philox_offset = tl.load(philox_args + 1).to(tl.uint64)
 
-    # start processing kv blocks
+    # Locate the page table entry for the current batch element
     page_table_ptr += bid * page_table_batch_stride
+    # Calculate the starting offset of q for the current head
     q_row_offset = hid * q_head_stride
+    # Calculate the starting offset of k and v for the current head
     k_row_offset = (hid // h_hk_ratio) * k_head_stride
+    # Shift the k, v pointers to align with the current head
+    k_ptr_base = k_ptr + k_row_offset
+    v_ptr_base = v_ptr + k_row_offset
 
     gQ = tl.make_block_ptr(
         base=q_ptr + q_offset + q_row_offset,
@@ -1223,25 +1239,6 @@ def flash_varlen_fwd_kernel(
         block_shape=(BLOCK_M, d),
         order=(1, 0),
     )
-
-    gK = tl.make_block_ptr(
-        base=k_ptr + k_row_offset,
-        shape=(d, bk * block_size),
-        strides=(1, k_row_stride),
-        offsets=(0, 0),
-        block_shape=(d, BLOCK_N),
-        order=(0, 1),
-    )
-
-    gV = tl.make_block_ptr(
-        base=v_ptr + k_row_offset,
-        shape=(bk * block_size, d),
-        strides=(k_row_stride, 1),
-        offsets=(0, 0),
-        block_shape=(BLOCK_N, d),
-        order=(1, 0),
-    )
-
     bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]), boundary_check=(0,))
 
     acc_ = tl.zeros((BLOCK_M, d), dtype=tl.float32)
@@ -1263,24 +1260,22 @@ def flash_varlen_fwd_kernel(
         n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N) + 1
 
     n_masking_steps = min(n_block_max - n_block_min, n_masking_steps)
+
+    row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+    col_idx = (n_block_max - 1) * BLOCK_N + tl.arange(0, BLOCK_N)
+    n_block = n_block_max - 1
     for step in tl.range(0, n_masking_steps):
-        # for step in tl.range(1):
-        n_block = n_block_max - 1 - step
-        cache_row_index = block_to_cache_index(
-            n_block,
+        bK, bV = load_from_kvcache(
+            col_idx,
             page_table_ptr,
+            k_ptr_base,
+            v_ptr_base,
             block_size,
-            page_table_batch_stride,
+            d,
             k_row_stride,
-            BLOCK_N,
         )
-        bK = tl.load(gK.advance([0, cache_row_index]), boundary_check=(1,))
-        # preload V
-        bV = tl.load(gV.advance([cache_row_index, 0]), boundary_check=(0,))
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
-        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-        row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
         S = apply_alibi(
             S,
             col_idx,
@@ -1333,25 +1328,23 @@ def flash_varlen_fwd_kernel(
             )
 
         acc_ = tl.dot(P, bV, acc_)
+        col_idx -= BLOCK_N
+        n_block -= 1
 
     for n_block in tl.range(
         n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1
     ):
-        cache_row_index = block_to_cache_index(
-            n_block,
+        bK, bV = load_from_kvcache(
+            col_idx,
             page_table_ptr,
+            k_ptr_base,
+            v_ptr_base,
             block_size,
-            page_table_batch_stride,
+            d,
             k_row_stride,
-            BLOCK_N,
         )
-        bK = tl.load(gK.advance([0, cache_row_index]))
-        # preload V
-        bV = tl.load(gV.advance([cache_row_index, 0]))
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
-        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-        row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
         S = apply_alibi(
             S,
             col_idx,
@@ -1403,6 +1396,7 @@ def flash_varlen_fwd_kernel(
                 BLOCK_N=BLOCK_N,
             )
         acc_ = tl.dot(P, bV, acc_)
+        col_idx -= BLOCK_N
 
     # LSE
     lse = tl.where(
