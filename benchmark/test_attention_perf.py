@@ -1,4 +1,5 @@
 import math
+from typing import Any, List, Optional
 
 import pytest
 import torch
@@ -6,7 +7,7 @@ import triton
 
 import flag_gems
 
-from .performance_utils import GenericBenchmark, vendor_name
+from .performance_utils import Benchmark, GenericBenchmark, vendor_name
 
 
 class AttentionBenchmark(GenericBenchmark):
@@ -168,4 +169,130 @@ def test_perf_flash_mla():
         ],
     )
     bench.set_gems(flag_gems.flash_mla)
+    bench.run()
+
+
+class FlashAttnVarlenBenchmark(Benchmark):
+    """
+    benchmark for flash_attn_varlen_func
+    """
+
+    def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
+        # Collecting from qwen/Qwen3-1.7B --random-input 512 --random-output 2048 --num-prompts 200 --request-rate inf
+        # Format: (seq_lens, num_heads, head_size, block_size, num_blocks, alibi, soft_cap)
+        # ([(1, 1), (1, 1), (1, 1)], (16, 8), 128, 32, 18208, False, None),
+        # The performance is very poor, which may be related to prefill
+        flash_attn_configs = [
+            ([(1, 1), (1, 1), (1, 1)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (23, 23)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (7, 7)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (39, 39)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (55, 55)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (70, 70)], (16, 8), 128, 32, 18208, False, None),
+        ]
+        self.shapes = flash_attn_configs
+
+    def get_input_iter(self, cur_dtype):
+        for config in self.shapes:
+            yield from self.flash_attn_varlen_input_fn(config, cur_dtype, self.device)
+
+    def flash_attn_varlen_input_fn(self, config, dtype, device):
+        """Input function for flash attention varlen benchmark"""
+        seq_lens, num_heads, head_size, block_size, num_blocks, alibi, soft_cap = config
+
+        if alibi is True and soft_cap is not None:
+            return
+
+        num_seqs = len(seq_lens)
+        query_lens = [x[0] for x in seq_lens]
+        kv_lens = [x[1] for x in seq_lens]
+        num_query_heads = num_heads[0]
+        num_kv_heads = num_heads[1]
+        max_query_len = max(query_lens)
+        max_kv_len = max(kv_lens)
+        window_size = (-1, -1)
+        scale = head_size**-0.5
+
+        query = torch.randn(
+            sum(query_lens), num_query_heads, head_size, dtype=dtype, device=device
+        )
+        key_cache = torch.randn(
+            num_blocks, block_size, num_kv_heads, head_size, dtype=dtype, device=device
+        )
+        value_cache = torch.randn_like(key_cache)
+        cu_query_lens = torch.tensor(
+            [0] + query_lens, dtype=torch.int32, device=device
+        ).cumsum(dim=0, dtype=torch.int32)
+        seqused_k = torch.tensor(kv_lens, dtype=torch.int32, device=device)
+
+        max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
+        block_tables = torch.randint(
+            0,
+            num_blocks,
+            (num_seqs, max_num_blocks_per_seq),
+            dtype=torch.int32,
+            device=device,
+        )
+
+        causal = True
+
+        if alibi:
+            alibi_slopes = (
+                torch.ones(
+                    num_seqs, num_query_heads, device=device, dtype=torch.float32
+                )
+                * 0.3
+            )
+        else:
+            alibi_slopes = None
+
+        yield (
+            query,
+            key_cache,
+            value_cache,
+            max_query_len,
+            cu_query_lens,
+            max_kv_len,
+            None,
+            seqused_k,
+            None,
+            0.0,
+            scale,
+            causal,
+            window_size,
+            soft_cap if soft_cap is not None else 0,
+            alibi_slopes,
+            False,
+            False,
+            block_tables,
+            False,
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+            2,
+        )
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "iluvatar", reason="RESULT TODOFIX")
+@pytest.mark.skipif(
+    flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
+)
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
+@pytest.mark.flash_attn_varlen_func
+def test_perf_flash_attn_varlen_func():
+    from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
+
+    bench = FlashAttnVarlenBenchmark(
+        op_name="flash_attn_varlen_func",
+        torch_op=flash_attn_varlen_func,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+    bench.set_gems(flag_gems.ops.flash_attn_varlen_func)
     bench.run()
