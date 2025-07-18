@@ -1079,7 +1079,7 @@ def load_from_kvcache(
     return bK, bV
 
 
-@libentry()
+# @libentry()
 @triton.jit(
     do_not_specialize=[
         "seqlen_q",
