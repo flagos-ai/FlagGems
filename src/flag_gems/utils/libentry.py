@@ -62,6 +62,8 @@ if major_version == 2:
 
     setattr(triton.Config, "all_kwargs", all_kwargs)
 
+FLAGGEMS_ENABLE_DISK_CACHE = os.getenv("FLAGGEMS_ENABLE_DISK_CACHE", "1") == "1"
+
 
 class LibCache:
     _instance = None
@@ -223,7 +225,10 @@ class LibTuner(triton.runtime.Autotuner):
         # Use table name with hash instead of hash in key
         self.kernel_hash = None
         self.table_name = f"{self.__name__}_{self.get_kernel_hash()}"
-        self.cache = libcache[self.table_name]
+        if FLAGGEMS_ENABLE_DISK_CACHE:
+            self.cache = libcache[self.table_name]
+        else:
+            self.cache = {}
 
     def get_kernel_hash(self):
         if self.kernel_hash is None:
