@@ -303,6 +303,37 @@ def test_accuracy_cummin(shape, dtype):
     gems_assert_equal(res_out.indices, ref_out.indices)
 
 
+@pytest.mark.cummin
+@pytest.mark.parametrize("shape", CUMMIN_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("nan_ratio", [0.1, 0.3, 0.5])
+def test_accuracy_cummin_with_nan(shape, dtype, nan_ratio):
+    """Test cummin with NaN values at different ratios"""
+    dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
+
+    # Create tensor with some NaN values
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    # Randomly set some values to NaN
+    total_elements = inp.numel()
+    nan_count = int(total_elements * nan_ratio)
+    nan_indices = torch.randperm(total_elements)[:nan_count]
+    flat_inp = inp.flatten()
+    flat_inp[nan_indices] = float("nan")
+    inp = flat_inp.view(shape)
+
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cummin(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cummin(inp, dim=dim)
+
+    gems_assert_close(
+        res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
+    )
+    gems_assert_equal(res_out.indices, ref_out.indices)
+
+
 CUMMAX_SHAPES = (
     [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
 )
