@@ -360,7 +360,18 @@ def scan_part_min_abc_loop_kernel(
 
     # init
     max_value = get_dtype_max(inp.type.element_ty)
-    prev_min_val = tl.full([], max_value, dtype=tl.float32)
+    if tl.constexpr(inp.type.element_ty.is_fp16()) or tl.constexpr(
+        inp.type.element_ty.is_bf16()
+    ):
+        compute_dtype = tl.float32
+    elif tl.constexpr(inp.type.element_ty.is_int8()) or tl.constexpr(
+        inp.type.element_ty.is_int16()
+    ):
+        compute_dtype = tl.int32
+    else:
+        compute_dtype = inp.type.element_ty
+
+    prev_min_val = tl.full([], max_value, dtype=compute_dtype)
     prev_min_val_idx = tl.full([], 0, dtype=tl.int64)
     last_mask = t_idx == (BLOCK_SIZE - 1)
 
@@ -370,15 +381,11 @@ def scan_part_min_abc_loop_kernel(
         offset = ac_offset + b_idx * C
 
         inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
-        if (
-            tl.constexpr(inp_vals.dtype.is_int64())
-            or tl.constexpr(inp_vals.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals.dtype.is_fp64()):
-            vals = inp_vals
-        elif tl.constexpr(inp_vals.dtype.is_int()):
-            vals = inp_vals.to(tl.int32)
+        # Only promote if necessary
+        if tl.constexpr(compute_dtype != inp.type.element_ty):
+            vals = inp_vals.to(compute_dtype)
         else:
-            vals = inp_vals.to(tl.float32)
+            vals = inp_vals
         idxs = b_idx
 
         # cummin
@@ -388,19 +395,28 @@ def scan_part_min_abc_loop_kernel(
         prev_min_val_b = tl.broadcast_to(prev_min_val, (BLOCK_SIZE,))
         prev_min_val_idx_b = tl.broadcast_to(prev_min_val_idx, (BLOCK_SIZE,))
 
-        # update result from prev val and idx
-        cummin_indices = tl.where(
-            result <= prev_min_val_b, cummin_indices, prev_min_val_idx_b
-        )
-        result = tl.minimum(result, prev_min_val_b)
+        # Handle NaN and tie-breaking logic
+        if tl.constexpr(compute_dtype.is_floating()):
+            # For floats: handle NaN propagation + tie-break right
+            prev_is_nan = prev_min_val != prev_min_val
+            result_is_nan = result != result
+            prev_nan_mask = tl.broadcast_to(prev_is_nan, (BLOCK_SIZE,))
+
+            use_result = result_is_nan | (~prev_nan_mask & (result <= prev_min_val_b))
+        else:
+            # For integers: simple tie-break right
+            use_result = result <= prev_min_val_b
+
+        final_vals = tl.where(use_result, result, prev_min_val_b)
+        final_indices = tl.where(use_result, cummin_indices, prev_min_val_idx_b)
 
         # update global min val and idx
-        prev_min_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
-        prev_min_val_idx = tl.sum(tl.where(last_mask, cummin_indices, 0), axis=0)
+        prev_min_val = tl.sum(tl.where(last_mask, final_vals, 0), axis=0)
+        prev_min_val_idx = tl.sum(tl.where(last_mask, final_indices, 0), axis=0)
 
         # store result
-        tl.store(out + offset, result, mask=mask)
-        tl.store(out_indices + offset, cummin_indices, mask=mask)
+        tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
+        tl.store(out_indices + offset, final_indices, mask=mask)
 
 
 def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
