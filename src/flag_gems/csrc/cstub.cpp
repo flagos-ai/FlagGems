@@ -16,6 +16,11 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
   m.def("addmm", &flag_gems::addmm);
+
+  m.impl("fill_scalar", &flag_gems::fill_scalar);
+  m.impl("fill_tensor", &flag_gems::fill_tensor);
+  m.impl("fill_scalar_", &flag_gems::fill_scalar_);
+  m.impl("fill_tensor_", &flag_gems::fill_tensor_);
 }
 
 namespace flag_gems {
@@ -49,10 +54,10 @@ TORCH_LIBRARY(flag_gems, m) {
       "scale_grad_by_freq, bool sparse) -> Tensor");
   m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
 
-  m.def("fill.scalar(Tensor self, Scalar value) -> Tensor");
-  m.def("fill.tensor(Tensor self, Tensor value) -> Tensor");
-  m.def("fill_.scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
-  m.def("fill_.tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
+  m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
+  m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
+  m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
+  m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -75,9 +80,9 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("embedding_backward", TORCH_FN(embedding_backward));
   m.impl("argmax", TORCH_FN(argmax));
 
-  m.impl("fill_scalar", TORCH_FN(fill_scalar));
-  m.impl("fill_tensor", TORCH_FN(fill_tensor));
-  m.impl("fill_scalar_", TORCH_FN(fill_scalar_));
-  m.impl("fill_tensor_", TORCH_FN(fill_tensor_));
+  m.impl("fill.Scalar", TORCH_FN(fill_scalar));
+  m.impl("fill.Tensor", TORCH_FN(fill_tensor));
+  m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
+  m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
 }
 }  // namespace flag_gems
