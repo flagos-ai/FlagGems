@@ -35,7 +35,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
     code.newline()
-    code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
@@ -50,7 +50,7 @@ def generate_index_kernel(
 ):
     code.writeline("@libentry()")
     code.writeline(
-        '@triton.autotune(configs=runtime.get_tuned_config("index"), key=["M", "N"], restore_value=["input_ptr"])'
+        '@libtuner(configs=runtime.get_tuned_config("index"), key=["M", "N"], restore_value=["input_ptr"])'
     )
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")

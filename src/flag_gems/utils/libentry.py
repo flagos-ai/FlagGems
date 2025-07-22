@@ -3,6 +3,7 @@ import inspect
 import logging
 import math
 import os
+import signal
 import sqlite3
 import threading
 import time
@@ -81,6 +82,13 @@ class LibCache:
         )
         self.preload()
         weakref.finalize(self, self.store)
+
+        # For vllm
+        def signal_handler(signum, frame):
+            self.store()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
     def __getitem__(self, key):
         if key not in self.global_cache:
