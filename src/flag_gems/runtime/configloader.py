@@ -23,9 +23,10 @@ class ConfigLoader(object):
             # and is reserved from being an attr for vendor customizability
             self.vendor_primitive_yaml_config = self.get_vendor_tune_config()
             self.default_primitive_yaml_config = self.get_default_tune_config()
-            self.heuristics_config = self.get_vendor_heuristics_config()
+            self.vendor_heuristics_config = self.get_vendor_heuristics_config()
+            self.default_heuristics_config = self.get_default_heuristics_config()
 
-            if self.heuristics_config is None:
+            if self.vendor_heuristics_config is None:
                 vendorname = self.device.vendor_name
                 warnings.warn(
                     f"The {vendorname} configuration of heuristics_config is None"
@@ -48,11 +49,23 @@ class ConfigLoader(object):
     def get_vendor_heuristics_config(self):
         return backend.get_heuristic_config(self.device.vendor_name)
 
+    def get_default_heuristics_config(self):
+        return backend.get_heuristic_config("nvidia")
+
     def get_default_tune_config(self):
         return backend.get_tune_config("nvidia")
 
     def get_vendor_tune_config(self):
         return backend.get_tune_config(self.device.vendor_name)
+
+    def get_heuristics_config(self, op_name):
+        if op_name in self.vendor_heuristics_config:
+            return self.vendor_heuristics_config[op_name]
+        elif op_name in self.default_heuristics_config:
+            return self.default_heuristics_config[op_name]
+        else:
+            warnings.warn(f"No heuristics config found for {op_name}")
+            return None
 
     def _gen_impl(
         self,

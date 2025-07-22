@@ -22,7 +22,7 @@ def get_tuned_config(op_name):
 
 
 def get_heuristic_config(op_name):
-    return config_loader.heuristics_config[op_name]
+    return config_loader.get_heuristics_config(op_name)
 
 
 def replace_customized_ops(_globals):
