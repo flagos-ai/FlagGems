@@ -41,6 +41,8 @@ else:
 
 
 def SkipVersion(module_name, skip_pattern):
+    if importlib.util.find_spec(module_name) is None:
+        return True
     cmp = skip_pattern[0]
     assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"
     try:
