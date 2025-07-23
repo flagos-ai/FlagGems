@@ -59,14 +59,12 @@ mm:
     BLOCK_M: 4
     BLOCK_N: 4
     BLOCK_K: 4
-    SPLIT_K: 1
   num_stages: 4
   num_warps: 4
 - META:
     BLOCK_M: 8
     BLOCK_N: 8
     BLOCK_K: 8
-    SPLIT_K: 1
   num_stages: 4
   num_warps: 4
 softmax_non_inner:

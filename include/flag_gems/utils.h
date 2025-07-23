@@ -11,6 +11,7 @@
 #include "torch/torch.h"
 
 namespace flag_gems::utils {
+
 std::filesystem::path get_path_of_this_library();
 std::filesystem::path get_triton_src_path();
 std::filesystem::path get_flag_gems_src_path();

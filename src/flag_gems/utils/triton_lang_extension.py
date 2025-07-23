@@ -14,7 +14,7 @@ These functions can be used in kernel progamming and are not bound to any grid.
 import triton
 from triton import language as tl
 
-from .triton_lang_helper import use_tl_extra
+from flag_gems.utils.triton_lang_helper import use_tl_extra
 
 
 @triton.jit

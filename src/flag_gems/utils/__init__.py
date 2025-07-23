@@ -1,14 +1,14 @@
-from .libentry import libentry, libtuner
-from .pointwise_dynamic import pointwise_dynamic
-from .shape_utils import (
+from flag_gems.utils.libentry import libentry, libtuner
+from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
+from flag_gems.utils.shape_utils import (
     broadcastable,
     broadcastable_to,
     dim_compress,
     offsetCalculator,
     restride_dim,
 )
-from .triton_driver_helper import get_device_properties
-from .triton_lang_helper import tl_extra_shim
+from flag_gems.utils.triton_driver_helper import get_device_properties
+from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 __all__ = [
     "libentry",
