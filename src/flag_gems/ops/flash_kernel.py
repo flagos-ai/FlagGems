@@ -254,12 +254,15 @@ def is_even_mn_spec_args(args):
     return False
 
 
-def keep(cfg):
+def keep(cfg, must_keep=None):
     BM = cfg.kwargs["BLOCK_M"]
     BN = cfg.kwargs["BLOCK_N"]
     w = cfg.num_warps
 
-    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8))
+    # we always keep configurations in `must_keep`
+    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8)) or (
+        must_keep and cfg in must_keep
+    )
 
 
 def prune_fwd_configs(configs, nargs, **kwargs):

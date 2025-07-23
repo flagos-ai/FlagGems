@@ -1,4 +1,5 @@
 import logging
+from functools import partial
 
 import torch
 import triton
@@ -18,7 +19,7 @@ def _attn_fwd_inner(
     acc,
     l_i,
     m_i,
-    q,  #
+    query,  #
     K_block_ptr,
     V_block_ptr,  #
     mask_block_ptr,  #
@@ -53,18 +54,18 @@ def _attn_fwd_inner(
     if HAS_ATTN_MASK:
         mask_block_ptr += lo * stride_attn_mask_kv_seqlen
 
-    LOG2E: tl.constexpr = 1.44269504
+    LOG2E = 1.44269504  # log2(e) constant
 
-    # loop over k, v and update accumulator
+    # loop over key, value and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
         kv_load_mask = (start_n + offs_n) < KV_CTX
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
-        k = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
+        key = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
         if PRE_LOAD_V:
-            v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
-        qk = tl.dot(q, k, allow_tf32=False)
+        qk = tl.dot(query, key, allow_tf32=False)
         # incase not divisible.
         qk = tl.where(kv_load_mask[None, :], qk, -float("inf"))
         # qk = qk.to(tl.float32)
@@ -104,13 +105,13 @@ def _attn_fwd_inner(
         acc = acc * alpha[:, None]
         # update acc
         if not PRE_LOAD_V:
-            v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
         if fp8_v:
             p = p.to(tl.float8e5)
         else:
-            p = p.to(q.dtype)
-        p = p.to(v.dtype)
-        acc = tl.dot(p, v, acc, allow_tf32=False)
+            p = p.to(query.dtype)
+        p = p.to(value.dtype)
+        acc = tl.dot(p, value, acc, allow_tf32=False)
         # update m_i and l_i
         m_i = m_ij
 
@@ -123,8 +124,23 @@ def _attn_fwd_inner(
     return acc, l_i, m_i
 
 
+# NOTE: we assert BLOCK_N <= HEAD_DIM in _attn_fwd, so for small head_dim,
+# we need to generate more configs.
+configs = runtime.get_tuned_config("attention")
+SMALL_HEAD_DIM_CONFIGS = [
+    triton.Config(
+        {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": 0}, num_stages=s, num_warps=w
+    )
+    for BM in [64, 128]
+    for BN in [16, 32]
+    for s in [2, 3, 4]
+    for w in [4, 8]
+]
+configs += SMALL_HEAD_DIM_CONFIGS
+
+
 @triton.autotune(
-    configs=list(filter(keep, runtime.get_tuned_config("attention"))),
+    configs=list(filter(partial(keep, must_keep=SMALL_HEAD_DIM_CONFIGS), configs)),
     key=["KV_CTX", "HEAD_DIM"],
 )
 @triton.jit
@@ -134,6 +150,7 @@ def _attn_fwd(
     V,
     attn_mask,
     sm_scale,
+    M,
     Out,  #
     stride_q_batch,
     stride_q_head,
@@ -156,8 +173,9 @@ def _attn_fwd(
     stride_o_seqlen,
     stride_o_headsize,
     Z,
-    q_numhead,
-    kv_numhead,
+    q_head_num,
+    kv_head_num,
+    GROUP_HEAD: tl.constexpr,
     Q_CTX,
     KV_CTX,
     HEAD_DIM: tl.constexpr,
@@ -170,9 +188,9 @@ def _attn_fwd(
     tl.static_assert(BLOCK_N <= HEAD_DIM)
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
-    batch_id = off_hz // q_numhead
-    head_id = off_hz % q_numhead
-    kv_head_id = off_hz % kv_numhead
+    batch_id = off_hz // q_head_num
+    head_id = off_hz % q_head_num
+    kv_head_id = head_id // GROUP_HEAD
 
     q_offset = (
         batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
@@ -238,8 +256,8 @@ def _attn_fwd(
     # load scales
     qk_scale = sm_scale
     # qk_scale *= 1.44269504  # 1/log(2)
-    # load q: it will stay in SRAM throughout
-    q = tl.load(Q_block_ptr, mask=q_load_mask[:, None], other=0.0)
+    # load query: it will stay in SRAM throughout
+    query = tl.load(Q_block_ptr, mask=q_load_mask[:, None], other=0.0)
     # stage 1: off-band
     # For causal = True, STAGE = 3 and _attn_fwd_inner gets 1 as its STAGE
     # For causal = False, STAGE = 1, and _attn_fwd_inner gets 3 as its STAGE
@@ -248,7 +266,7 @@ def _attn_fwd(
             acc,
             l_i,
             m_i,
-            q,
+            query,
             K_block_ptr,
             V_block_ptr,
             mask_block_ptr,
@@ -277,7 +295,7 @@ def _attn_fwd(
             acc,
             l_i,
             m_i,
-            q,
+            query,
             K_block_ptr,
             V_block_ptr,
             mask_block_ptr,
@@ -299,7 +317,10 @@ def _attn_fwd(
             PRE_LOAD_V,
         )
     # epilogue
+    m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
+    m_ptrs = M + off_hz * Q_CTX + offs_m
+    tl.store(m_ptrs, m_i)
     tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
 
@@ -331,7 +352,12 @@ def scaled_dot_product_attention(
     else:
         sm_scale = scale
 
+    q_head_num = query.shape[1]
     kv_head_num = key.shape[1]
+    assert enable_gqa or q_head_num == kv_head_num, (
+        f"q_head_num {q_head_num} != kv_head_num {kv_head_num}, "
+        "enable_gqa must be True to support different head numbers."
+    )
 
     grid = lambda args: (
         triton.cdiv(query.shape[2], args["BLOCK_M"]),
@@ -354,6 +380,12 @@ def scaled_dot_product_attention(
         stride_attn_mask_q_seqlen = 1
         stride_attn_mask_kv_seqlen = 1
 
+    M = torch.empty(
+        (query.shape[0], query.shape[1], query.shape[2]),
+        device=query.device,
+        dtype=torch.float32,
+    )
+
     with torch_device_fn.device(query.device):
         _attn_fwd[grid](
             query,
@@ -361,6 +393,7 @@ def scaled_dot_product_attention(
             value,
             attn_mask,
             sm_scale,
+            M,
             o,  #
             query.stride(0),
             query.stride(1),
@@ -383,8 +416,9 @@ def scaled_dot_product_attention(
             o.stride(2),
             o.stride(3),  #
             query.shape[0],
-            query.shape[1],
+            q_head_num,
             kv_head_num,  #
+            q_head_num // kv_head_num,  # group_head
             query.shape[2],  #
             key.shape[2],  #
             HEAD_DIM_K,  #
