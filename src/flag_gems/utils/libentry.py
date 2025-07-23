@@ -18,8 +18,7 @@ import triton
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend import vendor_module
-
-from .code_cache import config_cache_dir
+from flag_gems.utils.code_cache import config_cache_dir
 
 logger = logging.getLogger(__name__)
 

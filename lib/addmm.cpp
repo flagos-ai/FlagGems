@@ -26,19 +26,22 @@ at::Tensor addmm(const at::Tensor &self,
   float beta_val = beta.to<float>();
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "addmm.py"), "addmm_kernel");
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "addmm.py"),
+                                     "addmm_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  unsigned int grid_x = ((mat1_sizes[0] + 127) / 128);
-  unsigned int grid_y = ((mat2_sizes[1] + 127) / 128);
+  int BLOCK_M = 32;
+  int BLOCK_N = 64;
+  unsigned int grid_x = ((mat1_sizes[0] + BLOCK_M - 1) / BLOCK_M);
+  unsigned int grid_y = ((mat2_sizes[1] + BLOCK_N - 1) / BLOCK_N);
   f(/* CUstream = */ raw_stream,
     /* grid_x = */ grid_x,
     /* grid_y = */ grid_y,
     /* grid_z = */ 1,
-    /* num_warps = */ 4,
-    /* num_stages = */ 1,
+    /* num_warps = */ 2,
+    /* num_stages = */ 5,
     mat1_c,
     mat2_c,
     self_c,
@@ -56,8 +59,8 @@ at::Tensor addmm(const at::Tensor &self,
     self_c.stride(1),
     out.stride(0),
     out.stride(1),
-    /* BLOCK_M = */ 128,
-    /* BLOCK_N = */ 128,
+    /* BLOCK_M = */ BLOCK_M,
+    /* BLOCK_N = */ BLOCK_N,
     /* BLOCK_K = */ 32);
   return out;
 }

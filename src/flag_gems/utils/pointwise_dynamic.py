@@ -8,6 +8,7 @@ from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
+from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
 from flag_gems.utils.shape_utils import (
     MemOverlap,
     all_c_contiguous,
@@ -20,8 +21,6 @@ from flag_gems.utils.shape_utils import (
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
-
-from .codegen_config_utils import CodeGenConfig, get_codegen_config
 
 
 # ------------------ Operation Description ---------------------------

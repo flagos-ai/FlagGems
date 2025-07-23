@@ -1,5 +1,5 @@
-from ..runtime import backend
-from ..runtime.backend.device import DeviceDetector
+from flag_gems.runtime import backend
+from flag_gems.runtime.backend.device import DeviceDetector
 
 """
     To be compatible with different versions of math libraries

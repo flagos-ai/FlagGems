@@ -80,7 +80,6 @@ mm:
     BLOCK_M: 16
     BLOCK_N: 32
     BLOCK_K: 32
-    SPLIT_K: 1
   num_stages: 3
   num_warps: 8
 softmax_non_inner:

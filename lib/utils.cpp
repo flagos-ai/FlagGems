@@ -35,6 +35,9 @@ std::filesystem::path get_triton_src_path() {
 std::filesystem::path get_flag_gems_src_path() {
   const static std::filesystem::path flag_gems_src_dir = []() {
     const char* flag_gems_dir = std::getenv("FLAGGEMS_SOURCE_DIR");
+    if (!flag_gems_dir) {
+      throw std::runtime_error("Environment variable FLAGGEMS_SOURCE_DIR not set");
+    }
     return std::filesystem::path(flag_gems_dir);
   }();
   return flag_gems_src_dir;
