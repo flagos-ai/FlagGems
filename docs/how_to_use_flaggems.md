@@ -50,7 +50,6 @@ The `flag_gems.enable(...)` function supports several optional parameters to giv
 | `unused`       | List[str] | Disable specific operators                                            |
 | `record`       | bool      | Log operator calls for debugging or profiling                         |
 | `path`         | str       | Log file path (only used when `record=True`)                          |
-| `forward_only` | bool      | Enable acceleration for forward pass only (recommended for inference) |
 
 ### Example : Selectively Disable Specific Operators
 
@@ -304,15 +303,15 @@ Here’s how to enable `flag_gems` in a distributed vLLM + DeepSeek deployment:
    ```
    import os
    if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
-   try:
-       import flag_gems
-       flag_gems.enable()
-       flag_gems.apply_gems_patches_to_vllm(verbose=True)
-       logger.info("Successfully enabled flag_gems as default ops implementation.")
-   except ImportError:
-       logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
-   except Exception as e:
-       logger.warning(f"Failed to enable 'flag_gems': {e}. Falling back to default implementation.")
+        try:
+            import flag_gems
+            flag_gems.enable()
+            flag_gems.apply_gems_patches_to_vllm(verbose=True)
+            logger.info("Successfully enabled flag_gems as default ops implementation.")
+        except ImportError:
+            logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
+        except Exception as e:
+            logger.warning(f"Failed to enable 'flag_gems': {e}. Falling back to default implementation.")
    ```
 
 3. **Set Environment Variables on All Nodes**
@@ -407,11 +406,12 @@ To use the C++ operator wrappers:
 2. **Verify successful installation** with the following snippet:
 
    ```
-   try:
-       from flag_gems import ext_ops  # noqa: F401
-       has_c_extension = True
-   except ImportError:
-       has_c_extension = False
+    try:
+        from flag_gems import c_operators
+        has_c_extension = True
+    except Exception as e:
+        c_operators = None  # avoid import error if c_operators is not available
+        has_c_extension = False
    ```
 
    If `has_c_extension` is `True`, then the C++ runtime path is available.

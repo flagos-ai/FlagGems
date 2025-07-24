@@ -20,15 +20,9 @@ from torch import Size
 from torch.nn import Parameter, init
 
 import flag_gems
+from flag_gems.config import use_c_extension
 
 logger = logging.getLogger(__name__)
-
-try:
-    from flag_gems import ext_ops  # noqa: F401
-
-    has_c_extension = True
-except ImportError:
-    has_c_extension = False
 
 __all__ = [
     "gems_rms_forward",
@@ -41,19 +35,21 @@ def gems_rms_forward(
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     add_residual = residual is not None
     if add_residual:
-        logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
-        if has_c_extension:
-            torch.ops.flag_gems.fused_add_rms_norm(x, residual, weight, eps)
+        if use_c_extension:
+            logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM(C EXTENSION)")
+            flag_gems.c_operators.fused_add_rms_norm(x, residual, weight, eps)
             return x, residual
         else:
+            logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
             return flag_gems.fused_add_rms_norm(
                 x, residual, list(weight.size()), weight, eps
             )
     else:
-        logger.debug("GEMS CUSTOM RMS_NORM")
-        if has_c_extension:
-            return torch.ops.flag_gems.rms_norm(x, weight, eps)
+        if use_c_extension:
+            logger.debug("GEMS CUSTOM RMS_NORM(C EXTENSION)")
+            return flag_gems.c_operators.rms_norm(x, weight, eps)
         else:
+            logger.debug("GEMS CUSTOM RMS_NORM")
             return flag_gems.rms_norm(x, list(weight.size()), weight, eps)
 
 
