@@ -22,15 +22,9 @@ import torch
 import torch.nn as nn
 
 import flag_gems
+from flag_gems.config import use_c_extension
 
 logger = logging.getLogger(__name__)
-
-try:
-    from flag_gems import ext_ops  # noqa: F401
-
-    has_c_extension = True
-except ImportError:
-    has_c_extension = False
 
 __all__ = [
     "gems_rope_forward",
@@ -48,18 +42,19 @@ def gems_rope_forward(
     rotary_interleaved: bool = False,
     inplace: bool = False,
 ) -> Union[torch.Tensor, torch.Tensor]:
-    logger.debug("GEMS CUSTOM ROPE FORWARD")
-    if has_c_extension:
+    if use_c_extension:
+        logger.debug("GEMS CUSTOM ROPE FORWARD(C EXTENSION)")
         if inplace:
-            torch.ops.flag_gems.rotary_embedding_inplace(
+            flag_gems.c_operators.rotary_embedding_inplace(
                 query, key, cos, sin, position_ids, rotary_interleaved
             )
             return query, key
         else:
-            return torch.ops.flag_gems.rotary_embedding(
+            return flag_gems.c_operators.rotary_embedding(
                 query, key, cos, sin, position_ids, rotary_interleaved
             )
     else:
+        logger.debug("GEMS CUSTOM ROPE FORWARD")
         # Fallback to pure python implementation
         return flag_gems.apply_rotary_pos_emb(
             query, key, cos, sin, position_ids, rotary_interleaved, inplace

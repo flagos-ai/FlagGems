@@ -3,10 +3,11 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.config import has_c_extension
 from flag_gems.modules import GemsRMSNorm
 from flag_gems.testing import assert_close
 
-from .module_test_util import has_c_extension, has_vllm, init_seed, is_torch_version_ge
+from .module_test_util import has_vllm, init_seed, is_torch_version_ge
 
 device = flag_gems.device
 
@@ -51,7 +52,7 @@ def test_gems_rmsnorm(shape, dtype):
     else:
         pytest.skip("Skipping vLLM RMSNorm comparison: vLLM not installed")
 
-    if has_c_extension():
+    if has_c_extension:
         torch.library.opcheck(
             torch.ops.flag_gems.rms_norm,
             (inp, target.weight.data, target.eps),
@@ -109,7 +110,7 @@ def test_gems_rmsnorm_with_residual(shape, dtype):
     else:
         pytest.skip("Skipping vLLM RMSNorm comparison: vLLM not installed")
 
-    if has_c_extension():
+    if has_c_extension:
         torch.library.opcheck(
             torch.ops.flag_gems.fused_add_rms_norm,
             (inp, residual, target.weight.data, target.eps),

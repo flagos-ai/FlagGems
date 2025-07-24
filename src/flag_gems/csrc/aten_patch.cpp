@@ -1,19 +1,33 @@
+#include "aten_patch.h"
 #include <pybind11/pybind11.h>
+#include "flag_gems/operators.h"
 #include "torch/python.h"
 
-#include "flag_gems/operators.h"
+std::vector<std::string> registered_ops;
+
+std::vector<std::string> get_registered_ops() {
+  return registered_ops;
+}
 
 // TODO: use pytorch's argparse utilities to generate CPython bindings, since it is more efficient than
 // bindings provided by torch library, since it is in a boxed fashion
 PYBIND11_MODULE(aten_patch, m) {
+  m.def("get_registered_ops", &get_registered_ops);
 }
 
+// NOTE: The custom operator registration below uses TORCH_LIBRARY_IMPL,
+// which executes immediately at module import time.
+// As a result, it is not currently possible to register ops conditionally,
+// e.g., based on a user-defined disabled op list.
+// If per-operator control is desired in the future,
+// this part should be refactored to delay registration until `init()`
+// or use a dynamic dispatch approach.
+//
+// Contributions are welcome to improve this behavior!
 namespace flag_gems {
-
 TORCH_LIBRARY_IMPL(aten, CUDA, m) {
-  // blas
-  m.impl("addmm", TORCH_FN(addmm));
-  m.impl("bmm", TORCH_FN(bmm));
-  m.impl("mm", TORCH_FN(mm_tensor));
+  REGISTER_AND_LOG("addmm", addmm);
+  REGISTER_AND_LOG("bmm", bmm);
+  REGISTER_AND_LOG("mm", mm_tensor);
 }
 }  // namespace flag_gems

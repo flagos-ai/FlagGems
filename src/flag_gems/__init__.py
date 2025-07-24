@@ -2,16 +2,9 @@ import logging
 
 import torch
 
-# C extensions
-try:
-    from flag_gems import ext_ops  # noqa: F401
-
-    has_c_extension = True
-except Exception:
-    has_c_extension = False
-
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
+from flag_gems.config import aten_patch_list
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
@@ -301,7 +294,9 @@ def enable(
             ("zeros", zeros),
             ("zeros_like", zeros_like),
         ),
-        user_unused_ops_list=[] if unused is None else unused,
+        user_unused_ops_list=list(
+            set([] if unused is None else unused) | set(aten_patch_list)
+        ),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)

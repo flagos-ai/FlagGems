@@ -14,15 +14,6 @@ def init_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
-def has_c_extension() -> bool:
-    try:
-        import flag_gems.ext_ops  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
 def is_torch_version_ge(min_ver: str) -> bool:
     return version.parse(torch.__version__) >= version.parse(min_ver)
 
