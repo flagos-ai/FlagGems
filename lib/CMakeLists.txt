@@ -4,6 +4,7 @@ add_library(operators
             utils.cpp
             add.cpp
             sum.cpp
+            max.cpp
             mm.cpp
             rms_norm.cpp
             fused_add_rms_norm.cpp
