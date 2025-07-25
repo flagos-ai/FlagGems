@@ -4,9 +4,8 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
-from .performance_utils import Benchmark, generate_tensor_input
+from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
+from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 
 class BinaryPointwiseBenchmark(Benchmark):

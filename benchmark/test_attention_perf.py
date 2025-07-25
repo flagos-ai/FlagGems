@@ -6,8 +6,12 @@ import torch
 import triton
 
 import flag_gems
-
-from .performance_utils import Benchmark, GenericBenchmark, SkipVersion, vendor_name
+from benchmark.performance_utils import (
+    Benchmark,
+    GenericBenchmark,
+    SkipVersion,
+    vendor_name,
+)
 
 
 class AttentionBenchmark(GenericBenchmark):

@@ -4,9 +4,8 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import FLOAT_DTYPES
-from .performance_utils import (
+from benchmark.attri_util import FLOAT_DTYPES
+from benchmark.performance_utils import (
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
     binary_input_fn,

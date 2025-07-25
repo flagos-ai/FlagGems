@@ -5,9 +5,8 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import BenchLevel
+from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
     generate_tensor_input,
