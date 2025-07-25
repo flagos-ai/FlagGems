@@ -123,9 +123,9 @@ void rotary_embedding_inplace(
 
   int64_t padded_head_dim = std::max(utils::next_power_of_2(head_dim), int64_t(16));
 
-  const TritonJITFunction& f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "rotary_embedding.py"),
-                                     "apply_rotary_pos_emb_inplace_kernel");
+  const TritonJITFunction& f = TritonJITFunction::getInstance(
+      std::string(utils::get_flag_gems_src_path() / "fused" / "rotary_embedding.py"),
+      "apply_rotary_pos_emb_inplace_kernel");
 
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
   c10::DeviceGuard guard(q.device());
@@ -227,9 +227,9 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
   auto q_embed_stride = q_embed.strides();
   auto k_embed_stride = k_embed.strides();
 
-  const TritonJITFunction& f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "rotary_embedding.py"),
-                                     "apply_rotary_pos_emb_kernel");
+  const TritonJITFunction& f = TritonJITFunction::getInstance(
+      std::string(utils::get_flag_gems_src_path() / "fused" / "rotary_embedding.py"),
+      "apply_rotary_pos_emb_kernel");
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
   c10::DeviceGuard guard(q.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

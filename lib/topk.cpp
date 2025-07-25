@@ -37,10 +37,10 @@ std::tuple<at::Tensor, at::Tensor> topk(
   at::Tensor stage2_out_idx =
       at::empty(out_shape, at::TensorOptions().dtype(torch::kLong).device(x.device()));
   const TritonJITFunction &f1 =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "topk.py"),
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "topk.py"),
                                      "topk_stage1_kernel");
   const TritonJITFunction &f2 =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "topk.py"),
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "topk.py"),
                                      "topk_stage2_kernel");
   c10::DeviceGuard guard(stage1_out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

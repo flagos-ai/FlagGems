@@ -30,7 +30,7 @@ at::Tensor nonzero(const at::Tensor &inp) {
       at::empty({num_nonzeros, inp_ndim}, at::TensorOptions().dtype(torch::kInt64).device(inp_ctg.device()));
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "nonzero.py"),
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "nonzero.py"),
                                      "nonzero_kernel");
 
   c10::DeviceGuard guard(out.device());
