@@ -410,6 +410,11 @@ def log2_strategy(key: Union[int, float]) -> float:
     return math.ceil(math.log2(key))
 
 
+@LibTuner.register_strategy("align32")
+def align32_strategy(key: Union[int, float]) -> int:
+    return math.ceil(key / 32)
+
+
 @LibTuner.register_policy("default")
 def default_policy(
     bench_fn: triton.runtime.KernelInterface,
