@@ -1,3 +1,4 @@
+import os
 import threading
 from contextlib import contextmanager
 
@@ -348,3 +349,60 @@ def test_hash_changes_when_dependency_modified():
         f"Expected different hashes when sub-function changes, "
         f"but got same hash: {original_hash}"
     )
+
+
+def test_libcache_vllm_signal_scenario():
+    import multiprocessing
+    import signal
+    import sqlite3
+    import time
+
+    def child_process():
+        import time
+
+        import triton
+
+        from flag_gems.utils.libentry import libcache
+
+        cache = libcache["test_vllm_operator"]
+        cache[(128, 256, "torch.float32")] = triton.Config(
+            {"TILE_SIZE": 64}, num_warps=4
+        )
+        cache[(256, 512, "torch.float32")] = triton.Config(
+            {"TILE_SIZE": 128}, num_warps=8
+        )
+        while True:
+            time.sleep(0.1)
+
+    from flag_gems.utils.code_cache import config_cache_dir
+    from flag_gems.utils.libentry import major_version, minor_version
+
+    cache_path = config_cache_dir() / f"TunedConfig_{major_version}_{minor_version}.db"
+
+    # Start child process
+    process = multiprocessing.Process(target=child_process)
+    process.start()
+    time.sleep(1)
+    os.kill(process.pid, signal.SIGINT)
+    process.join(timeout=5)
+
+    cache_saved = False
+    if cache_path.exists():
+        conn = sqlite3.connect(cache_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM test_vllm_operator")
+            count = cursor.fetchone()[0]
+            if count > 0:
+                cache_saved = True
+            cursor.execute("DELETE FROM test_vllm_operator")
+            conn.commit()
+            conn.close()
+        except sqlite3.OperationalError:
+            pass
+
+    assert cache_saved, f"Test documented current behavior: cache_saved={cache_saved}"
+
+    if process.is_alive():
+        os.kill(process.pid, signal.SIGKILL)
+        process.join()
