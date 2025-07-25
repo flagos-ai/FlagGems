@@ -44,4 +44,5 @@ jobs:
         shell: bash
         run: |
           cd build/cpython-311/ctests
+          export FLAGGEMS_SOURCE_DIR=$(python -c "import os;import flag_gems;print(os.path.dirname(flag_gems.__file__))")
           ctest -V

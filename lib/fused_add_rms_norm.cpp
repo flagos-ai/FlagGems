@@ -29,9 +29,9 @@ void fused_add_rms_norm(at::Tensor& input,         // [..., hidden_size]
   auto input_strides = input.strides();
   auto residual_strides = residual.strides();
 
-  const TritonJITFunction& f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "fused_add_rms_norm.py"),
-                                     "fused_add_rms_norm_kernel");
+  const TritonJITFunction& f = TritonJITFunction::getInstance(
+      std::string(utils::get_flag_gems_src_path() / "fused" / "fused_add_rms_norm.py"),
+      "fused_add_rms_norm_kernel");
 
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
   c10::DeviceGuard guard(input.device());
