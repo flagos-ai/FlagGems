@@ -5,10 +5,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.utils import shape_utils
-
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Benchmark,
     Config,
     GenericBenchmark,
@@ -17,6 +15,7 @@ from .performance_utils import (
     unary_input_fn,
     vendor_name,
 )
+from flag_gems.utils import shape_utils
 
 
 class UnaryReductionBenchmark(Benchmark):

@@ -1,9 +1,9 @@
 import pytest
 import torch
 
-from .attri_util import FLOAT_DTYPES, INT_DTYPES
-from .conftest import BenchLevel, Config
-from .performance_utils import (
+from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES
+from benchmark.conftest import BenchLevel, Config
+from benchmark.performance_utils import (
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
     generate_tensor_input,

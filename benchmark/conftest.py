@@ -6,9 +6,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
-
-from .attri_util import (
+from benchmark.attri_util import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
     DEFAULT_ITER_COUNT,
@@ -19,6 +17,7 @@ from .attri_util import (
     OperationAttribute,
     get_recommended_shapes,
 )
+from flag_gems.runtime import torch_device_fn
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name

@@ -5,15 +5,14 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.utils import shape_utils
-
-from .attri_util import FLOAT_DTYPES
-from .performance_utils import (
+from benchmark.attri_util import FLOAT_DTYPES
+from benchmark.performance_utils import (
     GenericBenchmark,
     GenericBenchmark2DOnly,
     generate_tensor_input,
     vendor_name,
 )
+from flag_gems.utils import shape_utils
 
 
 class TensorSelectBenchmark(GenericBenchmark2DOnly):

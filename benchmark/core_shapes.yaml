@@ -1,11 +1,3 @@
-outer:
-  shapes:
-    - [384, 384]
-    - [1024, 1024]
-    - [4096, 4096]
-    - [8192, 8192]
-    - [10240, 10240] #from perf
-
 single_dim_shapes: &single_dim_shapes
   shapes:
     - [64]
@@ -55,12 +47,20 @@ quantile:
 
 BlasBenchmark:
   shapes:
+    - [2, 384, 384, 384]
     - [2, 4096, 4096, 4096]
-    - [16, 384, 384, 384]
     - [16, 1024, 1024, 1024]
     - [16, 2048, 2048, 2048]
     - [16, 4096, 4096, 4096]
-  shape_desc: "B, M, N, K" # shapes are defined as (B, M, N, K)
+  shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
+
+MvAndOuterBenchmark:
+  shapes:
+    - [384, 384]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [8192, 8192]
+    - [10240, 10240]  #from perf
 
 # NORM shapes can be either 3D or 4D:
 # - 3D shapes are represented as [batch_size, channels, hidden_size]

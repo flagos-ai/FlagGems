@@ -1,8 +1,8 @@
 import pytest
 import torch
 
-from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark, unary_input_fn
+from benchmark.attri_util import FLOAT_DTYPES
+from benchmark.performance_utils import GenericBenchmark, unary_input_fn
 
 
 def normal_input_fn(shape, cur_dtype, device):
