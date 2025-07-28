@@ -1082,9 +1082,15 @@ def load_from_kvcache(
     return bK, bV
 
 
-# @libentry()
+@libentry()
 @triton.jit(
     do_not_specialize=[
+        "q_batch_stride",
+        "k_batch_stride",
+        "v_batch_stride",
+        "o_batch_stride",
+        "b",
+        "bk",
         "seqlen_q",
         "seqlen_k",
         "seqlen_q_rounded",
@@ -1118,8 +1124,8 @@ def flash_varlen_fwd_kernel(
     is_seqused_k: tl.constexpr,
     seqused_k_ptr,
     # sizes
-    b: tl.constexpr,
-    bk: tl.constexpr,
+    b,
+    bk,
     h: tl.constexpr,
     hk: tl.constexpr,
     h_hk_ratio: tl.constexpr,
