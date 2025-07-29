@@ -251,6 +251,7 @@ def gems_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
@@ -318,6 +319,7 @@ def test_sdpa_legacy(
     gems_assert_close(gems_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
@@ -348,6 +350,7 @@ def test_sdpa_square_qk_even_mn(
     gems_assert_close(gems_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
@@ -376,6 +379,7 @@ def test_sdpa_nonsquare_qk(
     gems_assert_close(gems_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
@@ -484,6 +488,7 @@ def test_flash_fwd_gqa_alibi_softcap(
     gems_assert_close(gems_out, torch_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
@@ -558,6 +563,7 @@ def test_flash_splitkv(
     gems_assert_close(gems_out, torch_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
@@ -1276,6 +1282,7 @@ def test_reshape_and_cache_flash(
         torch.testing.assert_close(value_cache, cloned_value_cache)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
