@@ -53,8 +53,7 @@ def SkipVersion(module_name, skip_pattern):
         raise ValueError("Cannot parse version number from skip_pattern.")
 
     try:
-        module = importlib.import_module(module_name)
-        version = module.__version__
+        version = importlib.metadata.version(module_name)
         major, minor = map(int, version.split(".")[:2])
     except Exception:
         raise ImportError(f"Cannot determine version of module: {module_name}")
