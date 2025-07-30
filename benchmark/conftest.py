@@ -14,6 +14,7 @@ from benchmark.attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
     BenchLevel,
+    BenchMode,
     OperationAttribute,
     get_recommended_shapes,
 )
@@ -25,7 +26,7 @@ vendor_name = flag_gems.vendor_name
 
 class BenchConfig:
     def __init__(self):
-        self.cpu_mode = False
+        self.mode = BenchMode.KERNEL
         self.bench_level = BenchLevel.COMPREHENSIVE
         self.warm_up = DEFAULT_WARMUP_COUNT
         self.repetition = DEFAULT_ITER_COUNT
@@ -50,12 +51,12 @@ def pytest_addoption(parser):
             "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
         ),  # TODO: fix pytest-* common --mode args
         action="store",
-        default=device,
+        default="kernel",
         required=False,
-        choices=[device, "cpu"],
+        choices=["kernel", "operator", "wrapper"],
         help=(
-            "Specify how to measure latency, "
-            f"'cpu' for CPU-side measurement or {device} for GPU-side measurement."
+            "Specify how to measure latency, 'kernel' for device kernel, ",
+            "'operator' for end2end operator or 'wrapper' for runtime wrapper.",
         ),
     )
 
@@ -132,7 +133,7 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     global Config  # noqa: F824
     mode_value = config.getoption("--mode")
-    Config.cpu_mode = mode_value == "cpu"
+    Config.mode = BenchMode(mode_value)
 
     Config.query = config.getoption("--query")
 

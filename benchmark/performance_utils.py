@@ -22,6 +22,7 @@ from .attri_util import (
     BenchLevel,
     BenchmarkMetrics,
     BenchmarkResult,
+    BenchMode,
     OperationAttribute,
     check_metric_dependencies,
 )
@@ -242,7 +243,7 @@ class Benchmark:
 
     def init_user_config(self):
         # TODO: device setting
-        self.cpu_mode = Config.cpu_mode
+        self.mode = Config.mode
         self.set_dtypes(Config.user_desired_dtypes)
         self.set_metrics(Config.user_desired_metrics)
         if vendor_name == "kunlunxin":
@@ -265,7 +266,7 @@ class Benchmark:
             fn = lambda: torch.autograd.grad(
                 (out,), xs, grad_outputs=(dout,), retain_graph=True
             )
-        if Config.cpu_mode:
+        if Config.mode == BenchMode.OPERATOR:
             for i in range(Config.warm_up):
                 fn()
             torch_device_fn.synchronize()
@@ -275,7 +276,7 @@ class Benchmark:
             torch_device_fn.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
-        else:
+        elif Config.mode == BenchMode.KERNEL:
             do_bench = (
                 triton.musa_testing.do_bench
                 if device == "musa"
@@ -288,6 +289,17 @@ class Benchmark:
                 return_mode="median",
                 grad_to_none=xs if self.is_backward else None,
             )
+        elif Config.mode == BenchMode.WRAPPER:
+            for i in range(Config.warm_up):
+                fn()
+            torch_device_fn.synchronize()
+            start = time.time()
+            for i in range(Config.repetition):
+                fn()
+            end = time.time()
+            latency = (end - start) / Config.repetition * 1000
+        else:
+            raise ValueError("Undefined Value of Benchmark Mode.")
         # average latency in ms
         return latency
 
@@ -404,7 +416,7 @@ class Benchmark:
                 level=Config.bench_level.value,
                 op_name=self.op_name,
                 dtype=str(dtype),
-                mode="cpu" if Config.cpu_mode else device,
+                mode=Config.mode.value,
                 result=metrics,
             )
             print(result)

@@ -138,6 +138,12 @@ def get_recommended_shapes(
     return _shapes_sort(DEFAULT_SHAPES)
 
 
+class BenchMode(Enum):
+    KERNEL = "kernel"
+    OPERATOR = "operator"
+    WRAPPER = "wrapper"
+
+
 class BenchLevel(Enum):
     COMPREHENSIVE = "comprehensive"
     CORE = "core"
