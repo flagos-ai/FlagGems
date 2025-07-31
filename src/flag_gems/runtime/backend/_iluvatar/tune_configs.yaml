@@ -3113,6 +3113,10 @@ var_mean:
   - 16
 conv2d_forward:
 - META:
+    BLOCK_NI_HO_WO: 16
+    BLOCK_CO: 16
+    BLOCK_CI: 16
+- META:
     BLOCK_NI_HO_WO: 32
     BLOCK_CO: 32
     BLOCK_CI: 32
