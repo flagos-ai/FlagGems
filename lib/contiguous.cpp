@@ -33,7 +33,7 @@ at::Tensor contiguous(const at::Tensor &self, at::MemoryFormat memory_format) {
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   c10::DeviceGuard guard(out.device());
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  f(stream,
+  f(raw_stream,
     num_blocks,
     1,
     1,
