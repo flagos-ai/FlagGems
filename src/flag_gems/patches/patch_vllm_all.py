@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 
 import torch
 
+import flag_gems
 from flag_gems.patches.patch_util import patch_module_method
 
 
@@ -268,7 +269,14 @@ def custom_gems_flash_attention_impl_forwad(
     # return output
 
 
+def custom_sliu_and_mul(out: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
+    d = input.size(-1) // 2
+    x, y = input.split(d, dim=-1)
+    return flag_gems.silu_and_mul_out(x, y, out)
+
+
 def apply_gems_patches_to_vllm(verbose=True):
+    import vllm  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
@@ -293,3 +301,4 @@ def apply_gems_patches_to_vllm(verbose=True):
     patch_module_method(
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forwad, verbose
     )
+    patch_module_method(torch.ops._C, "silu_and_mul", custom_sliu_and_mul, verbose)

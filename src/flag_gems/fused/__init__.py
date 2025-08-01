@@ -8,7 +8,7 @@ from flag_gems.fused.outer import outer
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
 from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
-from flag_gems.fused.silu_and_mul import silu_and_mul
+from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.weight_norm import weight_norm
 
@@ -17,6 +17,7 @@ __all__ = [
     "skip_layer_norm",
     "fused_add_rms_norm",
     "silu_and_mul",
+    "silu_and_mul_out",
     "gelu_and_mul",
     "cross_entropy_loss",
     "outer",
