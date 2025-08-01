@@ -143,7 +143,7 @@ def enable(
             ("gt.Scalar", gt_scalar),
             ("gt.Tensor", gt),
             ("hstack", hstack),
-            ("index.Tensor", index),
+            # ("index.Tensor", index),
             ("index_add", index_add),
             ("index_put", index_put),
             ("index_put_", index_put_),
