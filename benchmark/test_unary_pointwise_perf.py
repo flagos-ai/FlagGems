@@ -53,6 +53,7 @@ forward_operations = [
     ),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
+    ("exp2", torch.exp2, FLOAT_DTYPES),
     ("neg", torch.neg, FLOAT_DTYPES),
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
