@@ -73,7 +73,7 @@ using namespace triton_jit;
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
 
-  f(stream,
+  f(raw_stream,
     num_blocks,
     1,
     1,
@@ -115,9 +115,9 @@ at::Tensor max(const at::Tensor &self) {
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   // def max_kernel_1(inp,mid,M,BLOCK_SIZE: tl.constexpr)
-  max_kernel_1(stream, mid_size, 1, 1, num_warps, num_stages, self, mid, M, block_size);
+  max_kernel_1(raw_stream, mid_size, 1, 1, num_warps, num_stages, self, mid, M, block_size);
   // def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-  max_kernel_2(stream, 1, 1, 1, num_warps, num_stages, mid, out, mid_size, block_mid);
+  max_kernel_2(raw_stream, 1, 1, 1, num_warps, num_stages, mid, out, mid_size, block_mid);
   return out;
 }
 }  // namespace flag_gems

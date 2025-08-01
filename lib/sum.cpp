@@ -86,7 +86,7 @@ at::Tensor sum_dim(const at::Tensor &self,
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  f(stream,
+  f(raw_stream,
     num_blocks,
     1,
     1,
