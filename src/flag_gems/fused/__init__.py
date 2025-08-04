@@ -25,6 +25,7 @@ __all__ = [
     "weight_norm",
     "concat_and_cache_mla",
     "reshape_and_cache",
+    "moe_align_block_size",
     "reshape_and_cache_flash",
     "flash_mla",
 ]
