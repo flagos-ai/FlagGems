@@ -63,23 +63,27 @@ if major_version == 2:
     setattr(triton.Config, "all_kwargs", all_kwargs)
 
 FLAGGEMS_ENABLE_DISK_CACHE = os.getenv("FLAGGEMS_ENABLE_DISK_CACHE", "1") == "1"
+FLAGGEMS_DUMP_DISK_INTERVAL = float(os.getenv("FLAGGEMS_DUMP_DISK_INTERVAL", "5"))
 
 
 class LibCache:
     _instance = None
 
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(LibCache, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, interval: float):
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
         self.cache_path = (
             config_cache_dir() / f"TunedConfig_{major_version}_{minor_version}.db"
         )
         self.preload()
+        thread = threading.Timer(interval, self.store)
+        thread.daemon = True
+        thread.start()
         weakref.finalize(self, self.store)
 
         # For vllm
@@ -147,7 +151,7 @@ class LibCache:
             print(f"[CACHE STORE ERROR]: {e}")
 
 
-libcache = LibCache()
+libcache = LibCache(FLAGGEMS_DUMP_DISK_INTERVAL)
 
 
 class LibTuner(triton.runtime.Autotuner):
