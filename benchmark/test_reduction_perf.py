@@ -79,10 +79,6 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if vendor_name == "metax" and op_name in [
-        "var_mean",
-    ]:
-        pytest.skip("TODOFIX: CORE DUMPED")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
