@@ -30,6 +30,7 @@ ATTRS = {
     (3, 1): 4,
     (3, 2): 4,
     (3, 3): 8,
+    (3, 4): 4,
 }
 # Set (3, 2) to 9 for cambricon (special Autotune config)
 if vendor_module.vendor_info.vendor_name == "cambricon":
@@ -592,7 +593,7 @@ class LibEntry(triton.KernelInterface):
                 k_args[param_names[i]] = arg
                 dns_args.append(arg)
             else:
-                if major_version == 3 and minor_version == 3:
+                if major_version == 3 and 3 <= minor_version <= 4:
                     k_args[param_names[i]] = arg
                 const_args.append(arg)
         for p in self.jit_function.params[len(args) :]:
@@ -605,7 +606,7 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
-                if major_version == 3 and minor_version == 3:
+                if major_version == 3 and 3 <= minor_version <= 4:
                     k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
@@ -677,7 +678,7 @@ class LibEntry(triton.KernelInterface):
             grid = grid(meta)
         grid = grid + (1, 1)
 
-        if major_version == 3 and minor_version == 3:
+        if major_version == 3 and 3 <= minor_version <= 4:
             all_args = []
             missing_keys = []
             for key in list(self.signature.parameters.keys()):
