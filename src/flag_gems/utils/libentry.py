@@ -410,12 +410,12 @@ def default_strategy(key: Any) -> Any:
 
 @LibTuner.register_strategy("log")
 def log2_strategy(key: Union[int, float]) -> float:
-    return math.ceil(math.log2(key))
+    return 2 ** math.ceil(math.log2(key))
 
 
 @LibTuner.register_strategy("align32")
 def align32_strategy(key: Union[int, float]) -> int:
-    return math.ceil(key / 32)
+    return math.ceil(key / 32) * 32
 
 
 @LibTuner.register_policy("default")
