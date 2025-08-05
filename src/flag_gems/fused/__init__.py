@@ -4,6 +4,10 @@ from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.instance_norm import instance_norm
+from flag_gems.fused.moe_align_block_size import (
+    moe_align_block_size,
+    moe_align_block_size_triton,
+)
 from flag_gems.fused.outer import outer
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
@@ -26,6 +30,7 @@ __all__ = [
     "concat_and_cache_mla",
     "reshape_and_cache",
     "moe_align_block_size",
+    "moe_align_block_size_triton",
     "reshape_and_cache_flash",
     "flash_mla",
 ]
