@@ -13,6 +13,7 @@ from collections import OrderedDict
 from itertools import starmap
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union
 
+import torch
 import triton
 
 from flag_gems import runtime
@@ -78,9 +79,13 @@ class LibCache:
     def __init__(self, interval: float):
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
-        self.cache_path = (
-            config_cache_dir() / f"TunedConfig_{major_version}_{minor_version}.db"
+        cache_file_name = (
+            f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
+            if vendor_module.vendor_info.vendor_name == "nvidia"
+            else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
         )
+
+        self.cache_path = config_cache_dir() / cache_file_name
         self.preload()
         thread = threading.Timer(interval, self.store)
         thread.daemon = True
