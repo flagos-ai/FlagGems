@@ -273,7 +273,7 @@ def custom_gems_flash_attention_impl_forwad(
     # return output
 
 
-def custom_sliu_and_mul(out: torch.Tensor, input: torch.Tensor):
+def custom_silu_and_mul(out: torch.Tensor, input: torch.Tensor):
     d = input.size(-1) // 2
     x, y = input.split(d, dim=-1)
     flag_gems.silu_and_mul_out(x, y, out)
@@ -323,7 +323,7 @@ def apply_gems_patches_to_vllm(verbose=True):
     patch_module_method(
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forwad, verbose
     )
-    patch_vllm_C_lib("silu_and_mul", custom_sliu_and_mul, "CUDA", verbose)
+    patch_vllm_C_lib("silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
     patch_vllm_moe_C_lib(
         "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
     )

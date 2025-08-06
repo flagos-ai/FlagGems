@@ -16,13 +16,13 @@ def round_up(x: int, y: int) -> int:
     return ((x + y - 1) // y) * y
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["numel", "tokens_per_thread"])
 def moe_align_block_size_stage1(
     topk_ids_ptr,
     tokens_cnts_ptr,
     num_experts: tl.constexpr,
-    numel: tl.constexpr,
-    tokens_per_thread: tl.constexpr,
+    numel,
+    tokens_per_thread,
 ):
     pid = tl.program_id(0)
 
@@ -68,7 +68,7 @@ def moe_align_block_size_stage3(
     tl.store(total_tokens_post_pad_ptr, last_cumsum)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["numel", "tokens_per_thread"])
 def moe_align_block_size_stage4(
     topk_ids_ptr,
     sorted_token_ids_ptr,
@@ -77,8 +77,8 @@ def moe_align_block_size_stage4(
     cumsum_ptr,
     num_experts: tl.constexpr,
     block_size: tl.constexpr,
-    numel: tl.constexpr,
-    tokens_per_thread: tl.constexpr,
+    numel,
+    tokens_per_thread,
 ):
     pid = tl.program_id(0)
     start_idx = tl.load(cumsum_ptr + pid)
