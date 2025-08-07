@@ -28,7 +28,7 @@ If you do not want build isolation (often in the case with editable installation
 Example command:
 
 ```shell
-pip install scikit-build-core>=0.11 pybind
+pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
 ```
 
 FlagGems can be installed as either a pure python package or a package with C extensions. By default, the C extensions are not built, as this is still an experimental feature.

@@ -48,7 +48,6 @@ FlagGems introduces `LibEntry`, which independently manages the kernel cache and
 ### C++ Runtime
 
 FlagGems can be installed either as a pure Python package or as a package with C++ extensions. The C++ runtime is designed to address the overhead of the Python runtime and improve end-to-end performance.
-For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_extensions.md).
 
 ## Changelog
 

@@ -41,7 +41,7 @@ FlagGems 构造了 `LibEntry` 独立维护 kernel cache, 绕过 `Autotuner`、`H
 
 ### C++ 运行时
 
-FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的包安装。C++ 运行时旨在解决 python 运行时开销昂贵的问题, 提高整个端到端的性能，详细信息参考 [c++ extensions](docs/build_flaggems_with_c_extensions.md)
+FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的包安装。C++ 运行时旨在解决 python 运行时开销昂贵的问题, 提高整个端到端的性能。
 
 ## 更新日志
 
