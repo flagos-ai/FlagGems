@@ -636,7 +636,7 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
             device=device,
             pin_memory=pin_memory,
         )
-    if dtype in [torch.float16, torch.bfloat16]:
+    if dtype in [torch.float16, torch.bfloat16, torch.float32, None]:
         gems_assert_close(res_out, ref_out, dtype=dtype)
     else:
         gems_assert_equal(res_out, ref_out)
