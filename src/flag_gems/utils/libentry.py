@@ -24,18 +24,6 @@ from flag_gems.utils.code_cache import config_cache_dir
 logger = logging.getLogger(__name__)
 
 DEVICE_COUNT = runtime.device.device_count
-ATTRS = {
-    (2, 2): 5,
-    (2, 3): 5,
-    (3, 0): 4,
-    (3, 1): 4,
-    (3, 2): 4,
-    (3, 3): 8,
-    (3, 4): 4,
-}
-# Set (3, 2) to 9 for cambricon (special Autotune config)
-if vendor_module.vendor_info.vendor_name == "cambricon":
-    ATTRS[(3, 2)] = 9
 
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
@@ -111,6 +99,7 @@ class LibCache:
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
         )
         tables = [row[0] for row in c.fetchall()]
+        signature: inspect.Signature = inspect.signature(triton.Config)
         for operator in tables:
             c.execute(
                 f"CREATE TABLE IF NOT EXISTS {operator} (key TEXT PRIMARY KEY, config TEXT)"
@@ -125,11 +114,11 @@ class LibCache:
                 cfg_ls = [item.split(": ") for item in config_str.split(", ")]
                 kwargs = {}
                 numargs = {}
-                attrs = ATTRS[(major_version, minor_version)]
-                for k, v in cfg_ls[:-attrs]:
-                    kwargs[k] = eval(v)
-                for k, v in cfg_ls[-attrs:]:
-                    numargs[k] = eval(v)
+                for k, v in cfg_ls:
+                    if k in signature.parameters:
+                        numargs[k] = eval(v)
+                    else:
+                        kwargs[k] = eval(v)
                 # In Triton v2.2 and v2.3, enable_persistent is stored in config cache
                 # but not defined as initialization parameter
                 numargs.pop("enable_persistent", None)
