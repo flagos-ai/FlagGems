@@ -20,9 +20,9 @@ docs_dir: docs
 nav:
   - Introduction: index.md
   - Get Start: get_start_with_flaggems.md
+  - Installation: installation.md
   - Pointwise Dynamic: pointwise_dynamic.md
   - Python Tests: pytest_in_flaggems.md
-  - C++ Extension : build_flaggems_with_c_extensions.md
   - C++ Tests: ctest_in_flaggems.md
   - Operator List: operator_list.md
   - Performance: performance_and_benchmark.md

@@ -401,7 +401,7 @@ To address this, we provide a C++ runtime solution that encapsulates the operato
 
 To use the C++ operator wrappers:
 
-1. **Follow the [C++ Extension Build Guide](https://github.com/FlagOpen/FlagGems/blob/master/docs/build_flaggems_with_c_extensions.md)** to compile and install the C++ version of `flag_gems`.
+1. **Follow the [Installation](https://github.com/FlagOpen/FlagGems/blob/master/docs/installation.md)** to compile and install the C++ version of `flag_gems`.
 
 2. **Verify successful installation** with the following snippet:
 
