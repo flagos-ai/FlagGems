@@ -39,6 +39,8 @@ else:
 
 
 def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+    if dtype is None:
+        dtype = torch.float32
     assert res.dtype == dtype
     ref = ref.to(dtype)
     rtol = RESOLUTION[dtype]
