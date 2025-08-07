@@ -140,6 +140,7 @@ def enable(
             ("gelu_", gelu_),
             ("gelu_backward", gelu_backward),
             ("glu", glu),
+            ("glu_backward", glu_backward),
             ("gt.Scalar", gt_scalar),
             ("gt.Tensor", gt),
             ("hstack", hstack),
