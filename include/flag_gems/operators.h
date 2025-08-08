@@ -3,6 +3,9 @@
 #include "torch/torch.h"
 
 namespace flag_gems {
+at::Tensor &exponential_(at::Tensor &self,
+                         double lambd = 1.0,
+                         c10::optional<at::Generator> gen = c10::nullopt);
 at::Tensor zeros(at::IntArrayRef size,
                  c10::optional<at::ScalarType> dtype = ::std::nullopt,
                  c10::optional<at::Layout> layout = ::std::nullopt,
