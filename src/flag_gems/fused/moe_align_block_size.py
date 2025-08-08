@@ -151,7 +151,7 @@ def moe_align_block_size(
     num_experts: int,
     expert_map: Optional[torch.Tensor] = None,
     pad_sorted_ids: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
     logger.debug("GEMS MOE ALIGN BLOCK SIZE")
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
     if pad_sorted_ids:
