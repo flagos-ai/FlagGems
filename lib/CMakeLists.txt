@@ -18,6 +18,7 @@ add_library(operators
             bmm.cpp
             embedding.cpp
             argmax.cpp
+	    exponential_.cpp
             fill.cpp)
 target_include_directories(operators
   PUBLIC
