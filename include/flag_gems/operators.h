@@ -69,4 +69,11 @@ at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
 at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
 
 at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
+
+at::Tensor softmax(const at::Tensor &input, int64_t dim, bool half_to_float);
+
+at::Tensor softmax_backward(const at::Tensor &grad_output,
+                            const at::Tensor &output,
+                            int64_t dim,
+                            at::ScalarType input_dtype);
 }  // namespace flag_gems
