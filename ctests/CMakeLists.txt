@@ -66,3 +66,8 @@ add_executable(test_triton_fill  test_triton_fill.cpp)
 target_link_libraries(test_triton_fill
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_fill COMMAND test_triton_fill)
+
+add_executable(test_triton_softmax test_triton_softmax.cpp)
+target_link_libraries(test_triton_softmax
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main ${Python_LIBRARIES} pybind11::embed)
+add_test(NAME test_triton_softmax COMMAND test_triton_softmax)

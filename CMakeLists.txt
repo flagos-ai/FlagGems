@@ -47,7 +47,6 @@ find_package(CUDAToolkit REQUIRED)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 # torch
 find_package(Torch MODULE REQUIRED) # This is the FindTorch.cmake
-
 # dependencies: json
 if(FLAGGEMS_USE_EXTERNAL_TRITON_JIT)
   find_package(TritonJIT 0.1.0 CONFIG REQUIRED)
