@@ -290,6 +290,7 @@ def test_accuracy_glu(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_glu_backward(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
 
     for dim in range(len(shape)):
         if shape[dim] == 0 or shape[dim] % 2 != 0:
@@ -298,8 +299,7 @@ def test_accuracy_glu_backward(shape, dtype):
         out_shape[dim] //= 2
         res_out = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
 
-        ref_inp = to_reference(res_inp)
-        ref_out = to_reference(res_out)
+        ref_out = to_reference(res_out, True)
 
         ref_in_grad = torch.ops.aten.glu_backward(ref_out, ref_inp, dim=dim)
         with flag_gems.use_gems():
