@@ -162,6 +162,7 @@
 - slice_scatter
 - softmax
 - sort
+- sqrt
 - stack
 - sub
 - sub\_
