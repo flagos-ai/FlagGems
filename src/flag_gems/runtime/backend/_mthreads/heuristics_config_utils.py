@@ -311,9 +311,15 @@ HEURISTICS_CONFIGS = {
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
     },
-    "mha_varlen_fwd": {
+    "mha_varlen_prefill": {
         "BLOCK_M": lambda args: 128,
         "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "mha_varlen_decode": {
+        "BLOCK_M": lambda args: 16,
+        "BLOCK_N": lambda args: 64,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
     },

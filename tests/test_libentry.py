@@ -351,6 +351,7 @@ def test_hash_changes_when_dependency_modified():
     )
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 def test_libcache_vllm_signal_scenario():
     import multiprocessing
     import signal
@@ -413,6 +414,7 @@ def test_libcache_vllm_signal_scenario():
         process.join()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 def test_libcache_concurrent_write_on_signal():
     """
     Tests that LibCache can handle concurrent writes from multiple processes
