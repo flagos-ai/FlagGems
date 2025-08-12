@@ -247,6 +247,8 @@ def enable(
             ("resolve_conj", resolve_conj),
             ("resolve_neg", resolve_neg),
             ("rms_norm", rms_norm),
+            ("sqrt", sqrt),
+            ("sqrt_", sqrt_),
             ("rsqrt", rsqrt),
             ("rsqrt_", rsqrt_),
             ("scatter.reduce", scatter),

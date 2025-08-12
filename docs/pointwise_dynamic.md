@@ -112,7 +112,7 @@ add_func(a, b, 0.2)
 
 ### Ouput dtypes
 
-For pointwise operatos to allocate outputs with correct dtype, `promotion_methods` is required. Since the output dtype may be depedent on the input dtypes with some rules, specifying the rule is more expressive than providing output dtypes directly.
+For pointwise operators to allocate outputs with correct dtype, `promotion_methods` is required. Since the output dtype may be depedent on the input dtypes with some rules, specifying the rule is more expressive than providing output dtypes directly.
 
 `promotion_methods` is a list of tuples (one per output), each of which consists of several arg indices and a promotion method. An arg index (an integer) is used to indicate the position of the argument, which is dependent by the promotion method. The promotion method (an enum or string) denotes the method of type promotion.
 
