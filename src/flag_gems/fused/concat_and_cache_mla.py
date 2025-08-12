@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -140,7 +141,7 @@ class ConcatAndCacheMla(torch.autograd.Function):
         assert (
             kv_cache.size(2) == kv_lora_rank + pe_dim
         ), "kv_cache's last dimension must match kv_lora_rank + pe_dim"
-        with torch.cuda.device(device):
+        with torch_device_fn.device(device):
             concat_and_cache_mla_kernel[grid](
                 kv_c,
                 k_pe,

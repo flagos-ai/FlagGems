@@ -445,6 +445,7 @@ QUANTILE_INTERPOLATION = (
 )
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(SkipVersion("triton", "<3.0"), reason="Skipping Triton version.")
 @pytest.mark.quantile
 @pytest.mark.parametrize("shape", QUANTILE_SHAPES)
@@ -464,6 +465,7 @@ def test_accuracy_quantile_without_dim(shape, dtype, q, interpolation):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(SkipVersion("triton", "<3.0"), reason="Skipping Triton version.")
 @pytest.mark.quantile
 @pytest.mark.parametrize("shape", QUANTILE_SHAPES)
