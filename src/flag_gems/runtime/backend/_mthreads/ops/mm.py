@@ -10,68 +10,9 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-from .utils import create_tma_device_descriptor, get_triton_dtype, should_enable_sqmma
+from .utils import create_tma_device_descriptor, should_enable_sqmma
 
 logger = logging.getLogger(__name__)
-
-
-@libentry()
-@triton.heuristics(runtime.get_heuristic_config("mm"))
-@triton.jit
-def mm_sqmma_kernel(
-    A,
-    B,
-    C,
-    M,
-    N,
-    K,
-    a_dtype: tl.constexpr,
-    b_dtype: tl.constexpr,
-    c_dtype: tl.constexpr,
-    dot_out_dtype: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    SPLIT_K: tl.constexpr,
-    EVEN_K: tl.constexpr,
-):
-    # matrix multiplication
-    pid = tle.program_id(0)
-    pid_z = tle.program_id(1)
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    # re-order program ID for better L2 performance
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // (group_size)
-
-    offs_am = pid_m * BLOCK_M
-    offs_bn = pid_n * BLOCK_N
-    offs_k = pid_z * BLOCK_K
-    offs_am = offs_am.to(tl.int32)
-    offs_bn = offs_bn.to(tl.int32)
-    offs_k = offs_k.to(tl.int32)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
-    atype = a_dtype
-    btype = b_dtype
-    for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
-        a = tl._experimental_descriptor_load(
-            A, [offs_am, offs_k], [BLOCK_M, BLOCK_K], atype
-        )
-        b = tl._experimental_descriptor_load(
-            B, [offs_k, offs_bn], [BLOCK_K, BLOCK_N], btype
-        )
-        if a.dtype != b.dtype:
-            a = a.to(c_dtype)
-            b = b.to(c_dtype)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
-        offs_k += BLOCK_K
-    acc = acc.to(c_dtype)
-
-    tl._experimental_descriptor_store(C, acc, [offs_am, offs_bn])
 
 
 @libentry()
@@ -168,77 +109,6 @@ def get_higher_dtype(a, b):
             return a
 
 
-def get_mm_config():
-    return {
-        "BLOCK_M": 128,
-        "BLOCK_N": 128,
-        "BLOCK_K": 64,
-        "SPLIT_K": 1,
-        "num_stages": 1,
-        "num_warps": 4,
-    }
-
-
-def mm_sqmma(a, b):
-    logger.debug("GEMS MM SQMMA")
-    device = a.device
-    # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
-    # allocates output
-    c_ori_dtype = get_higher_dtype(a.dtype, b.dtype)
-    c_dtype = c_ori_dtype if a.dtype != torch.bfloat16 else torch.float32
-    c = torch.empty((M, N), device=device, dtype=c_dtype)
-    a_dtype = get_triton_dtype(a.dtype)
-    b_dtype = get_triton_dtype(b.dtype)
-    c_dtype = get_triton_dtype(c_dtype)
-    dot_out_dtype = tl.float32
-    # prepare tma descriptor for sqmma
-    mm_config = get_mm_config()
-    BLOCK_M = mm_config["BLOCK_M"]
-    BLOCK_N = mm_config["BLOCK_N"]
-    BLOCK_K = mm_config["BLOCK_K"]
-    SPLIT_K = mm_config["SPLIT_K"]
-    num_stages = mm_config["num_stages"]
-    num_warps = mm_config["num_warps"]
-    desc_a = create_tma_device_descriptor(a, BLOCK_M, BLOCK_K, device)
-    desc_b = create_tma_device_descriptor(b, BLOCK_K, BLOCK_N, device)
-    desc_c = create_tma_device_descriptor(c, BLOCK_M, BLOCK_N, device)
-
-    # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        META["SPLIT_K"],
-    )
-    with torch_device_fn.device(a.device):
-        mm_sqmma_kernel[grid](
-            desc_a,
-            desc_b,
-            desc_c,
-            M,
-            N,
-            K,
-            a_dtype=a_dtype,
-            b_dtype=b_dtype,
-            c_dtype=c_dtype,
-            dot_out_dtype=dot_out_dtype,
-            GROUP_M=8,
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-            BLOCK_K=BLOCK_K,
-            SPLIT_K=SPLIT_K,
-            num_stages=num_stages,
-            num_warps=num_warps,
-        )
-    return c.to(c_ori_dtype)
-
-
 def mm_fma(a, b):
     logger.debug("GEMS MM FMA")
     device = a.device
@@ -280,6 +150,88 @@ def mm_fma(a, b):
     return c
 
 
+@triton.jit
+def mm_sqmma_kernel(
+    a_desc_ptr,
+    b_desc_ptr,
+    c_desc_ptr,
+    M,
+    N,
+    K,
+    GROUP_M: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    ab_type: tl.constexpr,
+    d_type: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // (group_size)
+    offs_am = pid_m * BLOCK_SIZE_M
+    offs_bn = pid_n * BLOCK_SIZE_N
+    offs_k = 0
+    offs_am = offs_am.to(tl.int32)
+    offs_bn = offs_bn.to(tl.int32)
+    offs_k = offs_k.to(tl.int32)
+    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    tme_load_type = ab_type
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        a = tl._experimental_descriptor_load(
+            a_desc_ptr, [offs_am, offs_k], [BLOCK_SIZE_M, BLOCK_SIZE_K], tme_load_type
+        )
+        b = tl._experimental_descriptor_load(
+            b_desc_ptr, [offs_k, offs_bn], [BLOCK_SIZE_K, BLOCK_SIZE_N], tme_load_type
+        )
+        accumulator = tl.dot(a, b, acc=accumulator)
+        offs_k += BLOCK_SIZE_K
+    accumulator = accumulator.to(d_type)
+    tl._experimental_descriptor_store(c_desc_ptr, accumulator, [offs_am, offs_bn])
+
+
+def get_triton_type(elem_type):
+    type_map = {
+        torch.float16: tl.float16,
+        torch.bfloat16: tl.bfloat16,
+        torch.float8_e4m3fn: tl.float8e4nv,
+    }
+    return type_map.get(elem_type, None)
+
+
+def mm_sqmma(
+    A, B, elem_type, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages
+):
+    device = "musa"
+    ab_type = elem_type
+    c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
+    C = torch.empty((M, N), dtype=torch.float16, device=device).to(c_type)
+    desc_a = create_tma_device_descriptor(A, BLOCK_M, BLOCK_K, device)
+    desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
+    desc_c = create_tma_device_descriptor(C, BLOCK_M, BLOCK_N, device)
+    mm_sqmma_kernel[(triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1, 1)](
+        desc_a,
+        desc_b,
+        desc_c,
+        M,
+        N,
+        K,
+        GROUP_M,
+        BLOCK_M,
+        BLOCK_N,
+        BLOCK_K,
+        get_triton_type(ab_type),
+        get_triton_type(c_type),
+        num_warps=num_warps,
+        num_stages=num_stages,
+    )
+    return C
+
+
 def mm(a, b):
     a_dtype = a.dtype
     b_dtype = b.dtype
@@ -287,7 +239,26 @@ def mm(a, b):
     _, N = b.shape
     use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
     if use_sqmma:
-        return mm_sqmma(a, b)
+        GROUP_M = 8
+        BLOCK_M = 128
+        BLOCK_N = BLOCK_M
+        BLOCK_K = 64
+        num_warps = 16 if BLOCK_M == 256 else 4
+        num_stages = 1
+        return mm_sqmma(
+            a,
+            b,
+            a_dtype,
+            M,
+            N,
+            K,
+            GROUP_M,
+            BLOCK_M,
+            BLOCK_N,
+            BLOCK_K,
+            num_warps,
+            num_stages,
+        )
     else:
         enable_sqmma = os.environ.pop("MUSA_ENABLE_SQMMA", None)
         result = mm_fma(a, b)

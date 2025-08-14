@@ -123,6 +123,13 @@ log_softmax:
     BLOCK_M: 32
     BLOCK_N: 512
   num_warps: 8
+- META:
+    TILE_M: 128
+    TILE_N: 128
+    TILE_K: 64
+    GROUP_M: 1
+  num_warps: 4
+  num_stages: 1
 mm:
 - META:
     BLOCK_M: 128
@@ -189,13 +196,6 @@ mm:
   num_warps: 8
 - META:
     BLOCK_M: 256
-    BLOCK_N: 128
-    BLOCK_K: 128
-    SPLIT_K: 1
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
     BLOCK_N: 64
     BLOCK_K: 128
     SPLIT_K: 1
@@ -210,13 +210,6 @@ mm:
   num_warps: 4
 - META:
     BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 128
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
     BLOCK_N: 64
     BLOCK_K: 64
     SPLIT_K: 1
@@ -237,12 +230,12 @@ mm:
   num_stages: 4
   num_warps: 4
 - META:
-    BLOCK_M: 64
-    BLOCK_N: 32
+    BLOCK_M: 128
+    BLOCK_N: 128
     BLOCK_K: 64
     SPLIT_K: 1
-  num_stages: 5
-  num_warps: 2
+  num_stages: 1
+  num_warps: 4
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -314,6 +307,18 @@ addmm:
     BLOCK_SIZE_K: 32
   num_stages: 5
   num_warps: 2
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 64
+  num_stages: 1
+  num_warps: 4
+- META:
+    BLOCK_SIZE_M: 256
+    BLOCK_SIZE_N: 256
+    BLOCK_SIZE_K: 64
+  num_stages: 1
+  num_warps: 16
 cross_entropy_loss:
 - META:
     BLOCK_C: 256

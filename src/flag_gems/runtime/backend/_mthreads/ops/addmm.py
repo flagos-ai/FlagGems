@@ -10,82 +10,9 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-from .utils import create_tma_device_descriptor, get_triton_dtype, should_enable_sqmma
+from .utils import create_tma_device_descriptor, should_enable_sqmma
 
 logger = logging.getLogger(__name__)
-
-
-@libentry()
-@triton.jit(do_not_specialize=["alpha", "beta"])
-def addmm_sqmma_kernel(
-    a_ptr,
-    b_ptr,
-    i_ptr,
-    c_ptr,
-    alpha,
-    beta,
-    M,
-    N,
-    K,
-    a_dtype: tl.constexpr,
-    b_dtype: tl.constexpr,
-    BLOCK_SIZE_M: tl.constexpr,
-    BLOCK_SIZE_N: tl.constexpr,
-    BLOCK_SIZE_K: tl.constexpr,
-):
-    pid_m = tle.program_id(0)
-    pid_n = tle.program_id(1)
-
-    offs_am = pid_m * BLOCK_SIZE_M
-    offs_bn = pid_n * BLOCK_SIZE_N
-    offs_k = 0
-    offs_am = offs_am.to(tl.int32)
-    offs_bn = offs_bn.to(tl.int32)
-    offs_k = offs_k.to(tl.int32)
-
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    atype = a_dtype
-    btype = b_dtype
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl._experimental_descriptor_load(
-            a_ptr, [offs_am, offs_k], [BLOCK_SIZE_M, BLOCK_SIZE_K], atype
-        )
-        b = tl._experimental_descriptor_load(
-            b_ptr, [offs_k, offs_bn], [BLOCK_SIZE_K, BLOCK_SIZE_N], btype
-        )
-        accumulator += tl.dot(a, b, allow_tf32=False)
-        offs_k += BLOCK_SIZE_K
-
-    c_ptrs = tl.make_block_ptr(
-        base=c_ptr,
-        shape=(M, N),
-        strides=(N, 1),
-        offsets=(offs_am, offs_bn),
-        block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_N),
-        order=(0, 1),
-    )
-    i_ptrs = tl.make_block_ptr(
-        base=i_ptr,
-        shape=(M, N),
-        strides=(N, 1),
-        offsets=(offs_am, offs_bn),
-        block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_N),
-        order=(0, 1),
-    )
-    alpha_ptrs = tl.make_block_ptr(
-        base=alpha,
-        shape=(M, N),
-        strides=(N, 1),
-        offsets=(offs_am, offs_bn),
-        block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_N),
-        order=(0, 1),
-    )
-    bias = tl.load(i_ptrs)
-    alpha = tl.load(alpha_ptrs)
-
-    accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(atype)
-    tl.store(c_ptrs, c)
 
 
 @libentry()
@@ -153,73 +80,6 @@ def addmm_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def get_mm_config():
-    return {
-        "BLOCK_M": 128,
-        "BLOCK_N": 128,
-        "BLOCK_K": 64,
-        "num_stages": 1,
-        "num_warps": 4,
-    }
-
-
-def addmm_sqmma(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDMM SQMMA")
-    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
-    assert broadcastable_to(
-        bias.shape, (mat1.shape[0], mat2.shape[1])
-    ), "Incompatible input shape"
-    M, K = mat1.shape
-    _, N = mat2.shape
-
-    mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
-    # allocates output
-    device = mat1.device
-    c_dtype = mat1.dtype
-    c = torch.empty((M, N), device=device, dtype=c_dtype)
-    a_dtype = get_triton_dtype(mat1.dtype)
-    b_dtype = get_triton_dtype(mat2.dtype)
-    c_dtype = get_triton_dtype(c_dtype)
-    # prepare tma descriptor for sqmma
-    mm_config = get_mm_config()
-    BLOCK_M = mm_config["BLOCK_M"]
-    BLOCK_N = mm_config["BLOCK_N"]
-    BLOCK_K = mm_config["BLOCK_K"]
-    num_stages = mm_config["num_stages"]
-    num_warps = mm_config["num_warps"]
-    desc_a = create_tma_device_descriptor(mat1, BLOCK_M, BLOCK_K, device)
-    desc_b = create_tma_device_descriptor(mat2, BLOCK_K, BLOCK_N, device)
-
-    bias = bias.broadcast_to(c.shape).contiguous()
-    alpha = torch.full(c.shape, alpha, device=device, dtype=c.dtype)
-
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]),
-        triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
-    with torch_device_fn.device(mat1.device):
-        addmm_sqmma_kernel[grid](
-            desc_a,
-            desc_b,
-            bias,
-            c,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            a_dtype=a_dtype,
-            b_dtype=b_dtype,
-            BLOCK_SIZE_M=BLOCK_M,
-            BLOCK_SIZE_N=BLOCK_N,
-            BLOCK_SIZE_K=BLOCK_K,
-            num_stages=num_stages,
-            num_warps=num_warps,
-        )
-    return c
-
-
 def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
     logger.debug("GEMS ADDMM FMA")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
@@ -261,14 +121,133 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
     return out
 
 
-def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
+@triton.jit
+def addmm_sqmma_kernel(
+    a_desc_ptr,
+    b_desc_ptr,
+    bias_desc_ptr,
+    c_desc_ptr,
+    M,
+    N,
+    K,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    alpha: tl.constexpr,
+    beta: tl.constexpr,
+    ab_type: tl.constexpr,
+    c_type: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    pid_m = pid % num_pid_m
+    pid_n = pid // num_pid_m
+    offs_am = pid_m * BLOCK_SIZE_M
+    offs_bn = pid_n * BLOCK_SIZE_N
+    offs_k = 0
+    input_type = ab_type
+    output_type = c_type
+    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        a = tl._experimental_descriptor_load(
+            a_desc_ptr, [offs_am, offs_k], [BLOCK_SIZE_M, BLOCK_SIZE_K], input_type
+        )
+        b = tl._experimental_descriptor_load(
+            b_desc_ptr, [offs_k, offs_bn], [BLOCK_SIZE_K, BLOCK_SIZE_N], input_type
+        )
+        accumulator = tl.dot(a, b, acc=accumulator)
+        offs_k += BLOCK_SIZE_K
+    bias = tl._experimental_descriptor_load(
+        bias_desc_ptr, [offs_am, offs_bn], [BLOCK_SIZE_M, BLOCK_SIZE_N], input_type
+    )
+    result = (alpha * accumulator.to(output_type) + beta * bias.to(output_type)).to(
+        output_type
+    )
+    tl._experimental_descriptor_store(c_desc_ptr, result, [offs_am, offs_bn])
+
+
+def get_triton_type(elem_type):
+    type_map = {
+        torch.float16: tl.float16,
+        torch.bfloat16: tl.bfloat16,
+        torch.float8_e4m3fn: tl.float8e4nv,
+    }
+    return type_map.get(elem_type, None)
+
+
+def addmm_sqmma(
+    A,
+    B,
+    Bias,
+    elem_type,
+    alpha,
+    beta,
+    M,
+    N,
+    K,
+    BLOCK_M,
+    BLOCK_N,
+    BLOCK_K,
+    num_warps,
+    num_stages,
+):
+    device = "musa"
+    ab_type = elem_type
+    c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
+    C = torch.empty((M, N), dtype=torch.float16, device=device).to(c_type)
+    desc_a = create_tma_device_descriptor(A, BLOCK_M, BLOCK_K, device)
+    desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
+    desc_bias = create_tma_device_descriptor(Bias, BLOCK_M, BLOCK_N, device)
+    desc_c = create_tma_device_descriptor(C, BLOCK_M, BLOCK_N, device)
+    addmm_sqmma_kernel[(triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1, 1)](
+        desc_a,
+        desc_b,
+        desc_bias,
+        desc_c,
+        M,
+        N,
+        K,
+        BLOCK_M,
+        BLOCK_N,
+        BLOCK_K,
+        alpha,
+        beta,
+        get_triton_type(ab_type),
+        get_triton_type(c_type),
+        num_warps=num_warps,
+        num_stages=num_stages,
+    )
+    return C
+
+
+def addmm(bias, mat1, mat2, *, beta=0.5, alpha=0.5):
     a_dtype = mat1.dtype
     b_dtype = mat2.dtype
     M, K = mat1.shape
     _, N = mat2.shape
     use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
     if use_sqmma:
-        return addmm_sqmma(bias, mat1, mat2, alpha=alpha, beta=beta)
+        BLOCK_M = 256 if M % 256 == 0 else 128
+        BLOCK_N = BLOCK_M
+        BLOCK_K = 64
+        num_warps = 16 if BLOCK_M == 256 else 4
+        num_stages = 1
+        return addmm_sqmma(
+            mat1,
+            mat2,
+            bias,
+            a_dtype,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            BLOCK_M,
+            BLOCK_N,
+            BLOCK_K,
+            num_warps,
+            num_stages,
+        )
     else:
         enable_sqmma = os.environ.pop("MUSA_ENABLE_SQMMA", None)
         result = addmm_fma(bias, mat1, mat2, alpha=alpha, beta=beta)
