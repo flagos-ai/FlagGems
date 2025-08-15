@@ -297,7 +297,6 @@ def test_accuracy_glu_backward(shape, dtype):
         out_shape = list(shape)
         out_shape[dim] //= 2
         res_out = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
-
         ref_out = to_reference(res_out, True)
 
         ref_in_grad = torch.ops.aten.glu_backward(ref_out, ref_inp, dim=dim)
@@ -409,6 +408,50 @@ def test_accuracy_elu(shape, dtype):
         res_out = torch.nn.functional.elu(inp, alpha)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.elu_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_elu_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    alpha = torch.rand(1).item()
+
+    res_inp = inp.clone().to(flag_gems.device)
+    inp_clone = inp.clone()
+    ref_inp = to_reference(inp_clone, True)
+    torch.nn.functional.elu_(ref_inp, alpha)
+
+    with flag_gems.use_gems():
+        torch.nn.functional.elu_(res_inp, alpha)
+
+    gems_assert_close(res_inp, ref_inp, dtype)
+
+
+@pytest.mark.elu_backward
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_elu_backward(shape, dtype):
+    alpha = torch.rand(1).item()
+    scale = 1.0
+    input_scale = 1.0
+
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad_out = torch.randn_like(res_inp)
+
+    ref_inp = to_reference(res_inp, True)
+    ref_grad_out = to_reference(res_grad_out, True)
+
+    ref_in_grad = torch.ops.aten.elu_backward(
+        ref_grad_out, alpha, scale, input_scale, False, ref_inp
+    )
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.elu_backward(
+            res_grad_out, alpha, scale, input_scale, False, res_inp
+        )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.relu
