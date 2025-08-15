@@ -65,6 +65,7 @@ forward_operations = [
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
+    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
@@ -147,6 +148,29 @@ def test_to_dtype_perf():
         torch_op=torch.Tensor.to,
         dtypes=[torch.float16, torch.bfloat16]
         + ([torch.float64] if fp64_is_supported else []),
+    )
+    bench.run()
+
+
+class EluBackwardBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype: torch.dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            grad_out = torch.randn_like(inp)
+            alpha = 1.0
+            scale = 1.0
+            input_scale = 1.0
+            is_result = False
+
+            yield grad_out, alpha, scale, input_scale, is_result, inp
+
+
+@pytest.mark.elu_backward
+def test_elu_backward_perf():
+    bench = EluBackwardBenchmark(
+        op_name="elu_backward",
+        torch_op=torch.ops.aten.elu_backward,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 

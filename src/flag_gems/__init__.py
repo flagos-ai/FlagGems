@@ -108,6 +108,8 @@ def enable(
             ("divide_.Tensor_mode", div_mode_),
             ("dot", dot),
             ("elu", elu),
+            ("elu_", elu_),
+            ("elu_backward", elu_backward),
             ("embedding", embedding),
             ("embedding_backward", embedding_backward),
             ("eq.Scalar", eq_scalar),
