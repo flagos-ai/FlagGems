@@ -21,7 +21,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
-from .silu import silu, silu_
+from .silu import silu, silu_, silu_backward
 from .unique import _unique2
 
 __all__ = [
@@ -51,6 +51,7 @@ __all__ = [
     "pow_tensor_tensor_",
     "silu",
     "silu_",
+    "silu_backward",
     "_unique2",
     "mm",
 ]
