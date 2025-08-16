@@ -28,6 +28,62 @@ bmm:
 - META:
     TILE_M: 32
     TILE_N: 32
+    TILE_K: 128
+    GROUP_M: 4
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 0
+- META:
+    TILE_M: 128
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 4
+  num_stages: 1
+  num_warps: 8
+  num_ldmatrixes: 0
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 4
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 0
+- META:
+    TILE_M: 32
+    TILE_N: 64
+    TILE_K: 128
+    GROUP_M: 4
+  num_stages: 3
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 128
+    GROUP_M: 4
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    TILE_M: 128
+    TILE_N: 128
+    TILE_K: 32
+    GROUP_M: 4
+  num_stages: 2
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    TILE_M: 128
+    TILE_N: 128
+    TILE_K: 64
+    GROUP_M: 4
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    TILE_M: 32
+    TILE_N: 32
     TILE_K: 32
     GROUP_M: 1
   num_warps: 4
@@ -143,6 +199,80 @@ log_softmax:
     BLOCK_N: 512
   num_warps: 8
 mm:
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 32
+    BLOCK_K: 128
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 0
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 1
+  num_warps: 8
+  num_ldmatrixes: 0
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 0
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 64
+    BLOCK_K: 128
+  num_stages: 3
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 128
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_stages: 2
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 128
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 128
+    BLOCK_K: 128
+  num_stages: 1
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_stages: 1
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 128
+  num_stages: 1
+  num_warps: 4
+
 - META:
     BLOCK_M: 128
     BLOCK_N: 256
@@ -320,6 +450,55 @@ max:
     BLOCK_N: 512
   num_warps: 8
 addmm:
+- META:
+    BLOCK_SIZE_M: 32
+    BLOCK_SIZE_N: 32
+    BLOCK_SIZE_K: 128
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 0
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_K: 32
+  num_stages: 1
+  num_warps: 8
+  num_ldmatrixes: 0
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_K: 32
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 0
+- META:
+    BLOCK_SIZE_M: 32
+    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_K: 128
+  num_stages: 3
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_K: 128
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 32
+  num_stages: 2
+  num_warps: 4
+  num_ldmatrixes: 1
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 64
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 1
 - META:
     BLOCK_SIZE_M: 128
     BLOCK_SIZE_N: 256
@@ -669,18 +848,22 @@ mv:
     num_warps: warps
     num_stages: stages
   warps:
+  - 2
   - 4
   - 8
   block_m:
   - 32
   - 64
   - 128
+  - 256
   block_n:
   - 1
   - 2
   - 4
   - 8
+  - 16
   stages:
+  - 2
   - 3
   - 4
 nonzero:

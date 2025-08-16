@@ -26,6 +26,15 @@ def metax_heuristics_for_num_warps(tile_size):
         return 16
 
 
+def hygon_heuristics_for_num_warps(tile_size):
+    if tile_size <= 1024:
+        return 4
+    elif tile_size <= 2048:
+        return 8
+    else:
+        return 16
+
+
 def cambricon_heuristics_for_num_warps(tile_size):
     return 1
 
@@ -93,12 +102,20 @@ CODEGEN_COFIGS = {
         False,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
+    vendors.HYGON: CodeGenConfig(
+        2048,
+        (65536, 65536, 65536),
+        16,
+        True,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
 }
 
 HEURISTICS_CONFIG = {
     vendors.NVIDIA: default_heuristics_for_num_warps,
     vendors.METAX: metax_heuristics_for_num_warps,
     vendors.CAMBRICON: cambricon_heuristics_for_num_warps,
+    vendors.HYGON: hygon_heuristics_for_num_warps,
 }
 
 

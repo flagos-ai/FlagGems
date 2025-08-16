@@ -13,6 +13,7 @@ from .div import (
 from .gelu import gelu, gelu_
 from .isclose import allclose, isclose
 from .isin import isin
+from .mm import mm
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -51,4 +52,5 @@ __all__ = [
     "silu",
     "silu_",
     "_unique2",
+    "mm",
 ]
