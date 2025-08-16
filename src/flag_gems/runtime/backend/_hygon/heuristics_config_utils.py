@@ -2,6 +2,10 @@ import torch
 import triton
 
 
+def simple_elementwise_blocksize_heur(args):
+    return 1024
+
+
 def argmax_heur_block_m(args):
     return 4 if args["M"] < 4096 else 8
 
@@ -33,8 +37,10 @@ def bmm_heur_divisible_k(args):
 def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
-    else:
+    elif args["N"] <= 1024:
         return 1024
+    else:
+        return 4096
 
 
 def dropout_heur_num_warps(args):
@@ -301,5 +307,9 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "elementwise_generic": {
+        "BLOCK_SIZE": simple_elementwise_blocksize_heur,
+        "num_warps": lambda args: 8,
     },
 }

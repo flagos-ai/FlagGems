@@ -40,6 +40,13 @@ class ConfigLoader(object):
                 "num_warps": 4,
                 "num_ctas": 1,
             }
+            if self.device.vendor_name in ["hygon"]:
+                self.triton_config_default = {
+                    "num_stages": 2,
+                    "num_warps": 4,
+                    "num_ctas": 1,
+                    "num_ldmatrixes": 0,
+                }
             self.load_all()
 
     def load_all(self):
@@ -154,12 +161,24 @@ class ConfigLoader(object):
             for default_param in current_config:
                 if default_param in single_config:
                     current_config[default_param] = single_config[default_param]
-            configs.append(
-                triton.Config(
-                    single_config["META"],
-                    num_warps=current_config["num_warps"],
-                    num_stages=current_config["num_stages"],
-                    num_ctas=current_config["num_ctas"],
+
+            if self.device.vendor_name in ["hygon"]:
+                configs.append(
+                    triton.Config(
+                        single_config["META"],
+                        num_warps=current_config["num_warps"],
+                        num_stages=current_config["num_stages"],
+                        num_ctas=current_config["num_ctas"],
+                        num_ldmatrixes=current_config["num_ldmatrixes"],
+                    )
                 )
-            )
+            else:
+                configs.append(
+                    triton.Config(
+                        single_config["META"],
+                        num_warps=current_config["num_warps"],
+                        num_stages=current_config["num_stages"],
+                        num_ctas=current_config["num_ctas"],
+                    )
+                )
         return configs
