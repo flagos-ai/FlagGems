@@ -22,7 +22,7 @@ def prev_multiple_of(a, b):
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
+    strategy=["align32", "align32", "align32"],
 )
 @triton.jit
 def mm_kernel(
