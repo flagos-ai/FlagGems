@@ -315,6 +315,30 @@ def test_index_add_perf():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_add_
+def test_index_add__perf():
+    def index_add__input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = 0 if len(shape) == 1 else 1
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max // 2 if index_max >= 2 else 1
+        index = torch.randperm(index_len, device=device)
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device=device)
+        yield inp, dim, index, src
+
+    bench = TensorSelectBenchmark(
+        op_name="index_add_",
+        torch_op=torch.Tensor.index_add_,
+        input_fn=index_add__input_fn,
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
 def gen_indices(input_shape, indices_shape, accumulate):
     indices = []
     for i, shape in enumerate(indices_shape):
