@@ -15,11 +15,8 @@ namespace flag_gems {
 using namespace triton_jit;
 // max.dim_max(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) max, Tensor(b!) max_values) ->
 // (Tensor(a!) values, Tensor(b!) indices)
-::std::tuple<at::Tensor, at::Tensor> max_dim_max(const at::Tensor &self,
-                                                 int64_t dim,
-                                                 bool keepdim,
-                                                 const at::Tensor out_value,
-                                                 const at::Tensor out_index) {
+::std::tuple<at::Tensor &, at::Tensor &> max_dim_max(
+    const at::Tensor &self, int64_t dim, bool keepdim, at::Tensor &out_value, at::Tensor &out_index) {
   auto [permuted_self, non_reduction_size, reduction_size] = utils::permute_reduction_axes_right(self, dim);
   // set_output(out_value,out_index);
   permuted_self = permuted_self.contiguous();
@@ -60,7 +57,7 @@ using namespace triton_jit;
     tile_m,
     tile_n);
 
-  return std::make_tuple(out_value, out_index);
+  return std::forward_as_tuple(out_value, out_index);
 }
 // max.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)
 ::std::tuple<at::Tensor, at::Tensor> max_dim(const at::Tensor &self, int64_t dim, bool keepdim) {
