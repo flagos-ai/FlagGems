@@ -77,7 +77,7 @@ from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.index import index
-from flag_gems.ops.index_add import index_add
+from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_put import index_put, index_put_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
@@ -298,6 +298,7 @@ __all__ = [
     "hstack",
     "index",
     "index_add",
+    "index_add_",
     "index_put",
     "index_put_",
     "index_select",

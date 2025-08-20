@@ -148,6 +148,7 @@ def enable(
             ("hstack", hstack),
             # ("index.Tensor", index),
             ("index_add", index_add),
+            ("index_add_", index_add_),
             ("index_put", index_put),
             ("index_put_", index_put_),
             ("index_select", index_select),
