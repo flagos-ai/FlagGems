@@ -112,13 +112,19 @@ test_results = {}
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item, nextitem):
-    test_results[item.nodeid] = {"params": None, "result": None}
+    test_results[item.nodeid] = {"params": None, "result": None, "opname": None}
     param_values = {}
     request = item._request
     if hasattr(request, "node") and hasattr(request.node, "callspec"):
         param_values = request.node.callspec.params
 
     test_results[item.nodeid]["params"] = param_values
+    # get all mark
+    all_marks = [mark.name for mark in item.iter_markers()]
+    # exclude marks，such as parametrize、skipif and so on
+    exclude_marks = {"parametrize", "skip", "skipif", "xfail", "usefixtures", "inplace"}
+    operator_marks = [mark for mark in all_marks if mark not in exclude_marks]
+    test_results[item.nodeid]["opname"] = operator_marks
 
 
 @pytest.hookimpl(tryfirst=True)
