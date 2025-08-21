@@ -123,13 +123,6 @@ log_softmax:
     BLOCK_M: 32
     BLOCK_N: 512
   num_warps: 8
-- META:
-    TILE_M: 128
-    TILE_N: 128
-    TILE_K: 64
-    GROUP_M: 1
-  num_warps: 4
-  num_stages: 1
 mm:
 - META:
     BLOCK_M: 128

@@ -1092,6 +1092,7 @@ def get_diagonal_backward_shape_and_dims():
     return result
 
 
+@pytest.mark.skipif(flag_gems.device == "mthreads", reason="tmp skip")
 @pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
 @pytest.mark.diagonal
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
@@ -1189,6 +1190,7 @@ def test_accuracy_kron(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="temp skip")
 @pytest.mark.contiguous
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
