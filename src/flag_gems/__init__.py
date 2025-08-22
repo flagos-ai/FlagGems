@@ -238,6 +238,7 @@ def enable(
             ("reciprocal_", reciprocal_),
             ("relu", relu),
             ("relu_", relu_),
+            ("addcmul", addcmul),
             ("softplus", softplus),
             ("remainder.Scalar", remainder),
             ("remainder.Scalar_Tensor", remainder),

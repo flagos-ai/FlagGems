@@ -2003,3 +2003,24 @@ def test_accuracy_fill_(value, shape, dtype):
         x.fill_(value_tensor)
 
     gems_assert_equal(x, ref_x)
+
+
+@pytest.mark.addcmul
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addcmul(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    t1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    t2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(res_inp, True)
+    ref_t1 = to_reference(t1, True)
+    ref_t2 = to_reference(t2, True)
+
+    v = float(np.float32(random.random()))
+
+    ref_out = torch.addcmul(ref_inp, ref_t1, ref_t2, value=v)
+    with flag_gems.use_gems():
+        res_out = torch.addcmul(res_inp, t1, t2, value=v)
+
+    gems_assert_close(res_out, ref_out, dtype)
