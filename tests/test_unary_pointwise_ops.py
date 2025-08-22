@@ -483,6 +483,20 @@ def test_accuracy_relu_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.softplus
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_softplus(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    beta = torch.rand(1).item()
+    threshold = torch.rand(1).item() * 40.0
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.nn.functional.softplus(ref_inp, beta=beta, threshold=threshold)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.softplus(inp, beta=beta, threshold=threshold)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.rsqrt
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
