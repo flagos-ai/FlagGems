@@ -1092,7 +1092,9 @@ def get_diagonal_backward_shape_and_dims():
     return result
 
 
-@pytest.mark.skipif(flag_gems.device == "mthreads", reason="tmp skip")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="Briefly skipped during the update"
+)
 @pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
 @pytest.mark.diagonal
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())

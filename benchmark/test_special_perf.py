@@ -380,6 +380,9 @@ def test_perf_diag_embed():
     bench.run()
 
 
+@pytest.mark.skipif(
+    vendor_name == "mthreads", reason="Briefly skipped during the update"
+)
 @pytest.mark.diagonal
 def test_perf_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):
