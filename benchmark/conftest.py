@@ -132,7 +132,9 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     global Config  # noqa: F824
-    mode_value = config.getoption("--mode")
+    mode_value = config.getoption(
+        "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+    )
     Config.mode = BenchMode(mode_value)
 
     Config.query = config.getoption("--query")
