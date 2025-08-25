@@ -3,11 +3,7 @@ from typing import Optional, Tuple
 import torch
 
 import flag_gems
-from flag_gems.patches.patch_util import (
-    patch_module_method,
-    patch_vllm_C_lib,
-    patch_vllm_moe_C_lib,
-)
+from flag_gems.patches.patch_util import patch_module_method, patch_vllm_lib
 
 
 def custom_gems_rms_forward_cuda(self, x, residual=None):
@@ -297,6 +293,69 @@ def custom_moe_align_block_size(
     )
 
 
+def custom_topk_softmax(
+    topk_weights, topk_indices, token_expert_indices, gating_output
+):
+    flag_gems.topk_softmax(
+        topk_weights,
+        topk_indices,
+        token_expert_indices,
+        gating_output,
+    )
+
+
+def custom_get_scheduler_metadata(
+    batch_size: int,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    num_heads: int,
+    num_heads_k: int,
+    headdim: int,
+    headdim_v: int,
+    qkv_dtype: torch.dtype,
+    seqused_k: torch.Tensor,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cu_seqlens_k: Optional[torch.Tensor] = None,
+    cu_seqlens_k_new: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    leftpad_k: Optional[torch.Tensor] = None,
+    page_size: Optional[int] = None,
+    max_seqlen_k_new: int = 0,
+    is_causal: bool = False,
+    window_size_left: int = -1,
+    window_size_right: int = -1,
+    has_softcap: bool = False,
+    num_splits: int = 0,
+    pack_gqa: Optional[bool] = None,
+    sm_margin: int = 0,
+):
+    return flag_gems.get_scheduler_metadata(
+        batch_size,
+        max_seqlen_q,
+        max_seqlen_k,
+        num_heads,
+        num_heads_k,
+        headdim,
+        headdim_v,
+        qkv_dtype,
+        seqused_k,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        cu_seqlens_k_new=cu_seqlens_k_new,
+        seqused_q=seqused_q,
+        leftpad_k=leftpad_k,
+        page_size=page_size,
+        max_seqlen_k_new=max_seqlen_k_new,
+        is_causal=is_causal,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+        has_softcap=has_softcap,
+        num_splits=num_splits,
+        pack_gqa=pack_gqa,
+        sm_margin=sm_margin,
+    )
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
@@ -323,7 +382,15 @@ def apply_gems_patches_to_vllm(verbose=True):
     patch_module_method(
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forwad, verbose
     )
-    patch_vllm_C_lib("silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
-    patch_vllm_moe_C_lib(
-        "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
+    patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
+    patch_vllm_lib(
+        "_moe_C", "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
+    )
+    patch_vllm_lib("_moe_C", "topk_softmax", custom_topk_softmax, "CUDA", verbose)
+    patch_vllm_lib(
+        "_vllm_fa3_C",
+        "get_scheduler_metadata",
+        custom_get_scheduler_metadata,
+        "CUDA",
+        verbose,
     )
