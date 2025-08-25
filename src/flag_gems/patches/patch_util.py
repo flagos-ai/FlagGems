@@ -2,6 +2,13 @@ import torch
 
 vllm_C_lib = torch.library.Library("_C", "IMPL")
 vllm_moe_C_lib = torch.library.Library("_moe_C", "IMPL")
+vllm_fa3_C_lib = torch.library.Library("_vllm_fa3_C", "IMPL")
+
+libs = {
+    "_C": vllm_C_lib,
+    "_moe_C": vllm_moe_C_lib,
+    "_vllm_fa3_C": vllm_fa3_C_lib,
+}
 
 
 def patch_module_method(cls, method_name: str, new_method: callable, verbose=True):
@@ -14,13 +21,12 @@ def patch_module_method(cls, method_name: str, new_method: callable, verbose=Tru
     return old_method  # incase we need to revert the patch later
 
 
-def patch_vllm_C_lib(name, fn, key, verbose=True):
-    vllm_C_lib.impl(name, fn, key)
-    if verbose:
-        print(f"Patched torch.ops._C.{name} with FLAGGEMS {fn.__name__}")
+def patch_vllm_lib(lib_name, fn_name, fn, key, verbose=True):
+    if lib_name not in libs:
+        raise ValueError(f"Library {lib_name} is not recognized.")
 
+    lib = libs[lib_name]
+    lib.impl(fn_name, fn, key)
 
-def patch_vllm_moe_C_lib(name, fn, key, verbose=True):
-    vllm_moe_C_lib.impl(name, fn, key)
     if verbose:
-        print(f"Patched torch.ops._moe_C.{name} with FLAGGEMS {fn.__name__}")
+        print(f"Patched torch.ops.{lib_name}.{fn_name} with FLAGGEMS {fn.__name__}")
