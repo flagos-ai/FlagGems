@@ -174,6 +174,7 @@ def enable(
             ("logical_not", logical_not),
             ("logical_or", logical_or),
             ("logical_xor", logical_xor),
+            ("logspace", logspace),
             ("lt.Scalar", lt_scalar),
             ("lt.Tensor", lt),
             ("masked_fill.Scalar", masked_fill),
