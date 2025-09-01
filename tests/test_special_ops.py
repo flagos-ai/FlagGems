@@ -354,7 +354,7 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
 @pytest.mark.unique
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
@@ -681,7 +681,7 @@ def test_logspace(start, end, steps, base, dtype, device, pin_memory):
         gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="TypeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
@@ -1157,7 +1157,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     gems_assert_equal(res_in_grad, ref_in_grad)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="TypeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort
@@ -1196,7 +1196,7 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
     gems_assert_equal(res_index, ref_index)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.kron
 @pytest.mark.parametrize("shape", KRON_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
@@ -1230,7 +1230,6 @@ def test_accuracy_kron(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="temp skip")
 @pytest.mark.contiguous
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)

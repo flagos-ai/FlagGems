@@ -21,7 +21,9 @@ def double(in_ptr, out_ptr, n, TILE_SIZE: tl.constexpr):
     flag_gems.vendor_name == "kunlunxin",
     reason="Test Files for Operators Not Pending Testing",
 )
-@pytest.mark.skipif(flag_gems.device == "musa", reason="torch.complex not impl")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="torch.complex not impl"
+)
 def test_typed_pointer():
     real = torch.randn(10, 10, device=flag_gems.device)
     imag = torch.randn(10, 10, device=flag_gems.device)
@@ -44,7 +46,9 @@ def test_typed_pointer():
     flag_gems.vendor_name == "kunlunxin",
     reason="Test Files for Operators Not Pending Testing",
 )
-@pytest.mark.skipif(flag_gems.device == "musa", reason="torch.complex not impl")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="torch.complex not impl"
+)
 def test_typed_pointer_reinterpret_with_offset():
     real = torch.randn(100, device=flag_gems.device)
     imag = torch.randn(100, device=flag_gems.device)

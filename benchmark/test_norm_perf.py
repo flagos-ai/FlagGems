@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import torch
 
@@ -115,12 +117,7 @@ def batchnorm_input_fn(shape, dtype, device):
             "instance_norm",
             torch.instance_norm,
             instancenorm_input_fn,
-            marks=[
-                pytest.mark.instance_norm,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.instance_norm,
         ),
         pytest.param(
             "batch_norm",
@@ -136,12 +133,17 @@ def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn
         "batch_norm",
     ]:
         pytest.skip("RUNTIME TODOFIX.(batch_norm unsupported in torch)")
+    if vendor_name == "mthreads" and op_name == "instance_norm":
+        # Compatible with older versions of LLVM
+        os.environ["DISABLE_LLVM_OPT"] = "1"
     bench = NormBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
     if op_name == "instance_norm":
         bench.set_gems(flag_gems.instance_norm)
     bench.run()
+    if vendor_name == "mthreads" and op_name == "instance_norm":
+        del os.environ["DISABLE_LLVM_OPT"]
 
 
 def weight_norm_interface_input_fn(shape, dtype, device):

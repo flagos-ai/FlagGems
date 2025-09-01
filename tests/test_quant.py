@@ -67,7 +67,7 @@ def convert_fp8(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.concat_and_cache_mla
 @pytest.mark.parametrize("kv_lora_rank", KV_LORA_RANKS)
 @pytest.mark.parametrize("qk_rope_head_dim", QK_ROPE_HEAD_DIMS)
@@ -76,7 +76,10 @@ def convert_fp8(
 @pytest.mark.parametrize("num_blocks", NUM_BLOCKS_MLA)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("seed", SEEDS)
-@pytest.mark.parametrize("device", CUDA_DEVICES)
+@pytest.mark.parametrize(
+    "device",
+    [flag_gems.device] if flag_gems.vendor_name == "mthreads" else CUDA_DEVICES,
+)
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()
 def test_concat_and_cache_mla(
@@ -144,9 +147,13 @@ def test_concat_and_cache_mla(
                 expected_temp, ref_kv_cache, scale.item(), kv_dtype=kv_cache_dtype
             )
             dtype = torch.float8_e4m3fn
+            if flag_gems.vendor_name == "mthreads":
+                result_temp = to_reference(result_temp)
             # TODO: RuntimeError: Comparing
             # maybe a bug in torch.testing.assert_close
             # gems_assert_close(kv_cache.view(dtype), ref_kv_cache.view(dtype), dtype)
             torch.testing.assert_close(result_temp, expected_temp, atol=0.001, rtol=0.1)
         else:
+            if flag_gems.vendor_name == "mthreads":
+                kv_cache = to_reference(kv_cache)
             gems_assert_close(kv_cache, ref_kv_cache, kv_cache.dtype)
