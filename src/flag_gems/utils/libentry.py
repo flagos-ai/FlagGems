@@ -56,14 +56,35 @@ if major_version == 2:
 FLAGGEMS_ENABLE_DISK_CACHE = os.getenv("FLAGGEMS_ENABLE_DISK_CACHE", "1") == "1"
 
 
+class Connections(object):
+    def __init__(self, cache_path: str, *args, **kwargs) -> Connections:
+        super().__init__(*args, **kwargs)
+        self.cache_path: str = cache_path
+        self.lock: threading.Lock = threading.Lock()
+        self.conns: Dict[int, sqlite3.Connection] = {}
+
+    def __del__(self):
+        for conn in self.conns.values():
+            conn.close()
+
+    @property
+    def curr_conn(self) -> sqlite3.Connection:
+        with self.lock:
+            tid: int = threading.get_ident()
+            conn: Optional[sqlite3.Connection] = self.conns.get(tid)
+            if conn is None:
+                conn = sqlite3.connect(self.cache_path)
+                self.conns[tid] = conn
+            return conn
+
+
 class Cache(object):
-    def __init__(
-        self, table_name: str, conn: sqlite3.Connection, *args, **kwargs
-    ) -> Cache:
+    def __init__(self, table_name: str, conns: Connections, *args, **kwargs) -> Cache:
         super().__init__(*args, **kwargs)
         self.table_name: str = table_name
-        self.conn: sqlite3.Connection = conn
+        self.conns: Connections = conns
         self.py2sql: Dict[type, str] = {
+            bool: "BOOLEAN",
             int: "INTEGER",
             float: "DOUBLE",
             str: "VARCHAR(16)",  # it often stores string values like 'torch.float16', so 16 would be long enough
@@ -83,6 +104,10 @@ class Cache(object):
             if isinstance(v, (int, float, str))
         }
 
+    @property
+    def conn(self) -> sqlite3.Connection:
+        return self.conns.curr_conn
+
 
 class ConfigCache(Cache):
     """
@@ -90,13 +115,14 @@ class ConfigCache(Cache):
     """
 
     def __init__(
-        self, table_name: str, conn: sqlite3.Connection, *args, **kwargs
+        self, table_name: str, conns: Connections, *args, **kwargs
     ) -> ConfigCache:
-        super().__init__(table_name, conn, *args, **kwargs)
+        super().__init__(table_name, conns, *args, **kwargs)
         self.config_signature: inspect.Signature = inspect.signature(triton.Config)
         self.dict_cache: Dict[
             Tuple[Union[int, float, str], ...], triton.Config
         ] = {}  # this dict is used to cache some results in the memory
+        self.lock: threading.Lock = threading.Lock()
         self.names: List[str] = [
             name
             for _, name, _, _, _, _ in self.conn.execute(
@@ -147,46 +173,48 @@ class ConfigCache(Cache):
             return None
 
     def get(self, key: Tuple[Union[int, float, str], ...]) -> Optional[triton.Config]:
-        ret = self.dict_cache.get(key)
-        if ret is not None or self.select_sql is None:
-            # if the key is already in the dict cache, we can return it directly
-            # or if `select_sql` is not ready yet, which means the table is not ready yet, we can return None
+        with self.lock:
+            ret = self.dict_cache.get(key)
+            if ret is not None or self.select_sql is None:
+                # if the key is already in the dict cache, we can return it directly
+                # or if `select_sql` is not ready yet, which means the table is not ready yet, we can return None
+                return ret
+            rets = self.conn.execute(self.select_sql, key).fetchall()
+            if not rets:
+                return None
+            [ret] = rets
+            kwargs: Dict[str, Any] = {}
+            numargs: Dict[str, int] = {}
+            for k, v in zip(self.cnames, ret):
+                if k in self.config_signature.parameters:
+                    numargs[k] = v
+                else:
+                    kwargs[k] = v
+            ret = triton.Config(kwargs, **numargs)
+            self.dict_cache[key] = ret
             return ret
-        rets = self.conn.execute(self.select_sql, key).fetchall()
-        if not rets:
-            return None
-        [ret] = rets
-        kwargs: Dict[str, Any] = {}
-        numargs: Dict[str, int] = {}
-        for k, v in zip(self.cnames, ret):
-            if k in self.config_signature.parameters:
-                numargs[k] = v
-            else:
-                kwargs[k] = v
-        ret = triton.Config(kwargs, **numargs)
-        self.dict_cache[key] = ret
-        return ret
 
     def set(self, key: Tuple[Union[int, float, str], ...], config: triton.Config):
-        key_queries: Dict[str, Any] = self.build_key_dict(key)
-        config_queries: Dict[str, Any] = self.build_config_dict(config)
-        queries: Dict[str, Any] = key_queries | config_queries
-        if self.create_sql is None:
-            self.create_sql = "CREATE TABLE IF NOT EXISTS {} ({});".format(
-                self.table_name,
-                ",\n".join(
-                    [f"{k} {self.py2sql[type(v)]}" for k, v in queries.items()]
-                    + ["PRIMARY KEY ({})".format(", ".join(key_queries.keys()))]
-                ),
-            )
-            self.conn.execute(self.create_sql)
-        if not self.names:
-            self.names = queries
-        if self.insert_sql is None:
-            self.insert_sql = "INSERT OR REPLACE INTO {} VALUES ({});".format(
-                self.table_name, ", ".join("?" for _ in queries.values())
-            )
-        self.conn.execute(self.insert_sql, [*queries.values()])
+        with self.lock:
+            key_queries: Dict[str, Any] = self.build_key_dict(key)
+            config_queries: Dict[str, Any] = self.build_config_dict(config)
+            queries: Dict[str, Any] = key_queries | config_queries
+            if self.create_sql is None:
+                self.create_sql = "CREATE TABLE IF NOT EXISTS {} ({});".format(
+                    self.table_name,
+                    ",\n".join(
+                        [f"{k} {self.py2sql[type(v)]}" for k, v in queries.items()]
+                        + ["PRIMARY KEY ({})".format(", ".join(key_queries.keys()))]
+                    ),
+                )
+                self.conn.execute(self.create_sql)
+            if not self.names:
+                self.names = queries
+            if self.insert_sql is None:
+                self.insert_sql = "INSERT OR REPLACE INTO {} VALUES ({});".format(
+                    self.table_name, ", ".join("?" for _ in queries.values())
+                )
+            self.conn.execute(self.insert_sql, [*queries.values()])
         self.conn.commit()
 
 
@@ -195,39 +223,42 @@ class BenchmarkCache(Cache):
         self,
         table_name: str,
         key: Tuple[Union[int, float, str], ...],
-        conn: sqlite3.Connection,
+        conns: Connections,
         *args,
         **kwargs,
     ) -> BenchmarkCache:
         """
         `BenchmarkCache` is used to store the benchmark results for the pair of the specific key and configuration.
         """
-        super().__init__(table_name, conn, *args, **kwargs)
+        super().__init__(table_name, conns, *args, **kwargs)
         self.key: Tuple[Union[int, float, str], ...] = key
+        self.lock: threading.Lock = threading.Lock()
         self.create_sql: Optional[str] = None
         self.select_sql: Optional[str] = None
         self.insert_sql: Optional[str] = None
 
     def __getitem__(self, config: triton.Config) -> Optional[List[float]]:
-        queries: Dict[str, Union[int, float, str]] = self.build_query(config)
-        if self.select_sql is None:
-            where: str = " AND ".join(f"{k} = ?" for k in queries.keys())
-            self.select_sql = (
-                f"SELECT p50, p20, p80 FROM {self.table_name} WHERE {where};"
-            )
-        ret = self.conn.execute(self.select_sql, [*queries.values()]).fetchone()
-        if isinstance(ret, tuple):
-            ret = [*ret]
-        return ret
+        with self.lock:
+            queries: Dict[str, Union[int, float, str]] = self.build_query(config)
+            if self.select_sql is None:
+                where: str = " AND ".join(f"{k} = ?" for k in queries.keys())
+                self.select_sql = (
+                    f"SELECT p50, p20, p80 FROM {self.table_name} WHERE {where};"
+                )
+            ret = self.conn.execute(self.select_sql, [*queries.values()]).fetchone()
+            if isinstance(ret, tuple):
+                ret = [*ret]
+            return ret
 
     def __setitem__(self, config: triton.Config, benchmark: List[float]) -> None:
-        queries: Dict[str, Union[int, float, str]] = self.build_query(config)
-        values: List[str] = [*queries.values(), *benchmark]
-        if not self.insert_sql:
-            self.insert_sql = "INSERT INTO {} VALUES ({});".format(
-                self.table_name, ", ".join("?" for _ in values)
-            )
-        self.conn.execute(self.insert_sql, values)
+        with self.lock:
+            queries: Dict[str, Union[int, float, str]] = self.build_query(config)
+            values: List[str] = [*queries.values(), *benchmark]
+            if not self.insert_sql:
+                self.insert_sql = "INSERT INTO {} VALUES ({});".format(
+                    self.table_name, ", ".join("?" for _ in values)
+                )
+            self.conn.execute(self.insert_sql, values)
         self.conn.commit()
 
     def build_query(self, config: triton.Config) -> Dict[str, Any]:
@@ -267,17 +298,18 @@ class LibCache(object):
         self.cache_path = (
             (config_cache_dir() / cache_file_name) if enable_disk_cache else ":memory:"
         )
-        self.conn: sqlite3.Connection = sqlite3.connect(self.cache_path)
+        self.bench_lock: threading.Lock = threading.Lock()
+        self.config_lock: threading.Lock = threading.Lock()
+        self.conns: Connections = Connections(self.cache_path)
         self.config_cache_pool: Dict[str, ConfigCache] = {}
         self.benchmark_cache_pool: Dict[
             Tuple[str, Tuple[Union[int, float, str], ...]], BenchmarkCache
         ] = {}
 
     def __post_init__(self):
-        self.conn.execute("PRAGMA journal=WAL;")
-
-    def __del__(self):
-        self.conn.close()
+        with sqlite3.connect(self.cache_path) as conn:
+            conn.execute("PRAGMA journal=WAL;")
+            conn.commit()
 
     def __getitem__(
         self, key: Union[str, Tuple[Union[int, float, str], ...]]
@@ -292,15 +324,19 @@ class LibCache(object):
     def get_benchmark(
         self, table: str, key: Tuple[Union[int, float, str], ...]
     ) -> BenchmarkCache:
-        ret = self.benchmark_cache_pool.get(
-            (table, key), BenchmarkCache(table, key, self.conn)
-        )
-        self.benchmark_cache_pool[(table, key)] = ret
+        with self.bench_lock:
+            ret = self.benchmark_cache_pool.get((table, key))
+            if ret is None:
+                ret = BenchmarkCache(table, key, self.conns)
+                self.benchmark_cache_pool[(table, key)] = ret
         return ret
 
     def get_config(self, table: str) -> ConfigCache:
-        ret = self.config_cache_pool.get(table, ConfigCache(table, self.conn))
-        self.config_cache_pool[table] = ret
+        with self.config_lock:
+            ret = self.config_cache_pool.get(table)
+            if ret is None:
+                ret = ConfigCache(table, self.conns)
+                self.config_cache_pool[table] = ret
         return ret
 
 
