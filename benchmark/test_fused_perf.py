@@ -236,9 +236,8 @@ class TopKSoftmaxBenchmark(Benchmark):
 @pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "iluvatar", reason="RESULT TODOFIX")
-@pytest.mark.skipif(
-    flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
-)
+@pytest.mark.skipif(vendor_name == "mthreads", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.topk_softmax
 def test_perf_topk_softmax():

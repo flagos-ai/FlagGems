@@ -1,3 +1,4 @@
+import os
 import random
 from typing import Generator
 
@@ -51,13 +52,7 @@ class UnaryReductionBenchmark(Benchmark):
 
 forward_operations = [
     ("all", torch.all, FLOAT_DTYPES),
-    *(
-        [
-            ("any", torch.any, FLOAT_DTYPES),
-        ]
-        if flag_gems.device != "musa"
-        else []
-    ),
+    ("any", torch.any, FLOAT_DTYPES),
     ("amax", torch.amax, FLOAT_DTYPES),
     ("argmax", torch.argmax, FLOAT_DTYPES),
     ("argmin", torch.argmin, FLOAT_DTYPES),
@@ -162,10 +157,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES
             + ([torch.int32] if vendor_name == "kunlunxin" else INT_DTYPES)
             + BOOL_DTYPES,
-            marks=[
-                pytest.mark.nonzero,
-                pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError"),
-            ],
+            marks=pytest.mark.nonzero,
         ),
         pytest.param(
             "cross_entropy_loss",
@@ -179,60 +171,35 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             torch.cumsum,
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=[
-                pytest.mark.cumsum,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.cumsum,
         ),
         pytest.param(
             "cummin",
             torch.cummin,
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=[
-                pytest.mark.cummin,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.cummin,
         ),
         pytest.param(
             "cummax",
             torch.cummax,
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=[
-                pytest.mark.cummax,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.cummax,
         ),
         pytest.param(
             "nll_loss",
             torch.nn.functional.nll_loss,
             nll_loss_input_fn,
             FLOAT_DTYPES,
-            marks=[
-                pytest.mark.nll_loss,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.nll_loss,
         ),
         pytest.param(
             "mse_loss",
             torch.nn.functional.mse_loss,
             mse_loss_input_fn,
             FLOAT_DTYPES,
-            marks=[
-                pytest.mark.mse_loss,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.mse_loss,
         ),
     ],
 )
@@ -242,18 +209,22 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
             pytest.skip("RUNTIME TODOFIX")
         elif op_name in ["cummin", "cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
+    if vendor_name == "mthreads" and op_name in ["cummin", "cummax"]:
+        # Compatible with older versions of LLVM
+        os.environ["DISABLE_LLVM_OPT"] = "1"
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     if op_name == "cross_entropy_loss":
         bench.set_gems(flag_gems.cross_entropy_loss)
     bench.run()
+    if vendor_name == "mthreads" and op_name in ["cummin", "cummax"]:
+        del os.environ["DISABLE_LLVM_OPT"]
 
 
 @pytest.mark.skipif(
     vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
 )
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):

@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import random
 
 import numpy as np
@@ -689,7 +690,7 @@ def test_accuracy_floor_divide_float_(shape, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="TODO")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -734,7 +735,7 @@ def test_accuracy_floor_divide_int(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.inplace
 @pytest.mark.floor_divide_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -791,7 +792,7 @@ def test_accuracy_floor_divide_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError TODOFIX")
 @pytest.mark.remainder
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -835,12 +836,15 @@ def test_accuracy_remainder(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.inplace
 @pytest.mark.remainder_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_remainder_(shape, dtype):
+    if flag_gems.vendor_name == "mthreads":
+        # Compatible with older versions of LLVM
+        os.environ["DISABLE_LLVM_OPT"] = "1"
+
     inp1 = torch.randint(
         torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
     ).to(flag_gems.device)
@@ -866,6 +870,10 @@ def test_accuracy_remainder_(shape, dtype):
         with flag_gems.use_gems():
             res_out = inp1.remainder_(d)
         gems_assert_equal(res_out, ref_out)
+
+    if flag_gems.vendor_name == "mthreads":
+        # Compatible with older versions of LLVM
+        del os.environ["DISABLE_LLVM_OPT"]
 
 
 @pytest.mark.eq
@@ -1483,7 +1491,7 @@ def test_accuracy_sub_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1994,7 +2002,7 @@ def test_accuracy_fill_(value, shape, dtype):
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     ref_x = to_reference(x.clone(), False)
     value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
-    if flag_gems.device == "musa":
+    if flag_gems.vendor_name == "mthreads":
         ref_x.fill_(value_tensor.cpu())
     else:
         ref_value_tensor = to_reference(value_tensor)

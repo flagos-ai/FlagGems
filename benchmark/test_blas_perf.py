@@ -126,10 +126,6 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="temp disable for updating",
-)
 def test_blas_benchmark(op_name, torch_op, input_fn):
     bench = BlasBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
@@ -204,7 +200,7 @@ class VdotBenchmark(BlasBenchmark):
 
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="Segmentation fault")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Segmentation fault")
 @pytest.mark.vdot
 def test_vdot_benchmark():
     def vdot_input_fn(m, cur_dtype, device):
