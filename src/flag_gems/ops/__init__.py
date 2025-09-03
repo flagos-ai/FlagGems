@@ -1,5 +1,6 @@
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.add import add, add_
+from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.addmm import addmm
 from flag_gems.ops.all import all, all_dim, all_dims
@@ -207,6 +208,7 @@ __all__ = [
     "abs_",
     "add",
     "add_",
+    "addcdiv",
     "addmm",
     "all",
     "all_dim",
