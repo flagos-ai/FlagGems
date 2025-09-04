@@ -75,6 +75,8 @@ def enable(
             ("bitwise_or_.Tensor", bitwise_or_tensor_),
             ("bmm", bmm),
             ("cat", cat),
+            ("celu", celu),
+            ("celu_", celu_),
             ("clamp", clamp),
             ("clamp.Tensor", clamp_tensor),
             ("clamp_", clamp_),

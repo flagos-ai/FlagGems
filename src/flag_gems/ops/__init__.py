@@ -33,6 +33,7 @@ from flag_gems.ops.bitwise_or import (
 )
 from flag_gems.ops.bmm import bmm
 from flag_gems.ops.cat import cat
+from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
@@ -239,6 +240,8 @@ __all__ = [
     "bitwise_or_tensor_",
     "bmm",
     "cat",
+    "celu",
+    "celu_",
     "clamp",
     "clamp_",
     "clamp_tensor",

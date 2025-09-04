@@ -54,6 +54,8 @@ forward_operations = [
     # Dropout
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
+    ("celu", torch.nn.functional.celu, FLOAT_DTYPES),
+    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
