@@ -9,6 +9,13 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
+def get_dtype_bytes(dtype):
+    if dtype.is_floating_point:
+        return int(torch.finfo(dtype).bits / 8)
+    else:
+        return int(torch.iinfo(dtype).bits / 8)
+
+
 def tile_size_fwd_sm8x(
     sm86_or_89: bool,
     headdim: int,
@@ -481,7 +488,7 @@ def get_scheduler_metadata(
 
     softcap = 1.0 if has_softcap else 0.0
 
-    element_size = qkv_dtype.itemsize
+    element_size = get_dtype_bytes(qkv_dtype)
 
     has_page_table = page_size is not None
 
@@ -570,7 +577,7 @@ def get_scheduler_metadata(
     use_dynamic_split = (num_splits <= 0) and (batch_size <= 992)
 
     if num_splits <= 0:
-        element_size = qkv_dtype.itemsize
+        element_size = get_dtype_bytes(qkv_dtype)
         is_fp16 = qkv_dtype == torch.float16
         is_bf16 = qkv_dtype == torch.bfloat16
 

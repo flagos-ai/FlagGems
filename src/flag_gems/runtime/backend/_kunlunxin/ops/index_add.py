@@ -104,7 +104,7 @@ def index_add(inp, dim, index, src, alpha=1):
 def index_add_(inp, dim, index, src, alpha=1):
     logger.debug("GEMS INDEX ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
+        torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
     ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.numel() == src.size(
@@ -117,24 +117,27 @@ def index_add_(inp, dim, index, src, alpha=1):
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
-    dim %= inp.ndim
-    inp_stride_dim = inp.stride(dim)
-    src_shape_dim = src.size(dim)
-    inp_shape_dim = inp.size(dim)
-    delta = inp.size(dim) - src_shape_dim
-    N = src.numel()
+    inp = inp.contiguous()
+    index = index.contiguous()
+    src = src.contiguous()
 
-    index_add_kernel(
-        inp,
-        index,
-        src,
-        dim,
-        inp_stride_dim,
-        inp_shape_dim,
-        src_shape_dim,
-        delta,
-        N,
-        inp.numel(),
-        alpha,
+    dim = dim % inp.ndim
+    inp_len = inp.size(dim)
+    N = index.numel()
+    M = src.numel() // N
+    fine_dim = inp.ndim - 1
+    if dim != fine_dim:
+        inp = dim_compress(inp, dim)
+        src = dim_compress(src, dim)
+    out = inp
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(N, meta["BLOCK_N"]),
     )
-    return inp
+    index_add_kernel[grid](inp, out, index, src, M, N, alpha, inp_len)
+    if dim != fine_dim:
+        order = [i for i in range(out.ndim - 1)]
+        order.insert(dim, fine_dim)
+        return out.permute(order).contiguous()
+    else:
+        return out
