@@ -1459,6 +1459,13 @@ def test_flash_mla(seqlen, dtype):
     cal_diff(to_reference(res_out), ref_out, "out")
 
 
+def get_dtype_bytes(dtype):
+    if dtype.is_floating_point:
+        return int(torch.finfo(dtype).bits / 8)
+    else:
+        return int(torch.iinfo(dtype).bits / 8)
+
+
 def reference_get_scheduler_metadata(
     batch_size: int,
     max_seqlen_q: int,
@@ -1511,15 +1518,26 @@ def reference_get_scheduler_metadata(
     d_rounded = round_up_headdim(headdim)
     dv_rounded = round_up_headdimv(headdim_v)
 
-    blockM, blockN = get_optimal_block_mn(
-        device=device,
-        headdim=headdim,
-        headdim_v=headdim_v,
-        is_causal=final_is_causal,
-        is_local=final_is_local,
-        has_softcap=has_softcap,
-        element_size=qkv_dtype.itemsize,
-    )
+    if flag_gems.vendor_name == "kunlunxin":
+        blockM, blockN = get_optimal_block_mn(
+            device=device,
+            headdim=headdim,
+            headdim_v=headdim_v,
+            is_causal=final_is_causal,
+            is_local=final_is_local,
+            has_softcap=has_softcap,
+            element_size=get_dtype_bytes(qkv_dtype),
+        )
+    else:
+        blockM, blockN = get_optimal_block_mn(
+            device=device,
+            headdim=headdim,
+            headdim_v=headdim_v,
+            is_causal=final_is_causal,
+            is_local=final_is_local,
+            has_softcap=has_softcap,
+            element_size=qkv_dtype.itemsize,
+        )
 
     final_pack_gqa = pack_gqa if pack_gqa is not None else (num_heads != num_heads_k)
     qhead_per_khead = (
@@ -1538,27 +1556,50 @@ def reference_get_scheduler_metadata(
     use_dynamic_split = num_splits_static <= 0 and batch_size <= 992
 
     if use_dynamic_split:
-        eff_num_splits = get_num_splits(
-            batch_size=batch_size,
-            num_heads=num_heads,
-            num_heads_k=num_heads_k,
-            headdim=headdim,
-            headdim_v=headdim_v,
-            d_rounded=d_rounded,
-            dv_rounded=dv_rounded,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_k=max_seqlen_k,
-            max_seqlen_k_new=max_seqlen_k_new,
-            arch=arch,
-            num_sm=num_sm,
-            is_causal=final_is_causal,
-            is_local=final_is_local,
-            has_softcap=has_softcap,
-            is_varlen=True,
-            has_page_table=False,
-            element_size=qkv_dtype.itemsize,
-            use_dynamic_split=True,
-        )
+        if flag_gems.vendor_name == "kunlunxin":
+            eff_num_splits = get_num_splits(
+                batch_size=batch_size,
+                num_heads=num_heads,
+                num_heads_k=num_heads_k,
+                headdim=headdim,
+                headdim_v=headdim_v,
+                d_rounded=d_rounded,
+                dv_rounded=dv_rounded,
+                max_seqlen_q=max_seqlen_q,
+                max_seqlen_k=max_seqlen_k,
+                max_seqlen_k_new=max_seqlen_k_new,
+                arch=arch,
+                num_sm=num_sm,
+                is_causal=final_is_causal,
+                is_local=final_is_local,
+                has_softcap=has_softcap,
+                is_varlen=True,
+                has_page_table=False,
+                element_size=get_dtype_bytes(qkv_dtype),
+                use_dynamic_split=True,
+            )
+        else:
+            eff_num_splits = get_num_splits(
+                batch_size=batch_size,
+                num_heads=num_heads,
+                num_heads_k=num_heads_k,
+                headdim=headdim,
+                headdim_v=headdim_v,
+                d_rounded=d_rounded,
+                dv_rounded=dv_rounded,
+                max_seqlen_q=max_seqlen_q,
+                max_seqlen_k=max_seqlen_k,
+                max_seqlen_k_new=max_seqlen_k_new,
+                arch=arch,
+                num_sm=num_sm,
+                is_causal=final_is_causal,
+                is_local=final_is_local,
+                has_softcap=has_softcap,
+                is_varlen=True,
+                has_page_table=False,
+                element_size=qkv_dtype.itemsize,
+                use_dynamic_split=True,
+            )
     else:
         eff_num_splits = num_splits_static if num_splits_static > 0 else 1
 

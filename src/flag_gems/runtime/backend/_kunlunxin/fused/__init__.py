@@ -10,6 +10,7 @@ from .reshape_and_cache_flash import reshape_and_cache_flash
 from .rotary_embedding import apply_rotary_pos_emb
 from .silu_and_mul import silu_and_mul
 from .skip_layernorm import skip_layer_norm
+from .topk_softmax import topk_softmax
 from .weight_norm import weight_norm
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "reshape_and_cache",
     "reshape_and_cache_flash",
     "flash_mla",
+    "topk_softmax",
 ]

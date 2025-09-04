@@ -29,7 +29,7 @@ def glu_kernel(a, b):
 )
 @triton.jit
 def glu_backward_kernel(grad_output, a, b):
-    sigmoid_b = 1 / (1 + exp(-b.to(tl.float32)))
+    sigmoid_b = 1 / (1 + tl.exp(-b.to(tl.float32)))
     da = grad_output * sigmoid_b
     db = grad_output.to(tl.float32) * a * sigmoid_b * (1.0 - sigmoid_b)
 
