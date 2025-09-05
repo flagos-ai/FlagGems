@@ -1,0 +1,3 @@
+vllm>=0.8.5
+datasets
+pandas
