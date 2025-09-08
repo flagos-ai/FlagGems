@@ -57,6 +57,46 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="temp disable for updating",
+)
+@pytest.mark.addmm_out
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addmm_out(M, N, K, scalar, dtype):
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias1 = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
+    ref_bias1 = to_reference(bias1, True)
+    ref_out = to_reference(out, True)
+
+    alpha = beta = scalar
+
+    torch.addmm(ref_bias1, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out)
+    with flag_gems.use_gems():
+        torch.addmm(bias1, mat1, mat2, alpha=alpha, beta=beta, out=out)
+
+    gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+    bias2 = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    ref_bias2 = to_reference(bias2, True)
+
+    torch.addmm(ref_bias2, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out)
+    with flag_gems.use_gems():
+        torch.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta, out=out)
+
+    gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="temp disable for updating",
+)
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

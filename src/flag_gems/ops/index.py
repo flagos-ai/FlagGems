@@ -49,9 +49,15 @@ def generate_index_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
     code.writeline("@libentry()")
-    code.writeline(
-        '@libtuner(configs=runtime.get_tuned_config("index"), key=["M", "N"], restore_value=["input_ptr"])'
-    )
+    code.writeline("@libtuner(")
+    with code.indent():
+        code.writeline('configs=runtime.get_tuned_config("index"),')
+        code.writeline('key=["M", "N"],')
+        code.writeline('restore_value=["input_ptr"],')
+        code.writeline('strategy=["align32", "align32"],')
+        code.writeline("warmup=5,")
+        code.writeline("rep=10,")
+    code.writeline(")")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
