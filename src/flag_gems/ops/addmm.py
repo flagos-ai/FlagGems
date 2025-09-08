@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 @libtuner(
     configs=runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
+    strategy=["align32", "align32", "align32"],
+    warmup=5,
+    rep=10,
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
@@ -90,6 +92,50 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     mat1 = mat1.contiguous()
     mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    bias = bias.broadcast_to(out.shape).contiguous()
+
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]),
+        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    )
+    with torch_device_fn.device(mat1.device):
+        addmm_kernel[grid](
+            mat1,
+            mat2,
+            bias,
+            out,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            mat1.stride(0),
+            mat1.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            bias.stride(0),
+            bias.stride(1),
+            out.stride(0),
+            out.stride(1),
+        )
+    return out
+
+
+def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
+    logger.debug("GEMS ADDMM OUT")
+    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
+    assert broadcastable_to(
+        bias.shape, (mat1.shape[0], mat2.shape[1])
+    ), "Incompatible input shape"
+    M, K = mat1.shape
+    _, N = mat2.shape
+    if out is None:
+        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    else:
+        assert out.shape == (M, N), "Incompatible output shape"
+
+    mat1 = mat1.contiguous()
+    mat2 = mat2.contiguous()
     bias = bias.broadcast_to(out.shape).contiguous()
 
     grid = lambda META: (
