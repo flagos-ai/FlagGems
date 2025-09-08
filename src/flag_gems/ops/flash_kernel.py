@@ -1436,4 +1436,8 @@ def flash_varlen_fwd_kernel(
     # lse shape: [h, total_q]
     softmax_lse_ptr += hid * total_q
     lse_row_offset = lse_offset + m_block * BLOCK_M + tl.arange(0, BLOCK_M)
-    tl.store(softmax_lse_ptr + lse_row_offset, lse, mask=lse_row_offset < total_q)
+    tl.store(
+        softmax_lse_ptr + lse_row_offset,
+        lse,
+        mask=lse_row_offset < (lse_offset + q_len),
+    )
