@@ -313,6 +313,8 @@ class GetSchedulerMetadataBenchmark(GenericBenchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
+            (8, 8, 1024, 16, 4, 128, 128),
+            (32, 32, 512, 8, 8, 64, 64),
             (256, 256, 2048, 32, 32, 128, 128),
             (512, 512, 4096, 32, 8, 128, 128),
             (1024, 1024, 8192, 64, 16, 128, 128),
