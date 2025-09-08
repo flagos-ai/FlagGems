@@ -28,12 +28,23 @@ def import_vendor_extra_lib(vendor_name=None):
     global ops_module, fused_module
     try:
         ops_module = importlib.import_module(f"_{vendor_name}.ops")
-    except Exception:
-        pass
+    except ModuleNotFoundError:
+        print(
+            f"[Note] No specialized common operators were found in"
+            f"the {vendor_name} implementation, and general common operators are used by default."
+        )
+    except Exception as e:
+        raise RuntimeError(f"Import vendor extra lib failed: {e}")
+
     try:
         fused_module = importlib.import_module(f"_{vendor_name}.fused")
-    except Exception:
-        pass
+    except ModuleNotFoundError:
+        print(
+            f"[Note] No specialized fused operators were found in"
+            f"the {vendor_name} implementation, and general fused operators are used by default."
+        )
+    except Exception as e:
+        raise RuntimeError(f"Import vendor extra lib failed: {e}")
     vendor_extra_lib_imported = True
 
 
