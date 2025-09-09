@@ -61,7 +61,7 @@ def ld_st_1(indices, N: tl.constexpr, weight_ptr, in_mask, in_offsets, out_ptr):
         triton.Config(kwargs={"BLOCK_SIZE": 512 * 2**i}, num_stages=1, num_warps=1)
         for i in range(0, 8, 2)
     ],
-    key=["N", "in_n_elements"],
+    key=["N"],
     prune_configs_by={
         "early_config_prune": config_prune,
     },
@@ -70,7 +70,7 @@ def ld_st_1(indices, N: tl.constexpr, weight_ptr, in_mask, in_offsets, out_ptr):
 def one_batch_index_select_kernel(  # 2D
     out_ptr,
     in_ptr,
-    in_n_elements: tl.constexpr,
+    in_n_elements,
     weight_ptr,
     N: tl.constexpr,
     dtype_size,

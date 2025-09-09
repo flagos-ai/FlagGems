@@ -409,8 +409,7 @@ def cumsum_kernel_result(
     tl.store(y_ptrs, x_block, mask=mask)
 
 
-def cumsum(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS_CAMBRICON CUMSUM")
+def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -425,7 +424,9 @@ def cumsum(inp, dim=1, *, dtype=None):
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int32
-    out = torch.empty_like(inp, dtype=dtype)
+    if out is None:
+        out = torch.empty_like(inp, dtype=dtype)
+
     blelloch_grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
@@ -461,6 +462,16 @@ def cumsum(inp, dim=1, *, dtype=None):
         with torch_device_fn.device(inp.device):
             cumsum_blelloch[blelloch_grid](inp, out, M, N, K, dtypestr)
     return out
+
+
+def cumsum(inp, dim=1, *, dtype=None):
+    logger.debug("GEMS_CAMBRICON CUMSUM")
+    return cumsum_wrapper(inp, dim, dtype)
+
+
+def cumsum_out(inp, dim=1, *, dtype=None, out):
+    logger.debug("GEMS_CAMBRICON CUMSUM_OUT")
+    return cumsum_wrapper(inp, dim, dtype, out)
 
 
 @libentry()
