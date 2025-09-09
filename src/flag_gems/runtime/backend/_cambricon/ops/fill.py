@@ -81,6 +81,8 @@ def fill_tensor(input, value):
 
 def fill_scalar(input, value):
     logger.debug("GEMS_CAMBRICON FILL SCALAR")
+    if 0 in input.shape:
+        return input
     out = torch.empty_like(input)
     N = out.numel()
     # grid = triton.cdiv(N, BLOCK_SIZE)
@@ -107,6 +109,8 @@ def fill_tensor_(self, value):
 
 def fill_scalar_(self, value):
     logger.debug("GEMS_CAMBRICON FILL_SCALAR_")
+    if 0 in self.shape:
+        return self
     N = self.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 

@@ -821,13 +821,21 @@ mean:
   param_map:
     META:
       BLOCK_M: block_m
-      BLOCK_N: 1024
+      BLOCK_N: block_n
     num_warps: 4
   block_m:
   - 1
   - 2
   - 4
   - 8
+  - 64
+  - 128
+  - 256
+  - 512
+  block_n:
+  - 64
+  - 128
+  - 1024
 #######################################
 instancenorm:
 - gen: true

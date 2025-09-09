@@ -8,7 +8,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
@@ -39,27 +39,26 @@ def config_prune1(configs, named_args, **kwargs):
             config = copy.deepcopy(config)
             TILE_N = config.kwargs["TILE_N"] = N
             k_per_core = math.ceil(K / max(TOTAL_CORE_NUM // M, 1))
-            nram_usage = (2 * TILE_N + 1) * k_per_core * 4
-            if nram_usage < MAX_NRAM_SIZE:
-                TILE_K = config.kwargs["TILE_K"] = k_per_core
-                num_stages = config.num_stages = 1
-                key = (TILE_K, TILE_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
-            else:
-                max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (2 * TILE_N + 1)
-                TILE_K = config.kwargs["TILE_K"] = align(max_tile_k_without_pipe)
-                num_stages = config.num_stages = 1
-                key = (TILE_K, TILE_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
+            TILE_K = config.kwargs["TILE_K"] = k_per_core
+            num_stages = config.num_stages = 1
+            key = (TILE_K, TILE_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
 
-                config = copy.deepcopy(config)
-                max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (3 * TILE_N + 1)
-                if input.dtype == torch.float32:
-                    max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (4 * TILE_N + 1)
-                TILE_K = config.kwargs["TILE_K"] = align(max_tile_k_without_pipe)
-                num_stages = config.num_stages = 3
-                key = (TILE_K, TILE_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
+            config = copy.deepcopy(config)
+            max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (2 * TILE_N + 1)
+            TILE_K = config.kwargs["TILE_K"] = align(max_tile_k_without_pipe)
+            num_stages = config.num_stages = 1
+            key = (TILE_K, TILE_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
+
+            config = copy.deepcopy(config)
+            max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (3 * TILE_N + 1)
+            if input.dtype == torch.float32:
+                max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (4 * TILE_N + 1)
+            TILE_K = config.kwargs["TILE_K"] = align(max_tile_k_without_pipe)
+            num_stages = config.num_stages = 3
+            key = (TILE_K, TILE_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
         else:
             key = (TILE_K, TILE_N, num_warps, num_stages)
             configs_map.setdefault(key, config)
@@ -90,7 +89,7 @@ def softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("softmax_non_inner"),
     key=[
         "N",
@@ -160,8 +159,10 @@ def softmax_kernel_non_inner(
                     tl.float32
                 )
                 m_new = tl.maximum(m, inp)
-                alpha = tl.exp(m - m_new)
-                z = z * alpha + tl.exp(inp - m_new)
+                all_neg_inf = m_new == float("-inf")
+                z = tl.where(
+                    all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new)
+                )
                 m = m_new
             m_reduced = tl.max(m, 0)  # (TILE_K,)
             z = tl.sum(z * tl.exp(m - m_reduced[None, :]), 0)  # (TILE_K, )
@@ -197,27 +198,26 @@ def config_prune2(configs, named_args, **kwargs):
             config = copy.deepcopy(config)
             BLOCK_N = config.kwargs["BLOCK_N"] = N
             m_per_core = math.ceil(M / TOTAL_CORE_NUM)
-            nram_usage = (2 * BLOCK_N + 1) * m_per_core * 4
-            if nram_usage < MAX_NRAM_SIZE:
-                BLOCK_M = config.kwargs["BLOCK_M"] = m_per_core
-                num_stages = config.num_stages = 1
-                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
-            else:
-                max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (2 * BLOCK_N + 1)
-                BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
-                num_stages = config.num_stages = 1
-                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
+            BLOCK_M = config.kwargs["BLOCK_M"] = m_per_core
+            num_stages = config.num_stages = 1
+            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
 
-                config = copy.deepcopy(config)
-                max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (4 * BLOCK_N + 1)
-                if input.dtype == torch.float32:
-                    max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (6 * BLOCK_N + 1)
-                BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
-                num_stages = config.num_stages = 3
-                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
+            config = copy.deepcopy(config)
+            max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (2 * BLOCK_N + 1)
+            BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
+            num_stages = config.num_stages = 1
+            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
+
+            config = copy.deepcopy(config)
+            max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (4 * BLOCK_N + 1)
+            if input.dtype == torch.float32:
+                max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (6 * BLOCK_N + 1)
+            BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
+            num_stages = config.num_stages = 3
+            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
         key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
         # Only keep one config for the same key
         configs_map.setdefault(key, config)
@@ -249,7 +249,7 @@ def softmax_tile_mode_for_inner(args):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("softmax_inner"),
     key=[
         "M",
@@ -319,8 +319,12 @@ def softmax_kernel_inner(
                     tl.float32
                 )
                 cur_max = tl.maximum(block_max, inp)
-                alpha = tl.exp(block_max - cur_max)
-                block_sum = block_sum * alpha + tl.exp(inp - cur_max)
+                all_neg_inf = cur_max == float("-inf")
+                block_sum = tl.where(
+                    all_neg_inf,
+                    block_sum,
+                    block_sum * tl.exp(block_max - cur_max) + tl.exp(inp - cur_max),
+                )
                 block_max = cur_max
 
             trans_block_max = tl.trans(block_max)
@@ -341,6 +345,123 @@ def softmax_kernel_inner(
                 )
                 o = tl.exp(inp - total_max[:, None]) * recip_total_sum[:, None]
                 tl.store(output_ptr + offset, o, mask=mask)
+
+
+@triton.jit
+def softmax_kernel_inner_k_partial_stats(
+    x_ptr,
+    max_buf_ptr,
+    sum_buf_ptr,
+    M,
+    N,
+    T,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pnum = tl.num_programs(axis=0)
+    pid = tl.program_id(0)
+    total_blocks = (M // BLOCK_M) * T
+    work_per_core = (total_blocks + pnum - 1) // pnum
+    start = pid * work_per_core
+    end = tl.minimum(start + work_per_core, total_blocks)
+
+    for task in range(start, end):
+        row_id = task // T
+        tile_id = task % T
+
+        offs_m = row_id * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = tile_id * BLOCK_N + tl.arange(0, BLOCK_N)
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+
+        tile = tl.load(
+            x_ptr + offs_m[:, None] * N + offs_n[None, :],
+            mask=mask,
+            other=-float("inf"),
+        ).to(tl.float32)
+
+        tile_max = tl.max(tile, axis=1)
+        tile_sum = tl.sum(tl.exp(tile - tile_max[:, None]), axis=1)
+
+        tl.store(max_buf_ptr + offs_m * T + tile_id, tile_max, mask=(offs_m < M))
+        tl.store(sum_buf_ptr + offs_m * T + tile_id, tile_sum, mask=(offs_m < M))
+
+
+@triton.jit
+def softmax_kernel_inner_k_merge_stats(
+    max_buf_ptr,
+    sum_buf_ptr,
+    gmax_ptr,
+    gsum_ptr,
+    M: tl.constexpr,
+    T: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+):
+    pid_m = tl.program_id(axis=0)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)  # [BM]
+    mask_m = offs_m < M
+    tile_max = tl.load(
+        max_buf_ptr + offs_m[:, None] * T + tl.arange(0, T)[None, :],
+        mask=(offs_m[:, None] < M),
+        other=-float("inf"),
+    )
+    tile_sum = tl.load(
+        sum_buf_ptr + offs_m[:, None] * T + tl.arange(0, T)[None, :],
+        mask=(offs_m[:, None] < M),
+        other=0.0,
+    ).to(tl.float32)
+
+    gmax = tl.max(tile_max, axis=1)
+    scale = tl.exp(tile_max - gmax[:, None])
+    scale = tl.where(gmax[:, None] == -float("inf"), 0.0, scale)
+    gsum = tl.sum(tile_sum * scale, axis=1)
+
+    tl.store(gmax_ptr + offs_m, gmax, mask=mask_m)
+    tl.store(gsum_ptr + offs_m, gsum, mask=mask_m)
+
+
+@triton.jit
+def softmax_kernel_inner_k_write_softmax(
+    x_ptr,
+    y_ptr,
+    gmax_ptr,
+    gsum_ptr,
+    M,
+    N,
+    T,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pnum = tl.num_programs(axis=0)
+    pid = tl.program_id(0)
+    total_blocks = (M // BLOCK_M) * T
+    work_per_core = (total_blocks + pnum - 1) // pnum
+    start = pid * work_per_core
+    end = tl.minimum(start + work_per_core, total_blocks)
+
+    for task in range(start, end):
+        row_id = task // T
+        tile_id = task % T
+
+        offs_m = row_id * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = tile_id * BLOCK_N + tl.arange(0, BLOCK_N)
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+
+        # load global stats
+        gmax = tl.load(gmax_ptr + offs_m, mask=(offs_m < M), other=-float("inf")).to(
+            tl.float32
+        )
+        gsum = tl.load(gsum_ptr + offs_m, mask=(offs_m < M), other=0.0).to(tl.float32)
+
+        # load tile
+        tile = tl.load(
+            x_ptr + offs_m[:, None] * N + offs_n[None, :],
+            mask=mask,
+            other=-float("inf"),
+        ).to(tl.float32)
+
+        out = tl.exp(tile - gmax[:, None]) / gsum[:, None]
+
+        tl.store(y_ptr + offs_m[:, None] * N + offs_n[None, :], out, mask=mask)
 
 
 # ------------------------  backward -------------------------------
@@ -407,7 +528,7 @@ def config_prune3(configs, named_args, **kwargs):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("softmax_non_inner_bw"),
     key=[
         "N",
@@ -497,27 +618,26 @@ def config_prune4(configs, named_args, **kwargs):
             config = copy.deepcopy(config)
             BLOCK_N = config.kwargs["BLOCK_N"] = N
             m_per_core = math.ceil(M / TOTAL_CORE_NUM)
-            nram_usage = (3 * BLOCK_N + 1) * m_per_core * 4
-            if nram_usage < MAX_NRAM_SIZE:
-                BLOCK_M = config.kwargs["BLOCK_M"] = m_per_core
-                num_stages = config.num_stages = 1
-                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
-            else:
-                max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (3 * BLOCK_N + 1)
-                BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
-                num_stages = config.num_stages = 1
-                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
+            BLOCK_M = config.kwargs["BLOCK_M"] = m_per_core
+            num_stages = config.num_stages = 1
+            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
 
-                config = copy.deepcopy(config)
-                max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (6 * BLOCK_N + 1)
-                if output.dtype == torch.float32:
-                    max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (7 * BLOCK_N + 1)
-                BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
-                num_stages = config.num_stages = 3
-                key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
+            config = copy.deepcopy(config)
+            max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (3 * BLOCK_N + 1)
+            BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
+            num_stages = config.num_stages = 1
+            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
+
+            config = copy.deepcopy(config)
+            max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (6 * BLOCK_N + 1)
+            if output.dtype == torch.float32:
+                max_block_m_without_pipe = MAX_NRAM_SIZE // 4 // (7 * BLOCK_N + 1)
+            BLOCK_M = config.kwargs["BLOCK_M"] = align(max_block_m_without_pipe)
+            num_stages = config.num_stages = 3
+            key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+            configs_map.setdefault(key, config)
         key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
         # Only keep one config for the same key
         configs_map.setdefault(key, config)
@@ -538,7 +658,7 @@ def config_prune4(configs, named_args, **kwargs):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("softmax_inner_bw"),
     key=[
         "M",
@@ -642,12 +762,58 @@ def softmax(self, dim, half_to_float=False):
             )
         else:
             logger.debug("GEMS_CAMBRICON SOFTMAX USE INNER")
-            softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
-                out,
-                self,
-                M,
-                N,
-            )
+            if M > TOTAL_CORE_NUM or N < 1024 * 8 * 8:
+                softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
+                    out,
+                    self,
+                    M,
+                    N,
+                )
+            else:
+                block_m = 1
+                block_n = 8192 * 4
+                if dtype is torch.float32:
+                    block_n = 8192 * 2
+                # workspace
+                T = (N + block_n - 1) // block_n
+                max_buf = torch.empty((M, T), device=self.device, dtype=torch.float32)
+                sum_buf = torch.empty((M, T), device=self.device, dtype=torch.float32)
+                gmax = torch.empty((M,), device=self.device, dtype=torch.float32)
+                gsum = torch.empty((M,), device=self.device, dtype=torch.float32)
+                # kernel 1: per-tile stats
+                softmax_kernel_inner_k_partial_stats[(TOTAL_CORE_NUM,)](
+                    self,
+                    max_buf,
+                    sum_buf,
+                    M,
+                    N,
+                    T,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    bottleneck="simd",
+                    num_stages=3,
+                )
+                # kernel 2: merge stats along N-tiles
+                grid_merge = (triton.cdiv(M, block_m),)
+                softmax_kernel_inner_k_merge_stats[grid_merge](
+                    max_buf, sum_buf, gmax, gsum, M, T, BLOCK_M=block_m
+                )
+                block_n = block_n // 2
+                T = (N + block_n - 1) // block_n
+                # kernel 3: write normalized outputs
+                softmax_kernel_inner_k_write_softmax[(TOTAL_CORE_NUM,)](
+                    self,
+                    out,
+                    gmax,
+                    gsum,
+                    M,
+                    N,
+                    T,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    bottleneck="simd",
+                    num_stages=3,
+                )
     return out
 
 
