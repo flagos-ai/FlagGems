@@ -1271,9 +1271,9 @@ def flash_varlen_fwd_kernel(
     n_masking_steps = min(n_block_max - n_block_min, n_masking_steps)
 
     row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
-    col_idx = (n_block_max - 1) * BLOCK_N + tl.arange(0, BLOCK_N)
     n_block = n_block_max - 1
     for step in tl.range(0, n_masking_steps):
+        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         bK, bV = load_from_kvcache(
             col_idx,
             page_table_ptr,
@@ -1337,12 +1337,12 @@ def flash_varlen_fwd_kernel(
             )
 
         acc_ = tl.dot(P, bV, acc_)
-        col_idx -= BLOCK_N
         n_block -= 1
 
     for n_block in tl.range(
         n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1
     ):
+        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         bK, bV = load_from_kvcache(
             col_idx,
             page_table_ptr,
@@ -1405,7 +1405,6 @@ def flash_varlen_fwd_kernel(
                 BLOCK_N=BLOCK_N,
             )
         acc_ = tl.dot(P, bV, acc_)
-        col_idx -= BLOCK_N
 
     # LSE
     lse = tl.where(

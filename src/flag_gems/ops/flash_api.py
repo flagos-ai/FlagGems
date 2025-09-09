@@ -508,6 +508,9 @@ def mha_varlan_fwd(
             block_size,  # block_size,
         )
 
+        if flag_gems.vendor_name == "iluvatar":
+            params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
+            params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
         logger.debug("kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
