@@ -11,6 +11,12 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def exp2_tmp(x):
+    LN2 = 0.69314718056
+    return tl.exp(x.to(tl.float32) * LN2)
+
+
 @libentry()
 @triton.jit
 def logspace_kernel(
@@ -27,7 +33,7 @@ def logspace_kernel(
     mask = idx < steps
 
     exponent = start + idx * step_size
-    vals = tl.exp2(log2_base * exponent)
+    vals = exp2_tmp(log2_base * exponent)
 
     tl.store(out_ptr + idx * out_stride0, vals, mask=mask)
 

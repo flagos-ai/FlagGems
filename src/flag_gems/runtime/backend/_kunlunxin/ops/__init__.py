@@ -1,5 +1,6 @@
 from .abs import abs, abs_
 from .add import add, add_
+from .addcdiv import addcdiv
 from .addcmul import addcmul
 from .addmm import addmm
 from .all import all, all_dim, all_dims
@@ -32,6 +33,7 @@ from .bitwise_or import (
 )
 from .bmm import bmm
 from .cat import cat
+from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from .contiguous import contiguous
 from .conv1d import conv1d
@@ -196,6 +198,7 @@ __all__ = [
     "abs_",
     "add",
     "add_",
+    "addcdiv",
     "addmm",
     "all",
     "all_dim",
@@ -226,6 +229,8 @@ __all__ = [
     "bitwise_or_tensor_",
     "bmm",
     "cat",
+    "celu",
+    "celu_",
     "clamp",
     "clamp_",
     "clamp_tensor",
