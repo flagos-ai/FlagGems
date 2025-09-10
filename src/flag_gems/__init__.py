@@ -309,9 +309,8 @@ def enable(
             ("zeros", zeros),
             ("zeros_like", zeros_like),
         ),
-        user_unused_ops_list=list(
-            set([] if unused is None else unused) | set(aten_patch_list)
-        ),
+        user_unused_ops_list=list(set(unused or [])),
+        cpp_patched_ops_list=list(set(aten_patch_list)),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)
