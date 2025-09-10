@@ -3,7 +3,9 @@ from .backend.device import DeviceDetector
 
 
 class Register:
-    def __init__(self, config, user_unused_ops_list=None, lib=None):
+    def __init__(
+        self, config, user_unused_ops_list=None, cpp_patched_ops_list=None, lib=None
+    ):
         # lib is a instance of torch.library.Library
         self.device = DeviceDetector()
 
@@ -15,14 +17,18 @@ class Register:
 
         self.all_ops = []
         self.vendor_unused_ops_list = self.get_vendor_unused_op()
-        self.unused_ops = user_unused_ops_list + self.vendor_unused_ops_list
+        self.unused_ops = list(user_unused_ops_list or []) + self.vendor_unused_ops_list
+        self.cpp_patched_ops_list = set(cpp_patched_ops_list or [])
         self.config = config
         self.config_filter()
         self.for_each()
 
     def config_filter(self):
         self.config = [
-            item for item in self.config if item[1].__name__ not in self.unused_ops
+            item
+            for item in self.config
+            if item[1].__name__ not in self.unused_ops
+            and item[0] not in self.cpp_patched_ops_list
         ]
 
     def get_vendor_unused_op(self):
