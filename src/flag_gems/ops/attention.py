@@ -456,7 +456,7 @@ def flash_attention_forward(
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
+    assert HEAD_DIM_K in {16, 32, 64, 96, 128, 192, 256}
 
     softmax_scale = scale or 1.0 / (HEAD_DIM_K**0.5)
     if window_size_left is not None:
