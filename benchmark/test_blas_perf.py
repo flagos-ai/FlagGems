@@ -215,3 +215,34 @@ def test_vdot_benchmark():
         dtypes=COMPLEX_DTYPES + FLOAT_DTYPES,
     )
     bench.run()
+
+
+class AddrBenchmark(BlasBenchmark):
+    """
+    benchmark for addr
+    """
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            m, n = shape[0], shape[1]
+            yield from self.input_fn(m, n, cur_dtype, self.device)
+
+
+@pytest.mark.addr
+def test_addr_benchmark():
+    def addr_input_fn(m, n, cur_dtype, device):
+        inp1 = torch.randn([m, n], dtype=cur_dtype, device=device)
+        inp2 = torch.randn([m], dtype=cur_dtype, device=device)
+        inp3 = torch.randn([n], dtype=cur_dtype, device=device)
+        yield inp1, inp2, inp3, {"alpha": 0.5, "beta": 0.5}
+
+    bench = AddrBenchmark(
+        input_fn=addr_input_fn,
+        op_name="addr",
+        torch_op=torch.Tensor.addr,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
