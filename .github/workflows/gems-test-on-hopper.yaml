@@ -14,6 +14,7 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
+      - '**.yaml'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -27,6 +28,11 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
+      - '**.yaml'
+
+env:
+  http_proxy: ${{ secrets.HTTP_PROXY }}
+  https_proxy: ${{ secrets.HTTPS_PROXY }}
 
 jobs:
   op-test-on-hopper:
@@ -37,6 +43,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
 
       - name: FlagGems reduction ops on hopper
         shell: bash
