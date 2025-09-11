@@ -301,6 +301,7 @@ def enable(
             ("upsample_nearest2d", upsample_nearest2d),
             ("var_mean.correction", var_mean),
             ("vdot", vdot),
+            ("addr", addr),
             ("vstack", vstack),
             ("where.ScalarOther", where_scalar_other),
             ("where.ScalarSelf", where_scalar_self),

@@ -239,3 +239,24 @@ def test_accuracy_dot_tensor_tensor(shape, dtype):
         res_out = torch.dot(inp1, inp2)
 
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.addr
+@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addr(M, N, dtype):
+    input_tensor = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    vec1 = torch.randn((M,), dtype=dtype, device=flag_gems.device)
+    vec2 = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    alpha = torch.randn((), dtype=dtype, device=flag_gems.device)
+    beta = torch.randn((), dtype=dtype, device=flag_gems.device)
+
+    ref_input = to_reference(input_tensor, True)
+    ref_vec1 = to_reference(vec1, True)
+    ref_vec2 = to_reference(vec2, True)
+
+    ref_out = torch.addr(ref_input, ref_vec1, ref_vec2, alpha=alpha, beta=beta)
+    with flag_gems.use_gems():
+        res_out = torch.addr(input_tensor, vec1, vec2, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
