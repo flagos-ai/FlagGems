@@ -21,15 +21,30 @@ def elu_forward_kernel(x, alpha, scale, input_scale):
 
 
 @pointwise_dynamic(
-    is_tensor=[True, True, False, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+    is_tensor=[True, False, False, False, True], promotion_methods=[(0, 4, "DEFAULT")]
 )
 @triton.jit
-def elu_backward_kernel(grad_output, x, alpha, scale, input_scale):
+def elu_backward_kernel_with_self(grad_output, alpha, scale, input_scale, x):
     x_fp32 = x.to(tl.float32)
-    grad_pos = grad_output * scale * input_scale
-    grad_neg = grad_output * scale * alpha * input_scale * tl.exp(x_fp32 * input_scale)
+    grad_input = tl.where(
+        x > 0,
+        grad_output * scale * input_scale,
+        grad_output * (scale * alpha * tl.exp(x_fp32 * input_scale) * input_scale),
+    )
+    return grad_input
 
-    return tl.where(x_fp32 > 0, grad_pos, grad_neg)
+
+@pointwise_dynamic(
+    is_tensor=[True, False, False, False, True], promotion_methods=[(0, 4, "DEFAULT")]
+)
+@triton.jit
+def elu_backward_kernel_with_result(grad_output, alpha, scale, input_scale, y):
+    grad_input = tl.where(
+        y > 0,
+        grad_output * scale * input_scale,
+        grad_output * ((y + scale * alpha) * input_scale),
+    )
+    return grad_input
 
 
 def elu(A, alpha=1.0, scale=1.0, input_scale=1.0):
@@ -44,7 +59,11 @@ def elu_(A, alpha=1.0, scale=1.0, input_scale=1.0):
 
 def elu_backward(grad_output, alpha, scale, input_scale, is_result, self_or_result):
     logger.debug("GEMS ELU BACKWARD")
-    grad_input = elu_backward_kernel(
-        grad_output, self_or_result, alpha, scale, input_scale
-    )
-    return grad_input
+    if is_result:
+        return elu_backward_kernel_with_result(
+            grad_output, alpha, scale, input_scale, self_or_result
+        )
+    else:
+        return elu_backward_kernel_with_self(
+            grad_output, alpha, scale, input_scale, self_or_result
+        )
