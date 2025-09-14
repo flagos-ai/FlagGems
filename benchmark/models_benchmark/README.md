@@ -12,11 +12,12 @@ Install Python dependencies with:
 ## 2. Running Base Benchmark (FlagScale only)
 
 Use the provided script `online.sh`.
-1. Edit the script and change the `MODEL` variable:
+1. Edit the script and change the following variables:
 ```bash
-       MODEL="/Change/To/Your/Real/Path/Here/Qwen/Qwen3-8B"
+       MODEL="/Change/To/Your/Real/Path/Here/Qwen/Qwen3-8B"                                  # your model path
+       YAML_CONF="/Change/To/Your/Real/Path/Here/FlagScale/examples/qwen3/conf/serve.yaml"   # your scale conf
+
 ```
-   Replace with the actual path to your model.
 
 2. Run the script:
 ```bash
@@ -31,15 +32,15 @@ Each run includes multiple configurations of:
 - Output length: 128, 512, 1024, 2048
 - Number of prompts: 1, 100, 1000, 2000
 
-The script automatically starts a vLLM server, waits until it is ready, and then launches the benchmark.
+The script automatically starts a FlagScale server, waits until it is ready, and then launches the benchmark.
 
 ## 3. Running Benchmark with FlagGems
 
-⚠️ Before running the FlagGems benchmark, you need to verify that your version of **FlagScale** includes the FlagGems hook.
+⚠️ Before running the FlagGems benchmark, make sure your version of **FlagScale** includes the FlagGems hook.
 
 ### 3.1 Verify Integration in FlagScale
 
-Check that your FlagScale source code includes logic similar to the following (see [flagscale/backends/vllm/vllm/worker/model_runner.py#L79](https://github.com/FlagOpen/FlagScale/blob/v0.8.0/flagscale/backends/vllm/vllm/worker/model_runner.py#L79)):
+Check that your FlagScale source code includes logic similar to the following (see [flagscale/backends/vllm/vllm/worker/model_runner.py#L79](https://github.com/FlagOpen/FlagScale/blob/main/flagscale/backends/vllm/vllm/v1/worker/gpu_model_runner.py#L90)):
 
    ```python
   # --- FLAGSCALE MODIFICATION BEG ---
@@ -50,7 +51,7 @@ Check that your FlagScale source code includes logic similar to the following (s
           print("Try to using FLAGGEMS...")
           import flag_gems
           flag_gems.enable(record=True, path="/tmp/gems_oplist.log.txt")
-          flag_gems.apply_gems_patches_to_vllm(verbose=True)
+          flag_gems.apply_gems_patches_to_vllm(verbose=True)         # [Experimental] Optional, not required now. Will be officially released later.
           logger.info("Successfully enabled flag_gems as default ops implementation.")
       except ImportError as e:
           # Throw an exception directly if failure occurs
@@ -66,8 +67,16 @@ When the service starts, check logs for messages like:
 
 
 ```
-  Overriding a previously registered kernel for the same operator...
-  operator: aten::add.Tensor(...)
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
+    registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+  dispatch key: CUDA
+  previous kernel: registered at /pytorch/aten/src/ATen/autocast_mode.cpp:169
+       new kernel: registered at /XXXX/XXX/XXXX/FlagGems/src/flag_gems/csrc/aten_patch.cpp:28 (function operator())
+Patched RMSNorm.forward_cuda with FLAGGEMS custom_gems_rms_forward_cuda
+Patched RotaryEmbedding.forward_cuda with FLAGGEMS custom_gems_rope_forward_cuda
+......
+INFO 08-27 09:10:11 [gpu_model_runner.py:69] Successfully enabled flag_gems as default ops implementation.
 ```
 
 This indicates that FlagGems has been enabled.

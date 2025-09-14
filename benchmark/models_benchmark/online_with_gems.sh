@@ -1,14 +1,20 @@
 TAG=$(date +"%Y_%m_%d_%H_%M")
-BASE="/share/project/lms/test_lms/benchmark"
 BASE="$(pwd)"
-MODEL="/Change/To/Your/Real/Path/Here/Qwen/Qwen3-8B"  # CHANGE THIS to your real model path
+MODEL="/Change/To/Your/Real/Path/Here/Qwen/Qwen3-8B"                                     # CHANGE THIS to your model path
+YAML_CONF="/Change/To/Your/Real/Path/Here/FlagScale/examples/qwen3/conf/serve.yaml"      # CHANGE THIS to your scale conf path
 PURE_MODEL_NAME=$(basename "$MODEL")
+
 TP=1
-GPUS=(0)                                              # GPU IDs to use, can be modified as needed
+GPUS=(0)                                                                                 # GPU IDs to use, can be modified as needed
+
+unset http_proxy
+unset https_proxy
+unset HTTP_PROXY
+unset HTTPS_PROXY
+
 INPUT_LEN_LIST="128 512 1024 2048 6144 14336 30720"
 OUTPUT_LEN_LIST="128 512 1024 2048"
 NUM_PROMPT_LIST="1 100 1000 2000"
-
 MAX_LATENCY_ALLOWED_MS=100000000000
 
 
@@ -18,18 +24,16 @@ mkdir -p "$LOG_FOLDER"
 
 echo "result file: $RESULT"
 
-# Enable FlagGems integration
-export USE_FLAGGEMS=1
-echo "USE_FLAGGEMS=$USE_FLAGGEMS"
-
-
-start_server_on_gpu() {
+start_vllm_server_on_gpu() {
     local gpu_id=$1
     local port=$2
     local log_file=$3
 
     pkill -f "vllm.*--port $port"
     echo "start serving GPU ${gpu_id} port ${port}"
+    # Enable FlagGems integration
+    export USE_FLAGGEMS=1
+    echo "USE_FLAGGEMS=$USE_FLAGGEMS"
     CUDA_VISIBLE_DEVICES=$gpu_id USE_FLAGGEMS=1 \
     vllm serve $MODEL \
         --disable-log-requests \
@@ -37,10 +41,24 @@ start_server_on_gpu() {
         --no-enable-prefix-caching > "$log_file" 2>&1 &
 }
 
+start_scale_server_on_gpu() {
+    local gpu_id=$1
+    local port=$2
+
+    pkill -f "vllm.*--port $port"
+    echo "start serving GPU ${gpu_id} port ${port}"
+    export QWEN3_PATH=$MODEL
+    export QWEN3_PORT=$port
+    # Enable FlagGems integration
+    export USE_FLAGGEMS=1
+    echo "USE_FLAGGEMS=$USE_FLAGGEMS"
+    USE_FLAGGEMS=1 flagscale serve qwen3 $YAML_CONF
+}
+
 wait_for_server() {
     local port=$1
     for ((i=1; i<=300; i++)); do   # 300*5s=25分钟
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${port}/v1/models")
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" --noproxy '*'  "http://localhost:${port}/v1/models")
         if [[ "$STATUS" -eq 200 ]]; then
             echo "✅ Server on port $port is healthy"
             return 0
@@ -92,7 +110,8 @@ port=8004
 gpu_id=${GPUS[0]}
 log_file="$LOG_FOLDER/gpu${gpu_id}_server.log"
 
-start_server_on_gpu $gpu_id $port $log_file
+start_scale_server_on_gpu $gpu_id $port
+# start_vllm_server_on_gpu  $gpu_id $port $log_file
 wait_for_server $port
 run_benchmark_on_gpu $gpu_id $port &
 wait
