@@ -12,7 +12,9 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, should_enable_sqmma
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 @libentry()
@@ -122,7 +124,7 @@ def bmm_kernel(
 
 
 def bmm_fma(A, B):
-    logger.debug("GEMS BMM FMA")
+    logger.debug("GEMS_MTHREADS BMM(FMA)")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

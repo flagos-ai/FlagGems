@@ -12,7 +12,9 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, should_enable_sqmma
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 @libentry()
@@ -81,7 +83,7 @@ def addmm_kernel(
 
 
 def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDMM FMA")
+    logger.debug("GEMS_MTHREADS ADDMM(FMA)")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])

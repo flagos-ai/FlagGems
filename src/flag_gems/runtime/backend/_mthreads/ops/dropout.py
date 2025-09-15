@@ -11,7 +11,9 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
@@ -100,7 +102,7 @@ UNROLL = 4
 
 
 def dropout(input, p, train=True):
-    logger.debug("GEMS NATIVE DROPOUT FORWARD")
+    logger.debug("GEMS_MTHREADS NATIVE DROPOUT FORWARD")
     if not train or p == 0:
         out = input.clone()
         mask = torch.ones_like(input, dtype=torch.bool)

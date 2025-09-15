@@ -1575,7 +1575,6 @@ def generate_test_params():
     return params
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.topk_softmax
 @pytest.mark.parametrize("index_dtype", generate_test_params())
 @pytest.mark.parametrize(
@@ -1592,6 +1591,10 @@ def generate_test_params():
     ],
 )
 def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
+    if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
+        # torch musa unsupport uint32
+        index_dtype = torch.int64
+
     torch.manual_seed(42)
     device = flag_gems.device
 
