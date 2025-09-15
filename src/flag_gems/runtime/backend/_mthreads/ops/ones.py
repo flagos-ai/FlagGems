@@ -10,7 +10,9 @@ from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.shape_utils import volume
 
 device_ = device
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 @libentry()
@@ -28,7 +30,7 @@ def ones_kernel(
 
 
 def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS ONES")
+    logger.debug("GEMS_MTHREADS ONES")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

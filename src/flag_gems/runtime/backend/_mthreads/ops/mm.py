@@ -12,7 +12,9 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, should_enable_sqmma
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 @triton.jit
@@ -115,7 +117,7 @@ def get_higher_dtype(a, b):
 
 
 def mm_fma(a, b):
-    logger.debug("GEMS MM")
+    logger.debug("GEMS_MTHREADS MM(FMA)")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -153,7 +155,7 @@ def mm_fma(a, b):
 
 
 def mm_out(a, b, *, out):
-    logger.debug("GEMS MM_OUT")
+    logger.debug("GEMS_MTHREADS MM_OUT")
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
@@ -200,8 +202,7 @@ def mm_sqmma_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
-    ab_type: tl.constexpr,
-    d_type: tl.constexpr,
+    ab_dtype: tl.constexpr,
 ):
     pid = tle.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -218,17 +219,23 @@ def mm_sqmma_kernel(
     offs_bn = offs_bn.to(tl.int32)
     offs_k = offs_k.to(tl.int32)
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    tme_load_type = ab_type
+    tme_load_ab_dtype = ab_dtype
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl._experimental_descriptor_load(
-            a_desc_ptr, [offs_am, offs_k], [BLOCK_SIZE_M, BLOCK_SIZE_K], tme_load_type
+            a_desc_ptr,
+            [offs_am, offs_k],
+            [BLOCK_SIZE_M, BLOCK_SIZE_K],
+            tme_load_ab_dtype,
         )
         b = tl._experimental_descriptor_load(
-            b_desc_ptr, [offs_k, offs_bn], [BLOCK_SIZE_K, BLOCK_SIZE_N], tme_load_type
+            b_desc_ptr,
+            [offs_k, offs_bn],
+            [BLOCK_SIZE_K, BLOCK_SIZE_N],
+            tme_load_ab_dtype,
         )
-        accumulator = tl.dot(a, b, acc=accumulator)
+        accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
         offs_k += BLOCK_SIZE_K
-    accumulator = accumulator.to(d_type)
+    accumulator = accumulator.to(tl.float16)
     tl._experimental_descriptor_store(c_desc_ptr, accumulator, [offs_am, offs_bn])
 
 
@@ -241,13 +248,13 @@ def get_triton_type(elem_type):
     return type_map.get(elem_type, None)
 
 
-def mm_sqmma(
-    A, B, elem_type, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages
-):
+def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages):
+    logger.debug("GEMS_MTHREADS MM(SQMMA)")
     device = "musa"
-    ab_type = elem_type
-    c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
-    C = torch.empty((M, N), dtype=torch.float16, device=device).to(c_type)
+    a_type = A.dtype
+    b_type = B.dtype
+    assert a_type == b_type, "Mat A and Mat B should have the same dtype"
+    C = torch.empty((M, N), dtype=torch.float16, device=device)
     desc_a = create_tma_device_descriptor(A, BLOCK_M, BLOCK_K, device)
     desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
     desc_c = create_tma_device_descriptor(C, BLOCK_M, BLOCK_N, device)
@@ -262,11 +269,13 @@ def mm_sqmma(
         BLOCK_M,
         BLOCK_N,
         BLOCK_K,
-        get_triton_type(ab_type),
-        get_triton_type(c_type),
+        get_triton_type(a_type),
         num_warps=num_warps,
         num_stages=num_stages,
     )
+
+    if a_type == torch.bfloat16:
+        C = C.to(torch.bfloat16)
     return C
 
 
@@ -286,7 +295,6 @@ def mm(a, b):
         return mm_sqmma(
             a,
             b,
-            a_dtype,
             M,
             N,
             K,

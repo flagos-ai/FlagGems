@@ -110,7 +110,6 @@ def test_perf_unique():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort

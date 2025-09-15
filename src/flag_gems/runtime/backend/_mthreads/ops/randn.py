@@ -26,7 +26,9 @@ except AttributeError:
 
 
 device_ = device
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 @triton.heuristics(runtime.get_heuristic_config("randn"))
@@ -68,7 +70,7 @@ UNROLL = 4
 
 
 def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS RANDN")
+    logger.debug("GEMS_MTHREADS RANDN")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

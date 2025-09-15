@@ -12,7 +12,9 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 device_ = device
 
 
@@ -53,7 +55,7 @@ UNROLL = 4
 
 
 def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS RAND")
+    logger.debug("GEMS_MTHREADS RAND")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
