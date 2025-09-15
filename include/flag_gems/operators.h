@@ -79,4 +79,12 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
                             const at::Tensor &output,
                             int64_t dim,
                             at::ScalarType input_dtype);
+void reshape_and_cache_flash(const at::Tensor &key,
+                             const at::Tensor &value,
+                             at::Tensor &key_cache,
+                             at::Tensor &value_cache,
+                             const at::Tensor &slot_mapping,
+                             c10::optional<at::ScalarType> kv_cache_dtype,
+                             const std::optional<at::Tensor> &k_scale,
+                             const std::optional<at::Tensor> &v_scale);
 }  // namespace flag_gems
