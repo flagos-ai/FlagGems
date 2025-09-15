@@ -20,7 +20,8 @@ add_library(operators
             argmax.cpp
             softmax.cpp
 	          exponential_.cpp
-            fill.cpp)
+            fill.cpp
+            reshape_and_cache_flash.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
