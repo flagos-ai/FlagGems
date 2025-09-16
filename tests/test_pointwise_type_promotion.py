@@ -111,6 +111,7 @@ def test_type_promotion_complex_to_long(shape, float_type):
     gems_assert_equal(res_out1, ref_out1)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("float_dtype", FLOAT_DTYPES)
 def test_type_promotion_bool_to_long(shape, float_dtype):
