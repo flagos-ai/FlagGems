@@ -12,7 +12,7 @@ namespace {
   // Load Triton JIT kernel from softmax.py
   const TritonJITFunction &get_kernel(const std::string &name) {
     static const std::string src_path = (utils::get_flag_gems_src_path() / "ops" / "softmax.py").string();
-    return TritonJITFunction::getInstance(src_path, name);
+    return TritonJITFunction::get_instance(src_path, name);
   }
 
   void compute_mnk(const at::Tensor &tensor, int dim, int64_t &M, int64_t &N, int64_t &K) {

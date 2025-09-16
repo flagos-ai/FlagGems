@@ -16,8 +16,8 @@ at::Tensor contiguous(const at::Tensor &self, at::MemoryFormat memory_format) {
   at::Tensor out = at::empty_like(self, memory_format = memory_format);
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "contiguous.py"),
-                                     "copy_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "contiguous.py"),
+                                      "copy_kernel");
 
   int64_t tile_size = 1024;
   const int num_warps = 4;

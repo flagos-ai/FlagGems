@@ -14,9 +14,9 @@ at::Tensor fill_scalar(const at::Tensor& input, const c10::Scalar& value) {
   constexpr int BLOCK_SIZE = 1024;
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-  TritonJITFunction fill_kernel =
-      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
-                                     "fill_scalar_kernel");
+  const TritonJITFunction& fill_kernel =
+      TritonJITFunction::get_instance((utils::get_triton_src_path() / "fill.py").string(),
+                                      "fill_scalar_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
@@ -35,9 +35,9 @@ at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
   constexpr int BLOCK_SIZE = 1024;
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-  TritonJITFunction fill_kernel =
-      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
-                                     "fill_tensor_kernel");
+  const TritonJITFunction& fill_kernel =
+      TritonJITFunction::get_instance((utils::get_triton_src_path() / "fill.py").string(),
+                                      "fill_tensor_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
@@ -54,9 +54,9 @@ at::Tensor& fill_scalar_(at::Tensor& input, const c10::Scalar& value) {
   constexpr int BLOCK_SIZE = 1024;
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-  TritonJITFunction fill_kernel =
-      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
-                                     "fill_scalar_kernel");
+  const TritonJITFunction& fill_kernel =
+      TritonJITFunction::get_instance((utils::get_triton_src_path() / "fill.py").string(),
+                                      "fill_scalar_kernel");
 
   c10::DeviceGuard guard(input.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
@@ -73,9 +73,9 @@ at::Tensor& fill_tensor_(at::Tensor& input, const at::Tensor& value) {
   constexpr int BLOCK_SIZE = 1024;
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-  TritonJITFunction fill_kernel =
-      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
-                                     "fill_tensor_kernel");
+  const TritonJITFunction& fill_kernel =
+      TritonJITFunction::get_instance((utils::get_triton_src_path() / "fill.py").string(),
+                                      "fill_tensor_kernel");
 
   c10::DeviceGuard guard(input.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

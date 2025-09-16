@@ -23,11 +23,11 @@ at::Tensor sum(const at::Tensor &self, ::std::optional<at::ScalarType> dtype) {
   at::Tensor mid = torch::empty({mid_size}, self.options());
   at::Tensor out = torch::empty({}, self.options());
   const TritonJITFunction &sum_kernel_1 =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                     "sum_kernel_1");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                      "sum_kernel_1");
   const TritonJITFunction &sum_kernel_2 =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                     "sum_kernel_2");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                      "sum_kernel_2");
   const int num_warps = 8;
   const int num_stages = 2;
   c10::DeviceGuard guard(out.device());
@@ -87,8 +87,8 @@ at::Tensor sum_dim(const at::Tensor &self,
     bool ONE_TILE_PER_CTA = (tile_n >= reduction_size);
     if (remain_size > 1) {
       const TritonJITFunction &f =
-          TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                         "sum_dim_kernel_non_inner");
+          TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                          "sum_dim_kernel_non_inner");
       f(raw_stream,
         non_reduction_size,
         utils::cdiv(remain_size, tile_k),
@@ -107,8 +107,8 @@ at::Tensor sum_dim(const at::Tensor &self,
       auto [non_reduction_size, reduction_size, remain_size] =
           utils::parse_reduction_axes(self, selected_dim);
       const TritonJITFunction &f =
-          TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                         "sum_dim_kernel_inner");
+          TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                          "sum_dim_kernel_inner");
       f(raw_stream,
         non_reduction_size,
         1,
@@ -140,8 +140,8 @@ at::Tensor sum_dim(const at::Tensor &self,
     ):
     */
     const TritonJITFunction &f =
-        TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                       "sum_dim_kernel");
+        TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                        "sum_dim_kernel");
     c10::DeviceGuard guard(out.device());
     c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
     CUstream raw_stream = static_cast<CUstream>(stream.stream());

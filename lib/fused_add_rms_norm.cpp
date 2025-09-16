@@ -29,7 +29,7 @@ void fused_add_rms_norm(at::Tensor& input,         // [..., hidden_size]
   auto input_strides = input.strides();
   auto residual_strides = residual.strides();
 
-  const TritonJITFunction& f = TritonJITFunction::getInstance(
+  const TritonJITFunction& f = TritonJITFunction::get_instance(
       std::string(utils::get_flag_gems_src_path() / "fused" / "fused_add_rms_norm.py"),
       "fused_add_rms_norm_kernel");
 
