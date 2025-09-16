@@ -37,7 +37,7 @@ def gems_rms_forward(
     if add_residual:
         if use_c_extension:
             logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM(C EXTENSION)")
-            flag_gems.c_operators.fused_add_rms_norm(x, residual, weight, eps)
+            torch.ops.flag_gems.fused_add_rms_norm(x, residual, weight, eps)
             return x, residual
         else:
             logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
@@ -47,7 +47,7 @@ def gems_rms_forward(
     else:
         if use_c_extension:
             logger.debug("GEMS CUSTOM RMS_NORM(C EXTENSION)")
-            return flag_gems.c_operators.rms_norm(x, weight, eps)
+            return torch.ops.flag_gems.rms_norm(x, weight, eps)
         else:
             logger.debug("GEMS CUSTOM RMS_NORM")
             return flag_gems.rms_norm(x, list(weight.size()), weight, eps)

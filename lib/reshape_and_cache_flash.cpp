@@ -13,7 +13,7 @@ void reshape_and_cache_flash(const at::Tensor& key,
                              at::Tensor& key_cache,
                              at::Tensor& value_cache,
                              const at::Tensor& slot_mapping,
-                             c10::optional<at::ScalarType> kv_cache_dtype,
+                             const std::string& kv_cache_dtype,
                              const c10::optional<at::Tensor>& k_scale,
                              const c10::optional<at::Tensor>& v_scale) {
   const auto num_tokens = slot_mapping.size(0);
@@ -36,19 +36,13 @@ void reshape_and_cache_flash(const at::Tensor& key,
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = stream.stream();
 
-  const std::filesystem::path repoRoot = std::filesystem::path(__FILE__)  // lib/reshape_and_cache_flash.cpp
-                                             .parent_path()               // lib
-                                             .parent_path();              // <repo-root>
-
-  const std::string tritonPath =
-      (repoRoot / "src" / "flag_gems" / "fused" / "reshape_and_cache_flash.py").string();
-
-  const TritonJITFunction& kernel =
-      TritonJITFunction::getInstance(tritonPath, "reshape_and_cache_flash_kernel");
+  const TritonJITFunction& kernel = TritonJITFunction::get_instance(
+      std::string(utils::get_flag_gems_src_path() / "fused" / "reshape_and_cache_flash.py"),
+      "reshape_and_cache_flash_kernel");
 
   // 1.0f is mean not scaling
-  float k_scale_val = k_scale.has_value() ? k_scale.value().item<float>() : 1.0f;
-  float v_scale_val = v_scale.has_value() ? v_scale.value().item<float>() : 1.0f;
+  // float k_scale_val = k_scale.has_value() ? k_scale.value().item<float>() : 1.0f;
+  // float v_scale_val = v_scale.has_value() ? v_scale.value().item<float>() : 1.0f;
 
   kernel(raw_stream,
          grid_x,
@@ -67,8 +61,8 @@ void reshape_and_cache_flash(const at::Tensor& key,
          num_heads,
          head_size,
          block_size,
-         k_scale_val,
-         v_scale_val,
+         std::nullopt,
+         std::nullopt,
          num_heads * head_size);
 }
 }  // namespace flag_gems

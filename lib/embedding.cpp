@@ -27,8 +27,8 @@ at::Tensor embedding(const at::Tensor &weight,
   at::Tensor output =
       at::empty(output_shape, at::TensorOptions().dtype(weight.dtype()).device(indices.device()));
   const TritonJITFunction &f1 =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
-                                     "embedding_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
+                                      "embedding_kernel");
   c10::DeviceGuard guard(output.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
@@ -76,8 +76,8 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
     int64_t INDICE_BLOCK_SIZE = 256;
     int64_t indice_grid = (M + INDICE_BLOCK_SIZE - 1) / INDICE_BLOCK_SIZE;
     const TritonJITFunction &f2 =
-        TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
-                                       "indice_freq_kernel");
+        TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
+                                        "indice_freq_kernel");
     c10::DeviceGuard guard(grad_outputs.device());
     c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
     CUstream raw_stream = static_cast<CUstream>(stream.stream());
@@ -102,8 +102,8 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
   int64_t BLOCK_SIZE = utils::next_power_of_2(N);
   bool HAS_PADDING_IDX = (padding_idx != -1);
   const TritonJITFunction &f3 =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
-                                     "embedding_backward_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
+                                      "embedding_backward_kernel");
   c10::DeviceGuard guard(grad_outputs.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
@@ -132,8 +132,8 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
      BLOCK_SIZE);
   if (scale_grad_by_freq) {
     const TritonJITFunction &f4 =
-        TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
-                                       "embedding_grad_scale_kernel");
+        TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
+                                        "embedding_grad_scale_kernel");
     c10::DeviceGuard guard(grad_outputs.device());
     c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
     CUstream raw_stream = static_cast<CUstream>(stream.stream());

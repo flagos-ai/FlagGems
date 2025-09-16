@@ -39,12 +39,3 @@ out = F(x, y)
 ref = x + y
 print(out)
 print(ref)
-
-loss = out.sum()
-grad = torch.autograd.grad(loss, (x, y))
-print(grad)
-
-
-loss = ref.sum()
-grad = torch.autograd.grad(loss, (x, y))
-print(grad)

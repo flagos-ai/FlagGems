@@ -24,8 +24,8 @@ at::Tensor bmm(const at::Tensor& A, const at::Tensor& B) {
   at::Tensor out = at::empty({A_sizes[0], A_sizes[1], B_sizes[2]}, A_contig.options());
 
   const TritonJITFunction& f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "bmm.py"),
-                                     "bmm_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "bmm.py"),
+                                      "bmm_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

@@ -119,9 +119,9 @@ at::Tensor &exponential_(at::Tensor &self, double lambd, c10::optional<at::Gener
   constexpr int64_t BLOCK = 128;
   unsigned grid_x = (N + BLOCK * UNROLL - 1) / (BLOCK * UNROLL);
 
-  const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "exponential_.py"),
-                                     "fused_exponential_kernel");
+  const TritonJITFunction &f = TritonJITFunction::get_instance(
+      std::string(utils::get_flag_gems_src_path() / "ops" / "exponential_.py"),
+      "fused_exponential_kernel");
 
   c10::DeviceGuard guard(x_.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

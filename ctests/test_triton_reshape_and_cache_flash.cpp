@@ -60,7 +60,7 @@ TEST_P(ReshapeAndCacheFlashTest, CompareWithPureTorchReference) {
 
   reference_reshape_and_cache_flash(key, value, key_cache_ref, value_cache_ref, slot_mapping);
 
-  c10::optional<at::ScalarType> kv_cache_dtype = c10::nullopt;
+  std::string kv_cache_dtype("auto");
 
   flag_gems::reshape_and_cache_flash(key,
                                      value,

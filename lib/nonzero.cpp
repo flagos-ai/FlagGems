@@ -30,8 +30,8 @@ at::Tensor nonzero(const at::Tensor &inp) {
       at::empty({num_nonzeros, inp_ndim}, at::TensorOptions().dtype(torch::kInt64).device(inp_ctg.device()));
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "nonzero.py"),
-                                     "nonzero_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "nonzero.py"),
+                                      "nonzero_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
