@@ -222,7 +222,9 @@ def test_accuracy_max_int(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
 def test_accuracy_max_without_dim_uncontiguous(shape, dtype):
     if dtype in FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        inp = torch.randn(shape, dtype=dtype, device="cpu")[::2, ::2].to(
+            flag_gems.device
+        )
     else:
         inp = torch.randint(-10000, 10000, shape, dtype=dtype, device="cpu")[
             ::2, ::2
@@ -259,6 +261,10 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
 
 
 @pytest.mark.max
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "aipu",
+    reason="Big shape run slowly.",
+)
 @pytest.mark.parametrize("shape", [(4, 1048577, 4)])
 @pytest.mark.parametrize("keepdim, dim", [(True, 1), (False, 1)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)

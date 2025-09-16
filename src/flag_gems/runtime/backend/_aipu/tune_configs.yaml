@@ -144,6 +144,12 @@ log_softmax:
   num_warps: 8
 mm:
 - META:
+    BLOCK_M: 32
+    BLOCK_N: 32
+    BLOCK_K: 32
+  num_stages: 4
+  num_warps: 4
+- META:
     BLOCK_M: 128
     BLOCK_N: 256
     BLOCK_K: 32
@@ -375,7 +381,7 @@ masked_fill:
   - 4
   - 8
   - 16
-all:
+naive_reduction:
 - gen: true
   param_map:
     META:
@@ -388,22 +394,8 @@ all:
   - 4
   - 8
   block_n:
-  - 1024
+  - 512
 amax:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 1024
-any:
 - gen: true
   param_map:
     META:
@@ -891,8 +883,7 @@ var_mean:
   - 4
   - 8
   block_n:
-  - 1024
-  - 2048
+  - 256
   warps:
   - 4
   - 8
