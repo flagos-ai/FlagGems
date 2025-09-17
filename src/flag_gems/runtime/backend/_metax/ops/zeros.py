@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 device_ = device
 
 
-@triton.heuristics(runtime.get_heuristic_config("zeros"))
 @libentry()
+@triton.heuristics(runtime.get_heuristic_config("zeros"))
 @triton.jit
 def zeros_kernel(
     output_ptr,

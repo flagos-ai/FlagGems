@@ -29,6 +29,7 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 1
+    pipeline: "null"
   num_warps: 4
   num_stages: 2
 - META:
@@ -36,6 +37,7 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 2
 - META:
@@ -43,6 +45,7 @@ bmm:
     TILE_N: 64
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 2
 - META:
@@ -50,6 +53,7 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 2
 - META:
@@ -57,6 +61,7 @@ bmm:
     TILE_N: 64
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 2
 - META:
@@ -64,6 +69,7 @@ bmm:
     TILE_N: 128
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 2
 - META:
@@ -71,6 +77,7 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 1
+    pipeline: "null"
   num_warps: 4
   num_stages: 3
 - META:
@@ -78,6 +85,7 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 3
 - META:
@@ -85,6 +93,7 @@ bmm:
     TILE_N: 64
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 3
 - META:
@@ -92,6 +101,7 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 3
 - META:
@@ -99,6 +109,7 @@ bmm:
     TILE_N: 64
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 3
 - META:
@@ -106,6 +117,7 @@ bmm:
     TILE_N: 128
     TILE_K: 32
     GROUP_M: 2
+    pipeline: "null"
   num_warps: 4
   num_stages: 3
 - META:
@@ -156,6 +168,7 @@ mm:
     BLOCK_N: 256
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 3
   num_warps: 8
 - META:
@@ -163,6 +176,7 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 3
   num_warps: 8
 - META:
@@ -170,6 +184,7 @@ mm:
     BLOCK_N: 64
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -177,6 +192,7 @@ mm:
     BLOCK_N: 256
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -184,6 +200,7 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -191,6 +208,7 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -198,6 +216,7 @@ mm:
     BLOCK_N: 32
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -205,6 +224,7 @@ mm:
     BLOCK_N: 32
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 5
   num_warps: 2
 - META:
@@ -212,6 +232,7 @@ mm:
     BLOCK_N: 256
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 3
   num_warps: 8
 - META:
@@ -219,6 +240,7 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 128
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 3
   num_warps: 8
 - META:
@@ -226,6 +248,7 @@ mm:
     BLOCK_N: 64
     BLOCK_K: 128
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -233,6 +256,7 @@ mm:
     BLOCK_N: 256
     BLOCK_K: 128
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -240,6 +264,7 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 128
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -247,6 +272,7 @@ mm:
     BLOCK_N: 64
     BLOCK_K: 64
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -254,6 +280,7 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 64
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -261,6 +288,7 @@ mm:
     BLOCK_N: 32
     BLOCK_K: 64
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
@@ -268,6 +296,7 @@ mm:
     BLOCK_N: 32
     BLOCK_K: 64
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 5
   num_warps: 2
 - META:
@@ -275,6 +304,7 @@ mm:
     BLOCK_N: 128
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
@@ -282,6 +312,7 @@ mm:
     BLOCK_N: 256
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
@@ -289,6 +320,7 @@ mm:
     BLOCK_N: 32
     BLOCK_K: 64
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 2
   num_warps: 4
 - META:
@@ -296,6 +328,7 @@ mm:
     BLOCK_N: 64
     BLOCK_K: 64
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
@@ -303,6 +336,7 @@ mm:
     BLOCK_N: 32
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 4
   num_warps: 8
 - META:
@@ -310,6 +344,7 @@ mm:
     BLOCK_N: 64
     BLOCK_K: 32
     SPLIT_K: 1
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
@@ -393,90 +428,105 @@ addmm:
     BLOCK_SIZE_M: 128
     BLOCK_SIZE_N: 256
     BLOCK_SIZE_K: 64
+    pipeline: "null"
   num_stages: 3
   num_warps: 8
 - META:
     BLOCK_SIZE_M: 64
     BLOCK_SIZE_N: 256
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
     BLOCK_SIZE_M: 128
     BLOCK_SIZE_N: 128
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
     BLOCK_SIZE_M: 128
     BLOCK_SIZE_N: 64
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
     BLOCK_SIZE_M: 64
     BLOCK_SIZE_N: 128
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
     BLOCK_SIZE_M: 128
     BLOCK_SIZE_N: 32
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 4
   num_warps: 4
 - META:
     BLOCK_SIZE_M: 64
     BLOCK_SIZE_N: 32
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 5
   num_warps: 2
 - META:
     BLOCK_SIZE_M: 32
     BLOCK_SIZE_N: 64
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 5
   num_warps: 2
 - META:
     BLOCK_SIZE_M: 128
     BLOCK_SIZE_N: 128
     BLOCK_SIZE_K: 128
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
     BLOCK_SIZE_M: 256
     BLOCK_SIZE_N: 256
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
     BLOCK_SIZE_M: 32
     BLOCK_SIZE_N: 32
     BLOCK_SIZE_K: 64
+    pipeline: "null"
   num_stages: 2
   num_warps: 4
 - META:
     BLOCK_SIZE_M: 32
     BLOCK_SIZE_N: 64
     BLOCK_SIZE_K: 64
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
     BLOCK_SIZE_M: 64
     BLOCK_SIZE_N: 32
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
     BLOCK_SIZE_M: 64
     BLOCK_SIZE_N: 32
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 4
   num_warps: 8
 - META:
     BLOCK_SIZE_M: 64
     BLOCK_SIZE_N: 64
     BLOCK_SIZE_K: 32
+    pipeline: "null"
   num_stages: 2
   num_warps: 8
 - META:
@@ -1278,7 +1328,6 @@ polar:
     META:
       BLOCK_SIZE: block_size
     num_warps: warps
-    num_stages: stages
   block_size:
   - 256
   - 512
@@ -1286,9 +1335,4 @@ polar:
   warps:
   - 1
   - 2
-  - 4
-  stages:
-  - 1
-  - 2
-  - 3
   - 4
