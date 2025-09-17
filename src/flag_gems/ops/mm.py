@@ -76,10 +76,14 @@ def mm_kernel(
     rk = prev_multiple + tl.arange(0, BLOCK_K)
     mask_k = rk < K
     a = tl.load(
-        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :]
+        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
+        mask=mask_k[None, :],
+        other=0.0,
     )
     b = tl.load(
-        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn), mask=mask_k[:, None]
+        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn),
+        mask=mask_k[:, None],
+        other=0.0,
     )
     if a.dtype != b.dtype:
         a = a.to(C.dtype.element_ty)
