@@ -183,7 +183,7 @@ def flash_mla(
 
     o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=device)
 
-    major, _ = torch.cuda.get_device_capability(device)
+    major, _ = torch_device_fn.get_device_capability(device)
     if major == 9:
         BLOCK_H = 64
         num_stages = 3
