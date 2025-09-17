@@ -10,7 +10,7 @@ from flag_gems.utils import dim_compress, libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op2
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if any elements in input evaluate to non-zero value
 # In triton function, test if any elements in input evaluate to non-zero value is ok.

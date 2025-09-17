@@ -7,7 +7,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 fast_erf = tl_extra_shim.fast_erf
 exp = tl_extra_shim.exp
 fast_tanh = tl_extra_shim.fast_tanh

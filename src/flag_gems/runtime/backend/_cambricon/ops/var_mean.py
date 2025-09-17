@@ -15,7 +15,7 @@ from ..utils import (
     count_divisible_by_2,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @triton.jit

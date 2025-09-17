@@ -10,8 +10,7 @@ from flag_gems.utils import libentry
 
 from ..utils import cfggen_reduce_op
 
-logger = logging.getLogger(__name__)
-
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 MAX_NRAM_C_FORWARD = 16384 * 2
 
 
