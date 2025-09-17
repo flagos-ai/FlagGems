@@ -10,7 +10,7 @@ from flag_gems.utils import broadcastable
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @triton.autotune(configs=runtime.get_tuned_config("masked_select"), key=["n_elements"])

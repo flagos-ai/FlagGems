@@ -10,7 +10,7 @@ from flag_gems.runtime import device, torch_device_fn
 
 from ..utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device = device.name
 
 

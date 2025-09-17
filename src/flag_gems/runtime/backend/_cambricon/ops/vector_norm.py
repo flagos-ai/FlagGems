@@ -10,7 +10,7 @@ from flag_gems.utils import dim_compress, libentry, tl_extra_shim
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 pow = tl_extra_shim.pow
 
 

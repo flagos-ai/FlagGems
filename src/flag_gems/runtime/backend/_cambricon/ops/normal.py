@@ -11,8 +11,7 @@ from ..utils import TOTAL_CORE_NUM
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .randn import randn_kernel
 
-logger = logging.getLogger(__name__)
-
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 UNROLL = 4
 
 

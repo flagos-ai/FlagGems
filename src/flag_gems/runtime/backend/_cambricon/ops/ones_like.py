@@ -8,7 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from ..utils import TOTAL_CORE_NUM
 from .ones import ones_kernel
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def ones_like(

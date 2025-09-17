@@ -10,7 +10,7 @@ from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def get_max_block_size(dtype_size):
