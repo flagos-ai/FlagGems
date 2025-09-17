@@ -127,7 +127,6 @@ def dropout(input, p, train=True):
 
 
 def dropout_backward(grad_output, mask, scale):
-    # import pudb; pudb.set_trace()
     logger.debug("GEMS NATIVE DROPOUT BACKWARD")
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)

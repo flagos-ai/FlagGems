@@ -1,7 +1,7 @@
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+# from flag_gems import runtime
 from flag_gems.utils import libentry, tl_extra_shim
 
 
@@ -218,10 +218,12 @@ def block_n_splitkv_heuristic(headdim):
     return 64 if headdim <= 64 else 32
 
 
-def is_even_mn(M, N, BM, BN, WL, WR):
-    if M % BM == 0 and N % BN == 0:
-        if M % N == 0 or N % M == 0:
-            if (WL == -1 or WL % BN == 0) and (WR == -1 or WR % BN == 0):
+def is_even_mn(args):
+    if args["M"] % args["BM"] == 0 and args["N"] % args["BN"] == 0:
+        if args["M"] % args["N"] == 0 or args["N"] % args["M"] == 0:
+            if (args["WL"] == -1 or args["WL"] % args["BN"] == 0) and (
+                args["WR"] == -1 or args["WR"] % args["BN"] == 0
+            ):
                 return True
     return False
 
@@ -275,33 +277,22 @@ def prune_fwd_configs(configs, nargs, **kwargs):
         return configs
 
 
-def flash_fwd_kernel_heur_block_k(args):
-    return triton.next_power_of_2(args["d"])
-
-
-@libentry()
-@triton.autotune(
-    configs=list(filter(keep, runtime.get_tuned_config("attention"))),
-    prune_configs_by={"early_config_prune": prune_fwd_configs},
-    key=["d", "is_dropout"],
-)
-@triton.heuristics(
-    values={
-        "BLOCK_K": flash_fwd_kernel_heur_block_k,
-        "PRE_LOAD_V": lambda args: False,
-        "IS_EVEN_MN": lambda args: is_even_mn(
-            args["seqlen_q"],
-            args["seqlen_k"],
-            args["BLOCK_M"],
-            args["BLOCK_N"],
-            args["window_size_left"],
-            args["window_size_right"],
-        ),
-    }
-)
-@triton.jit(
-    do_not_specialize=["seqlen_q", "seqlen_k", "seqlen_q_rounded", "seqlen_k_rounded"]
-)
+# @libentry()
+# @triton.autotune(
+#     configs=list(filter(keep, runtime.get_tuned_config("attention"))),
+#     prune_configs_by={"early_config_prune": prune_fwd_configs},
+#     key=["d", "is_dropout"],
+# )
+# @triton.heuristics(
+#     values={
+#         "BLOCK_K": lambda args: triton.next_power_of_2(args["d"]),
+#         "PRE_LOAD_V": lambda args: False,
+#         "IS_EVEN_MN": is_even_mn,
+#     }
+# )
+# @triton.jit(
+#     do_not_specialize=["seqlen_q", "seqlen_k", "seqlen_q_rounded", "seqlen_k_rounded"]
+# )
 def flash_fwd_kernel(
     q_ptr,
     k_ptr,
@@ -743,25 +734,21 @@ def flash_fwd_bh_parallel_kernel():
     pass
 
 
-def flash_fwd_splitkv_kernel_heur_block_k(args):
-    return triton.next_power_of_2(args["d"])
-
-
-@libentry()
-@triton.heuristics(
-    values={
-        "BLOCK_M": block_m_splitkv_heuristic_spec_args,
-        "BLOCK_N": block_n_splitkv_heuristic_spec_args,
-        "BLOCK_K": flash_fwd_splitkv_kernel_heur_block_k,
-        "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
-        "PRE_LOAD_V": lambda args: True,
-        "IS_EVEN_MN": is_even_mn_spec_args,
-    }
-)
-@triton.jit(
-    do_not_specialize=["seqlen_q", "seqlen_k", "seqlen_q_rounded", "seqlen_k_rounded"]
-)
+# @libentry()
+# @triton.heuristics(
+#     values={
+#         "BLOCK_M": block_m_splitkv_heuristic_spec_args,
+#         "BLOCK_N": block_n_splitkv_heuristic_spec_args,
+#         "BLOCK_K": lambda args: triton.next_power_of_2(args["d"]),
+#         "num_warps": lambda args: 4,
+#         "num_stages": lambda args: 3,
+#         "PRE_LOAD_V": lambda args: True,
+#         "IS_EVEN_MN": is_even_mn_spec_args,
+#     }
+# )
+# @triton.jit(
+#     do_not_specialize=["seqlen_q", "seqlen_k", "seqlen_q_rounded", "seqlen_k_rounded"]
+# )
 def flash_fwd_splitkv_kernel(
     q_ptr,
     k_ptr,

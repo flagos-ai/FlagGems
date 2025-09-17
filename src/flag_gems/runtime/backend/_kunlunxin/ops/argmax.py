@@ -9,6 +9,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils.limits import get_dtype_min
 
 from ..utils.block_size_utils import get_block_size_1d
 
@@ -78,26 +79,35 @@ def argmax_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # m_offset = pidX * BLOCK_M + tl.arange(0, BLOCK_M)
-    # offset = m_offset * N * K + tl.arange(0, BLOCK_N) * K + pidY
     # set offset
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+
+    dtype = inp.type.element_ty
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    min_value = get_dtype_min(dtype)
+    max_values = tl.full([BLOCK_M], dtype=acc_type, value=min_value)
+    argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
+        local_max, local_argmax = tl.max(
+            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
+        )
+        # if return indices is not supported, call a tl.argmax in addition
+        # local_argmax = tl.argmax(inp_vals, 1)
+        update = local_max > max_values
+        max_values = tl.where(update, local_max, max_values)
+        argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
+
     offset_index = m_offset * K + pid_k
-    # set mask
-    mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    # inp_vals = tl.where(mask, inp_vals, -float("inf"))
-    _, result_index = tl.max(inp_vals, axis=1, return_indices=True)
-
     out_index_ptrs = out_index + offset_index
-
-    tl.store(out_index_ptrs, result_index, mask=mask1)
+    mask1 = m_offset < M
+    tl.store(out_index_ptrs, argmax_values, mask=mask1)
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):

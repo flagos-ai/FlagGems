@@ -171,7 +171,6 @@ def generate_destination_passing_padding_wrapper(
         # grid
         code.writeline("# kernel launch")
         code.writeline("if not IS_CIRCULAR: ")
-        # code.writeline("import pudb; pudb.set_trace()")
         with code.indent():
             code.writeline("import os")
             code.writeline('os.environ["TRITONXPU_OTHER_SIM"] = "1"')

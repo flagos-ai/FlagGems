@@ -48,6 +48,8 @@ def check_dtype(fill_value, dtype, device):
         raise RuntimeError(
             f"value cannot be converted to type {dtype} without overflow"
         )
+    if dtype == torch.float64:
+        fill_value = torch.tensor(fill_value, dtype=dtype, device=device)
     return fill_value
 
 
