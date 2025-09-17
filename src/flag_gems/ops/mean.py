@@ -80,7 +80,7 @@ def mean(inp, *, dtype=None):
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.heuristics(runtime.get_heuristic_config("mean_non_inner"))
 @triton.jit
 def mean_dim_kernel_non_inner(
     output_ptr,
