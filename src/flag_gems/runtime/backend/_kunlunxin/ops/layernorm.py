@@ -373,7 +373,6 @@ def weight_bias_backward_kernel_heur_block_row_size(args):
 
 
 def weight_bias_backward_kernel_heur_block_col_size(args):
-    # import pudb; pudb.set_trace()
     # if args["M"] == 100 and args["N"] == 40499:
     #     if args["dY"].dtype == torch.bfloat16:
     #         return 2048

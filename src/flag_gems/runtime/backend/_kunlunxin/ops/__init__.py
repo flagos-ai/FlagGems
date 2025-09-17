@@ -2,7 +2,8 @@ from .abs import abs, abs_
 from .add import add, add_
 from .addcdiv import addcdiv
 from .addcmul import addcmul
-from .addmm import addmm
+from .addmm import addmm, addmm_out
+from .addr import addr
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
@@ -200,6 +201,7 @@ __all__ = [
     "add_",
     "addcdiv",
     "addmm",
+    "addmm_out",
     "all",
     "all_dim",
     "all_dims",
@@ -437,6 +439,7 @@ __all__ = [
     "upsample_nearest2d",
     "var_mean",
     "vdot",
+    "addr",
     "vector_norm",
     "vstack",
     "weight_norm_interface",

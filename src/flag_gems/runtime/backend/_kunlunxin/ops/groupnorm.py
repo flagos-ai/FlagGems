@@ -205,7 +205,6 @@ def weight_bias_backward_kernel_loop(
 
     grad_y_tile = tl.zeros((BLOCK_N, BLOCK_HW), dtype=tl.float32)  # grad_y_tile
     dw_tile = tl.zeros((BLOCK_N, BLOCK_HW), dtype=tl.float32)
-    # import pudb; pudb.set_trace()
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
 
