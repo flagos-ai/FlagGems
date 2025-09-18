@@ -35,7 +35,14 @@ from flag_gems.ops.bitwise_or import (
 from flag_gems.ops.bmm import bmm
 from flag_gems.ops.cat import cat
 from flag_gems.ops.celu import celu, celu_
-from flag_gems.ops.clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from flag_gems.ops.clamp import (
+    clamp,
+    clamp_,
+    clamp_min,
+    clamp_min_,
+    clamp_tensor,
+    clamp_tensor_,
+)
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
@@ -248,6 +255,8 @@ __all__ = [
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "clamp_min",
+    "clamp_min_",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
