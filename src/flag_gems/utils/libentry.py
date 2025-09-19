@@ -4,6 +4,7 @@ import hashlib
 import inspect
 import logging
 import math
+import multiprocessing
 import os
 import sqlite3
 import threading
@@ -60,7 +61,7 @@ class Connections(object):
     def __init__(self, cache_path: str, *args, **kwargs) -> Connections:
         super().__init__(*args, **kwargs)
         self.cache_path: str = cache_path
-        self.lock: threading.Lock = threading.Lock()
+        self.lock = multiprocessing.Lock()
         self.conns: Dict[int, sqlite3.Connection] = {}
 
     def __del__(self):
@@ -122,7 +123,7 @@ class ConfigCache(Cache):
         self.dict_cache: Dict[
             Tuple[Union[int, float, str], ...], triton.Config
         ] = {}  # this dict is used to cache some results in the memory
-        self.lock: threading.Lock = threading.Lock()
+        self.lock = multiprocessing.Lock()
         self.names: List[str] = [
             name
             for _, name, _, _, _, _ in self.conn.execute(
@@ -232,7 +233,7 @@ class BenchmarkCache(Cache):
         """
         super().__init__(table_name, conns, *args, **kwargs)
         self.key: Tuple[Union[int, float, str], ...] = key
-        self.lock: threading.Lock = threading.Lock()
+        self.lock = multiprocessing.Lock()
         self.create_sql: Optional[str] = None
         self.select_sql: Optional[str] = None
         self.insert_sql: Optional[str] = None
@@ -255,7 +256,7 @@ class BenchmarkCache(Cache):
             queries: Dict[str, Union[int, float, str]] = self.build_query(config)
             values: List[str] = [*queries.values(), *benchmark]
             if not self.insert_sql:
-                self.insert_sql = "INSERT INTO {} VALUES ({});".format(
+                self.insert_sql = "INSERT OR REPLACE INTO {} VALUES ({});".format(
                     self.table_name, ", ".join("?" for _ in values)
                 )
             self.conn.execute(self.insert_sql, values)
@@ -298,8 +299,8 @@ class LibCache(object):
         self.cache_path = (
             (config_cache_dir() / cache_file_name) if enable_disk_cache else ":memory:"
         )
-        self.bench_lock: threading.Lock = threading.Lock()
-        self.config_lock: threading.Lock = threading.Lock()
+        self.bench_lock = multiprocessing.Lock()
+        self.config_lock = multiprocessing.Lock()
         self.conns: Connections = Connections(self.cache_path)
         self.config_cache_pool: Dict[str, ConfigCache] = {}
         self.benchmark_cache_pool: Dict[
@@ -752,7 +753,7 @@ class LibEntry(triton.KernelInterface):
             for p in self.jit_function.params
             if not p.is_constexpr and p.do_not_specialize
         ]
-        self.lock = threading.Lock()
+        self.lock = multiprocessing.Lock()
         self.signature = fn.signature
 
     def key(self, spec_args, dns_args, const_args):
