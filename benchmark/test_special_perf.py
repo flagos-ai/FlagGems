@@ -149,7 +149,7 @@ def test_multinomial_with_replacement():
 
 @pytest.mark.pad
 def test_perf_pad():
-    def padding_input_fn(shape, dtype, device):
+    def pad_input_fn(shape, dtype, device):
         input = torch.randn(shape, device=device, dtype=dtype)
         rank = input.ndim
         pad_params = [random.randint(0, 10) for _ in range(rank * 2)]
@@ -161,8 +161,8 @@ def test_perf_pad():
         },
 
     bench = GenericBenchmark(
-        input_fn=padding_input_fn,
-        op_name="padding",
+        input_fn=pad_input_fn,
+        op_name="pad",
         torch_op=torch.nn.functional.pad,
         dtypes=FLOAT_DTYPES,
     )
