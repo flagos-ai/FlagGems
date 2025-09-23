@@ -104,7 +104,15 @@ def cat(
                     f"{tensor_idx} in the list"
                 )
 
-    dtype, device = A[0].dtype, A[0].device
+    # Type promotion: find the common dtype for all tensors
+    device = A[0].device
+    dtypes = [t.dtype for t in A]
+    dtype = dtypes[0]
+    for dt in dtypes[1:]:
+        dtype = torch.promote_types(dtype, dt)
+    # Convert all tensors to the common dtype if needed
+    A = [t.to(dtype) if t.dtype != dtype else t for t in A]
+
     shapes = [t.shape for t in A]
     cat_dim_sizes = [s[dim] for s in shapes]
     out_shape = list(shapes[0])
