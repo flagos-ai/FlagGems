@@ -175,6 +175,60 @@ def test_accuracy_mv(M, N, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
 
 
+@pytest.mark.addmv
+@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addmv(M, N, scalar, dtype):
+    mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    bias1 = torch.randn((M,), dtype=dtype, device=flag_gems.device)
+    ref_mat = to_reference(mat)
+    ref_vec = to_reference(vec)
+    ref_bias1 = to_reference(bias1)
+
+    alpha = beta = scalar
+
+    ref_out1 = torch.addmv(ref_bias1, ref_mat, ref_vec, alpha=alpha, beta=beta)
+    with flag_gems.use_gems():
+        res_out1 = torch.addmv(bias1, mat, vec, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out1, ref_out1, dtype, reduce_dim=N)
+
+    # broadcast bias scalar
+    bias2 = torch.randn((), dtype=dtype, device=flag_gems.device)
+    ref_bias2 = to_reference(bias2)
+
+    ref_out2 = torch.addmv(ref_bias2, ref_mat, ref_vec, alpha=alpha, beta=beta)
+    with flag_gems.use_gems():
+        res_out2 = torch.addmv(bias2, mat, vec, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=N)
+
+
+@pytest.mark.addmv_out
+@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addmv_out(M, N, scalar, dtype):
+    mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((M,), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((M,), dtype=dtype, device=flag_gems.device)
+    ref_mat = to_reference(mat)
+    ref_vec = to_reference(vec)
+    ref_bias = to_reference(bias)
+    ref_out = to_reference(out)
+
+    alpha = beta = scalar
+
+    torch.addmv(ref_bias, ref_mat, ref_vec, alpha=alpha, beta=beta, out=ref_out)
+    with flag_gems.use_gems():
+        torch.addmv(bias, mat, vec, alpha=alpha, beta=beta, out=out)
+
+    gems_assert_close(out, ref_out, dtype, reduce_dim=N)
+
+
 @pytest.mark.outer
 @pytest.mark.parametrize(
     "M, N", MN_SHAPES + ([(32, 131072)] if flag_gems.vendor_name == "cambricon" else [])
