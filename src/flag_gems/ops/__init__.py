@@ -3,6 +3,7 @@ from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.addmm import addmm, addmm_out
+from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.amax import amax
@@ -220,6 +221,8 @@ __all__ = [
     "addcdiv",
     "addmm",
     "addmm_out",
+    "addmv",
+    "addmv_out",
     "all",
     "all_dim",
     "all_dims",

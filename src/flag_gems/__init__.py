@@ -46,6 +46,8 @@ def enable(
             ("add.Tensor", add),
             ("add_.Tensor", add_),
             ("addcdiv", addcdiv),
+            ("addmv", addmv),
+            ("addmv.out", addmv_out),
             ("addmm", addmm),
             ("addmm.out", addmm_out),
             ("all", all),
