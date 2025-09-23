@@ -521,13 +521,22 @@ def mha_varlan_fwd(
         args = tuple(getattr(params, k) for k in params.__slots__)
 
         # We assess which phase the requests are likely to be in and set the config accordingly.
-        #   prefill_config: BLOCK_M=128, BLOCK_N=32, num_warps=4, num_stages=3
-        #   decode_config: BLOCK_M=32, BLOCK_N=32, num_warps=4, num_stages=3
-        avg_seqlen_q = total_q / batch_size
-        if avg_seqlen_q >= 256:
-            varlen_fwd_config_str = "mha_varlen_prefill"
+        total_rows = total_q * num_heads
+        num_sms = torch_device_fn.get_device_properties("cuda").multi_processor_count
+        avg_rows_per_sm = total_rows / num_sms
+        avg_rows_per_batch = total_q / batch_size
+        avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
+        # Heuristic: if avg_rows_per_sm >= 128, we are likely in prefill phase.
+        # This is a rough heuristic and may not be accurate for all scenarios.
+        if avg_rows_per_cta > 64:
+            varlen_fwd_config_str = "mha_block_128"
+        elif avg_rows_per_cta > 32:
+            varlen_fwd_config_str = "mha_block_64"
+        elif avg_rows_per_cta > 16:
+            varlen_fwd_config_str = "mha_block_32"
         else:
-            varlen_fwd_config_str = "mha_varlen_decode"
+            varlen_fwd_config_str = "mha_block_16"
+
         cfg = runtime.get_heuristic_config(varlen_fwd_config_str)
         cfg_params = {
             "BLOCK_M": cfg["BLOCK_M"](args),
@@ -537,7 +546,6 @@ def mha_varlan_fwd(
             "num_stages": cfg["num_stages"](args),
         }
 
-        logger.debug("Average query sequence length: %d", avg_seqlen_q)
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)
 
