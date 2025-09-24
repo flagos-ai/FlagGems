@@ -36,7 +36,6 @@ def mm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
-    SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
     # matrix multiplication
@@ -121,7 +120,6 @@ def mm(a, b):
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        META["SPLIT_K"],
     )
     with torch_device_fn.device(a.device):
         mm_kernel[grid](
