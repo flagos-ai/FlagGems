@@ -1,13 +1,46 @@
 import logging
+from functools import lru_cache
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
+
+
+@lru_cache(maxsize=1)
+def get_device_info():
+    try:
+        device_id = torch_device_fn.current_device()
+    except Exception:
+        device_id = 0
+
+    try:
+        props = torch_device_fn.get_device_properties(device_id)
+        return device_id, props.L2_cache_size, props.multi_processor_count
+    except Exception:
+        # fallback for A100 default attributes
+        # L2 cache size is 40MB and SM count is 108 for A100
+        return device_id, 40 * 1024 * 1024, 108
+
+
+def get_device_id():
+    return get_device_info()[0]
+
+
+def get_l2_cache_size():
+    return get_device_info()[1]
+
+
+def get_sm_count():
+    return get_device_info()[2]
+
+
+CACHE_USAGE_THRESHOLD = 0.8
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +54,14 @@ def prev_multiple_of(a, b):
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=10,
 )
 @triton.jit
-def mm_kernel(
+def mm_kernel_general(
     A,
     B,
     C,
@@ -117,8 +151,53 @@ def get_higher_dtype(a, b):
             return a
 
 
+def general_mm(a, b, c, M, N, K):
+    logger.debug(
+        "GEMS MM, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s",
+        M,
+        N,
+        K,
+        a.stride(0) == 1,
+        b.stride(0) == 1,
+    )
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+    )
+    with torch_device_fn.device(a.device):
+        mm_kernel_general[grid](
+            a,
+            b,
+            c,
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            GROUP_M=8,
+        )
+    return c
+
+
+def streamk_scenario(a, b, M, N, K):
+    # TODO: this my change sometime according to the realbenchmark result
+    # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
+    # The optimal settings for other devices need to be determined through real testing.
+    capability = torch_device_fn.get_device_capability(get_device_info())
+    return (
+        capability[0] == 8
+        and a.dtype in [torch.float16, torch.bfloat16]
+        and b.dtype in [torch.float16, torch.bfloat16]
+        and K > M * 5
+        and K > N * 5
+    )
+
+
 def mm(a, b):
-    logger.debug("GEMS MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -132,31 +211,15 @@ def mm(a, b):
     # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
-    # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            GROUP_M=8,
-        )
-    return c
+    # l2_cache_size = get_l2_cache_size()
+    sm_count = get_sm_count()
+    if streamk_scenario(a, b, M, N, K):
+        return streamk_mm(a, b, c, M, N, K, sm_count=sm_count)
+    else:
+        return general_mm(a, b, c, M, N, K)
 
 
 def mm_out(a, b, *, out):
-    logger.debug("GEMS MM_OUT")
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
@@ -166,26 +229,9 @@ def mm_out(a, b, *, out):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
-    # allocates output
-    c = out
-    # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            GROUP_M=8,
-        )
-    return c
+    # l2_cache_size = get_l2_cache_size()
+    sm_count = get_sm_count()
+    if streamk_scenario(a, b, M, N, K):
+        return streamk_mm(a, b, out, M, N, K, sm_count=sm_count)
+    else:
+        return general_mm(a, b, out, M, N, K)

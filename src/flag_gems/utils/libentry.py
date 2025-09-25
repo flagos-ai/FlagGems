@@ -591,7 +591,7 @@ class LibTuner(triton.runtime.Autotuner):
         if os.getenv("TRITON_PRINT_AUTOTUNING", None) == "1" and not used_cached_result:
             print(
                 f"Triton autotuning for function {self.base_fn.__name__} finished after "
-                f"{self.bench_time:.2f}s; best config selected: {self.best_config};"
+                f"{self.bench_time:.2f}s; key info: {key}, best config selected: {self.best_config};"
             )
         if config.pre_hook is not None:
             full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}

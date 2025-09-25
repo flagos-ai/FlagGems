@@ -13,6 +13,7 @@ at::Tensor zeros(at::IntArrayRef size,
                  c10::optional<bool> pin_memory = ::std::nullopt);
 at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_);
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
+at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out);
 at::Tensor sum_dim(const at::Tensor &self,
                    at::OptionalIntArrayRef dim,
                    bool keepdim = false,
@@ -32,6 +33,12 @@ at::Tensor addmm(const at::Tensor &self,
                  const at::Tensor &mat2,
                  const at::Scalar &beta = 1,
                  const at::Scalar &alpha = 1);
+at::Tensor &addmm_out(const at::Tensor &self,
+                      const at::Tensor &mat1,
+                      const at::Tensor &mat2,
+                      const at::Scalar &beta,
+                      const at::Scalar &alpha,
+                      at::Tensor &out);
 at::Tensor nonzero(const at::Tensor &inp);
 // Rotary embedding
 void rotary_embedding_inplace(at::Tensor &q,
