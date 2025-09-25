@@ -60,7 +60,12 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     Both `x` and `residual` tensors will be modified. Use with caution if these tensors
     are reused elsewhere or require gradients.
     """
-    logger.debug("GEMS FUSED_ADD_RMS_NORM FORWARD")
+    logger.debug(
+        "GEMS FUSED_ADD_RMS_NORM FORWARD, [input shape]: %s, [residual shape]: %s, [weight shape]: %s",
+        x.size(),
+        residual.size(),
+        weight.size(),
+    )
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

@@ -81,7 +81,6 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -89,10 +88,20 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     M, K = mat1.shape
     _, N = mat2.shape
 
+    logger.debug(
+        "GEMS ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+        M,
+        N,
+        K,
+        mat1.stride(0) == 1,
+        mat2.stride(0) == 1,
+        bias.stride(0) == 1,
+    )
     mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
+    # mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape).contiguous()
+    bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
@@ -122,7 +131,6 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
 
 
 def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
-    logger.debug("GEMS ADDMM OUT")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -133,10 +141,18 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
         out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
-
+    logger.debug(
+        "GEMS ADDMM_OUT, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+        M,
+        N,
+        K,
+        mat1.stride(0) == 1,
+        mat2.stride(0) == 1,
+        bias.stride(0) == 1,
+    )
     mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
-    bias = bias.broadcast_to(out.shape).contiguous()
+    bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
