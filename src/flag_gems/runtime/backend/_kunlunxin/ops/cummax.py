@@ -13,7 +13,7 @@ from flag_gems.utils.limits import get_dtype_min
 
 Tensor = torch.Tensor
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @triton.jit

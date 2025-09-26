@@ -10,7 +10,7 @@ from flag_gems.utils import libentry
 
 from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def unwrap_if_constexpr(o):

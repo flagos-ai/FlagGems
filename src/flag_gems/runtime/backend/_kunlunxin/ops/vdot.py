@@ -8,7 +8,7 @@ from torch import Tensor
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @triton.jit

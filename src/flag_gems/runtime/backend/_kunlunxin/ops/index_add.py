@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import dim_compress, libentry
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # def cfggen():
 #     block_m = [1, 2, 4]
 #     block_n = [128, 1024, 2048, 4096]

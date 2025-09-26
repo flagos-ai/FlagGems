@@ -10,7 +10,7 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 from .gather import gather
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
