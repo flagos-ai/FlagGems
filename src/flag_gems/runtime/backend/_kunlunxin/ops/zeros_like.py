@@ -7,7 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 from .zeros import zeros_kernel
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def zeros_like(

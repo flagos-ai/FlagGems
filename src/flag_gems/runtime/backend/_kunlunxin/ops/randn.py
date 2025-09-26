@@ -11,7 +11,7 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 try:
     pair_uniform_to_normal = tl.pair_uniform_to_normal
 except AttributeError:

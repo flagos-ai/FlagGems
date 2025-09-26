@@ -10,7 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from .flash_api import mha_fwd, mha_varlan_fwd
 from .flash_kernel import keep
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html

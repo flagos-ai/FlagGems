@@ -2,7 +2,7 @@ import logging
 
 from .conv2d import conv2d
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilation):

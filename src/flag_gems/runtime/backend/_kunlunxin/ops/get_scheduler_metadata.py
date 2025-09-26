@@ -6,7 +6,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def get_dtype_bytes(dtype):

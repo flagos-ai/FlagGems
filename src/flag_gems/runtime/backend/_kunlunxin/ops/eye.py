@@ -7,7 +7,7 @@ from flag_gems.runtime import device, torch_device_fn
 
 from .eye_m import eye_kernel
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device_ = device
 
 

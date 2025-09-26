@@ -6,7 +6,7 @@ from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 
 from ..ops.copy import copy
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def select_scatter(inp, src, dim, index):
