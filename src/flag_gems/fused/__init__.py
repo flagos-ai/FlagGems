@@ -12,6 +12,8 @@ from flag_gems.fused.outer import outer
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
 from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
+from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
+from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
 from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out
 from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.topk_softmax import topk_softmax
@@ -35,4 +37,6 @@ __all__ = [
     "reshape_and_cache_flash",
     "flash_mla",
     "topk_softmax",
+    "rwkv_ka_fusion",
+    "rwkv_mm_sparsity",
 ]

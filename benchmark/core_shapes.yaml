@@ -255,3 +255,17 @@ RopeBenchmark:
     - [256]
     - [384]
     - [512]
+
+RWKVBenchmark:
+  shapes:
+    - [64]
+    - [256]
+    - [1024]
+    - [4096]
+    - [8192]
+    - [16384]
+    - [32768]
+
+RWKVSparsityBenchmark:
+  shapes:
+    - [1]
