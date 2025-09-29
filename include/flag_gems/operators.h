@@ -86,6 +86,7 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
                             const at::Tensor &output,
                             int64_t dim,
                             at::ScalarType input_dtype);
+
 void reshape_and_cache_flash(const at::Tensor &key,
                              const at::Tensor &value,
                              at::Tensor &key_cache,
@@ -94,4 +95,14 @@ void reshape_and_cache_flash(const at::Tensor &key,
                              const std::string &kv_cache_dtype,
                              const std::optional<at::Tensor> &k_scale,
                              const std::optional<at::Tensor> &v_scale);
+
+at::Tensor rwkv_mm_sparsity(const at::Tensor &k, const at::Tensor &v);
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &k,
+                                                              const at::Tensor &kk,
+                                                              const at::Tensor &a,
+                                                              const at::Tensor &ka,
+                                                              int64_t H,
+                                                              int64_t N);
+
 }  // namespace flag_gems

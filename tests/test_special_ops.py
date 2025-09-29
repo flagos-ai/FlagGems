@@ -1254,3 +1254,54 @@ def test_accuracy_contiguous(shape, dtype):
     assert res_out.is_contiguous() is True
     assert res_out.stride() == ref_out.stride()
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.rwkv_ka_fusion
+@pytest.mark.parametrize("T", [2**d for d in range(4, 15, 2)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_rwkv_kafusion(T, dtype):
+    H = 8
+    N = 64
+    C = H * N
+    k = torch.rand(T, C, dtype=dtype, device=flag_gems.device)
+    kk = torch.rand(C, dtype=dtype, device=flag_gems.device)
+    a = torch.rand(T, C, dtype=dtype, device=flag_gems.device)
+    ka = torch.rand(C, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        o_k, o_kk, o_kka = flag_gems.rwkv_ka_fusion(k, kk, a, ka, H, N)
+
+    ref_k = to_reference(k, True)
+    ref_kk = to_reference(kk, True)
+    ref_a = to_reference(a, True)
+    ref_ka = to_reference(ka, True)
+
+    ref_o_kk = torch.nn.functional.normalize(
+        (ref_k * ref_kk).view(T, H, N), dim=-1, p=2.0
+    ).view(T, H * N)
+    ref_o_k = ref_k * (1 + (ref_a - 1) * ref_ka)
+    ref_o_kka = ref_o_kk * ref_a
+
+    gems_assert_close(o_k, ref_o_k, dtype, equal_nan=True)
+    gems_assert_close(o_kk, ref_o_kk, dtype, equal_nan=True)
+    gems_assert_close(o_kka, ref_o_kka, dtype, equal_nan=True)
+
+
+@pytest.mark.rwkv_mm_sparsity
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_rwkv_mmsparsity(dtype):
+    n = 16384
+    embedding_dim = 4096
+
+    k = torch.randn(n, dtype=dtype, device=flag_gems.device)
+    k = torch.relu(k)
+    V_ = torch.randn(n, embedding_dim, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res = flag_gems.rwkv_mm_sparsity(k, V_)
+
+    ref_k = to_reference(k, True)
+    ref_V_ = to_reference(V_, True)
+    ref_res = ref_k @ ref_V_
+
+    gems_assert_close(res, ref_res, dtype, equal_nan=True)

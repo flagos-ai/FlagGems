@@ -21,7 +21,10 @@ add_library(operators
             softmax.cpp
 	          exponential_.cpp
             fill.cpp
-            reshape_and_cache_flash.cpp)
+            reshape_and_cache_flash.cpp
+            rwkv_mm_sparsity.cpp
+            rwkv_ka_fusion.cpp)
+
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
