@@ -96,7 +96,7 @@ CODEGEN_COFIGS = {
         prefer_1d_tile=True,
     ),
     vendors.ASCEND: CodeGenConfig(
-        4096,
+        512,
         tuple([48, 1, 1]),
         32,
         False,
