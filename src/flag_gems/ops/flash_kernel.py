@@ -1376,7 +1376,7 @@ def flash_varlen_fwd_kernel(
         strides=(q_row_stride, 1),
         offsets=(0, 0),
         block_shape=(BLOCK_M, BLOCK_K),
-        order=(0, 1),
+        order=(1, 0),
     )
     bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]), boundary_check=(0, 1))
 
@@ -1562,7 +1562,7 @@ def flash_varlen_fwd_kernel(
         strides=(o_row_stride, 1),
         offsets=(0, 0),
         block_shape=(BLOCK_M, BLOCK_K),
-        order=(0, 1),
+        order=(1, 0),
     )
     tl.store(gO.advance([m_block * BLOCK_M, 0]), out, boundary_check=(0, 1))
 
