@@ -68,6 +68,7 @@ forward_operations = [
     ("cos", torch.cos, FLOAT_DTYPES),
     ("sin", torch.sin, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
+    ("atan", torch.atan, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
     # Numerical Checks

@@ -54,11 +54,11 @@ def get_info_file_lines(info_file, discard_file):
                     continue
             elif line.startswith("LF:"):
                 lf = line.split(":")
-                print(f"LF:{ int(lf[1])+ num_rm_lines}")
+                print(f"LF:{int(lf[1]) + num_rm_lines}")
                 continue
             elif line.startswith("LH:"):
                 lh = line.split(":")
-                print(f"LH:{ int(lh[1])+ num_rm_lines}")
+                print(f"LH:{int(lh[1]) + num_rm_lines}")
                 continue
             print(line)
 
