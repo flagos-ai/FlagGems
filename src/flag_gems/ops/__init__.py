@@ -12,6 +12,7 @@ from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
     flash_attention_forward,
     flash_attn_varlen_func,
@@ -236,6 +237,8 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "atan",
+    "atan_",
     "batch_norm",
     "batch_norm_backward",
     "bitwise_and_scalar",

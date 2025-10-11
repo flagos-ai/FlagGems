@@ -992,3 +992,33 @@ def test_accuracy_sqrt_(shape, dtype):
         res_out = torch.sqrt_(inp)
 
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.atan
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_atan(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.atan(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.atan(res_inp)
+    ref_out = ref_out.to(res_out.dtype)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.atan_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_atan_(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp.clone(), True)
+
+    ref_out = torch.atan_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.atan_(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
