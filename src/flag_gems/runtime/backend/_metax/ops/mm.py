@@ -159,3 +159,42 @@ def mm(a, b):
             GROUP_M=8,
         )
     return c
+
+
+def mm_out(a, b, *, out):
+    logger.debug("METAX GEMS MM_OUT")
+    # handle non-contiguous inputs if necessary
+    if a.stride(0) > 1 and a.stride(1) > 1:
+        a = a.contiguous()
+    if b.stride(0) > 1 and b.stride(1) > 1:
+        b = b.contiguous()
+    # checks constraints
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    M, K = a.shape
+    _, N = b.shape
+    # allocates output
+    c = out
+    dot_out_dtype = tl.float32
+    # launch kernel
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        META["SPLIT_K"],
+    )
+    with torch_device_fn.device(a.device):
+        mm_kernel[grid](
+            a,
+            b,
+            c,
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            dot_out_dtype=dot_out_dtype,
+            GROUP_M=8,
+        )
+    return c

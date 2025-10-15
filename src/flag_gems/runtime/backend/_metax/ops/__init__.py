@@ -10,7 +10,7 @@ from .isin import isin
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .min import min, min_dim
-from .mm import mm
+from .mm import mm, mm_out
 from .nonzero import nonzero
 from .ones import ones
 from .ones_like import ones_like
@@ -44,6 +44,7 @@ __all__ = [
     "min_dim",
     "min",
     "mm",
+    "mm_out",
     "nonzero",
     "ones",
     "ones_like",
