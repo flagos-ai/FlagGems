@@ -192,3 +192,38 @@ def test_glu_backward_perf():
         is_backward=True,
     )
     bench.run()
+
+
+class BinaryPointwiseBenchmark(Benchmark):
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return special_shapes_2d + sp_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = generate_tensor_input(shape, cur_dtype, self.device)
+            shift_amount = torch.randint(
+                0, 8, shape, dtype=cur_dtype, device=self.device
+            )
+            yield inp1, shift_amount
+
+
+@pytest.mark.bitwise_left_shift
+def test_bitwise_left_shift_perf():
+    bench = BinaryPointwiseBenchmark(
+        op_name="bitwise_left_shift",
+        torch_op=torch.bitwise_left_shift,
+        dtypes=INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.bitwise_right_shift
+def test_bitwise_right_shift_perf():
+    bench = BinaryPointwiseBenchmark(
+        op_name="bitwise_right_shift",
+        torch_op=torch.bitwise_right_shift,
+        dtypes=INT_DTYPES,
+    )
+    bench.run()

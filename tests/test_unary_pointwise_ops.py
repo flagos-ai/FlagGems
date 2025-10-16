@@ -85,6 +85,89 @@ def test_accuracy_angle(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype_out)
 
 
+BITWISE_SHAPES = [
+    ((512, 1024), (512, 1024)),
+    ((256, 512), (1, 512)),
+    ((256, 512), (256, 1)),
+    ((1, 512), (256, 512)),
+    ((256, 1), (256, 512)),
+    ((1024,), ()),
+    ((), (1024,)),
+]
+
+
+@pytest.mark.bitwise_left_shift
+@pytest.mark.parametrize("shapes", BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_bitwise_left_shift(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device=flag_gems.device)
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device=flag_gems.device)
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.bitwise_left_shift(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_left_shift(res_a, res_b)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.bitwise_right_shift
+@pytest.mark.parametrize("shapes", BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_bitwise_right_shift(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device=flag_gems.device)
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device=flag_gems.device)
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.bitwise_right_shift(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_right_shift(res_a, res_b)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+INPLACE_BITWISE_SHAPES = [
+    ((512, 1024), (512, 1024)),
+    ((256, 512), (1, 512)),
+    ((256, 512), (256, 1)),
+    ((1024,), ()),
+]
+
+
+@pytest.mark.bitwise_left_shift
+@pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_bitwise_left_shift_(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device=flag_gems.device)
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device=flag_gems.device)
+    ref_a = to_reference(res_a.clone())
+    ref_b = to_reference(res_b)
+
+    ref_a.bitwise_left_shift_(ref_b)
+    with flag_gems.use_gems():
+        res_a.bitwise_left_shift_(res_b)
+    gems_assert_close(res_a, ref_a, dtype)
+
+
+@pytest.mark.bitwise_right_shift
+@pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_bitwise_right_shift_(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device=flag_gems.device)
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device=flag_gems.device)
+    ref_a = to_reference(res_a.clone())
+    ref_b = to_reference(res_b)
+
+    ref_a.bitwise_right_shift_(ref_b)
+    with flag_gems.use_gems():
+        res_a.bitwise_right_shift_(res_b)
+    gems_assert_close(res_a, ref_a, dtype)
+
+
 @pytest.mark.bitwise_not
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
