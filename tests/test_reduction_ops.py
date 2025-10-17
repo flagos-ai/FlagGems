@@ -274,7 +274,9 @@ def test_accuracy_cumsum(shape, dtype):
         with flag_gems.use_gems():
             res_out = torch.cumsum(inp, dim=dim)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+    # we should use ref's output type, since cumsum of int dtype results in int64
+    check_dtype = ref_out.dtype if dtype in INT_DTYPES else dtype
+    gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
 
 
 CUMMIN_SHAPES = (
