@@ -5,7 +5,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")])
@@ -68,6 +68,20 @@ def clamp_func_min(x, mini):
 @triton.jit
 def clamp_func_max(x, maxi):
     return tl.minimum(maxi, x.to(tl.float32))
+
+
+def clamp_min(A, mini):
+    logger.debug("GEMS CLAMP MIN")
+    if mini is None:
+        raise ValueError("Mini must not be None")
+    return clamp_func_min(A, mini)
+
+
+def clamp_min_(A, mini):
+    logger.debug("GEMS CLAMP_ MIN")
+    if mini is None:
+        raise ValueError("Mini must not be None")
+    return clamp_func_min(A, mini, out0=A)
 
 
 def clamp(A, mini=None, maxi=None):

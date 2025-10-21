@@ -3,6 +3,7 @@ from .add import add, add_
 from .addcdiv import addcdiv
 from .addcmul import addcmul
 from .addmm import addmm, addmm_out
+from .addmv import addmv, addmv_out
 from .addr import addr
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -11,6 +12,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
+from .atan import atan, atan_
 from .attention import (
     flash_attention_forward,
     flash_attn_varlen_func,
@@ -24,6 +26,7 @@ from .bitwise_and import (
     bitwise_and_tensor,
     bitwise_and_tensor_,
 )
+from .bitwise_left_shift import bitwise_left_shift
 from .bitwise_not import bitwise_not, bitwise_not_
 from .bitwise_or import (
     bitwise_or_scalar,
@@ -32,10 +35,11 @@ from .bitwise_or import (
     bitwise_or_tensor,
     bitwise_or_tensor_,
 )
+from .bitwise_right_shift import bitwise_right_shift
 from .bmm import bmm
 from .cat import cat
 from .celu import celu, celu_
-from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
 from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
@@ -202,6 +206,8 @@ __all__ = [
     "addcdiv",
     "addmm",
     "addmm_out",
+    "addmv",
+    "addmv_out",
     "all",
     "all_dim",
     "all_dims",
@@ -215,6 +221,8 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "atan",
+    "atan_",
     "batch_norm",
     "batch_norm_backward",
     "bitwise_and_scalar",
@@ -222,6 +230,8 @@ __all__ = [
     "bitwise_and_scalar_tensor",
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
+    "bitwise_left_shift",
+    "bitwise_right_shift",
     "bitwise_not",
     "bitwise_not_",
     "bitwise_or_scalar",
@@ -237,6 +247,8 @@ __all__ = [
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "clamp_min",
+    "clamp_min_",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
