@@ -189,9 +189,14 @@ def test_accuracy_addmv(M, N, scalar, dtype):
     mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
     vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
     bias1 = torch.randn((M,), dtype=dtype, device=flag_gems.device)
-    ref_mat = to_reference(mat)
-    ref_vec = to_reference(vec)
-    ref_bias1 = to_reference(bias1)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_mat = to_reference(mat, True)
+        ref_vec = to_reference(vec, True)
+        ref_bias1 = to_reference(bias1, True)
+    else:
+        ref_mat = to_reference(mat)
+        ref_vec = to_reference(vec)
+        ref_bias1 = to_reference(bias1)
 
     alpha = beta = scalar
 
@@ -203,7 +208,10 @@ def test_accuracy_addmv(M, N, scalar, dtype):
 
     # broadcast bias scalar
     bias2 = torch.randn((), dtype=dtype, device=flag_gems.device)
-    ref_bias2 = to_reference(bias2)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_bias2 = to_reference(bias2, True)
+    else:
+        ref_bias2 = to_reference(bias2)
 
     ref_out2 = torch.addmv(ref_bias2, ref_mat, ref_vec, alpha=alpha, beta=beta)
     with flag_gems.use_gems():
