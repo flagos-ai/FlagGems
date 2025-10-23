@@ -204,6 +204,8 @@ def mm_sqmma_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     ab_dtype: tl.constexpr,
     c_dtype: tl.constexpr,
+    is_transpose_a: tl.constexpr = False,
+    is_transpose_b: tl.constexpr = False,
 ):
     pid = tle.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -228,12 +230,14 @@ def mm_sqmma_kernel(
             [offs_am, offs_k],
             [BLOCK_SIZE_M, BLOCK_SIZE_K],
             tme_load_ab_dtype,
+            is_transpose_a,
         )
         b = tl._experimental_descriptor_load(
             b_desc_ptr,
             [offs_k, offs_bn],
             [BLOCK_SIZE_K, BLOCK_SIZE_N],
             tme_load_ab_dtype,
+            is_transpose_b,
         )
         accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
         offs_k += BLOCK_SIZE_K
@@ -253,6 +257,19 @@ def get_triton_type(elem_type):
 def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages):
     logger.debug("GEMS_MTHREADS MM(SQMMA)")
     device = "musa"
+    # handle non-contiguous inputs if necessary
+    is_transpose_a = False
+    is_transpose_b = False
+    if not A.is_contiguous():
+        if A.stride(0) == 1 and A.stride(1) == A.shape[0]:
+            is_transpose_a = True
+        else:
+            A = A.contiguous()
+    if not B.is_contiguous():
+        if B.stride(0) == 1 and B.stride(1) == B.shape[0]:
+            is_transpose_b = True
+        else:
+            B = B.contiguous()
     a_type = A.dtype
     b_type = B.dtype
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
@@ -276,6 +293,8 @@ def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_s
         get_triton_type(c_dtype),
         num_warps=num_warps,
         num_stages=num_stages,
+        is_transpose_a=is_transpose_a,
+        is_transpose_b=is_transpose_b,
     )
     return C
 
