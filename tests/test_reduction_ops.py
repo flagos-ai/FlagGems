@@ -848,6 +848,46 @@ def test_accuracy_inplace_scatter_mul(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+TRACE_SHAPES = [
+    (1, 1),
+    (5, 5),
+    (10, 20),
+    (30, 15),
+    (1, 100),
+    (100, 1),
+    (128, 256),
+    (256, 128),
+    (0, 10),  # empty diagonal
+    (10, 0),  # empty diagonal
+    (1500, 1200),  # Larger shape
+]
+
+
+@pytest.mark.trace
+@pytest.mark.parametrize("shape", TRACE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+def test_accuracy_trace(shape, dtype):
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, size=shape, device=flag_gems.device).to(dtype)
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(-100, 100, size=shape, device=flag_gems.device).to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    if dtype == torch.bool and ref_inp.device.type == "cpu":
+        pytest.skip("skipping bool on CPU reference.")
+
+    ref_out = torch.trace(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.trace(inp)
+
+    if dtype in FLOAT_DTYPES:
+        gems_assert_close(res_out, ref_out, dtype)
+    else:
+        gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.gather
 @pytest.mark.parametrize(
     "inp_shape",

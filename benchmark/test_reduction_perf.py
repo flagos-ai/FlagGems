@@ -258,6 +258,22 @@ def test_perf_dot():
     bench.run()
 
 
+@pytest.mark.trace
+def test_perf_trace():
+    def trace_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype=dtype, device=device)
+        yield inp,
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=trace_input_fn,
+        op_name="trace",
+        torch_op=torch.trace,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
+    )
+
+    bench.run()
+
+
 class quantileBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         more_shapes_1d = [(4,), (1024,), (65535)]

@@ -300,6 +300,7 @@ def enable(
             ("tile", tile),
             ("to.dtype", to_dtype),
             ("topk", topk),
+            ("trace", trace),
             ("triu", triu),
             ("true_divide.Scalar", true_divide),
             ("true_divide.Tensor", true_divide),
