@@ -255,9 +255,15 @@ def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX PUT")
 
     indices = list(indices)
+    indices = [
+        index.to(inp.device) if index.device != inp.device else index
+        for index in indices
+    ]
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
     target_shape += inp.shape[len(indices) :]
+    if values.device != inp.device:
+        values = values.to(inp.device)
     values = torch.broadcast_to(values, target_shape)
 
     out = inp.clone()
@@ -269,9 +275,15 @@ def index_put_(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX PUT_")
 
     indices = list(indices)
+    indices = [
+        index.to(inp.device) if index.device != inp.device else index
+        for index in indices
+    ]
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
     target_shape += inp.shape[len(indices) :]
+    if values.device != inp.device:
+        values = values.to(inp.device)
     values = torch.broadcast_to(values, target_shape)
 
     _index_put_func(inp, indices, values, accumulate)
