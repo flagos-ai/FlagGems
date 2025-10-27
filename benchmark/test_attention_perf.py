@@ -25,7 +25,6 @@ class AttentionBenchmark(GenericBenchmark):
 @pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0])
 @pytest.mark.parametrize("is_causal", [True, False])

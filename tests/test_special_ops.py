@@ -681,7 +681,6 @@ def test_logspace(start, end, steps, base, dtype, device, pin_memory):
         gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="TypeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
@@ -1130,15 +1129,16 @@ def get_diagonal_backward_shape_and_dims():
     return result
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads", reason="Briefly skipped during the update"
-)
 @pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
 @pytest.mark.diagonal
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
+    if flag_gems.vendor_name == "mthreads":
+        torch.manual_seed(123)
+        torch.musa.manual_seed_all(123)
+
     torch.empty(1, device=flag_gems.device, requires_grad=True).backward()
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp)
@@ -1195,7 +1195,6 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
     gems_assert_equal(res_index, ref_index)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.kron
 @pytest.mark.parametrize("shape", KRON_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)

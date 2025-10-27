@@ -7,6 +7,7 @@ from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
+from .randperm import randperm
 from .sort import sort, sort_stable
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -24,6 +25,7 @@ __all__ = [
     "zeros_like",
     "sort",
     "sort_stable",
+    "randperm",
 ]
 
 if get_device_capability(current_device())[0] >= 3:
