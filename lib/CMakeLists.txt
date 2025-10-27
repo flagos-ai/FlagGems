@@ -22,6 +22,7 @@ add_library(operators
 	          exponential_.cpp
             fill.cpp
             reshape_and_cache_flash.cpp
+            flash_attn_varlen_func.cpp
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp)
 
