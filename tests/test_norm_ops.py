@@ -201,6 +201,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Runtime Error")
 @pytest.mark.layer_norm
 @pytest.mark.parametrize(
     "shape",

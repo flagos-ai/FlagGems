@@ -68,7 +68,6 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.isin
 def test_isin_perf():
@@ -93,7 +92,6 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.unique
 def test_perf_unique():
@@ -346,7 +344,6 @@ class Conv3DBenchmark(GenericBenchmark):
 
 
 # @pytest.mark.skipif(True, reason="Conv3d not registered yet")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.conv3d
 def test_perf_conv3d():
     def conv3d_input_fn(shape, dtype, device):
@@ -447,7 +444,6 @@ def test_perf_diagonal_backward():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="ZeroDivisionError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron

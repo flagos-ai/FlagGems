@@ -90,7 +90,6 @@ def test_perf_index_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.masked_select
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",

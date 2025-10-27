@@ -172,7 +172,6 @@ def test_accuracy_full_like(shape, dtype, xdtype, fill_value):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.randperm
 @pytest.mark.parametrize("n", [123, 12345, 123456])

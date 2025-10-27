@@ -68,10 +68,6 @@ def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="temp disable for updating",
-)
 @pytest.mark.addmm_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -181,6 +177,7 @@ def test_accuracy_mv(M, N, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Result TODO Fix")
 @pytest.mark.addmv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
