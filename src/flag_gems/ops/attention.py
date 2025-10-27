@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.config import use_c_extension
 from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
 from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
@@ -599,65 +600,92 @@ def flash_attn_varlen_func(
             logsumexp of each row of the matrix QK^T * scaling (e.g., log of the softmax
             normalization factor).
     """
-    assert (
-        cu_seqlens_k is not None or seqused_k is not None
-    ), "cu_seqlens_k or seqused_k must be provided"
-    assert (
-        cu_seqlens_k is None or seqused_k is None
-    ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
-    assert (
-        block_table is None or seqused_k is not None
-    ), "seqused_k must be provided if block_table is provided"
-
-    if softmax_scale is None:
-        softmax_scale = q.shape[-1] ** (-0.5)
-    # custom op does not support non-tuple input
-    if window_size is None:
-        real_window_size = (-1, -1)
+    if use_c_extension:
+        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
+        with torch_device_fn.device(q.device):
+            out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
+                q,
+                k,
+                v,
+                max_seqlen_q,
+                cu_seqlens_q,
+                max_seqlen_k,
+                cu_seqlens_k,
+                seqused_k,
+                q_v,
+                dropout_p,
+                softmax_scale,
+                causal,
+                window_size,
+                softcap,
+                alibi_slopes,
+                deterministic,
+                return_attn_probs,
+                block_table,
+                return_softmax_lse,
+                out,
+                scheduler_metadata,
+                q_descale,
+                k_descale,
+                v_descale,
+                fa_version,
+            )
+        return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
-        assert len(window_size) == 2
-        real_window_size = (window_size[0], window_size[1])
-    q, k, v = [maybe_contiguous(x) for x in (q, k, v)]
-
-    dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
-
-    if fa_version != 2:
-        raise RuntimeError("Only FA2 is implemented.")
-
-    if num_splits > 0:
-        raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
-
-    max_seqlen_q = (
-        max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
-    )
-    max_seqlen_k = (
-        max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
-    )
-
-    out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
-        q,
-        k,
-        v,
-        out,
-        cu_seqlens_q,
-        # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
-        # still wants it so we pass all zeros
-        dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
-        seqused_k,
-        None,
-        block_table,
-        alibi_slopes,
-        max_seqlen_q,
-        max_seqlen_k,
-        dropout_p,
-        softmax_scale,
-        False,
-        causal,
-        real_window_size[0],
-        real_window_size[1],
-        softcap,
-        return_softmax_lse and dropout_p > 0,
-        None,
-    )
+        logger.debug("GEMS FLASH_ATTN_VARLEN_FUNC")
+        assert (
+            cu_seqlens_k is not None or seqused_k is not None
+        ), "cu_seqlens_k or seqused_k must be provided"
+        assert (
+            cu_seqlens_k is None or seqused_k is None
+        ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
+        assert (
+            block_table is None or seqused_k is not None
+        ), "seqused_k must be provided if block_table is provided"
+        if softmax_scale is None:
+            softmax_scale = q.shape[-1] ** (-0.5)
+        # custom op does not support non-tuple input
+        if window_size is None:
+            real_window_size = (-1, -1)
+        else:
+            assert len(window_size) == 2
+            real_window_size = (window_size[0], window_size[1])
+        q, k, v = [maybe_contiguous(x) for x in (q, k, v)]
+        dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
+        if fa_version != 2:
+            raise RuntimeError("Only FA2 is implemented.")
+        if num_splits > 0:
+            raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
+        max_seqlen_q = (
+            max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
+        )
+        max_seqlen_k = (
+            max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
+        )
+        out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
+            q,
+            k,
+            v,
+            out,
+            cu_seqlens_q,
+            # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
+            # still wants it so we pass all zeros
+            dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+            seqused_k,
+            None,
+            block_table,
+            alibi_slopes,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            softmax_scale,
+            False,
+            causal,
+            real_window_size[0],
+            real_window_size[1],
+            softcap,
+            return_softmax_lse and dropout_p > 0,
+            None,
+        )
 
     return (out, softmax_lse) if return_softmax_lse else out

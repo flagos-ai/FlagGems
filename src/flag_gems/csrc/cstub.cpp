@@ -72,6 +72,18 @@ TORCH_LIBRARY(flag_gems, m) {
       "reshape_and_cache_flash(Tensor key, Tensor value, Tensor(a!) key_cache, Tensor(b!) value_cache, "
       "Tensor slot_mapping, str kv_cache_dtype, Tensor? k_scale=None, Tensor? v_scale=None) -> "
       "()");
+  m.def(
+      "flash_attn_varlen_func(Tensor q, Tensor k, Tensor v, SymInt max_seqlen_q, Tensor cu_seqlens_q, SymInt "
+      "max_seqlen_k, "
+      "Tensor? cu_seqlens_k=None, Tensor? seqused_k=None, Tensor? q_v=None, float dropout_p=0.0, float? "
+      "softmax_scale=None, "
+      "bool causal=False, SymInt[]? window_size=None,float softcap=0.0, "
+      "Tensor? alibi_slopes=None, "
+      "bool deterministic=False, bool return_attn_probs=False, Tensor? block_table=None, bool "
+      "return_softmax_lse=False, "
+      "Tensor? out=None, Tensor? scheduler_metadata=None, float? q_descale=None, float? k_descale=None, "
+      "float? v_descale=None, "
+      "SymInt fa_version=2) -> (Tensor, Tensor)");
   m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
   m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
 }
@@ -111,6 +123,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("softmax", TORCH_FN(softmax));
   m.impl("softmax_backward", TORCH_FN(softmax_backward));
   m.impl("reshape_and_cache_flash", TORCH_FN(reshape_and_cache_flash));
+  m.impl("flash_attn_varlen_func", TORCH_FN(flash_attn_varlen_func));
   m.impl("rwkv_mm_sparsity", TORCH_FN(rwkv_mm_sparsity));
   m.impl("rwkv_ka_fusion", TORCH_FN(rwkv_ka_fusion));
 }

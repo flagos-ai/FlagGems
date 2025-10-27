@@ -1,4 +1,6 @@
 #pragma once
+#include <ATen/Generator.h>
+#include <c10/util/Optional.h>
 #include <dlfcn.h>  // dladdr
 #include <array>
 #include <cstdio>
@@ -8,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include "torch/torch.h"
 
 namespace flag_gems::utils {
@@ -24,3 +27,9 @@ std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(
 std::tuple<int64_t, int64_t, int64_t> parse_reduction_axes(const at::Tensor &tensor, int reduction_axis);
 int cdiv(int a, int b);
 }  // namespace flag_gems::utils
+
+// Public declaration for reuse (implementation in lib/exponential_.cpp)
+namespace flag_gems {
+std::pair<uint64_t, uint64_t> philox_backend_seed_offset(int64_t increment,
+                                                         c10::optional<at::Generator> generator_opt);
+}
