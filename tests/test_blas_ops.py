@@ -21,10 +21,6 @@ MNK_SHAPES = (
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 @pytest.mark.addmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -64,10 +60,6 @@ def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 @pytest.mark.addmm_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -100,10 +92,6 @@ def test_accuracy_addmm_out(M, N, K, scalar, dtype):
     gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -127,10 +115,6 @@ def test_accuracy_bmm(M, N, K, dtype):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 # TODO: failed at (1, 1, 2)
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -157,10 +141,6 @@ def test_accuracy_mm(M, N, K, dtype, b_column_major):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 @pytest.mark.mv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
