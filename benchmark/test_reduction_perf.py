@@ -205,7 +205,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cummin", "cummax"]:
+        elif op_name in ["cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
     if vendor_name == "mthreads" and op_name in ["cummin", "cummax"]:
         # Compatible with older versions of LLVM

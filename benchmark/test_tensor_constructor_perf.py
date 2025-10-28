@@ -158,9 +158,7 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
-)
+@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.randperm
 def test_perf_randperm():
