@@ -18,7 +18,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizer
 # NOTE(simon): do not import vLLM here so the benchmark script
 # can run without vLLM installed.
 
-AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
+AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=24 * 60 * 60)
 
 
 @dataclass
