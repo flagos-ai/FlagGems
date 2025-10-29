@@ -118,9 +118,9 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(
     bool return_softmax_lse = false,
     std::optional<at::Tensor> out = std::nullopt,
     const std::optional<at::Tensor> &scheduler_metadata = std::nullopt,
-    const std::optional<double> &q_descale = std::nullopt,
-    const std::optional<double> &k_descale = std::nullopt,
-    const std::optional<double> &v_descale = std::nullopt,
+    const std::optional<at::Tensor> &q_descale = std::nullopt,
+    const std::optional<at::Tensor> &k_descale = std::nullopt,
+    const std::optional<at::Tensor> &v_descale = std::nullopt,
     int64_t fa_version = 2);
 
 struct FlashFwdParams {
