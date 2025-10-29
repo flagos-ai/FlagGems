@@ -505,9 +505,9 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(const at::Tensor& q,
                                                           bool return_softmax_lse,
                                                           std::optional<at::Tensor> out,
                                                           const std::optional<at::Tensor>& scheduler_metadata,
-                                                          const std::optional<double>& q_descale,
-                                                          const std::optional<double>& k_descale,
-                                                          const std::optional<double>& v_descale,
+                                                          const std::optional<at::Tensor>& q_descale,
+                                                          const std::optional<at::Tensor>& k_descale,
+                                                          const std::optional<at::Tensor>& v_descale,
                                                           int64_t fa_version) {
   TORCH_CHECK(cu_seqlens_k.has_value() || seqused_k.has_value(),
               "cu_seqlens_k or seqused_k must be provided");
