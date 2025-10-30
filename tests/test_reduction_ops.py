@@ -1755,3 +1755,42 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
     assert torch.allclose(topk_weights, ref_weights, atol=1e-5)
     assert torch.equal(topk_indices.cpu(), ref_indices.to(index_dtype).cpu())
     assert torch.equal(token_expert_indices.cpu(), ref_source_rows.cpu())
+
+
+@pytest.mark.std
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIMS_LIST + [None])
+@pytest.mark.parametrize("correction", [1] if QUICK_MODE else [0, 1])
+@pytest.mark.parametrize("keepdim", [True] if QUICK_MODE else [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_std(shape, dim, correction, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    dims_to_check = []
+    if isinstance(dim, int):
+        dims_to_check = [dim]
+    elif isinstance(dim, (list, tuple)):
+        dims_to_check = dim
+
+    if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
+        pytest.skip("Dimension out of range for the given shape.")
+
+    if correction == 1:
+        if dim is not None:
+            positive_dims = [d % len(shape) for d in dims_to_check]
+            reduction_size = 1
+            for d in positive_dims:
+                reduction_size *= shape[d]
+            if reduction_size < 2:
+                pytest.skip("Correction=1 requires reduction size of at least 2.")
+        elif inp.numel() < 2:
+            pytest.skip("Correction=1 requires numel >= 2 for global reduction.")
+
+    ref_inp = to_reference(inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.std(inp, dim=dim, correction=correction, keepdim=keepdim)
+
+    ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
+
+    gems_assert_close(res_out, ref_out, dtype)
