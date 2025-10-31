@@ -875,10 +875,14 @@ def test_accuracy_trace(shape, dtype):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = to_reference(inp)
-    if dtype == torch.bool and ref_inp.device.type == "cpu":
-        pytest.skip("skipping bool on CPU reference.")
-
-    ref_out = torch.trace(ref_inp)
+    if ref_inp.device.type == "cpu" and dtype in [
+        torch.half,
+        torch.bfloat16,
+        torch.bool,
+    ]:
+        ref_out = torch.sum(torch.diagonal(ref_inp))
+    else:
+        ref_out = torch.trace(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.trace(inp)
 
