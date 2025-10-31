@@ -203,6 +203,13 @@ def test_perf_embedding():
     bench.run()
 
 
+def lerp_input_fn(shape, dtype, device):
+    input = torch.randn(*shape, device=device, dtype=dtype)
+    end = input + 10
+    weight = torch.randn(*shape, device=device, dtype=dtype)
+    yield {"input": input, "end": end, "weight": weight},
+
+
 class LerpBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
@@ -212,17 +219,23 @@ class LerpBenchmark(GenericBenchmark):
 
 @pytest.mark.lerp
 def test_perf_lerp():
-    def lerp_input_fn(shape, dtype, device):
-        input = torch.randn(*shape, device=device, dtype=dtype)
-        end = input + 10
-        weight = torch.randn(*shape, device=device, dtype=dtype)
-        yield {"input": input, "end": end, "weight": weight},
-
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
         op_name="lerp",
         torch_op=torch.lerp,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.lerp_
+def test_perf_lerp_inplace():
+    bench = LerpBenchmark(
+        input_fn=lerp_input_fn,
+        op_name="lerp_",
+        torch_op=lambda input, end, weight: input.lerp_(end, weight),
+        dtypes=FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()
 

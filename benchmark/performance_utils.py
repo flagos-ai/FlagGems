@@ -83,6 +83,7 @@ class Benchmark:
         torch_op,
         dtypes=None,
         is_backward=False,
+        is_inplace=False,
         **kwargs,
     ):
         self.op_name = op_name
@@ -91,6 +92,7 @@ class Benchmark:
         self.torch_op = torch_op
         self.gems_op = None
         self.is_backward = is_backward
+        self.is_inplace = is_inplace
         self._input_iter = None
 
         # Theoretical supported dtypes, metrics for the operation.
@@ -256,7 +258,12 @@ class Benchmark:
         self.gems_op = gems_op
 
     def get_latency(self, op, *args, **kwargs):
-        fn = lambda: op(*args, **kwargs)
+        if self.is_inplace:
+            fn = lambda: op(
+                *[x.clone() if torch.is_tensor(x) else x for x in args], **kwargs
+            )
+        else:
+            fn = lambda: op(*args, **kwargs)
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)

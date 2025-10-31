@@ -55,9 +55,7 @@ forward_operations = [
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
     ("celu", torch.nn.functional.celu, FLOAT_DTYPES),
-    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
-    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
@@ -94,6 +92,51 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
     if vendor_name == "mthreads" and op_name == "angle":
         pytest.skip(" Unsupport complex dtype")
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+    bench.run()
+
+
+forward_inplace_operations = [
+    ("abs_", torch.abs_, FLOAT_DTYPES),
+    # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
+    ("erf_", torch.erf_, FLOAT_DTYPES),
+    ("exp_", torch.exp_, FLOAT_DTYPES),
+    ("exp2_", torch.exp2_, FLOAT_DTYPES),
+    ("neg_", torch.neg_, FLOAT_DTYPES),
+    ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
+    ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
+    ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
+    # Activation operations
+    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
+    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
+    ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
+    ("relu_", torch.relu_, FLOAT_DTYPES),
+    ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
+    ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
+    # Trigonometric operations
+    ("cos_", torch.cos_, FLOAT_DTYPES),
+    ("sin_", torch.sin_, FLOAT_DTYPES),
+    ("tanh_", torch.tanh_, FLOAT_DTYPES),
+    # Bitwise operations
+    ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name,
+            op,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, op, dtype in forward_inplace_operations
+    ],
+)
+def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
+    bench = UnaryPointwiseBenchmark(
+        op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
     bench.run()
 
 
