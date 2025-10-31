@@ -48,6 +48,15 @@ def clamp_input_fn(shape, cur_dtype, device):
         yield inp1, None, 3.14
 
 
+def clamp_min_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = generate_tensor_input(shape, cur_dtype, device)
+    yield inp1, inp2
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # scalar situation
+        yield inp1, 3.14
+
+
 def threshold_input_fn(shape, cur_dtype, device):
     inp1 = generate_tensor_input(shape, cur_dtype, device)
     yield inp1, 3.14, 2.71
@@ -83,6 +92,13 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             clamp_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.clamp,
+        ),
+        pytest.param(
+            "clamp_min",
+            torch.clamp_min,
+            clamp_min_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.clamp_min,
         ),
         pytest.param(
             "flip",
@@ -123,6 +139,36 @@ def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
             pytest.skip("TODOFIX")
     bench = GenericBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+    )
+    bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "clamp_",
+            torch.clamp_,
+            clamp_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.clamp_,
+        ),
+        pytest.param(
+            "clamp_min_",
+            torch.clamp_min_,
+            clamp_min_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.clamp_min_,
+        ),
+    ],
+)
+def test_generic_inplace_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
+    bench = GenericBenchmark(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        is_inplace=True,
     )
     bench.run()
 

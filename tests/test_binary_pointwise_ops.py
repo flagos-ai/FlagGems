@@ -467,7 +467,7 @@ def test_accuracy_clamp_tensor_(shape, isnone, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.clamp
+@pytest.mark.clamp_min
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_clamp_min(shape, dtype):
@@ -484,7 +484,7 @@ def test_accuracy_clamp_min(shape, dtype):
 
 
 @pytest.mark.inplace
-@pytest.mark.clamp_
+@pytest.mark.clamp_min_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_clamp_min_(shape, dtype):
@@ -1944,14 +1944,14 @@ def test_accuracy_lerp_(shape, dtype):
     ref_end = to_reference(end)
     ref_weight = to_reference(weight)
 
-    ref_out = torch.lerp(ref_input.clone(), ref_end, weight=5.0)
+    ref_out = ref_input.clone().lerp_(ref_end, weight=5.0)
     with flag_gems.use_gems():
-        res_out = torch.lerp(input.clone(), end, weight=5.0)
+        res_out = input.clone().lerp_(end, weight=5.0)
     gems_assert_close(res_out, ref_out, dtype)
 
-    ref_out = torch.lerp(ref_input.clone(), ref_end, weight=ref_weight)
+    ref_out = ref_input.clone().lerp_(ref_end, weight=ref_weight)
     with flag_gems.use_gems():
-        res_out = torch.lerp(input.clone(), end, weight=weight)
+        res_out = input.clone().lerp_(end, weight=weight)
 
     gems_assert_close(res_out, ref_out, dtype)
 

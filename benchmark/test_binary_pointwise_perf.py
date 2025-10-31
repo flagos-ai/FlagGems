@@ -75,3 +75,34 @@ class BinaryPointwiseBenchmark(Benchmark):
 def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
     bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name,
+            op,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, op, dtype in [
+            # Arithmetic operations
+            ("add_", lambda a, b: a.add_(b), FLOAT_DTYPES),
+            ("div_", lambda a, b: a.div_(b), FLOAT_DTYPES),
+            ("mul_", lambda a, b: a.mul_(b), FLOAT_DTYPES),
+            ("sub_", lambda a, b: a.sub_(b), FLOAT_DTYPES),
+            ("pow_", lambda a, b: a.pow_(b), FLOAT_DTYPES),
+            ("floor_divide_", lambda a, b: a.floor_divide_(b), INT_DTYPES),
+            ("remainder_", lambda a, b: a.remainder_(b), INT_DTYPES),
+            # Bitwise operations
+            ("bitwise_and_", lambda a, b: a.bitwise_and_(b), INT_DTYPES + BOOL_DTYPES),
+            ("bitwise_or_", lambda a, b: a.bitwise_or_(b), INT_DTYPES + BOOL_DTYPES),
+        ]
+    ],
+)
+def test_general_inplace_binary_pointwise_perf(op_name, torch_op, dtypes):
+    bench = BinaryPointwiseBenchmark(
+        op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
+    bench.run()
