@@ -43,6 +43,7 @@ class CodeGenConfig:
     is_scatter_slice: bool = False
     is_cat: bool = False
     isCloseVectorization: bool = False
+    isCloseDtypeConvert: bool = False
 
     def __post_init__(self):
         if self.prefer_1d_tile:
