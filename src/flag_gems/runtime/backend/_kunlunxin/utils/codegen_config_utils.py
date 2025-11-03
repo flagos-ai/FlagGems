@@ -44,6 +44,7 @@ class CodeGenConfig:
     is_cat: bool = False
     isCloseVectorization: bool = False
     isCloseDtypeConvert: bool = False
+    isCloseMemoryAsync: bool = True
 
     def __post_init__(self):
         if self.prefer_1d_tile:
