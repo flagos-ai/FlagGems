@@ -1211,7 +1211,7 @@ def test_accuracy_max_pool2d_backward(
     shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
 ):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, upcast=True)
     ref_out, _ = torch.nn.functional.max_pool2d_with_indices(
         ref_inp,
         kernel_size=kernel_size,
@@ -1220,10 +1220,7 @@ def test_accuracy_max_pool2d_backward(
         dilation=dilation,
         ceil_mode=ceil_mode,
     )
-    out_grad = torch.randn_like(ref_out, device=flag_gems.device)
-    ref_grad = to_reference(out_grad)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    _, res_indices = flag_gems.max_pool2d_with_indices(
+    res_out, res_indices = flag_gems.max_pool2d_with_indices(
         inp,
         kernel_size=kernel_size,
         stride=stride,
@@ -1231,6 +1228,9 @@ def test_accuracy_max_pool2d_backward(
         dilation=dilation,
         ceil_mode=ceil_mode,
     )
+    out_grad = torch.randn_like(res_out, device=flag_gems.device)
+    ref_grad = to_reference(out_grad, upcast=True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     res_in_grad = flag_gems.max_pool2d_backward(
         out_grad,
         inp,
