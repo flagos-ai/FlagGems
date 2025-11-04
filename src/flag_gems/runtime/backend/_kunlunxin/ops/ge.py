@@ -1,4 +1,5 @@
 import logging
+import os
 
 import triton
 import triton.language as tl
@@ -29,7 +30,11 @@ def ge_func(x, y):
 
 def ge(A, B):
     logger.debug("GEMS GE")
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = ge_func(A, B)
+    del os.environ["TRITONXPU_COMPARE_FUSION"]
+    del os.environ["TRITONXPU_FP16_FAST"]
     return res
 
 
@@ -45,4 +50,9 @@ def ge_func_scalar(x, y):
 
 def ge_scalar(A, B):
     logger.debug("GEMS GE SCALAR")
-    return ge_func_scalar(A, B)
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
+    res = ge_func_scalar(A, B)
+    del os.environ["TRITONXPU_COMPARE_FUSION"]
+    del os.environ["TRITONXPU_FP16_FAST"]
+    return res
