@@ -1,4 +1,5 @@
 import logging
+import os
 
 import triton
 import triton.language as tl
@@ -30,7 +31,11 @@ def ne_func(x, y):
 
 def ne(A, B):
     logger.debug("GEMS NE")
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = ne_func(A, B)
+    del os.environ["TRITONXPU_COMPARE_FUSION"]
+    del os.environ["TRITONXPU_FP16_FAST"]
     return res
 
 
@@ -46,4 +51,9 @@ def ne_func_scalar(x, y):
 
 def ne_scalar(A, B):
     logger.debug("GEMS NE SCALAR")
-    return ne_func_scalar(A, B)
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
+    res = ne_func_scalar(A, B)
+    del os.environ["TRITONXPU_COMPARE_FUSION"]
+    del os.environ["TRITONXPU_FP16_FAST"]
+    return res
