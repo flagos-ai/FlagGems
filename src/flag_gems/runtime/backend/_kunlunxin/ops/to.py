@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -30,34 +31,12 @@ def to_dtype_func(x):
     return x
 
 
-config_bf16_ = CodeGenConfig(
-    512,
-    (65536, 65536, 65536),
-    32,
-    True,
-    prefer_1d_tile=True,
-    isCloseVectorization=True,
-)
-
-
-@pointwise_dynamic(
-    is_tensor=[
-        True,
-    ],
-    promotion_methods=[(0, "DEFAULT")],
-    config=config_bf16_,
-)
-@triton.jit
-def to_dtype_func_bf16(x):
-    return x
-
-
 def to_dtype(x, dtype, non_blocking=False, copy=False, memory_format=None):
     logger.debug("GEMS TO.DTYPE")
     if not copy and x.dtype == dtype:
         return x
     out = torch.empty_like(x, dtype=dtype, memory_format=memory_format)
-    if dtype == torch.bfloat16:
-        return to_dtype_func_bf16(x, out0=out)
-    else:
-        return to_dtype_func(x, out0=out)
+    os.environ["TRITONXPU_BF16_FAST"] = "1"
+    res = to_dtype_func(x, out0=out)
+    del os.environ["TRITONXPU_BF16_FAST"]
+    return res
