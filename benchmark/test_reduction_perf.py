@@ -221,9 +221,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
         del os.environ["DISABLE_LLVM_OPT"]
 
 
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
-)
+@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):
