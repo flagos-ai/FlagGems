@@ -1,10 +1,6 @@
 import triton
 
 
-def simple_elementwise_blocksize_heur(args):
-    return 1024
-
-
 def argmax_heur_block_m(args):
     return 16
 
@@ -14,11 +10,11 @@ def argmax_heur_block_n(args):
 
 
 def argmin_heur_block_m(args):
-    return 4 if args["M"] < 4096 else 8
+    return 16
 
 
 def argmin_heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
+    return 100
 
 
 def bmm_heur_divisible_m(args):
@@ -83,14 +79,14 @@ def index_select_heur_block_n(args):
 
 
 def mm_heur_even_k(args):
-    return args["K"] % args["BLOCK_K"] == 0
+    return args["K"] % (args["BLOCK_K"]) == 0
 
 
 def rand_heur_block(args):
     if args["N"] <= 512:
-        return 512
+        return 2048
     else:
-        return 1024
+        return 4097
 
 
 def rand_heur_num_warps(args):
@@ -104,9 +100,9 @@ def rand_heur_num_warps(args):
 
 def randn_heur_block(args):
     if args["N"] <= 512:
-        return 512
+        return 2048
     else:
-        return 1024
+        return 4097
 
 
 def randn_heur_num_warps(args):
@@ -182,6 +178,8 @@ def softmax_heur_tile_m(args):
 def uniform_heur_block(args):
     if args["N"] <= 512:
         return 512
+    elif args["N"] >= 1073741824:
+        return 4097
     else:
         return 1024
 
@@ -208,14 +206,14 @@ def upsample_nearest2d_SAME_W(args):
 
 
 def batch_norm_heur_block_m(args):
-    return min(2048, triton.next_power_of_2(args["batch_dim"]))
+    return min(128, triton.next_power_of_2(args["batch_dim"]))
 
 
 def batch_norm_heur_block_n(args):
-    # A maximum of 16384 elements are loaded at once.
+    # A maximum of 4096 elements are loaded at once.
     BLOCK_M = batch_norm_heur_block_m(args)
     BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
-    return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
+    return min(BLOCK_N, max(1, 2**12 // BLOCK_M))
 
 
 def vdot_heur_block_size(args):
@@ -305,9 +303,5 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
-    },
-    "elementwise_generic": {
-        "BLOCK_SIZE": simple_elementwise_blocksize_heur,
-        "num_warps": lambda args: 8,
     },
 }
