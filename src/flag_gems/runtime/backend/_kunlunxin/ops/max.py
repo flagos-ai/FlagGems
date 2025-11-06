@@ -131,7 +131,7 @@ def max_kernel(
 
 def max(inp):
     logger.debug("GEMS MAX")
-    os.environ["TRITONXPU_FROM_MAX"] = "1"
+    os.environ["TRITONXPU_IS_SCATTER_SLICE"] = "1"
     inp = inp.contiguous()
     M = inp.numel()
     # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
@@ -159,8 +159,8 @@ def max(inp):
         if "TRITONXPU_STORE_MASK_SIM" in os.environ:
             del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
-    if "TRITONXPU_FROM_MAX" in os.environ:
-        del os.environ["TRITONXPU_FROM_MAX"]
+    if "TRITONXPU_IS_SCATTER_SLICE" in os.environ:
+        del os.environ["TRITONXPU_IS_SCATTER_SLICE"]
     return out
 
 
