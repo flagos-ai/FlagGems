@@ -102,7 +102,7 @@ def max_kernel(
 
 
 def max(inp):
-    logger.debug("GEMS MAX")
+    logger.debug("GEMS_ASCEND MAX")
     inp = inp.contiguous()
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
@@ -120,7 +120,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS MAX")
+    logger.debug("GEMS_ASCEND MAX")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

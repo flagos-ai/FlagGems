@@ -293,7 +293,10 @@ def test_embedding_backward(
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_neg(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "ascend":
+        x = torch.randn(size=shape, dtype=dtype).to(device=flag_gems.device)
+    else:
+        x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     y = x.conj()
     z = y.imag
     assert z.is_neg()

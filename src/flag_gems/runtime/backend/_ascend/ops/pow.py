@@ -17,12 +17,12 @@ def pow_func(x, exponent):
 
 
 def pow_tensor_tensor(A, exponent):
-    logger.debug("GEMS POW_TENSOR_TENSOR")
+    logger.debug("GEMS_ASCEND POW_TENSOR_TENSOR")
     return pow_func(A, exponent)
 
 
 def pow_tensor_tensor_(A, exponent):
-    logger.debug("GEMS POW_TENSOR_TENSOR_")
+    logger.debug("GEMS_ASCEND POW_TENSOR_TENSOR_")
     return pow_func(A, exponent, out0=A)
 
 
@@ -33,12 +33,12 @@ def pow_func_tensor_scalar(x, exponent):
 
 
 def pow_tensor_scalar(A, exponent):
-    logger.debug("GEMS POW_TENSOR_SCALAR")
+    logger.debug("GEMS_ASCEND POW_TENSOR_SCALAR")
     return pow_func_tensor_scalar(A, exponent)
 
 
 def pow_tensor_scalar_(A, exponent):
-    logger.debug("GEMS POW_TENSOR_SCALAR_")
+    logger.debug("GEMS_ASCEND POW_TENSOR_SCALAR_")
     return pow_func_tensor_scalar(A, exponent, out0=A)
 
 
@@ -49,5 +49,5 @@ def pow_func_scalar_tensor(x, exponent):
 
 
 def pow_scalar(A, exponent):
-    logger.debug("GEMS POW_SCALAR")
+    logger.debug("GEMS_ASCEND POW_SCALAR")
     return pow_func_scalar_tensor(A, exponent)

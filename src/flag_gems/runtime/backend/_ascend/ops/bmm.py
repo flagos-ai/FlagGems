@@ -89,7 +89,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logger.debug("GEMS BMM")
+    logger.debug("GEMS_ASCEND BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

@@ -255,6 +255,8 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
     if flag_gems.vendor_name == "mthreads":
         inp1 = torch.randn(M, dtype=dtype, device="cpu")
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
+    elif flag_gems.vendor_name == "ascend" and dtype == torch.cfloat:
+        pytest.skip("Skipping torch.cfloat tests on Ascend platform")
     else:
         inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
         inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
