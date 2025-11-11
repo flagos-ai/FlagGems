@@ -795,7 +795,7 @@ class LibEntry(triton.KernelInterface):
                 k_args[param_names[i]] = arg
                 dns_args.append(arg)
             else:
-                if major_version == 3 and 3 <= minor_version <= 4:
+                if major_version == 3 and 3 <= minor_version <= 5:
                     k_args[param_names[i]] = arg
                 const_args.append(arg)
         for p in self.jit_function.params[len(args) :]:
@@ -808,7 +808,7 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
-                if major_version == 3 and 3 <= minor_version <= 4:
+                if major_version == 3 and 3 <= minor_version <= 5:
                     k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
@@ -880,7 +880,7 @@ class LibEntry(triton.KernelInterface):
             grid = grid(meta)
         grid = grid + (1, 1)
 
-        if major_version == 3 and 3 <= minor_version <= 4:
+        if major_version == 3 and 3 <= minor_version <= 5:
             all_args = []
             missing_keys = []
             for key in list(self.signature.parameters.keys()):
