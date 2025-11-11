@@ -63,7 +63,7 @@ class DeviceDetector(object):
         vendor_from_env = self._get_vendor_from_env()
         if vendor_from_env is not None:
             return backend.get_vendor_info(vendor_from_env)
-            
+
         vendor_name = self._get_vendor_from_quick_cmd()
         if vendor_name is not None:
             return backend.get_vendor_info(vendor_name)
