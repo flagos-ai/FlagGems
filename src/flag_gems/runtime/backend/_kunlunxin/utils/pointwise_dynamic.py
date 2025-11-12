@@ -964,6 +964,10 @@ class WrapperGenerator:
                     code.writeline("isCloseOffsetAnalysis=True,")
                 elif self.config.is_cat:
                     code.writeline("buffer_size_limit=512,")
+                elif self.config.buffer_size_limit:
+                    code.writeline(
+                        f"buffer_size_limit={self.config.buffer_size_limit},"
+                    )
                 else:
                     code.writeline("buffer_size_limit=2048,")
                 if self.config.isCloseVectorization:
@@ -1025,6 +1029,10 @@ class WrapperGenerator:
                     code.writeline("isCloseOffsetAnalysis=True,")
                 elif self.config.is_cat:
                     code.writeline("buffer_size_limit=512,")
+                elif self.config.buffer_size_limit:
+                    code.writeline(
+                        f"buffer_size_limit={self.config.buffer_size_limit},"
+                    )
                 else:
                     code.writeline("buffer_size_limit=2048,")
                 if self.config.isCloseVectorization:
