@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.shape_utils import volume
 
@@ -12,11 +13,12 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device_ = device
 
 
+@libentry()
 @triton.jit
 def zeros_kernel(
     output_ptr,
-    n_elements,
-    value,
+    n_elements: tl.constexpr,
+    value: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(axis=0)  # We use a 1D launch grid so axis is 0.

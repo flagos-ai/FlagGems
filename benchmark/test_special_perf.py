@@ -173,24 +173,36 @@ class EmbeddingBenchmark(GenericBenchmark2DOnly):
         return None
 
 
+def embedding_input_fn(shape, dtype, device):
+    num_embeddings, embedding_dim = shape
+    indices = torch.randint(0, num_embeddings, (num_embeddings,), device=device)
+    weight = torch.randn((num_embeddings, embedding_dim), device=device, dtype=dtype)
+    yield {"input": indices, "weight": weight},
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        indices_2d = torch.randint(
+            0,
+            num_embeddings,
+            (num_embeddings, num_embeddings),
+            device=device,
+        )
+        yield {"input": indices_2d, "weight": weight},
+
+
+def embedding_backward_input_fn(shape, dtype, device):
+    for forward_args in embedding_input_fn(shape, dtype, device):
+        # print(f'forward_args = {forward_args}')
+        input = forward_args[0]["input"]
+        weight = forward_args[0]["weight"]
+        # print(f'weight = {weight}')
+        weight.requires_grad_(True)
+        # import pudb; pudb.set_trace()
+        # output = torch.nn.functional.embedding(input, weight)
+        # grad_output = torch.randn_like(output)
+        yield input, weight
+
+
 @pytest.mark.embedding
 def test_perf_embedding():
-    def embedding_input_fn(shape, dtype, device):
-        num_embeddings, embedding_dim = shape
-        indices = torch.randint(0, num_embeddings, (num_embeddings,), device=device)
-        weight = torch.randn(
-            (num_embeddings, embedding_dim), device=device, dtype=dtype
-        )
-        yield {"input": indices, "weight": weight},
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            indices_2d = torch.randint(
-                0,
-                num_embeddings,
-                (num_embeddings, num_embeddings),
-                device=device,
-            )
-            yield {"input": indices_2d, "weight": weight},
-
     bench = EmbeddingBenchmark(
         input_fn=embedding_input_fn,
         op_name="embedding",
@@ -199,6 +211,21 @@ def test_perf_embedding():
             torch.float32,
             torch.float16,
         ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+    )
+    bench.run()
+
+
+@pytest.mark.embedding_backward
+def test_perf_embedding_backward():
+    bench = EmbeddingBenchmark(
+        input_fn=embedding_backward_input_fn,
+        op_name="embedding",
+        torch_op=torch.nn.functional.embedding,
+        dtypes=[
+            torch.float32,
+            torch.float16,
+        ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+        is_backward=True,
     )
     bench.run()
 
