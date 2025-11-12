@@ -39,6 +39,7 @@ def lt(A, B):
 
 
 @pointwise_dynamic(
+    is_tensor=[True, False],
     promotion_methods=[(0, 1, "ALWAYS_BOOL")],
     config=config_,
 )
@@ -49,9 +50,5 @@ def lt_func_scalar(x, y):
 
 def lt_scalar(A, B):
     logger.debug("GEMS LT SCALAR")
-    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
-    os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = lt_func_scalar(A, B)
-    del os.environ["TRITONXPU_COMPARE_FUSION"]
-    del os.environ["TRITONXPU_FP16_FAST"]
     return res
