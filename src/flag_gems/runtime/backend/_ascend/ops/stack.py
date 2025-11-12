@@ -36,7 +36,7 @@ def stack(
             )
         if s != inp0_shape:
             raise RuntimeError(
-                f"stack expects each tensor to be equal size, but got {inp0_shape} at entry 0 and {s} at entry {i+1}"
+                f"stack expects each tensor to be equal size, but got {inp0_shape} at entry 0 and {s} at entry {i + 1}"
             )
 
     if dim < 0:
