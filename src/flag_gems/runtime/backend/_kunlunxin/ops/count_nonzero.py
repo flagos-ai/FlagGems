@@ -41,6 +41,7 @@ def count_nonzero_kernel_1_part0_xpu(x_ptr, out_ptr, numel, BLOCK_SIZE_0: tl.con
     tl.store(out_ptr + pid, nonzero_count)
 
 
+@libentry()
 @triton.jit
 def count_nonzero_kernel_1_part1_xpu(x_ptr, out_ptr, numel, BLOCK_SIZE_1: tl.constexpr):
     offsets = tl.arange(0, BLOCK_SIZE_1)
@@ -83,6 +84,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 """***************************** TROTITON XPU KERNEL *****************************"""
 
 
+@libentry()
 @triton.jit
 def count_nonzero_kernel_xpu(
     x_ptr, out_ptr, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
