@@ -51,7 +51,5 @@ def le_func_scalar(x, y):
 
 def le_scalar(A, B):
     logger.debug("GEMS LE SCALAR")
-    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     res = le_func_scalar(A, B)
-    del os.environ["TRITONXPU_COMPARE_FUSION"]
     return res
