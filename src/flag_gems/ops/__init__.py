@@ -14,9 +14,11 @@ from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
+    ScaleDotProductAttention,
     flash_attention_forward,
     flash_attn_varlen_func,
     scaled_dot_product_attention,
+    scaled_dot_product_attention_backward,
 )
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bitwise_and import (
@@ -437,6 +439,8 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
+    "scaled_dot_product_attention_backward",
+    "ScaleDotProductAttention",
     "scatter",
     "scatter_",
     "select_scatter",

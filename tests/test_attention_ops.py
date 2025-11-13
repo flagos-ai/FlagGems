@@ -25,7 +25,15 @@ device = flag_gems.device
 
 
 def make_input(
-    batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype, device
+    batch,
+    num_head,
+    num_head_k,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    dtype,
+    device,
+    requires_grad=False,
 ):
     set_philox_state(1234567890, 0, device)
     q_shape = (batch, num_head, q_seq_len, head_size)
@@ -33,6 +41,10 @@ def make_input(
     q = torch.empty(q_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
     k = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
     v = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+    if requires_grad:
+        q.requires_grad_()
+        k.requires_grad_()
+        v.requires_grad_()
     return q, k, v
 
 
@@ -330,12 +342,22 @@ def test_sdpa_legacy(
 ):
     device = torch_device_fn.current_device()
     q, k, v = make_input(
-        batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, dtype, device
+        batch,
+        num_q_head,
+        num_kv_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        device,
+        requires_grad=True,
     )
     ref_q = to_reference(q, False)
     ref_k = to_reference(k, False)
     ref_v = to_reference(v, False)
     scale = float(1.0 / np.sqrt(head_size))
+
+    # forward
     torch_result = torch_sdpa(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
@@ -345,6 +367,102 @@ def test_sdpa_legacy(
     )
 
     gems_assert_close(gems_result, torch_result, dtype)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(
+    torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
+)
+@pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.parametrize(
+    "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
+    [
+        (4, 8, 8, 1024, 1024, 64, False),
+        (4, 8, 8, 1024, 1024, 128, False),
+        (4, 8, 8, 2048, 256, 64, False),
+        (4, 8, 8, 2048, 256, 128, False),
+        (4, 8, 8, 17, 1030, 64, False),
+        (4, 8, 8, 17, 1030, 128, False),
+        # adopted from FlagAttention `test_attention_fwd`:
+        (2, 4, 4, 512, 612, 128, False),
+        (2, 4, 4, 1024, 1034, 64, False),
+        (2, 4, 4, 2048, 2048, 32, False),
+        (2, 4, 4, 4096, 4096, 16, False),
+        (2, 4, 4, 4001, 4001, 32, False),
+        (2, 4, 4, 4001, 4096, 64, False),
+        (2, 4, 4, 4096, 4000, 128, False),
+        (1, 2, 2, 8192, 8202, 16, False),
+        (1, 2, 2, 8192, 8192, 32, False),
+        # test for mqa/gqa
+        (2, 4, 2, 512, 612, 128, True),
+        (2, 4, 1, 1024, 1034, 64, True),
+        (2, 4, 2, 2048, 2048, 32, True),
+        (2, 4, 1, 4096, 4096, 16, True),
+        (2, 4, 2, 4001, 4001, 32, True),
+        (2, 4, 1, 4001, 4096, 64, True),
+        (2, 4, 2, 4096, 4000, 128, True),
+        (1, 2, 1, 8192, 8202, 16, True),
+        (1, 2, 1, 8192, 8192, 32, True),
+    ],
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_sdpa_legacy_backward(
+    batch,
+    num_q_head,
+    num_kv_head,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    is_causal,
+    dtype,
+    enable_gqa,
+):
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch,
+        num_q_head,
+        num_kv_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        device,
+        requires_grad=True,
+    )
+    ref_q = to_reference(q, False)
+    ref_k = to_reference(k, False)
+    ref_v = to_reference(v, False)
+    scale = float(1.0 / np.sqrt(head_size))
+
+    # forward
+    torch_result = torch_sdpa(
+        ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
+    )
+
+    gems_result = flag_gems.ops.scaled_dot_product_attention(
+        q, k, v, attn_mask=None, scale=scale, is_causal=is_causal, enable_gqa=enable_gqa
+    )
+
+    gems_assert_close(gems_result, torch_result, dtype)
+
+    # backward
+    dout = torch.randn_like(ref_q)
+    torch_result.backward(dout)
+    gems_result.backward(dout)
+    torch_q_grad = ref_q.grad.clone() if ref_q.grad is not None else None
+    torch_k_grad = ref_k.grad.clone() if ref_k.grad is not None else None
+    torch_v_grad = ref_v.grad.clone() if ref_v.grad is not None else None
+    gems_q_grad = q.grad.clone() if q.grad is not None else None
+    gems_k_grad = k.grad.clone() if k.grad is not None else None
+    gems_v_grad = v.grad.clone() if v.grad is not None else None
+
+    # NOTE: NaN may arise in the gradients, this behavior aligns with PyTorch's SDPA
+    gems_assert_close(gems_q_grad, torch_q_grad, dtype, equal_nan=True)
+    gems_assert_close(gems_k_grad, torch_k_grad, dtype, equal_nan=True)
+    gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True)
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
