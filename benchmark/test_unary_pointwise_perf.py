@@ -97,7 +97,6 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
 
 forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
-    # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),

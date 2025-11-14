@@ -48,7 +48,7 @@ def test_perf_silu_and_mul():
     bench.run()
 
 
-@pytest.mark.skip_layernorm
+@pytest.mark.skip_layer_norm
 def test_perf_skip_layernorm():
     def skip_layernorm_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)

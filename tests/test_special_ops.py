@@ -535,7 +535,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="fix")
-@pytest.mark.upsample
+@pytest.mark.upsample_bicubic2d_aa
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])
 @pytest.mark.parametrize(
@@ -573,7 +573,7 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
-@pytest.mark.upsample
+@pytest.mark.upsample_nearest2d
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

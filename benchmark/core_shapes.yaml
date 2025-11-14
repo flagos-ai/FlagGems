@@ -169,20 +169,25 @@ Benchmark:
     - [4096, 4096]
     - [64, 512, 512]
     - [1024, 1024, 1024]
+
+Conv1DBenchmark:
+  shapes:
+    - [32, 64, 256, 64, 3, 1, 1, 1]
+    - [64, 32, 512, 32, 5, 2, 2, 1]
+    - [16, 16, 1024, 32, 7, 1, 3, 1]
+    - [32, 32, 4096, 64, 9, 2, 4, 2]
+  shape_desc: "N, C, L, Co, K, stride, padding, groups"
+
 # default conv shape for input and weight stride padding groups
 # default Ni Ci Hi WI  Co Hk Wk stride padding groups
-ConvBenchmark:
+Conv2DBenchmark:
   shapes:
     - [32, 64, 128, 128, 32, 3, 3, 1, 1, 1]
-    - [32, 64, 128, 128, 32, 3, 3, 1, 2, 1]
     - [104, 16, 32, 32, 32, 4, 4, 1, 0, 1]
     - [64, 32, 18, 18, 32, 5, 5, 2, 1, 1]
     - [64, 32, 210, 210, 64, 5, 5, 2, 1, 1]
-    - [32, 64, 210, 210, 16, 5, 5, 2, 1, 1]
-    - [16, 32, 12, 12, 24, 3, 3, 2, 1, 1]
     - [16, 32, 24, 24, 24, 3, 3, 1, 1, 2]
-    - [16, 32, 24, 24, 24, 3, 3, 2, 2, 2]
-    - [16, 32, 24, 24, 24, 3, 3, 1, 2, 2]
+  shape_desc: "N, C_in, H, W, C_out, K_h, K_w, stride, padding, groups"
 
 Conv3DBenchmark:
   shapes:
@@ -191,6 +196,7 @@ Conv3DBenchmark:
     - [16, 32, 24, 24, 24, 24, 3, 3, 3, 1, 1, 2]  # smaller input size
     - [64, 32, 18, 18, 18, 32, 5, 5, 5, 1, 2, 1]  # larger kernel size
     - [16, 32, 12, 12, 12, 24, 3, 3, 3, 1, 2, 1]  # smaller input, different padding
+  shape_desc: "N, C_in, D, H, W, C_out, K_d, K_h, K_w, stride, padding, groups"
 
 AttentionBenchmark:
   shapes:
