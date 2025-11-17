@@ -64,6 +64,8 @@ def enable(
             ("arange.start_step", arange_start),
             ("argmax", argmax),
             ("argmin", argmin),
+            ("avg_pool2d", avg_pool2d),
+            ("avg_pool2d_backward", avg_pool2d_backward),
             ("atan", atan),
             ("atan_", atan_),
             ("bitwise_and.Scalar", bitwise_and_scalar),
