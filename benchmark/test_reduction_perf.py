@@ -239,6 +239,62 @@ def test_perf_count_nonzero():
     bench.run()
 
 
+def avg_pool2d_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    # Common case
+    yield inp, {
+        "kernel_size": 3,
+        "stride": 2,
+        "padding": 1,
+        "ceil_mode": False,
+        "count_include_pad": True,
+        "divisor_override": None,
+    }
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # With count_include_pad=False
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "ceil_mode": False,
+            "count_include_pad": False,
+            "divisor_override": None,
+        }
+        # With ceil_mode
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "ceil_mode": True,
+            "count_include_pad": True,
+            "divisor_override": None,
+        }
+        # With divisor_override
+        if shape[-2] >= 2 and shape[-1] >= 2:
+            yield inp, {
+                "kernel_size": 2,
+                "stride": 1,
+                "padding": 0,
+                "ceil_mode": False,
+                "count_include_pad": True,
+                "divisor_override": 3,
+            }
+
+
+class AvgPool2dBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        shapes_4d = [
+            (4, 3, 224, 224),  # Typical input image size
+            (16, 64, 56, 56),  # Early ResNet layer output
+            (32, 128, 28, 28),  # Mid ResNet layer output
+            (64, 256, 14, 14),  # Later ResNet layer output
+            (128, 512, 7, 7),  # Final ResNet layer output
+        ]
+
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
 def max_pool2d_input_fn(shape, dtype, device):
     inp = generate_tensor_input(shape, dtype, device)
     yield inp, {
