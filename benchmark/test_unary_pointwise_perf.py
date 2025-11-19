@@ -167,18 +167,18 @@ def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
-class ToDtypeBenchmark(UnaryPointwiseBenchmark):
+class ToCopyBenchmark(UnaryPointwiseBenchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp = torch.randn(shape, dtype=torch.float32, device=self.device)
-            yield inp, cur_dtype
+            yield inp, {"dtype": cur_dtype}
 
 
-@pytest.mark.to
-def test_to_dtype_perf():
-    bench = ToDtypeBenchmark(
-        op_name="to",
-        torch_op=torch.Tensor.to,
+@pytest.mark.to_copy
+def test_to_copy_perf():
+    bench = ToCopyBenchmark(
+        op_name="_to_copy",
+        torch_op=torch.ops.aten._to_copy,
         dtypes=[torch.float16, torch.bfloat16]
         + ([torch.float64] if fp64_is_supported else []),
     )
