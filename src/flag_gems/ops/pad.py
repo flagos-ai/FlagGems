@@ -479,5 +479,5 @@ def pad(self, pad, mode="constant", value=None):
     return out
 
 
-def constant_pad_nd(self, pad, value=0):
-    return pad(self, pad, mode="constant", value=value)
+def constant_pad_nd(self, pad_list, value=0):
+    return pad(self, pad_list, mode="constant", value=value)
