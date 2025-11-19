@@ -274,10 +274,7 @@ def test_accuracy_exp2(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
-    if flag_gems.vendor_name == "kunlunxin":
-        ref_out = torch.exp2(ref_inp.cpu()).to(flag_gems.device)
-    else:
-        ref_out = torch.exp2(ref_inp)
+    ref_out = torch.exp2(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.exp2(inp)
 
@@ -292,10 +289,7 @@ def test_accuracy_exp2_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone(), True)
 
-    if flag_gems.vendor_name == "kunlunxin":
-        ref_out = torch.exp2_(ref_inp.cpu()).to(flag_gems.device)
-    else:
-        ref_out = torch.exp2_(ref_inp)
+    ref_out = torch.exp2_(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.exp2_(inp)
 
