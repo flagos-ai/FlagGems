@@ -197,7 +197,7 @@ from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.tile import tile
-from flag_gems.ops.to import to_dtype
+from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
 from flag_gems.ops.triu import triu
@@ -474,7 +474,7 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "tile",
-    "to_dtype",
+    "to_copy",
     "topk",
     "trace",
     "triu",
