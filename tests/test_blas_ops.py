@@ -235,7 +235,6 @@ def test_accuracy_outer(M, N, dtype):
     gems_assert_close(res_in2_grad, ref_in2_grad, dtype, reduce_dim=M)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.vdot
 @pytest.mark.parametrize("M", UT_SHAPES_1D)
 @pytest.mark.parametrize(
@@ -244,6 +243,10 @@ def test_accuracy_outer(M, N, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.cfloat])
 @pytest.mark.parametrize("stride", [1, 2])
 def test_accuracy_vdot(M, is_conj, dtype, stride):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     inp1_is_conj, inp2_is_conj = is_conj
 
     if flag_gems.vendor_name == "mthreads":
@@ -251,6 +254,9 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
     elif flag_gems.vendor_name == "ascend" and dtype == torch.cfloat:
         pytest.skip("Skipping torch.cfloat tests on Ascend platform")
+    elif flag_gems.vendor_name == "kunlunxin" and dtype == torch.cfloat:
+        inp1 = torch.randn(M, dtype=dtype, device="cpu")
+        inp2 = torch.randn(M, dtype=dtype, device="cpu")
     else:
         inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
         inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
