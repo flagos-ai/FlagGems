@@ -1,8 +1,10 @@
+import os
 from typing import Generator
 
 import pytest
 import torch
 
+import flag_gems
 from benchmark.attri_util import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -122,10 +124,16 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn):
+    if flag_gems.vendor_name == "mthreads" and op_name != "mm":
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
     bench = BlasBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
     bench.run()
+
+    if flag_gems.vendor_name == "mthreads" and op_name != "mm":
+        del os.environ["MUSA_ENABLE_SQMMA"]
 
 
 class MvAndOuterBenchmark(GenericBenchmark2DOnly):
