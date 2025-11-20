@@ -11,7 +11,7 @@ from benchmark.attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from benchmark.performance_utils import Benchmark, generate_tensor_input, vendor_name
+from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
@@ -89,8 +89,6 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
-    if vendor_name == "mthreads" and op_name == "angle":
-        pytest.skip(" Unsupport complex dtype")
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 

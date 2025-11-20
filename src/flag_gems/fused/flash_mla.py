@@ -193,6 +193,9 @@ def flash_mla(
     elif major == 7 and vendor_name == "iluvatar":
         BLOCK_H = 32
         num_stages = 1
+    elif major == 3 and vendor_name == "mthreads":
+        BLOCK_H = 32
+        num_stages = 1
     else:
         error.backend_not_support(device)
     BLOCK_N = 64

@@ -1,5 +1,6 @@
 from torch_musa import current_device, get_device_capability
 
+from .conv2d import conv2d
 from .dropout import dropout, dropout_backward
 from .ones import ones
 from .ones_like import ones_like
@@ -26,6 +27,7 @@ __all__ = [
     "sort",
     "sort_stable",
     "randperm",
+    "conv2d",
 ]
 
 if get_device_capability(current_device())[0] >= 3:

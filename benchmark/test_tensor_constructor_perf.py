@@ -1,9 +1,11 @@
 import math
+import os
 import random
 
 import pytest
 import torch
 
+import flag_gems
 from benchmark.attri_util import BenchLevel
 from benchmark.performance_utils import (
     Config,
@@ -151,8 +153,6 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
         "linspace",
     ]:
         pytest.skip("RUNTIME TODOFIX.")
-    if vendor_name == "mthreads" and op_name == "logspace":
-        pytest.skip("Torch MUSA Unsupported Now")
     bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op)
     bench.run()
 
@@ -179,9 +179,11 @@ def test_tensor_constructor_inplace_benchmark(op_name, torch_op, input_fn):
 
 
 @pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.randperm
 def test_perf_randperm():
+    if flag_gems.vendor_name == "mthreads":
+        os.environ["DISABLE_LLVM_OPT"] = "1"
+
     def randperm_input_fn(shape, dtype, device):
         yield {"n": shape[0], "dtype": dtype, "device": device},
 
@@ -192,3 +194,6 @@ def test_perf_randperm():
         dtypes=[torch.int32, torch.int64],
     )
     bench.run()
+
+    if flag_gems.vendor_name == "mthreads":
+        del os.environ["DISABLE_LLVM_OPT"]
