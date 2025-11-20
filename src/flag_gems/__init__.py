@@ -10,11 +10,14 @@ from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
+from flag_gems.runtime.dispatcher import op_dispatcher
 from flag_gems.runtime.register import Register
 
 __version__ = "3.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
+dispatched_op_vendor = op_dispatcher.operator_vendor
+dispatched_config_vendor = op_dispatcher.config_vendor
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None

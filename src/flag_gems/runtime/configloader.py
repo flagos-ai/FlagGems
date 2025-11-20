@@ -5,6 +5,7 @@ import triton
 
 from . import backend
 from .backend.device import DeviceDetector
+from .dispatcher import op_dispatcher
 
 
 class ConfigLoader(object):
@@ -54,7 +55,10 @@ class ConfigLoader(object):
             self.loaded_triton_config[key] = self.get_tuned_config(key)
 
     def get_vendor_heuristics_config(self):
-        return backend.get_heuristic_config(self.device.vendor_name)
+        if op_dispatcher.is_dispatch_configs:
+            return op_dispatcher.configurations["heuristic"]
+        else:
+            return backend.get_heuristic_config(self.device.vendor_name)
 
     def get_default_heuristics_config(self):
         return backend.get_heuristic_config("nvidia")
@@ -63,7 +67,10 @@ class ConfigLoader(object):
         return backend.get_tune_config("nvidia")
 
     def get_vendor_tune_config(self):
-        return backend.get_tune_config(self.device.vendor_name)
+        if op_dispatcher.is_dispatch_configs:
+            return op_dispatcher.configurations["autotune"]
+        else:
+            return backend.get_tune_config(self.device.vendor_name)
 
     def get_heuristics_config(self, op_name):
         if op_name in self.vendor_heuristics_config:
