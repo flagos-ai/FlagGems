@@ -175,7 +175,7 @@ class ToCopyBenchmark(UnaryPointwiseBenchmark):
 @pytest.mark.to_copy
 def test_to_copy_perf():
     bench = ToCopyBenchmark(
-        op_name="_to_copy",
+        op_name="to_copy",
         torch_op=torch.ops.aten._to_copy,
         dtypes=[torch.float16, torch.bfloat16]
         + ([torch.float64] if fp64_is_supported else []),

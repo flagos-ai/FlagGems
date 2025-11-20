@@ -295,7 +295,7 @@ def test_perf_upsample_bicubic2d_aa():
 
     bench = UpsampleBenchmark(
         input_fn=upsample_bicubic2d_aa_input_fn,
-        op_name="_upsample_bicubic2d_aa",
+        op_name="upsample_bicubic2d_aa",
         torch_op=torch._C._nn._upsample_bicubic2d_aa,
         dtypes=[torch.float32] if vendor_name == "cambricon" else FLOAT_DTYPES,
     )
