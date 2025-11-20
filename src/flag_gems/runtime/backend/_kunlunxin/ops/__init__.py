@@ -14,9 +14,11 @@ from .argmax import argmax
 from .argmin import argmin
 from .atan import atan, atan_
 from .attention import (
+    ScaleDotProductAttention,
     flash_attention_forward,
     flash_attn_varlen_func,
     scaled_dot_product_attention,
+    scaled_dot_product_attention_backward,
 )
 from .batch_norm import batch_norm, batch_norm_backward
 from .bitwise_and import (
@@ -112,6 +114,7 @@ from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
+from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
 from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -174,6 +177,7 @@ from .softplus import softplus
 from .sort import sort, sort_stable
 from .sqrt import sqrt, sqrt_
 from .stack import stack
+from .std import std
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tanh import tanh, tanh_, tanh_backward
@@ -181,6 +185,7 @@ from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_dtype
 from .topk import topk
+from .trace import trace
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
@@ -348,6 +353,8 @@ __all__ = [
     "max",
     "max_dim",
     "maximum",
+    "max_pool2d_with_indices",
+    "max_pool2d_backward",
     "mean",
     "mean_dim",
     "min",
@@ -413,6 +420,8 @@ __all__ = [
     "rsqrt_",
     "rsub",
     "scaled_dot_product_attention",
+    "scaled_dot_product_attention_backward",
+    "ScaleDotProductAttention",
     "scatter",
     "scatter_",
     "select_scatter",
@@ -430,6 +439,7 @@ __all__ = [
     "sort",
     "sort_stable",
     "stack",
+    "std",
     "sub",
     "sub_",
     "sum",
@@ -444,6 +454,7 @@ __all__ = [
     "tile",
     "to_dtype",
     "topk",
+    "trace",
     "triu",
     "true_divide",
     "true_divide_",
