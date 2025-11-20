@@ -87,8 +87,8 @@ class Benchmark:
         **kwargs,
     ):
         self.op_name = op_name
-        if is_backward:
-            self.op_name += " backward"
+        if is_backward and self.op_name.find("_backward") == -1:
+            self.op_name += "_backward"
         self.torch_op = torch_op
         self.gems_op = None
         self.is_backward = is_backward

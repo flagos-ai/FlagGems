@@ -289,6 +289,29 @@ class AvgPool2dBenchmark(GenericBenchmark):
             yield from self.input_fn(shape, cur_dtype, self.device)
 
 
+@pytest.mark.avg_pool2d
+def test_perf_avg_pool2d():
+    bench = AvgPool2dBenchmark(
+        input_fn=avg_pool2d_input_fn,
+        op_name="avg_pool2d",
+        torch_op=torch.ops.aten.avg_pool2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.avg_pool2d_backward
+def test_perf_avg_pool2d_backward():
+    bench = AvgPool2dBenchmark(
+        input_fn=avg_pool2d_input_fn,
+        op_name="avg_pool2d",
+        torch_op=torch.ops.aten.avg_pool2d,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
+
+
 def max_pool2d_input_fn(shape, dtype, device):
     inp = generate_tensor_input(shape, dtype, device)
     yield inp, {

@@ -13,7 +13,7 @@ vdot:
 randperm:
   <<: *single_dim_shapes
 
-gelu backward:
+gelu_backward:
   shapes:
     - [1048576] # 1024 * 1024
     - [64, 64]
@@ -21,7 +21,7 @@ gelu backward:
     - [64, 512, 512]
     - [256, 1024, 1024]
 
-softmax backward:
+softmax_backward:
   shapes:
     - [1048576] # 1024 * 1024
     - [64, 64]
