@@ -6,14 +6,24 @@ import logging
 import math
 import multiprocessing
 import os
-import sqlite3
-import threading
 import time
 from abc import abstractmethod
 from collections import OrderedDict
 from functools import cached_property
 from itertools import starmap
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union
+from pathlib import Path
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Final,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 import torch
 import triton
@@ -22,6 +32,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend import vendor_module
 from flag_gems.utils.code_cache import config_cache_dir
+from flag_gems.utils.models import PersistantModel, SQLPersistantModel
 
 logger = logging.getLogger(__name__)
 
@@ -54,60 +65,16 @@ if major_version == 2:
 
     setattr(triton.Config, "all_kwargs", all_kwargs)
 
-FLAGGEMS_ENABLE_DISK_CACHE = os.getenv("FLAGGEMS_ENABLE_DISK_CACHE", "1") == "1"
-
-
-class Connections(object):
-    def __init__(self, cache_path: str, *args, **kwargs) -> Connections:
-        super().__init__(*args, **kwargs)
-        self.cache_path: str = cache_path
-        self.lock = multiprocessing.Lock()
-        self.conns: Dict[int, sqlite3.Connection] = {}
-
-    def __del__(self):
-        for conn in self.conns.values():
-            conn.close()
-
-    @property
-    def curr_conn(self) -> sqlite3.Connection:
-        with self.lock:
-            tid: int = threading.get_ident()
-            conn: Optional[sqlite3.Connection] = self.conns.get(tid)
-            if conn is None:
-                conn = sqlite3.connect(self.cache_path)
-                self.conns[tid] = conn
-            return conn
+FLAGGEMS_DB_URL = os.getenv("FLAGGEMS_DB_URL", None)
 
 
 class Cache(object):
-    def __init__(self, table_name: str, conns: Connections, *args, **kwargs) -> Cache:
+    def __init__(
+        self, table_name: str, model: PersistantModel, *args, **kwargs
+    ) -> Cache:
         super().__init__(*args, **kwargs)
-        self.table_name: str = table_name
-        self.conns: Connections = conns
-        self.py2sql: Dict[type, str] = {
-            bool: "BOOLEAN",
-            int: "INTEGER",
-            float: "DOUBLE",
-            str: "VARCHAR(16)",  # it often stores string values like 'torch.float16', so 16 would be long enough
-        }
-
-    @staticmethod
-    def build_key_dict(key: Tuple[Union[int, float, str], ...]) -> Dict[str, Any]:
-        return {
-            f"key_{k}": v for k, v in enumerate(key) if isinstance(v, (int, float, str))
-        }
-
-    @staticmethod
-    def build_config_dict(config: triton.Config) -> Dict[str, Any]:
-        return {
-            k: v
-            for k, v in config.all_kwargs().items()
-            if isinstance(v, (int, float, str))
-        }
-
-    @property
-    def conn(self) -> sqlite3.Connection:
-        return self.conns.curr_conn
+        self.table_name: Final[str] = table_name
+        self.model: Final[PersistantModel] = model
 
 
 class ConfigCache(Cache):
@@ -116,24 +83,9 @@ class ConfigCache(Cache):
     """
 
     def __init__(
-        self, table_name: str, conns: Connections, *args, **kwargs
+        self, table_name: str, model: PersistantModel, *args, **kwargs
     ) -> ConfigCache:
-        super().__init__(table_name, conns, *args, **kwargs)
-        self.config_signature: inspect.Signature = inspect.signature(triton.Config)
-        self.dict_cache: Dict[
-            Tuple[Union[int, float, str], ...], triton.Config
-        ] = {}  # this dict is used to cache some results in the memory
-        self.lock = multiprocessing.Lock()
-        self.names: List[str] = [
-            name
-            for _, name, _, _, _, _ in self.conn.execute(
-                f"PRAGMA table_info({self.table_name});"
-            ).fetchall()
-        ]
-        self.create_sql: Optional[
-            str
-        ] = None  # if the corresponding sql instruction is None, meaning the table is not ready, we need to flush it
-        self.insert_sql: Optional[str] = None
+        super().__init__(table_name, model, *args, **kwargs)
 
     def __contains__(self, key: Tuple[Union[int, float, str], ...]) -> bool:
         return self.get(key) is not None
@@ -141,143 +93,57 @@ class ConfigCache(Cache):
     def __getitem__(self, key: Tuple[Union[int, float, str], ...]) -> triton.Config:
         ret: Optional[triton.Config] = self.get(key)
         if ret is None:
-            raise KeyError(key)
-        else:
-            return ret
+            raise KeyError(f"Key {key} not found in ConfigCache.")
+        return ret
 
     def __setitem__(
         self, key: Tuple[Union[int, float, str], ...], config: triton.Config
-    ):
+    ) -> None:
         self.set(key, config)
 
-    @property
-    def knames(self) -> Iterator[str]:
-        return filter(
-            lambda name: name.startswith("key_"), self.names
-        )  # if the column name starts with "key_", it should be a key defined by the libtuner
-
-    @property
-    def cnames(self) -> Iterator[str]:
-        return filter(
-            lambda name: not name.startswith("key_"), self.names
-        )  # otherwise, it should be a parameter in the config
-
-    @property
-    def select_sql(self) -> Optional[str]:
-        if self.names:
-            return "SELECT {} FROM {} WHERE {};".format(
-                ", ".join(self.cnames),
-                self.table_name,
-                " AND ".join(map(lambda kname: f"{kname}=?", self.knames)),
-            )
-        else:
-            return None
-
     def get(self, key: Tuple[Union[int, float, str], ...]) -> Optional[triton.Config]:
-        with self.lock:
-            ret = self.dict_cache.get(key)
-            if ret is not None or self.select_sql is None:
-                # if the key is already in the dict cache, we can return it directly
-                # or if `select_sql` is not ready yet, which means the table is not ready yet, we can return None
-                return ret
-            rets = self.conn.execute(self.select_sql, key).fetchall()
-            if not rets:
-                return None
-            [ret] = rets
-            kwargs: Dict[str, Any] = {}
-            numargs: Dict[str, int] = {}
-            for k, v in zip(self.cnames, ret):
-                if k in self.config_signature.parameters:
-                    numargs[k] = v
-                else:
-                    kwargs[k] = v
-            ret = triton.Config(kwargs, **numargs)
-            self.dict_cache[key] = ret
-            return ret
+        return self.model.get_config(self.table_name, key)
 
-    def set(self, key: Tuple[Union[int, float, str], ...], config: triton.Config):
-        with self.lock:
-            key_queries: Dict[str, Any] = self.build_key_dict(key)
-            config_queries: Dict[str, Any] = self.build_config_dict(config)
-            queries: Dict[str, Any] = key_queries | config_queries
-            if self.create_sql is None:
-                self.create_sql = "CREATE TABLE IF NOT EXISTS {} ({});".format(
-                    self.table_name,
-                    ",\n".join(
-                        [f"{k} {self.py2sql[type(v)]}" for k, v in queries.items()]
-                        + ["PRIMARY KEY ({})".format(", ".join(key_queries.keys()))]
-                    ),
-                )
-                self.conn.execute(self.create_sql)
-            if not self.names:
-                self.names = queries
-            if self.insert_sql is None:
-                self.insert_sql = "INSERT OR REPLACE INTO {} VALUES ({});".format(
-                    self.table_name, ", ".join("?" for _ in queries.values())
-                )
-            self.conn.execute(self.insert_sql, [*queries.values()])
-        self.conn.commit()
+    def set(
+        self, key: Tuple[Union[int, float, str], ...], config: triton.Config
+    ) -> None:
+        return self.model.put_config(self.table_name, key, config)
 
 
 class BenchmarkCache(Cache):
     def __init__(
         self,
         table_name: str,
+        model: PersistantModel,
         key: Tuple[Union[int, float, str], ...],
-        conns: Connections,
         *args,
         **kwargs,
     ) -> BenchmarkCache:
         """
         `BenchmarkCache` is used to store the benchmark results for the pair of the specific key and configuration.
         """
-        super().__init__(table_name, conns, *args, **kwargs)
-        self.key: Tuple[Union[int, float, str], ...] = key
-        self.lock = multiprocessing.Lock()
-        self.create_sql: Optional[str] = None
-        self.select_sql: Optional[str] = None
-        self.insert_sql: Optional[str] = None
+        super().__init__(table_name, model, *args, **kwargs)
+        self.key: Final[Tuple[Union[int, float, str], ...]] = key
 
-    def __getitem__(self, config: triton.Config) -> Optional[List[float]]:
-        with self.lock:
-            queries: Dict[str, Union[int, float, str]] = self.build_query(config)
-            if self.select_sql is None:
-                where: str = " AND ".join(f"{k} = ?" for k in queries.keys())
-                self.select_sql = (
-                    f"SELECT p50, p20, p80 FROM {self.table_name} WHERE {where};"
-                )
-            ret = self.conn.execute(self.select_sql, [*queries.values()]).fetchone()
-            if isinstance(ret, tuple):
-                ret = [*ret]
-            return ret
+    def __contains__(self, config: triton.Config) -> bool:
+        return self.model.get_benchmark(self.key, config) is not None
 
-    def __setitem__(self, config: triton.Config, benchmark: List[float]) -> None:
-        with self.lock:
-            queries: Dict[str, Union[int, float, str]] = self.build_query(config)
-            values: List[str] = [*queries.values(), *benchmark]
-            if not self.insert_sql:
-                self.insert_sql = "INSERT OR REPLACE INTO {} VALUES ({});".format(
-                    self.table_name, ", ".join("?" for _ in values)
-                )
-            self.conn.execute(self.insert_sql, values)
-        self.conn.commit()
-
-    def build_query(self, config: triton.Config) -> Dict[str, Any]:
-        queries: Dict[str, Any] = self.build_key_dict(
-            self.key
-        ) | self.build_config_dict(config)
-        if self.create_sql is None:
-            self.create_sql = "CREATE TABLE IF NOT EXISTS {} ({});".format(
-                self.table_name,
-                ",\n".join(
-                    [f"{k} {self.py2sql[type(v)]}" for k, v in queries.items()]
-                    + [f"p{n} DOUBLE" for n in [50, 20, 80]]
-                    + ["PRIMARY KEY ({})".format(", ".join(queries.keys()))]
-                ),
+    def __getitem__(self, config: triton.Config) -> Tuple[float]:
+        ret: Optional[Tuple[float, float, float]] = self.get(config)
+        if ret is None:
+            raise KeyError(
+                f"Config {config} not found in BenchmarkCache for key {self.key}."
             )
-            self.conn.execute(self.create_sql)
-            self.conn.commit()
-        return queries
+        return ret
+
+    def __setitem__(self, config: triton.Config, benchmark: Tuple[float]) -> None:
+        return self.set(config, benchmark)
+
+    def get(self, config: triton.Config) -> Optional[Tuple[float, float, float]]:
+        return self.model.get_benchmark(self.table_name, self.key, config)
+
+    def set(self, config: triton.Config, benchmark: Tuple[float, float, float]) -> None:
+        return self.model.put_benchmark(self.table_name, self.key, config, benchmark)
 
 
 class LibCache(object):
@@ -288,29 +154,25 @@ class LibCache(object):
             cls._instance = super(LibCache, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, enable_disk_cache: bool):
+    def __init__(self, db_url: Optional[str] = None):
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
-        cache_file_name = (
-            f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
-            if vendor_module.vendor_info.vendor_name == "nvidia"
-            else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
-        )
-        self.cache_path = (
-            (config_cache_dir() / cache_file_name) if enable_disk_cache else ":memory:"
-        )
-        self.bench_lock = multiprocessing.Lock()
-        self.config_lock = multiprocessing.Lock()
-        self.conns: Connections = Connections(self.cache_path)
+        if db_url is None:
+            device_name: str = torch.cuda.get_device_name().replace(" ", "_")
+            cache_file_name: str = (
+                f"TunedConfig_{device_name}_triton_{major_version}_{minor_version}.db"
+                if vendor_module.vendor_info.vendor_name == "nvidia"
+                else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
+            )
+            cache_path: Path = config_cache_dir() / cache_file_name
+            self.db_url: str = f"sqlite:///{cache_path}"
+        else:
+            self.db_url: str = db_url
         self.config_cache_pool: Dict[str, ConfigCache] = {}
         self.benchmark_cache_pool: Dict[
             Tuple[str, Tuple[Union[int, float, str], ...]], BenchmarkCache
         ] = {}
-
-    def __post_init__(self):
-        with sqlite3.connect(self.cache_path) as conn:
-            conn.execute("PRAGMA journal=WAL;")
-            conn.commit()
+        self.model: PersistantModel = SQLPersistantModel(self.db_url)
 
     def __getitem__(
         self, key: Union[str, Tuple[Union[int, float, str], ...]]
@@ -325,23 +187,21 @@ class LibCache(object):
     def get_benchmark(
         self, table: str, key: Tuple[Union[int, float, str], ...]
     ) -> BenchmarkCache:
-        with self.bench_lock:
-            ret = self.benchmark_cache_pool.get((table, key))
-            if ret is None:
-                ret = BenchmarkCache(table, key, self.conns)
-                self.benchmark_cache_pool[(table, key)] = ret
+        ret = self.benchmark_cache_pool.get((table, key))
+        if ret is None:
+            ret = BenchmarkCache(table, self.model, key)
+            self.benchmark_cache_pool[(table, key)] = ret
         return ret
 
     def get_config(self, table: str) -> ConfigCache:
-        with self.config_lock:
-            ret = self.config_cache_pool.get(table)
-            if ret is None:
-                ret = ConfigCache(table, self.conns)
-                self.config_cache_pool[table] = ret
+        ret = self.config_cache_pool.get(table)
+        if ret is None:
+            ret = ConfigCache(table, self.model)
+            self.config_cache_pool[table] = ret
         return ret
 
 
-libcache = LibCache(FLAGGEMS_ENABLE_DISK_CACHE)
+libcache = LibCache(FLAGGEMS_DB_URL)
 
 
 class LibTuner(triton.runtime.Autotuner):
@@ -427,23 +287,23 @@ class LibTuner(triton.runtime.Autotuner):
         self.cache: BenchmarkCache = libcache[self.config_table_name]
 
     @cached_property
-    def cache_key(self):
+    def cache_key(self) -> str:
         jit_fn = self.fn
         while not isinstance(jit_fn, triton.runtime.JITFunction):
             jit_fn = jit_fn.fn
         return jit_fn.cache_key
 
     @cached_property
-    def kernel_hash(self):
+    def kernel_hash(self) -> str:
         return hashlib.md5(
             f"{self.cache_key}{self.configs_hash}".encode("utf-8")
-        ).hexdigest()
+        ).hexdigest()[:32]
 
     @cached_property
-    def configs_hash(self):
+    def configs_hash(self) -> str:
         return hashlib.md5(
             ",".join(map(lambda config: str(config), self.configs)).encode("utf-8")
-        ).hexdigest()
+        ).hexdigest()[:32]
 
     def get_key(self, args):
         if self.strategy is None:
@@ -562,11 +422,11 @@ class LibTuner(triton.runtime.Autotuner):
                 bench_start = time.time()
 
                 def bench(config: triton.Config) -> List[float]:
-                    ret = cache[config]
+                    ret = cache.get(config)
                     if ret is None:
                         ret = self._bench(*args, config=config, **kwargs)
-                        cache[config] = ret
-                    return ret
+                        cache[config] = tuple(ret)
+                    return list(ret)
 
                 best_config, timings = self.policy(
                     bench,
