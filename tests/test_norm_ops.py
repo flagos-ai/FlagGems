@@ -288,7 +288,6 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
         del os.environ["DISABLE_LLVM_OPT"]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.instance_norm
 @pytest.mark.parametrize(
     "shape",
