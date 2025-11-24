@@ -193,10 +193,14 @@ def addmm_sqmma(
     num_warps,
     num_stages,
 ):
+    logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
     device = "musa"
     ab_type = elem_type
-    c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
-    C = torch.empty((M, N), dtype=torch.float16, device=device).to(c_type)
+    a_type = A.dtype
+    b_type = B.dtype
+    assert a_type == b_type, "Mat A and Mat B should have the same dtype"
+    c_type = a_type
+    C = torch.empty((M, N), dtype=c_type, device=device)
     desc_a = create_tma_device_descriptor(A, BLOCK_M, BLOCK_K, device)
     desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
     desc_bias = create_tma_device_descriptor(Bias, BLOCK_M, BLOCK_N, device)
@@ -228,6 +232,11 @@ def addmm(bias, mat1, mat2, *, beta=0.5, alpha=0.5):
     M, K = mat1.shape
     _, N = mat2.shape
     use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
+    
+    print(f"GEMS_MT ADDMM: a_dtype={a_dtype}, b_dtype={b_dtype}, M={M}, N={N}, K={K}, use_sqmma={use_sqmma} bias.shape={bias.shape}")
+    # bias need to be 2D
+    bias = bias.unsqueeze(1).expand(M, N).clone() if bias.shape[0] == M else bias.unsqueeze(0).expand(M, N).clone()
+    
     if use_sqmma:
         BLOCK_M = 256 if M % 256 == 0 else 128
         BLOCK_N = BLOCK_M
