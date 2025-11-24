@@ -97,6 +97,8 @@ def enable(
             ("contiguous", contiguous),
             ("cos", cos),
             ("cos_", cos_),
+            ("tan", tan),
+            ("tan_", tan_),
             ("count_nonzero", count_nonzero),
             ("cummax", cummax),
             ("cummin", cummin),
