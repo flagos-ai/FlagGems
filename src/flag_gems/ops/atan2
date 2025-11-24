@@ -16,7 +16,6 @@ def atan2_kernel(y, x):
     return result
 
 
-
 def atan2(A, B):
     logger.debug("GEMS ATAN")
     out = atan2_kernel(A, B)
