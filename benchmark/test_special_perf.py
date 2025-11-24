@@ -274,7 +274,6 @@ class UpsampleBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
@@ -292,12 +291,17 @@ def test_perf_upsample_bicubic2d_aa():
             "scales_h": None,
             "scales_w": None,
         },
-
+    if vendor_name == "cambricon":
+        dtypes = [torch.float32]
+    elif vendor_name == "kunlunxin":
+        dtypes = [torch.float32, torch.float16]
+    else:
+        dtypes = FLOAT_DTYPES
     bench = UpsampleBenchmark(
         input_fn=upsample_bicubic2d_aa_input_fn,
         op_name="upsample_bicubic2d_aa",
         torch_op=torch._C._nn._upsample_bicubic2d_aa,
-        dtypes=[torch.float32] if vendor_name == "cambricon" else FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.run()
 
