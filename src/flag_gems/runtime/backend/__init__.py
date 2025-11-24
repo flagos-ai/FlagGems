@@ -20,31 +20,19 @@ vendor_extra_lib_imported = False
 device_fn_cache = {}
 customized_ops = None
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-
-def import_vendor_extra_lib(vendor_name=None, user_get=False):
+def import_vendor_extra_lib(vendor_name=None):
     global vendor_extra_lib_imported
     if vendor_extra_lib_imported is True:
         return
     global ops_module, fused_module
     try:
         ops_module = importlib.import_module(f"_{vendor_name}.ops")
-        if user_get:
-            print(
-                f"\033[92m[INFO]\033[0m : \033[92m operators of {vendor_name} vendor has been loaded\033[0m"
-            )
-    except Exception as err_msg:
-        if user_get:
-            print(
-                f"\033[31m[Warning]\033[0m : \033[31mfailed to load operators of {vendor_name}"
-                f"the reason is {err_msg}\033[0m"
-            )
-        else:
-            print(
-                f"\033[93m[Note]\033[0m :   No specialized common operators were found in"
-                f" the {vendor_name} implementation, and general common operators are used by default."
-            )
+    except ModuleNotFoundError:
+        print(
+            f"[Note] No specialized common operators were found in"
+            f"the {vendor_name} implementation, and general common operators are used by default."
+        )
     except Exception as e:
         raise RuntimeError(f"Import vendor extra lib failed: {e}")
 
@@ -52,8 +40,8 @@ def import_vendor_extra_lib(vendor_name=None, user_get=False):
         fused_module = importlib.import_module(f"_{vendor_name}.fused")
     except ModuleNotFoundError:
         print(
-            f"\033[93m[Note]\033[0m : No specialized fused operators were found in"
-            f" the {vendor_name} implementation, and general fused operators are used by default."
+            f"[Note] No specialized fused operators were found in"
+            f"the {vendor_name} implementation, and general fused operators are used by default."
         )
     except Exception as e:
         raise RuntimeError(f"Import vendor extra lib failed: {e}")
@@ -131,7 +119,8 @@ def get_vendor_module(vendor_name, query=False):
     if (
         query
     ):  # The purpose of a query is to provide the user with the instance that he wants to import
-        return get_module("_" + vendor_name)
+        return get_module(vendor_name)
+
     global vendor_module
     if vendor_module is None:
         vendor_module = get_module("_" + vendor_name)
@@ -146,23 +135,21 @@ def get_vendor_info(vendor_name=None, query=False):
     return vendor_module.vendor_info
 
 
-def get_vendor_infos(return_type="list"):
-    infos = {}
-    import_failed_reasons = {}
+def get_vendor_infos():
+    infos = []
     for vendor_name in vendors.get_all_vendors():
+        vendor_name = "_" + vendor_name
         try:
             single_info = get_vendor_info(vendor_name, query=True)
-            infos.update({vendor_name: single_info})
-        except Exception as err_msg:
-            import_failed_reasons.update({vendor_name: err_msg})
-    if return_type == "dict":
-        return (infos, import_failed_reasons)
-    else:
-        return list(infos.values())
+            infos.append(single_info)
+        except Exception:
+            pass
+
+    return infos
 
 
-def get_current_device_extend_op(vendor_name=None, user_get=False):
-    import_vendor_extra_lib(vendor_name, user_get)
+def get_current_device_extend_op(vendor_name=None):
+    import_vendor_extra_lib(vendor_name)
     global customized_ops
     if customized_ops is not None:
         return customized_ops
@@ -197,10 +184,9 @@ def get_heuristic_config(vendor_name=None):
     return None
 
 
-def get_tune_config(vendor_name=None, query=False):
+def get_tune_config(vendor_name=None):
     global vendor_module  # noqa: F824
-    if not query:
-        get_vendor_module(vendor_name, query)
+    get_vendor_module(vendor_name)
     return backend_utils.get_tune_config(vendor_name)
 
 
