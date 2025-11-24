@@ -1260,6 +1260,27 @@ def test_accuracy_pow_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.atan2
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_atan2(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
+        inp1 = inp1.uniform_(-1, 1)
+        inp2 = inp2.uniform_(-1, 1)
+
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.atan2(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.atan2(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
 @pytest.mark.maximum
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
