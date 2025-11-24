@@ -161,6 +161,7 @@ from flag_gems.ops.pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from flag_gems.ops.atan2 import atan2
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.rand import rand
@@ -415,6 +416,7 @@ __all__ = [
     "pow_tensor_scalar_",
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
+    "atan2",
     "prod",
     "prod_dim",
     "quantile",
