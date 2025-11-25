@@ -367,7 +367,7 @@ class MaxPool2dBenchmark(GenericBenchmark):
 def test_perf_max_pool2d():
     bench = MaxPool2dBenchmark(
         input_fn=max_pool2d_input_fn,
-        op_name="max_pool2d_with_indices",
+        op_name="max_pool2d",
         torch_op=torch.nn.functional.max_pool2d_with_indices,
         dtypes=FLOAT_DTYPES,
     )
