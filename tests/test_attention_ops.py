@@ -290,7 +290,6 @@ def gems_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
@@ -467,7 +466,6 @@ def test_sdpa_legacy_backward(
     gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
@@ -503,7 +501,6 @@ def test_sdpa_square_qk_even_mn(
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
@@ -1470,7 +1467,6 @@ def test_reshape_and_cache_flash(
         torch.testing.assert_close(value_cache.cpu(), cloned_value_cache.cpu())
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")

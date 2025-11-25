@@ -688,7 +688,7 @@ weight_bias_backward:
 - gen: true
   param_map:
     META:
-      BLOCK_ROW_SIZE: 2048
+      BLOCK_ROW_SIZE: 512
       BLOCK_COL_SIZE: block_c
     num_warps: warps
   warps:

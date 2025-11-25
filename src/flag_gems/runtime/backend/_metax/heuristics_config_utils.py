@@ -3,7 +3,7 @@ import triton
 
 
 def simple_elementwise_blocksize_heur(args):
-    return 1024
+    return 512
 
 
 def argmax_heur_block_m(args):
@@ -72,6 +72,14 @@ def gather_heur_block_m(args):
 
 def gather_heur_block_n(args):
     return min(2048, triton.next_power_of_2(args["N"]))
+
+
+def index_heur_block_0(args):
+    return 2
+
+
+def index_heur_block_1(args):
+    return 1024
 
 
 def index_select_heur_block_m(args):
@@ -271,6 +279,10 @@ def zeros_heur_num_warps(args):
 
 
 HEURISTICS_CONFIGS = {
+    "amax": {
+        "BLOCK_M": lambda args: 4,
+        "BLOCK_N": lambda args: 1024,
+    },
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
         "BLOCK_N": argmax_heur_block_n,
@@ -296,12 +308,19 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": gather_heur_block_m,
         "BLOCK_N": gather_heur_block_n,
     },
+    "index": {
+        "BLOCK_SIZE0": index_heur_block_0,
+        "BLOCK_SIZE1": index_heur_block_1,
+    },
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
+    },
+    "nonzero": {
+        "BLOCK_SIZE": lambda args: 2048,
     },
     "ones": {
         "BLOCK_SIZE": ones_heur_block_size,
@@ -357,13 +376,25 @@ HEURISTICS_CONFIGS = {
         "BLOCK_SIZE": zeros_heur_block_size,
         "num_warps": zeros_heur_num_warps,
     },
-    "mha_varlen_prefill": {
+    "mha_block_128": {
+        "BLOCK_M": lambda args: 128,
+        "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "mha_block_64": {
         "BLOCK_M": lambda args: 64,
         "BLOCK_N": lambda args: 32,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
     },
-    "mha_varlen_decode": {
+    "mha_block_32": {
+        "BLOCK_M": lambda args: 32,
+        "BLOCK_N": lambda args: 16,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "mha_block_16": {
         "BLOCK_M": lambda args: 16,
         "BLOCK_N": lambda args: 16,
         "num_warps": lambda args: 4,
