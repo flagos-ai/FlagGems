@@ -40,7 +40,6 @@ def rwkv_mm_sparsity_kernel(
     tl.store(output_ptrs, output_1d, mask=mask_n)
 
 
-
 def rwkv_mm_sparsity(k: torch.Tensor, v: torch.Tensor):
     assert k.dim() == 1 and v.dim() == 2
     assert k.size(0) == v.size(0)
