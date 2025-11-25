@@ -22,7 +22,6 @@ class AttentionBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
@@ -75,7 +74,6 @@ class FlashMLABenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
