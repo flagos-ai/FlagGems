@@ -1065,7 +1065,7 @@ def flash_attention_forward(
     else:
         non_null_window_right = -1
 
-    out = torch.empty_like(query)
+    out = torch.empty(query.shape, device=query.device, dtype=query.dtype)
     if cumulative_sequence_length_q is not None:
         out, q, k, v, lse, philox_seed, philox_offset, p = mha_varlan_fwd(
             query,
