@@ -216,7 +216,11 @@ class RmsNorm(torch.autograd.Function):
                 ROW_BLOCK_SIZE,
                 COL_BLOCK_SIZE,
             )
-            dw = torch.sum(partial_buffer, dim=0, dtype=torch.float32).to(x.dtype).reshape(-1)
+            dw = (
+                torch.sum(partial_buffer, dim=0, dtype=torch.float32)
+                .to(x.dtype)
+                .reshape(-1)
+            )
 
         return dx, None, dw, None
 
