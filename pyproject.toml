@@ -27,6 +27,7 @@ dependencies = [
     "pybind11",
     "PyYAML",
     "packaging",
+    "sqlalchemy",
 ]
 
 [project.optional-dependencies]
