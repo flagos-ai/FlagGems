@@ -135,6 +135,7 @@ def enable(
             ("erf_", erf_),
             ("exp", exp),
             ("exp_", exp_),
+            ("exp.out", exp_out),
             ("exp2", exp2),
             ("exp2_", exp2_),
             ("exponential_", exponential_),
