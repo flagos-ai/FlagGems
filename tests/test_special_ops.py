@@ -654,6 +654,9 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
 @pytest.mark.parametrize("device", [device])
 @pytest.mark.parametrize("pin_memory", [False])
 def test_logspace(start, end, steps, base, dtype, device, pin_memory):
+    if flag_gems.vendor_name == "kunlunxin" and dtype is torch.half:
+        pytest.skip("wait lerp cpu half impl")
+
     ref_out = torch.logspace(
         start,
         end,
