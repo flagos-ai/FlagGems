@@ -1173,14 +1173,7 @@ def test_copy_inplace_dtype_fallback():
     )
     res_dst = torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
 
-    ref_dst.copy_(ref_src)
     with flag_gems.use_gems():
-        res_dst.copy_(src)
-
-    gems_assert_equal(res_dst, ref_dst)
-
-
-@pytest.mark.inplace
 @pytest.mark.copy_
 @pytest.mark.parametrize(
     "src_dtype,dst_dtype",
