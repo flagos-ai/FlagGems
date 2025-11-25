@@ -32,10 +32,9 @@ def generate_nonzero_kernel(
 ) -> IndentedBuffer:
     # the decorators
     code.writeline("@libentry()")
-    code.writeline("@libtuner(")
-    with code.indent():
-        code.writeline("configs=runtime.get_tuned_config('nonzero'),")
-        code.writeline("key=['n_elements',],)")
+    code.writeline(
+        "@triton.heuristics(runtime.get_heuristic_config('elementwise_generic'))"
+    )
     code.writeline("@triton.jit")
 
     # signature

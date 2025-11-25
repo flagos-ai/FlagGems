@@ -1491,6 +1491,9 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
+    if flag_gems.vendor_name == "metax":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -1545,6 +1548,9 @@ def test_accuracy_index(input_shape, indices_shape, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mse_loss(shape, dtype, reduction):
+    if flag_gems.vendor_name == "metax":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -1581,7 +1587,7 @@ def generate_test_params():
     return params
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RunetimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RuntimeError")
 @pytest.mark.topk_softmax
 @pytest.mark.parametrize("index_dtype", generate_test_params())
 @pytest.mark.parametrize(
