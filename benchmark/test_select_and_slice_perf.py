@@ -398,13 +398,23 @@ def gen_indices(input_shape, indices_shape, accumulate):
 def index_put_input_fn(accumulate):
     def inner(shapes, dtype, device):
         input_shape, indices_shape, values_shape = shapes
-        inp = torch.randn(
-            input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        if dtype == torch.bool:
+            inp = torch.randint(
+                0, 2, input_shape, device=flag_gems.device, requires_grad=False
+            ).to(dtype)
+            values = torch.randint(
+                0, 2, values_shape, device=flag_gems.device, requires_grad=False
+            ).to(dtype)
+        else:
+            inp = torch.randn(
+                input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+            )
+            values = torch.randn(
+                values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+            )
         indices = gen_indices(input_shape, indices_shape, accumulate)
-        values = torch.randn(
-            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
+        if dtype == torch.bool and accumulate:
+            return
         yield inp, indices, values, accumulate
 
     return inner
@@ -465,6 +475,31 @@ def test_index_put__acc_false_perf():
         torch_op=torch.index_put_,
         input_fn=index_put_input_fn(False),
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+BOOL_DTYPES = [torch.bool]
+
+
+@pytest.mark.index_put
+def test_index_put_acc_false_bool_perf():
+    bench = IndexPutAccFalseBenchmark(
+        op_name="index_put",
+        torch_op=torch.index_put,
+        input_fn=index_put_input_fn(False),
+        dtypes=BOOL_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.index_put_
+def test_index_put__acc_false_bool_perf():
+    bench = IndexPutAccFalseBenchmark(
+        op_name="index_put_",
+        torch_op=torch.index_put_,
+        input_fn=index_put_input_fn(False),
+        dtypes=BOOL_DTYPES,
     )
     bench.run()
 
