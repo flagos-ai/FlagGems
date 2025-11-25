@@ -13,6 +13,7 @@ from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.atan import atan, atan_
+from flag_gems.ops.atan2 import atan2
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -253,6 +254,7 @@ __all__ = [
     "avg_pool2d_backward",
     "atan",
     "atan_",
+    "atan2",
     "batch_norm",
     "batch_norm_backward",
     "bitwise_and_scalar",

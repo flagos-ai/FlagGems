@@ -1,0 +1,22 @@
+import logging
+
+import triton
+import triton.language as tl
+
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+
+_atan2 = tl_extra_shim.atan2
+logger = logging.getLogger(__name__)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+@triton.jit
+def atan2_kernel(y, x):
+    result = _atan2(y.to(tl.float32), x.to(tl.float32))
+    return result
+
+
+def atan2(A, B):
+    logger.debug("GEMS ATAN")
+    out = atan2_kernel(A, B)
+    return out
