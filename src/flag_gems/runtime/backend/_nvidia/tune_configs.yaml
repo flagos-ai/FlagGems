@@ -208,6 +208,91 @@ mm:
       BLOCK_K: 64
     num_stages: 3
     num_warps: 8
+baddbmm:
+- META:
+    TILE_M: 32
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 1
+  num_warps: 4
+  num_stages: 2
+- META:
+    TILE_M: 64
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 2
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 2
+- META:
+    TILE_M: 128
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 2
+- META:
+    TILE_M: 128
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 2
+- META:
+    TILE_M: 128
+    TILE_N: 128
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 2
+- META:
+    TILE_M: 32
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 1
+  num_warps: 4
+  num_stages: 3
+- META:
+    TILE_M: 64
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 3
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 3
+- META:
+    TILE_M: 128
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 3
+- META:
+    TILE_M: 128
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 3
+- META:
+    TILE_M: 128
+    TILE_N: 128
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 3
 softmax_non_inner:
   - META:
       TILE_K: 32
