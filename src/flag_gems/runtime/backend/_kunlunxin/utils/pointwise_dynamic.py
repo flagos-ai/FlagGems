@@ -1198,10 +1198,13 @@ class PointwiseDynamicFunction:
 
         tensors = out_tensors + in_tensors
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
-            allocated_outputs = [
-                torch.empty_like(tensors[0], dtype=dtype)
-                for dtype in outputs_dtypes_for_allocation
-            ]
+            if len(out_tensors) == 0:  # inplace
+                allocated_outputs = tensors
+            else:
+                allocated_outputs = [
+                    torch.empty_like(tensors[0], dtype=dtype)
+                    for dtype in outputs_dtypes_for_allocation
+                ]
             task_shape = (tensors[0].numel(),)
             strides = (1,)
             ndim = 1
