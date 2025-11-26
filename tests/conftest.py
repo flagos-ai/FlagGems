@@ -9,6 +9,7 @@ import flag_gems
 import torch
 
 import itertools
+from .skipped_nodeid import UNSELECT_NODEIDS
 from _pytest.python import Metafunc
 device = flag_gems.device
 
@@ -56,6 +57,12 @@ def pytest_addoption(parser):
         choices=["none", "flagtree"],
         help="compiler to run  tests with",
     )
+    parser.addoption(
+    "--skipped-unselected-nodeids",
+    action="store_true",
+    default=False,
+    help="Whether to use the unselected nodeids list.", 
+    )
 
 
 def pytest_configure(config):
@@ -70,6 +77,10 @@ def pytest_configure(config):
 
     global COMPILER_CHOICE
     COMPILER_CHOICE = config.getoption("--compiler-choice") == "flagtree"
+
+    global SKIP_SPEC_NODEIDS
+    SKIP_SPEC_NODEIDS = config.getoption("--skipped-unselected-nodeids")
+
 
     global RECORD_LOG
     RECORD_LOG = config.getoption("--record") == "log"
@@ -191,6 +202,9 @@ def pytest_collection_modifyitems(config, items):
             if item.get_closest_marker("custom_params"):
                 selected.append(item)
             else:
+                deselected.append(item)
+        if SKIP_SPEC_NODEIDS:
+            if item.nodeid in UNSELECT_NODEIDS:
                 deselected.append(item)
         if LIMIT:
             func_name = item.function.__name__
