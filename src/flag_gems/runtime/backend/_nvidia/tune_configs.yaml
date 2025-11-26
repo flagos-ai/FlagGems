@@ -293,6 +293,54 @@ baddbmm:
     GROUP_M: 2
   num_warps: 4
   num_stages: 3
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 32
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 32
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 64
+    num_stages: 4
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 4
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 32
+    num_stages: 4
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 32
+    num_stages: 4
+    num_warps: 8
 softmax_non_inner:
   - META:
       TILE_K: 32
