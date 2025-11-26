@@ -137,6 +137,8 @@ def rms_norm_grad_dw_kernel(
     ).to(tl.float32)
 
     d_weight = x * dy * inv_rms[:, None]
+    # Sum over rows (axis=0) - masked rows are 0 (from other=0.0 in load), so sum is correct
+    # The mask ensures invalid rows contribute 0 to the sum
     partial_dweight_sum = tl.sum(d_weight, axis=0)
 
     tl.store(
@@ -181,6 +183,7 @@ class RmsNorm(torch.autograd.Function):
 
         BLOCK_SIZE = triton.next_power_of_2(N)
         x = x.contiguous()
+        dy = dy.contiguous()
         weight = weight.contiguous()
         dx = torch.empty_like(x)
 
@@ -194,7 +197,7 @@ class RmsNorm(torch.autograd.Function):
         row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
         col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
 
-        partial_buffer = torch.empty(
+        partial_buffer = torch.zeros(
             (row_block_num, N), dtype=torch.float32, device=x.device
         )
 
@@ -213,7 +216,11 @@ class RmsNorm(torch.autograd.Function):
                 ROW_BLOCK_SIZE,
                 COL_BLOCK_SIZE,
             )
-            dw = torch.sum(partial_buffer, dim=0, dtype=x.dtype).reshape(-1)
+            dw = (
+                torch.sum(partial_buffer, dim=0, dtype=torch.float32)
+                .to(x.dtype)
+                .reshape(-1)
+            )
 
         return dx, None, dw, None
 
