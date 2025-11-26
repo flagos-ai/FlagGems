@@ -1134,10 +1134,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_copy_inplace_same_dtype(shape, dtype):
     src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_dst = torch.zeros_like(src)
+    ref_src = to_reference(src)
+    ref_dst = torch.zeros_like(ref_src)
     res_dst = torch.zeros_like(src)
 
-    ref_dst.copy_(src)
+    ref_dst.copy_(ref_src)
     with flag_gems.use_gems():
         res_dst.copy_(src)
 
@@ -1149,10 +1150,13 @@ def test_copy_inplace_same_dtype(shape, dtype):
 def test_copy_inplace_broadcast():
     dst_shape = (2, 3)
     src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
-    ref_dst = torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
+    ref_src = to_reference(src)
+    ref_dst = to_reference(
+        torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
+    )
     res_dst = torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
 
-    ref_dst.copy_(src)
+    ref_dst.copy_(ref_src)
     with flag_gems.use_gems():
         res_dst.copy_(src)
 
@@ -1163,10 +1167,13 @@ def test_copy_inplace_broadcast():
 @pytest.mark.copy_
 def test_copy_inplace_dtype_fallback():
     src = torch.arange(0, 8, dtype=torch.int32, device=flag_gems.device)
-    ref_dst = torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
+    ref_src = to_reference(src)
+    ref_dst = to_reference(
+        torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
+    )
     res_dst = torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
 
-    ref_dst.copy_(src)
+    ref_dst.copy_(ref_src)
     with flag_gems.use_gems():
         res_dst.copy_(src)
 
@@ -1197,8 +1204,9 @@ def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
 
     assert _can_use_triton(dst, src)
 
-    ref_dst = dst.clone()
-    ref_dst.copy_(src)
+    ref_src = to_reference(src)
+    ref_dst = to_reference(dst.clone())
+    ref_dst.copy_(ref_src)
 
     with flag_gems.use_gems():
         res_dst = dst.clone()
