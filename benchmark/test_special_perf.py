@@ -290,7 +290,7 @@ def test_perf_upsample_bicubic2d_aa():
             "align_corners": False,
             "scales_h": None,
             "scales_w": None,
-        }
+        },
 
     if vendor_name == "cambricon":
         dtypes = [torch.float32]
