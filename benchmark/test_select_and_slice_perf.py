@@ -549,3 +549,44 @@ def test_index_acc_perf():
     )
     bench.set_gems(gems_op)
     bench.run()
+
+
+def index_fill_gbps(bench_fn_args, latency):
+    inp = bench_fn_args[0]
+    dim = bench_fn_args[1]
+    index = bench_fn_args[2]
+
+    elemetns_filled = (
+        index.numel() * (inp.numel() // inp.shape[dim]) if index.numel() > 0 else 0
+    )
+    io_amount = shape_utils.size_in_bytes(inp) + elemetns_filled * inp.element_size()
+    return (io_amount * 1e-9) / (latency * 1e-3)
+
+
+@pytest.mark.index_fill
+def test_index_fill_perf():
+    def index_fill_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        if len(shape) == 0:
+            pytest.skip("Index fill on scalar is not supported")
+
+        dim = 0
+        max_indices = shape[dim]
+        if max_indices == 0:
+            pytest.skip("Index fill on empty dim is not supported")
+
+        index_size = min(max_indices, 5)  # Limit index size to 5
+        index = torch.randint(
+            0, max_indices, (index_size,), dtype=torch.long, device=device
+        )
+        value = 3.1415926
+        yield inp, dim, index, value
+
+    bench = TensorSelectBenchmark(
+        op_name="index_fill",
+        torch_op=torch.index_fill,
+        input_fn=index_fill_input_fn,
+        dtypes=[torch.float16, torch.float32, torch.bfloat16],
+        get_gbps=index_fill_gbps,
+    )
+    bench.run()
