@@ -39,7 +39,6 @@ class BackendArchEvent:
         self.backend = backend
         self.error_msgs = []
         self.arch = self.get_arch()
-        # print("init only once")
         if self.has_arch:
             self.supported_archs = self._get_supported_archs()
             # current_arch_path is like FlagGems/src/flag_gems/runtime/backend/_nvidia/hopper
