@@ -6,8 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-import torch
-
 from ..commom_utils import vendors
 from . import backend_utils
 
@@ -77,13 +75,12 @@ class BackendArchEvent:
         arch_string_num = arch_string.split("_")[-1][0] if arch_string else arch_string
         if not arch_string_num:
             try:
-                if not torch.cuda.is_available():
+                if not torch_device_object.is_available():
                     return False
-                props = torch.cuda.get_device_properties(device)
+                props = torch_device_object.get_device_properties(device)
                 arch_string_num = str(props.major)
             except Exception:
                 self.has_arch = False
-
         if arch_string_num not in arch_map:
             print(
                 f"[INFO] : FlagGems Unsupported GPU arch {arch_string} specialization"
@@ -91,7 +88,6 @@ class BackendArchEvent:
         else:
             self.has_arch = True
             return arch_map[arch_string_num]
-            return arch_map["9"]
 
     def _get_supported_archs(self, path=None):
         path = path or vendor_module.__path__[0]
