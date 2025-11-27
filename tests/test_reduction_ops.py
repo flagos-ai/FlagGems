@@ -1110,6 +1110,78 @@ def test_accuracy_index_add_(shape, dim, dtype):
     gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)
 
 
+@pytest.mark.index_reduce
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize(
+    "reduce",
+    [
+        "mean",
+        "prod",
+        "amax",
+        "amin",
+    ],
+)
+@pytest.mark.parametrize("include_self", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_index_reduce(shape, dim, reduce, include_self, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    src_shape = list(inp.shape)
+    index_max = src_shape[dim]
+    index_len = index_max
+    index = torch.randperm(index_len, device=flag_gems.device)
+    src_shape[dim] = index_len
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_src = to_reference(src)
+    ref_index = to_reference(index)
+    ref_out = torch.index_reduce(
+        ref_inp, dim, ref_index, ref_src, reduce, include_self=include_self
+    )
+    with flag_gems.use_gems():
+        res_out = torch.index_reduce(
+            inp, dim, index, src, reduce, include_self=include_self
+        )
+
+    gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
+
+
+@pytest.mark.index_reduce_
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize(
+    "reduce",
+    [
+        "mean",
+        "prod",
+        "amax",
+        "amin",
+    ],
+)
+@pytest.mark.parametrize("include_self", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_index_reduce_(shape, dim, reduce, include_self, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    src_shape = list(inp.shape)
+    index_max = src_shape[dim]
+    index_len = index_max
+    index = torch.randperm(index_len, device=flag_gems.device)
+    src_shape[dim] = index_len
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_src = to_reference(src)
+    ref_index = to_reference(index)
+    ref_inp.index_reduce_(dim, ref_index, ref_src, reduce, include_self=include_self)
+    with flag_gems.use_gems():
+        inp.index_reduce_(dim, index, src, reduce, include_self=include_self)
+
+    gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)
+
+
 @pytest.mark.index_select
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)

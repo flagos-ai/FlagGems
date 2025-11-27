@@ -385,6 +385,125 @@ def test_index_add__perf():
     bench.run()
 
 
+def index_reduce_input_fn(reduce):
+    def inner(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = 0 if len(shape) == 1 else 1
+        src_shape = list(shape)
+        index_max = src_shape[dim]
+        index_len = index_max // 2 if index_max >= 2 else 1
+        index = torch.randperm(index_len, device=device)
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device=device)
+        yield inp, dim, index, src, reduce
+
+    return inner
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_reduce
+def test_index_reduce_perf_prod():
+    bench = TensorSelectBenchmark(
+        op_name="index_reduce",
+        torch_op=torch.Tensor.index_reduce,
+        input_fn=index_reduce_input_fn("prod"),  # random select a reduce op from a list
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_reduce
+def test_index_reduce_perf_amax():
+    bench = TensorSelectBenchmark(
+        op_name="index_reduce",
+        torch_op=torch.Tensor.index_reduce,
+        input_fn=index_reduce_input_fn("amax"),  # random select a reduce op from a list
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_reduce
+def test_index_reduce_perf_amin():
+    bench = TensorSelectBenchmark(
+        op_name="index_reduce",
+        torch_op=torch.Tensor.index_reduce,
+        input_fn=index_reduce_input_fn("amin"),  # random select a reduce op from a list
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_reduce
+def test_index_reduce_perf_mean():
+    bench = TensorSelectBenchmark(
+        op_name="index_reduce",
+        torch_op=torch.Tensor.index_reduce,
+        input_fn=index_reduce_input_fn("mean"),  # random select a reduce op from a list
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_reduce_
+def test_index__reduce_perf_prod():
+    bench = TensorSelectBenchmark(
+        op_name="index_reduce_",
+        torch_op=torch.Tensor.index_reduce_,
+        input_fn=index_reduce_input_fn("prod"),  # random select a reduce op from a list
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_reduce_
+def test_index__reduce_perf_amax():
+    bench = TensorSelectBenchmark(
+        op_name="index_reduce_",
+        torch_op=torch.Tensor.index_reduce_,
+        input_fn=index_reduce_input_fn("amax"),  # random select a reduce op from a list
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_reduce_
+def test_index__reduce_perf_amin():
+    bench = TensorSelectBenchmark(
+        op_name="index_reduce_",
+        torch_op=torch.Tensor.index_reduce_,
+        input_fn=index_reduce_input_fn("amin"),  # random select a reduce op from a list
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_reduce_
+def test_index__reduce_perf_mean():
+    bench = TensorSelectBenchmark(
+        op_name="index_reduce_",
+        torch_op=torch.Tensor.index_reduce_,
+        input_fn=index_reduce_input_fn("mean"),  # random select a reduce op from a list
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
+    )
+    bench.run()
+
+
 def gen_indices(input_shape, indices_shape, accumulate):
     indices = []
     for i, shape in enumerate(indices_shape):
