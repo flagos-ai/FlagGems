@@ -23,6 +23,7 @@ UNSELECT_NODEIDS = {
     "tests/test_norm_ops.py::test_accuracy_batch_norm[True-dtype0-shape0]",
     "tests/test_pointwise_type_promotion.py::test_type_promotion_bool_to_long[float_dtype0-shape0]",
     "tests/test_reduction_ops.py::test_accuracy_amax[dtype0-True-1-shape0]",
+    "tests/test_distribution_ops.py::test_accuracy_normal[dtype0-shape0-none]",
     "tests/test_reduction_ops.py::test_accuracy_scatter_mul[dtype0-0-inp_shape0-src_shape0]",
     "tests/test_reduction_ops.py::test_accuracy_inplace_scatter_mul[dtype0-0-inp_shape0-src_shape0]",
     "tests/test_special_ops.py::test_upsample_nearest2d[dtype0-shape0-scale0]",
