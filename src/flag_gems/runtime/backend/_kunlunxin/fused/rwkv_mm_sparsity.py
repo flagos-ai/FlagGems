@@ -28,7 +28,7 @@ def rwkv_mm_sparsity_kernel(
         mask_k = offs_k < k_size
         k_ptrs = k_ptr + offs_k
         k_block_1d = tl.load(k_ptrs, mask=mask_k, other=0.0)
-        k_block = k_block_1d[None, :]  # 添加第一个维度
+        k_block = k_block_1d[None, :]
         v_ptrs = v_ptr + (offs_k[:, None] * v_cols) + offs_n[None, :]
         v_mask = mask_k[:, None] & mask_n[None, :]
         v_block = tl.load(v_ptrs, mask=v_mask, other=0.0)
@@ -48,9 +48,9 @@ def rwkv_mm_sparsity(k: torch.Tensor, v: torch.Tensor):
     v_cols = v.size(1)
     output = torch.empty(v_cols, device=k.device, dtype=k.dtype)
 
-    blk_size = triton.next_power_of_2(512)
+    blk_size = triton.next_power_of_2(256)
     k_size = triton.next_power_of_2(k.size(0))
-    block_size = triton.next_power_of_2(64) if 64 < k_size else k_size
+    block_size = triton.next_power_of_2(128) if 128 < k_size else k_size
     grid = (triton.cdiv(v_cols, block_size),)
 
     rwkv_mm_sparsity_kernel[grid](
