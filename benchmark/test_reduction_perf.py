@@ -471,3 +471,77 @@ def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
+
+
+class ScaledSoftmaxBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        # shape: [batch, heads, query_len, key_len]
+        shapes_small = [
+            (1, 4, 64, 64),
+            (2, 8, 128, 128),
+            (4, 8, 256, 256),
+        ]
+        shapes_medium = [
+            (8, 12, 512, 512),
+            (16, 16, 1024, 1024),
+            (32, 16, 512, 512),
+        ]
+        shapes_large = [
+            (1, 32, 2048, 2048),
+            (2, 40, 4096, 4096),
+            # (4, 32, 8192, 8192),  # too big shape, out of memory
+        ]
+        shapes_4d = shapes_small + shapes_medium + shapes_large
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.scaled_softmax
+def test_perf_scaled_softmax_forward():
+    try:
+        from transformer_engine.common import load_framework_extension
+
+        load_framework_extension("torch")
+        import transformer_engine_torch as tex  # type: ignore
+    except ImportError:
+        pytest.skip("TransformerEngine is not available, skipping performance test")
+
+    def scaled_softmax_forward_input_fn(shape, dtype, device):
+        S = generate_tensor_input(shape, dtype, device)
+        scale_factor = 1 / S.shape[-1] ** 0.5
+        yield S, scale_factor
+
+    bench = ScaledSoftmaxBenchmark(
+        input_fn=scaled_softmax_forward_input_fn,
+        op_name="scaled_softmax_forward",
+        torch_op=tex.scaled_softmax_forward,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.scaled_softmax_forward)
+    bench.run()
+
+
+@pytest.mark.scaled_softmax
+def test_perf_scaled_softmax_backward():
+    try:
+        from transformer_engine.common import load_framework_extension
+
+        load_framework_extension("torch")
+        import transformer_engine_torch as tex  # type: ignore
+    except ImportError:
+        pytest.skip("TransformerEngine is not available, skipping performance test")
+
+    def scaled_softmax_backward_input_fn(shape, dtype, device):
+        P = generate_tensor_input(shape, dtype, device)
+        dP = generate_tensor_input(shape, dtype, device)
+        scale_factor = 1 / P.shape[-1] ** 0.5
+        yield P, dP, scale_factor
+
+    bench = ScaledSoftmaxBenchmark(
+        input_fn=scaled_softmax_backward_input_fn,
+        op_name="scaled_softmax_backward",
+        torch_op=tex.scaled_softmax_backward,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.scaled_softmax_backward)
+    bench.run()
