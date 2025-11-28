@@ -43,6 +43,9 @@ class CodeGenConfig:
     is_scatter_slice: bool = False
     is_cat: bool = False
     isCloseVectorization: bool = False
+    isCloseDtypeConvert: bool = False
+    isCloseMemoryAsync: bool = True
+    buffer_size_limit: int = 0
 
     def __post_init__(self):
         if self.prefer_1d_tile:

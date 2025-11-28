@@ -9,7 +9,7 @@ from flag_gems.utils import broadcastable_to, libentry, libtuner
 
 from ..utils import MAX_GRID_SIZE_X
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()

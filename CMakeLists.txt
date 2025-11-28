@@ -53,7 +53,7 @@ if(FLAGGEMS_USE_EXTERNAL_TRITON_JIT)
 else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
   FetchContent_Declare(TritonJIT
-    GIT_REPOSITORY https://github.com/iclementine/libtriton_jit.git
+    GIT_REPOSITORY https://github.com/FlagTree/libtriton_jit.git
     # SOURCE_DIR <your local source dir of libtriton_jit>
   )
   FetchContent_MakeAvailable(TritonJIT)

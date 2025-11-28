@@ -11,7 +11,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
 
 @libentry()
@@ -96,7 +96,7 @@ def argmax_kernel(
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS ARGMAX")
+    logger.debug("GEMS_ASCEND ARGMAX")
     if dim is None:
         M = inp.numel()
         if dtype is None:

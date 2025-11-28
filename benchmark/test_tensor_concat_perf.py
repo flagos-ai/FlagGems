@@ -172,31 +172,31 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
             marks=pytest.mark.repeat,
         ),
         pytest.param(
-            "repeat_interleave_self_int",
+            "repeat_interleave.self_int",
             torch.repeat_interleave,
             repeat_interleave_self_int_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.repeat_interleave_self_int,
+            marks=pytest.mark.repeat_interleave,
         ),
         pytest.param(
-            "repeat_interleave_self_tensor",
+            "repeat_interleave.self_tensor",
             torch.repeat_interleave,
             repeat_interleave_self_tensor_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.repeat_interleave_self_tensor,
+            marks=pytest.mark.repeat_interleave,
         ),
         pytest.param(
-            "repeat_interleave_tensor",
+            "repeat_interleave.tensor",
             torch.repeat_interleave,
             repeat_interleave_tensor_input_fn,
             [torch.int32],
-            marks=pytest.mark.repeat_interleave_tensor,
+            marks=pytest.mark.repeat_interleave,
         ),
     ],
 )
 def test_tensor_repeat_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin" and op_name in [
-        "repeat_interleave_self_tensor",
+        "repeat_interleave.self_tensor",
     ]:
         pytest.skip("RUNTIME TODOFIX")
     bench = TensorRepeatBenchmark(

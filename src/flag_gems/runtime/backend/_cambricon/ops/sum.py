@@ -10,7 +10,7 @@ from flag_gems.utils import dim_compress, libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()

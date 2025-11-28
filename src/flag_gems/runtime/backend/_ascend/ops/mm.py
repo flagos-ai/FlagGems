@@ -8,7 +8,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
 
 @libentry()
@@ -36,7 +36,6 @@ def mm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
-    SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
     # matrix multiplication
@@ -103,7 +102,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logger.debug("GEMS MM")
+    logger.debug("GEMS_ASCEND MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -121,7 +120,6 @@ def mm(a, b):
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        META["SPLIT_K"],
     )
     with torch_device_fn.device(a.device):
         mm_kernel[grid](

@@ -6,8 +6,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-
 logger = logging.getLogger(__name__)
 
 
@@ -90,6 +88,60 @@ def tile_size_fwd_sm8x(
     return kBlockM, kBlockN, kNWarps, kStages, Q_in_regs
 
 
+def tile_size_fwd_sm90(
+    headdim: int,
+    headdim_v: int,
+    is_causal: bool,
+    is_local: bool,
+    element_size: int = 2,
+    v_colmajor: bool = False,
+    paged_kv_non_TMA: bool = False,
+    softcap: bool = False,
+    use_one_mma_wg: bool = False,
+):
+    if element_size == 2:
+        if headdim <= 64:
+            if headdim_v == 512:
+                return 64, 64
+            elif headdim_v == 256:
+                return 128, 112
+            else:
+                use_blockN_128 = is_causal or is_local
+                return 192, (128 if use_blockN_128 else 192)
+        elif headdim <= 96:
+            return 192, (128 if (is_local or paged_kv_non_TMA) else 144)
+        elif headdim <= 128:
+            if use_one_mma_wg:
+                return 64, (128 if (is_causal or is_local or paged_kv_non_TMA) else 176)
+            else:
+                return 128, (
+                    128 if (is_causal or is_local or paged_kv_non_TMA) else 176
+                )
+        elif headdim <= 192:
+            return 128, (
+                96
+                if (paged_kv_non_TMA or is_local)
+                else (128 if headdim_v <= 128 else 112)
+            )
+        else:
+            return 128, (64 if is_local else 80)
+    else:
+        if headdim <= 64:
+            return 192, 160
+        elif headdim <= 96:
+            return 192, 128
+        elif headdim <= 128:
+            return 128, (
+                160
+                if paged_kv_non_TMA
+                else (192 if (v_colmajor or (softcap and is_local)) else 224)
+            )
+        elif headdim <= 192:
+            return 128, (128 if ((paged_kv_non_TMA or softcap) and is_local) else 160)
+        else:
+            return 128, (64 if is_local else 128)
+
+
 def get_optimal_block_mn(
     device,
     headdim,
@@ -99,27 +151,41 @@ def get_optimal_block_mn(
     has_softcap,
     element_size=2,
     paged_kv=False,
+    pagedkv_tma: bool = False,
     varlen_and_split=False,
     append_kv=False,
 ):
-    arch_cap = torch_device_fn.get_device_capability(device)
+    arch_cap = torch.cuda.get_device_capability(device)
     arch = arch_cap[0] * 10 + arch_cap[1]
-    sm86_or_89 = arch == 86 or arch == 89
 
-    kBlockM, kBlockN, kNWarps, kStages, Q_in_regs = tile_size_fwd_sm8x(
-        sm86_or_89=sm86_or_89,
-        headdim=headdim,
-        headdim_v=headdim_v,
-        is_causal=is_causal,
-        is_local=is_local,
-        element_size=element_size,
-        paged_kv=paged_kv,
-        varlen_and_split=varlen_and_split,
-        softcap=has_softcap,
-        append_kv=append_kv,
-    )
-
-    return kBlockM, kBlockN
+    if arch >= 90:
+        paged_kv_non_TMA = bool(paged_kv and (not pagedkv_tma))
+        kBlockM, kBlockN = tile_size_fwd_sm90(
+            headdim=headdim,
+            headdim_v=headdim_v,
+            is_causal=is_causal,
+            is_local=is_local,
+            element_size=element_size,
+            v_colmajor=False,
+            paged_kv_non_TMA=paged_kv_non_TMA,
+            softcap=has_softcap,
+            use_one_mma_wg=False,
+        )
+        return kBlockM, kBlockN
+    else:
+        kBlockM, kBlockN, kNWarps, kStages, Q_in_regs = tile_size_fwd_sm8x(
+            sm86_or_89=arch == 86 or arch == 89,
+            headdim=headdim,
+            headdim_v=headdim_v,
+            is_causal=is_causal,
+            is_local=is_local,
+            element_size=element_size,
+            paged_kv=paged_kv,
+            varlen_and_split=varlen_and_split,
+            softcap=has_softcap,
+            append_kv=append_kv,
+        )
+        return kBlockM, kBlockN
 
 
 def round_up_headdim(headdim: int) -> int:
@@ -150,6 +216,46 @@ def round_up_headdimv(headdim_v: int) -> int:
     return 512
 
 
+def get_pagedkv_tma(
+    arch: int,
+    page_size: int,
+    has_page_table: bool,
+    leftpad_k: Optional[torch.Tensor],
+    max_seqlen_q: int,
+    max_seqlen_k_new: int,
+    num_heads: int,
+    num_heads_k: int,
+    d_rounded: int,
+    dv_rounded: int,
+    is_causal: bool,
+    is_local: bool,
+    element_size: int,
+    softcap: bool,
+):
+    if (
+        arch < 90
+        or (not has_page_table)
+        or (leftpad_k is not None)
+        or (max_seqlen_k_new > 0)
+    ):
+        return False
+    kBlockM, kBlockN = tile_size_fwd_sm90(
+        headdim=d_rounded,
+        headdim_v=dv_rounded,
+        is_causal=is_causal,
+        is_local=is_local,
+        element_size=element_size,
+        v_colmajor=False,
+        paged_kv_non_TMA=False,
+        softcap=softcap,
+        use_one_mma_wg=False,
+    )
+    if page_size % kBlockN != 0:
+        return False
+    seqlen_q_packgqa = max_seqlen_q * (num_heads // num_heads_k)
+    return seqlen_q_packgqa > kBlockM
+
+
 def use_one_mma_wg(
     arch: int,
     headdim: int,
@@ -165,6 +271,25 @@ def use_one_mma_wg(
     effective_seqlen_q = seqlen_q * qhead_per_khead
 
     return effective_seqlen_q <= 64
+
+
+def should_pack_gqa(
+    varlen_q: bool,
+    seqlen_q: int,
+    qhead_per_khead: int,
+    blockM: int,
+) -> bool:
+    if varlen_q:
+        return True
+
+    def round_up(a: int, b: int) -> int:
+        return (a + b - 1) // b * b
+
+    nopack_eff = float(seqlen_q) / float(round_up(seqlen_q, blockM))
+    pack_eff = float(seqlen_q * qhead_per_khead) / float(
+        round_up(seqlen_q * qhead_per_khead, blockM)
+    )
+    return nopack_eff < 0.9 * pack_eff
 
 
 def get_num_splits(
@@ -185,28 +310,35 @@ def get_num_splits(
     has_softcap: float,
     is_varlen: bool,
     has_page_table: bool,
+    pack_gqa: bool,
+    window_size_left: int,
+    window_size_right: int,
     element_size: int = 2,  # fp16/bf16 = 2, fp8 = 1
     max_splits: int = 128,
     use_dynamic_split: bool = False,
-    window_size_left: int = -1,
-    window_size_right: int = -1,
 ) -> int:
     pagedkv_tma = False
     append_kv = max_seqlen_k_new > 0
 
     if arch >= 90:
-        # TODO: tile_size_fwd_sm90
-        kBlockM, kBlockN = get_optimal_block_mn(
-            device=0,
+        uomw = use_one_mma_wg(
+            arch=arch,
+            headdim=headdim,
+            seqlen_q=max_seqlen_q,
+            pack_gqa=pack_gqa,
+            num_heads=num_heads,
+            num_heads_k=num_heads_k,
+        )
+        kBlockM, kBlockN = tile_size_fwd_sm90(
             headdim=d_rounded,
             headdim_v=dv_rounded,
             is_causal=is_causal,
             is_local=is_local,
-            has_softcap=has_softcap,
             element_size=element_size,
-            paged_kv=has_page_table and not pagedkv_tma,
-            varlen_and_split=is_varlen,
-            append_kv=append_kv,
+            v_colmajor=False,
+            paged_kv_non_TMA=(has_page_table and not pagedkv_tma),
+            softcap=(has_softcap > 0.0),
+            use_one_mma_wg=uomw,
         )
     else:
         sm86_or_89 = arch == 86 or arch == 89
@@ -227,7 +359,8 @@ def get_num_splits(
 
     if is_local:
         seqlen_k_loaded = max(
-            0, min(max_seqlen_k, window_size_right + window_size_left + 1 + kBlockM)
+            0,
+            min(max_seqlen_k, window_size_left + window_size_right + 1 + kBlockM),
         )
     else:
         seqlen_k_loaded = max_seqlen_k
@@ -294,100 +427,105 @@ def _vllm_num_splits_heuristic(
 
 
 @triton.jit
-def _prepare_scheduler_kernel(
-    seqlen_q_static: tl.constexpr,
-    seqlen_k_static: tl.constexpr,
-    seqlen_k_new_static: tl.constexpr,
-    num_batch: tl.constexpr,
-    num_head: tl.constexpr,
-    qhead_per_khead: tl.constexpr,
-    num_sm: tl.constexpr,
-    num_splits_static: tl.constexpr,
-    blockm_divisor: tl.constexpr,
-    blockn_divisor: tl.constexpr,
+def _prepare_pass1_kernel(
+    num_m_blocks_ptr,
+    num_n_blocks_ptr,
+    total_blocks_ptr,
+    seqlen_k_ptr,
     cu_seqlens_q_ptr,
     cu_seqlens_k_ptr,
     cu_seqlens_k_new_ptr,
     seqused_q_ptr,
     seqused_k_ptr,
     leftpad_k_ptr,
-    total_blocks_ptr,
-    temp_num_n_ptr,
-    num_splits_dynamic_ptr,
+    batch,
+    qhead_per_khead,
+    max_seqlen_q: tl.constexpr,
+    max_seqlen_k_new: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_SIZE_B: tl.constexpr,
+    # HAS_XXX is used to implement static branch in kernel
     HAS_CU_SEQLENS_Q: tl.constexpr,
     HAS_CU_SEQLENS_K: tl.constexpr,
-    HAS_CU_SEQLENS_K_NEW: tl.constexpr,
     HAS_SEQUSED_Q: tl.constexpr,
     HAS_SEQUSED_K: tl.constexpr,
     HAS_LEFT_PAD: tl.constexpr,
-    HAS_SEMAPHORE: tl.constexpr,
+    HAS_K_NEW: tl.constexpr,
+    HAS_CU_SEQLENS_K_NEW: tl.constexpr,
 ):
-    total_blocks = 0
+    pid = tl.program_id(0)
+    b_start = pid * BLOCK_SIZE_B
+    b_offs = b_start + tl.arange(0, BLOCK_SIZE_B)
+    mask = b_offs < batch
 
-    b = 0
-    while b < num_batch:
-        seqlen_q = 0
-        if HAS_SEQUSED_Q:
-            seqlen_q = tl.load(seqused_q_ptr + b)
-        elif HAS_CU_SEQLENS_Q:
-            cur = tl.load(cu_seqlens_q_ptr + b)
-            nxt = tl.load(cu_seqlens_q_ptr + b + 1)
-            seqlen_q = nxt - cur
-        else:
-            seqlen_q = seqlen_q_static
+    if HAS_SEQUSED_Q:
+        q_len = tl.load(seqused_q_ptr + b_offs, mask=mask, other=0)
+    elif HAS_CU_SEQLENS_Q:
+        cur = tl.load(cu_seqlens_q_ptr + b_offs, mask=mask, other=0)
+        nxt = tl.load(cu_seqlens_q_ptr + b_offs + 1, mask=mask, other=0)
+        q_len = nxt - cur
+    else:
+        q_len = tl.full(
+            [BLOCK_SIZE_B], max_seqlen_q, dtype=tl.int32
+        )  # max_seqlen_q constexpr
+    q_len = q_len * qhead_per_khead
+    m_blocks = (q_len + BLOCK_M - 1) // BLOCK_M
 
-        seqlen_q *= qhead_per_khead
-        num_m_blocks = (seqlen_q + blockm_divisor - 1) // blockm_divisor
+    if HAS_SEQUSED_K:
+        k_len = tl.load(seqused_k_ptr + b_offs, mask=mask, other=0)
+    elif HAS_CU_SEQLENS_K:
+        cur = tl.load(cu_seqlens_k_ptr + b_offs, mask=mask, other=0)
+        nxt = tl.load(cu_seqlens_k_ptr + b_offs + 1, mask=mask, other=0)
+        k_len = nxt - cur
+    else:
+        k_len = tl.load(seqlen_k_ptr + b_offs, mask=mask, other=0)
+    left = tl.load(leftpad_k_ptr + b_offs, mask=mask, other=0) if HAS_LEFT_PAD else 0
 
-        seqlen_k = 0
-        if HAS_SEQUSED_K:
-            seqlen_k = tl.load(seqused_k_ptr + b)
-        elif HAS_CU_SEQLENS_K:
-            cur_k = tl.load(cu_seqlens_k_ptr + b)
-            nxt_k = tl.load(cu_seqlens_k_ptr + b + 1)
-            seqlen_k = nxt_k - cur_k
-        else:
-            seqlen_k = seqlen_k_static
-
-        seqlen_k_new = 0
+    if HAS_K_NEW:
         if HAS_CU_SEQLENS_K_NEW:
-            cur_kn = tl.load(cu_seqlens_k_new_ptr + b)
-            nxt_kn = tl.load(cu_seqlens_k_new_ptr + b + 1)
-            seqlen_k_new = nxt_kn - cur_kn
+            cur_new = tl.load(cu_seqlens_k_new_ptr + b_offs, mask=mask, other=0)
+            nxt_new = tl.load(cu_seqlens_k_new_ptr + b_offs + 1, mask=mask, other=0)
+            k_len += nxt_new - cur_new
         else:
-            seqlen_k_new = seqlen_k_new_static
+            k_len += max_seqlen_k_new
+    k_len = k_len - left
+    n_blocks = (k_len + BLOCK_N - 1) // BLOCK_N
 
-        leftpad_k = 0
-        if HAS_LEFT_PAD:
-            leftpad_k = tl.load(leftpad_k_ptr + b)
+    tl.store(num_m_blocks_ptr + b_offs, m_blocks, mask=mask)
+    tl.store(num_n_blocks_ptr + b_offs, n_blocks, mask=mask)
+    total = m_blocks * n_blocks
+    tl.atomic_add(total_blocks_ptr, tl.sum(total, axis=0))
 
-        seqlen_k_total = seqlen_k - leftpad_k + seqlen_k_new
-        num_n_blocks = (seqlen_k_total + blockn_divisor - 1) // blockn_divisor
 
-        total_blocks += num_m_blocks * num_n_blocks
-        tl.store(temp_num_n_ptr + b, num_n_blocks)
+@triton.jit
+def _prepare_pass2_kernel(
+    num_n_blocks_per_seq_ptr,
+    num_splits_dynamic_ptr,
+    total_blocks,
+    num_batch,
+    num_head,
+    num_sm,
+    num_splits_static,
+    BLOCK_SIZE_B: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    b_start = pid * BLOCK_SIZE_B
+    b_offsets = b_start + tl.arange(0, BLOCK_SIZE_B)
+    b_mask = b_offsets < num_batch
 
-        b += 1
+    blocks_per_sm_float = tl.ceil(total_blocks * 1.1 * num_head / num_sm)
+    blocks_per_sm = blocks_per_sm_float.to(tl.int32)
 
-    if HAS_SEMAPHORE:
-        tl.store(total_blocks_ptr, 0)
+    blocks_per_sm = tl.maximum(1, blocks_per_sm)
 
-    total_blocks_f = total_blocks.to(tl.float32)
-    blocks_per_sm_f = tl.ceil(total_blocks_f * 1.1 * num_head / num_sm)
-    blocks_per_sm_int32 = blocks_per_sm_f.to(tl.int32)
-    one = 1  # Python int
-    blocks_per_sm = tl.where(blocks_per_sm_int32 > one, blocks_per_sm_int32, one)
+    num_n_blocks = tl.load(num_n_blocks_per_seq_ptr + b_offsets, mask=b_mask, other=0)
+    num_splits_dynamic = (num_n_blocks + blocks_per_sm - 1) // blocks_per_sm
 
-    b = 0
-    while b < num_batch:
-        num_n = tl.load(temp_num_n_ptr + b)
+    num_splits_dynamic = tl.minimum(num_splits_dynamic, num_splits_static)
+    num_splits_dynamic = tl.maximum(1, num_splits_dynamic)
 
-        ns = (num_n + blocks_per_sm - 1) // blocks_per_sm
-        ns = tl.where(ns < one, one, ns)
-        ns = tl.where(ns > num_splits_static, num_splits_static, ns)
-
-        tl.store(num_splits_dynamic_ptr + b, ns)
-        b += 1
+    tl.store(num_splits_dynamic_ptr + b_offsets, num_splits_dynamic, mask=b_mask)
 
 
 def get_pack_gqa(
@@ -397,15 +535,33 @@ def get_pack_gqa(
     num_splits: int,
     num_heads: int,
     num_heads_k: int,
+    # SM90-specific params for heuristic
+    varlen_q: bool,
+    seqlen_q: int,
+    d_rounded: int,
+    dv_rounded: int,
+    is_causal: bool,
+    is_local: bool,
+    element_size: int,
+    softcap: bool,
 ) -> bool:
     if arch < 90 or (has_page_table and not pagedkv_tma) or num_splits > 1:
         return True
-
     if num_heads == num_heads_k:
         return False
-
-    # TODO implement tile_size_fwd_sm90 and should_pack_gqa (Hopper+ only)
-    return False
+    kBlockM, _ = tile_size_fwd_sm90(
+        headdim=d_rounded,
+        headdim_v=dv_rounded,
+        is_causal=is_causal,
+        is_local=is_local,
+        element_size=element_size,
+        v_colmajor=False,
+        paged_kv_non_TMA=(has_page_table and not pagedkv_tma),
+        softcap=softcap,
+        use_one_mma_wg=False,
+    )
+    qhead_per_khead = num_heads // num_heads_k
+    return should_pack_gqa(varlen_q, seqlen_q, qhead_per_khead, kBlockM)
 
 
 def get_scheduler_metadata(
@@ -432,11 +588,11 @@ def get_scheduler_metadata(
     num_splits: int = 0,
     pack_gqa: Optional[bool] = None,
     sm_margin: int = 0,
-    disable_split_k: bool = True,
 ) -> torch.Tensor:
     device = seqused_k.device
     dtype = torch.int32
 
+    # check parameters
     supported_dtypes = (torch.half, torch.bfloat16)
     assert (
         qkv_dtype in supported_dtypes
@@ -471,11 +627,9 @@ def get_scheduler_metadata(
         effective_window_left >= 0 or effective_window_right >= 0
     ) and not final_is_causal
 
-    arch_cap = torch_device_fn.get_device_capability(device)
+    arch_cap = torch.cuda.get_device_capability(device)
     arch = arch_cap[0] * 10 + arch_cap[1]
-    num_sm = (
-        torch_device_fn.get_device_properties(device).multi_processor_count - sm_margin
-    )
+    num_sm = torch.cuda.get_device_properties(device).multi_processor_count - sm_margin
 
     softcap = 1.0 if has_softcap else 0.0
 
@@ -483,10 +637,40 @@ def get_scheduler_metadata(
 
     has_page_table = page_size is not None
 
-    # TODO implement get_pagedkv_tma function (Hopper+ only)
-    pagedkv_tma = False
+    d_rounded = round_up_headdim(headdim)
+    dv_rounded = round_up_headdimv(headdim_v)
+
+    pagedkv_tma = get_pagedkv_tma(
+        arch=arch,
+        page_size=page_size if page_size is not None else 1,
+        has_page_table=has_page_table,
+        leftpad_k=leftpad_k,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k_new=max_seqlen_k_new,
+        num_heads=num_heads,
+        num_heads_k=num_heads_k,
+        d_rounded=d_rounded,
+        dv_rounded=dv_rounded,
+        is_causal=final_is_causal,
+        is_local=final_is_local,
+        element_size=element_size,
+        softcap=has_softcap,
+    )
+
+    blockM, blockN = get_optimal_block_mn(
+        device=device,
+        headdim=headdim,
+        headdim_v=headdim_v,
+        is_causal=final_is_causal,
+        is_local=final_is_local,
+        has_softcap=has_softcap,
+        element_size=element_size,
+        paged_kv=has_page_table,
+        pagedkv_tma=pagedkv_tma,
+    )
 
     # GQA
+    varlen_q_flag = cu_seqlens_q is not None or seqused_q is not None
     pack_gqa = (
         pack_gqa
         if pack_gqa is not None
@@ -497,6 +681,14 @@ def get_scheduler_metadata(
             num_splits=num_splits,
             num_heads=num_heads,
             num_heads_k=num_heads_k,
+            varlen_q=varlen_q_flag,
+            seqlen_q=max_seqlen_q,
+            d_rounded=d_rounded,
+            dv_rounded=dv_rounded,
+            is_causal=final_is_causal,
+            is_local=final_is_local,
+            element_size=element_size,
+            softcap=has_softcap,
         )
     )
     qhead_per_khead = (
@@ -504,23 +696,45 @@ def get_scheduler_metadata(
     )
     num_head_k = num_heads_k if pack_gqa else num_heads
 
-    # TODO: implement use_one_mma_wg (Hopper+ only)
+    seqlen_q = (
+        seqused_q
+        if seqused_q is not None
+        else torch.full((batch_size,), max_seqlen_q, dtype=dtype, device=device)
+    )
+    seqlen_k = seqused_k
+    seqlen_knew = (
+        torch.full((batch_size,), max_seqlen_k_new, dtype=dtype, device=device)
+        if max_seqlen_k_new > 0
+        else None
+    )
+
+    num_m_blocks = torch.empty_like(seqlen_q)
+    num_n_blocks = torch.empty_like(seqlen_k)
+    total_blocks = torch.zeros((1,), dtype=dtype, device=device)
+    num_splits_dynamic = torch.empty_like(seqlen_q)
+
+    BLOCK_SIZE_B = 128
+    grid = (triton.cdiv(batch_size, BLOCK_SIZE_B),)
+
+    total_blocks_val = total_blocks.item()
+
+    # dynamic split depends ONLY on batch_size, regardless of num_splits_static
+    use_dynamic_split = batch_size <= 992
 
     if num_splits <= 0:
         element_size = qkv_dtype.itemsize
-        d_rounded = round_up_headdim(headdim)
-        dv_rounded = round_up_headdimv(headdim_v)
+        is_fp16 = qkv_dtype == torch.float16
+        is_bf16 = qkv_dtype == torch.bfloat16
 
-        use_dynamic_split_for_heuristic = batch_size <= 992
-        is_varlen_for_heuristic = (
-            (cu_seqlens_q is not None)
-            or (cu_seqlens_k is not None)
-            or (seqused_q is not None)
-            or (seqused_k is not None)
-            or (leftpad_k is not None)
-        )
+        if not (is_fp16 or is_bf16):
+            raise ValueError(
+                f"不支持的数据类型: {qkv_dtype}. FlashAttention只支持: torch.float16, torch.bfloat16"
+            )
 
-        heuristic_num_splits = get_num_splits(
+        d_rounded = d_rounded
+        dv_rounded = dv_rounded
+
+        eff_num_splits = get_num_splits(
             batch_size=batch_size,
             num_heads=num_heads,
             num_heads_k=num_heads_k,
@@ -536,110 +750,145 @@ def get_scheduler_metadata(
             is_causal=final_is_causal,
             is_local=final_is_local,
             has_softcap=softcap,
-            is_varlen=is_varlen_for_heuristic,
-            has_page_table=(page_size is not None),
-            element_size=element_size,
-            use_dynamic_split=use_dynamic_split_for_heuristic,
+            is_varlen=True,
+            has_page_table=has_page_table,
+            pack_gqa=pack_gqa,
             window_size_left=effective_window_left,
             window_size_right=effective_window_right,
+            element_size=element_size,
+            use_dynamic_split=use_dynamic_split,
         )
     else:
-        heuristic_num_splits = num_splits
+        eff_num_splits = num_splits
 
-    if heuristic_num_splits > 1:
-        pack_gqa = True
-        qhead_per_khead = (num_heads + num_heads_k - 1) // num_heads_k
-        num_head_k = num_heads_k
+    eff_num_splits = min(eff_num_splits, 256, num_sm)
 
-    kernel_launched = batch_size <= 992
+    #  Always enable PackGQA for Split
+    pack_gqa = True if eff_num_splits > 1 else pack_gqa
 
-    scheduler_needs_semaphore = arch >= 90 or heuristic_num_splits > 1
-    use_dynamic_split = batch_size <= 992
-
-    alloc_size = int(scheduler_needs_semaphore) + int(use_dynamic_split) * batch_size
-
-    if alloc_size == 0:
-        return torch.empty((0,), dtype=torch.int32, device=device)
-
-    scheduler_metadata = torch.empty(alloc_size, dtype=torch.int32, device=device)
-    semaphore_ptr = scheduler_metadata[:1] if scheduler_needs_semaphore else None
-    splits_array_ptr = (
-        scheduler_metadata[int(scheduler_needs_semaphore) :]
-        if use_dynamic_split
-        else None
+    # Recompute qhead_per_khead/num_head_k for the kernels
+    qhead_per_khead = (
+        1 if not pack_gqa else (num_heads + num_heads_k - 1) // num_heads_k
     )
+    num_head_k = num_heads_k if pack_gqa else num_heads
 
-    if kernel_launched:
-        if semaphore_ptr is not None:
-            semaphore_ptr.zero_()
-
-        temp_num_n = torch.empty(batch_size, dtype=dtype, device=device)
-        num_splits_static_for_kernel = min(heuristic_num_splits, 256, num_sm)
-
-        d_rounded_kernel = round_up_headdim(headdim)
-        dv_rounded_kernel = (
-            d_rounded_kernel if headdim_v == headdim else round_up_headdimv(headdim_v)
+    is_varlen = True
+    if arch >= 90:
+        uomw = use_one_mma_wg(
+            arch=arch,
+            headdim=headdim,
+            seqlen_q=max_seqlen_q,
+            pack_gqa=pack_gqa,
+            num_heads=num_heads,
+            num_heads_k=num_heads_k,
         )
-        varlen_and_split_for_kernel = (
-            (cu_seqlens_q is not None)
-            or (cu_seqlens_k is not None)
-            or (seqused_q is not None)
-            or (seqused_k is not None)
-            or (leftpad_k is not None)
-        ) and (heuristic_num_splits > 1)
-        blockM_kernel, blockN_kernel = get_optimal_block_mn(
+        blockM, blockN = tile_size_fwd_sm90(
+            headdim=round_up_headdim(headdim),
+            headdim_v=round_up_headdimv(headdim_v),
+            is_causal=final_is_causal,
+            is_local=final_is_local,
+            element_size=element_size,
+            v_colmajor=False,
+            paged_kv_non_TMA=(has_page_table and not pagedkv_tma),
+            softcap=has_softcap,
+            use_one_mma_wg=uomw,
+        )
+    else:
+        blockM, blockN = get_optimal_block_mn(
             device=device,
-            headdim=d_rounded_kernel,
-            headdim_v=dv_rounded_kernel,
+            headdim=headdim,
+            headdim_v=headdim_v,
             is_causal=final_is_causal,
             is_local=final_is_local,
             has_softcap=has_softcap,
             element_size=element_size,
             paged_kv=has_page_table,
-            varlen_and_split=varlen_and_split_for_kernel,
+            pagedkv_tma=pagedkv_tma,
+            varlen_and_split=is_varlen and (eff_num_splits > 1),
             append_kv=(max_seqlen_k_new > 0),
         )
 
-        grid = (1,)
-        _prepare_scheduler_kernel[grid](
-            max_seqlen_q,
-            max_seqlen_k,
-            max_seqlen_k_new,
-            batch_size,
-            num_head_k,
-            qhead_per_khead,
-            num_sm,
-            num_splits_static_for_kernel,
-            blockM_kernel,
-            blockN_kernel,
-            cu_seqlens_q,
-            cu_seqlens_k,
-            cu_seqlens_k_new,
-            seqused_q,
-            seqused_k,
-            leftpad_k,
-            semaphore_ptr,
-            temp_num_n,
-            splits_array_ptr,
-            HAS_CU_SEQLENS_Q=cu_seqlens_q is not None,
-            HAS_CU_SEQLENS_K=cu_seqlens_k is not None,
-            HAS_CU_SEQLENS_K_NEW=cu_seqlens_k_new is not None,
-            HAS_SEQUSED_Q=seqused_q is not None,
-            HAS_SEQUSED_K=seqused_k is not None,
-            HAS_LEFT_PAD=leftpad_k is not None,
-            HAS_SEMAPHORE=semaphore_ptr is not None,
+    num_m_blocks = torch.empty_like(seqlen_q)
+    num_n_blocks = torch.empty_like(seqlen_k)
+    total_blocks = torch.zeros((1,), dtype=dtype, device=device)
+    num_splits_dynamic = torch.empty_like(seqlen_q)
+
+    _prepare_pass1_kernel[grid](
+        num_m_blocks,
+        num_n_blocks,
+        total_blocks,
+        seqlen_k,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        cu_seqlens_k_new,
+        seqused_q,
+        seqused_k,
+        leftpad_k,
+        batch_size,
+        qhead_per_khead,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k_new=max_seqlen_k_new,
+        BLOCK_M=blockM,
+        BLOCK_N=blockN,
+        BLOCK_SIZE_B=BLOCK_SIZE_B,
+        HAS_CU_SEQLENS_Q=cu_seqlens_q is not None,
+        HAS_CU_SEQLENS_K=cu_seqlens_k is not None,
+        HAS_SEQUSED_Q=seqused_q is not None,
+        HAS_SEQUSED_K=True,
+        HAS_LEFT_PAD=leftpad_k is not None,
+        HAS_K_NEW=seqlen_knew is not None,
+        HAS_CU_SEQLENS_K_NEW=cu_seqlens_k_new is not None,
+    )
+
+    total_blocks_val = total_blocks.item()
+
+    if use_dynamic_split:
+        _prepare_pass2_kernel[grid](
+            num_n_blocks,
+            num_splits_dynamic,
+            total_blocks=total_blocks_val,
+            num_batch=batch_size,
+            num_head=num_head_k,
+            num_sm=num_sm,
+            num_splits_static=eff_num_splits,
+            BLOCK_SIZE_B=BLOCK_SIZE_B,
         )
     else:
-        if semaphore_ptr is not None:
-            semaphore_ptr.zero_()
+        num_splits_dynamic.fill_(eff_num_splits)
 
-        if splits_array_ptr is not None:
-            final_num_splits_for_fill = heuristic_num_splits
-            final_num_splits_for_fill = heuristic_num_splits
-            if disable_split_k:
-                final_num_splits_for_fill = 1
-            final_num_splits_for_fill = min(final_num_splits_for_fill, 256, num_sm)
+    final_num_splits = eff_num_splits
 
-            splits_array_ptr.fill_(final_num_splits_for_fill)
+    is_varlen = True
 
-    return scheduler_metadata
+    if arch >= 90:
+        scheduler_needs_semaphore = (
+            (final_is_causal or final_is_local) and (final_num_splits == 1)
+        ) or is_varlen
+    else:
+        scheduler_needs_semaphore = (final_is_causal and not is_varlen) or (
+            is_varlen and final_num_splits > 1
+        )
+
+    if use_dynamic_split:
+        final_num_splits_for_sem_check = eff_num_splits
+    else:
+        final_num_splits_for_sem_check = eff_num_splits
+
+    scheduler_needs_semaphore = arch >= 90 or final_num_splits_for_sem_check > 1
+
+    alloc_size = int(scheduler_needs_semaphore) + int(use_dynamic_split) * batch_size
+
+    if alloc_size > 0:
+        scheduler_metadata = torch.empty(alloc_size, dtype=torch.int32, device=device)
+        offset = 0
+        if scheduler_needs_semaphore:
+            scheduler_metadata[offset] = 0
+            offset += 1
+
+        if use_dynamic_split:
+            scheduler_metadata[offset:] = num_splits_dynamic
+        elif scheduler_needs_semaphore and not use_dynamic_split:
+            pass
+        return scheduler_metadata
+    else:
+        return torch.empty((0,), dtype=torch.int32, device=device)

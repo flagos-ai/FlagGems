@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 # --------------------------- padding wrapper genration -----------------------------------
@@ -170,12 +170,9 @@ def generate_destination_passing_padding_wrapper(
 
         # grid
         code.writeline("# kernel launch")
-        code.writeline("if not IS_CIRCULAR: ")
-        # code.writeline("import pudb; pudb.set_trace()")
-        with code.indent():
-            code.writeline("import os")
-            code.writeline('os.environ["TRITONXPU_OTHER_SIM"] = "1"')
-            code.writeline('os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"')
+        code.writeline("import os")
+        code.writeline('os.environ["TRITONXPU_OTHER_SIM"] = "1"')
+        code.writeline('os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"')
         # launch kernel
         code.writeline("with torch_device_fn.device(in0.device):")
         with code.indent():

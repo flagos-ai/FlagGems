@@ -3,13 +3,12 @@ import logging
 import torch
 import triton
 
-# from flag_gems.ops.rand import rand_kernel
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .rand import choose_unroll, rand_kernel_1, rand_kernel_2
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # UNROLL = 4
 
 

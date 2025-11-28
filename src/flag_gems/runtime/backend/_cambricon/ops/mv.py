@@ -11,7 +11,7 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_NRAM_SIZE
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def config_prune(configs, named_args, **kwargs):

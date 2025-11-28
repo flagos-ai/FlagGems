@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 device_ = device
 
 
-@triton.heuristics(runtime.get_heuristic_config("ones"))
 @libentry()
+@triton.heuristics(runtime.get_heuristic_config("ones"))
 @triton.jit
 def ones_kernel(
     output_ptr,

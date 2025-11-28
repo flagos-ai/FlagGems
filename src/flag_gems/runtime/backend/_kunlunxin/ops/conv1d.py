@@ -2,7 +2,7 @@ import logging
 
 from .conv2d import conv2d
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):

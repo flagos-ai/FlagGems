@@ -275,6 +275,10 @@ def prune_fwd_configs(configs, nargs, **kwargs):
         return configs
 
 
+def flash_fwd_kernel_heur_block_k(args):
+    return triton.next_power_of_2(args["d"])
+
+
 @libentry()
 @triton.autotune(
     configs=list(filter(keep, runtime.get_tuned_config("attention"))),
@@ -283,7 +287,7 @@ def prune_fwd_configs(configs, nargs, **kwargs):
 )
 @triton.heuristics(
     values={
-        "BLOCK_K": lambda args: triton.next_power_of_2(args["d"]),
+        "BLOCK_K": flash_fwd_kernel_heur_block_k,
         "PRE_LOAD_V": lambda args: False,
         "IS_EVEN_MN": lambda args: is_even_mn(
             args["seqlen_q"],
@@ -739,12 +743,16 @@ def flash_fwd_bh_parallel_kernel():
     pass
 
 
+def flash_fwd_splitkv_kernel_heur_block_k(args):
+    return triton.next_power_of_2(args["d"])
+
+
 @libentry()
 @triton.heuristics(
     values={
         "BLOCK_M": block_m_splitkv_heuristic_spec_args,
         "BLOCK_N": block_n_splitkv_heuristic_spec_args,
-        "BLOCK_K": lambda args: triton.next_power_of_2(args["d"]),
+        "BLOCK_K": flash_fwd_splitkv_kernel_heur_block_k,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
         "PRE_LOAD_V": lambda args: True,
@@ -1151,36 +1159,57 @@ def flash_fwd_splitkv_combine_kernel(
 
 
 @triton.jit
-def virtual_to_cache(virtual_index, page_table_ptr, block_size):
+def virtual_to_cache(
+    virtual_index,
+    max_virtual_index,
+    page_table_ptr,
+    block_size,
+    boundary_check: tl.constexpr = False,
+):
     # virtual_index is the kv sequence index in the current batch element
     # page_table_ptr is already pointed at current batch element's block table entry
     # block_size is the size of each block in the page table
     virtual_page_index = virtual_index // block_size
     page_offset = virtual_index % block_size
-    page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
+    if boundary_check:
+        page_block_index = tl.load(
+            page_table_ptr + virtual_page_index,
+            mask=virtual_index < max_virtual_index,
+            other=0,
+        ).to(tl.int32)
+    else:
+        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
     return page_block_index * block_size + page_offset
 
 
 @triton.jit
 def load_from_kvcache(
-    i,
+    virtual_index,
+    max_virtual_index,
     page_table_ptr,
     k_ptr_base,
     v_ptr_base,
     block_size,
-    d,
+    d: tl.constexpr,
     k_row_stride,
     BLOCK_K: tl.constexpr,
+    boundary_check: tl.constexpr = False,
 ):
-    kvcache_idx = virtual_to_cache(i, page_table_ptr, block_size)
+    kvcache_idx = virtual_to_cache(
+        virtual_index, max_virtual_index, page_table_ptr, block_size, boundary_check
+    )
     k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
     v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
-    bK = tl.load(
-        k_ptr_base + k_offset, mask=tl.arange(0, BLOCK_K)[:, None] < d, other=0.0
-    )
-    bV = tl.load(
-        v_ptr_base + v_offset, mask=tl.arange(0, BLOCK_K)[None, :] < d, other=0.0
-    )
+    if d == BLOCK_K:
+        bK = tl.load(k_ptr_base + k_offset)
+        bV = tl.load(v_ptr_base + v_offset)
+    else:
+        bK = tl.load(
+            k_ptr_base + k_offset, mask=tl.arange(0, BLOCK_K)[:, None] < d, other=0.0
+        )
+        bV = tl.load(
+            v_ptr_base + v_offset, mask=tl.arange(0, BLOCK_K)[None, :] < d, other=0.0
+        )
     return bK, bV
 
 
@@ -1347,7 +1376,7 @@ def flash_varlen_fwd_kernel(
         strides=(q_row_stride, 1),
         offsets=(0, 0),
         block_shape=(BLOCK_M, BLOCK_K),
-        order=(0, 1),
+        order=(1, 0),
     )
     bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]), boundary_check=(0, 1))
 
@@ -1377,6 +1406,7 @@ def flash_varlen_fwd_kernel(
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         bK, bV = load_from_kvcache(
             col_idx,
+            k_len,
             page_table_ptr,
             k_ptr_base,
             v_ptr_base,
@@ -1384,6 +1414,7 @@ def flash_varlen_fwd_kernel(
             d,
             k_row_stride,
             BLOCK_K=BLOCK_K,
+            boundary_check=True,
         )
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
@@ -1447,6 +1478,7 @@ def flash_varlen_fwd_kernel(
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         bK, bV = load_from_kvcache(
             col_idx,
+            k_len,
             page_table_ptr,
             k_ptr_base,
             v_ptr_base,
@@ -1530,7 +1562,7 @@ def flash_varlen_fwd_kernel(
         strides=(o_row_stride, 1),
         offsets=(0, 0),
         block_shape=(BLOCK_M, BLOCK_K),
-        order=(0, 1),
+        order=(1, 0),
     )
     tl.store(gO.advance([m_block * BLOCK_M, 0]), out, boundary_check=(0, 1))
 

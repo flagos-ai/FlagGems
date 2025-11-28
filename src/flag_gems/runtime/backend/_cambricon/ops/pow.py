@@ -7,8 +7,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 _pow = tl_extra_shim.pow
 
 

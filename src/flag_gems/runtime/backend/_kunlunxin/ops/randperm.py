@@ -11,7 +11,7 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .topk import argsort
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device_ = device
 
 _MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)

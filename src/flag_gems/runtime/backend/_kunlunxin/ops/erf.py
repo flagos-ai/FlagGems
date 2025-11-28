@@ -6,7 +6,7 @@ from triton.language.extra.xpu.libdevice import erf as _erf
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])

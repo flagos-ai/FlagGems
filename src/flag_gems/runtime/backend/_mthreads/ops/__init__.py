@@ -1,5 +1,6 @@
 from torch_musa import current_device, get_device_capability
 
+from .conv2d import conv2d
 from .dropout import dropout, dropout_backward
 from .ones import ones
 from .ones_like import ones_like
@@ -7,6 +8,7 @@ from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
+from .randperm import randperm
 from .sort import sort, sort_stable
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -24,6 +26,8 @@ __all__ = [
     "zeros_like",
     "sort",
     "sort_stable",
+    "randperm",
+    "conv2d",
 ]
 
 if get_device_capability(current_device())[0] >= 3:

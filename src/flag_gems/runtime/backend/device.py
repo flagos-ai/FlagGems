@@ -60,13 +60,13 @@ class DeviceDetector(object):
 
     def get_vendor(self, vendor_name=None) -> tuple:
         # Try to get the vendor name from a quick special command like 'torch.mlu'.
-        vendor_name = self._get_vendor_from_quick_cmd()
-        if vendor_name is not None:
-            return backend.get_vendor_info(vendor_name)
-        # Check whether the vendor name is set in the environment variable.
         vendor_from_env = self._get_vendor_from_env()
         if vendor_from_env is not None:
             return backend.get_vendor_info(vendor_from_env)
+
+        vendor_name = self._get_vendor_from_quick_cmd()
+        if vendor_name is not None:
+            return backend.get_vendor_info(vendor_name)
         try:
             # Obtaining a vendor_info from the methods provided by torch or triton, but is not currently implemented.
             return self._get_vendor_from_lib()

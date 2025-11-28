@@ -240,7 +240,7 @@ def rem_st(x, y):
 
 
 def remainder(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE")
+    logger.debug("GEMS REMAINDER")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rem_tt(A, B)
     elif isinstance(A, torch.Tensor):

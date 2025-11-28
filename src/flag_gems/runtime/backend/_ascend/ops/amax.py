@@ -11,7 +11,7 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
 
 @libentry()
@@ -87,7 +87,7 @@ def amax_kernel(
 
 
 def amax(inp, dim=None, keepdim=False):
-    logger.debug("GEMS AMAX")
+    logger.debug("GEMS_ASCEND AMAX")
     if dim is None or len(dim) == 0:
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))

@@ -5,14 +5,14 @@ import triton
 import triton.language as tl
 
 import flag_gems.runtime as runtime
-from flag_gems.utils import broadcastable_to, libentry
+from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
+@libtuner(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(axis=0)
@@ -26,7 +26,7 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
+@libtuner(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(axis=0)

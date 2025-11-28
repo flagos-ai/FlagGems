@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 rsqrt = tl_extra_shim.rsqrt
 
 
@@ -205,7 +205,6 @@ def weight_bias_backward_kernel_loop(
 
     grad_y_tile = tl.zeros((BLOCK_N, BLOCK_HW), dtype=tl.float32)  # grad_y_tile
     dw_tile = tl.zeros((BLOCK_N, BLOCK_HW), dtype=tl.float32)
-    # import pudb; pudb.set_trace()
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
 

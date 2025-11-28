@@ -62,7 +62,6 @@ def test_accuracy_exponential_(shape, dtype):
     assert x.min() > 0
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="skip for updating")
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", [(1024, 10)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

@@ -6,12 +6,92 @@ def simple_elementwise_blocksize_heur(args):
     return 1024
 
 
-def argmax_heur_block_m(args):
-    return 4 if args["M"] < 4096 else 8
+def argmax_heur_tile_k(args):
+    MAX_TILE_K = 512
+    NUM_SMS = torch.cuda.get_device_properties(
+        torch.cuda.current_device()
+    ).multi_processor_count
+
+    K = args["K"]
+    M = args["M"]
+    dtype = "fp32" if args["inp"].dtype == torch.float32 else "fp16"
+
+    if M == 64 and K == 512:
+        return 64 if dtype == "fp32" else 128
+
+    if K <= 128:
+        return 1 << (K.bit_length() - 1) if K > 0 else 1
+
+    tile_k = 64
+    upper_bound = min(K, MAX_TILE_K)
+
+    while tile_k <= upper_bound:
+        num_blocks = M * triton.cdiv(K, tile_k)
+        num_waves = num_blocks / NUM_SMS
+
+        if num_waves > 1 and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
+        else:
+            break
+
+    return tile_k
 
 
-def argmax_heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
+def argmax_heur_tile_n_non_inner(args):
+    n = args["N"]
+    tile_k = args["TILE_K"]
+
+    if n <= 128:
+        return n
+
+    target_tile = min(8192, n)
+    tile_n = triton.next_power_of_2(target_tile)
+    tile_n = max(64, min(tile_n, 4096))
+
+    if tile_n * tile_k > 32768:
+        tile_n = max(64, 32768 // tile_k)
+
+    return tile_n
+
+
+def argmax_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def argmax_heur_num_warps_non_inner(args):
+    tile_n = args["TILE_N"]
+    dtype = "fp32" if args["inp"].dtype == torch.float32 else "fp16"
+
+    if tile_n <= 32:
+        num_warps = 2
+    elif tile_n <= 64:
+        num_warps = 4
+    elif tile_n <= 128:
+        num_warps = 4
+    else:
+        num_warps = 8
+
+    if dtype == "fp32":
+        num_warps = min(num_warps, 4)
+
+    return num_warps
+
+
+def argmax_heur_tile_n_inner(args):
+    if args["N"] <= (32 * 1024):
+        return triton.next_power_of_2(args["N"])
+    else:
+        return 4096
+
+
+def argmax_heur_num_warps_inner(args):
+    tile_size = args["TILE_N"]
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
 
 
 def argmin_heur_block_m(args):
@@ -31,6 +111,18 @@ def bmm_heur_divisible_n(args):
 
 
 def bmm_heur_divisible_k(args):
+    return args["K"] % args["TILE_K"] == 0
+
+
+def baddbmm_heur_divisible_m(args):
+    return args["M"] % args["TILE_M"] == 0
+
+
+def baddbmm_heur_divisible_n(args):
+    return args["N"] % args["TILE_N"] == 0
+
+
+def baddbmm_heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
 
 
@@ -175,7 +267,7 @@ def softmax_heur_tile_n_bwd_non_inner(args):
     return max(1, 1024 // args["TILE_K"])
 
 
-def softmax_heru_tile_m(args):
+def softmax_heur_tile_m(args):
     return max(1, 1024 // args["TILE_N"])
 
 
@@ -233,9 +325,16 @@ def vdot_heur_block_size(args):
 
 
 HEURISTICS_CONFIGS = {
-    "argmax": {
-        "BLOCK_M": argmax_heur_block_m,
-        "BLOCK_N": argmax_heur_block_n,
+    "argmax_non_inner": {
+        "TILE_K": argmax_heur_tile_k,
+        "TILE_N": argmax_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "num_warps": argmax_heur_num_warps_non_inner,
+    },
+    "argmax_inner": {
+        "TILE_N": argmax_heur_tile_n_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "num_warps": argmax_heur_num_warps_inner,
     },
     "argmin": {
         "BLOCK_M": argmin_heur_block_m,
@@ -245,6 +344,11 @@ HEURISTICS_CONFIGS = {
         "DIVISIBLE_M": bmm_heur_divisible_m,
         "DIVISIBLE_N": bmm_heur_divisible_n,
         "DIVISIBLE_K": bmm_heur_divisible_k,
+    },
+    "baddbmm": {
+        "DIVISIBLE_M": baddbmm_heur_divisible_m,
+        "DIVISIBLE_N": baddbmm_heur_divisible_n,
+        "DIVISIBLE_K": baddbmm_heur_divisible_k,
     },
     "dropout": {
         "BLOCK": dropout_heur_block,
@@ -289,7 +393,7 @@ HEURISTICS_CONFIGS = {
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
     "softmax_backward_inner": {
-        "TILE_M": softmax_heru_tile_m,
+        "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
     "uniform": {
@@ -311,13 +415,25 @@ HEURISTICS_CONFIGS = {
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
     },
-    "mha_varlen_prefill": {
+    "mha_block_128": {
         "BLOCK_M": lambda args: 128,
         "BLOCK_N": lambda args: 32,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
     },
-    "mha_varlen_decode": {
+    "mha_block_64": {
+        "BLOCK_M": lambda args: 64,
+        "BLOCK_N": lambda args: 64,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "mha_block_32": {
+        "BLOCK_M": lambda args: 32,
+        "BLOCK_N": lambda args: 64,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "mha_block_16": {
         "BLOCK_M": lambda args: 16,
         "BLOCK_N": lambda args: 64,
         "num_warps": lambda args: 4,

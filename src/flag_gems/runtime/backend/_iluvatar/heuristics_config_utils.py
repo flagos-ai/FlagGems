@@ -173,7 +173,7 @@ def softmax_heur_tile_n_bwd_non_inner(args):
     return max(1, 1024 // args["TILE_K"])
 
 
-def softmax_heru_tile_m(args):
+def softmax_heur_tile_m(args):
     return max(1, 1024 // args["TILE_N"])
 
 
@@ -287,7 +287,7 @@ HEURISTICS_CONFIGS = {
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
     "softmax_backward_inner": {
-        "TILE_M": softmax_heru_tile_m,
+        "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
     "uniform": {
@@ -309,15 +309,27 @@ HEURISTICS_CONFIGS = {
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
     },
-    "mha_varlen_prefill": {
+    "mha_block_128": {
+        "BLOCK_M": lambda args: 128,
+        "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "mha_block_64": {
         "BLOCK_M": lambda args: 64,
         "BLOCK_N": lambda args: 32,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
     },
-    "mha_varlen_decode": {
+    "mha_block_32": {
         "BLOCK_M": lambda args: 32,
-        "BLOCK_N": lambda args: 16,
+        "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "mha_block_16": {
+        "BLOCK_M": lambda args: 16,
+        "BLOCK_N": lambda args: 32,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
     },
