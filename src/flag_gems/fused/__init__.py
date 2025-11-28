@@ -8,6 +8,7 @@ from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size,
     moe_align_block_size_triton,
 )
+from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.fused.outer import outer
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
@@ -32,6 +33,7 @@ __all__ = [
     "weight_norm",
     "concat_and_cache_mla",
     "reshape_and_cache",
+    "moe_sum",
     "moe_align_block_size",
     "moe_align_block_size_triton",
     "reshape_and_cache_flash",
