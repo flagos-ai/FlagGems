@@ -1,7 +1,6 @@
 import torch
 import triton
 
-
 _MIN_TILE_N = 64
 _MAX_TILE_N_PER_ROW = 4096
 _MAX_ONE_TILE_N = 2048
