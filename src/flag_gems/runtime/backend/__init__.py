@@ -4,6 +4,7 @@ import importlib
 import inspect
 import os
 import sys
+from pathlib import Path
 
 from ..commom_utils import vendors
 from . import backend_utils
@@ -19,6 +20,117 @@ heuristic_config_module = None
 vendor_extra_lib_imported = False
 device_fn_cache = {}
 customized_ops = None
+
+
+class BackendArchEvent:
+    has_arch: bool = False
+    _instance = None
+    _initialized: bool = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, backend=None):
+        if BackendArchEvent._initialized:
+            return
+        BackendArchEvent._initialized = True
+        self.backend = backend
+        self.error_msgs = []
+        self.arch = self.get_arch()
+        if self.has_arch:
+            self.supported_archs = self._get_supported_archs()
+            # current_arch_path is like FlagGems/src/flag_gems/runtime/backend/_nvidia/hopper
+            self.current_arch_path = self.supported_archs.get(self.arch)
+            self.arch_module = self.get_arch_module()
+            self.autotune_configs = self.get_autotune_configs()
+            self.heuristics_configs = self.get_heuristics_configs()
+
+    def get_functions_from_module(self, module):
+        return inspect.getmembers(module, inspect.isfunction) if module else []
+
+    def get_heuristics_configs(self):
+        heuristic_module = None
+        try:
+            heuristic_module = self.arch_module
+        except Exception:  # noqa E722
+            sys.path.insert(0, str(self.current_arch_path))
+            heuristic_module = importlib.import_module("heuristics_config_utils")
+            sys.path.remove(str(self.current_arch_path))
+        if hasattr(heuristic_module, "HEURISTICS_CONFIGS"):
+            return heuristic_module.HEURISTICS_CONFIGS
+        return None
+
+    def get_autotune_configs(self):
+        path = self.current_arch_path
+        return backend_utils.get_tune_config(file_path=path)
+
+    def get_arch(self, device=0):
+        if not hasattr(vendor_module, "ARCH_MAP"):
+            return
+        arch_map = vendor_module.ARCH_MAP
+        arch_string = os.environ.get("ARCH", "")
+        arch_string_num = arch_string.split("_")[-1][0] if arch_string else arch_string
+        if not arch_string_num:
+            try:
+                if not torch_device_object.is_available():
+                    return False
+                props = torch_device_object.get_device_properties(device)
+                arch_string_num = str(props.major)
+            except Exception:
+                self.has_arch = False
+        if arch_string_num not in arch_map:
+            print(
+                f"[INFO] : FlagGems Unsupported GPU arch {arch_string} specialization"
+            )
+        else:
+            self.has_arch = True
+            return arch_map[arch_string_num]
+
+    def _get_supported_archs(self, path=None):
+        path = path or vendor_module.__path__[0]
+        excluded = ("ops", "fused")
+        path = Path(path)
+        path = path.parent if path.is_file() else path
+        archs = {}
+        for p in path.iterdir():
+            name = str(p).split("/")[-1]
+            if p.is_dir() and name not in excluded and not name.startswith("_"):
+                archs.update({name: str(p)})
+        return archs
+
+    def get_supported_archs(self):
+        return list(self.supported_archs.keys())
+
+    def get_arch_module(self):
+        """Load backend.<arch>"""
+        path_dir = os.path.dirname(self.current_arch_path)
+        sys.path.insert(0, str(path_dir))
+        current_arch_module = importlib.import_module(self.arch)
+        sys.path.remove(str(path_dir))
+        return current_arch_module
+
+    def get_arch_ops(self):
+        arch_specialized_ops = []
+        modules = []
+        sys.path.append(self.current_arch_path)
+        ops_module = importlib.import_module(f"{self.arch}.ops")
+        try:
+            ops_module = self.arch_module.ops
+            modules.append(ops_module)
+        except Exception:
+            try:
+                sys.path.append(self.current_arch_path)
+                ops_module = importlib.import_module(f"{self.arch}.ops")
+                modules.append(ops_module)
+            except Exception as err_msg:
+                self.error_msgs.append(err_msg)
+
+        for mod in modules:
+            arch_specialized_ops.extend(self.get_functions_from_module(mod))
+
+        return arch_specialized_ops
 
 
 def import_vendor_extra_lib(vendor_name=None):
