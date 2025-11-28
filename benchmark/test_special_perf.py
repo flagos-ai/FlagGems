@@ -402,7 +402,6 @@ def test_perf_diagonal_backward():
     vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
     reason="only support torch >= 2.5.",
 )
-@pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron
 def test_perf_kron():
     class KronBenchmark(GenericBenchmark2DOnly):

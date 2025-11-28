@@ -772,6 +772,9 @@ def test_accuracy_floor_divide_int(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_floor_divide_int_(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     inp1 = torch.randint(
         torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
     ).to(

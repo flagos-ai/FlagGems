@@ -266,8 +266,8 @@ class BinaryPointwiseBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp1 = generate_tensor_input(shape, cur_dtype, self.device)
-            shift_amount = torch.randint(
-                0, 8, shape, dtype=cur_dtype, device=self.device
+            shift_amount = torch.randint(0, 8, shape, dtype=cur_dtype, device="cpu").to(
+                self.device
             )
             yield inp1, shift_amount
 
