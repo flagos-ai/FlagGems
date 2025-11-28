@@ -179,6 +179,7 @@ def enable(
             ("isin.Tensor_Tensor", isin),
             ("isinf", isinf),
             ("isnan", isnan),
+            ("istft", istft),
             ("kron", kron),
             ("le.Scalar", le_scalar),
             ("le.Tensor", le),
