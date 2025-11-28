@@ -14,16 +14,22 @@ class VendorInfoBase:
     triton_extra_name: str = None
 
 
-def get_tune_config(vendor_name, file_mode="r"):
+def get_tune_config(vendor_name=None, file_mode="r", file_path=None):
+    BACKEND_EVENT = file_path is not None
+    config = None
     try:
-        vendor_name = "_" + vendor_name
-        script_path = os.path.abspath(__file__)
-        base_dir = os.path.dirname(script_path)
-        file_path = os.path.join(base_dir, vendor_name, "tune_configs.yaml")
+        if not file_path:
+            vendor_name = "_" + vendor_name
+            script_path = os.path.abspath(__file__)
+            base_dir = os.path.dirname(script_path)
+            file_path = os.path.join(base_dir, vendor_name, "tune_configs.yaml")
+        else:
+            file_path = os.path.join(file_path, "tune_configs.yaml")
         with open(file_path, file_mode) as file:
             config = yaml.safe_load(file)
     except FileNotFoundError:
-        raise FileNotFoundError(f"Configuration file not found: {file_path}")
+        if not BACKEND_EVENT:
+            raise FileNotFoundError(f"Configuration file not found: {file_path}")
     except yaml.YAMLError as e:
         raise ValueError(f"Failed to parse YAML file: {e}")
     except Exception as e:
