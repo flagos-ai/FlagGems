@@ -13,6 +13,13 @@ from benchmark.attri_util import (
 )
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 
+try:
+    from transformer_engine.pytorch import cpp_extensions as tex
+
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
+
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
@@ -96,6 +103,7 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
 
 forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
+    # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
@@ -287,5 +295,119 @@ def test_bitwise_right_shift_perf():
         op_name="bitwise_right_shift",
         torch_op=torch.bitwise_right_shift,
         dtypes=INT_DTYPES,
+    )
+    bench.run()
+
+
+class TexGluBenchmark(Benchmark):
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        # Last dim must be even for GLU operations to split
+        special_shapes_2d = [(1024, 2**i) for i in range(1, 20, 4)]
+        sp_shapes_3d = [(64, 64, 2**i) for i in range(1, 15, 4)]
+        return special_shapes_2d + sp_shapes_3d
+
+
+class TexGluForwardBenchmark(TexGluBenchmark):
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            x = generate_tensor_input(shape, cur_dtype, self.device)
+            # TE GLU APIs typically accept (input, quantizer).
+            yield (x, None)
+
+    def get_tflops(self, op, *args, **kwargs):
+        # args[0] is the input tensor x
+        shape = list(args[0].shape)
+        return torch.tensor(shape).prod().item()
+
+
+class TexGluBackwardBenchmark(TexGluBenchmark):
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+
+            out_shape = list(shape)
+            out_shape[-1] = out_shape[-1] // 2
+
+            grad_out = torch.randn(out_shape, dtype=cur_dtype, device=self.device)
+
+            yield grad_out, inp, None
+
+    def get_tflops(self, op, *args, **kwargs):
+        # args[1] is the original input tensor 'inp'
+        inp_shape = list(args[1].shape)
+        # Proxy FLOPs estimate: forward + backward cost roughly approximated
+        return torch.tensor(inp_shape).prod().item() * 2
+
+
+glu_forward_ops = [
+    ("geglu", "geglu", FLOAT_DTYPES),
+    # ("swiglu", "swiglu", FLOAT_DTYPES),
+    # ("reglu", "reglu", FLOAT_DTYPES),
+]
+
+glu_backward_ops = [
+    ("dgeglu", "dgeglu", FLOAT_DTYPES),
+    # ("dswiglu", "dswiglu", FLOAT_DTYPES),
+    # ("dreglu", "dreglu", FLOAT_DTYPES),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, tex_attr_name, dtypes",
+    [
+        pytest.param(
+            name,
+            tex_attr,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, tex_attr, dtype in glu_forward_ops
+    ],
+)
+def test_tex_glu_forward_perf(op_name, tex_attr_name, dtypes):
+    if not TE_AVAILABLE:
+        pytest.skip("TransformerEngine not installed")
+
+    if not hasattr(tex, tex_attr_name):
+        pytest.skip(f"Operator {tex_attr_name} not found in transformer_engine")
+
+    te_op = getattr(tex, tex_attr_name)
+
+    bench = TexGluForwardBenchmark(
+        op_name=op_name,
+        torch_op=te_op,
+        dtypes=dtypes,
+    )
+    bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, tex_attr_name, dtypes",
+    [
+        pytest.param(
+            name,
+            tex_attr,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, tex_attr, dtype in glu_backward_ops
+    ],
+)
+def test_tex_glu_backward_perf(op_name, tex_attr_name, dtypes):
+    if not TE_AVAILABLE:
+        pytest.skip("TransformerEngine not installed")
+
+    if not hasattr(tex, tex_attr_name):
+        pytest.skip(f"Operator {tex_attr_name} not found in transformer_engine")
+
+    te_op = getattr(tex, tex_attr_name)
+
+    bench = TexGluBackwardBenchmark(
+        op_name=op_name,
+        torch_op=te_op,
+        dtypes=dtypes,
+        is_backward=False,
     )
     bench.run()
