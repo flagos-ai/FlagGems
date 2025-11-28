@@ -71,6 +71,21 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
                               bool scale_grad_by_freq = false,
                               bool sparse = false);
 at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim = std::nullopt, bool keepdim = false);
+at::Tensor true_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor true_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor div_mode(const at::Tensor &a,
+                    const at::Tensor &b,
+                    const c10::optional<std::string> &rounding_mode);
+at::Tensor div_mode_(at::Tensor &a, const at::Tensor &b, const c10::optional<std::string> &rounding_mode);
+at::Tensor remainder_tt(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
+at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
+at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
 
 at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
 
