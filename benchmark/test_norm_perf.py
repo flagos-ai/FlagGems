@@ -130,7 +130,7 @@ def batchnorm_input_fn(shape, dtype, device):
 def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
     if vendor_name == "kunlunxin" and op_name in [
         "instance_norm",
-        "batch_norm",
+        # "batch_norm",
     ]:
         pytest.skip("RUNTIME TODOFIX.(batch_norm unsupported in torch)")
     if vendor_name == "mthreads" and op_name == "instance_norm":
