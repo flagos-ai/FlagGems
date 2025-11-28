@@ -109,7 +109,6 @@ def test_perf_unique():
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
