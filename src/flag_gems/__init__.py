@@ -328,6 +328,8 @@ def enable(
             ("where.self_out", where_self_out),
             ("zeros", zeros),
             ("zeros_like", zeros_like),
+            ("dreglu", dreglu),
+            ("reglu", reglu),
         ),
         user_unused_ops_list=list(set(unused or [])),
         cpp_patched_ops_list=list(set(aten_patch_list)),
