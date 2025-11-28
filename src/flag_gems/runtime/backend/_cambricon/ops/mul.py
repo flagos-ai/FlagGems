@@ -8,15 +8,17 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def mul_func(x, y):
+def mul_func(x, y, inplace):
     return x * y
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
 @triton.jit
-def mul_func_scalar(x, y):
+def mul_func_scalar(x, y, inplace):
     return x * y
 
 
@@ -27,11 +29,11 @@ def mul(A, B):
             A, B = torch.broadcast_tensors(A, B)
             A = A.clone()
             B = B.clone()
-        return mul_func(A, B)
+        return mul_func(A, B, False)
     elif isinstance(A, torch.Tensor):
-        return mul_func_scalar(A, B)
+        return mul_func_scalar(A, B, False)
     elif isinstance(B, torch.Tensor):
-        return mul_func_scalar(B, A)
+        return mul_func_scalar(B, A, False)
     else:
         # Both scalar
         return torch.tensor(A * B)
@@ -44,6 +46,6 @@ def mul_(A, B):
             A, B = torch.broadcast_tensors(A, B)
             A = A.clone()
             B = B.clone()
-        return mul_func(A, B, out0=A)
+        return mul_func(A, B, True, out0=A)
     else:
-        return mul_func_scalar(A, B, out0=A)
+        return mul_func_scalar(A, B, True, out0=A)
