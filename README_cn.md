@@ -46,6 +46,24 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 更新日志
 
+### v4.2（即将发布）
+
+- 计划支持 216 个算子，并与最新的 [Operator List](docs/operator_list.md) 保持一致
+- 计划新增算子：`tan`、`tan_`、`baddbmm`、`avg_pool2d`、`clamp_min`、`clamp_min_`、`std`、`trace`、`max_pool2d`、`bitwise_left_shift`、`bitwise_right_shift`
+- 原有的 `upsample` 算子将拆分为 `upsample_nearest2d` 与 `upsample_bicubic2d_aa`
+
+### v4.1
+
+- 面向 RWKV 模型的定制版本，共计支持 204 个算子
+- 包含针对 RWKV 推理加速场景优化的融合算子：`rwkv_mm_sparsity`、`rwkv_ka_fusion`
+- 已被 RWKV 项目采用，具体见 [BlinkDL/Albatross:faster_251101](https://github.com/BlinkDL/Albatross/tree/main/faster_251101)
+
+### v4.0
+
+- 共计支持 202 个算子
+- 新增通用算子：`addcdiv`、`addcmul`、`addmv`、`addr`、`atan`、`atan_`、`celu`、`celu_`、`elu_`、`exp2`、`exp2_`、`get_scheduler_metadata`、`index_add_`、`logspace`、`moe_align_block_size`、`softplus`、`sqrt_`、`topk_softmax`
+- Triton JIT runtime 新增支持的算子：`add`、`addmm`、`argmax`、`bmm`、`cat`、`contiguous`、`embedding`、`exponential_`、`fill`、`flash_attn_varlen_func`、`fused_add_rms_norm`、`max`、`mm`、`nonzero`、`reshape_and_cache_flash`、`rms_norm`、`rotary_embedding`、`softmax`、`sum`、`topk`、`zeros`
+
 ### v3.0
 
 - 共计支持 184 个算子，包括大模型推理使用的定制算子

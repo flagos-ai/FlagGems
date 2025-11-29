@@ -51,6 +51,24 @@ FlagGems can be installed either as a pure Python package or as a package with C
 
 ## Changelog
 
+### v4.2 (upcoming)
+
+- release targeting 216 operators, aligned with the updated [Operator List](docs/operator_list.md)
+- additions: `tan`, `tan_`, `baddbmm`, `avg_pool2d`, `clamp_min`, `clamp_min_`, `std`, `trace`, `max_pool2d`, `bitwise_left_shift`, `bitwise_right_shift`
+- the previous `upsample` operator will be split into `upsample_nearest2d` and `upsample_bicubic2d_aa`
+
+### v4.1
+
+- dedicated RWKV-focused release with 204 supported operators
+- includes fused kernels `rwkv_mm_sparsity` and `rwkv_ka_fusion` optimized for RWKV inference acceleration scenarios
+- adopted by the RWKV project in [BlinkDL/Albatross:faster_251101](https://github.com/BlinkDL/Albatross/tree/main/faster_251101)
+
+### v4.0
+
+- support 202 operators in total
+- newly added operators: `addcdiv`, `addcmul`, `addmv`, `addr`, `atan`, `atan_`, `celu`, `celu_`, `elu_`, `exp2`, `exp2_`, `get_scheduler_metadata`, `index_add_`, `logspace`, `moe_align_block_size`, `softplus`, `sqrt_`, `topk_softmax`
+- Triton JIT C++ runtime now ships precompiled kernels for: `add`, `addmm`, `argmax`, `bmm`, `cat`, `contiguous`, `embedding`, `exponential_`, `fill`, `flash_attn_varlen_func`, `fused_add_rms_norm`, `max`, `mm`, `nonzero`, `reshape_and_cache_flash`, `rms_norm`, `rotary_embedding`, `softmax`, `sum`, `topk`, `zeros`
+
 ### v3.0
 
 - support 184 operators in total, including custom operators used in large model inference
