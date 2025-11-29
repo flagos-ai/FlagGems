@@ -49,6 +49,20 @@ def test_accuracy_abs_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.acos
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_acos(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.acos(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.acos(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, True)
+
+
 @pytest.mark.angle
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
