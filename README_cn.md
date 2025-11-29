@@ -1,7 +1,5 @@
 [English](./README.md)
 
-[<img width="4750" height="958" alt="github+banner__2025-11-11+13_27_10" src="https://github.com/user-attachments/assets/10a072db-bbe1-463c-993e-a9e09f948a12" />](https://www.flagopen.ac.cn/)
-
 
 ## 介绍
 
