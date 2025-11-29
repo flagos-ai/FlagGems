@@ -4,6 +4,13 @@ import torch
 import flag_gems
 from flag_gems.ops.copy import _can_use_triton
 
+try:
+    from transformer_engine.pytorch import cpp_extensions as tex
+
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
+
 from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
     ALL_INT_DTYPES,
@@ -12,6 +19,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    SWIGLU_SPECIAL_SHAPES,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -404,6 +412,73 @@ def test_accuracy_glu_backward(shape, dtype):
             res_in_grad = torch.ops.aten.glu_backward(res_out, res_inp, dim=dim)
 
         gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+def generate_input(
+    shape: tuple[int, ...], dtype: torch.dtype, device: torch.device
+) -> torch.Tensor:
+    return torch.randn(shape, dtype=dtype, device=device).contiguous()
+
+
+def filter_valid_shapes(shapes: list[tuple[int, ...]]) -> list[tuple[int, ...]]:
+    valid_shapes = []
+    for shape in shapes:
+        if not shape:
+            continue
+        if shape[-1] % 2 == 0:
+            valid_shapes.append(shape)
+    return valid_shapes
+
+
+VALID_POINTWISE_SHAPES = filter_valid_shapes(SWIGLU_SPECIAL_SHAPES)
+
+
+@pytest.mark.swiglu
+@pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_swiglu_forward(shape: tuple[int, ...], dtype: torch.dtype):
+    if not TE_AVAILABLE:
+        pytest.skip(
+            "Transformer Engine backend (cpp_extensions) not available for reference."
+        )
+
+    torch.manual_seed(42)
+    device = flag_gems.device
+
+    input_tensor = generate_input(shape, dtype, device)
+
+    te_forward = tex.swiglu(input_tensor, quantizer=None)
+
+    with flag_gems.use_gems():
+        fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
+
+    gems_assert_close(fg_forward, te_forward, dtype)
+
+
+@pytest.mark.swiglu
+@pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_swiglu_backward(shape: tuple[int, ...], dtype: torch.dtype):
+    if not TE_AVAILABLE:
+        pytest.skip(
+            "Transformer Engine backend (cpp_extensions) not available for reference."
+        )
+
+    torch.manual_seed(42)
+    device = flag_gems.device
+
+    input_tensor = generate_input(shape, dtype, device)
+
+    grad_shape = list(shape)
+    grad_shape[-1] = grad_shape[-1] // 2
+    grad_output = generate_input(tuple(grad_shape), dtype, device)
+
+    te_grad_input = tex.dswiglu(grad_output, input_tensor, quantizer=None)
+
+    with flag_gems.use_gems():
+        fg_grad_input = flag_gems.dswiglu(grad_output, input_tensor, quantizer=None)
+
+    gems_assert_close(fg_grad_input, te_grad_input, dtype)
 
 
 @pytest.mark.isinf
