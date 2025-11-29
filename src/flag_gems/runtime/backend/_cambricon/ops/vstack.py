@@ -7,7 +7,7 @@ from typing import Callable, Mapping
 import torch
 
 from flag_gems.utils.code_cache import cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 from ..utils import TOTAL_CORE_NUM
 
@@ -68,7 +68,7 @@ import torch
 import triton
 from triton import language as tl
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.runtime.backend import vendor_module
 TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM
 MAX_NRAM_SIZE = vendor_module.MAX_NRAM_SIZE
@@ -110,7 +110,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
         self.tpl(
             """
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
         triton.Config({{'BLOCK_SIZE' : 512}}, num_warps=1),
         triton.Config({{'BLOCK_SIZE' : 2048}}, num_warps=1),
@@ -322,11 +322,11 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
             # generate code and cache.
             self.__gen_code()
             file_name = f"vstack_{key}_pid_{self.pid}.py"
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(self.getvalue())
+            filepath = cache_dir() / file_name
+            write_atomic(filepath, self.getvalue())
             # load
             spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{key}_pid_{self.pid}", f.name
+                f"_gen_module_{key}_pid_{self.pid}", filepath
             )
             m = importlib.util.module_from_spec(spec)
             # do not expose it to sys.modules
