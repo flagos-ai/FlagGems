@@ -48,7 +48,7 @@ Config = BenchConfig()
 def pytest_addoption(parser):
     parser.addoption(
         (
-            "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+            "--mode"
         ),  # TODO: fix pytest-* common --mode args
         action="store",
         default="kernel",
@@ -133,7 +133,7 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     global Config  # noqa: F824
     mode_value = config.getoption(
-        "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+        "--mode"
     )
     Config.mode = BenchMode(mode_value)
 
