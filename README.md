@@ -1,7 +1,5 @@
 [中文版](./README_cn.md)
 
-<img width="4750" height="958" alt="github+banner__2025-11-11+13_27_10" src="https://github.com/user-attachments/assets/ac57a145-4653-42b6-9be1-241d91871d1d" />
-
 ## Introduction
 
 FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It builds on a collection of backend neutral kernels that aims to accelerate LLM training and inference across diverse hardware platforms.
