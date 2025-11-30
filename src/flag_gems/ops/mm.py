@@ -1,6 +1,5 @@
 import logging
 from functools import lru_cache
-from typing import Optional
 
 import torch
 import triton
@@ -57,7 +56,7 @@ def prev_multiple_of(a, b):
     configs=runtime.get_tuned_config("mm"),
     # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["default", "default", "default", "default", "default"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=10,
 )
@@ -90,97 +89,49 @@ def mm_kernel_general(
     group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
     pid_m = group_id * GROUP_M + (pid % group_size)
     pid_n = (pid % width) // (group_size)
-    
-    if (M % BLOCK_M == 0 and N % BLOCK_N == 0 and K % BLOCK_K == 0):
-        # offset
-        offset_am = pid_m * BLOCK_M
-        offset_bn = pid_n * BLOCK_N
-        offset_k = 0
+    # do matrix multiplication
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    prev_multiple = prev_multiple_of(K, BLOCK_K)
 
-        a_desc = tl.make_tensor_descriptor(
-            base = A,
-            shape = [M, K],
-            strides = [K, 1],
-            block_shape = [BLOCK_M, BLOCK_K],
-        )
-
-        # row-major
-        b_desc = tl.make_tensor_descriptor(
-            base = B,
-            shape = [K, N],
-            strides = [N, 1],
-            block_shape = [BLOCK_K, BLOCK_N],
-        )
-
-        # column-major
-        # b_desc = tl.make_tensor_descriptor(
-        #     B,
-        #     shape = [N, K],
-        #     strides = [K, 1],
-        #     block_shape = [BLOCK_N, BLOCK_K],
-        # )
-        
-        c_desc = tl.make_tensor_descriptor(
-            base = C,
-            shape = [M, N],
-            strides = [N, 1],
-            block_shape = [BLOCK_M, BLOCK_N],
-        )
-
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-        for k in range(0, tl.cdiv(K, BLOCK_K)):
-            a = a_desc.load([offset_am.to(tl.int32), offset_k.to(tl.int32)])
-            b = b_desc.load([offset_k.to(tl.int32), offset_bn.to(tl.int32)])
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-            offset_k += BLOCK_K
-
-        acc = acc.to(a_desc.dtype)
-        c_desc.store([offset_am.to(tl.int32), offset_bn.to(tl.int32)], acc)
-
-    else:
-        # do matrix multiplication
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-        prev_multiple = prev_multiple_of(K, BLOCK_K)
-
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-        for start_k in range(0, prev_multiple, BLOCK_K):
-            rk = start_k + tl.arange(0, BLOCK_K)
-            a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
-            b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
-            if a.dtype != b.dtype:
-                a = a.to(C.dtype.element_ty)
-                b = b.to(C.dtype.element_ty)
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-
-        # loop peeling
-        rk = prev_multiple + tl.arange(0, BLOCK_K)
-        mask_k = rk < K
-        a = tl.load(
-            A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
-            mask=mask_k[None, :],
-            other=0.0,
-        )
-        b = tl.load(
-            B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn),
-            mask=mask_k[:, None],
-            other=0.0,
-        )
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for start_k in range(0, prev_multiple, BLOCK_K):
+        rk = start_k + tl.arange(0, BLOCK_K)
+        a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
+        b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
-        acc = acc.to(C.dtype.element_ty)
-        # rematerialize rm and rn to save registers
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        offsets = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
-        mask = (rm < M)[:, None] & (rn < N)[None, :]
-        # handles write-back with reduction-splitting
-        tl.store(offsets, acc, mask=mask)
+    # loop peeling
+    rk = prev_multiple + tl.arange(0, BLOCK_K)
+    mask_k = rk < K
+    a = tl.load(
+        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
+        mask=mask_k[None, :],
+        other=0.0,
+    )
+    b = tl.load(
+        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn),
+        mask=mask_k[:, None],
+        other=0.0,
+    )
+    if a.dtype != b.dtype:
+        a = a.to(C.dtype.element_ty)
+        b = b.to(C.dtype.element_ty)
+    acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    acc = acc.to(C.dtype.element_ty)
+    # rematerialize rm and rn to save registers
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+    mask = (rm < M)[:, None] & (rn < N)[None, :]
+    # handles write-back with reduction-splitting
+    tl.store(C, acc, mask=mask)
 
 
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
@@ -213,11 +164,6 @@ def general_mm(a, b, c, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-
-    def alloc_fn(size: int, align: int, stream: Optional[int]):
-        return torch.empty(size, dtype=torch.int8, device=a.device)
-    triton.set_allocator(alloc_fn)
-
     with torch_device_fn.device(a.device):
         mm_kernel_general[grid](
             a,
