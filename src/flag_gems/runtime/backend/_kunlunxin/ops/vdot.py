@@ -198,6 +198,7 @@ def vdot(input: Tensor, other: Tensor):
             other_stride=other_stride,
             isCLOSE_TTXPU_O_ATOMIC_SIM=True,
             isCloseOffsetAnalysis=True,
+            isCloseUnrollControl=True,
         )
 
         return torch.view_as_complex(output_real)
