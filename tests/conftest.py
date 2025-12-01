@@ -25,7 +25,9 @@ def pytest_addoption(parser):
     )
     parser.addoption(
         (
-            "--fg_mode" if flag_gems.vendor_name == "kunlunxin" and torch.__version__ < "2.5" else "--mode"
+            "--fg_mode"
+            if flag_gems.vendor_name == "kunlunxin" and torch.__version__ < "2.5"
+            else "--mode"
         ),  # TODO: fix pytest-* common --mode args,
         action="store",
         default="normal",
