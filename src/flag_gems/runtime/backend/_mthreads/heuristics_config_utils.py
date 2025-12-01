@@ -34,6 +34,18 @@ def bmm_heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
 
 
+def baddbmm_heur_divisible_m(args):
+    return args["M"] % args["TILE_M"] == 0
+
+
+def baddbmm_heur_divisible_n(args):
+    return args["N"] % args["TILE_N"] == 0
+
+
+def baddbmm_heur_divisible_k(args):
+    return args["K"] % args["TILE_K"] == 0
+
+
 def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -245,6 +257,11 @@ HEURISTICS_CONFIGS = {
         "DIVISIBLE_M": bmm_heur_divisible_m,
         "DIVISIBLE_N": bmm_heur_divisible_n,
         "DIVISIBLE_K": bmm_heur_divisible_k,
+    },
+    "baddbmm": {
+        "DIVISIBLE_M": baddbmm_heur_divisible_m,
+        "DIVISIBLE_N": baddbmm_heur_divisible_n,
+        "DIVISIBLE_K": baddbmm_heur_divisible_k,
     },
     "dropout": {
         "BLOCK": dropout_heur_block,
