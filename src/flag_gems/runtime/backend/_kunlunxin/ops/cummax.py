@@ -13,7 +13,7 @@ from flag_gems.utils.limits import get_dtype_min
 
 Tensor = torch.Tensor
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -216,8 +216,6 @@ def scan_part_max_abc_kernel(
     else:
         in_indices_vals = b_idx
     result, cummax_indices = tl_cummax(inp_vals, in_indices_vals, axis=0)
-    # print("result", result)
-    # print("cummax_indices", cummax_indices)
 
     if tl.constexpr(NEED_PARTIAL):
         # tl.max do not support max_indices_tie_break_right
@@ -392,8 +390,6 @@ def scan_part_max_abc_loop_kernel(
 
         # cummax
         result, cummax_indices = tl_cummax(vals, idxs, axis=0)
-        # print("result", result)
-        # print("cummax_indices", cummax_indices)
 
         # broadcast
         prev_max_val_b = tl.broadcast_to(prev_max_val, (BLOCK_SIZE,))
@@ -431,7 +427,6 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
     loop_num = math.ceil(B / BLOCK_SIZE)
 
     grid = (A, C)
-    print(f"grid = {grid}")
     with torch_device_fn.device(inp.device):
         scan_part_max_abc_loop_kernel[grid](
             inp,
@@ -451,7 +446,6 @@ def cummax(
     *,
     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
 ) -> torch.return_types.cummax:
-    print(f"input.shape = {input.shape}, dim = {dim}")
     logger.debug("GEMS cummax")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
