@@ -1,4 +1,5 @@
 import json
+import torch
 import logging
 import os
 from datetime import datetime
@@ -24,7 +25,7 @@ def pytest_addoption(parser):
     )
     parser.addoption(
         (
-            "--mode" if flag_gems.vendor_name != "kunlunxin" else "--fg_mode"
+            "--fg_mode" if flag_gems.vendor_name == "kunlunxin" and torch.__version__ < "2.5" else "--mode"
         ),  # TODO: fix pytest-* common --mode args,
         action="store",
         default="normal",
