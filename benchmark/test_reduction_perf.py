@@ -205,8 +205,6 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cummax"]:
-            pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
