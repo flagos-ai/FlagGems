@@ -68,7 +68,6 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.isin
 def test_isin_perf():
@@ -93,7 +92,6 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.unique
 def test_perf_unique():
@@ -175,24 +173,36 @@ class EmbeddingBenchmark(GenericBenchmark2DOnly):
         return None
 
 
+def embedding_input_fn(shape, dtype, device):
+    num_embeddings, embedding_dim = shape
+    indices = torch.randint(0, num_embeddings, (num_embeddings,), device=device)
+    weight = torch.randn((num_embeddings, embedding_dim), device=device, dtype=dtype)
+    yield {"input": indices, "weight": weight},
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        indices_2d = torch.randint(
+            0,
+            num_embeddings,
+            (num_embeddings, num_embeddings),
+            device=device,
+        )
+        yield {"input": indices_2d, "weight": weight},
+
+
+def embedding_backward_input_fn(shape, dtype, device):
+    for forward_args in embedding_input_fn(shape, dtype, device):benchmark/test_special_perf.py
+        # print(f'forward_args = {forward_args}')
+        input = forward_args[0]["input"]
+        weight = forward_args[0]["weight"]
+        # print(f'weight = {weight}')
+        weight.requires_grad_(True)
+        # import pudb; pudb.set_trace()
+        # output = torch.nn.functional.embedding(input, weight)
+        # grad_output = torch.randn_like(output)
+        yield input, weight
+
+
 @pytest.mark.embedding
 def test_perf_embedding():
-    def embedding_input_fn(shape, dtype, device):
-        num_embeddings, embedding_dim = shape
-        indices = torch.randint(0, num_embeddings, (num_embeddings,), device=device)
-        weight = torch.randn(
-            (num_embeddings, embedding_dim), device=device, dtype=dtype
-        )
-        yield {"input": indices, "weight": weight},
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            indices_2d = torch.randint(
-                0,
-                num_embeddings,
-                (num_embeddings, num_embeddings),
-                device=device,
-            )
-            yield {"input": indices_2d, "weight": weight},
-
     bench = EmbeddingBenchmark(
         input_fn=embedding_input_fn,
         op_name="embedding",
@@ -205,6 +215,28 @@ def test_perf_embedding():
     bench.run()
 
 
+@pytest.mark.embedding_backward
+def test_perf_embedding_backward():
+    bench = EmbeddingBenchmark(
+        input_fn=embedding_backward_input_fn,
+        op_name="embedding",
+        torch_op=torch.nn.functional.embedding,
+        dtypes=[
+            torch.float32,
+            torch.float16,
+        ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+        is_backward=True,
+    )
+    bench.run()
+
+
+def lerp_input_fn(shape, dtype, device):
+    input = torch.randn(*shape, device=device, dtype=dtype)
+    end = input + 10
+    weight = torch.randn(*shape, device=device, dtype=dtype)
+    yield {"input": input, "end": end, "weight": weight},
+
+
 class LerpBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
@@ -214,17 +246,23 @@ class LerpBenchmark(GenericBenchmark):
 
 @pytest.mark.lerp
 def test_perf_lerp():
-    def lerp_input_fn(shape, dtype, device):
-        input = torch.randn(*shape, device=device, dtype=dtype)
-        end = input + 10
-        weight = torch.randn(*shape, device=device, dtype=dtype)
-        yield {"input": input, "end": end, "weight": weight},
-
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
         op_name="lerp",
         torch_op=torch.lerp,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.lerp_
+def test_perf_lerp_inplace():
+    bench = LerpBenchmark(
+        input_fn=lerp_input_fn,
+        op_name="lerp_",
+        torch_op=lambda input, end, weight: input.lerp_(end, weight),
+        dtypes=FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()
 
@@ -257,7 +295,7 @@ def test_perf_upsample_bicubic2d_aa():
 
     bench = UpsampleBenchmark(
         input_fn=upsample_bicubic2d_aa_input_fn,
-        op_name="upsample_bicubic2d_aa",
+        op_name="_upsample_bicubic2d_aa",
         torch_op=torch._C._nn._upsample_bicubic2d_aa,
         dtypes=[torch.float32] if vendor_name == "cambricon" else FLOAT_DTYPES,
     )
@@ -287,106 +325,6 @@ def test_perf_upsample_nearest2d():
         torch_op=torch._C._nn.upsample_nearest2d,
         dtypes=FLOAT_DTYPES,
     )
-    bench.run()
-
-
-class ConvBenchmark(GenericBenchmark):
-    def set_more_shapes(self):
-        # self.shapes is a list of tuples, each containing three elements:
-        # (N, C, H, W).
-        return None
-
-
-@pytest.mark.skipif(True, reason="Conv2d not registered yet")
-@pytest.mark.conv2d
-def test_perf_conv2d():
-    def conv2d_input_fn(shape, dtype, device):
-        (
-            batch,
-            input_c,
-            input_h,
-            input_w,
-            out_c,
-            kernel_h,
-            kernel_w,
-            stride,
-            padding,
-            groups,
-        ) = shape
-        input_shape = (batch, input_c, input_h, input_w)
-        weight_shape = (out_c, input_c // groups, kernel_h, kernel_w)
-        input = torch.randn(size=input_shape, device=device, dtype=dtype)
-
-        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
-
-        yield {
-            "input": input,
-            "weight": weight,
-            "bias": None,
-            "groups": groups,
-            "stride": stride,
-            "padding": padding,
-        },
-
-    torch.backends.cudnn.allow_tf32 = False
-    bench = ConvBenchmark(
-        input_fn=conv2d_input_fn,
-        op_name="conv2d",
-        torch_op=torch.nn.functional.conv2d,
-        dtypes=FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-class Conv3DBenchmark(GenericBenchmark):
-    def set_more_shapes(self):
-        # self.shapes is a list of tuples, each containing three elements:
-        # (N, C, H, W).
-        return None
-
-
-# @pytest.mark.skipif(True, reason="Conv3d not registered yet")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
-@pytest.mark.conv3d
-def test_perf_conv3d():
-    def conv3d_input_fn(shape, dtype, device):
-        (
-            batch,
-            input_c,
-            input_d,
-            input_h,
-            input_w,
-            out_c,
-            kernel_d,
-            kernel_h,
-            kernel_w,
-            stride,
-            padding,
-            groups,
-        ) = shape
-        input_shape = (batch, input_c, input_d, input_h, input_w)
-        weight_shape = (out_c, input_c // groups, kernel_d, kernel_h, kernel_w)
-        input = torch.randn(size=input_shape, device=device, dtype=dtype)
-
-        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
-
-        yield {
-            "input": input,
-            "weight": weight,
-            "bias": None,
-            "groups": groups,
-            "stride": stride,
-            "padding": padding,
-        },
-
-    torch.backends.cudnn.allow_tf32 = False
-    bench = Conv3DBenchmark(
-        input_fn=conv3d_input_fn,
-        op_name="conv3d",
-        torch_op=torch.nn.functional.conv3d,
-        dtypes=FLOAT_DTYPES,
-    )
-    bench.set_gems(flag_gems.conv3d)
     bench.run()
 
 
@@ -447,7 +385,6 @@ def test_perf_diagonal_backward():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="ZeroDivisionError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron
