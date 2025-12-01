@@ -1,10 +1,10 @@
 import json
-import torch
 import logging
 import os
 from datetime import datetime
 
 import pytest
+import torch
 
 import flag_gems
 
