@@ -1,3 +1,9 @@
+from typing import Optional
+
+import torch
+import triton
+import triton.language as tl
+
 indexer_fwd_configs = [
     # triton.Config({'num_stages': 2, 'num_warps': 4}),
     triton.Config({'num_stages': 4, 'num_warps': 8}),
@@ -110,3 +116,4 @@ def triton_lighting_indexer_k_tiled_interface(q, kv, weights, cu_seqlen_ks, cu_s
         BK
     )
     return logits
+    
