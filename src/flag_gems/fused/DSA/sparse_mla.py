@@ -25,7 +25,7 @@ def triton_sparse_mla_fwd(
     lse,
     stride_qb, stride_qh, stride_qm, stride_qd,
     stride_kvb, stride_kvg, stride_kvn, stride_kvd,
-    stride_tb, stride_tg, stride_tm, stride_tt,
+    stride_tb, stride_tg, stride_tm, stride_tt, # topk，对应indices
     stride_ob, stride_oh, stride_om, stride_od,
     stride_lb, stride_lh, stride_lm,
     B: tl.constexpr,
@@ -46,7 +46,7 @@ def triton_sparse_mla_fwd(
 ):
     i_b, i_sq, i_gbh = tl.program_id(0), tl.program_id(1), tl.program_id(2)
     i_g, i_bh = i_gbh // G, i_gbh % G
-    q_base = q + i_b*stride_qb + i_sq*stride_qm + i_gbh*(BH*stride_qh)
+    q_base = q + i_b*stride_qb + i_sq*stride_qm + i_gbh*(BH*stride_qh) # 留两个维度，后面逐块载入
     tq_base = q_base + D*stride_qd
     kv_base = kv + i_b*stride_kvb + i_g*stride_kvg
     tkv_base = kv_base + D*stride_kvd
@@ -126,7 +126,7 @@ def triton_sparse_mla_fwd(
     # o_msk &= tl.zeros_like(o_msk)
     tl.store(o_ptr, out_vals.to(q_blk.dtype), o_msk)
 
-    fin_log = max_log + tl.math.log2(sum_exp.to(tl.float32)) # lse / ln2
+    fin_log = max_log + tl.math.log2(sum_exp.to(tl.float32)) # 返回 lse / ln2
     # fin_log *= 0.69314718
     # fin_log = max_log + tl.math.log(sum_exp.to(tl.float32))
     # fin_log *= 1.44269504 # 返回 lse / ln2
@@ -157,8 +157,8 @@ def triton_sparse_mla_fwd_interface(q, kv, indices, sm_scale=None, return_p_sum:
     G = H//VG
     if sm_scale is None:
         sm_scale = DT ** -0.5
-    BH = 64
-    NH = G // BH
+    BH = max(16, min(64, triton.next_power_of_2(G)))
+    NH = triton.cdiv(G, BH)
     BK = 32
     # BD = min(256, max(triton.next_power_of_2(DT), 16))
     # ND = triton.cdiv(DT, BD)
