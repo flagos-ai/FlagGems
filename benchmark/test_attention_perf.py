@@ -379,6 +379,71 @@ class FlashAttnVarlenBenchmark(Benchmark):
         )
 
 
+def flash_attn_varlen_legacy(*args):
+    """
+    Compatibility wrapper for running old flash_attn_varlen_func.
+    """
+    (
+        query,
+        key_cache,
+        value_cache,
+        max_query_len,
+        cu_query_lens,
+        max_kv_len,
+        _,
+        seqused_k,
+        _,
+        dropout_p,
+        scale,
+        causal,
+        window_size,
+        soft_cap,
+        alibi_slopes,
+        deterministic,
+        return_attn_probs,
+        block_tables,
+        _,
+        out,
+        *_,
+    ) = args
+
+    k_flat = key_cache.reshape(-1, key_cache.shape[2], key_cache.shape[3])
+    v_flat = value_cache.reshape(-1, value_cache.shape[2], value_cache.shape[3])
+    cu_seqlens_k = torch.cat(
+        [
+            torch.zeros(1, dtype=torch.int32, device=seqused_k.device),
+            torch.cumsum(seqused_k, dim=0),
+        ]
+    ).to(torch.int32)
+
+    from flash_attn import flash_attn_varlen_func
+
+    result = flash_attn_varlen_func(
+        query,  # q
+        k_flat,  # k (flattened from key_cache)
+        v_flat,  # v (flattened from value_cache)
+        cu_query_lens,  # cu_seqlens_q
+        cu_seqlens_k,  # cu_seqlens_k (constructed from seqused_k)
+        max_query_len,  # max_seqlen_q
+        max_kv_len,  # max_seqlen_k
+        dropout_p,  # dropout_p
+        scale,  # softmax_scale
+        causal,  # causal
+        tuple(window_size),  # window_size
+        float(soft_cap),  # softcap
+        alibi_slopes,  # alibi_slopes
+        deterministic,  # deterministic
+        return_attn_probs,  # return_attn_probs
+        block_tables,  # block_table
+        alibi_slopes is not None,  # use_alibi (derived from alibi_slopes)
+        0,  # alibi_mode
+        1,  # imp_mode
+        out=out,  # out
+        bias=None,  # bias
+    )
+    return result
+
+
 @pytest.mark.skipif(
     SkipVersion("vllm", "<0.9"),
     reason="The version prior to 0.9 does not include the flash_attn_varlen_func API in vllm.",
@@ -388,14 +453,17 @@ class FlashAttnVarlenBenchmark(Benchmark):
     reason="The version prior to 2.7 is not compatible with VLLM.",
 )
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Torch < 2.7")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_attn_varlen_func
 def test_perf_flash_attn_varlen_func():
     os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
-    from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
+    if vendor_name == "iluvatar":
+        # iluvatar does not have updated vllm_flash_attn, use conversion wrapper
+        flash_attn_varlen_func = flash_attn_varlen_legacy
+    else:
+        from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
 
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func",

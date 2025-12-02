@@ -243,7 +243,7 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
             N,  # 4096
             C,  # 256
             reduction,  # 0
-            is_use_mask_zero=1,
+            is_use_mask_zero=True,
         )
 
     # redution: 0-None, 1-mean, 2-sum
@@ -331,7 +331,7 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
             C,
             D,
             reduction,
-            is_use_mask_zero=1,
+            is_use_mask_zero=True,
         )
 
     # redution: 0-None, 1-mean, 2-sum
