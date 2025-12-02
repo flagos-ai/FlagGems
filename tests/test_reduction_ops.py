@@ -1530,6 +1530,23 @@ def gen_indices(input_shape, indices_shape, accumulate):
     return indices
 
 
+def gen_indices_for_index_put(input_shape, indices_shape, accumulate):
+    """
+    Generate indices for torch.index_put.
+    This function supports multi-dimensional index shapes (e.g., (2, 8)),
+    unlike gen_indices which is designed for torch.ops.aten.index that requires
+    broadcastable indices.
+    """
+    indices = []
+    for i, shape in enumerate(indices_shape):
+        # np.random.choice can accept tuple as size parameter
+        index = np.random.choice(
+            np.arange(input_shape[i]), size=shape, replace=accumulate
+        )
+        indices.append(torch.tensor(index, device=flag_gems.device))
+    return indices
+
+
 @pytest.mark.index_put
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_FALSE
@@ -1540,7 +1557,7 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, dtype):
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
-    indices = gen_indices(input_shape, indices_shape, accumulate)
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate)
     values = torch.randn(
         values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
@@ -1575,7 +1592,7 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
-    indices = gen_indices(input_shape, indices_shape, accumulate)
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate)
     values = torch.randn(
         values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
@@ -1598,7 +1615,7 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, dtype):
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
-    indices = gen_indices(input_shape, indices_shape, accumulate)
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate)
     values = torch.randn(
         values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
@@ -1630,7 +1647,7 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
-    indices = gen_indices(input_shape, indices_shape, accumulate)
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate)
     values = torch.randn(
         values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
