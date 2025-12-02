@@ -11,6 +11,7 @@ from benchmark.performance_utils import (
     GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
     GenericBenchmarkExcluse3D,
+    SkipVersion,
     generate_tensor_input,
     vendor_name,
 )
@@ -389,7 +390,11 @@ def test_perf_diagonal_backward():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
+    reason="only support torch >= 2.5.",
+)
 @pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron
 def test_perf_kron():
