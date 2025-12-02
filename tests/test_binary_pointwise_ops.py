@@ -1884,8 +1884,8 @@ def test_accuracy_polar(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_lerp(shape, dtype):
-    if flag_gems.vendor_name == "kunlunxin" and dtype is torch.half:
-        pytest.skip("wait lerp cpu half impl")
+    # if flag_gems.vendor_name == "kunlunxin" and dtype is torch.half:
+    #     pytest.skip("wait lerp cpu half impl")
 
     torch.manual_seed(0)
 
@@ -1918,8 +1918,8 @@ def test_accuracy_lerp(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_lerp_(shape, dtype):
-    if flag_gems.vendor_name == "kunlunxin" and dtype is torch.half:
-        pytest.skip("wait lerp cpu half impl")
+    # if flag_gems.vendor_name == "kunlunxin" and dtype is torch.half:
+    #     pytest.skip("wait lerp cpu half impl")
 
     torch.manual_seed(0)
 
