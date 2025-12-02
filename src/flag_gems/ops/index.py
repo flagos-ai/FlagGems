@@ -220,7 +220,7 @@ class IndexFunction:
     def __call__(self, *args, **kwargs):
         inp, tensor_indices, out = args
         full_args = (inp, tensor_indices)
-        
+
         key = self.arg_key(*full_args)
         if key in self.overloads:
             overload = self.overloads[key]
@@ -266,10 +266,10 @@ _index_func = IndexFunction()
 def index(inp, indices):
     logger.debug("GEMS INDEX")
     indices = list(indices)
-    
+
     if not indices:
         raise ValueError("at least one index must be provided")
-    
+
     # Step 1: Process indices (convert bool/int8 to long, handle None)
     # Following PyTorch meta implementation
     processed_indices = []
@@ -281,7 +281,9 @@ def index(inp, indices):
                 nonzero = index.nonzero()
                 k = len(processed_indices)
                 if k + index.ndim > inp.ndim:
-                    raise IndexError(f"too many indices for tensor of dimension {inp.ndim}")
+                    raise IndexError(
+                        f"too many indices for tensor of dimension {inp.ndim}"
+                    )
                 # Check shape matches
                 for j in range(index.ndim):
                     if index.shape[j] != inp.shape[k + j]:
@@ -300,15 +302,15 @@ def index(inp, indices):
                 )
         else:
             processed_indices.append(None)
-    
+
     indices = processed_indices
-    
+
     # Check indices count
     if len(indices) > inp.ndim:
         raise IndexError(
             f"too many indices for tensor of dimension {inp.ndim} (got {len(indices)})"
         )
-    
+
     # Step 2: Broadcast indices (only tensor indices, not None)
     tensor_indices = [idx for idx in indices if idx is not None]
     if tensor_indices:
@@ -321,11 +323,11 @@ def index(inp, indices):
             if indices[i] is not None:
                 indices[i] = tensor_indices[tensor_idx]
                 tensor_idx += 1
-    
+
     # Step 3: Add missing None indices (pad to input.ndim)
     while len(indices) < inp.ndim:
         indices.append(None)
-    
+
     # Step 4: Check if has contiguous subspace
     # (all non-None tensors are adjacent)
     state = 0
@@ -342,7 +344,7 @@ def index(inp, indices):
                 break
     else:
         has_contiguous_subspace = True
-    
+
     # Step 5: Transpose to front if needed
     # If not contiguous, transpose input so all non-None indices come first
     if not has_contiguous_subspace:
@@ -361,13 +363,13 @@ def index(inp, indices):
         # Permute input
         inp = inp.permute(dims)
         indices = transposed_indices
-    
+
     # Step 6: Now indices have contiguous subspace
     # Calculate output shape: before_shape + replacement_shape + after_shape
     before_shape = []
     after_shape = []
     replacement_shape = []
-    
+
     for dim, index in enumerate(indices):
         if index is None:
             if replacement_shape:
@@ -380,27 +382,27 @@ def index(inp, indices):
             # First tensor index determines replacement_shape
             if not replacement_shape:
                 replacement_shape = list(index.shape)
-    
+
     # Step 7: Build output shape and create output tensor
     out_shape = before_shape + replacement_shape + after_shape
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
-    
+
     # Step 8: Handle empty tensor case
     if inp.numel() == 0:
         return out
-    
+
     # Step 9: Extract only tensor indices for kernel
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         # All None, just reshape
         return inp.view(*out_shape)
-    
+
     # Step 10: Call kernel with tensor indices
     # Note: kernel needs to handle the fact that input was potentially permuted
     # and output shape includes None dimensions
     if inp.ndim == 1 and len(tensor_indices) == 1:
         return gather(inp, 0, tensor_indices[0])
-    
+
     # For mixed indexing, we need to adjust the kernel call
     # The kernel should work with the permuted input and handle output shape correctly
     _index_func(inp, tensor_indices, out)
