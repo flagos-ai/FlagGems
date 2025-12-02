@@ -390,7 +390,6 @@ def test_perf_diagonal_backward():
     bench.run()
 
 
-
 @pytest.mark.skipif(
     vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
     reason="only support torch >= 2.5.",
