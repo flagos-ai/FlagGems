@@ -304,7 +304,6 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Segmentation fault")
 @pytest.mark.vdot
 def test_vdot_benchmark():
