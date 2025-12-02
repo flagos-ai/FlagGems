@@ -213,8 +213,6 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
                 pytest.skip(
                     "Not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5"
                 )
-        if op_name in ["cummax"]:
-            pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
