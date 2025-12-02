@@ -42,7 +42,7 @@ def acos_kernel(x_ptr, y_ptr, n, BLOCK_SIZE: tl.constexpr):
     y = tl.zeros_like(x)
     for i in range(TYLOR_COUNT):
         if i > 0:
-            coef *= (2*i - 1) * (2*i - 1) / (2*i * (2*i + 1))
+            coef *= (2 * i - 1) * (2 * i - 1) / (2 * i * (2 * i + 1))
         y += x * tl.cast(coef, x.dtype)
         x *= x_square
     y_far = tl.where(positive_mask, half_pi - y, y - half_pi)  # asin(x), far from 0
@@ -54,7 +54,9 @@ def acos_kernel(x_ptr, y_ptr, n, BLOCK_SIZE: tl.constexpr):
 def acos(x):
     logger.debug("GEMS ACOS FORWARD")
     n = x.numel()
-    BLOCK_SIZE = max(min(n // 40, 8192), 1024)  # empirical value for Atlas A2/A3 series.
+    BLOCK_SIZE = max(
+        min(n // 40, 8192), 1024
+    )  # empirical value for Atlas A2/A3 series.
     grid = [(n + BLOCK_SIZE - 1) // BLOCK_SIZE]
     y = torch.empty_like(x)
 
