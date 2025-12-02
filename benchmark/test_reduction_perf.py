@@ -11,6 +11,7 @@ from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
+    SkipVersion,
     generate_tensor_input,
     unary_input_fn,
     vendor_name,
@@ -203,9 +204,16 @@ def mse_loss_input_fn(shape, cur_dtype, device):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
-        if op_name in ["nll_loss"]:
-            pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cummax"]:
+        if SkipVersion("torch", "<2.5"):
+            if op_name in ["nll_loss"]:
+                pytest.skip(
+                    "INT16 is not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5"
+                )
+            if op_name in ["nonzero"]:
+                pytest.skip(
+                    "Not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5"
+                )
+        if op_name in ["cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes

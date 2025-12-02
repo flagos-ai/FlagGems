@@ -80,11 +80,6 @@ def nonzero(inp, *, as_tuple=False):
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
-    import os
-
-    os.environ["TRITONXPU_OTHER_SIM"] = "1"
-    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-
     with torch_device_fn.device(inp.device):
         nonzero_kernel[grid](
             inp_bool,
@@ -94,12 +89,8 @@ def nonzero(inp, *, as_tuple=False):
             shape,
             inp_ndim,
             isCloseUnrollControl=True,
+            is_use_mask_zero=True,
         )
-
-    if "TRITONXPU_OTHER_SIM" in os.environ:
-        del os.environ["TRITONXPU_OTHER_SIM"]
-    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-        del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
     num_nonzeros = prefix_sum[n_elements - 1].item()
     out = out[0:num_nonzeros]
