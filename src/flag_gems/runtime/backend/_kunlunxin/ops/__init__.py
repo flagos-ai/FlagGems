@@ -47,6 +47,7 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
+from .copy import copy, copy_
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
@@ -259,6 +260,8 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "copy",
+    "copy_",
     "cos",
     "cos_",
     "count_nonzero",
