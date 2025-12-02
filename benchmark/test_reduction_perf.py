@@ -204,8 +204,6 @@ def mse_loss_input_fn(shape, cur_dtype, device):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
-        if op_name in ["nll_loss"]:
-            pytest.skip("RUNTIME TODOFIX")
         if SkipVersion("torch", "<2.5"):
             if op_name in ["nll_loss"]:
                 pytest.skip(
