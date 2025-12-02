@@ -128,11 +128,14 @@ def batchnorm_input_fn(shape, dtype, device):
     ],
 )
 def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
-    if vendor_name == "kunlunxin" and op_name in [
-        "instance_norm",
-        "batch_norm",
-    ]:
-        pytest.skip("RUNTIME TODOFIX.(batch_norm unsupported in torch)")
+    if (
+        vendor_name == "kunlunxin"
+        and op_name == "instance_norm"
+        and SkipVersion("torch", "<2.5")
+    ):
+        pytest.skip(
+            "BF16 is not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5"
+        )
     if vendor_name == "mthreads" and op_name == "instance_norm":
         # Compatible with older versions of LLVM
         os.environ["DISABLE_LLVM_OPT"] = "1"

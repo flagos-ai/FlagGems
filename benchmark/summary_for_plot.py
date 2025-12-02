@@ -102,7 +102,7 @@ def parse_log(log_file_path: str) -> List[BenchmarkResult]:
         log_lines = [
             line
             for line in file.read().strip().split("\n")
-            if line.startswith("[INFO]")
+            if line.startswith("[INFO] {")
         ]
 
     benchmark_results = []

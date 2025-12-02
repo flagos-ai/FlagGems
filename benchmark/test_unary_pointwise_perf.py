@@ -185,6 +185,25 @@ def test_to_copy_perf():
     bench.run()
 
 
+class CopyInplaceBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            dst = generate_tensor_input(shape, cur_dtype, self.device)
+            src = generate_tensor_input(shape, cur_dtype, self.device)
+            yield dst, src
+
+
+@pytest.mark.copy_
+def test_copy_inplace_perf():
+    bench = CopyInplaceBenchmark(
+        op_name="copy_",
+        torch_op=torch.ops.aten.copy_,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
+
+
 class EluBackwardBenchmark(UnaryPointwiseBenchmark):
     def get_input_iter(self, cur_dtype: torch.dtype) -> Generator:
         for shape in self.shapes:
