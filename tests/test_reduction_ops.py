@@ -1605,7 +1605,9 @@ def test_index_put_error_all_none(dtype):
     indices = [None, None]
     values = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
 
-    with pytest.raises(ValueError, match="At least one non-None index tensor is required"):
+    with pytest.raises(
+        ValueError, match="At least one non-None index tensor is required"
+    ):
         flag_gems.index_put(inp, indices, values, accumulate=False)
 
 
@@ -1617,7 +1619,9 @@ def test_index_put__error_all_none(dtype):
     indices = [None, None]
     values = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
 
-    with pytest.raises(ValueError, match="At least one non-None index tensor is required"):
+    with pytest.raises(
+        ValueError, match="At least one non-None index tensor is required"
+    ):
         flag_gems.index_put_(inp, indices, values, accumulate=False)
 
 
