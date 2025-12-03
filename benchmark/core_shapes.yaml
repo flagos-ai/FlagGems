@@ -275,3 +275,9 @@ RWKVBenchmark:
 RWKVSparsityBenchmark:
   shapes:
     - [1]
+
+istft:
+  shapes:
+    - [512, 10]
+    - [256, 20]
+    - [1024, 8]

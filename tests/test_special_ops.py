@@ -1321,3 +1321,53 @@ def test_accuracy_rwkv_mmsparsity(dtype):
     ref_res = ref_k @ ref_V_
 
     gems_assert_close(res, ref_res, dtype, equal_nan=True)
+
+
+@pytest.mark.istft
+@pytest.mark.parametrize("n_fft, n_frames", [(512, 10), (256, 20), (1024, 8)])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_istft(n_fft, n_frames, dtype):
+    # initialize the input data
+    n_freqs = n_fft // 2 + 1  # for onesided=True
+
+    # Create complex spectrum input
+    real_part = torch.randn(n_freqs, n_frames, dtype=dtype, device=flag_gems.device)
+    imag_part = torch.randn(n_freqs, n_frames, dtype=dtype, device=flag_gems.device)
+    input_tensor = torch.complex(real_part, imag_part)
+
+    # Set common parameters
+    hop_length = n_fft // 4
+    win_length = n_fft
+
+    # Cast input if necessary for reference
+    ref_input = to_reference(input_tensor, True)
+
+    # Call both kernels with same parameters
+    ref_out = torch.istft(
+        ref_input,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=win_length,
+        window=None,
+        center=True,
+        normalized=False,
+        onesided=True,
+        length=None,
+        return_complex=False,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.istft(
+            input_tensor,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+            window=None,
+            center=True,
+            normalized=False,
+            onesided=True,
+            length=None,
+            return_complex=False,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)

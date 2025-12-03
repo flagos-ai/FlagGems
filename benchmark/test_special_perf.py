@@ -519,3 +519,64 @@ def test_perf_rwkv_ka_fusion():
     )
     bench.set_gems(gems_op)
     bench.run()
+
+
+class IstftBenchmark(GenericBenchmark2DOnly):
+    """
+    Benchmark for istft
+    """
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype):
+        for n_fft, n_frames in self.shapes:
+            yield from self.input_fn(n_fft, n_frames, cur_dtype, self.device)
+
+
+def istft_input_fn(n_fft, n_frames, cur_dtype, device):
+    # Calculate intermediate dimension
+    n_freqs = n_fft // 2 + 1  # for onesided=True
+
+    # Create complex spectrum input
+    real_part = torch.randn([n_freqs, n_frames], dtype=cur_dtype, device=device)
+    imag_part = torch.randn([n_freqs, n_frames], dtype=cur_dtype, device=device)
+    input_tensor = torch.complex(real_part, imag_part)
+
+    # yield: input + parameter dictionary
+    yield input_tensor, {
+        "n_fft": n_fft,
+        "hop_length": n_fft // 4,
+        "win_length": n_fft,
+        "window": None,
+        "center": True,
+        "normalized": False,
+        "onesided": True,
+        "length": None,
+        "return_complex": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn",
+    [
+        pytest.param(
+            "istft",
+            torch.istft,
+            istft_input_fn,
+            marks=pytest.mark.istft,
+        ),
+    ],
+)
+def test_istft_benchmark(op_name, torch_op, input_fn):
+    # Note: torch.complex only supports float16 and float32, not bfloat16
+    bench = IstftBenchmark(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=[
+            torch.float16,
+            torch.float32,
+        ],  # bfloat16 not supported by torch.complex
+    )
+    bench.run()
