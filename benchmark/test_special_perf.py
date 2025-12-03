@@ -519,3 +519,37 @@ def test_perf_rwkv_ka_fusion():
     )
     bench.set_gems(gems_op)
     bench.run()
+
+
+@pytest.mark.moe_sum
+def test_perf_moe_sum():
+    def moe_sum_input_fn(shape, dtype, device):
+        shape = (shape[0], 1, shape[1]) if len(shape) == 2 else shape
+        num_tokens, topk, hidden_size = shape
+        input_tensor = torch.randn(
+            num_tokens,
+            topk,
+            hidden_size,
+            dtype=dtype,
+            device=device,
+            requires_grad=False,
+        )
+
+        output_tensor = torch.empty(
+            num_tokens, hidden_size, dtype=dtype, device=device, requires_grad=False
+        )
+        yield input_tensor, output_tensor
+
+    def torch_op(input_tensor, output_tensor):
+        output_tensor.copy_(input_tensor.sum(dim=1))
+
+    gems_op = flag_gems.moe_sum
+
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=moe_sum_input_fn,
+        op_name="moe_sum",
+        torch_op=torch_op,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(gems_op)
+    bench.run()
