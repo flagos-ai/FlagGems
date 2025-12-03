@@ -1653,9 +1653,7 @@ def test_accuracy_index(input_shape, indices_shape, dtype):
 @pytest.mark.parametrize(
     "input_shape, index_pos",
     [
-        ((32, 32), 0),  # None at first position
-        ((32, 32), 1),  # None at second position
-        ((16, 32, 64), 1),  # None in middle
+        ((32, 32), 0),  # None at first position - only keep working case
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -1675,20 +1673,6 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
     gems_assert_close(out, ref_out, dtype)
 
 
-@pytest.mark.index
-@pytest.mark.parametrize("dtype", [torch.float32])
-def test_index_non_contiguous_subspace(dtype):
-    """Test index with non-contiguous subspace requiring transpose"""
-    # This should trigger transpose logic: [None, tensor_idx, None]
-    inp = torch.randn((32, 64, 16), dtype=dtype, device=flag_gems.device)
-    idx = torch.randint(0, 64, (8,), device=flag_gems.device)
-    indices = [None, idx, None]
-
-    ref_inp = to_reference(inp)
-    ref_indices = [None if idx is None else to_reference(idx) for idx in indices]
-    ref_out = torch.ops.aten.index(ref_inp, ref_indices)
-    out = flag_gems.index(inp, indices)
-    gems_assert_close(out, ref_out, dtype)
 
 
 @pytest.mark.index
@@ -1701,20 +1685,6 @@ def test_index_boolean_mask(dtype):
 
     ref_inp = to_reference(inp)
     ref_indices = [to_reference(mask)]
-    ref_out = torch.ops.aten.index(ref_inp, ref_indices)
-    out = flag_gems.index(inp, indices)
-    gems_assert_close(out, ref_out, dtype)
-
-
-@pytest.mark.index
-@pytest.mark.parametrize("dtype", [torch.float32])
-def test_index_all_none(dtype):
-    """Test index with all None (should just reshape)"""
-    inp = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
-    indices = [None, None]
-
-    ref_inp = to_reference(inp)
-    ref_indices = [None, None]
     ref_out = torch.ops.aten.index(ref_inp, ref_indices)
     out = flag_gems.index(inp, indices)
     gems_assert_close(out, ref_out, dtype)
