@@ -369,7 +369,6 @@ def test_sdpa_legacy(
     gems_assert_close(gems_result, torch_result, dtype)
 
 
-@pytest.mark.skipif(True, reason="something wrong here, disable it for temp")
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
