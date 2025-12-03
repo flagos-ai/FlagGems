@@ -1673,8 +1673,6 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
     gems_assert_close(out, ref_out, dtype)
 
 
-
-
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_index_boolean_mask(dtype):
