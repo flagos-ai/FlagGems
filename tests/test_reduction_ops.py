@@ -15,6 +15,7 @@ from .accuracy_utils import (
     IRREGULAR_SHAPE_STRIDES,
     REDUCTION_SHAPES,
     REDUCTION_SMALL_SHAPES,
+    POINTWISE_SHAPES,
     SHAPE_STRIDES,
     SkipVersion,
     gems_assert_close,
@@ -1683,3 +1684,78 @@ def test_accuracy_std(shape, dim, correction, keepdim, dtype):
     ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.index_fill
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+def test_accuracy_index_fill(shape, dtype, dim):
+    if dim >= len(shape):
+        pytest.skip("Dimension out of range")
+    
+    # Create input tensor
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    
+    # Create index tensor
+    # For a tensor of shape (a, b, c) and dim=1, index should have size <= b
+    max_indices = shape[dim]
+    index_size = min(max_indices, 10)  # Limit index size for performance
+    index = torch.randint(0, max_indices, (index_size,), device=flag_gems.device)
+    ref_index = to_reference(index)
+    
+    # Value to fill
+    value = 3.1415926
+    
+    # Test out-of-place version
+    ref_out = torch.index_fill(ref_inp, dim, ref_index, value)
+    with flag_gems.use_gems():
+        res_out = torch.index_fill(inp, dim, index, value)
+    gems_assert_equal(res_out, ref_out)
+    
+    # Test in-place version
+    ref_inp_copy = ref_inp.clone()
+    inp_copy = inp.clone()
+    ref_inp_copy.index_fill_(dim, ref_index, value)
+    with flag_gems.use_gems():
+        inp_copy.index_fill_(dim, index, value)
+    gems_assert_equal(inp_copy, ref_inp_copy)
+
+
+@pytest.mark.index_fill
+@pytest.mark.parametrize("shape", [(10, 20), (5, 10, 15)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dim", DIM_LIST)
+def test_accuracy_index_fill_multidim(shape, dtype, dim):
+    if dim >= len(shape):
+        pytest.skip("Dimension out of range")
+    
+    # Create input tensor
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    
+    # Create index tensor with varying sizes
+    max_indices = shape[dim]
+    if max_indices > 5:
+        index = torch.tensor([0, max_indices//2, max_indices-1], device=flag_gems.device)
+    else:
+        index = torch.arange(max_indices, device=flag_gems.device)
+    ref_index = to_reference(index)
+    
+    # Value to fill
+    value = -1.0
+    
+    # Test out-of-place version
+    ref_out = torch.index_fill(ref_inp, dim, ref_index, value)
+    with flag_gems.use_gems():
+        res_out = torch.index_fill(inp, dim, index, value)
+    gems_assert_equal(res_out, ref_out)
+    
+    # Test in-place version
+    ref_inp_copy = ref_inp.clone()
+    inp_copy = inp.clone()
+    ref_inp_copy.index_fill_(dim, ref_index, value)
+    with flag_gems.use_gems():
+        inp_copy.index_fill_(dim, index, value)
+    gems_assert_equal(inp_copy, ref_inp_copy)
