@@ -44,6 +44,7 @@ def enable(
             ("_weight_norm_interface_backward", weight_norm_interface_backward),
             ("abs", abs),
             ("abs_", abs_),
+            ("acosh", acosh),
             ("add.Tensor", add),
             ("add_.Tensor", add_),
             ("addcdiv", addcdiv),
