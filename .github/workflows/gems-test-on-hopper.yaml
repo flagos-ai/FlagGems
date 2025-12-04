@@ -31,6 +31,7 @@ on:
       - '**.yaml'
 
 env:
+  CUDA_VISIBLE_DEVICES: 7
   http_proxy: ${{ secrets.HTTP_PROXY }}
   https_proxy: ${{ secrets.HTTPS_PROXY }}
 
@@ -48,6 +49,8 @@ jobs:
       - name: FlagGems reduction ops on hopper
         shell: bash
         run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
           source tools/run_command.sh
           run_command pytest -s tests/test_reduction_ops.py && \
           run_command pytest -s tests/test_general_reduction_ops.py && \
@@ -56,6 +59,8 @@ jobs:
       - name: FlagGems pointwise ops on hopper
         shell: bash
         run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
           source tools/run_command.sh
           run_command pytest -s tests/test_pointwise_dynamic.py && \
           run_command pytest -s tests/test_unary_pointwise_ops.py && \
@@ -66,6 +71,8 @@ jobs:
       - name: FlagGems blas ops on hopper
         shell: bash
         run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
           source tools/run_command.sh
           # FIXME(zhiyuan): Fix sharedencoding on Hopper
           # run_command pytest -s tests/test_attention_ops.py && \
@@ -74,6 +81,8 @@ jobs:
       - name: FlagGems special ops on hopper
         shell: bash
         run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
           source tools/run_command.sh
           run_command pytest -s tests/test_special_ops.py && \
           run_command pytest -s tests/test_distribution_ops.py
@@ -81,6 +90,8 @@ jobs:
       - name: FlagGems utils on hopper
         shell: bash
         run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
           source tools/run_command.sh
           run_command pytest -s tests/test_libentry.py && \
           run_command pytest -s tests/test_shape_utils.py && \
@@ -89,6 +100,8 @@ jobs:
       - name: FlagGems examples on hopper
         shell: bash
         run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
           source tools/run_command.sh
           # FIXME(zhiyuan): OSError: [Errno 101] Network is unreachable
           # run_command pytest -s examples/model_bert_test.py
