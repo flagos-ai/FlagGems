@@ -361,6 +361,7 @@ class use_gems:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
+
         if torch.__version__ >= "2.5":
             self.lib._destroy()
         del self.lib
