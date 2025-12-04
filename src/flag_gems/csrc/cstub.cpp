@@ -62,6 +62,12 @@ TORCH_LIBRARY(flag_gems, m) {
       "embedding_backward(Tensor grad_outputs, Tensor indices, SymInt num_weights, SymInt padding_idx, bool "
       "scale_grad_by_freq, bool sparse) -> Tensor");
   m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
+  // sort
+  m.def("sort(Tensor self, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)");
+  m.def(
+      "sort.stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False) -> (Tensor values, "
+      "Tensor indices)");
+
   m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
   m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
   m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
@@ -116,6 +122,10 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("embedding", TORCH_FN(embedding));
   m.impl("embedding_backward", TORCH_FN(embedding_backward));
   m.impl("argmax", TORCH_FN(argmax));
+  // sort
+  m.impl("sort", TORCH_FN(sort));
+  m.impl("sort.stable", TORCH_FN(sort_stable));
+
   m.impl("fill.Scalar", TORCH_FN(fill_scalar));
   m.impl("fill.Tensor", TORCH_FN(fill_tensor));
   m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
