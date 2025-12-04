@@ -139,6 +139,8 @@ def addmm_sqmma_kernel(
     beta: tl.constexpr,
     ab_type: tl.constexpr,
     c_type: tl.constexpr,
+    is_transpose_a: tl.constexpr = False,
+    is_transpose_b: tl.constexpr = False,
 ):
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -152,10 +154,18 @@ def addmm_sqmma_kernel(
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl._experimental_descriptor_load(
-            a_desc_ptr, [offs_am, offs_k], [BLOCK_SIZE_M, BLOCK_SIZE_K], input_type
+            a_desc_ptr,
+            [offs_am, offs_k],
+            [BLOCK_SIZE_M, BLOCK_SIZE_K],
+            input_type,
+            is_transpose_a,
         )
         b = tl._experimental_descriptor_load(
-            b_desc_ptr, [offs_k, offs_bn], [BLOCK_SIZE_K, BLOCK_SIZE_N], input_type
+            b_desc_ptr,
+            [offs_k, offs_bn],
+            [BLOCK_SIZE_K, BLOCK_SIZE_N],
+            input_type,
+            is_transpose_b,
         )
         accumulator = tl.dot(a, b, acc=accumulator)
         offs_k += BLOCK_SIZE_K
@@ -193,10 +203,27 @@ def addmm_sqmma(
     num_warps,
     num_stages,
 ):
+    logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
     device = "musa"
+    # handle non-contiguous inputs if necessary
+    is_transpose_a = False
+    is_transpose_b = False
+    if not A.is_contiguous():
+        if A.stride(0) == 1 and A.stride(1) == A.shape[0]:
+            is_transpose_a = True
+        else:
+            A = A.contiguous()
+    if not B.is_contiguous():
+        if B.stride(0) == 1 and B.stride(1) == B.shape[0]:
+            is_transpose_b = True
+        else:
+            B = B.contiguous()
     ab_type = elem_type
-    c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
-    C = torch.empty((M, N), dtype=torch.float16, device=device).to(c_type)
+    a_type = A.dtype
+    b_type = B.dtype
+    assert a_type == b_type, "Mat A and Mat B should have the same dtype"
+    c_type = a_type
+    C = torch.empty((M, N), dtype=c_type, device=device)
     desc_a = create_tma_device_descriptor(A, BLOCK_M, BLOCK_K, device)
     desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
     desc_bias = create_tma_device_descriptor(Bias, BLOCK_M, BLOCK_N, device)
@@ -216,18 +243,27 @@ def addmm_sqmma(
         beta,
         get_triton_type(ab_type),
         get_triton_type(c_type),
+        is_transpose_a,
+        is_transpose_b,
         num_warps=num_warps,
         num_stages=num_stages,
     )
     return C
 
 
-def addmm(bias, mat1, mat2, *, beta=0.5, alpha=0.5):
+def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     a_dtype = mat1.dtype
     b_dtype = mat2.dtype
     M, K = mat1.shape
     _, N = mat2.shape
     use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
+    # bias need to be 2D
+    bias = (
+        bias.unsqueeze(1).expand(M, N).clone()
+        if bias.shape[0] == M
+        else bias.unsqueeze(0).expand(M, N).clone()
+    )
+
     if use_sqmma:
         BLOCK_M = 256 if M % 256 == 0 else 128
         BLOCK_N = BLOCK_M

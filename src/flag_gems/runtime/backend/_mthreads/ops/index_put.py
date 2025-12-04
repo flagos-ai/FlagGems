@@ -8,19 +8,17 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
-    # Filter out None values (basic indexing markers)
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if len(tensor_indices) == 0:
-        return []
-    max_rank = max([len(index.shape) for index in tensor_indices])
+    max_rank = max([len(index.shape) for index in indices])
     shape = [0 for _ in range(max_rank)]
     for i in range(max_rank):
         max_num = 0
-        for index in tensor_indices:
+        for index in indices:
             axis = len(index.shape) - 1 - i
             if axis >= 0:
                 max_num = max(max_num, index.shape[axis])
@@ -30,7 +28,7 @@ def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
 
 def broadcast_indices(indices, target_shape):
     for i, index in enumerate(indices):
-        if index is not None and tuple(index.shape) != tuple(target_shape):
+        if tuple(index.shape) != tuple(target_shape):
             indices[i] = torch.broadcast_to(index, target_shape)
 
 
@@ -202,12 +200,8 @@ def generate_code(
     code: IndentedBuffer,
 ):
     inp_rank = inputs[0].ndim
-    # Filter out None values to get actual tensor indices
-    tensor_indices = [idx for idx in inputs[1] if idx is not None]
-    indices_len = len(tensor_indices)
-    if indices_len == 0:
-        raise ValueError("At least one non-None index tensor is required")
-    index_rank = tensor_indices[0].ndim
+    indices_len = len(inputs[1])
+    index_rank = inputs[1][0].ndim
     code = generate_imports(code)
     generate_index_put_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
     generate_index_put_wrapper(
@@ -222,16 +216,13 @@ class IndexPutFunction:
         self.overloads: Mapping[str, Callable] = {}
 
     def __call__(self, *args, **kwargs):
-        inp, tensor_indices, values, accumulate = args
-        full_args = (inp, tensor_indices, values)
-
-        key = self.arg_key(*full_args)
+        key = self.arg_key(*args)
         if key in self.overloads:
             overload = self.overloads[key]
         else:
             code = IndentedBuffer()
             code = generate_code(
-                full_args,
+                args,
                 "_index_put_wrapper",
                 "_index_put_jit_function",
                 code,
@@ -250,16 +241,12 @@ class IndexPutFunction:
             overload = getattr(m, "_index_put_wrapper")
             self.overloads[key] = overload
 
-        return overload(*args)
+        return overload(*args, **kwargs)
 
-    def arg_key(self, *args, **kwargs):
-        inp, tensor_indices, _ = args[0], args[1], args[2]
-        inp_rank = inp.ndim
-        indices_len = len(tensor_indices)
-        if indices_len == 0:
-            index_rank = 0
-        else:
-            index_rank = tensor_indices[0].ndim
+    def arg_key(self, *args):
+        inp_rank = args[0].ndim
+        indices_len = len(args[1])
+        index_rank = args[1][0].ndim
         return f"inp_rank_{inp_rank}_indices_len_{indices_len}_index_rank_{index_rank}"
 
 
@@ -267,57 +254,56 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX PUT")
+    logger.debug("GEMS_MTHREADS INDEX PUT")
 
     indices = list(indices)
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        index.to(inp.device) if index.device != inp.device else index
         for index in indices
     ]
-
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
     target_shape += inp.shape[len(indices) :]
-    # Filter out None values for kernel call (only tensor indices)
-    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if not tensor_indices:
-        raise ValueError("At least one non-None index tensor is required")
-
     if values.device != inp.device:
         values = values.to(inp.device)
-    values = torch.broadcast_to(values, target_shape)
+    try:
+        values = torch.broadcast_to(values, target_shape)
+    except Exception:
+        return torch.ops.aten.index_put.default.redispatch(
+            torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeExplicitAutograd),
+            inp,
+            indices,
+            values,
+            accumulate,
+        )
 
     out = inp.clone()
-    _index_put_func(out, tensor_indices, values, accumulate)
+    _index_put_func(out, indices, values, accumulate)
     return out
 
 
 def index_put_(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX PUT_")
+    logger.debug("GEMS_MTHREADS INDEX PUT_")
 
     indices = list(indices)
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        index.to(inp.device) if index.device != inp.device else index
         for index in indices
     ]
-
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
     target_shape += inp.shape[len(indices) :]
-    # Filter out None values for kernel call (only tensor indices)
-    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if not tensor_indices:
-        raise ValueError("At least one non-None index tensor is required")
-
     if values.device != inp.device:
         values = values.to(inp.device)
-    values = torch.broadcast_to(values, target_shape)
-
-    _index_put_func(inp, tensor_indices, values, accumulate)
+    try:
+        values = torch.broadcast_to(values, target_shape)
+    except Exception:
+        return torch.ops.aten.index_put_.default.redispatch(
+            torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeExplicitAutograd),
+            inp,
+            indices,
+            values,
+            accumulate,
+        )
+    _index_put_func(inp, indices, values, accumulate)
     return inp
