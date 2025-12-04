@@ -1,8 +1,8 @@
+#include "flag_gems/device_info.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
-#include <ATen/cuda/CUDAContext.h>  // for getCurrentDevice, getDeviceProperties
-#include <cuda_runtime.h>           // for cudaDeviceProp
+#include <ATen/cuda/CUDAContext.h>
 #include <iostream>
 #include <tuple>
 #include "c10/cuda/CUDAStream.h"
@@ -11,53 +11,6 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-struct DeviceInfo {
-  int device_id;
-  size_t l2_cache_size;
-  int sm_count;
-  int major;
-};
-
-inline const DeviceInfo &get_device_info() {
-  static const DeviceInfo info = []() {
-    DeviceInfo dev_info {};
-    if (cudaGetDevice(&dev_info.device_id) != cudaSuccess) {
-      dev_info.device_id = 0;  // fallback
-    }
-
-    cudaDeviceProp props {};
-    if (cudaGetDeviceProperties(&props, dev_info.device_id) == cudaSuccess) {
-#if CUDART_VERSION >= 11020
-      dev_info.l2_cache_size = props.l2CacheSize;
-#else
-      dev_info.l2_cache_size = 40ull * 1024 * 1024;  // fallback
-#endif
-      dev_info.sm_count = props.multiProcessorCount;
-      dev_info.major = props.major;
-    } else {
-      // fallback for A100 默认值
-      dev_info.l2_cache_size = 40ull * 1024 * 1024;
-      dev_info.sm_count = 108;
-      dev_info.major = 8;  // A100 compute capability major
-    }
-    return dev_info;
-  }();
-  return info;
-}
-
-inline int get_device_id() {
-  return get_device_info().device_id;
-}
-inline size_t get_l2_cache_size() {
-  return get_device_info().l2_cache_size;
-}
-inline int get_sm_count() {
-  return get_device_info().sm_count;
-}
-inline int get_major() {
-  return get_device_info().major;
-}
-
 static inline int64_t cdiv(int64_t x, int64_t y) {
   return (x + y - 1) / y;
 }
@@ -65,7 +18,8 @@ static inline int64_t cdiv(int64_t x, int64_t y) {
 bool streamk_scenario(const at::Tensor &a, const at::Tensor &b, int64_t M, int64_t N, int64_t K) {
   bool a_is_half_or_bf16 = (a.scalar_type() == at::kHalf) || (a.scalar_type() == at::kBFloat16);
   bool b_is_half_or_bf16 = (b.scalar_type() == at::kHalf) || (b.scalar_type() == at::kBFloat16);
-  return (a_is_half_or_bf16 && b_is_half_or_bf16 && get_major() == 8 && K > M * 5 && K > N * 5);
+  return (a_is_half_or_bf16 && b_is_half_or_bf16 &&
+          flag_gems::device::current_compute_capability_major() == 8 && K > M * 5 && K > N * 5);
 }
 
 void streamk_mm_tensor(const at::Tensor &a,
@@ -297,7 +251,7 @@ at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
 
   at::Tensor out = at::empty({M, N}, mat1.options());
 
-  int sm_count = get_sm_count();
+  int sm_count = flag_gems::device::current_sm_count();
 
   if (streamk_scenario(mat1, mat2, M, N, K)) {
     streamk_mm_tensor(mat1, mat2, out, M, N, K, sm_count);
@@ -320,7 +274,7 @@ at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Te
   int64_t K = mat1.size(1);
   int64_t N = mat2.size(1);
 
-  int sm_count = get_sm_count();
+  int sm_count = flag_gems::device::current_sm_count();
 
   if (streamk_scenario(mat1, mat2, M, N, K)) {
     streamk_mm_tensor(mat1, mat2, out, M, N, K, sm_count);
