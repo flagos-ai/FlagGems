@@ -159,6 +159,8 @@ def enable(
             ("gather_backward", gather_backward),
             ("ge.Scalar", ge_scalar),
             ("ge.Tensor", ge),
+            ("geglu", geglu),
+            ("dgeglu", dgeglu),
             ("gelu", gelu),
             ("gelu_", gelu_),
             ("gelu_backward", gelu_backward),
