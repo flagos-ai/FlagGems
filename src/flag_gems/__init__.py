@@ -325,6 +325,7 @@ def enable(
             ("vdot", vdot),
             ("addr", addr),
             ("vstack", vstack),
+            ("w8a8_block_fp8_matmul", w8a8_block_fp8_matmul),
             ("where.ScalarOther", where_scalar_other),
             ("where.ScalarSelf", where_scalar_self),
             ("where.self", where_self),
