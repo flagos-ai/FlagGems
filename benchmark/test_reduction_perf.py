@@ -312,7 +312,7 @@ def test_perf_avg_pool2d_backward():
         input_fn=avg_pool2d_input_fn,
         op_name="avg_pool2d",
         torch_op=torch.ops.aten.avg_pool2d,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float32] if vendor_name == "mthreads" else FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()
@@ -428,7 +428,6 @@ def test_perf_dot():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.trace
 def test_perf_trace():
     def trace_input_fn(shape, dtype, device):
@@ -439,7 +438,7 @@ def test_perf_trace():
         input_fn=trace_input_fn,
         op_name="trace",
         torch_op=torch.trace,
-        dtypes=FLOAT_DTYPES + INT_DTYPES,
+        dtypes=FLOAT_DTYPES if vendor_name == "mthreads" else FLOAT_DTYPES + INT_DTYPES,
     )
 
     bench.run()

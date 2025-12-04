@@ -46,6 +46,14 @@ mm:
       BLOCK_K: 64
     num_stages: 5
     num_warps: 4
+baddbmm:
+- META:
+    TILE_M: 32
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 1
+  num_warps: 4
+  num_stages: 1
 softmax_non_inner:
   - META:
       TILE_K: 32
