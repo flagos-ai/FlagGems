@@ -66,6 +66,15 @@ SPECIAL_SHAPES = (
     if QUICK_MODE
     else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 1280), (16, 7, 57, 32, 29)]
 )
+
+FP8_QUANT_SHAPES = {
+    "DTYPES": [torch.bfloat16],
+    "NUM_TOKENS": [7] if QUICK_MODE else [7, 83, 2048],
+    "D": [512] if QUICK_MODE else [512, 4096, 5120, 13824],
+    "GROUP_SIZE": [512] if QUICK_MODE else [64, 128, 256, 512],
+    "SEEDS": [0],
+}
+
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = (
@@ -160,6 +169,7 @@ FLOAT_DTYPES = (
     if bf16_is_supported
     else PRIMARY_FLOAT_DTYPES
 )
+
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
 INT_DTYPES = [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES

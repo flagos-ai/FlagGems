@@ -254,6 +254,7 @@ def enable(
             ("pow_.Tensor", pow_tensor_tensor_),
             ("prod", prod),
             ("prod.dim_int", prod_dim),
+            ("per_token_group_quant_fp8", per_token_group_quant_fp8),
             ("quantile", quantile),
             ("rand", rand),
             ("rand_like", rand_like),

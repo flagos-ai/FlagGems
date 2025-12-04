@@ -155,6 +155,10 @@ from flag_gems.ops.normal import (
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.pad import constant_pad_nd, pad
+from flag_gems.ops.per_token_group_quant_fp8 import (
+    SUPPORTED_FP8_DTYPE,
+    per_token_group_quant_fp8,
+)
 from flag_gems.ops.polar import polar
 from flag_gems.ops.pow import (
     pow_scalar,
@@ -496,6 +500,8 @@ __all__ = [
     "addr",
     "vector_norm",
     "vstack",
+    "per_token_group_quant_fp8",
+    "SUPPORTED_FP8_DTYPE",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",
