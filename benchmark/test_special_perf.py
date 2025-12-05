@@ -245,6 +245,10 @@ class LerpBenchmark(GenericBenchmark):
 
 
 @pytest.mark.lerp
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
+    reason="The half dtype is only supported on torch >= 2.5.",
+)
 def test_perf_lerp():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
@@ -256,6 +260,10 @@ def test_perf_lerp():
 
 
 @pytest.mark.lerp_
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
+    reason="The half dtype is only supported on torch >= 2.5.",
+)
 def test_perf_lerp_inplace():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
