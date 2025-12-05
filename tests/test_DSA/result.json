@@ -1,444 +1,1434 @@
 {
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-256-1]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-1024-64-1]": {
         "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 256,
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-256-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-1024-128-1]": {
         "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 256,
-            "batch_size": 4
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-256-16]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 256,
-            "batch_size": 16
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-1024-1]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 1024,
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-1024-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-1024-512-1]": {
         "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 1024,
-            "batch_size": 4
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-1024-16]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 1024,
-            "batch_size": 16
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-8192-1]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 8192,
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-8192-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-2048-64-1]": {
         "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 8192,
-            "batch_size": 4
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-8192-16]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 16,
-            "seq_len": 8192,
-            "batch_size": 16
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-256-1]": {
-        "params": {
-            "dtype": "torch.float32",
+            "dtype": "torch.bfloat16",
             "topk": 64,
-            "seq_len": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-256-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-2048-128-1]": {
         "params": {
-            "dtype": "torch.float32",
+            "dtype": "torch.bfloat16",
             "topk": 64,
-            "seq_len": 256,
-            "batch_size": 4
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-256-16]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 64,
-            "seq_len": 256,
-            "batch_size": 16
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-1024-1]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 64,
-            "seq_len": 1024,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-1024-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-2048-512-1]": {
         "params": {
-            "dtype": "torch.float32",
+            "dtype": "torch.bfloat16",
             "topk": 64,
-            "seq_len": 1024,
-            "batch_size": 4
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-1024-16]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 64,
-            "seq_len": 1024,
-            "batch_size": 16
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-8192-1]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 64,
-            "seq_len": 8192,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-8192-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-4096-64-1]": {
         "params": {
-            "dtype": "torch.float32",
+            "dtype": "torch.bfloat16",
             "topk": 64,
-            "seq_len": 8192,
-            "batch_size": 4
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-8192-16]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-4096-128-1]": {
         "params": {
-            "dtype": "torch.float32",
+            "dtype": "torch.bfloat16",
             "topk": 64,
-            "seq_len": 8192,
-            "batch_size": 16
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-256-1]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-256-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-4096-512-1]": {
         "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 256,
-            "batch_size": 4
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-256-16]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 256,
-            "batch_size": 16
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-1024-1]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 1024,
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-1024-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-1024-64-1]": {
         "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 1024,
-            "batch_size": 4
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-1024-16]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 1024,
-            "batch_size": 16
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_forward"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-8192-1]": {
-        "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 8192,
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
             "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-8192-4]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-1024-128-1]": {
         "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 8192,
-            "batch_size": 4
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
+            "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-8192-16]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-1024-512-1]": {
         "params": {
-            "dtype": "torch.float32",
-            "topk": 256,
-            "seq_len": 8192,
-            "batch_size": 16
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
+            "batch_size": 1
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_forward"
+            "sparse_mla_forward"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_edge_cases[config0]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-2048-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-2048-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-2048-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-4096-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-4096-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-4096-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-1024-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-1024-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-1024-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-2048-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-2048-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-2048-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-4096-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-4096-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-4096-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 64,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-1024-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-1024-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-1024-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-2048-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-2048-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-2048-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-4096-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-4096-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-4096-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-1024-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-1024-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-1024-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-2048-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-2048-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-2048-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-4096-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-4096-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-4096-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-1024-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-1024-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-1024-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-2048-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-2048-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-2048-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-4096-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-4096-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-4096-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 128,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-1024-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-1024-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-1024-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-2048-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-2048-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-2048-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-4096-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-4096-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-4096-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 64,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-1024-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-1024-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-1024-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-2048-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-2048-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-2048-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-4096-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-4096-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-4096-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 128,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-1024-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-1024-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-1024-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 1024,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-2048-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-2048-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-2048-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 2048,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-4096-64-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 64,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-4096-128-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 128,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-4096-512-1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "topk": 256,
+            "d_v": 512,
+            "qk_dim": 576,
+            "num_kv_heads": 1,
+            "num_heads": 256,
+            "seq_len_kv": 4096,
+            "seq_len_q": 512,
+            "batch_size": 1
+        },
+        "result": "passed",
+        "opname": [
+            "sparse_mla_forward"
+        ]
+    },
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward_edge_cases[config0]": {
         "params": {
             "config": {
                 "batch_size": 1,
-                "seq_len": 1,
+                "seq_len_q": 1,
+                "seq_len_kv": 1,
+                "num_heads": 1,
+                "num_kv_heads": 1,
                 "topk": 1
             }
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_edge_cases"
+            "sparse_mla_forward_edge_cases"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_edge_cases[config1]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward_edge_cases[config1]": {
         "params": {
             "config": {
                 "batch_size": 1,
-                "seq_len": 10,
-                "topk": 10
-            }
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_edge_cases"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_edge_cases[config2]": {
-        "params": {
-            "config": {
-                "batch_size": 2,
-                "seq_len": 100,
+                "seq_len_q": 2,
+                "seq_len_kv": 100,
+                "num_heads": 4,
+                "num_kv_heads": 1,
                 "topk": 50
             }
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_edge_cases"
+            "sparse_mla_forward_edge_cases"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_edge_cases[config3]": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward_edge_cases[config2]": {
         "params": {
             "config": {
-                "batch_size": 8,
-                "seq_len": 17,
-                "topk": 8
+                "batch_size": 1,
+                "seq_len_q": 17,
+                "seq_len_kv": 1030,
+                "num_heads": 8,
+                "num_kv_heads": 1,
+                "topk": 256
             }
         },
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_edge_cases"
+            "sparse_mla_forward_edge_cases"
         ]
     },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_large_scale[config0]": {
-        "params": {
-            "config": {
-                "batch_size": 64,
-                "seq_len": 32768,
-                "topk": 2048
-            }
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_large_scale"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_large_scale[config1]": {
-        "params": {
-            "config": {
-                "batch_size": 32,
-                "seq_len": 65536,
-                "topk": 4096
-            }
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_large_scale"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_large_scale[config2]": {
-        "params": {
-            "config": {
-                "batch_size": 96,
-                "seq_len": 32768,
-                "topk": 2048
-            }
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_large_scale"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_performance[config0]": {
-        "params": {
-            "config": {
-                "batch_size": 96,
-                "seq_len": 32768,
-                "topk": 2048
-            }
-        },
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_performance"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_variable_length": {
+    "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_device_compatibility": {
         "params": {},
         "result": "passed",
         "opname": [
-            "bucket_sort_topk_variable_length"
-        ]
-    },
-    "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_correctness": {
-        "params": {},
-        "result": "passed",
-        "opname": [
-            "bucket_sort_topk_correctness"
+            "sparse_mla_device"
         ]
     }
 }
