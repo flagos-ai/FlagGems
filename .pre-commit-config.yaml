@@ -13,20 +13,20 @@ repos:
     # E203 : Whitespace before ':'
 
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: v13.0.0
+  rev: v21.1.7
   hooks:
     - id: clang-format
       files: \.(cpp|h|cc|c|hpp)$
       exclude: ^third_party/
 
 - repo: https://github.com/pycqa/isort
-  rev: 5.12.0
+  rev: 7.0.0
   hooks:
     - id: isort
       args: ["--profile", "black"]
 
 - repo: https://github.com/psf/black.git
-  rev: 23.7.0
+  rev: 25.11.0
   hooks:
     - id: black
     - id: black-jupyter
