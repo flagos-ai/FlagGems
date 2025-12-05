@@ -1,3 +1,6 @@
-# from .mm import mm
+import triton
 
-# __all__ = ["mm"]
+if triton.__version__ >= "3.4":
+    from .mm import mm  # noqa: F401
+
+__all__ = ["*"]
