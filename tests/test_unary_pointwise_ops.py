@@ -19,6 +19,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    SkipVersion,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -1188,6 +1189,10 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.copy_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_same_dtype(shape, dtype):
     src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_src = to_reference(src)
@@ -1203,6 +1208,10 @@ def test_copy_inplace_same_dtype(shape, dtype):
 
 @pytest.mark.inplace
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_broadcast():
     dst_shape = (2, 3)
     src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
@@ -1221,6 +1230,10 @@ def test_copy_inplace_broadcast():
 
 @pytest.mark.inplace
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_dtype_fallback():
     src = torch.arange(0, 8, dtype=torch.int32, device=flag_gems.device)
     ref_src = to_reference(src)
@@ -1238,6 +1251,10 @@ def test_copy_inplace_dtype_fallback():
 
 @pytest.mark.inplace
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 @pytest.mark.parametrize(
     "src_dtype,dst_dtype",
     [
