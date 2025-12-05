@@ -1,4 +1,4 @@
-from . import backend, commom_utils, error
+from . import backend, common, error
 from .backend.device import DeviceDetector
 
 
@@ -32,7 +32,7 @@ class Register:
         ]
 
     def get_vendor_unused_op(self):
-        if self.device.vendor != commom_utils.vendors.NVIDIA:
+        if self.device.vendor != common.vendors.NVIDIA:
             return backend.get_curent_device_unused_op(self.device.vendor_name)
         return []
 
