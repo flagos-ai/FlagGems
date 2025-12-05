@@ -386,10 +386,8 @@ def list_iluvatar_v3_1():
 import triton
 import re
 version_name=print(triton.__version__)
-device=flag_gems.device
-vendor_name=device.vendor_name.lower()
-match = re.match(r"(\d+\.\d+\.\d+)\.dev(\d+)", version_name)
-main = match.group(1)
+vendor_name=flag_gems.vendor_name.lower()
+
 dispatch = { "nvidia_3.1.0": list_nvidia_v3_1, 
              "iluvatar_3.1.0": list_iluvatar_v3_1, 
              "hcu_3.1.0": list_hcu_v3_1,
