@@ -258,11 +258,8 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     _, N = mat2.shape
     use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
     # bias need to be 2D
-    bias = (
-        bias.unsqueeze(1).expand(M, N).clone()
-        if bias.shape[0] == M
-        else bias.unsqueeze(0).expand(M, N).clone()
-    )
+    if bias.dim() == 1 and bias.shape[0] == N:
+        bias = bias.unsqueeze(0).expand(M, N).clone()
 
     if use_sqmma:
         BLOCK_M = 256 if M % 256 == 0 else 128
