@@ -1,5 +1,16 @@
 from itertools import chain
-from typing import Any, Callable, Dict, Final, Mapping, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Final,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
 
 import sqlalchemy
 import sqlalchemy.ext.automap
@@ -19,14 +30,14 @@ class SQLPersistantModel(PersistantModel):
     def __init__(self, db_url: str, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.engine: Final[sqlalchemy.engine.Engine] = sqlalchemy.create_engine(db_url)
-        self.sql_model_pool: Dict[str, type[Base]] = {}
+        self.sql_model_pool: Dict[str, Type[Base]] = {}
 
     @staticmethod
     def build_sql_model_by_py(
         name: str,
         keys: Mapping[str, Union[Any, type]],
         values: Mapping[str, Union[Any, type]] = {},
-    ) -> type[Base]:
+    ) -> Type[Base]:
         annotations: Dict[str, type] = {
             k: sqlalchemy.orm.Mapped[v if isinstance(v, type) else type(v)]
             for k, v in chain(keys.items(), values.items())
@@ -34,7 +45,7 @@ class SQLPersistantModel(PersistantModel):
         cols: Dict[str, sqlalchemy.orm.MappedColumn] = {
             k: sqlalchemy.orm.mapped_column(primary_key=True) for k in keys.keys()
         } | {k: sqlalchemy.orm.mapped_column(primary_key=False) for k in values.keys()}
-        ModelCls: type[Base] = type(
+        ModelCls: Type[Base] = type(
             name,
             (Base,),
             {
@@ -49,12 +60,12 @@ class SQLPersistantModel(PersistantModel):
     def build_sql_model_by_db(
         name: str,
         engine: sqlalchemy.engine.Engine,
-    ) -> Optional[type[Base]]:
+    ) -> Optional[Type[Base]]:
         AutoBase: sqlalchemy.ext.automap.AutomapBase = (
             sqlalchemy.ext.automap.automap_base(Base)
         )
         AutoBase.prepare(engine)
-        ModelCls: Optional[type[Base]] = AutoBase.classes.get(name)
+        ModelCls: Optional[Type[Base]] = AutoBase.classes.get(name)
         return ModelCls
 
     @staticmethod
@@ -78,11 +89,11 @@ class SQLPersistantModel(PersistantModel):
         name: str,
         keys: Mapping[str, Union[Any, type]] = {},
         values: Mapping[str, Union[Any, type]] = {},
-    ) -> Callable[[str, Optional[Mapping[str, type]]], Optional[type[Base]]]:
-        ModelCls: Optional[type[Base]] = self.sql_model_pool.get(name)
+    ) -> Callable[[str, Optional[Mapping[str, type]]], Optional[Type[Base]]]:
+        ModelCls: Optional[Type[Base]] = self.sql_model_pool.get(name)
         if ModelCls is not None:
             return ModelCls
-        ModelCls: Optional[type[Base]] = SQLPersistantModel.build_sql_model_by_db(
+        ModelCls: Optional[Type[Base]] = SQLPersistantModel.build_sql_model_by_db(
             name, self.engine
         )
         if ModelCls is not None:
@@ -90,7 +101,7 @@ class SQLPersistantModel(PersistantModel):
             return ModelCls
         if not keys or not values:
             return None
-        ModelCls: type[Base] = SQLPersistantModel.build_sql_model_by_py(
+        ModelCls: Type[Base] = SQLPersistantModel.build_sql_model_by_py(
             name, keys, values
         )
         with self.engine.begin() as conn:
@@ -107,7 +118,7 @@ class SQLPersistantModel(PersistantModel):
         key_dict: Dict[
             str, Union[bool, int, float, str]
         ] = SQLPersistantModel.get_key_dict(keys)
-        ConfigCls: Optional[type[Base]] = self.get_sql_model(name, key_dict)
+        ConfigCls: Optional[Type[Base]] = self.get_sql_model(name, key_dict)
         if ConfigCls is None:
             return None
         with RollbackSession(self.engine) as session:
@@ -141,7 +152,7 @@ class SQLPersistantModel(PersistantModel):
             **SQLPersistantModel.get_key_dict(keys),
             **SQLPersistantModel.get_config_dict(config),
         }
-        BenchmarkCls: Optional[type[Base]] = self.get_sql_model(name, key_dict)
+        BenchmarkCls: Optional[Type[Base]] = self.get_sql_model(name, key_dict)
         if BenchmarkCls is None:
             return None
         with RollbackSession(self.engine) as session:
@@ -169,7 +180,7 @@ class SQLPersistantModel(PersistantModel):
         key_dict: Dict[
             str, Union[bool, int, float, str]
         ] = SQLPersistantModel.get_key_dict(keys)
-        ConfigCls: Optional[type[Base]] = self.get_sql_model(
+        ConfigCls: Optional[Type[Base]] = self.get_sql_model(
             name,
             {k: type(v) for k, v in key_dict.items()},
             {k: type(v) for k, v in config.items()},
@@ -196,7 +207,7 @@ class SQLPersistantModel(PersistantModel):
             ] = SQLPersistantModel.get_config_dict(config)
         p50, p20, p80 = benchmark
         benchmark: Dict[str, float] = {"p50": p50, "p20": p20, "p80": p80}
-        BenchmarkCls: Optional[type[Base]] = self.get_sql_model(
+        BenchmarkCls: Optional[Type[Base]] = self.get_sql_model(
             name,
             key_dict | config,
             benchmark,
