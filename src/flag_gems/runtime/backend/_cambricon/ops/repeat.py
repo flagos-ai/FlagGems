@@ -449,7 +449,10 @@ _repeat_func = RepeatFunction()
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_C": 2**n}, num_stages=3) for n in range(10, 17, 2)
+        triton.Config({"BLOCK_C": 2**n}, num_stages=s, num_warps=w)
+        for n in range(6, 17, 2)
+        for s in [1, 3]
+        for w in [1, 4]
     ],
     key=["C"],
 )
