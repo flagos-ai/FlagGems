@@ -4,6 +4,13 @@ import torch
 import flag_gems
 from flag_gems.ops.copy import _can_use_triton
 
+try:
+    from transformer_engine.pytorch import cpp_extensions as tex
+
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
+
 from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
     ALL_INT_DTYPES,
@@ -18,6 +25,7 @@ from .accuracy_utils import (
     unsqueeze_tensor,
     unsqueeze_tuple,
 )
+from .conftest import TO_CPU
 
 
 @pytest.mark.abs
@@ -310,6 +318,54 @@ def test_accuracy_exp2_(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.exp2_(inp)
 
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.geglu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_geglu(shape, dtype):
+    if len(shape) == 0 or TO_CPU:
+        pytest.skip("GEGLU does not support 0-dim scalar tensors.")
+
+    if shape[-1] % 2 != 0:
+        shape = list(shape)
+        shape[-1] += 1
+        shape = tuple(shape)
+
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = tex.geglu(input_tensor, None)
+
+    with flag_gems.use_gems():
+        res_out = flag_gems.geglu(input_tensor)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.dreglu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_dreglu(shape, dtype):
+    if len(shape) == 0 or TO_CPU:
+        pytest.skip("dreglu does not support 0-dim scalar tensors.")
+
+    if shape[-1] % 2 != 0:
+        shape = list(shape)
+        shape[-1] += 1
+        shape = tuple(shape)
+
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    grad_output_shape = list(shape)
+    grad_output_shape[-1] //= 2
+    grad_output = torch.randn(
+        tuple(grad_output_shape), dtype=dtype, device=flag_gems.device
+    )
+    ref_out = tex.dgeglu(grad_output, input_tensor, None)
+    with flag_gems.use_gems():
+        res_out = flag_gems.dgeglu(grad_output, input_tensor)
     gems_assert_close(res_out, ref_out, dtype)
 
 
