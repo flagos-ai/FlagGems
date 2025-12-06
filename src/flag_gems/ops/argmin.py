@@ -65,164 +65,6 @@ def heur_block_n(args):
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("argmin"))
 @triton.jit
-def argmin_kernel_opt_k1(
-    inp,
-    out_index,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tle.program_id(0)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    
-    dtype = inp.type.element_ty
-    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
-    max_val = get_dtype_max(dtype)
-
-    min_vals = tl.full([BLOCK_M], dtype=acc_type,value=max_val)
-    argmin_vals = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N + n_offset[None, :] 
-        inp_vals = tl.load(inp + offset, mask=True)
-        
-        local_min, local_argmin = tl.min(
-                inp_vals, 1, return_indices=True, return_indices_tie_break_left=True)
-        update = local_min < min_vals
-        min_vals = tl.where(update, local_min, min_vals)
-        argmin_vals = tl.where(update, start_n + local_argmin, argmin_vals)
-
-    out_ptr = out_index + m_offset
-    tl.store(out_ptr, argmin_vals, mask=True)
-
-
-@triton.jit
-def argmin_split_K_kernel(
-    inp,          # 输入指针：(M=64, N=512, K=512)
-    out_index,    # 输出指针：(M=64, 1, K=512)
-    M: tl.constexpr,    # 64（固定）
-    N: tl.constexpr,    # 512（固定，等于BLOCK_N）
-    K: tl.constexpr,    # 512（固定）
-    dtype: tl.constexpr, # 从Python端传递的Triton dtype
-    BLOCK_M: tl.constexpr,  # 4（固定）
-    BLOCK_N: tl.constexpr,  # 512（固定）
-    BLOCK_K: tl.constexpr,  # 32（适配K维度，512/32=16）
-):
-    # 1. 全局线程块ID：处理M和K维度的块索引
-    pid_m = tle.program_id(0)  # M维度块索引：0~15（64/4=16）
-    pid_k = tle.program_id(1)  # K维度块索引：0~15（512/32=16）
-
-    # 2. 线程块内索引计算（每个线程处理1个(M,K)对）
-    # M维度局部索引：[pid_m*4, pid_m*4+1, pid_m*4+2, pid_m*4+3]
-    m_local = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    # K维度局部索引：[pid_k*32, ..., pid_k*32+31]
-    k_local = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
-    # 扩展为二维网格：[BLOCK_M, BLOCK_K]，每个元素对应1个线程
-    m = m_local[:, None]  # 形状(4,1)
-    k = k_local[None, :]  # 形状(1,32)
-
-    # 3. 数据类型处理（bfloat16提升至float32避免精度损失）
-    acc_type = tl.float32 if dtype == tl.bfloat16 else dtype
-    max_val = get_dtype_max(acc_type)
-
-    # 4. 一次性加载完整N维度数据（BLOCK_N=512=N，无循环）
-    # 内存偏移：三维张量地址 = m*N*K + n*K + k（n取0~511，连续访问）
-    n = tl.arange(0, BLOCK_N)  # 直接覆盖完整N维度（0~511）
-    offset = m * N * K + n[:, None, None] * K + k[None, :, :]  # 形状(512,4,32)
-    inp_vals = tl.load(inp + offset)  # 一次性加载N维度所有数据
-
-    # 5. 沿N维度计算argmin（dim=0，仅需1次计算，无循环更新）
-    local_min, local_argmin = tl.min(
-        inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-    )  # 结果形状(4,32)，对应线程块内的(M,K)对
-
-    # 6. 存储结果（输出形状(M,1,K)，偏移= m*K + k）
-    out_offset = m * K + k  # 形状(4,32)
-    tl.store(out_index + out_offset, local_argmin)
-
-
-@triton.autotune(
-    configs=[
-        # 针对N=512, K=512的优化配置
-        triton.Config({'BLOCK_M': 4, 'BLOCK_N': 512, 'BLOCK_K': 32}, num_stages=3, num_warps=4),
-        # 针对N=1024, K=1024的优化配置
-        triton.Config({'BLOCK_M': 8, 'BLOCK_N': 64, 'BLOCK_K': 64}, num_stages=4, num_warps=8),
-        # 通用配置
-        triton.Config({'BLOCK_M': 8, 'BLOCK_N': 128, 'BLOCK_K': 32}, num_stages=3, num_warps=4),
-        triton.Config({'BLOCK_M': 8, 'BLOCK_N': 64, 'BLOCK_K': 32}, num_stages=4, num_warps=4),
-        triton.Config({'BLOCK_M': 4, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_stages=3, num_warps=4),
-        triton.Config({'BLOCK_M': 16, 'BLOCK_N': 64, 'BLOCK_K': 32}, num_stages=4, num_warps=8),
-    ],
-    key=['M', 'N', 'K'],
-)
-@triton.jit
-def argmin_split_K_kernel_merged(
-    inp,          # 输入指针：(M, N, K)
-    out_index,    # 输出指针：(M, 1, K)
-    M: tl.constexpr,    # M维度大小
-    N: tl.constexpr,    # N维度大小（reduce dim）
-    K: tl.constexpr,    # K维度大小
-    dtype: tl.constexpr, # 数据类型（float16/bfloat16/float32）
-    BLOCK_M: tl.constexpr,  # M维度块大小
-    BLOCK_N: tl.constexpr,  # N维度块大小
-    BLOCK_K: tl.constexpr,  # K维度块大小
-):
-    # 1. 全局线程块ID：处理M和K维度的块索引
-    pid_m = tle.program_id(0)  # M维度块索引
-    pid_k = tle.program_id(1)  # K维度块索引
-
-    # 2. 线程块内索引：每个线程处理1个(M,K)位置
-    m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]  # (BLOCK_M, 1)
-    k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)[None, :]  # (1, BLOCK_K)
-
-    # 边界检查
-    m_mask = m < M
-    k_mask = k < K
-    mk_mask = m_mask & k_mask
-
-    # 3. 数据类型处理：仅bfloat16提升至float32避免精度损失
-    compute_dtype = tl.float32 if dtype == tl.bfloat16 else dtype
-    max_val = get_dtype_max(compute_dtype)
-
-    # 4. 初始化全局最小值和索引（寄存器存储）
-    global_min = tl.full((BLOCK_M, BLOCK_K), max_val, dtype=compute_dtype)
-    global_argmin = tl.full((BLOCK_M, BLOCK_K), 0, dtype=tl.int64)
-
-    # 5. N维度分块处理（适应不同的N和BLOCK_N）
-    for start_n in range(0, N, BLOCK_N):
-        # 当前N块的索引
-        n = start_n + tl.arange(0, BLOCK_N)
-        n_mask = n < N
-        
-        # 计算内存偏移：确保连续访问（M×N×K + n×K + k）
-        # 偏移 = m*N*K + n*K + k
-        offset = m * N * K + n[:, None, None] * K + k[None, :, :]
-        
-        # 加载数据，使用边界掩码
-        inp_vals = tl.load(inp + offset, mask=(m_mask & n_mask[:, None, None] & k_mask[None, :, :]), other=max_val)
-        inp_vals = inp_vals.to(compute_dtype)
-
-        # 6. 局部min/argmin计算（沿N维度，dim=0）
-        local_min, local_argmin = tl.min(
-            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-        )
-        # 转换为全局N索引（局部索引+块起始偏移）
-        local_argmin += start_n
-
-        # 7. 高效更新全局结果（向量指令，无分支开销）
-        mask = local_min < global_min
-        global_min = tl.where(mask, local_min, global_min)
-        global_argmin = tl.where(mask, local_argmin, global_argmin)
-
-    # 8. 存储结果，使用边界掩码
-    out_offset = m * K + k  # (BLOCK_M, BLOCK_K)
-    tl.store(out_index + out_offset, global_argmin, mask=mk_mask)
-
-
-@libentry()
-@triton.heuristics(runtime.get_heuristic_config("argmin"))
-@triton.jit
 def argmin_kernel(
     inp,
     out_index,
@@ -236,7 +78,6 @@ def argmin_kernel(
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    
 
     dtype = inp.type.element_ty
     acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
@@ -308,14 +149,11 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
-        #print("M", M)
-        #print("N",N)
-        #print("K",K)
+
         inp = inp.contiguous()
 
         shape_list = list(shape)
         shape_list[dim] = 1
-        #print(shape_list)
         out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
@@ -324,38 +162,13 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        if K == 1 and inp.dtype != torch.int32 and inp.dtype != torch.int16:
-            with torch_device_fn.device(inp.device):
-                argmin_kernel_opt_k1[grid](
-                    inp,
-                    out_index,
-                    M,
-                    N,
-                )
-
-        else:
-            torch2triton_dtype = {torch.float16: tl.float16, torch.bfloat16: tl.bfloat16, torch.float32: tl.float32}
-            # 泛化支持其他N和K的组合
-            if (N % 64 == 0 or N == 512) and (K % 32 == 0) and M % 8 == 0 and inp.dtype != torch.int32 and inp.dtype != torch.int16:
-                triton_dtype = torch2triton_dtype[inp.dtype]
-                grid_for_split_K = (triton.cdiv(M, 8), triton.cdiv(K, 32))  # 使用默认参数计算grid
-                with torch_device_fn.device(inp.device):
-                    argmin_split_K_kernel_merged[grid_for_split_K](
-                        inp,
-                        out_index,
-                        M,
-                        N,
-                        K,
-                        dtype=triton_dtype,
-                    )
-            else:
-                with torch_device_fn.device(inp.device):
-                    argmin_kernel[grid](
-                        inp,
-                        out_index,
-                        M,
-                        N,
-                        K,
-                    )
+        with torch_device_fn.device(inp.device):
+            argmin_kernel[grid](
+                inp,
+                out_index,
+                M,
+                N,
+                K,
+            )
 
         return out_index
