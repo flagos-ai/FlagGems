@@ -84,8 +84,12 @@ def to_copy(
     target_device = _resolve_device(x, device)
     target_memory_format = _normalize_memory_format(memory_format)
 
-    if target_device != x.device or (
-        x.device.type == "cpu" and target_device.type == "cpu"
+    INT32_MAX = 2_147_483_647
+
+    if (
+        x.numel() > INT32_MAX
+        or target_device != x.device
+        or (x.device.type == "cpu" and target_device.type == "cpu")
     ):
         # Device transfer (d2h/h2d etc.) relies on PyTorch's implementation.
         return torch.ops.aten._to_copy.default.redispatch(
