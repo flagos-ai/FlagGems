@@ -74,16 +74,24 @@ class TexGluBackwardBenchmark(TexGluBenchmark):
 
 
 glu_forward_ops = [
-    ("geglu", "geglu", FLOAT_DTYPES),
-    # ("swiglu", "swiglu", FLOAT_DTYPES),
+    # ("geglu", "geglu", FLOAT_DTYPES),
+    ("swiglu", "swiglu", FLOAT_DTYPES),
     # ("reglu", "reglu", FLOAT_DTYPES),
 ]
 
 glu_backward_ops = [
-    ("dgeglu", "dgeglu", FLOAT_DTYPES),
-    # ("dswiglu", "dswiglu", FLOAT_DTYPES),
+    # ("dgeglu", "dgeglu", FLOAT_DTYPES),
+    ("dswiglu", "dswiglu", FLOAT_DTYPES),
     # ("dreglu", "dreglu", FLOAT_DTYPES),
 ]
+
+
+def gems_swiglu_wrapper(x, *_):
+    return flag_gems.swiglu(x)
+
+
+def gems_dswiglu_wrapper(grad_out, inp, *_args, **_kwargs):
+    return flag_gems.dswiglu(grad_out, inp)
 
 
 def gems_geglu_wrapper(x, *_):
@@ -95,18 +103,19 @@ def gems_dgeglu_wrapper(grad_out, inp, *_args, **_kwargs):
 
 
 @pytest.mark.parametrize(
-    "op_name, tex_attr_name, dtypes",
+    "op_name, tex_attr_name, dtypes, gems_wrapper",
     [
         pytest.param(
             name,
             tex_attr,
             dtype,
+            gems_swiglu_wrapper if name == "swiglu" else gems_geglu_wrapper,
             marks=getattr(pytest.mark, name, None),
         )
         for name, tex_attr, dtype in glu_forward_ops
     ],
 )
-def test_tex_glu_forward_perf(op_name, tex_attr_name, dtypes):
+def test_tex_glu_forward_perf(op_name, tex_attr_name, dtypes, gems_wrapper):
     if not TE_AVAILABLE:
         pytest.skip("TransformerEngine not installed")
 
@@ -119,24 +128,25 @@ def test_tex_glu_forward_perf(op_name, tex_attr_name, dtypes):
         op_name=op_name,
         torch_op=te_op,
         dtypes=dtypes,
-        gems_op=gems_geglu_wrapper,
+        gems_op=gems_wrapper,
     )
     bench.run()
 
 
 @pytest.mark.parametrize(
-    "op_name, tex_attr_name, dtypes",
+    "op_name, tex_attr_name, dtypes, gems_wrapper",
     [
         pytest.param(
             name,
             tex_attr,
             dtype,
+            gems_dswiglu_wrapper if name == "dswiglu" else gems_dgeglu_wrapper,
             marks=getattr(pytest.mark, name, None),
         )
         for name, tex_attr, dtype in glu_backward_ops
     ],
 )
-def test_tex_glu_backward_perf(op_name, tex_attr_name, dtypes):
+def test_tex_glu_backward_perf(op_name, tex_attr_name, dtypes, gems_wrapper):
     if not TE_AVAILABLE:
         pytest.skip("TransformerEngine not installed")
 
@@ -150,6 +160,6 @@ def test_tex_glu_backward_perf(op_name, tex_attr_name, dtypes):
         torch_op=te_op,
         dtypes=dtypes,
         is_backward=False,
-        gems_op=gems_dgeglu_wrapper,
+        gems_op=gems_wrapper,
     )
     bench.run()

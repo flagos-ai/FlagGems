@@ -292,6 +292,7 @@ def enable(
             ("silu", silu),
             ("silu_", silu_),
             ("silu_backward", silu_backward),
+            ("swiglu", swiglu),
             ("sin", sin),
             ("sin_", sin_),
             ("slice_scatter", slice_scatter),
