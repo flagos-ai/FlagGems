@@ -40,7 +40,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
     code.newline()
-    code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
@@ -54,9 +54,15 @@ def generate_index_put_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
     code.writeline("@libentry()")
-    code.writeline(
-        '@triton.autotune(configs=runtime.get_tuned_config("index_put"), key=["M", "N"], restore_value=["input_ptr"])'
-    )
+    code.writeline("@libtuner(")
+    with code.indent():
+        code.writeline('configs=runtime.get_tuned_config("index_put"),')
+        code.writeline('key=["M", "N"],')
+        code.writeline('restore_value=["input_ptr"],')
+        code.writeline('strategy=["align32", "align32"],')
+        code.writeline("warmup=5,")
+        code.writeline("rep=10,")
+    code.writeline(")")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
@@ -272,6 +278,24 @@ def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS_MTHREADS INDEX PUT")
 
     indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
     indices = [
         index.to(inp.device)
         if index is not None and index.device != inp.device
@@ -301,6 +325,24 @@ def index_put_(inp, indices, values, accumulate=False):
     logger.debug("GEMS_MTHREADS INDEX PUT_")
 
     indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
     indices = [
         index.to(inp.device)
         if index is not None and index.device != inp.device
