@@ -205,6 +205,9 @@ def addmm_sqmma(
 ):
     logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
     device = "musa"
+    assert broadcastable_to(
+        Bias.shape, (A.shape[0], B.shape[1])
+    ), "Incompatible input shape"
     # handle non-contiguous inputs if necessary
     is_transpose_a = False
     is_transpose_b = False
@@ -224,6 +227,7 @@ def addmm_sqmma(
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
     c_type = a_type
     C = torch.empty((M, N), dtype=c_type, device=device)
+    Bias = Bias.broadcast_to(C.shape).contiguous()
     desc_a = create_tma_device_descriptor(A, BLOCK_M, BLOCK_K, device)
     desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
     desc_bias = create_tma_device_descriptor(Bias, BLOCK_M, BLOCK_N, device)
@@ -257,12 +261,6 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     M, K = mat1.shape
     _, N = mat2.shape
     use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
-    # bias need to be 2D
-    bias = (
-        bias.unsqueeze(1).expand(M, N).clone()
-        if bias.shape[0] == M
-        else bias.unsqueeze(0).expand(M, N).clone()
-    )
 
     if use_sqmma:
         BLOCK_M = 256 if M % 256 == 0 else 128

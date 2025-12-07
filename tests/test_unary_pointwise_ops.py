@@ -1254,7 +1254,10 @@ def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
         base = torch.tensor([True, False, True, True, False, True, False, True])
         src = base.to(device=device)
     else:
-        src = torch.arange(numel, device=device, dtype=src_dtype)
+        if flag_gems.vendor_name == "mthreads":
+            src = torch.arange(numel, device="cpu", dtype=src_dtype).to(device)
+        else:
+            src = torch.arange(numel, device=device, dtype=src_dtype)
 
     dst = torch.zeros(numel, dtype=dst_dtype, device=device)
 
