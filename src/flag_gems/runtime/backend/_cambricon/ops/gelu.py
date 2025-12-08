@@ -13,18 +13,18 @@ exp = tl_extra_shim.exp
 fast_tanh = tl_extra_shim.fast_tanh
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def gelu_none(x):
+def gelu_none(x, inplace):
     scale: tl.constexpr = 0.7071067811
     x_f32 = x.to(tl.float32)
     output = 0.5 * x_f32 * (1 + fast_erf(x_f32 * scale))
     return output
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def gelu_tanh(x):
+def gelu_tanh(x, inplace):
     x_f32 = x.to(tl.float32)
     output = (
         0.5
@@ -67,9 +67,9 @@ def gelu_backward_tanh(x, dy):
 def gelu(self, *, approximate="none"):
     logger.debug("GEMS_CAMBRICON GELU FORWARD")
     if approximate == "tanh":
-        out = gelu_tanh(self)
+        out = gelu_tanh(self, False)
     else:
-        out = gelu_none(self)
+        out = gelu_none(self, False)
     return out
 
 
@@ -85,7 +85,7 @@ def gelu_backward(grad_output, self, *, approximate="none"):
 def gelu_(A, *, approximate="none"):
     logger.debug("GEMS_CAMBRICON GELU_ FORWARD")
     if approximate == "tanh":
-        out = gelu_tanh(A, out0=A)
+        out = gelu_tanh(A, True, out0=A)
     else:
-        out = gelu_none(A, out0=A)
+        out = gelu_none(A, True, out0=A)
     return out

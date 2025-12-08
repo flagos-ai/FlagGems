@@ -1,24 +1,14 @@
 import importlib
 import os
-from typing import Callable, List, Mapping, Optional, Tuple
+from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 import triton
 from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
-
-# ------------------ Operation Description ---------------------------
-from flag_gems.utils.pointwise_dynamic import (
-    _broadcast_vec,
-    _check_sized_list,
-    _check_typed_list,
-    _cs,
-    _tuple_content,
-    _type_name,
-)
 from flag_gems.utils.shape_utils import (
     MemOverlap,
     all_c_contiguous,
@@ -31,6 +21,44 @@ from flag_gems.utils.shape_utils import (
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
+
+
+# ------------------ Operation Description ---------------------------
+def _type_name(type) -> str:
+    "Render typename as string, work for both (bool, int, float, str) and torch.dtype object"
+    if type in (bool, int, float, str):
+        return type.__name__
+    if isinstance(type, torch.dtype):
+        return str(type)
+    return str(type)
+
+
+def _check_typed_list(container, type):
+    for item in container:
+        assert isinstance(item, type)
+
+
+def _check_sized_list(container, size):
+    assert len(container) == size
+
+
+def _tuple_content(strings: Sequence[str]) -> str:
+    # comma separated list
+    if len(strings) == 0:
+        return ""
+    if len(strings) == 1:
+        return f"{strings[0]},"
+    else:
+        return ", ".join(strings)
+
+
+def _cs(strings: Iterable[str]) -> str:
+    return ", ".join(strings)
+
+
+def _broadcast_vec(i, ndim):
+    axes = [":" if j == i else "None" for j in range(ndim)]
+    return f"[{_cs(axes)}]"
 
 
 class FunctionSchema:
@@ -168,7 +196,7 @@ class FunctionSchema:
         else:
             for _ in range(self.num_outputs()):
                 output_types.append("StridedBuffer")
-        sig = f'Pointwise: {", ".join(input_types)} -> {", ".join(output_types)}'
+        sig = f"Pointwise: {', '.join(input_types)} -> {', '.join(output_types)}"
         return sig
 
     def _compute_input_id(self):
@@ -215,7 +243,47 @@ class KernelGenerator:
         code.writeline('"""')
         code.newline()
 
+    def gen_config_prune(self, code):
+        code.writeline("def config_prune(configs, named_args, **kwargs):")
+        with code.indent():
+            max_tiles_sizes = [1024, 2048, 4096, 8192, 16000]
+            shape = ", ".join(f"s{i}" for i in range(self.ndim))
+            named_shape = ", ".join(f"named_args['s{i}']" for i in range(self.ndim))
+            tile_sizes = ", ".join(f"tile_size{i}" for i in range(self.ndim))
+            tile_size_dict = ", ".join(
+                f"'tile_size{i}': tile_size{i}" for i in range(self.ndim)
+            )
+
+            code.writeline(f"{shape} = {named_shape}")
+
+            for max_tiles_size in max_tiles_sizes:
+                code.writeline(
+                    f"{tile_sizes} = heuristics_for_tile_size({max_tiles_size}, {shape})"
+                )
+                code.writeline(
+                    f"configs.append(triton.Config({{{tile_size_dict}}}, num_stages=3, num_warps=1))"
+                )
+            code.writeline("return configs")
+        code.newline()
+        code.newline()
+
     def gen_decorators(self, code):
+        if self.ndim in [2, 3, 4] and (not self.config.prefer_1d_tile):
+            self.gen_config_prune(code)
+
+        num_non_tensor_args = self.fx.num_non_tensor_args()
+        if num_non_tensor_args > 0:
+            non_tensor_arg_names = ", ".join(
+                f"'val{i}'" for i in range(num_non_tensor_args)
+            )
+
+        shapes = ", ".join(f"'s{i}'" for i in range(self.ndim))
+        stride_args = []
+        for i in range(self.fx.num_input_tensors()):
+            stride_args.append(_cs(f"'in{i}_stride{j}'" for j in range(self.ndim)))
+        for i in range(self.fx.num_output_tensors()):
+            stride_args.append(_cs(f"'out{i}_stride{j}'" for j in range(self.ndim)))
+
         code.writeline("@libentry()")
         if self.ndim == 1 and (not self.config.prefer_1d_tile):
             code.writeline("@libtuner(")
@@ -223,19 +291,27 @@ class KernelGenerator:
                 code.writeline("configs=[")
                 with code.indent():
                     code.writeline(
-                        """
-                        triton.Config({'tile_size0':1024}, num_stages=3, num_warps=1),
-                        triton.Config({'tile_size0':2048}, num_stages=3, num_warps=1),
-                        triton.Config({'tile_size0':4096}, num_stages=3, num_warps=1),
-                        triton.Config({'tile_size0':8192}, num_stages=3, num_warps=1),
-                        triton.Config({'tile_size0':16384}, num_stages=3, num_warps=1),
-                        triton.Config({'tile_size0':21760}, num_stages=3, num_warps=1),
-                        triton.Config({'tile_size0':32768}, num_stages=3, num_warps=1)
-                        """
+                        "triton.Config({'tile_size0': 1024}, num_stages=3, num_warps=1),"
+                    )
+                    code.writeline(
+                        "triton.Config({'tile_size0': 2048}, num_stages=3, num_warps=1),"
+                    )
+                    code.writeline(
+                        "triton.Config({'tile_size0': 4096}, num_stages=3, num_warps=1),"
+                    )
+                    code.writeline(
+                        "triton.Config({'tile_size0': 8192}, num_stages=3, num_warps=1),"
+                    )
+                    code.writeline(
+                        "triton.Config({'tile_size0': 16000}, num_stages=3, num_warps=1),"
                     )
                 code.writeline("],")
-                code.writeline("key=['num_tasks'],")
-                code.writeline("strategy=['log'],")
+                if num_non_tensor_args > 0:
+                    code.writeline(
+                        f"key=['num_tasks', {_cs(stride_args)}, {non_tensor_arg_names}],"
+                    )
+                else:
+                    code.writeline(f"key=['num_tasks', {_cs(stride_args)}],")
                 output_params = [
                     f"out{i}_ptr" for i in range(self.fx.num_output_tensors())
                 ]
@@ -243,7 +319,92 @@ class KernelGenerator:
                 code.writeline(f"restore_value=[{output_elements}],")
             code.writeline(")")
 
-        num_non_tensor_args = self.fx.num_non_tensor_args()
+        if self.ndim == 2 and (not self.config.prefer_1d_tile):
+            code.writeline("@libtuner(")
+            with code.indent():
+                code.writeline("configs=[")
+                with code.indent():
+                    code.writeline(
+                        "triton.Config({'tile_size0': 1, 'tile_size1': 1024}, num_stages=3, num_warps=1),"
+                    )
+                    code.writeline(
+                        "triton.Config({'tile_size0': 1, 'tile_size1': 2048}, num_stages=3, num_warps=1),"
+                    )
+                code.writeline("],")
+                if num_non_tensor_args > 0:
+                    code.writeline(
+                        f"key=[{shapes}, {_cs(stride_args)}, {non_tensor_arg_names}],"
+                    )
+                else:
+                    code.writeline(f"key=[{shapes}, {_cs(stride_args)}],")
+                code.writeline("prune_configs_by={'early_config_prune': config_prune},")
+                output_params = [
+                    f"out{i}_ptr" for i in range(self.fx.num_output_tensors())
+                ]
+                output_elements = ", ".join(f"'{name}'" for name in output_params)
+                code.writeline(f"restore_value=[{output_elements}],")
+            code.writeline(")")
+
+        if self.ndim == 3 and (not self.config.prefer_1d_tile):
+            code.writeline("@libtuner(")
+            with code.indent():
+                code.writeline("configs=[")
+                with code.indent():
+                    code.writeline(
+                        """
+        triton.Config({'tile_size0': 1, 'tile_size1': 1, 'tile_size2': 1024}, num_stages=3, num_warps=1),
+                        """
+                    )
+                    code.writeline(
+                        """
+        triton.Config({'tile_size0': 1, 'tile_size1': 1, 'tile_size2': 2048}, num_stages=3, num_warps=1),
+                        """
+                    )
+                code.writeline("],")
+                if num_non_tensor_args > 0:
+                    code.writeline(
+                        f"key=[{shapes}, {_cs(stride_args)}, {non_tensor_arg_names}],"
+                    )
+                else:
+                    code.writeline(f"key=[{shapes}, {_cs(stride_args)}],")
+                code.writeline("prune_configs_by={'early_config_prune': config_prune},")
+                output_params = [
+                    f"out{i}_ptr" for i in range(self.fx.num_output_tensors())
+                ]
+                output_elements = ", ".join(f"'{name}'" for name in output_params)
+                code.writeline(f"restore_value=[{output_elements}],")
+            code.writeline(")")
+
+        if self.ndim == 4 and (not self.config.prefer_1d_tile):
+            code.writeline("@libtuner(")
+            with code.indent():
+                code.writeline("configs=[")
+                with code.indent():
+                    code.writeline(
+                        """
+        triton.Config({'tile_size0': 1,'tile_size1': 1,'tile_size2': 1,'tile_size3': 1024},num_stages=3,num_warps=1),
+                        """
+                    )
+                    code.writeline(
+                        """
+        triton.Config({'tile_size0': 1,'tile_size1': 1,'tile_size2': 1,'tile_size3': 2048},num_stages=3,num_warps=1),
+                        """
+                    )
+                code.writeline("],")
+                if num_non_tensor_args > 0:
+                    code.writeline(
+                        f"key=[{shapes}, {_cs(stride_args)}, {non_tensor_arg_names}],"
+                    )
+                else:
+                    code.writeline(f"key=[{shapes}, {_cs(stride_args)}],")
+                code.writeline("prune_configs_by={'early_config_prune': config_prune},")
+                output_params = [
+                    f"out{i}_ptr" for i in range(self.fx.num_output_tensors())
+                ]
+                output_elements = ", ".join(f"'{name}'" for name in output_params)
+                code.writeline(f"restore_value=[{output_elements}],")
+            code.writeline(")")
+
         if num_non_tensor_args > 0:
             # we do not specialize non tensor args since they are passed into the inlined function
             # which means that their values may not deserve specialization
@@ -297,17 +458,23 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(f"in{i}_stride{j}" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for in{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
                             f"in{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
                         )
                         code.writeline(f"{stride_order_args}, # stride order for in{i}")
+                        zero_stride_args = _cs(
+                            f"in{i}_zero_stride{j}: tl.constexpr" for j in range(ndim)
+                        )
+                        code.writeline(
+                            f"{zero_stride_args}, # zero stride flag for in{i}"
+                        )
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(f"out{i}_stride{j}" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for out{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -316,19 +483,25 @@ class KernelGenerator:
                         code.writeline(
                             f"{stride_order_args}, # stride order for out{i}"
                         )
+                        zero_stride_args = _cs(
+                            f"out{i}_zero_stride{j}: tl.constexpr" for j in range(ndim)
+                        )
+                        code.writeline(
+                            f"{zero_stride_args}, # zero stride flag for out{i}"
+                        )
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
                 tile_sizes = _cs(f"tile_size{i}: tl.constexpr" for i in range(ndim))
                 code.writeline(f"{tile_sizes},")
-                if ndim > 1:
+                if ndim > 4:
                     code.writeline("tiles_per_cta: int,")
                     code.writeline("one_tile_per_cta: tl.constexpr,")
         code.writeline("):")
@@ -464,10 +637,17 @@ class KernelGenerator:
         for i in range(schema.num_input_tensors()):
             strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
             order = _tuple_content(tuple(f"in{i}_stride_order{j}" for j in range(ndim)))
+
+            for j in range(ndim):
+                code.writeline(f"if in{i}_zero_stride{j}:")
+                with code.indent():
+                    code.writeline(f"in{i}_stride{j} = 0")
+
             code.writeline(
                 f"in{i}_bptr = tl.make_block_ptr("
                 f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
             )
+
             code.writeline(
                 f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
                 "# workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)"
@@ -498,18 +678,28 @@ class KernelGenerator:
             order = _tuple_content(
                 tuple(f"out{i}_stride_order{j}" for j in range(ndim))
             )
+
+            for j in range(ndim):
+                code.writeline(f"if out{i}_zero_stride{j}:")
+                with code.indent():
+                    code.writeline(f"out{i}_stride{j} = 0")
+
             code.writeline(
                 f"out{i}_bptr = tl.make_block_ptr("
                 f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
             )
+
             code.writeline(
                 f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
             )
 
     def gen_body_gsl_with_bptr(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
-        if self.ndim == 1:
-            code.writeline("tiles_per_cta = tl.cdiv(num_tiles0, num_ctas).to(tl.int32)")
+        code.writeline("num_ctas = tle.num_programs(0)")
+        if self.ndim <= 4:
+            num_tiles = " * ".join([f"num_tiles{i}" for i in range(self.ndim)])
+            code.writeline(
+                f"tiles_per_cta = tl.cdiv({num_tiles}, num_ctas).to(tl.int32)"
+            )
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -585,9 +775,10 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_without_bptr(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
-        if self.ndim == 1:
-            code.writeline("tiles_per_cta = tl.cdiv(num_tiles0, num_ctas)")
+        code.writeline("num_ctas = tle.num_programs(0)")
+        if self.ndim <= 4:
+            num_tiles = " * ".join([f"num_tiles{i}" for i in range(self.ndim)])
+            code.writeline(f"tiles_per_cta = tl.cdiv({num_tiles}, num_ctas)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -609,7 +800,17 @@ class KernelGenerator:
             code.writeline("pid = tle.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
-            self.gen_body_gsl_with_bptr(code)
+            if self.ndim > 4:
+                code.writeline("if one_tile_per_cta: # monolitic kernel style")
+                with code.indent():
+                    code.writeline("tile_id = pid")
+                    self.gen_body_one_tile_per_cta_with_bptr(code)
+                # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+                code.writeline("else: # grid-stride-loop style kernel")
+                with code.indent():
+                    self.gen_body_gsl_with_bptr(code)
+            else:
+                self.gen_body_gsl_with_bptr(code)
         code.newline()
         return code
 
@@ -628,7 +829,17 @@ class KernelGenerator:
             code.writeline("pid = tle.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
-            self.gen_body_gsl_without_bptr(code)
+            if self.ndim > 4:
+                code.writeline("if one_tile_per_cta: # monolitic kernel style")
+                with code.indent():
+                    code.writeline("tile_id = pid")
+                    self.gen_body_one_tile_per_cta_without_bptr(code)
+                # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+                code.writeline("else: # grid-stride-loop style kernel")
+                with code.indent():
+                    self.gen_body_gsl_without_bptr(code)
+            else:
+                self.gen_body_gsl_without_bptr(code)
         code.newline()
         return code
 
@@ -692,7 +903,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_1d_tile(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -802,7 +1013,7 @@ class WrapperGenerator:
         code.writeline("# task partitioning")
         ndim = self.ndim
         if ndim == 0:
-            code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
+            code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
         else:
             code.writeline("shape = out0.shape")
@@ -820,14 +1031,17 @@ class WrapperGenerator:
             )
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             max_grid_size0 = self.config.max_grid_size[0]
-            code.writeline(f"num_ctas = min({max_grid_size0}//num_warps, num_tiles)")
+            code.writeline(f"num_ctas = min({max_grid_size0} // num_warps, num_tiles)")
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
-        if ndim == 1:
+        if ndim > 0 and ndim <= 4:
             max_grid_size0 = self.config.max_grid_size[0]
+            dynamic_num_tiles = " * ".join(
+                f"triton.cdiv(meta['s{i}'], meta['tile_size{i}'])" for i in range(ndim)
+            )
             code.writeline(
-                f"grid = lambda meta: (min({max_grid_size0}//num_warps, triton.cdiv(num_tasks, meta['tile_size0'])),)"
+                f"grid = lambda meta: (min({max_grid_size0} // num_warps, {dynamic_num_tiles}), )"
             )
         else:
             code.writeline("grid = (num_ctas, 1, 1)")
@@ -836,7 +1050,7 @@ class WrapperGenerator:
         code.writeline("# task partitioning")
         ndim = self.ndim
         if ndim == 0:
-            code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
+            code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
         else:
             code.writeline("shape = out0.shape")
@@ -876,6 +1090,9 @@ class WrapperGenerator:
                 code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
             else:
                 code.writeline(f"in{i}_stride_order = (0,)")
+            code.writeline(
+                f"in{i}_zero_strides = [True if s == 0 else False for s in in{i}_strides]"
+            )
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
             if not with_block_pointer:
@@ -884,6 +1101,9 @@ class WrapperGenerator:
                 code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
             else:
                 code.writeline(f"out{i}_stride_order = (0,)")
+            code.writeline(
+                f"out{i}_zero_strides = [True if s == 0 else False for s in out{i}_strides]"
+            )
 
         code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
@@ -905,33 +1125,44 @@ class WrapperGenerator:
                     for i in range(schema.num_input_tensors()):
                         s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for in{i}")
-                        if not with_block_pointer:
-                            continue
-                        order = ", ".join(
-                            f"in{i}_stride_order[{j}]" for j in range(ndim)
-                        )
-                        code.writeline(f"{order}, # stride order for in{i}")
+                        if with_block_pointer:
+                            order = ", ".join(
+                                f"in{i}_stride_order[{j}]" for j in range(ndim)
+                            )
+                            code.writeline(f"{order}, # stride order for in{i}")
+                            zero_strides = ", ".join(
+                                f"in{i}_zero_strides[{j}]" for j in range(ndim)
+                            )
+                            code.writeline(
+                                f"{zero_strides}, # zero stride flag for in{i}"
+                            )
 
                     for i in range(schema.num_output_tensors()):
                         s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for out{i}")
-                        if not with_block_pointer:
-                            continue
-                        order = ", ".join(
-                            f"out{i}_stride_order[{j}]" for j in range(ndim)
-                        )
-                        code.writeline(f"{order}, # stride orderfor out{i}")
+                        if with_block_pointer:
+                            order = ", ".join(
+                                f"out{i}_stride_order[{j}]" for j in range(ndim)
+                            )
+                            code.writeline(f"{order}, # stride orderfor out{i}")
+                            zero_strides = ", ".join(
+                                f"out{i}_zero_strides[{j}]" for j in range(ndim)
+                            )
+                            code.writeline(
+                                f"{zero_strides}, # zero stride flag for out{i}"
+                            )
 
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
-                    if ndim > 1:
+                    if ndim > 4:
                         code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                    if ndim != 1:
+                    if ndim == 0 or ndim > 4:
                         for i in range(ndim):
                             code.writeline(f"tile_size{i}=tile_sizes[{i}],")
-                    if ndim > 1:
+                    if ndim > 4:
                         code.writeline("one_tile_per_cta=one_tile_per_cta,")
+                        code.writeline("num_warps=num_warps,")
             code.writeline(")")
 
     def gen_kernel_launch_1d(
@@ -1257,19 +1488,17 @@ class PointwiseDynamicFunction:
         file_name = (
             f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
             f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
-            f"{'bptr_' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
-            f"pid_{self.pid}.py"
+            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
+            ".py"
         )
-        with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
-            f.write(code.getvalue())
 
-        # print ("debug pointwise dynamic codegen: ", code_cache_dir() / file_name)
-        # print (code.getvalue())
+        file_path = code_cache_dir() / file_name
+        write_atomic(file_path, code.getvalue())
 
         # load
         spec = importlib.util.spec_from_file_location(
-            f"_gen_module_{self._scalar_fn_cache_key}_rank_{ndim}_pid_{self.pid}",
-            f.name,
+            f"_gen_module_{self._scalar_fn_cache_key}_rank_{ndim}",
+            file_path,
         )
         m = importlib.util.module_from_spec(spec)
         # do not expose it to sys.modules

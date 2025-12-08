@@ -14,6 +14,7 @@ from ..utils import MAX_GRID_SIZE_Y, TOTAL_CORE_NUM
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device = device.name
 
+# FIXME(cambricon): double 8192 when JIRA:1488 is fixed
 MAX_C_MLU_CUMSUM = 8192
 MAX_C_MLU_SPILT_CUMSUM = 32768
 MAX_TILE_N = 256
@@ -56,7 +57,8 @@ def cumsum_blelloch_impl(
     # Deal the last tile row exclusive sum(Composed by right shift and tl.cumsum)
     # Right shift 1 position for the last tile row
     partial_sum = tl.zeros((BLOCK_M, TILE_NUM, BLOCK_K), dtype=tl.dtype(DTYPE))
-    partial_sum[:, 1:, :] = x_block[:, TILE_N - 1, 0 : (TILE_NUM - 1), :]
+    if TILE_NUM > 1:
+        partial_sum[:, 1:, :] = x_block[:, TILE_N - 1, 0 : (TILE_NUM - 1), :]
     partial_sum = tl.cumsum(partial_sum, axis=1)
     # Apply cycle add for all tile data
     x_block += partial_sum[:, None, :, :]

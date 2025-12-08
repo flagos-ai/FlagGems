@@ -11,9 +11,9 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 exp2 = tl_extra_shim.exp2
 
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
-def sigmoid_forward(x):
+def sigmoid_forward(x, inplace):
     # log2e: tl.constexpr = math.log2(math.e)
     # triton 3.0.0 disallow calling non-jitted function inside jitted function, even if it is in
     # the rhs of an assignment to a constexpr, so we use numeric literal instead to work around this.
@@ -31,7 +31,7 @@ def sigmoid_backward_kernel(dy, y):
 
 def sigmoid(self):
     logger.debug("GEMS_CAMBRICON SIGMOID FORWARD")
-    output = sigmoid_forward(self)
+    output = sigmoid_forward(self, False)
     return output
 
 
@@ -43,5 +43,5 @@ def sigmoid_backward(grad_output, output):
 
 def sigmoid_(A):
     logger.debug("GEMS_CAMBRICON SIGMOID_ FORWARD")
-    out = sigmoid_forward(A, out0=A)
+    out = sigmoid_forward(A, True, out0=A)
     return out

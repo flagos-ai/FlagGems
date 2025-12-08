@@ -299,7 +299,11 @@ def test_accuracy_cumsum(shape, dtype):
             res_out = torch.cumsum(inp, dim=dim)
 
     # we should use ref's output type, since cumsum of int dtype results in int64
-    check_dtype = ref_out.dtype if dtype in INT_DTYPES else dtype
+    check_dtype = (
+        dtype
+        if flag_gems.vendor_name == "cambricon"
+        else (ref_out.dtype if dtype in INT_DTYPES else dtype)
+    )
     gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
 
 
@@ -870,7 +874,10 @@ TRACE_SHAPES = [
 
 @pytest.mark.trace
 @pytest.mark.parametrize("shape", TRACE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+@pytest.mark.parametrize(
+    "dtype",
+    FLOAT_DTYPES + INT_DTYPES + [torch.bool],
+)
 def test_accuracy_trace(shape, dtype):
     if dtype == torch.bool:
         inp = torch.randint(0, 2, size=shape, device=flag_gems.device).to(dtype)

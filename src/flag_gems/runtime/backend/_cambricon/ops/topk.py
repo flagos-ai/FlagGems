@@ -158,7 +158,7 @@ def topk_config_prune(configs, named_args, **kwargs):
 @libentry()
 @libtuner(
     configs=topk_cfggen(),
-    key=["k", "N", "M", "BLOCK_M", "DESCENDING"],
+    key=["k", "N", "M", "BLOCK_M"],
     prune_configs_by={"early_config_prune": topk_config_prune},
 )
 @triton.jit

@@ -15,13 +15,17 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @libtuner(
     configs=runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
+    strategy=["align32", "align32", "align32"],
+    warmup=5,
+    rep=10,
 )
 @triton.heuristics(
     {
         "EVEN_M": lambda args: args["M"] % args["BLOCK_SIZE_M"] == 0,
         "EVEN_N": lambda args: args["N"] % args["BLOCK_SIZE_N"] == 0,
         "EVEN_K": lambda args: args["K"] % args["BLOCK_SIZE_K"] == 0,
+        "BIAS_BROADCAST_M": lambda args: args["stride_im"] == 0,
+        "BIAS_BROADCAST_N": lambda args: args["stride_in"] == 0,
     }
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -46,6 +50,8 @@ def addmm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    BIAS_BROADCAST_M: tl.constexpr,
+    BIAS_BROADCAST_N: tl.constexpr,
     EVEN_M: tl.constexpr,
     EVEN_N: tl.constexpr,
     EVEN_K: tl.constexpr,
@@ -85,6 +91,13 @@ def addmm_kernel(
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+
+    if BIAS_BROADCAST_M:
+        stride_im = 0
+
+    if BIAS_BROADCAST_N:
+        stride_in = 0
+
     i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
 
     if EVEN_M and EVEN_N:
@@ -104,19 +117,78 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS_CAMBRICON ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
-    ), "Incompatible bias shape"
-
+    ), "Incompatible input shape"
     M, K = mat1.shape
     _, N = mat2.shape
 
+    logger.debug(
+        "GEMS_CAMBRICON ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+        M,
+        N,
+        K,
+        mat1.stride(0) == 1,
+        mat2.stride(0) == 1,
+        bias.stride(0) == 1,
+    )
     mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
+    # mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape).contiguous()
+    bias = bias.broadcast_to(out.shape)
+
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]),
+        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    )
+    with torch_device_fn.device(mat1.device):
+        addmm_kernel[grid](
+            mat1,
+            mat2,
+            bias,
+            out,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            mat1.stride(0),
+            mat1.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            bias.stride(0),
+            bias.stride(1),
+            out.stride(0),
+            out.stride(1),
+        )
+    return out
+
+
+def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
+    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
+    assert broadcastable_to(
+        bias.shape, (mat1.shape[0], mat2.shape[1])
+    ), "Incompatible input shape"
+    M, K = mat1.shape
+    _, N = mat2.shape
+    if out is None:
+        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    else:
+        assert out.shape == (M, N), "Incompatible output shape"
+    logger.debug(
+        "GEMS_CAMBRICON ADDMM_OUT, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+        M,
+        N,
+        K,
+        mat1.stride(0) == 1,
+        mat2.stride(0) == 1,
+        bias.stride(0) == 1,
+    )
+    mat1 = mat1.contiguous()
+    bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),

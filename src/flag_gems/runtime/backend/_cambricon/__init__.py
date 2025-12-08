@@ -25,11 +25,8 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
-    "randperm",  # skip now
-    "sort",  # skip now
-    "multinomial",  # skip now
     "_upsample_bicubic2d_aa",  # skip now
-    "sort_stable",
+    "copy_",
 )
 
 __all__ = ["*"]

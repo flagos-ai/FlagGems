@@ -15,22 +15,28 @@ fmod = tl_extra_shim.fmod
 trunc = tl_extra_shim.trunc
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
+)
 @triton.jit
-def true_div_func(x, y):
+def true_div_func(x, y, inplace):
     return x / y
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+@pointwise_dynamic(
+    is_tensor=[True, False, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
+)
 @triton.jit
-def true_div_func_tensor_scalar(x, y):
+def true_div_func_tensor_scalar(x, y, inplace):
     y = y.to(x.dtype)
     return x / y
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+@pointwise_dynamic(
+    is_tensor=[False, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
+)
 @triton.jit
-def true_div_func_scalar_tensor(x, y):
+def true_div_func_scalar_tensor(x, y, inplace):
     x = x.to(y.dtype)
     return x / y
 
@@ -38,15 +44,11 @@ def true_div_func_scalar_tensor(x, y):
 def true_divide(A, B):
     logger.debug("GEMS_CAMBRICON TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        if A.shape != B.shape:
-            A, B = torch.broadcast_tensors(A, B)
-            A = A.clone()
-            B = B.clone()
-        return true_div_func(A, B)
+        return true_div_func(A, B, False)
     elif isinstance(A, torch.Tensor):
-        return true_div_func_tensor_scalar(A, B)
+        return true_div_func_tensor_scalar(A, B, False)
     elif isinstance(B, torch.Tensor):
-        return true_div_func_scalar_tensor(A, B)
+        return true_div_func_scalar_tensor(A, B, False)
     else:
         # Both scalar
         return torch.tensor(A / B)
@@ -55,41 +57,41 @@ def true_divide(A, B):
 def true_divide_(A, B):
     logger.debug("GEMS_CAMBRICON TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):
-        if A.shape != B.shape:
-            A, B = torch.broadcast_tensors(A, B)
-            A = A.clone()
-            B = B.clone()
-        return true_div_func(A, B, out0=A)
+        return true_div_func(A, B, True, out0=A)
     else:
-        return true_div_func_tensor_scalar(A, B, out0=A)
+        return true_div_func_tensor_scalar(A, B, True, out0=A)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def trunc_div_func(x, y):
+def trunc_div_func(x, y, inplace):
     return trunc(div_rn(x, y))
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
 @triton.jit
-def trunc_div_func_tensor_scalar(x, y):
+def trunc_div_func_tensor_scalar(x, y, inplace):
     return trunc(div_rn(x, y))
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
 @triton.jit
-def trunc_div_func_scalar_tensor(x, y):
+def trunc_div_func_scalar_tensor(x, y, inplace):
     return trunc(div_rn(x, y))
 
 
 def trunc_divide(A, B):
     logger.debug("GEMS_CAMBRICON TRUNC_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return trunc_div_func(A, B)
+        return trunc_div_func(A, B, False)
     elif isinstance(A, torch.Tensor):
-        return trunc_div_func_tensor_scalar(A, B)
+        return trunc_div_func_tensor_scalar(A, B, False)
     elif isinstance(B, torch.Tensor):
-        return trunc_div_func_scalar_tensor(A, B)
+        return trunc_div_func_scalar_tensor(A, B, False)
     else:
         # Both scalar
         return torch.tensor(A / B)
@@ -98,9 +100,9 @@ def trunc_divide(A, B):
 def trunc_divide_(A, B):
     logger.debug("GEMS_CAMBRICON TRUNC_DIVIDE_")
     if isinstance(B, torch.Tensor):
-        return trunc_div_func(A, B, out0=A)
+        return trunc_div_func(A, B, True, out0=A)
     else:
-        return trunc_div_func_tensor_scalar(A, B, out0=A)
+        return trunc_div_func_tensor_scalar(A, B, True, out0=A)
 
 
 @triton.jit
@@ -123,6 +125,8 @@ def _int_floordiv(x, y):
     c2 = (x < 0) ^ (y < 0)
     c3 = (x < 0) & (y == 0)
     c = c1 & c2
+    if x.dtype == tl.int16 and y.dtype == tl.int16:
+        return (x.to(tl.int32) // y.to(tl.int32)).cast(tl.int16) - c - c3
     return x // y - c - c3
 
 
@@ -158,27 +162,31 @@ def _float_floordiv(x, y):
     return out
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def floor_div_func(x, y):
+def floor_div_func(x, y, inplace):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
 @triton.jit
-def floor_div_func_tensor_scalar(x, y):
+def floor_div_func_tensor_scalar(x, y, inplace):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
 @triton.jit
-def floor_div_func_scalar_tensor(x, y):
+def floor_div_func_scalar_tensor(x, y, inplace):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
@@ -188,11 +196,11 @@ def floor_div_func_scalar_tensor(x, y):
 def floor_divide(A, B):
     logger.debug("GEMS_CAMBRICON FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return floor_div_func(A, B)
+        return floor_div_func(A, B, False)
     elif isinstance(A, torch.Tensor):
-        return floor_div_func_tensor_scalar(A, B)
+        return floor_div_func_tensor_scalar(A, B, False)
     elif isinstance(B, torch.Tensor):
-        return floor_div_func_scalar_tensor(A, B)
+        return floor_div_func_scalar_tensor(A, B, False)
     else:
         # Both scalar
         return torch.tensor(A // B)
@@ -201,9 +209,9 @@ def floor_divide(A, B):
 def floor_divide_(A, B):
     logger.debug("GEMS_CAMBRICON FLOOR_DIVIDE_")
     if isinstance(B, torch.Tensor):
-        return floor_div_func(A, B, out0=A)
+        return floor_div_func(A, B, True, out0=A)
     else:
-        return floor_div_func_tensor_scalar(A, B, out0=A)
+        return floor_div_func_tensor_scalar(A, B, True, out0=A)
 
 
 def div_mode(A, B, rounding_mode=None):
@@ -238,32 +246,36 @@ def _remainder(x, y):
     return tl.where(c1 & c2, r + y, r)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def rem_tt(x, y):
+def rem_tt(x, y, inplace):
     return _remainder(x, y)
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
 @triton.jit
-def rem_ts(x, y):
+def rem_ts(x, y, inplace):
     return _remainder(x, y)
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
 @triton.jit
-def rem_st(x, y):
+def rem_st(x, y, inplace):
     return _remainder(x, y)
 
 
 def remainder(A, B):
-    logger.debug("GEMS_CAMBRICON FLOOR_DIVIDE")
+    logger.debug("GEMS_CAMBRICON REMAINDER")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return rem_tt(A, B)
+        return rem_tt(A, B, False)
     elif isinstance(A, torch.Tensor):
-        return rem_ts(A, B)
+        return rem_ts(A, B, False)
     elif isinstance(B, torch.Tensor):
-        return rem_st(A, B)
+        return rem_st(A, B, False)
     else:
         # Both scalar
         return torch.tensor(A % B)
@@ -272,6 +284,6 @@ def remainder(A, B):
 def remainder_(A, B):
     logger.debug("GEMS_CAMBRICON REMAINDER_")
     if isinstance(B, torch.Tensor):
-        return rem_tt(A, B, out0=A)
+        return rem_tt(A, B, True, out0=A)
     else:
-        return rem_ts(A, B, out0=A)
+        return rem_ts(A, B, True, out0=A)

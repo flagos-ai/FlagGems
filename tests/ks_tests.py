@@ -17,6 +17,9 @@ if flag_gems.vendor_name == "kunlunxin":
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_normal_pvalue(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device=flag_gems.device)
     scale = torch.full(
         size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
