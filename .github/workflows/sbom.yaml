@@ -42,6 +42,7 @@ jobs:
     - name: Generate SBOM from pyproject.toml
       run: |
         # 使用 cyclonedx-py 生成 SBOM
+        poetry lock
         cyclonedx-py poetry --output-file bom.xml
         
         # 或者使用其他工具（根据您的需求选择）
