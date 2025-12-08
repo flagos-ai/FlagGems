@@ -184,7 +184,7 @@ from flag_gems.ops.repeat_interleave import (
 )
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
-from flag_gems.ops.rms_norm import rms_norm
+from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.select_scatter import select_scatter
@@ -448,6 +448,8 @@ __all__ = [
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_forward",
+    "rms_norm_backward",
     "sqrt",
     "sqrt_",
     "rsqrt",
