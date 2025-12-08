@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.shape_utils import volume
 
 from ..utils import TOTAL_CORE_NUM
@@ -13,7 +14,8 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=1, num_warps=1),
@@ -23,11 +25,10 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
     key=["n_elements"],
 )
 @triton.jit(do_not_specialize=["fill_value_or_ptr"])
-def full_kernel(
+def full_tensor_kernel(
     output_ptr,
     n_elements,
-    fill_value_or_ptr,
-    FILL_VALUE_IS_PTR: tl.constexpr,
+    fill_value_ptr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -38,10 +39,35 @@ def full_kernel(
     for block_start_offset in range(block_start, n_elements, step):
         offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
-        if FILL_VALUE_IS_PTR:
-            fill_value = tl.load(fill_value_or_ptr)
-        else:
-            fill_value = fill_value_or_ptr
+        fill_value = tl.load(fill_value_ptr)
+        tl.store(output_ptr + offsets, fill_value, mask=mask)
+
+
+@libentry()
+@libtuner(
+    configs=[
+        triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 16384}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 65536}, num_stages=1, num_warps=1),
+    ],
+    key=["n_elements"],
+)
+@triton.jit(do_not_specialize=["fill_value_or_ptr"])
+def full_scalar_kernel(
+    output_ptr,
+    n_elements,
+    fill_value,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    block_start = block_start.to(tl.int64)
+    for block_start_offset in range(block_start, n_elements, step):
+        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
         tl.store(output_ptr + offsets, fill_value, mask=mask)
 
 
@@ -98,10 +124,16 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
     N = volume(size)
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(device):
-        full_kernel[grid_fn](
-            out,
-            N,
-            fill_value,
-            FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
-        )
+        if isinstance(fill_value, torch.Tensor):
+            full_tensor_kernel[grid_fn](
+                out,
+                N,
+                fill_value,
+            )
+        else:
+            full_scalar_kernel[grid_fn](
+                out,
+                N,
+                fill_value,
+            )
     return out

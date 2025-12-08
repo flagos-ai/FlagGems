@@ -289,6 +289,20 @@ mm:
     SPLIT_K: 1
   num_stages: 5
   num_warps: 4
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 4096
+    BLOCK_K: 32
+    SPLIT_K: 1
+  num_stages: 2
+  num_warps: 1
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 384
+    BLOCK_K: 512
+    SPLIT_K: 1
+  num_stages: 2
+  num_warps: 1
 #######################################
 softmax:
 - META:
@@ -966,6 +980,7 @@ randperm:
   param_map:
     META: {}
     num_warps: warps
+    num_stages: 1
   warps:
   - 1
 #######################################
@@ -1384,26 +1399,6 @@ index_put:
   - 4096
   - 8192
 #######################################
-kron:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: warps
-  block_m:
-  - 1
-  - 4
-  - 8
-  - 16
-  block_n:
-  - 1024
-  - 2048
-  - 4096
-  - 8192
-  warps:
-  - 1
-#######################################
 linspace:
 - gen: true
   param_map:
@@ -1438,3 +1433,24 @@ index:
   - 4096
   warps:
   - 1
+  - 4
+#######################################
+naive_reduction:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+    num_warps: 1
+    num_stages: 1
+  block_m:
+    - 1
+    - 2
+    - 4
+    - 8
+    - 16
+    - 32
+  block_n:
+    - 256
+    - 512
+    - 1024

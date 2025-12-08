@@ -12,9 +12,9 @@ pow = tl_extra_shim.pow
 _tanh = tl_extra_shim.fast_tanh
 
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
-def tanh_kernel(x):
+def tanh_kernel(x, inplace):
     return _tanh(x.to(tl.float32))
 
 
@@ -27,7 +27,7 @@ def tanh_backward_kernel(y, dy):
 
 def tanh(self):
     logger.debug("GEMS_CAMBRICON TANH FORWARD")
-    out = tanh_kernel(self)
+    out = tanh_kernel(self, False)
     return out
 
 
@@ -39,5 +39,5 @@ def tanh_backward(grad_output, output):
 
 def tanh_(A):
     logger.debug("GEMS_CAMBRICON TANH_ FORWARD")
-    out = tanh_kernel(A, out0=A)
+    out = tanh_kernel(A, True, out0=A)
     return out
