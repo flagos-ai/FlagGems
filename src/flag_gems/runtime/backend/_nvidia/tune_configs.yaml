@@ -28,7 +28,7 @@ attention:
 attention_bwd:
   - gen: true
     param_map:
-      META: {BLOCK_M1: 32, BLOCK_N1: 128, BLOCK_M2: 128, BLOCK_N2: 64}
+      META: {BLOCK_M1: 32, BLOCK_N1: 128, BLOCK_M2: 128, BLOCK_N2: 32}
       num_warps: warps
       num_stages: stages
     warps:
