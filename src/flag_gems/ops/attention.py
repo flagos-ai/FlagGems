@@ -11,6 +11,7 @@ from flag_gems.config import use_c_extension
 from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
 from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,8 @@ SMALL_HEAD_DIM_CONFIGS = [
 configs += SMALL_HEAD_DIM_CONFIGS
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=list(filter(partial(keep, must_keep=SMALL_HEAD_DIM_CONFIGS), configs)),
     key=["KV_CTX", "HEAD_DIM"],
 )
@@ -513,8 +515,12 @@ def _attn_bwd_dq(
     return dq
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("attention_bwd"),
+config_backward = runtime.get_tuned_config("attention_bwd")
+
+
+@libentry()
+@libtuner(
+    configs=config_backward,
     key=["KV_CTX", "BLOCK_DMODEL"],
 )
 @triton.jit
@@ -896,15 +902,14 @@ def scaled_dot_product_attention_backward(
     _, KV_HEAD, KV_CTX = key.shape[:3]
     group_head = Q_HEAD // KV_HEAD
 
-    NUM_WARPS, NUM_STAGES = 4, 1
-    BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
+    # NUM_WARPS, NUM_STAGES = 4, 1
+    # BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
     BLK_SLICE_FACTOR = 2
     # RCP_LN2 = 1.4426950408889634  # = 1.0 / ln(2)
 
     RCP_LN2 = 1.0 / math.log(2)
 
-    arg_k = key
-    arg_k = arg_k * (sm_scale * RCP_LN2)
+    arg_k = key * (sm_scale * RCP_LN2)
     # PRE_BLOCK = 128
     PRE_BLOCK = 256
 
@@ -931,9 +936,14 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    grid = (triton.cdiv(Q_CTX, BLOCK_N1), 1, BATCH * Q_HEAD)
-    logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
-    logger.info(f"{M.shape=}")
+    max_block_n1 = (
+        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
+        if config_backward
+        else 128
+    )
+    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
+    # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
+    # logger.info(f"{M.shape=}")
 
     _attn_bwd[grid](
         query,
@@ -957,14 +967,14 @@ def scaled_dot_product_attention_backward(
         KV_CTX,  #
         KV_HEAD,  #
         GROUP_HEAD=group_head,  #
-        BLOCK_M1=BLOCK_M1,
-        BLOCK_N1=BLOCK_N1,  #
-        BLOCK_M2=BLOCK_M2,
-        BLOCK_N2=BLOCK_N2,  #
+        # BLOCK_M1=BLOCK_M1,
+        # BLOCK_N1=BLOCK_N1,  #
+        # BLOCK_M2=BLOCK_M2,
+        # BLOCK_N2=BLOCK_N2,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
-        num_warps=NUM_WARPS,  #
-        num_stages=NUM_STAGES,  #
+        # num_warps=NUM_WARPS,  #
+        # num_stages=NUM_STAGES,  #
     )
 
     if group_head > 1:
