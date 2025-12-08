@@ -1,0 +1,127 @@
+name: Python Dependency Security and Lockfile Check
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  sbom-and-lockfile-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取所有历史记录以便比较lock文件
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+    
+    - name: Install dependencies and tools
+      run: |
+        python -m pip install --upgrade pip
+        # 根据您的包管理器选择安装（假设使用 poetry）
+        pip install poetry
+        # 安装 SBOM 生成工具
+        pip install cyclonedx-bom
+        
+        # 或者如果使用 pip-tools
+        # pip install pip-tools
+        # 或者如果使用 pdm
+        # pip install pdm
+        
+        # 安装依赖
+        if [ -f "pyproject.toml" ]; then
+          poetry install --no-root || echo "依赖安装失败，继续执行..."
+        fi
+    
+    - name: Generate SBOM from pyproject.toml
+      run: |
+        # 使用 cyclonedx-py 生成 SBOM
+        cyclonedx-py poetry --output-file bom.xml
+        
+        # 或者使用其他工具（根据您的需求选择）
+        # pip install sbom-tool
+        # sbom-tool generate -i pyproject.toml -o bom.json
+        
+        echo "SBOM 生成完成"
+    
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-artifact
+        path: |
+          bom.xml
+          # bom.json (如果使用其他格式)
+        retention-days: 30
+    
+    - name: Generate/Update lock file
+      run: |
+        # 备份当前的 lock 文件（如果存在）
+        if [ -f "poetry.lock" ]; then
+          cp poetry.lock poetry.lock.backup
+        elif [ -f "requirements.txt" ]; then
+          cp requirements.txt requirements.txt.backup
+        elif [ -f "pdm.lock" ]; then
+          cp pdm.lock pdm.lock.backup
+        fi
+        
+        # 根据使用的包管理器生成 lock 文件
+        if command -v poetry &> /dev/null; then
+          poetry lock --no-update
+        elif [ -f "requirements.in" ]; then
+          pip-compile requirements.in --output-file=requirements.txt
+        elif command -v pdm &> /dev/null; then
+          pdm lock --no-isolation
+        else
+          echo "未检测到支持的包管理器"
+        fi
+    
+    - name: Check for lock file changes
+      run: |
+        # 检查 lock 文件是否有变化
+        lock_file_changed=false
+        
+        if [ -f "poetry.lock.backup" ] && [ -f "poetry.lock" ]; then
+          if ! diff -q poetry.lock.backup poetry.lock > /dev/null; then
+            echo "❌ poetry.lock 文件有变化！"
+            echo "请运行 'poetry lock' 或 'poetry update' 来更新 lock 文件"
+            lock_file_changed=true
+          fi
+        elif [ -f "requirements.txt.backup" ] && [ -f "requirements.txt" ]; then
+          if ! diff -q requirements.txt.backup requirements.txt > /dev/null; then
+            echo "❌ requirements.txt 文件有变化！"
+            echo "请运行 'pip-compile' 来更新 lock 文件"
+            lock_file_changed=true
+          fi
+        elif [ -f "pdm.lock.backup" ] && [ -f "pdm.lock" ]; then
+          if ! diff -q pdm.lock.backup pdm.lock > /dev/null; then
+            echo "❌ pdm.lock 文件有变化！"
+            echo "请运行 'pdm lock' 来更新 lock 文件"
+            lock_file_changed=true
+          fi
+        fi
+        
+        # 清理备份文件
+        rm -f *.backup
+        
+        # 如果 lock 文件有变化，则使 pipeline 失败
+        if [ "$lock_file_changed" = true ]; then
+          exit 1
+        fi
+        
+        echo "✅ Lock 文件是最新的"
+    
+    - name: Upload lock file diff (如果变化)
+      if: failure() && steps.check-lock-file.outcome == 'failure'
+      uses: actions/upload-artifact@v4
+      with:
+        name: lockfile-diff
+        path: |
+          *.lock
+          requirements.txt
+        retention-days: 7
