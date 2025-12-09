@@ -141,13 +141,15 @@ def mm_kernel_general(
         # do matrix multiplication
         rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
         rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
+        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(tl.int64)
+        rm = rm.to(tl.int64)
+        rn = rn.to(tl.int64)
         prev_multiple = prev_multiple_of(K, BLOCK_K)
 
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for start_k in range(0, prev_multiple, BLOCK_K):
-            rk = start_k + tl.arange(0, BLOCK_K)
+            rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
             a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
             b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
             if a.dtype != b.dtype:
@@ -156,7 +158,7 @@ def mm_kernel_general(
             acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
         # loop peeling
-        rk = prev_multiple + tl.arange(0, BLOCK_K)
+        rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
         mask_k = rk < K
         a = tl.load(
             A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
@@ -175,8 +177,8 @@ def mm_kernel_general(
 
         acc = acc.to(C.dtype.element_ty)
         # rematerialize rm and rn to save registers
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+        rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
         offsets = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
         mask = (rm < M)[:, None] & (rn < N)[None, :]
         # handles write-back with reduction-splitting
