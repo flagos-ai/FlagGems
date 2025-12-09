@@ -188,6 +188,7 @@ from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scatter import scatter, scatter_
+from flag_gems.ops.scatter_add_ import scatter_add_
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
@@ -460,6 +461,7 @@ __all__ = [
     "scaled_dot_product_attention_backward",
     "ScaleDotProductAttention",
     "scatter",
+    "scatter_add_",
     "scatter_",
     "select_scatter",
     "sigmoid",
