@@ -1912,3 +1912,73 @@ def test_accuracy_std(shape, dim, correction, keepdim, dtype):
     ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.scaled_softmax
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
+@pytest.mark.parametrize("query_seq_len", [64, 128])
+@pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
+@pytest.mark.parametrize("scale_factor", [0.1])
+def test_accuracy_scaled_softmax_forward(
+    batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
+):
+    try:
+        from transformer_engine.common import _load_library
+
+        _load_library()
+        import transformer_engine_torch as tex  # type: ignore
+    except ImportError:
+        pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
+
+    s = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    with flag_gems.use_gems():
+        p = flag_gems.scaled_softmax_forward(s, scale_factor)
+    gems_assert_close(p, p_ref, dtype, equal_nan=True)
+
+
+@pytest.mark.scaled_softmax
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
+@pytest.mark.parametrize("query_seq_len", [64, 128])
+@pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
+@pytest.mark.parametrize("scale_factor", [0.1])
+def test_accuracy_scaled_softmax_backward(
+    batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
+):
+    try:
+        from transformer_engine.common import _load_library
+
+        _load_library()
+        import transformer_engine_torch as tex  # type: ignore
+    except ImportError:
+        pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
+
+    out_grad = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    s = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    with flag_gems.use_gems():
+        p = flag_gems.scaled_softmax_forward(s, scale_factor)
+        in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
+    in_grad_ref = tex.scaled_softmax_backward(out_grad, p_ref, scale_factor)
+
+    gems_assert_close(
+        in_grad, in_grad_ref, dtype, equal_nan=True, reduce_dim=s.shape[-1]
+    )
