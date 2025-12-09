@@ -259,9 +259,9 @@ def streamk_scenario(a, b, M, N, K):
 def mm(a, b):
     device = a.device
     # handle non-contiguous inputs if necessary
-    if not a.is_contiguous():
+    if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
-    if not b.is_contiguous():
+    if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
@@ -280,9 +280,9 @@ def mm(a, b):
 
 def mm_out(a, b, *, out):
     # handle non-contiguous inputs if necessary
-    if not a.is_contiguous():
+    if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
-    if not b.is_contiguous():
+    if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
