@@ -148,23 +148,78 @@ def rms_norm_grad_dw_kernel(
     )
 
 
+def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
+    logger.debug("GEMS RMS_NORM FORWARD")
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
+
+    BLOCK_SIZE = triton.next_power_of_2(N)
+    x = x.contiguous()
+    weight = weight.contiguous()
+    y = torch.empty_like(x)
+    inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+
+    with torch_device_fn.device(x.device):
+        rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
+
+    return y, inv_rms
+
+
+def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
+    logger.debug("GEMS RMS_NORM BACKWARD")
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
+
+    BLOCK_SIZE = triton.next_power_of_2(N)
+    x = x.contiguous()
+    dy = dy.contiguous()
+    weight = weight.contiguous()
+    dx = torch.empty_like(x)
+
+    with torch_device_fn.device(x.device):
+        rms_norm_grad_dx_kernel[M,](
+            x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+        )
+
+    ROW_BLOCK_SIZE = 16
+    COL_BLOCK_SIZE = 256
+    row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
+    col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
+
+    partial_buffer = torch.empty(
+        (row_block_num, N), dtype=torch.float32, device=x.device
+    )
+
+    with torch_device_fn.device(x.device):
+        rms_norm_grad_dw_kernel[row_block_num, col_block_num](
+            x,
+            dy,
+            inv_rms,
+            partial_buffer,
+            N,
+            1,
+            N,
+            1,
+            M,
+            N,
+            ROW_BLOCK_SIZE,
+            COL_BLOCK_SIZE,
+        )
+        dw = (
+            torch.sum(partial_buffer, dim=0, dtype=torch.float32)
+            .to(x.dtype)
+            .reshape(-1)
+        )
+
+    return dx, dw
+
+
 class RmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, eps=1e-5):
-        logger.debug("GEMS LAYERNORM FORWARD")
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
-
-        BLOCK_SIZE = triton.next_power_of_2(N)
-        x = x.contiguous()
-        weight = weight.contiguous()
-        y = torch.empty_like(x)
-        inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
-
-        with torch_device_fn.device(x.device):
-            rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
-
+        y, inv_rms = rms_norm_forward(x, normalized_shape, weight, eps)
         ctx.save_for_backward(x, inv_rms, weight)
         ctx.normalized_shape = normalized_shape
         ctx.eps = eps
@@ -172,56 +227,11 @@ class RmsNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dy):
-        logger.debug("GEMS LAYERNORM BACKWARD")
         x, inv_rms, weight = ctx.saved_tensors
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps
 
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
-
-        BLOCK_SIZE = triton.next_power_of_2(N)
-        x = x.contiguous()
-        dy = dy.contiguous()
-        weight = weight.contiguous()
-        dx = torch.empty_like(x)
-
-        with torch_device_fn.device(x.device):
-            rms_norm_grad_dx_kernel[M,](
-                x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-            )
-
-        ROW_BLOCK_SIZE = 16
-        COL_BLOCK_SIZE = 256
-        row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
-        col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
-
-        partial_buffer = torch.zeros(
-            (row_block_num, N), dtype=torch.float32, device=x.device
-        )
-
-        with torch_device_fn.device(x.device):
-            rms_norm_grad_dw_kernel[row_block_num, col_block_num](
-                x,
-                dy,
-                inv_rms,
-                partial_buffer,
-                N,
-                1,
-                N,
-                1,
-                M,
-                N,
-                ROW_BLOCK_SIZE,
-                COL_BLOCK_SIZE,
-            )
-            dw = (
-                torch.sum(partial_buffer, dim=0, dtype=torch.float32)
-                .to(x.dtype)
-                .reshape(-1)
-            )
-
+        dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
         return dx, None, dw, None
 
 
