@@ -24,10 +24,14 @@ class Register:
         self.for_each()
 
     def config_filter(self):
+        def enabled(item):
+            return len(item) < 3 or bool(item[2]())
+
         self.config = [
-            item
+            (item[0], item[1])
             for item in self.config
-            if item[1].__name__ not in self.unused_ops
+            if enabled(item)
+            and item[1].__name__ not in self.unused_ops
             and item[0] not in self.cpp_patched_ops_list
         ]
 
