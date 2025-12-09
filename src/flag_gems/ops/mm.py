@@ -192,6 +192,8 @@ def streamk_scenario(a, b, M, N, K):
         capability[0] == 8
         and a.dtype in [torch.float16, torch.bfloat16]
         and b.dtype in [torch.float16, torch.bfloat16]
+        and a.is_contiguous()
+        and b.is_contiguous()
         and K > M * 5
         and K > N * 5
     )
@@ -200,9 +202,9 @@ def streamk_scenario(a, b, M, N, K):
 def mm(a, b):
     device = a.device
     # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
+    if not a.is_contiguous():
         a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
+    if not b.is_contiguous():
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
@@ -221,9 +223,9 @@ def mm(a, b):
 
 def mm_out(a, b, *, out):
     # handle non-contiguous inputs if necessary
-    if a.stride(0) > 1 and a.stride(1) > 1:
+    if not a.is_contiguous():
         a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
+    if not b.is_contiguous():
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
