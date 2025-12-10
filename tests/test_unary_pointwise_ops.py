@@ -19,6 +19,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    POINTWISE_LARGE_SHAPES,
     SkipVersion,
     gems_assert_close,
     gems_assert_equal,
@@ -257,7 +258,7 @@ def test_accuracy_cos_(shape, dtype):
 
 
 @pytest.mark.exp
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES + POINTWISE_LARGE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_exp(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
