@@ -7,6 +7,7 @@ from .full import full
 from .full_like import full_like
 from .groupnorm import group_norm
 from .index import index
+from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
 from .log_softmax import log_softmax, log_softmax_backward
@@ -39,6 +40,8 @@ __all__ = [
     "full_like",
     "group_norm",
     "index",
+    "index_put",
+    "index_put_",
     "index_select",
     "isin",
     "log_softmax",
