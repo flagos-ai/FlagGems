@@ -922,8 +922,18 @@ def scaled_dot_product_attention_backward(
 
     # NOTE that dk & dv always have the same number of heads as q
     dq = torch.empty_like(query).contiguous()
-    dk = torch.empty((BATCH, Q_HEAD, KV_CTX, HEAD_DIM_K)).to(key.device).contiguous()
-    dv = torch.empty((BATCH, Q_HEAD, KV_CTX, HEAD_DIM_V)).to(value.device).contiguous()
+    dk = torch.empty(
+        (BATCH, Q_HEAD, KV_CTX, HEAD_DIM_K),
+        device=key.device,
+        dtype=key.dtype,
+        memory_format=torch.contiguous_format,
+    )
+    dv = torch.empty(
+        (BATCH, Q_HEAD, KV_CTX, HEAD_DIM_V),
+        device=value.device,
+        dtype=value.dtype,
+        memory_format=torch.contiguous_format,
+    )
 
     _attn_bwd_preprocess[pre_grid](
         o,
