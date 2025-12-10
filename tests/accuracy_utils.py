@@ -61,9 +61,6 @@ POINTWISE_SHAPES = (
     if QUICK_MODE
     else [(), (1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 60), (16, 7, 57, 32, 29)]
 )
-# Keep numel just above INT32_MAX (~2_147_483_647) while avoiding massive allocations.
-# 65536 * 32768 = 2_147_483_648 (> INT32_MAX) but trims memory pressure compared to the previous shape.
-POINTWISE_LARGE_SHAPES = [(65536, 32768)]
 SPECIAL_SHAPES = (
     [(2, 19, 7)]
     if QUICK_MODE
