@@ -229,6 +229,67 @@ def instance_norm_loop_kernel(
         tl.store(out_ptr + pid * N + n_offsets, out)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def instancenorm_fwd_kernel_xpu(
+    X,
+    Y,
+    W,
+    B,
+    MEAN,
+    RSTRD,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    C: tl.constexpr,
+    eps: tl.constexpr,
+    HAS_WEIGHT_BIAS: tl.constexpr,
+    XBLOCK: tl.constexpr,
+    RBLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    xoffset = pid * XBLOCK
+    _xindex = xoffset + tl.arange(0, XBLOCK)
+    xindex = _xindex[:, None]
+    xmask = xindex < M
+    rbase = tl.arange(0, RBLOCK)[None, :]
+    _mean = tl.full([XBLOCK, RBLOCK], 0, tl.float32)
+    _var = tl.full([XBLOCK, RBLOCK], 0, tl.float32)
+
+    for roffset in range(0, N, RBLOCK):
+        rindex = roffset + rbase
+        rmask = rindex < N
+        x = tl.load(X + (rindex + (N * xindex)), rmask & xmask, other=0.0).to(
+            tl.float32
+        )
+        _mean = _mean + tl.broadcast_to(x, [XBLOCK, RBLOCK])
+        _var = _var + tl.broadcast_to(x * x, [XBLOCK, RBLOCK])
+
+    mean = tl.sum(_mean, 1)[:, None] / N
+    var = tl.sum(_var, 1)[:, None] / N
+    var_mean = var - mean * mean
+    rstd = 1 / tl.sqrt(var_mean + eps)
+
+    tl.store(MEAN + xindex, mean, xmask)
+    tl.store(RSTRD + xindex, rstd, xmask)
+
+    cindex = xindex % C
+    for roffset in range(0, N, RBLOCK):
+        rindex = roffset + rbase
+        rmask = rindex < N
+        x = tl.load(X + (rindex + (N * xindex)), rmask & xmask, other=0.0).to(
+            tl.float32
+        )
+        if HAS_WEIGHT_BIAS:
+            w = tl.load(W + cindex, xmask)
+            b = tl.load(B + cindex, xmask)
+        else:
+            w = 1
+            b = 0
+        x_hat = (x - mean) * rstd
+        y = x_hat * w + b
+        tl.store(Y + (rindex + (N * xindex)), y, rmask & xmask)
+
+
 def instance_norm_use_running_stats_kernel_heur_tile_n(args):
     return 8192
     import builtins
@@ -241,11 +302,6 @@ def instance_norm_use_running_stats_kernel_heur_tile_n(args):
 #     configs=runtime.get_tuned_config("instancenorm"),
 #     key=["M", "N"],
 # )
-@triton.heuristics(
-    values={
-        "TILE_N": instance_norm_use_running_stats_kernel_heur_tile_n,
-    },
-)
 @triton.jit(do_not_specialize=["eps"])
 def instance_norm_use_running_stats_kernel(
     in_ptr,
@@ -273,16 +329,16 @@ def instance_norm_use_running_stats_kernel(
     mask = n_offsets < N
 
     x = tl.load(in_ptr + pid * N + n_offsets, mask, other=0.0).to(tl.float32)
-    m = tl.load(running_mean_ptr + c_offsets, mask=m_mask)
-    var = tl.load(running_var_ptr + c_offsets, mask=m_mask)
+    m = tl.load(running_mean_ptr + c_offsets, mask=m_mask).to(tl.float32)
+    var = tl.load(running_var_ptr + c_offsets, mask=m_mask).to(tl.float32)
     rstd = tl.math.rsqrt(var + eps)
 
     tl.store(out_mean_ptr + pid, m)
     tl.store(out_rstd_ptr + pid, rstd)
 
     if HAS_WEIGHT_BIAS:
-        w = tl.load(weight_ptr + c_offsets, mask=m_mask)
-        b = tl.load(bias_ptr + c_offsets, mask=m_mask)
+        w = tl.load(weight_ptr + c_offsets, mask=m_mask).to(tl.float32)
+        b = tl.load(bias_ptr + c_offsets, mask=m_mask).to(tl.float32)
         out = (x - m) * rstd * w + b
     else:
         out = (x - m) * rstd
@@ -420,7 +476,7 @@ def instance_norm_backward_kernel(
 
 
 def weight_bias_backward_kernel_heur_block_batch_size(args):
-    return 128
+    return 1
     import builtins
 
     return builtins.min(triton.next_power_of_2(args["N"]), 8192)
@@ -546,8 +602,8 @@ class InstanceNorm(torch.autograd.Function):
 
         with torch_device_fn.device(x.device):
             if use_input_stats:
-                grid = (M, 1, 1)
-                instance_norm_loop_kernel[grid](
+                grid = (12, 1, 1)
+                instancenorm_fwd_kernel_xpu[grid](
                     x,
                     y,
                     weight,
@@ -559,7 +615,10 @@ class InstanceNorm(torch.autograd.Function):
                     C,
                     eps,
                     HAS_WEIGHT_BIAS=has_weight_bias,
+                    XBLOCK=triton.next_power_of_2(triton.cdiv(M, 12)),
+                    RBLOCK=8192,
                     isCloseUnrollControl=True,
+                    buffer_size_limit=512,
                 )
                 if has_running_stats and use_input_stats:  # update running stats
                     grid = lambda meta: (
@@ -599,6 +658,7 @@ class InstanceNorm(torch.autograd.Function):
                     eps,
                     TILE_N,
                     HAS_WEIGHT_BIAS=has_weight_bias,
+                    isCloseUnrollControl=True,
                 )
 
         ctx.save_for_backward(x, weight, mean, rstd)
@@ -622,11 +682,6 @@ class InstanceNorm(torch.autograd.Function):
             in_grad = torch.empty_like(x)
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
 
-            import os
-
-            os.environ["TRITONXPU_OTHER_SIM"] = "1"
-            os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-
             instance_norm_backward_kernel[grid](
                 out_grad,
                 x,
@@ -641,17 +696,21 @@ class InstanceNorm(torch.autograd.Function):
                 isCloseCoreTiling=True,
             )
 
-            if "TRITONXPU_OTHER_SIM" in os.environ:
-                del os.environ["TRITONXPU_OTHER_SIM"]
-            if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-                del os.environ["TRITONXPU_STORE_MASK_SIM"]
-
             if ctx.has_weight_bias:
                 grid = lambda meta: (C, 1, 1)
                 weight_grad = torch.empty_like(weight)
                 bias_grad = torch.empty_like(weight)
                 weight_bias_backward_kernel[grid](
-                    out_grad, x, mean, rstd, weight_grad, bias_grad, M, N, B, C
+                    out_grad,
+                    x,
+                    mean,
+                    rstd,
+                    weight_grad,
+                    bias_grad,
+                    M,
+                    N,
+                    B,
+                    C,
                 )
             else:
                 weight_grad = None

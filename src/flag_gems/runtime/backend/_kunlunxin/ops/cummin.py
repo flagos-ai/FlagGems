@@ -1,5 +1,6 @@
 import logging
 import math
+from collections import namedtuple
 
 import torch
 import triton
@@ -8,8 +9,16 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils.limits import get_dtype_max
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+# from typing import List, Tuple, Union
+
+
+CumminResult = namedtuple("CumminResult", ["values", "indices"])
+
+Tensor = torch.Tensor
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -73,13 +82,16 @@ def scan_part_min_kernel(
     partial_min_indices,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NEED_PARTIAL: tl.constexpr,
+    USE_OUT_INDICES: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
+    max_value = get_dtype_max(inp.type.element_ty)
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -89,14 +101,18 @@ def scan_part_min_kernel(
         inp_vals = inp_vals.to(tl.int32)
     else:
         inp_vals = inp_vals.to(tl.float32)
-    in_indices_ptrs = out_indices + offset
-    in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    if tl.constexpr(USE_OUT_INDICES):
+        in_indices_ptrs = out_indices + offset
+        in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    else:
+        in_indices_vals = offset
     result, cummin_indices = tl_cummin(inp_vals, in_indices_vals, axis=0)
 
-    # tl.min do not support min_indices_tie_break_right
-    part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
-        inp_vals, in_indices_vals, axis=0
-    )
+    if tl.constexpr(NEED_PARTIAL):
+        # tl.min do not support min_indices_tie_break_right
+        part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
+            inp_vals, in_indices_vals, axis=0
+        )
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -104,21 +120,29 @@ def scan_part_min_kernel(
     out_indices_ptrs = out_indices + offset
     tl.store(out_indices_ptrs, cummin_indices, mask=mask)
 
-    partial_min_ptrs = partial_min + pid
-    tl.store(partial_min_ptrs, part_min_via_min)
+    if tl.constexpr(NEED_PARTIAL):
+        partial_min_ptrs = partial_min + pid
+        tl.store(partial_min_ptrs, part_min_via_min)
 
-    partial_min_indices_ptrs = partial_min_indices + pid
-    tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
+        partial_min_indices_ptrs = partial_min_indices + pid
+        tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
 
 
-def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
+def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False):
     # TODO(all): tune on target board
     BLOCK_SIZE = 1024
     if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
-    partial_min = torch.empty(part_num, dtype=dtype, device=inp.device)
-    partial_min_indices = torch.empty(part_num, dtype=torch.int64, device=inp.device)
+    need_partial = True if part_num >= 2 else False
+    if need_partial:
+        partial_min = torch.empty(part_num, dtype=dtype, device=inp.device)
+        partial_min_indices = torch.empty(
+            part_num, dtype=torch.int64, device=inp.device
+        )
+    else:
+        partial_min = None
+        partial_min_indices = None
 
     grid = (part_num,)
     with torch_device_fn.device(inp.device):
@@ -131,11 +155,18 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
             partial_min_indices,
             n_ele,
             BLOCK_SIZE,
+            need_partial,
+            use_out_indices,
         )
 
     if part_num >= 2:
         scan_then_fan_col(
-            partial_min, partial_min, partial_min_indices, part_num, dtype
+            partial_min,
+            partial_min,
+            partial_min_indices,
+            part_num,
+            dtype,
+            use_out_indices=True,
         )
         with torch_device_fn.device(inp.device):
             add_base_min_kernel[grid](
@@ -156,6 +187,8 @@ def scan_part_min_abc_kernel(
     C,
     part_num,
     BLOCK_SIZE: tl.constexpr,
+    NEED_PARTIAL: tl.constexpr,
+    USE_OUT_INDICES: tl.constexpr,
 ):
     pid_a = tle.program_id(0)
     pid_b = tle.program_id(1)
@@ -171,7 +204,8 @@ def scan_part_min_abc_kernel(
 
     mask = b_idx < B
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+    max_value = get_dtype_max(inp.type.element_ty)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -181,15 +215,18 @@ def scan_part_min_abc_kernel(
         inp_vals = inp_vals.to(tl.int32)
     else:
         inp_vals = inp_vals.to(tl.float32)
-    indices_offset = a_idx * B * C + b_idx * C + c_idx
-    in_indices_ptrs = out_indices + indices_offset
-    in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    if tl.constexpr(USE_OUT_INDICES):
+        in_indices_ptrs = out_indices + offset
+        in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    else:
+        in_indices_vals = b_idx
     result, cummin_indices = tl_cummin(inp_vals, in_indices_vals, axis=0)
 
-    # tl.min do not support min_indices_tie_break_right
-    part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
-        inp_vals, in_indices_vals, axis=0
-    )
+    if tl.constexpr(NEED_PARTIAL):
+        # tl.min do not support min_indices_tie_break_right
+        part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
+            inp_vals, in_indices_vals, axis=0
+        )
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -197,11 +234,12 @@ def scan_part_min_abc_kernel(
     out_indices_ptrs = out_indices + offset
     tl.store(out_indices_ptrs, cummin_indices, mask=mask)
 
-    partial_min_ptrs = partial_min + part_offset
-    tl.store(partial_min_ptrs, part_min_via_min)
+    if tl.constexpr(NEED_PARTIAL):
+        partial_min_ptrs = partial_min + part_offset
+        tl.store(partial_min_ptrs, part_min_via_min)
 
-    partial_min_indices_ptrs = partial_min_indices + part_offset
-    tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
+        partial_min_indices_ptrs = partial_min_indices + part_offset
+        tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
 
 
 @libentry()
@@ -249,16 +287,21 @@ def add_base_min_abc_kernel(
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
 
-def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
+def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
     # TODO(all): tune on target board
     BLOCK_SIZE = 1024
     if B <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
-    partial_min = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
-    partial_min_indices = torch.empty(
-        A, part_num, C, dtype=torch.int64, device=inp.device
-    )
+    need_partial = True if part_num >= 2 else False
+    if need_partial:
+        partial_min = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
+        partial_min_indices = torch.empty(
+            A, part_num, C, dtype=torch.int64, device=inp.device
+        )
+    else:
+        partial_min = None
+        partial_min_indices = None
 
     grid = (A, part_num, C)
     with torch_device_fn.device(inp.device):
@@ -273,11 +316,20 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
             C,
             part_num,
             BLOCK_SIZE,
+            need_partial,
+            use_out_indices,
         )
 
     if part_num >= 2:
         scan_then_fan(
-            partial_min, partial_min, partial_min_indices, A, part_num, C, dtype
+            partial_min,
+            partial_min,
+            partial_min_indices,
+            A,
+            part_num,
+            C,
+            dtype,
+            use_out_indices=True,
         )
         with torch_device_fn.device(inp.device):
             add_base_min_abc_kernel[grid](
@@ -292,38 +344,140 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
             )
 
 
-def cummin(inp, dim=1, *, dtype=None):
+@libentry()
+@triton.jit()
+def scan_part_min_abc_loop_kernel(
+    inp,
+    out,
+    out_indices,
+    B,
+    C,
+    loop_num,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid_a = tle.program_id(0)
+    pid_c = tle.program_id(1)
+
+    a_idx = pid_a
+    c_idx = pid_c
+    t_idx = tl.arange(0, BLOCK_SIZE)
+    ac_offset = a_idx * B * C + c_idx
+
+    # init
+    max_value = get_dtype_max(inp.type.element_ty)
+    if tl.constexpr(inp.type.element_ty.is_fp16()) or tl.constexpr(
+        inp.type.element_ty.is_bf16()
+    ):
+        compute_dtype = tl.float32
+    elif tl.constexpr(inp.type.element_ty.is_int8()) or tl.constexpr(
+        inp.type.element_ty.is_int16()
+    ):
+        compute_dtype = tl.int32
+    else:
+        compute_dtype = inp.type.element_ty
+
+    prev_min_val = tl.full([], max_value, dtype=compute_dtype)
+    prev_min_val_idx = tl.full([], 0, dtype=tl.int64)
+    last_mask = t_idx == (BLOCK_SIZE - 1)
+
+    for l_idx in tl.range(loop_num):
+        b_idx = l_idx * BLOCK_SIZE + t_idx
+        mask = b_idx < B
+        offset = ac_offset + b_idx * C
+
+        inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
+        # Only promote if necessary
+        if tl.constexpr(compute_dtype != inp.type.element_ty):
+            vals = inp_vals.to(compute_dtype)
+        else:
+            vals = inp_vals
+        idxs = b_idx
+
+        # cummin
+        result, cummin_indices = tl_cummin(vals, idxs, axis=0)
+
+        # broadcast
+        prev_min_val_b = tl.broadcast_to(prev_min_val, (BLOCK_SIZE,))
+        prev_min_val_idx_b = tl.broadcast_to(prev_min_val_idx, (BLOCK_SIZE,))
+
+        # Handle NaN and tie-breaking logic
+        if tl.constexpr(compute_dtype.is_floating()):
+            # For floats: handle NaN propagation + tie-break right
+            prev_is_nan = prev_min_val != prev_min_val
+            result_is_nan = result != result
+            prev_nan_mask = tl.broadcast_to(prev_is_nan, (BLOCK_SIZE,))
+
+            use_result = result_is_nan | (~prev_nan_mask & (result <= prev_min_val_b))
+        else:
+            # For integers: simple tie-break right
+            use_result = result <= prev_min_val_b
+
+        final_vals = tl.where(use_result, result, prev_min_val_b)
+        final_indices = tl.where(use_result, cummin_indices, prev_min_val_idx_b)
+
+        # update global min val and idx
+        prev_min_val = tl.sum(tl.where(last_mask, final_vals, 0), axis=0)
+        prev_min_val_idx = tl.sum(tl.where(last_mask, final_indices, 0), axis=0)
+
+        # store result
+        tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
+        tl.store(out_indices + offset, final_indices, mask=mask)
+
+
+def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
+    # TODO(all): tune on target board
+    BLOCK_SIZE = 1024
+    if B < 1024 * 4:
+        BLOCK_SIZE = triton.next_power_of_2(B)
+    loop_num = math.ceil(B / BLOCK_SIZE)
+
+    grid = (A, C)
+    with torch_device_fn.device(inp.device):
+        scan_part_min_abc_loop_kernel[grid](
+            inp,
+            out,
+            out_indices,
+            B,
+            C,
+            loop_num,
+            BLOCK_SIZE,
+            is_use_mask_zero=True,
+        )
+
+
+# def cummin(
+#     input: Tensor,
+#     dim: int,
+#     *,
+#     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
+# ) -> torch.return_types.cummin:
+def cummin(input, dim=1):
     logger.debug("GEMS cummin")
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
-    dim = dim % inp.ndim
+    assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
+    shape = input.shape
+    dim = dim % input.ndim
     M = 1
     N = shape[dim]
     for i in range(dim):
         M *= shape[i]
-    inp = inp.contiguous()
-    K = inp.numel() // M // N
+    input = input.contiguous()
+    K = input.numel() // M // N
 
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int64
-    out = torch.empty_like(inp, dtype=dtype)
+    dtype = input.dtype
+    if dtype is torch.bool:
+        dtype = torch.int64
+    out = torch.empty_like(input, dtype=dtype)
+    out_indices = torch.empty_like(input, dtype=torch.int64)
 
     compute_dtype = out.dtype
-    if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
+    if input.dtype == torch.float16 or input.dtype == torch.bfloat16:
         compute_dtype = torch.float32
 
     if M == 1 and K == 1:
-        out_indices = torch.arange(N, device=inp.device).reshape(shape)
-        scan_then_fan_col(inp, out, out_indices, N, compute_dtype)
+        scan_then_fan_col(input, out, out_indices, N, compute_dtype)
+    elif M * K <= 16:
+        scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
     else:
-        index_shape = [N if i == dim else 1 for i in range(inp.ndim)]
-        repeat_factors = [1 if i == dim else shape[i] for i in range(inp.ndim)]
-        out_indices = (
-            torch.arange(N, device=inp.device)
-            .reshape(index_shape)
-            .repeat(repeat_factors)
-        )
-        scan_then_fan(inp, out, out_indices, M, N, K, compute_dtype)
-    return out, out_indices
+        scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
+    # return out, out_indices
+    return CumminResult(out, out_indices)

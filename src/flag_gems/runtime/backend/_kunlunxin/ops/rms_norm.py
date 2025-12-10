@@ -322,6 +322,7 @@ class RmsNorm(torch.autograd.Function):
             # print(f"dx.shape = {dx.shape}")
             # print(f"weight.shape = {weight.shape}")
             if N > 64 * 128:
+                BLOCK_SIZE = 8192
                 rms_norm_grad_dx_kernel_tile[M,](
                     x,
                     dy,

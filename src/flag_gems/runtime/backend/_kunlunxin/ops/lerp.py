@@ -11,11 +11,15 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @pointwise_dynamic(is_tensor=[True, True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def lerp_tensor_kernel(input, end, weight):
-    return tl.where(
-        tl.abs(weight) < 0.5,
-        input + weight * (end - input),
-        end - (end - input) * (1 - weight),
+    input32 = input.to(tl.float32)
+    end32 = end.to(tl.float32)
+    weight32 = weight.to(tl.float32)
+    res32 = tl.where(
+        tl.abs(weight32) < 0.5,
+        input32 + weight32 * (end32 - input32),
+        end32 - (end32 - input32) * (1 - weight32),
     )
+    return res32.to(input.dtype)
 
 
 @pointwise_dynamic(
@@ -25,7 +29,10 @@ def lerp_tensor_kernel(input, end, weight):
 )
 @triton.jit(do_not_specialize=["weight"])
 def lerp_scalar_kernel_head(input, end, weight):
-    return input + weight * (end - input)
+    input32 = input.to(tl.float32)
+    end32 = end.to(tl.float32)
+    weight32 = weight.to(tl.float32)
+    return (input32 + weight32 * (end32 - input32)).to(input.dtype)
 
 
 @pointwise_dynamic(
@@ -35,7 +42,10 @@ def lerp_scalar_kernel_head(input, end, weight):
 )
 @triton.jit(do_not_specialize=["weight"])
 def lerp_scalar_kernel_tail(input, end, weight):
-    return end - (end - input) * (1 - weight)
+    input32 = input.to(tl.float32)
+    end32 = end.to(tl.float32)
+    weight32 = weight.to(tl.float32)
+    return (end32 - (end32 - input32) * (1 - weight32)).to(input.dtype)
 
 
 def lerp_tensor(input, end, weight):

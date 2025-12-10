@@ -5,6 +5,7 @@
 #include <tuple>
 #include "c10/cuda/CUDAStream.h"
 #include "c10/util/Optional.h"
+#include "flag_gems/device_info.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "torch/torch.h"
@@ -341,11 +342,10 @@ mha_varlan_fwd_internal(const at::Tensor& q,
     params.page_table_batch_stride = page_table_batch_stride;
     params.block_size = block_size;
 
-    int dev_id = 0;
-    cudaGetDevice(&dev_id);
-    cudaDeviceProp prop {};
-    cudaGetDeviceProperties(&prop, dev_id);
-    int num_sms = prop.multiProcessorCount > 0 ? prop.multiProcessorCount : 1;
+    int num_sms = flag_gems::device::current_sm_count();
+    if (num_sms <= 0) {
+      num_sms = 1;
+    }
     // We assess which phase the requests are likely to be in and set the config accordingly.
     const double total_rows = static_cast<double>(total_q_final) * static_cast<double>(num_heads_final);
     const double avg_rows_per_sm = total_rows / static_cast<double>(num_sms);

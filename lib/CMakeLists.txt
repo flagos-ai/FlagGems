@@ -1,5 +1,6 @@
 add_library(operators
             SHARED
+            device_info.cpp
             zeros.cpp
             utils.cpp
             add.cpp
@@ -19,6 +20,7 @@ add_library(operators
             embedding.cpp
             argmax.cpp
             softmax.cpp
+            sort.cpp
 	          exponential_.cpp
             fill.cpp
             reshape_and_cache_flash.cpp

@@ -170,11 +170,9 @@ def generate_destination_passing_padding_wrapper(
 
         # grid
         code.writeline("# kernel launch")
-        code.writeline("if not IS_CIRCULAR: ")
-        with code.indent():
-            code.writeline("import os")
-            code.writeline('os.environ["TRITONXPU_OTHER_SIM"] = "1"')
-            code.writeline('os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"')
+        code.writeline("import os")
+        code.writeline('os.environ["TRITONXPU_OTHER_SIM"] = "1"')
+        code.writeline('os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"')
         # launch kernel
         code.writeline("with torch_device_fn.device(in0.device):")
         with code.indent():

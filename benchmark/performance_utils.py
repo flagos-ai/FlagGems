@@ -87,8 +87,8 @@ class Benchmark:
         **kwargs,
     ):
         self.op_name = op_name
-        if is_backward:
-            self.op_name += " backward"
+        if is_backward and self.op_name.find("_backward") == -1:
+            self.op_name += "_backward"
         self.torch_op = torch_op
         self.gems_op = None
         self.is_backward = is_backward
@@ -209,6 +209,10 @@ class Benchmark:
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
+                if vendor_name == "kunlunxin":
+                    if self.op_name in ["cummax"]:
+                        additional_shapes = []
+
                 # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))

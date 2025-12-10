@@ -5,7 +5,7 @@ import triton
 
 from flag_gems.runtime import device
 from flag_gems.runtime.backend import vendor_module
-from flag_gems.runtime.commom_utils import vendors
+from flag_gems.runtime.common import vendors
 
 
 def default_heuristics_for_num_warps(tile_size):
@@ -68,7 +68,7 @@ CODEGEN_COFIGS = {
             8192,
             tuple([vendor_module.TOTAL_CORE_NUM, 1, 1]),
             32,
-            False,
+            True,
             prefer_1d_tile=int(triton.__version__[0]) < 3,
         )
         if vendor_module.vendor_info.vendor_name == "cambricon"
