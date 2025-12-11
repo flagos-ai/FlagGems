@@ -41,7 +41,7 @@ def fft_stage_kernel(
     n, stage
 ):
     """迭代 FFT 阶段"""
-    pi = 3.141592653589793  # 圆周率
+    pi = 3.141592653589793238462643383279502884197169399375105820974944592307816406286  # 圆周率
     tid = tl.program_id(0)
     
     if tid >= n // 2:
@@ -89,8 +89,9 @@ def fft_stage_kernel(
     tl.store(real_ptr + second_idx, result_b_real)
     tl.store(imag_ptr + second_idx, result_b_imag)
 
-def fft_1d(x: torch.Tensor, N) -> torch.Tensor:
-    assert N > 0 and (N & (N-1)) == 0  # 确保N是2的整数幂
+def fft_1d(x: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+    N = x.shape[0]
+    assert (N > 0 and (N & (N-1)) == 0)  # 确保N是2的整数幂
     
     x_real = x.real.clone()
     x_imag = x.imag.clone()
@@ -107,8 +108,9 @@ def fft_1d(x: torch.Tensor, N) -> torch.Tensor:
     for stage in range(1, log2n + 1):
         fft_stage_kernel[(N // 2,)](x_real, x_imag, N, stage)
     
-    result = torch.complex(x_real, x_imag)
-    return result
+    output.real.copy_(x_real)
+    output.imag.copy_(x_imag)
+    return output
 
 # def torch_fft(x):
 #     return torch.fft.fft(x)
