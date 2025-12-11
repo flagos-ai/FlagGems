@@ -63,47 +63,129 @@ def heur_block_n(args):
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("argmin"))
+@triton.heuristics(runtime.get_heuristic_config("argmin_non_inner"))
 @triton.jit
-def argmin_kernel(
+def argmin_kernel_non_inner(
     inp,
     out_index,
     M,
     N,
     K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    # set offset
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
 
-    dtype = inp.type.element_ty
-    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
-    max_value = get_dtype_max(dtype)
-    min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_value)
-    argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+    if tl.constexpr(inp.type.element_ty == tl.float16) or tl.constexpr(
+        inp.type.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.type.element_ty
+
+    max_value = get_dtype_max(cdtype)
+
+    if ONE_TILE_PER_CTA:
+        n_offset = tl.arange(0, TILE_N)
+        offset = pid_m * N * K + n_offset[:, None] * K + k_offset
+        mask = (k_offset < K) and (n_offset[:, None] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
-        # tl.bfloat is promoted to tl.float32 by tl.min
         local_min, local_argmin = tl.min(
-            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
+            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
         )
-        # if return indices is not supported, call a tl.argmin in addition
-        # local_argmin = tl.argmin(inp_vals, 1)
-        update = local_min < min_values
-        min_values = tl.where(update, local_min, min_values)
-        argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+        out_index_ptrs = out_index + pid_m * K + k_offset
+        mask1 = k_offset < K
+        tl.store(out_index_ptrs, local_argmin, mask=mask1)
+    else:
+        min_values = tl.full([TILE_K], dtype=cdtype, value=max_value)
+        argmin_values = tl.full([TILE_K], dtype=tl.int64, value=0)
 
-    offset_index = m_offset * K + pid_k
-    out_index_ptrs = out_index + offset_index
-    mask1 = m_offset < M
-    tl.store(out_index_ptrs, argmin_values, mask=mask1)
+        for start_n in range(0, N, TILE_N):
+            n_offset = start_n + tl.arange(0, TILE_N)
+            offset = pid_m * N * K + n_offset[:, None] * K + k_offset
+            mask = (k_offset < K) and (n_offset[:, None] < N)
+            inp_ptrs = inp + offset
+            inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+            local_min, local_argmin = tl.min(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_min < min_values
+            min_values = tl.where(update, local_min, min_values)
+            argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+
+        out_index_ptrs = out_index + pid_m * K + k_offset
+        mask1 = k_offset < K
+        tl.store(out_index_ptrs, argmin_values, mask=mask1)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("argmin_inner"))
+@triton.jit
+def argmin_kernel_inner(
+    inp,
+    out_index,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = tle.program_id(0)
+
+    dtype = inp.type.element_ty
+    max_value = get_dtype_max(dtype)
+
+    if ONE_TILE_PER_CTA:
+        n_offset = tl.arange(0, TILE_N)
+        offset = pid_m * N + n_offset
+        mask = n_offset < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+        local_min, local_argmin = tl.min(
+            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+        )
+        out_index_ptrs = out_index + pid_m
+        tl.store(out_index_ptrs, local_argmin)
+    else:
+        min_value = max_value
+        argmin_value = 0
+
+        loop_time = N // TILE_N
+        remainder = N % TILE_N
+        for start_n in range(0, loop_time):
+            n_offset = start_n * TILE_N + tl.arange(0, TILE_N)
+            offset = pid_m * N + n_offset
+            inp_ptrs = inp + offset
+            inp_vals = tl.load(inp_ptrs)
+            local_min, local_argmin = tl.min(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_min < min_value
+            min_value = tl.where(update, local_min, min_value)
+            argmin_value = tl.where(
+                update, start_n * TILE_N + local_argmin, argmin_value
+            )
+
+        if remainder:
+            n_offset = loop_time * TILE_N + tl.arange(0, TILE_N)
+            offset = pid_m * N + n_offset
+            mask = n_offset < N
+            inp_ptrs = inp + offset
+            inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+            local_min, local_argmin = tl.min(
+                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            )
+            update = local_min < min_value
+            min_value = tl.where(update, local_min, min_value)
+            argmin_value = tl.where(
+                update, loop_time * TILE_N + local_argmin, argmin_value
+            )
+
+        out_index_ptrs = out_index + pid_m
+        tl.store(out_index_ptrs, argmin_value)
 
 
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
@@ -120,7 +202,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
             shape = list(inp.shape)
-            for i in range(0, inp.dim()):
+            for i in range(inp.ndim):
                 shape[i] = 1
             out = torch.empty(shape, dtype=torch.int64, device=inp.device)
         else:
@@ -158,17 +240,25 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
 
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
         with torch_device_fn.device(inp.device):
-            argmin_kernel[grid](
-                inp,
-                out_index,
-                M,
-                N,
-                K,
-            )
-
+            if K > 1:
+                grid = lambda meta: (
+                    M,
+                    triton.cdiv(K, meta["TILE_K"]),
+                )
+                argmin_kernel_non_inner[grid](
+                    inp,
+                    out_index,
+                    M,
+                    N,
+                    K,
+                )
+            else:
+                grid = lambda meta: (M, 1, 1)
+                argmin_kernel_inner[grid](
+                    inp,
+                    out_index,
+                    M,
+                    N,
+                )
         return out_index
