@@ -184,7 +184,7 @@ from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
-from .to import to_dtype
+from .to import to_copy
 from .topk import topk
 from .trace import trace
 from .triu import triu
@@ -455,7 +455,7 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "tile",
-    "to_dtype",
+    "to_copy",
     "topk",
     "trace",
     "triu",

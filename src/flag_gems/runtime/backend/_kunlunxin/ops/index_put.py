@@ -58,7 +58,6 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 
     code.newline()
     code.newline()
-
     return code
 
 
@@ -293,6 +292,24 @@ def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX PUT")
 
     indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
     indices = [
         index.to(inp.device)
         if index is not None and index.device != inp.device
@@ -322,6 +339,24 @@ def index_put_(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX PUT_")
 
     indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
     indices = [
         index.to(inp.device)
         if index is not None and index.device != inp.device

@@ -3,8 +3,9 @@ from typing import Optional
 
 import torch
 import triton
-from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
-from _kunlunxin.utils.pointwise_dynamic import pointwise_dynamic
+
+from ..utils.codegen_config_utils import CodeGenConfig
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
