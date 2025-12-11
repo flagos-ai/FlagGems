@@ -160,6 +160,28 @@ def reduce_kernel(
     if tl.program_id(0) == 0:
         tl.store(output_ptr, final_sum)
 
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("vdot"))
+@triton.jit()
+def dot_kernel_fp32(
+    inp_ptr,
+    other_ptr,
+    out_ptr,
+    n_elements,
+    inp_stride: tl.constexpr,
+    other_stride: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < n_elements
+
+    inp = tl.load(inp_ptr + inp_stride * offset, mask=mask)
+    other = tl.load(other_ptr + other_stride * offset, mask=mask)
+
+    out = tl.sum(inp * other)
+    tl.atomic_add(out_ptr, out)
+
 def vdot(input: Tensor, other: Tensor):
     logger.debug("GEMS VDOT")
 
@@ -219,6 +241,19 @@ def vdot(input: Tensor, other: Tensor):
             BLOCK_SIZE=triton.next_power_of_2(num_blocks),
         )
         return torch.view_as_complex(output_real)
+    elif inp.dtype == torch.float32:
+        output = torch.zeros([], dtype=torch.float32, device=inp.device)
+        n_elements = inp.numel()
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        dot_kernel_fp32[grid](
+            inp,
+            other,
+            output,
+            n_elements=n_elements,
+            inp_stride=inp_stride,
+            other_stride=other_stride,
+        )
+        return output
     else:
         n_elements = inp.numel()
         block_size = runtime.get_heuristic_config("vdot")["BLOCK_SIZE"]({"n_elements":n_elements})
