@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+# from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
@@ -34,25 +34,25 @@ def conv2d_output_size(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("conv2d_forward"),
-    key=[
-        "in_n",
-        "weight_c",
-        "input_height",
-        "input_width",
-        "out_c",
-        "out_height",
-        "out_width",
-        "weight_height",
-        "weight_width",
-        "stride_height",
-        "stride_width",
-        "padding_height",
-        "padding_width",
-        "groups",
-    ],
-)
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("conv2d_forward"),
+#     key=[
+#         "in_n",
+#         "weight_c",
+#         "input_height",
+#         "input_width",
+#         "out_c",
+#         "out_height",
+#         "out_width",
+#         "weight_height",
+#         "weight_width",
+#         "stride_height",
+#         "stride_width",
+#         "padding_height",
+#         "padding_width",
+#         "groups",
+#     ],
+# )
 @triton.jit
 def conv2d_forward_kernel(
     input_pointer,
@@ -182,24 +182,24 @@ def conv2d_forward_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("conv2d_backward_weight"),
-    key=[
-        "in_n",
-        "input_height",
-        "input_width",
-        "weight_height",
-        "weight_width",
-        "input_c",
-        "stride_height",
-        "stride_width",
-        "out_height",
-        "out_width",
-        "out_c",
-        "padding_height",
-        "padding_width",
-    ],
-)
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("conv2d_backward_weight"),
+#     key=[
+#         "in_n",
+#         "input_height",
+#         "input_width",
+#         "weight_height",
+#         "weight_width",
+#         "input_c",
+#         "stride_height",
+#         "stride_width",
+#         "out_height",
+#         "out_width",
+#         "out_c",
+#         "padding_height",
+#         "padding_width",
+#     ],
+# )
 @triton.jit
 def conv2d_backward_kernel_weight(
     input_pointer,
@@ -232,6 +232,7 @@ def conv2d_backward_kernel_weight(
     padding_width,
     dilation_height,
     dilation_width,
+    groups: tl.constexpr,
     BLOCK_NO: tl.constexpr,
     BLOCK_CI_HK_WK: tl.constexpr,
     BLOCK_CO: tl.constexpr,
@@ -390,9 +391,14 @@ class Conv2d(torch.autograd.Function):
         )
 
         if bias is None:
-            bias_pointer = torch.zeros(out_c, device=input.device, dtype=output_dtype)
+            bias_pointer = torch.zeros(out_c, device=input.device, dtype=torch.float)
         else:
-            bias_pointer = bias
+            bias_pointer = bias.to(torch.float)
+        flag = 0
+        if input.shape[2] != input.shape[3]:
+            flag = 999
+        else:
+            flag = 32
         conv2d_forward_kernel[grid](
             input,
             weight,
@@ -417,6 +423,9 @@ class Conv2d(torch.autograd.Function):
             dilation_height,
             dilation_width,
             groups=groups,
+            BLOCK_NI_HO_WO=flag,
+            BLOCK_CI=32,
+            BLOCK_CO=32,
         )
 
         ctx.save_for_backward(weight, input, bias)
@@ -506,6 +515,7 @@ class Conv2d(torch.autograd.Function):
             triton.cdiv(int(weight_c), META["BLOCK_CO"]),
             groups,
         )
+        flag = 888
         bias_zero = torch.zeros(groups * weight_c, device=device, dtype=out_grad.dtype)
         conv2d_forward_kernel[grid](
             new_out,
@@ -531,6 +541,9 @@ class Conv2d(torch.autograd.Function):
             dilation_height,
             dilation_width,
             groups=groups,
+            BLOCK_NI_HO_WO=flag,
+            BLOCK_CI=32,
+            BLOCK_CO=32,
         )
 
         weight_back = torch.zeros(
@@ -571,6 +584,10 @@ class Conv2d(torch.autograd.Function):
             padding_width,
             dilation_height,
             dilation_width,
+            groups,
+            BLOCK_NO=32,
+            BLOCK_CI_HK_WK=32,
+            BLOCK_CO=32,
         )
         if bias is not None:
             bias_grad = out_grad.sum(dim=(0, 2, 3))

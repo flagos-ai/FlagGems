@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+# from flag_gems import runtime
 from flag_gems.utils import libentry
 
 from .conv2d import conv2d_output_size
@@ -36,30 +36,30 @@ def conv3d_output_size(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("conv3d_forward"),
-    key=[
-        "in_n",
-        "weight_c",
-        "input_depth",
-        "input_height",
-        "input_width",
-        "out_c",
-        "out_depth",
-        "out_height",
-        "out_width",
-        "weight_depth",
-        "weight_height",
-        "weight_width",
-        "stride_depth",
-        "stride_height",
-        "stride_width",
-        "padding_depth",
-        "padding_height",
-        "padding_width",
-        "groups",
-    ],
-)
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("conv3d_forward"),
+#     key=[
+#         "in_n",
+#         "weight_c",
+#         "input_depth",
+#         "input_height",
+#         "input_width",
+#         "out_c",
+#         "out_depth",
+#         "out_height",
+#         "out_width",
+#         "weight_depth",
+#         "weight_height",
+#         "weight_width",
+#         "stride_depth",
+#         "stride_height",
+#         "stride_width",
+#         "padding_depth",
+#         "padding_height",
+#         "padding_width",
+#         "groups",
+#     ],
+# )
 @triton.jit
 def conv3d_forward_kernel(
     input_pointer,
@@ -281,9 +281,9 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     )
 
     if bias is None:
-        bias_pointer = torch.zeros(out_c, device=input.device, dtype=output_dtype)
+        bias_pointer = torch.zeros(out_c, device=input.device, dtype=torch.float)
     else:
-        bias_pointer = bias
+        bias_pointer = bias.to(torch.float)
 
     conv3d_forward_kernel[grid](
         input,
@@ -315,6 +315,9 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         dilation_height,
         dilation_width,
         groups=groups,
+        BLOCK_NI_DO_HO_WO=32,
+        BLOCK_CI=32,
+        BLOCK_CO=32,
     )
 
     return output
