@@ -1,31 +1,26 @@
-#include "flag_gems/operators.h"
-#include "flag_gems/utils.h"
-
 #include <iostream>
 #include "c10/cuda/CUDAStream.h"
+#include "flag_gems/operators.h"
+#include "flag_gems/utils.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
 using namespace triton_jit;
 
-// TODO(flaggems): Only supports 2D inputs and 1D weight (last-dim norm).
-// Extend to support higher-rank inputs and generalized weight shapes
-// like torch.nn.functional.rms_norm.
-
-at::Tensor rms_norm(const at::Tensor& input,   // [..., hidden_size]
-                    const at::Tensor& weight,  // [hidden_size]
-                    double epsilon) {          //  default 1e-5
-
-  int64_t hidden_size = input.size(-1);
-  int64_t M = input.numel() / hidden_size;
-  int64_t N = weight.size(0);  // assumes 1D weight
+at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double epsilon) {
+  at::Tensor contig_input = input.contiguous();
+  at::Tensor contig_weight = weight.contiguous();
+  at::IntArrayRef normalized_shape = contig_weight.sizes();
+  int64_t dim = contig_input.ndimension() - normalized_shape.size();
+  int64_t M = 1;
+  for (int i = 0; i < dim; ++i) {
+    M *= contig_input.size(i);
+  }
+  int64_t N = contig_input.numel() / M;
   int64_t BLOCK_SIZE = utils::next_power_of_2(N);
 
   at::Tensor out = at::empty(input.sizes(), input.options());
   at::Tensor inv_rms = at::empty({M}, at::TensorOptions().dtype(torch::kFloat32).device(input.device()));
-
-  auto input_strides = input.strides();
-  auto output_strides = out.strides();
 
   const TritonJITFunction& f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "rms_norm.py"),
@@ -58,12 +53,12 @@ at::Tensor rms_norm(const at::Tensor& input,   // [..., hidden_size]
     /* num_stages */ 1,
     out,
     inv_rms,
-    input,
-    weight,
-    output_strides[0],
-    output_strides[1],
-    input_strides[0],
-    input_strides[1],
+    contig_input,
+    contig_weight,
+    N,
+    1,
+    N,
+    1,
     N,
     epsilon,
     BLOCK_SIZE);
