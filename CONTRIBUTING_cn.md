@@ -32,7 +32,7 @@ FlagGems
 │       ├──ops           // python 独立算子
 │       ├──fused         // python 融合算子
 │       ├──modules       // python 模块
-│       ├──patches       // 布丁脚本
+│       ├──patches       // 补丁脚本
 │       ├──testing       // python 测试
 ├── tests                // python 算子精度测试
 ├── benchmark            // python 算子性能测试
