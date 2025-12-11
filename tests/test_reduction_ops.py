@@ -1597,6 +1597,8 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
     if flag_gems.vendor_name == "mthreads":
         torch.manual_seed(0)
         torch.musa.manual_seed_all(0)
