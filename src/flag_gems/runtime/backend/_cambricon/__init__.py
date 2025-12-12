@@ -24,9 +24,6 @@ vendor_info = VendorInfoBase(
     dispatch_key="PrivateUse1",
 )
 
-CUSTOMIZED_UNUSED_OPS = (
-    "_upsample_bicubic2d_aa",  # skip now
-    "copy_",
-)
+CUSTOMIZED_UNUSED_OPS = ("_upsample_bicubic2d_aa",)  # skip now
 
 __all__ = ["*"]
