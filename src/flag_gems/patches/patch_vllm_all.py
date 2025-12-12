@@ -149,6 +149,8 @@ def custom_gems_flash_attention_impl_forward(
     attn_metadata,  #: FlashAttentionMetadata,
     output: Optional[torch.Tensor] = None,
     output_scale: Optional[torch.Tensor] = None,
+    output_block_scale: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> torch.Tensor:
     from flag_gems import flash_attn_varlen_func, reshape_and_cache_flash
 
@@ -192,8 +194,11 @@ def custom_gems_flash_attention_impl_forward(
         # query = query.reshape((num_tokens, num_heads, head_size))
 
     # Compute attention and update output up to `num_actual_tokens`.
-    use_local_attn = self.use_irope and attn_metadata.local_attn_metadata is not None
-
+    # use_local_attn = self.use_irope and attn_metadata.local_attn_metadata is not None
+    use_local_attn = (
+        getattr(self, "use_irope", False)
+        and getattr(attn_metadata, "local_attn_metadata", None) is not None
+    )
     if not attn_metadata.use_cascade or use_local_attn:
         if use_local_attn:
             assert attn_metadata.local_attn_metadata is not None
@@ -234,6 +239,11 @@ def custom_gems_flash_attention_impl_forward(
             q_descale=layer._q_scale.expand(descale_shape),
             k_descale=layer._k_scale.expand(descale_shape),
             v_descale=layer._v_scale.expand(descale_shape),
+            s_aux=None,
+            num_splits=0,
+            cp_world_size=1,
+            cp_rank=0,
+            cp_tot_seqused_k=None,
         )
         return output
 
