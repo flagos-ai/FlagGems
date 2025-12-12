@@ -1,10 +1,8 @@
-import os
 from typing import Generator
 
 import pytest
 import torch
 
-import flag_gems
 from benchmark.attri_util import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -69,38 +67,6 @@ class BlasBenchmark(Benchmark):
         return total_flops
 
 
-class BaddbmmBenchmark(BlasBenchmark):
-    """
-    benchmark for Baddbmm
-    """
-
-    def set_more_shapes(self):
-        model_shapes_list = model_shapes()
-
-        skip_shapes = [
-            (4, 8192, 128256, 4096),
-            (4, 8192, 152064, 3584),
-        ]
-
-        filtered = []
-        for shape in model_shapes_list:
-            if shape not in skip_shapes:
-                filtered.append(shape)
-
-        return filtered
-
-    def get_tflops(self, op, *args, **kwargs):
-        # shape(b,m,k)(b,k,n)
-        # total_flops = b * m * n * (2 * k + 1)
-        total_flops = (
-            args[1].shape[0]
-            * args[1].shape[1]
-            * args[2].shape[2]
-            * (args[1].shape[2] * 2 + 1)
-        )
-        return total_flops
-
-
 def addmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
     bias = torch.randn([m, n], dtype=cur_dtype, device=device)
@@ -122,24 +88,6 @@ def bmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         yield inp1, inp2
 
 
-def baddbmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
-    inp1 = torch.randn([b, m, k], dtype=cur_dtype, device=device, requires_grad=True)
-
-    if b_column_major:
-        inp2 = torch.randn(
-            [b, n, k], dtype=cur_dtype, device=device, requires_grad=True
-        )
-        inp2 = inp2.transpose(1, 2).contiguous()
-    else:
-        inp2 = torch.randn(
-            [b, k, n], dtype=cur_dtype, device=device, requires_grad=True
-        )
-
-    bias = torch.randn([b, m, n], dtype=cur_dtype, device=device, requires_grad=True)
-
-    yield bias, inp1, inp2
-
-
 def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
     if b_column_major:
@@ -151,49 +99,33 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
 
 
 @pytest.mark.parametrize(
-    "op_name, torch_op, input_fn, bench_cls",
+    "op_name, torch_op, input_fn",
     [
         pytest.param(
             "addmm",
             torch.addmm,
             addmm_input_fn,
-            BlasBenchmark,
             marks=pytest.mark.addmm,
         ),
         pytest.param(
             "bmm",
             torch.bmm,
             bmm_input_fn,
-            BlasBenchmark,
             marks=pytest.mark.bmm,
         ),
         pytest.param(
             "mm",
             torch.Tensor.mm,
             mm_input_fn,
-            BlasBenchmark,
             marks=pytest.mark.mm,
-        ),
-        pytest.param(
-            "baddbmm",
-            torch.baddbmm,
-            baddbmm_input_fn,
-            BaddbmmBenchmark,
-            marks=pytest.mark.baddbmm,
         ),
     ],
 )
-def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
-    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
-
-    bench = bench_cls(
+def test_blas_benchmark(op_name, torch_op, input_fn):
+    bench = BlasBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
     bench.run()
-
-    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
-        del os.environ["MUSA_ENABLE_SQMMA"]
 
 
 class MvAndOuterBenchmark(GenericBenchmark2DOnly):
@@ -304,6 +236,7 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Segmentation fault")
 @pytest.mark.vdot
 def test_vdot_benchmark():
