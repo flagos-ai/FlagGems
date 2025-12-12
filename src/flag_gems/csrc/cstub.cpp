@@ -27,7 +27,6 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("exponential_(Tensor(a!) x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor(a!)");
   // blas
   m.def("addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor");
-  m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def("mm(Tensor self, Tensor mat2) -> Tensor");
 
   m.def(
@@ -55,6 +54,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("topk(Tensor x, SymInt k, int dim, bool largest, bool sorted) -> (Tensor, Tensor)");
   m.def("contiguous(Tensor(a) self, *, MemoryFormat memory_format=contiguous_format) -> Tensor(a)");
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
+  m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def(
       "embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool "
       "sparse=False) -> Tensor");
@@ -88,8 +88,9 @@ TORCH_LIBRARY(flag_gems, m) {
       "bool deterministic=False, bool return_attn_probs=False, Tensor? block_table=None, bool "
       "return_softmax_lse=False, "
       "Tensor? out=None, Tensor? scheduler_metadata=None, Tensor? q_descale=None, Tensor? k_descale=None, "
-      "Tensor? v_descale=None, "
-      "SymInt fa_version=2) -> (Tensor, Tensor)");
+      "Tensor? v_descale=None, Tensor? s_aux=None, SymInt num_splits=0, SymInt cp_world_size=1, "
+      "SymInt cp_rank=0, Tensor? cp_tot_seqused_k=None, SymInt fa_version=2) -> (Tensor, Tensor)");
+
   m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
   m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
 }

@@ -1,6 +1,7 @@
 import logging
 
 import torch
+from packaging import version
 
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
@@ -21,6 +22,10 @@ current_work_registrar = None
 runtime.replace_customized_ops(globals())
 
 
+def torch_ge(v):
+    return version.parse(torch.__version__) >= version.parse(v)
+
+
 def enable(
     lib=aten_lib,
     unused=None,
@@ -37,7 +42,11 @@ def enable(
             ("_log_softmax_backward_data", log_softmax_backward),
             ("_softmax", softmax),
             ("_softmax_backward_data", softmax_backward),
-            ("_to_copy", to_copy),
+            (
+                "_to_copy",
+                to_copy,
+                lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+            ),
             ("_unique2", _unique2),
             ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
             ("_weight_norm_interface", weight_norm_interface),
@@ -97,7 +106,11 @@ def enable(
             ("clamp_min_", clamp_min_),
             ("constant_pad_nd", constant_pad_nd),
             # ("contiguous", contiguous),
-            ("copy_", copy_),
+            (
+                "copy_",
+                copy_,
+                lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+            ),
             ("cos", cos),
             ("cos_", cos_),
             ("tan", tan),
@@ -159,8 +172,6 @@ def enable(
             ("gather_backward", gather_backward),
             ("ge.Scalar", ge_scalar),
             ("ge.Tensor", ge),
-            ("geglu", geglu),
-            ("dgeglu", dgeglu),
             ("gelu", gelu),
             ("gelu_", gelu_),
             ("gelu_backward", gelu_backward),
@@ -332,6 +343,8 @@ def enable(
             ("where.self_out", where_self_out),
             ("zeros", zeros),
             ("zeros_like", zeros_like),
+            ("scaled_softmax_forward", scaled_softmax_forward),
+            ("scaled_softmax_backward", scaled_softmax_backward),
         ),
         user_unused_ops_list=list(set(unused or [])),
         cpp_patched_ops_list=list(set(aten_patch_list)),

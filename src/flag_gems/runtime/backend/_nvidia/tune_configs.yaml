@@ -25,6 +25,23 @@ attention:
       - 2
       - 3
       - 4
+attention_bwd:
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: warps
+      num_stages: stages
+    metas:
+      - {BLOCK_M1: 32, BLOCK_N1: 128, BLOCK_M2: 128, BLOCK_N2: 32}
+      - {BLOCK_M1: 64, BLOCK_N1: 128, BLOCK_M2: 64, BLOCK_N2: 64}
+      - {BLOCK_M1: 64, BLOCK_N1: 128, BLOCK_M2: 64, BLOCK_N2: 32}
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+      - 4
 bmm:
   - META:
       TILE_M: 32
@@ -207,6 +224,54 @@ mm:
       BLOCK_N: 128
       BLOCK_K: 64
     num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 32
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 32
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 64
+    num_stages: 4
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 4
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 32
+    num_stages: 4
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 32
+    num_stages: 4
     num_warps: 8
 baddbmm:
 - META:

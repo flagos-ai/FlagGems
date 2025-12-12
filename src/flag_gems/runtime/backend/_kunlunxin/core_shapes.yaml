@@ -136,6 +136,14 @@ GenericBenchmarkExcluse3D:
     - [1024, 1024]
     - [4096, 4096]
 
+KronBenchmark:
+  shapes:
+    - [16, 16]
+    - [64, 64]
+    - [128, 128]
+    - [256, 256]
+    - [4, 8, 16, 32]
+
 # default 2d-only shapes
 GenericBenchmark2DOnly:
   shapes:

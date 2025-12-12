@@ -19,6 +19,7 @@ from flag_gems.ops.attention import (
     flash_attn_varlen_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
+    scaled_dot_product_attention_forward,
 )
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.baddbmm import baddbmm
@@ -184,8 +185,9 @@ from flag_gems.ops.repeat_interleave import (
 )
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
-from flag_gems.ops.rms_norm import rms_norm
+from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
+from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
@@ -448,11 +450,14 @@ __all__ = [
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_forward",
+    "rms_norm_backward",
     "sqrt",
     "sqrt_",
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
+    "scaled_dot_product_attention_forward",
     "scaled_dot_product_attention_backward",
     "ScaleDotProductAttention",
     "scatter",
@@ -511,4 +516,6 @@ __all__ = [
     "zeros",
     "zeros_like",
     "get_scheduler_metadata",
+    "scaled_softmax_forward",
+    "scaled_softmax_backward",
 ]
