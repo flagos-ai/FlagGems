@@ -7,90 +7,73 @@ on:
 
 jobs:
   build-wheels:
-    runs-on:  [self-hosted, p-dev-ws2040-03]
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        # python-version: ['3.10', '3.11', '3.12', '3.13']
-        python-version: ['3.10']
-        platform: ['manylinux2_28_x86_64']
-        # cuda-version: ['12.4', '12.6', '12.8', '13.0']
-        cuda-version: ['12.4']
-        include:
-          - cuda-version: "12.4"
-            cuda-image: "pytorch/manylinux2_28-builder:cuda12.4"
-          # - cuda-version: "12.6"
-          #   cuda-image: "pytorch/manylinux2_28-builder:cuda12.6"
-          # - cuda-version: "12.8"
-          #   cuda-image: "pytorch/manylinux2_28-builder:cuda12.8"
-          # - cuda-version: "13.0"
-          #   cuda-image: "pytorch/manylinux2_28-builder:cuda13.0"
-      
-    env:
-      PY_VERS: ${{ matrix.python-version }}
-      CUDA_IMAGE: ${{ matrix.cuda-image }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      # - name: Check GPU free
-      #   shell: bash
-      #   run: tools/gpu_check.sh
+      - name: Pull manylinux2_28 image
+        run: docker pull quay.io/pypa/manylinux_2_28_x86_64
 
-      - name: Determine Python executable
-        id: python
+      - name: Prepare directories
         run: |
-          case $PY_VERS in
-            3.10) echo "PY_EXEC=/opt/python/cp310-cp310/bin/python" >> $GITHUB_ENV ;;
-            3.11) echo "PY_EXEC=/opt/python/cp311-cp311/bin/python" >> $GITHUB_ENV ;;
-            3.12) echo "PY_EXEC=/opt/python/cp312-cp312/bin/python" >> $GITHUB_ENV ;;
-            3.13) echo "PY_EXEC=/opt/python/cp313-cp313/bin/python" >> $GITHUB_ENV ;;
-            *) echo "Unsupported python version"; exit 1 ;;
-          esac
+          rm -rf ${{ runner.temp }}/wheelhouse ${{ runner.temp }}/build_temp
+          mkdir -p ${{ runner.temp }}/wheelhouse
+          mkdir -p ${{ runner.temp }}/build_temp
 
-      - name: Start manylinux CUDA builder container
+      - name: Start manylinux builder container
         run: |
           container=$(docker run -td \
+            --name "flaggems_builder" \
             -v ${{ github.workspace }}:/workspace \
+            -v ${{ runner.temp }}/build_temp:/workspace/build \
             -v ${{ runner.temp }}/wheelhouse:/wheelhouse \
             -w /workspace \
-            $CUDA_IMAGE)
+            quay.io/pypa/manylinux_2_28_x86_64)
           echo "CONTAINER=$container" >> $GITHUB_ENV
 
-
-      - name: Install build dependencies inside container
+      - name: Install build tools inside container
         run: |
-          docker exec -t $CONTAINER $PY_EXEC -m pip install --upgrade pip setuptools wheel
+          docker exec -t $CONTAINER bash -c "
+            set -e
+            /opt/python/cp38-cp38/bin/python -m pip install --upgrade pip setuptools wheel build
+          "
 
-      - name: Build wheel inside container
+      - name: Build wheel for Python 3.8
         run: |
-          docker exec -t $CONTAINER bash -c '
-          CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON \
-                      -DFLAGGEMS_INSTALL=ON \
-                      -DFLAGGEMS_USE_EXTERNAL_TRITON_JIT=OFF \
-                      -DFLAGGEMS_BUILD_WHEEL=ON"
-          '"$PY_EXEC"' -m pip wheel . -w /wheelhouse --no-build-isolation --no-deps
-          '
+          docker exec -t $CONTAINER bash -c "
+            set -e
+            /opt/python/cp38-cp38/bin/python -m build --wheel --outdir /wheelhouse
+          "
 
-      # - name: Fix wheel (auditwheel repair)
-      #   run: |
-      #     docker exec -t $CONTAINER bash -c "\
-      #       auditwheel repair /wheelhouse/*.whl -w /wheelhouse/fixed \
-      #     "
+      - name: Upload wheel as artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: built-wheel-${{ github.ref_name }}
+          path: ${{ runner.temp }}/wheelhouse/*.whl
 
-      - name: Upload wheels to private PyPI
-        run: |
-          $PY_EXEC -m pip install --upgrade twine
-          $PY_EXEC -m twine upload \
-            --repository-url http://10.1.1.16/repository/pipy-private/ \
-            -u testuser -p 'testuser@12345' \
-            /wheelhouse/*.whl
+      - name: Cleanup container
+        if: always()
+        run: docker rm -f $CONTAINER
 
-      # - name: Upload wheels
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: wheel-${{ matrix.python-version }}-cuda${{ matrix.cuda-version }}
-      #     path: ${{ runner.temp }}/wheelhouse/fixed/*.whl
-      #     if-no-files-found: error
+  publish:
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Download built wheel
+        uses: actions/download-artifact@v5
+        with:
+          name: built-wheel-${{ github.ref_name }}
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
