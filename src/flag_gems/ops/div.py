@@ -41,6 +41,19 @@ def true_divide(A, B):
         return torch.tensor(A / B)
 
 
+def true_divide_out(A, B, OUT):
+    logger.debug("GEMS TRUE_DIVIDE OUT")
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return true_div_func(A, B, out0=OUT)
+    elif isinstance(A, torch.Tensor):
+        return true_div_func_tensor_scalar(A, B, out0=OUT)
+    elif isinstance(B, torch.Tensor):
+        return true_div_func_scalar_tensor(A, B, out0=OUT)
+    else:
+        # Both scalar
+        return torch.tensor(A / B) if OUT is None else OUT.fill_(A / B)
+
+
 def true_divide_(A, B):
     logger.debug("GEMS TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):

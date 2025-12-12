@@ -127,6 +127,7 @@ def enable(
             ("div.Scalar_mode", div_mode),
             ("div.Tensor", true_divide),
             ("div.Tensor_mode", div_mode),
+            ("div.out", true_divide_out),
             ("div_.Scalar", true_divide_),
             ("div_.Scalar_mode", div_mode_),
             ("div_.Tensor", true_divide_),
