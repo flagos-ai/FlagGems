@@ -215,6 +215,8 @@ def enable(
             ("masked_fill.Tensor", masked_fill),
             ("masked_fill_.Scalar", masked_fill_),
             ("masked_fill_.Tensor", masked_fill_),
+            ("masked_scatter", masked_scatter),
+            ("masked_scatter_", masked_scatter_),
             ("masked_select", masked_select),
             ("max", max),
             ("max.dim", max_dim),
