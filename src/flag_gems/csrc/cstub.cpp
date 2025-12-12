@@ -88,8 +88,9 @@ TORCH_LIBRARY(flag_gems, m) {
       "bool deterministic=False, bool return_attn_probs=False, Tensor? block_table=None, bool "
       "return_softmax_lse=False, "
       "Tensor? out=None, Tensor? scheduler_metadata=None, Tensor? q_descale=None, Tensor? k_descale=None, "
-      "Tensor? v_descale=None, "
-      "SymInt fa_version=2) -> (Tensor, Tensor)");
+      "Tensor? v_descale=None, Tensor? s_aux=None, SymInt num_splits=0, SymInt cp_world_size=1, "
+      "SymInt cp_rank=0, Tensor? cp_tot_seqused_k=None, SymInt fa_version=2) -> (Tensor, Tensor)");
+
   m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
   m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
 }
