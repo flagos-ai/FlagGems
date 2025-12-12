@@ -37,8 +37,8 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
 
     c10::DeviceGuard guard(self.device());
     c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    CUstream raw_stream = static_cast<CUstream>(stream.stream());
-    f1(raw_stream,
+
+    f1(stream,
        mid_size,
        1,
        1,
@@ -50,7 +50,7 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
        M,
        block_size);
 
-    f2(raw_stream,
+    f2(stream,
        1,
        1,
        1,
@@ -88,26 +88,46 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
       }
     }
   }
-
   at::Tensor out = at::empty(out_shape, self.options().dtype(at::kLong));
   at::Tensor contiguous_self = self.contiguous();
-
-  const TritonJITFunction &f =
-      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
-                                      "argmax_kernel");
-
   int64_t tile_m = 32;
   int64_t tile_n = 512;
+  int64_t tile_k = 64;
   const int num_warps = 4;
   const int num_stages = 2;
-  const unsigned int grid_x = (M + tile_m - 1) / tile_m;
-  const unsigned int grid_y = K;
-
-  c10::DeviceGuard guard(self.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
-
-  f(raw_stream, grid_x, grid_y, 1, num_warps, num_stages, contiguous_self, out, M, N, K, tile_m, tile_n);
+  if (K > 1) {
+    const unsigned int grid_x = M;
+    const unsigned int grid_y = (K + tile_k - 1) / tile_k;
+    int64_t ONE_TILE_PER_CTA = (tile_n >= N) ? 1 : 0;
+    const TritonJITFunction &f =
+        TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
+                                        "argmax_kernel_non_inner");
+    c10::DeviceGuard guard(self.device());
+    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+    f(stream,
+      grid_x,
+      grid_y,
+      1,
+      num_warps,
+      num_stages,
+      contiguous_self,
+      out,
+      M,
+      N,
+      K,
+      tile_k,
+      tile_n,
+      ONE_TILE_PER_CTA);
+  } else {
+    const unsigned int grid_x = M;
+    int64_t ONE_TILE_PER_CTA = (tile_n >= N) ? 1 : 0;
+    const TritonJITFunction &f =
+        TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
+                                        "argmax_kernel_inner");
+    c10::DeviceGuard guard(self.device());
+    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+    f(stream, grid_x, 1, 1, num_warps, num_stages, contiguous_self, out, M, N, tile_n, ONE_TILE_PER_CTA);
+  }
 
   return out;
 }
