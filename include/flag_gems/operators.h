@@ -126,6 +126,11 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(
     const std::optional<at::Tensor> &q_descale = std::nullopt,
     const std::optional<at::Tensor> &k_descale = std::nullopt,
     const std::optional<at::Tensor> &v_descale = std::nullopt,
+    std::optional<at::Tensor> s_aux = std::nullopt,
+    int64_t num_splits = 0,
+    int64_t cp_world_size = 1,
+    int64_t cp_rank = 0,
+    std::optional<at::Tensor> cp_tot_seqused_k = std::nullopt,
     int64_t fa_version = 2);
 
 struct FlashFwdParams {
