@@ -20,6 +20,22 @@ from benchmark.performance_utils import (
 )
 from flag_gems.utils import shape_utils
 
+@pytest.mark.dot
+def test_perf_dot():
+    def dot_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype=dtype, device=device)
+        if inp.dim() > 1:
+            inp = inp.flatten()
+        yield inp, inp
+
+    bench = GenericBenchmark(
+        input_fn=dot_input_fn,
+        op_name="dot",
+        torch_op=torch.dot,
+        dtypes=FLOAT_DTYPES,
+    )
+
+    bench.run()
 
 class UnaryReductionBenchmark(Benchmark):
     """
@@ -100,19 +116,4 @@ def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
-@pytest.mark.dot
-def test_perf_dot():
-    def dot_input_fn(shape, dtype, device):
-        inp = generate_tensor_input(shape, dtype=dtype, device=device)
-        if inp.dim() > 1:
-            inp = inp.flatten()
-        yield inp, inp
 
-    bench = GenericBenchmark(
-        input_fn=dot_input_fn,
-        op_name="dot",
-        torch_op=torch.dot,
-        dtypes=FLOAT_DTYPES,
-    )
-
-    bench.run()
