@@ -27,7 +27,6 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("exponential_(Tensor(a!) x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor(a!)");
   // blas
   m.def("addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor");
-  m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def("mm(Tensor self, Tensor mat2) -> Tensor");
 
   m.def(
@@ -55,6 +54,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("topk(Tensor x, SymInt k, int dim, bool largest, bool sorted) -> (Tensor, Tensor)");
   m.def("contiguous(Tensor(a) self, *, MemoryFormat memory_format=contiguous_format) -> Tensor(a)");
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
+  m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def(
       "embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool "
       "sparse=False) -> Tensor");
