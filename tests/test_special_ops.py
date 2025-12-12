@@ -14,6 +14,7 @@ from .accuracy_utils import (
     ARANGE_START,
     BOOL_TYPES,
     FLOAT_DTYPES,
+    FP8_QUANT_SHAPES,
     INT_DTYPES,
     KRON_SHAPES,
     SPECIAL_SHAPES,
@@ -24,6 +25,7 @@ from .accuracy_utils import (
     UT_SHAPES_2D,
     gems_assert_close,
     gems_assert_equal,
+    to_cpu,
     to_reference,
 )
 from .conftest import TO_CPU
@@ -1263,6 +1265,51 @@ def test_accuracy_contiguous(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None):
+    if dtype is None:
+        dtype = flag_gems.SUPPORTED_FP8_DTYPE
+
+    assert (
+        x.shape[-1] % group_size == 0
+    ), "the last dimension of `x` cannot be divisible by `group_size`"
+    assert x.is_contiguous(), "`x` is not contiguous"
+
+    finfo = torch.finfo(dtype)
+    fp8_min = finfo.min
+    fp8_max = finfo.max
+
+    x_ = x.reshape(x.numel() // group_size, group_size)
+    amax = x_.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
+    x_s = amax / fp8_max
+    x_q = (x_ / x_s).clamp(min=fp8_min, max=fp8_max).to(dtype)
+    x_q = x_q.reshape(x.shape)
+    x_s = x_s.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
+
+    return x_q, x_s
+
+
+@pytest.mark.per_token_group_quant_fp8
+@pytest.mark.parametrize("seed", FP8_QUANT_SHAPES["SEEDS"])
+@pytest.mark.parametrize("group_size", FP8_QUANT_SHAPES["GROUP_SIZE"])
+@pytest.mark.parametrize("dtype", FP8_QUANT_SHAPES["DTYPES"])
+@pytest.mark.parametrize("d", FP8_QUANT_SHAPES["D"])
+@pytest.mark.parametrize("num_tokens", FP8_QUANT_SHAPES["NUM_TOKENS"])
+def test_accuracy_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, seed):
+    torch.manual_seed(seed)
+    x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+
+    ref_out, ref_scale = native_per_token_group_quant_fp8(ref_x, group_size)
+    with flag_gems.use_gems():
+        out, scale = flag_gems.per_token_group_quant_fp8(x, group_size)
+
+    gems_assert_close(scale, ref_scale, dtype=torch.float32)
+
+    out_fp32 = to_cpu(out, ref_out).to(torch.float32)
+    ref_out_fp32 = ref_out.to(torch.float32)
+    assert torch.allclose(out_fp32, ref_out_fp32, rtol=0.15)
+
+
 @pytest.mark.rwkv_ka_fusion
 @pytest.mark.parametrize("T", [2**d for d in range(4, 15, 2)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1303,6 +1350,7 @@ def test_accuracy_rwkv_mmsparsity(dtype):
     k = torch.randn(n, dtype=dtype, device=flag_gems.device)
     k = torch.relu(k)
     if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(42)
         # kunlunxin sparsity test require 90% sparsity
         sparsity_levels = [0.9]
         for target_sparsity in sparsity_levels:
@@ -1321,3 +1369,23 @@ def test_accuracy_rwkv_mmsparsity(dtype):
     ref_res = ref_k @ ref_V_
 
     gems_assert_close(res, ref_res, dtype, equal_nan=True)
+
+
+M_VALUES = [1, 33, 64, 222]
+TOP_KS = [2, 6]
+K_VALUES = [128, 511, 1024]
+MOE_SHAPES = list(itertools.product(M_VALUES, TOP_KS, K_VALUES))
+
+
+@pytest.mark.moe_sum
+@pytest.mark.parametrize("shape", MOE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_moe_sum(shape, dtype):
+    m, topk, k = shape
+    inp1 = torch.randn((m, topk, k), dtype=dtype, device=flag_gems.device)
+    res_out = torch.empty((m, k), dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+    ref_out = torch.sum(ref_inp1, dim=1)
+    with flag_gems.use_gems():
+        flag_gems.moe_sum(inp1, res_out)
+    gems_assert_close(res_out, ref_out, dtype)

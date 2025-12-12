@@ -71,6 +71,11 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
                               bool scale_grad_by_freq = false,
                               bool sparse = false);
 at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim = std::nullopt, bool keepdim = false);
+std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor &self, int64_t dim = -1, bool descending = false);
+std::tuple<at::Tensor, at::Tensor> sort_stable(const at::Tensor &inp,
+                                               c10::optional<bool> stable,
+                                               int64_t dim = -1,
+                                               bool descending = false);
 
 at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
 
@@ -121,6 +126,11 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(
     const std::optional<at::Tensor> &q_descale = std::nullopt,
     const std::optional<at::Tensor> &k_descale = std::nullopt,
     const std::optional<at::Tensor> &v_descale = std::nullopt,
+    std::optional<at::Tensor> s_aux = std::nullopt,
+    int64_t num_splits = 0,
+    int64_t cp_world_size = 1,
+    int64_t cp_rank = 0,
+    std::optional<at::Tensor> cp_tot_seqused_k = std::nullopt,
     int64_t fa_version = 2);
 
 struct FlashFwdParams {

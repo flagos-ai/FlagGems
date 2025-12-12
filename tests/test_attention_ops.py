@@ -291,7 +291,6 @@ def gems_flash_fwd(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
@@ -467,7 +466,6 @@ def test_sdpa_legacy_backward(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -502,7 +500,6 @@ def test_sdpa_square_qk_even_mn(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -540,7 +537,6 @@ def test_sdpa_nonsquare_qk(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "mthreads", reason="Unsupported in CPU mode"
 )
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -911,6 +907,9 @@ def test_flash_attn_varlen_func(
 
     with torch.device(flag_gems.device):
         init_seed(1234567890)
+        if flag_gems.vendor_name == "cambricon":
+            torch.manual_seed(123456)
+            torch.mlu.manual_seed_all(123456)
         num_seqs = len(seq_lens)
         query_lens = [x[0] for x in seq_lens]
         kv_lens = [x[1] for x in seq_lens]
@@ -1468,8 +1467,6 @@ def test_reshape_and_cache_flash(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_mla
 @pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
 @pytest.mark.parametrize(

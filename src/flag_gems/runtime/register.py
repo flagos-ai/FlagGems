@@ -1,4 +1,4 @@
-from . import backend, commom_utils, error
+from . import backend, common, error
 from .backend.device import DeviceDetector
 
 
@@ -24,15 +24,19 @@ class Register:
         self.for_each()
 
     def config_filter(self):
+        def enabled(item):
+            return len(item) < 3 or bool(item[2]())
+
         self.config = [
-            item
+            (item[0], item[1])
             for item in self.config
-            if item[1].__name__ not in self.unused_ops
+            if enabled(item)
+            and item[1].__name__ not in self.unused_ops
             and item[0] not in self.cpp_patched_ops_list
         ]
 
     def get_vendor_unused_op(self):
-        if self.device.vendor != commom_utils.vendors.NVIDIA:
+        if self.device.vendor != common.vendors.NVIDIA:
             return backend.get_curent_device_unused_op(self.device.vendor_name)
         return []
 

@@ -11,7 +11,7 @@ from benchmark.attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from benchmark.performance_utils import Benchmark, generate_tensor_input
+from benchmark.performance_utils import Benchmark, SkipVersion, generate_tensor_input
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
@@ -96,6 +96,7 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
 
 forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
+    # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
@@ -194,6 +195,10 @@ class CopyInplaceBenchmark(Benchmark):
 
 
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_perf():
     bench = CopyInplaceBenchmark(
         op_name="copy_",
@@ -265,8 +270,8 @@ class BinaryPointwiseBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp1 = generate_tensor_input(shape, cur_dtype, self.device)
-            shift_amount = torch.randint(
-                0, 8, shape, dtype=cur_dtype, device=self.device
+            shift_amount = torch.randint(0, 8, shape, dtype=cur_dtype, device="cpu").to(
+                self.device
             )
             yield inp1, shift_amount
 

@@ -27,11 +27,11 @@ def rwkv_mm_sparsity_kernel(
         offs_k = k_block_idx * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
         mask_k = offs_k < k_size
         k_ptrs = k_ptr + offs_k
-        k_block_1d = tl.load(k_ptrs, mask=mask_k, other=0.0)
+        k_block_1d = tl.load(k_ptrs, mask=mask_k, other=0.0).to(tl.float32)
         k_block = k_block_1d[None, :]
         v_ptrs = v_ptr + (offs_k[:, None] * v_cols) + offs_n[None, :]
         v_mask = mask_k[:, None] & mask_n[None, :]
-        v_block = tl.load(v_ptrs, mask=v_mask, other=0.0)
+        v_block = tl.load(v_ptrs, mask=v_mask, other=0.0).to(tl.float32)
 
         # k_block: (1, BLOCK_SIZE_K), v_block: (BLOCK_SIZE_K, BLOCK_SIZE_N) -> accumulator: (1, BLOCK_SIZE_N)
         accumulator += tl.dot(k_block, v_block, allow_tf32=False)

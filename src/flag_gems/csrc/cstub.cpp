@@ -27,7 +27,6 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("exponential_(Tensor(a!) x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor(a!)");
   // blas
   m.def("addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor");
-  m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def("mm(Tensor self, Tensor mat2) -> Tensor");
 
   m.def(
@@ -55,6 +54,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("topk(Tensor x, SymInt k, int dim, bool largest, bool sorted) -> (Tensor, Tensor)");
   m.def("contiguous(Tensor(a) self, *, MemoryFormat memory_format=contiguous_format) -> Tensor(a)");
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
+  m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def(
       "embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool "
       "sparse=False) -> Tensor");
@@ -62,6 +62,12 @@ TORCH_LIBRARY(flag_gems, m) {
       "embedding_backward(Tensor grad_outputs, Tensor indices, SymInt num_weights, SymInt padding_idx, bool "
       "scale_grad_by_freq, bool sparse) -> Tensor");
   m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
+  // sort
+  m.def("sort(Tensor self, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)");
+  m.def(
+      "sort.stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False) -> (Tensor values, "
+      "Tensor indices)");
+
   m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
   m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
   m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
@@ -82,8 +88,9 @@ TORCH_LIBRARY(flag_gems, m) {
       "bool deterministic=False, bool return_attn_probs=False, Tensor? block_table=None, bool "
       "return_softmax_lse=False, "
       "Tensor? out=None, Tensor? scheduler_metadata=None, Tensor? q_descale=None, Tensor? k_descale=None, "
-      "Tensor? v_descale=None, "
-      "SymInt fa_version=2) -> (Tensor, Tensor)");
+      "Tensor? v_descale=None, Tensor? s_aux=None, SymInt num_splits=0, SymInt cp_world_size=1, "
+      "SymInt cp_rank=0, Tensor? cp_tot_seqused_k=None, SymInt fa_version=2) -> (Tensor, Tensor)");
+
   m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
   m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
 }
@@ -116,6 +123,10 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("embedding", TORCH_FN(embedding));
   m.impl("embedding_backward", TORCH_FN(embedding_backward));
   m.impl("argmax", TORCH_FN(argmax));
+  // sort
+  m.impl("sort", TORCH_FN(sort));
+  m.impl("sort.stable", TORCH_FN(sort_stable));
+
   m.impl("fill.Scalar", TORCH_FN(fill_scalar));
   m.impl("fill.Tensor", TORCH_FN(fill_tensor));
   m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));

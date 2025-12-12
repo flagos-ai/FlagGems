@@ -128,10 +128,6 @@ def batchnorm_input_fn(shape, dtype, device):
     ],
 )
 def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
-    if vendor_name == "kunlunxin" and op_name in [
-        "batch_norm",
-    ]:
-        pytest.skip("RUNTIME TODOFIX.(batch_norm unsupported in torch)")
     if (
         vendor_name == "kunlunxin"
         and op_name == "instance_norm"
@@ -198,7 +194,7 @@ def test_perf_batch_norm_backward():
         input_fn=batch_norm_backward_input_fn,
         op_name="native_batch_norm_backward",
         torch_op=torch.ops.aten.native_batch_norm_backward,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float32] if vendor_name == "mthreads" else FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.batch_norm_backward)
     bench.run()

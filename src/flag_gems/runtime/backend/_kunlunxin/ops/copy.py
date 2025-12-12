@@ -3,8 +3,9 @@ from typing import Optional
 
 import torch
 import triton
-from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
-from _kunlunxin.utils.pointwise_dynamic import pointwise_dynamic
+
+from ..utils.codegen_config_utils import CodeGenConfig
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,8 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
     if src.is_complex() and not dst.is_complex():
         # Preserve PyTorch's behaviour of warning when casting complex to real
         # by forcing the redispatch path, which issues the warning internally.
+        return False
+    if not src.is_contiguous():
         return False
     return True
 

@@ -213,8 +213,6 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
                 pytest.skip(
                     "Not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5"
                 )
-        if op_name in ["cummax"]:
-            pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
@@ -314,7 +312,7 @@ def test_perf_avg_pool2d_backward():
         input_fn=avg_pool2d_input_fn,
         op_name="avg_pool2d",
         torch_op=torch.ops.aten.avg_pool2d,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float32] if vendor_name == "mthreads" else FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()
@@ -430,7 +428,6 @@ def test_perf_dot():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.trace
 def test_perf_trace():
     def trace_input_fn(shape, dtype, device):
@@ -441,7 +438,7 @@ def test_perf_trace():
         input_fn=trace_input_fn,
         op_name="trace",
         torch_op=torch.trace,
-        dtypes=FLOAT_DTYPES + INT_DTYPES,
+        dtypes=FLOAT_DTYPES if vendor_name == "mthreads" else FLOAT_DTYPES + INT_DTYPES,
     )
 
     bench.run()
@@ -478,4 +475,79 @@ def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
     bench = quantileBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
+    bench.run()
+
+
+class ScaledSoftmaxBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        # shape: [batch, heads, query_len, key_len]
+        shapes_small = [
+            (1, 4, 64, 64),
+            (2, 8, 128, 128),
+            (4, 8, 256, 256),
+        ]
+        shapes_medium = [
+            (8, 12, 512, 512),
+            (16, 16, 1024, 1024),
+            (32, 16, 512, 512),
+        ]
+        shapes_large = [
+            (1, 32, 2048, 2048),
+            (2, 40, 4096, 4096),
+            # (4, 32, 8192, 8192),  # too big shape, out of memory
+        ]
+        shapes_4d = shapes_small + shapes_medium + shapes_large
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.scaled_softmax
+def test_perf_scaled_softmax_forward():
+    try:
+        from transformer_engine.common import _load_library
+
+        _load_library()
+        import transformer_engine_torch as tex  # type: ignore
+    except ImportError:
+        pytest.skip("TransformerEngine is not available, skipping performance test")
+
+    def scaled_softmax_forward_input_fn(shape, dtype, device):
+        S = generate_tensor_input(shape, dtype, device)
+        scale_factor = 1 / S.shape[-1] ** 0.5
+        yield S, scale_factor
+
+    bench = ScaledSoftmaxBenchmark(
+        input_fn=scaled_softmax_forward_input_fn,
+        op_name="scaled_softmax_forward",
+        torch_op=tex.scaled_softmax_forward,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.scaled_softmax_forward)
+    bench.run()
+
+
+@pytest.mark.scaled_softmax
+def test_perf_scaled_softmax_backward():
+    try:
+        from transformer_engine.common import _load_library
+
+        _load_library()
+        import transformer_engine_torch as tex  # type: ignore
+    except ImportError:
+        pytest.skip("TransformerEngine is not available, skipping performance test")
+
+    def scaled_softmax_backward_input_fn(shape, dtype, device):
+        S = generate_tensor_input(shape, dtype, device)
+        scale_factor = 1 / S.shape[-1] ** 0.5
+        P = torch.softmax(S / scale_factor, dim=-1)
+        dP = generate_tensor_input(shape, dtype, device)
+        yield P, dP, scale_factor
+
+    bench = ScaledSoftmaxBenchmark(
+        input_fn=scaled_softmax_backward_input_fn,
+        op_name="scaled_softmax_backward",
+        torch_op=tex.scaled_softmax_backward,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.scaled_softmax_backward)
     bench.run()
