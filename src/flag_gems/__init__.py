@@ -343,6 +343,8 @@ def enable(
             ("where.self_out", where_self_out),
             ("zeros", zeros),
             ("zeros_like", zeros_like),
+            ("dreglu", dreglu),
+            ("reglu", reglu),
             ("scaled_softmax_forward", scaled_softmax_forward),
             ("scaled_softmax_backward", scaled_softmax_backward),
             ("conv1d", conv1d),
