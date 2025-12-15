@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Optional
 
 import torch
 import triton
@@ -120,7 +121,7 @@ def dgeglu_kernel(
     tl.store(grad_b_ptr, grad_b.to(x_a.dtype), mask=mask)
 
 
-def geglu(input_tensor: torch.Tensor) -> torch.Tensor:
+def geglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
     shape = input_tensor.shape
     H = shape[-1] // 2
     M = input_tensor.numel() // (2 * H)
@@ -149,7 +150,11 @@ def geglu(input_tensor: torch.Tensor) -> torch.Tensor:
     return output_2d.view(*shape[:-1], H)
 
 
-def dgeglu(grad_output: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
+def dgeglu(
+    grad_output: torch.Tensor,
+    input_tensor: torch.Tensor,
+    quantizer: Optional[Any] = None,
+) -> torch.Tensor:
     shape = input_tensor.shape
     H = shape[-1] // 2
     M = input_tensor.numel() // (2 * H)

@@ -11,6 +11,7 @@ from flag_gems.fused.moe_align_block_size import (
 )
 from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.fused.outer import outer
+from flag_gems.fused.reglu import dreglu, reglu
 from flag_gems.fused.reshape_and_cache import reshape_and_cache
 from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
 from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
@@ -44,4 +45,6 @@ __all__ = [
     "topk_softmax",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
+    "dreglu",
+    "reglu",
 ]
