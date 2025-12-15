@@ -978,6 +978,8 @@ class WrapperGenerator:
                     code.writeline("isCloseMemoryAsync=False,")
                 if os.getenv("XPU_cmp_nan") == "1":
                     code.writeline("isOpenCmpNan=True,")
+                if self.config.unroll_num:
+                    code.writeline(f"unroll_num={self.config.unroll_num},")
             code.writeline(")")
 
     def gen_kernel_launch_1d(
@@ -1043,6 +1045,8 @@ class WrapperGenerator:
                     code.writeline("isCloseMemoryAsync=False,")
                 if os.getenv("XPU_cmp_nan") == "1":
                     code.writeline("isOpenCmpNan=True,")
+                if self.config.unroll_num:
+                    code.writeline(f"unroll_num={self.config.unroll_num},")
             code.writeline(")")
 
     def gen_return(self, code: IndentedBuffer):
