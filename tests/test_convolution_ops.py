@@ -180,7 +180,9 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
-def test_accuracy_conv2d_padding(shape, kernel, stride, padding, groups, dtype, dilation, bias):
+def test_accuracy_conv2d_padding(
+    shape, kernel, stride, padding, groups, dtype, dilation, bias
+):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
@@ -333,7 +335,9 @@ def test_accuracy_conv3d(shape, kernel, stride, padding, groups, dtype, dilation
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
-def test_accuracy_conv3d_padding(shape, kernel, stride, padding, groups, dtype, dilation, bias):
+def test_accuracy_conv3d_padding(
+    shape, kernel, stride, padding, groups, dtype, dilation, bias
+):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
