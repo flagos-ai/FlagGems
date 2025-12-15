@@ -257,6 +257,47 @@ def custom_silu_and_mul(out: torch.Tensor, input: torch.Tensor):
     flag_gems.silu_and_mul_out(x, y, out)
 
 
+def custom_quant_fp8_forward_cuda(
+    self,
+    x: torch.Tensor,
+    scale: torch.Tensor | None = None,
+    scale_ub: torch.Tensor | None = None,
+):
+    if self.is_group_quant:
+        assert scale is None, "Group quantization is always dynamic"
+        from vllm import _custom_ops as ops
+        from vllm.model_executor.layers.quantization.utils.quant_utils import GroupShape
+        from vllm.platforms import current_platform
+        from vllm.utils.deep_gemm import is_deep_gemm_e8m0_used
+
+        _FP8_DTYPE = current_platform.fp8_dtype()
+        use_ue8m0 = self.use_ue8m0
+        if use_ue8m0 is None:
+            use_ue8m0 = is_deep_gemm_e8m0_used()
+
+        return flag_gems.per_token_group_quant_fp8(
+            x,
+            group_size=self.group_size,
+            column_major_scales=self.column_major_scales,
+            dtype=_FP8_DTYPE,
+            use_ue8m0=use_ue8m0,
+        )
+
+    assert (scale is not None) == self.static
+    assert scale_ub is None or (
+        not self.static
+        and self.group_shape == GroupShape.PER_TOKEN
+        and scale_ub.numel() == 1
+    )
+    return ops.scaled_fp8_quant(
+        x,
+        scale,
+        num_token_padding=self.num_token_padding,
+        scale_ub=scale_ub,
+        use_per_token_if_dynamic=self.use_per_token_if_dynamic,
+    )
+
+
 def custom_moe_align_block_size(
     topk_ids: torch.Tensor,
     num_experts: int,
@@ -343,6 +384,7 @@ def apply_gems_patches_to_vllm(verbose=True):
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
+    from vllm.model_executor.layers.quantization.input_quant_fp8 import QuantFP8
     from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
     from vllm.v1.attention.backends.flash_attn import FlashAttentionImpl
     from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
@@ -363,6 +405,9 @@ def apply_gems_patches_to_vllm(verbose=True):
     )
     patch_module_method(
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward, verbose
+    )
+    patch_module_method(
+        QuantFP8, "forward_cuda", custom_quant_fp8_forward_cuda, verbose
     )
     patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
     patch_vllm_lib(
