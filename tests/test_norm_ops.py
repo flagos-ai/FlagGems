@@ -715,7 +715,6 @@ def test_accuracy_batch_norm(shape, dtype, affine):
     gems_assert_close(running_var, ref_running_var, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.batch_norm
 @pytest.mark.parametrize(
     "shape",
