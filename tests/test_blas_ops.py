@@ -1,5 +1,7 @@
 import os
+import random
 
+import numpy as np
 import pytest
 import torch
 
@@ -99,6 +101,12 @@ def test_accuracy_bmm(M, N, K, dtype):
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
     batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
@@ -189,6 +197,12 @@ def test_accuracy_baddbmm_backward(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_accuracy_mm(M, N, K, dtype, b_column_major):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
         mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
