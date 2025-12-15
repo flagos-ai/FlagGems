@@ -19,6 +19,7 @@ add_library(operators
             bmm.cpp
             embedding.cpp
             argmax.cpp
+            div.cpp
             softmax.cpp
             sort.cpp
 	          exponential_.cpp
