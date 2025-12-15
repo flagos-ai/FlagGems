@@ -43,6 +43,32 @@ def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         del os.environ["MUSA_ENABLE_SQMMA"]
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.conv1d_padding
+@pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
+@pytest.mark.parametrize("stride", [1])
+@pytest.mark.parametrize("padding", ["valid", "same"])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_accuracy_conv1d_padding(shape, kernel, stride, padding, dtype):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    ref_weight = to_reference(weight, True)
+    ref_out = torch.nn.functional.conv1d(
+        ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
+    )
+
+    res_out = flag_gems.conv1d(
+        inp, weight, bias=None, stride=stride, padding=padding, dilation=1
+    )
+    gems_assert_close(res_out, ref_out, dtype)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
 
 SHAPE_CONV2D = [
     ((1, 2, 5, 5), (1, 2, 3, 3), 1),
@@ -143,6 +169,86 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         del os.environ["MUSA_ENABLE_SQMMA"]
 
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.conv2d_padding
+@pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
+@pytest.mark.parametrize("stride", [1])
+@pytest.mark.parametrize("padding", ["valid", "same"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dilation", [1, 2])
+@pytest.mark.parametrize("bias", [True, False])
+def test_accuracy_conv2d_padding(shape, kernel, stride, padding, groups, dtype, dilation, bias):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+    torch.backends.cudnn.allow_tf32 = False
+    weight = torch.randn(
+        kernel, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    if bias is True:
+        bias = torch.randn(
+            [weight.shape[0]], dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
+        bias_ref = to_reference(bias, True)
+    else:
+        bias = None
+        bias_ref = None
+
+    ref_weight = to_reference(weight, True)
+    ref_out = torch.nn.functional.conv2d(
+        ref_inp,
+        ref_weight,
+        bias=bias_ref,
+        groups=groups,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+    ).to(dtype)
+
+    res_out = flag_gems.conv2d(
+        inp,
+        weight,
+        bias=bias,
+        groups=groups,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(ref_out).to(flag_gems.device)
+
+    ref_grad = to_reference(out_grad, True)
+    if bias is not None:
+        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight, bias_ref), ref_grad
+        )
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+    else:
+        (ref_in_grad, ref_weight_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight), ref_grad
+        )
+        (res_in_grad, res_weight_grad) = torch.autograd.grad(
+            res_out, (inp, weight), out_grad
+        )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=weight.shape[2])
+
+    gems_assert_close(
+        res_weight_grad, ref_weight_grad, dtype, reduce_dim=weight.shape[0]
+    )
+    if bias is not None:
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
 
 SHAPE_CONV3D = [
     ((1, 2, 5, 5, 5), (1, 2, 3, 3, 3), 1),
@@ -172,6 +278,60 @@ SHAPE_CONV3D = [
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
 def test_accuracy_conv3d(shape, kernel, stride, padding, groups, dtype, dilation, bias):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
+    ref_inp = to_reference(inp, True)
+    torch.backends.cudnn.allow_tf32 = False
+    weight = torch.randn(
+        kernel, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    if bias is True:
+        bias = torch.randn(
+            [weight.shape[0]], dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+        bias_ref = to_reference(bias, True)
+    else:
+        bias = None
+        bias_ref = None
+
+    ref_weight = to_reference(weight, True)
+    ref_out = torch.nn.functional.conv3d(
+        ref_inp,
+        ref_weight,
+        bias=bias_ref,
+        groups=groups,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+    ).to(dtype)
+
+    res_out = flag_gems.conv3d(
+        inp,
+        weight,
+        bias=bias,
+        groups=groups,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.conv3d_padding
+@pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV3D)
+@pytest.mark.parametrize("stride", [1])
+@pytest.mark.parametrize("padding", ["valid", "same"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dilation", [1, 2])
+@pytest.mark.parametrize("bias", [True, False])
+def test_accuracy_conv3d_padding(shape, kernel, stride, padding, groups, dtype, dilation, bias):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 

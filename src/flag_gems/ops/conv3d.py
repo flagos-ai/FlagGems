@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import math
 
 from flag_gems import runtime
 from flag_gems.ops.conv2d import conv2d_output_size
@@ -235,18 +236,37 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
     if isinstance(stride, (list, tuple)):
         stride_depth, stride_height, stride_width = stride
+        if (padding == "same"):
+            assert (stride_depth == 1 and stride_height == 1 and stride_width == 1), "Doesn't support any stride values other than 1 in padding = 'same' mode, received stride value {stride}" 
     else:
         stride_depth = stride_height = stride_width = stride
-
-    if isinstance(padding, (list, tuple)):
-        padding_depth, padding_height, padding_width = padding
-    else:
-        padding_depth = padding_height = padding_width = padding
+        if (padding == "same"):
+            assert stride == 1, "Doesn't support any stride values other than 1 in padding = 'same' mode, received stride value {stride}" 
 
     if isinstance(dilation, (list, tuple)):
         dilation_depth, dilation_height, dilation_width = dilation
     else:
         dilation_depth = dilation_height = dilation_width = dilation
+
+    if (padding == "same"):
+        id = input.shape[-3]
+        ih = input.shape[-2]
+        iw = input.shape[-1]
+        kernel_size_d = weight.shape[-3]
+        kernel_size_h = weight.shape[-2]
+        kernel_size_w = weight.shape[-1]
+        padding_depth = math.ceil((stride_depth * (id - 1) + 1 + dilation_depth * (kernel_size_d - 1) - id) / 2)
+        padding_height = math.ceil((stride_height * (ih - 1) + 1 + dilation_height * (kernel_size_h - 1) - ih) / 2)
+        padding_width = math.ceil((stride_width * (iw - 1) + 1 + dilation_width * (kernel_size_w - 1) - iw) / 2)
+        od = int((id + 2 * padding_depth - dilation_depth * (kernel_size_d - 1) - 1) / stride_depth + 1)
+        oh = int((ih + 2 * padding_height - dilation_height * (kernel_size_h - 1) - 1) / stride_height + 1)
+        ow = int((iw + 2 * padding_width - dilation_width * (kernel_size_w - 1) - 1) / stride_width + 1)
+    elif (padding == "valid"):
+        padding_depth = padding_height = padding_width = 0
+    elif isinstance(padding, (list, tuple)):
+        padding_depth, padding_height, padding_width = padding
+    else:
+        padding_depth = padding_height = padding_width = padding
 
     in_n, _, input_depth, input_height, input_width = input.shape
     out_c, weight_c, weight_depth, weight_height, weight_width = weight.shape
@@ -315,5 +335,8 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         dilation_width,
         groups=groups,
     )
+    
+    if (padding == "same"):
+        output = output[..., (od - id):, (oh - ih):, (ow - iw):]
 
     return output
