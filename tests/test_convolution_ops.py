@@ -43,6 +43,7 @@ def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         del os.environ["MUSA_ENABLE_SQMMA"]
 
+
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv1d_padding
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
@@ -168,6 +169,7 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
 
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         del os.environ["MUSA_ENABLE_SQMMA"]
+
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")

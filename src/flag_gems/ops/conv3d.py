@@ -237,11 +237,13 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if isinstance(stride, (list, tuple)):
         stride_depth, stride_height, stride_width = stride
         if (padding == "same"):
-            assert (stride_depth == 1 and stride_height == 1 and stride_width == 1), "Doesn't support any stride values other than 1 in padding = 'same' mode, received stride value {stride}" 
+            assert (stride_depth == 1 and stride_height == 1 and stride_width == 1), "Doesn't \
+                support any stride values other than 1 in padding = 'same' mode, received stride value {stride}" 
     else:
         stride_depth = stride_height = stride_width = stride
         if (padding == "same"):
-            assert stride == 1, "Doesn't support any stride values other than 1 in padding = 'same' mode, received stride value {stride}" 
+            assert stride == 1, "Doesn't support any stride values other than 1 \
+                in padding = 'same' mode, received stride value {stride}" 
 
     if isinstance(dilation, (list, tuple)):
         dilation_depth, dilation_height, dilation_width = dilation

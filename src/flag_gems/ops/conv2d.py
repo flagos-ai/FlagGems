@@ -593,7 +593,8 @@ class Conv2d(torch.autograd.Function):
 # todo test SymInt[2] of stride or padding
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if (padding == "same"):
-        assert stride == 1, "Doesn't support any stride values other than 1 in padding = 'same' mode, received stride value {stride}" 
+        assert stride == 1, "Doesn't support any stride values other than 1 \
+            in padding = 'same' mode, received stride value {stride}" 
         ih = input.shape[-2]
         iw = input.shape[-1]
         kernel_size_h = weight.shape[-2]

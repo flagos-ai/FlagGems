@@ -230,9 +230,6 @@ from flag_gems.ops.where import (
 )
 from flag_gems.ops.zeros import zeros
 from flag_gems.ops.zeros_like import zeros_like
-from flag_gems.ops.conv1d import conv1d
-from flag_gems.ops.conv2d import conv2d
-from flag_gems.ops.conv3d import conv3d
 
 __all__ = [
     "_conv_depthwise2d",
