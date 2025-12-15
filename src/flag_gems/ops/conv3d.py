@@ -362,7 +362,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         dilation_width,
         groups=groups,
     )
-    
+
     if padding == "same":
         output = output[..., (od - id) :, (oh - ih) :, (ow - iw) :]
 
