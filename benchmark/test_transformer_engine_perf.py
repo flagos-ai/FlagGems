@@ -75,23 +75,15 @@ class TexGluBackwardBenchmark(TexGluBenchmark):
 
 glu_forward_ops = [
     ("geglu", "geglu", FLOAT_DTYPES),
-    # ("swiglu", "swiglu", FLOAT_DTYPES),
-    # ("reglu", "reglu", FLOAT_DTYPES),
+    ("swiglu", "swiglu", FLOAT_DTYPES),
+    ("reglu", "reglu", FLOAT_DTYPES),
 ]
 
 glu_backward_ops = [
     ("dgeglu", "dgeglu", FLOAT_DTYPES),
-    # ("dswiglu", "dswiglu", FLOAT_DTYPES),
-    # ("dreglu", "dreglu", FLOAT_DTYPES),
+    ("dswiglu", "dswiglu", FLOAT_DTYPES),
+    ("dreglu", "dreglu", FLOAT_DTYPES),
 ]
-
-
-def gems_geglu_wrapper(x, *_):
-    return flag_gems.geglu(x)
-
-
-def gems_dgeglu_wrapper(grad_out, inp, *_args, **_kwargs):
-    return flag_gems.dgeglu(grad_out, inp)
 
 
 @pytest.mark.parametrize(
@@ -115,11 +107,15 @@ def test_tex_glu_forward_perf(op_name, tex_attr_name, dtypes):
 
     te_op = getattr(tex, tex_attr_name)
 
+    if not hasattr(flag_gems, op_name):
+        pytest.skip(f"Operator {op_name} not found in flag_gems")
+    gems_op = getattr(flag_gems, op_name)
+
     bench = TexGluForwardBenchmark(
         op_name=op_name,
         torch_op=te_op,
         dtypes=dtypes,
-        gems_op=gems_geglu_wrapper,
+        gems_op=gems_op,
     )
     bench.run()
 
@@ -145,11 +141,15 @@ def test_tex_glu_backward_perf(op_name, tex_attr_name, dtypes):
 
     te_op = getattr(tex, tex_attr_name)
 
+    if not hasattr(flag_gems, op_name):
+        pytest.skip(f"Operator {op_name} not found in flag_gems")
+    gems_op = getattr(flag_gems, op_name)
+
     bench = TexGluBackwardBenchmark(
         op_name=op_name,
         torch_op=te_op,
         dtypes=dtypes,
         is_backward=False,
-        gems_op=gems_dgeglu_wrapper,
+        gems_op=gems_op,
     )
     bench.run()
