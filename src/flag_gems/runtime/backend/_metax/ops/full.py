@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -67,6 +68,7 @@ def check_dtype(fill_value, dtype, device):
         and (fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max)
     ) or (
         dtype in ALL_FLOAT_DTYPES
+        and not (math.isinf(fill_value) or math.isnan(fill_value))
         and (fill_value < torch.finfo(dtype).min or fill_value > torch.finfo(dtype).max)
     ):
         raise RuntimeError(

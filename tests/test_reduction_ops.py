@@ -236,6 +236,12 @@ def test_accuracy_cross_entropy_loss_probabilities(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
 def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
     dim = 1
     target_shape = list(shape)
     del target_shape[dim]
@@ -299,7 +305,11 @@ def test_accuracy_cumsum(shape, dtype):
             res_out = torch.cumsum(inp, dim=dim)
 
     # we should use ref's output type, since cumsum of int dtype results in int64
-    check_dtype = ref_out.dtype if dtype in INT_DTYPES else dtype
+    check_dtype = (
+        dtype
+        if flag_gems.vendor_name == "cambricon"
+        else (ref_out.dtype if dtype in INT_DTYPES else dtype)
+    )
     gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
 
 
@@ -870,7 +880,10 @@ TRACE_SHAPES = [
 
 @pytest.mark.trace
 @pytest.mark.parametrize("shape", TRACE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+@pytest.mark.parametrize(
+    "dtype",
+    FLOAT_DTYPES + INT_DTYPES + [torch.bool],
+)
 def test_accuracy_trace(shape, dtype):
     if dtype == torch.bool:
         inp = torch.randint(0, 2, size=shape, device=flag_gems.device).to(dtype)
@@ -1369,13 +1382,13 @@ def test_accuracy_max_pool2d_backward(
 
 
 INDEX_PUT_SHAPE_ACC_FALSE = (
-    ((2**28,), ((2**16,),), (2**16,)),
-    ((32, 32), ((8,), (8,)), (8,)),
-    ((32, 32), ((8,), (2, 8)), (8,)),
-    ((32, 32), ((2, 8),), (32,)),
-    ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
-    ((512, 512, 512), ((2, 128), (128,), (128,)), (128,)),
-    ((512, 512, 512), ((2, 128),), (512,)),
+    ((2**28,), ((2**16,),), (2**16,), False),
+    ((32, 32), ((8,), (8,)), (8,), False),
+    ((32, 32), ((8,), (2, 8)), (8,), False),
+    ((32, 32), ((2, 8),), (32,), False),
+    ((512, 512, 512), ((128,), (128,), (128,)), (128,), False),
+    ((512, 512, 512), ((2, 128), (128,), (128,)), (128,), False),
+    ((512, 512, 512), ((2, 128),), (512,), False),
     (
         (64, 64, 64),
         (
@@ -1383,7 +1396,11 @@ INDEX_PUT_SHAPE_ACC_FALSE = (
             (2, 8),
         ),
         (2, 8, 64),
+        False,
     ),
+    ((100,), ((100,),), (100,), True),
+    ((32, 32), ((32, 32),), (32, 32), True),
+    ((16, 16, 4), ((16, 16, 4),), (16, 16, 4), True),
 )
 
 INDEX_ACC_SHAPE = (
@@ -1439,37 +1456,56 @@ def gen_indices(input_shape, indices_shape, accumulate):
     return indices
 
 
-def gen_indices_for_index_put(input_shape, indices_shape, accumulate):
+def gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool):
     """
     Generate indices for torch.index_put.
-    This function supports multi-dimensional index shapes (e.g., (2, 8)),
-    unlike gen_indices which is designed for torch.ops.aten.index that requires
-    broadcastable indices.
+    This function supports multi-dimensional integer index shapes (e.g., (2, 8))
+    when is_bool is False, and generates a single boolean mask tensor when
+    is_bool is True. This is unlike gen_indices which is designed for
+    torch.ops.aten.index that requires broadcastable indices.
     """
     indices = []
-    for i, shape in enumerate(indices_shape):
-        # np.random.choice can accept tuple as size parameter
-        index = np.random.choice(
-            np.arange(input_shape[i]), size=shape, replace=accumulate
+
+    if is_bool:
+        mask_shape = indices_shape[0]
+
+        mask = torch.randint(
+            0, 2, size=mask_shape, dtype=torch.bool, device=flag_gems.device
         )
-        indices.append(torch.tensor(index, device=flag_gems.device))
-    return indices
+        return [mask]
+
+    else:
+        for i, shape in enumerate(indices_shape):
+            # np.random.choice can accept tuple as size parameter
+            index = np.random.choice(
+                np.arange(input_shape[i]), size=shape, replace=accumulate
+            )
+            indices.append(torch.tensor(index, device=flag_gems.device))
+        return indices
 
 
 @pytest.mark.index_put
 @pytest.mark.parametrize(
-    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_FALSE
+    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_index_put_acc_false(input_shape, indices_shape, values_shape, dtype):
+def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, dtype):
     accumulate = False
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
-    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate)
-    values = torch.randn(
-        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
+
+    if is_bool:
+        K = indices[0].sum().item()
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+    else:
+        values = torch.randn(
+            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
 
     ref_inp = to_reference(inp)
     ref_indices = [to_reference(index) for index in indices]
@@ -1480,19 +1516,20 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, dtype):
 
 
 INDEX_PUT_SHAPE_ACC_TRUE = (
-    ((2**28,), ((2**16,),), (2**16,)),
-    ((32, 32), ((8,), (8,)), (8,)),
-    ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
-    ((64, 64, 64), ((2, 8), (2, 8), (2, 8)), (2, 8)),
+    ((2**28,), ((2**16,),), (2**16,), False),
+    ((32, 32), ((8,), (8,)), (8,), False),
+    ((512, 512, 512), ((128,), (128,), (128,)), (128,), False),
+    ((64, 64, 64), ((2, 8), (2, 8), (2, 8)), (2, 8), False),
+    ((32, 32), ((32, 32),), (32 * 32,), True),
 )
 
 
 @pytest.mark.index_put
 @pytest.mark.parametrize(
-    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
+    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_TRUE
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
+def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, dtype):
     init_seed(0)
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(24)
@@ -1501,10 +1538,18 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
-    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate)
-    values = torch.randn(
-        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
+
+    if is_bool:
+        K = indices[0].sum().item()
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+    else:
+        values = torch.randn(
+            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
 
     ref_inp = to_reference(inp, upcast=True)
     ref_indices = [to_reference(index) for index in indices]
@@ -1516,18 +1561,26 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
 
 @pytest.mark.index_put_
 @pytest.mark.parametrize(
-    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_FALSE
+    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_index_put__acc_false(input_shape, indices_shape, values_shape, dtype):
+def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool, dtype):
     accumulate = False
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
-    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate)
-    values = torch.randn(
-        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
+
+    if is_bool:
+        K = indices[0].sum().item()
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+    else:
+        values = torch.randn(
+            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
 
     ref_inp = to_reference(inp)
     ref_indices = [to_reference(index) for index in indices]
@@ -1539,16 +1592,19 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, dtype):
 
 @pytest.mark.index_put_
 @pytest.mark.parametrize(
-    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
+    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_TRUE
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
+def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, dtype):
+    init_seed(0)
     if flag_gems.vendor_name == "metax":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
     if flag_gems.vendor_name == "mthreads":
         torch.manual_seed(0)
         torch.musa.manual_seed_all(0)
@@ -1559,10 +1615,18 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
-    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate)
-    values = torch.randn(
-        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-    )
+
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
+
+    if is_bool:
+        K = indices[0].sum().item()
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+    else:
+        values = torch.randn(
+            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
 
     ref_inp = to_reference(inp, upcast=True)
     ref_indices = [to_reference(index) for index in indices]
@@ -1856,3 +1920,69 @@ def test_accuracy_std(shape, dim, correction, keepdim, dtype):
     ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.scaled_softmax
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
+@pytest.mark.parametrize("query_seq_len", [64, 128])
+@pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
+@pytest.mark.parametrize("scale_factor", [0.1])
+def test_accuracy_scaled_softmax_forward(
+    batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
+):
+    try:
+        from transformer_engine.pytorch import cpp_extensions as tex
+    except ImportError:
+        pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
+
+    s = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    p_ref = to_reference(p_ref)
+    with flag_gems.use_gems():
+        p = flag_gems.scaled_softmax_forward(s, scale_factor)
+    gems_assert_close(p, p_ref, dtype, equal_nan=True)
+
+
+@pytest.mark.scaled_softmax
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
+@pytest.mark.parametrize("query_seq_len", [64, 128])
+@pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
+@pytest.mark.parametrize("scale_factor", [0.1])
+def test_accuracy_scaled_softmax_backward(
+    batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
+):
+    try:
+        from transformer_engine.pytorch import cpp_extensions as tex
+    except ImportError:
+        pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
+
+    out_grad = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    s = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    with flag_gems.use_gems():
+        p = flag_gems.scaled_softmax_forward(s, scale_factor)
+        in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
+    in_grad_ref = tex.scaled_softmax_backward(out_grad, p_ref, scale_factor)
+    in_grad_ref = to_reference(in_grad_ref)
+
+    gems_assert_close(
+        in_grad, in_grad_ref, dtype, equal_nan=True, reduce_dim=s.shape[-1]
+    )

@@ -76,7 +76,6 @@ class FlashMLABenchmark(GenericBenchmark):
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_mla
 def test_perf_flash_mla():
     def flash_mla_kwargs(shape, dtype, device):

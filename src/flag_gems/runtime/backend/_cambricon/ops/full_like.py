@@ -6,7 +6,7 @@ import triton
 from flag_gems.runtime import torch_device_fn
 
 from ..utils import TOTAL_CORE_NUM
-from .full import check_dtype, full_kernel
+from .full import check_dtype, full_scalar_kernel, full_tensor_kernel
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -31,10 +31,16 @@ def full_like(
     N = x.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(x.device):
-        full_kernel[grid_fn](
-            out,
-            N,
-            fill_value,
-            FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
-        )
+        if isinstance(fill_value, torch.Tensor):
+            full_tensor_kernel[grid_fn](
+                out,
+                N,
+                fill_value,
+            )
+        else:
+            full_scalar_kernel[grid_fn](
+                out,
+                N,
+                fill_value,
+            )
     return out

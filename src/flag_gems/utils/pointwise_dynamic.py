@@ -1134,7 +1134,13 @@ class PointwiseDynamicFunction:
             outputs_dtypes_for_allocation.append(dtype)
 
         tensors = out_tensors + in_tensors
-        if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
+        INT32_MAX = torch.iinfo(torch.int32).max
+        use_fast_path = self.use_fast_path(tensors)
+        fast_path_allowed = (
+            use_fast_path and tensors and tensors[0].numel() <= INT32_MAX
+        )
+        if fast_path_allowed:  # dimension collapse & use physical ordering
+            # if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
                 torch.empty_like(tensors[0], dtype=dtype)
                 for dtype in outputs_dtypes_for_allocation

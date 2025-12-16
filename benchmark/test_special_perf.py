@@ -61,7 +61,7 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
-    if vendor_name == "mthreads" and op_name in ["resolve_neg", "resolve_conj"]:
+    if vendor_name == "mthreads" and op_name in ["resolve_neg"]:
         pytest.skip("Torch not supported complex")
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
@@ -402,7 +402,6 @@ def test_perf_diagonal_backward():
     vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
     reason="only support torch >= 2.5.",
 )
-@pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron
 def test_perf_kron():
     class KronBenchmark(GenericBenchmark2DOnly):
