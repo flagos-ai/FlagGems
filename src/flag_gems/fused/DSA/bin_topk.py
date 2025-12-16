@@ -133,7 +133,6 @@ def kernel_bucket_sort_topk(  # grid(B, BS)
     round = 0
     # print("l_new_topk:", l_new_topk)
     while round < 4 and l_new_topk > 0:
-        round += 1
         ss = tl.cdiv(thre_bin_sum, BSS)
         s_histogram = tl.zeros([HISTOGRAM_SIZE], dtype=tl.int32)
         padding_num = 0.0 if round else float("-inf")
@@ -213,6 +212,8 @@ def kernel_bucket_sort_topk(  # grid(B, BS)
 
             thre_bin_sum += thre_bin_cur_sum
             sum += cur_sum
+
+        round += 1
 
     if l_new_topk > 0:
         ss = tl.cdiv(l_new_topk, BSS)
