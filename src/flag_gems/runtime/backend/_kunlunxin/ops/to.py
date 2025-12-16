@@ -4,6 +4,7 @@ from typing import Optional
 
 import torch
 import triton
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -22,6 +23,28 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 )
 @triton.jit
 def _to_copy_func(x):
+    return x
+
+
+close_interleave_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseInterleave=True,
+)
+
+
+@pointwise_dynamic(
+    is_tensor=[
+        True,
+    ],
+    promotion_methods=[(0, "DEFAULT")],
+    config=close_interleave_config,
+)
+@triton.jit
+def _to_copy_func_close_interleave(x):
     return x
 
 
@@ -67,6 +90,11 @@ def to_copy(
     non_blocking=False,
     memory_format=None,
 ):
+    if x.dtype == torch.bfloat16:
+        to_dtype_fn = _to_copy_func_close_interleave
+    else:
+        to_dtype_fn = _to_copy_func
+
     # We only implement the dense strided kernel today; all other layouts fall back to PyTorch.
     if (layout is not None and layout != torch.strided) or x.layout != torch.strided:
         raise NotImplementedError(
@@ -112,11 +140,11 @@ def to_copy(
     if out.element_size() == 8:
         os.environ["TRITONXPU_ELEMBYTES"] = "8"
         os.environ["TRITONXPU_BF16_FAST"] = "1"
-        res = _to_copy_func(x, out0=out)
+        res = to_dtype_fn(x, out0=out)
         del os.environ["TRITONXPU_ELEMBYTES"]
         del os.environ["TRITONXPU_BF16_FAST"]
     else:
         os.environ["TRITONXPU_BF16_FAST"] = "1"
-        res = _to_copy_func(x, out0=out)
+        res = to_dtype_fn(x, out0=out)
         del os.environ["TRITONXPU_BF16_FAST"]
     return res
