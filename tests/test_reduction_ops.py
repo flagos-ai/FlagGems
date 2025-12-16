@@ -236,6 +236,12 @@ def test_accuracy_cross_entropy_loss_probabilities(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
 def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
     dim = 1
     target_shape = list(shape)
     del target_shape[dim]
@@ -1927,10 +1933,7 @@ def test_accuracy_scaled_softmax_forward(
     batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
 ):
     try:
-        from transformer_engine.common import _load_library
-
-        _load_library()
-        import transformer_engine_torch as tex  # type: ignore
+        from transformer_engine.pytorch import cpp_extensions as tex
     except ImportError:
         pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
 
@@ -1941,6 +1944,7 @@ def test_accuracy_scaled_softmax_forward(
     )
 
     p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    p_ref = to_reference(p_ref)
     with flag_gems.use_gems():
         p = flag_gems.scaled_softmax_forward(s, scale_factor)
     gems_assert_close(p, p_ref, dtype, equal_nan=True)
@@ -1957,10 +1961,7 @@ def test_accuracy_scaled_softmax_backward(
     batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
 ):
     try:
-        from transformer_engine.common import _load_library
-
-        _load_library()
-        import transformer_engine_torch as tex  # type: ignore
+        from transformer_engine.pytorch import cpp_extensions as tex
     except ImportError:
         pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
 
@@ -1980,6 +1981,7 @@ def test_accuracy_scaled_softmax_backward(
         p = flag_gems.scaled_softmax_forward(s, scale_factor)
         in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
     in_grad_ref = tex.scaled_softmax_backward(out_grad, p_ref, scale_factor)
+    in_grad_ref = to_reference(in_grad_ref)
 
     gems_assert_close(
         in_grad, in_grad_ref, dtype, equal_nan=True, reduce_dim=s.shape[-1]

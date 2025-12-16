@@ -75,6 +75,7 @@ from flag_gems.ops.div import (
     remainder_,
     true_divide,
     true_divide_,
+    true_divide_out,
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
@@ -497,6 +498,7 @@ __all__ = [
     "trace",
     "triu",
     "true_divide",
+    "true_divide_out",
     "true_divide_",
     "uniform_",
     "upsample_nearest2d",
