@@ -87,6 +87,14 @@ jobs:
           run_command pytest -s tests/test_special_ops.py && \
           run_command pytest -s tests/test_distribution_ops.py
 
+      - name: FlagGems convolution ops on hopper
+        shell: bash
+        run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
+          source tools/run_command.sh
+          run_command pytest -s tests/test_convolution_ops.py
+
       - name: FlagGems utils on hopper
         shell: bash
         run: |
@@ -105,11 +113,3 @@ jobs:
           source tools/run_command.sh
           # FIXME(zhiyuan): OSError: [Errno 101] Network is unreachable
           # run_command pytest -s examples/model_bert_test.py
-
-      - name: FlagGems convolution ops on hopper
-        shell: bash
-        run: |
-          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
-          conda activate flag_gems
-          source tools/run_command.sh
-          run_command pytest -s tests/test_convolution_ops.py
