@@ -98,6 +98,55 @@ def moe_align_block_size_stage4(
         tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
 
 
+@triton.jit
+def _fill_sorted_ids_kernel(
+    sorted_token_ids_ptr,
+    total_length: tl.constexpr,
+    valid_length_ptr,  # Pointer to the scalar holding valid length
+    fill_value: tl.constexpr,
+    BLOCK_SIZE_FILL: tl.constexpr,
+):
+    """Kernel to fill sorted_token_ids from valid_length to total_length."""
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE_FILL
+    offsets = block_start + tl.arange(0, BLOCK_SIZE_FILL)
+    mask = offsets < total_length
+    valid_len_val = tl.load(valid_length_ptr)  # Load the scalar value
+    mask = mask & (offsets >= valid_len_val)  # Only fill beyond valid length
+    tl.store(sorted_token_ids_ptr + offsets, fill_value, mask=mask)
+
+
+@triton.jit
+def _fill_expert_ids_kernel(
+    expert_ids_ptr,
+    total_blocks: tl.constexpr,
+    valid_blocks_ptr,  # Pointer to the scalar holding valid blocks
+    fill_value: tl.constexpr,
+    BLOCK_SIZE_FILL: tl.constexpr,
+):
+    """Kernel to fill expert_ids from valid_blocks to total_blocks."""
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE_FILL
+    offsets = block_start + tl.arange(0, BLOCK_SIZE_FILL)
+    mask = offsets < total_blocks
+    valid_blocks_val = tl.load(valid_blocks_ptr)  # Load the scalar value
+    mask = mask & (offsets >= valid_blocks_val)  # Only fill beyond valid blocks
+    tl.store(expert_ids_ptr + offsets, fill_value, mask=mask)
+
+
+@triton.jit
+def _calc_valid_blocks_kernel(
+    num_tokens_post_pad_ptr,
+    block_size: tl.constexpr,
+    out_valid_blocks_ptr,  # Output pointer for the calculated valid blocks
+):
+    # This kernel runs with grid=(1,)
+    n_tokens = tl.load(num_tokens_post_pad_ptr)
+    # Perform ceiling division on device: (a + b - 1) // b
+    valid_blocks = (n_tokens + block_size - 1) // block_size
+    tl.store(out_valid_blocks_ptr, valid_blocks)
+
+
 def moe_align_block_size_triton(
     topk_ids: torch.Tensor,
     num_experts: int,
@@ -107,6 +156,11 @@ def moe_align_block_size_triton(
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
     numel = topk_ids.numel()
+
+    sorted_token_ids.fill_(numel)
+    expert_ids.fill_(0)
+    num_tokens_post_pad.zero_()
+
     grid = (num_experts,)
     tokens_cnts = torch.zeros(
         (num_experts + 1, num_experts), dtype=torch.int32, device=topk_ids.device
