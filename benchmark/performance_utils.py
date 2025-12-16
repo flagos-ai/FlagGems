@@ -262,12 +262,7 @@ class Benchmark:
         self.gems_op = gems_op
 
     def get_latency(self, op, *args, **kwargs):
-        if self.is_inplace:
-            fn = lambda: op(
-                *[x.clone() if torch.is_tensor(x) else x for x in args], **kwargs
-            )
-        else:
-            fn = lambda: op(*args, **kwargs)
+        fn = lambda: op(*args, **kwargs)
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)
