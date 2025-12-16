@@ -12,6 +12,12 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def prev_multiple_of(a, b):
+    # the largest x<a that x%b ==0
+    return tl.cdiv(a, b) * b - b
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
@@ -37,40 +43,94 @@ def mm_kernel(
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
+    pid = tle.program_id(0)
+
+    # --------------------------
+    # match naming: num_pid_m, num_pid_n
+    # --------------------------
     num_pid_m = tl.cdiv(M, BLOCK_M)
     num_pid_n = tl.cdiv(N, BLOCK_N)
+
+    # reorder for L2
     num_pid_in_group = GROUP_M * num_pid_n
     group_id = pid // num_pid_in_group
-    first_pid_m = group_id * GROUP_M
-    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
-    pid_m = first_pid_m + (pid % group_size_m)
+    group_size_m = min(num_pid_m - group_id * GROUP_M, GROUP_M)
+
+    pid_m = group_id * GROUP_M + (pid % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    offs_k = tl.arange(0, BLOCK_K)
-
+    # --------------------------
+    # match naming: offs_am, offs_bn, offs_k
+    # --------------------------
     offs_am = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    a_ptrs = a_ptr + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
-    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
+    offs_k = tl.arange(0, BLOCK_K)
 
+    # contiguous aligned offsets (ram/rbn → offs_am/offs_bn)
+    offs_am_cont = tl.max_contiguous(tl.multiple_of(offs_am % M, BLOCK_M), BLOCK_M)
+    offs_bn_cont = tl.max_contiguous(tl.multiple_of(offs_bn % N, BLOCK_N), BLOCK_N)
+
+    # previous K multiple
+    # prev_k_mult = prev_multiple_of(K, BLOCK_K)
+    prev_k_mult = tl.cdiv(K, BLOCK_K) * BLOCK_K - BLOCK_K
+
+    # accumulator
     accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_K)):
-        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_K, other=0.0)
-        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_K, other=0.0)
-        # We accumulate along the K dimension.
-        accumulator += tl.dot(a, b)
-        # Advance the ptrs to the next K block.
-        a_ptrs += BLOCK_K * stride_ak
-        b_ptrs += BLOCK_K * stride_bk
 
-    c = accumulator.to(c_ptr.dtype.element_ty)
+    # --------------------------
+    # main K loop
+    # --------------------------
+    for start_k in range(0, prev_k_mult, BLOCK_K):
+        rk = start_k + offs_k
 
+        a = tl.load(
+            a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak)
+        )
+        b = tl.load(
+            b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn)
+        )
+
+        if a.dtype != b.dtype:
+            a = a.to(c_ptr.dtype.element_ty)
+            b = b.to(c_ptr.dtype.element_ty)
+
+        accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    # --------------------------
+    # loop peel
+    # --------------------------
+    rk = prev_k_mult + offs_k
+    mask_k = rk < K
+
+    a = tl.load(
+        a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
+        mask=mask_k[None, :],
+    )
+    b = tl.load(
+        b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
+        mask=mask_k[:, None],
+    )
+
+    if a.dtype != b.dtype:
+        a = a.to(c_ptr.dtype.element_ty)
+        b = b.to(c_ptr.dtype.element_ty)
+
+    accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    # cast to output dtype
+    accumulator = accumulator.to(c_ptr.dtype.element_ty)
+
+    # --------------------------
+    # rematerialize offsets for store
+    # (match naming: offs_cm, offs_cn)
+    # --------------------------
     offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    tl.store(c_ptrs, c, mask=c_mask)
+
+    c_ptr = c_ptr + (offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn)
+    mask_store = (offs_cm < M)[:, None] & (offs_cn < N)[None, :]
+
+    tl.store(c_ptr, accumulator, mask=mask_store)
 
 
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
