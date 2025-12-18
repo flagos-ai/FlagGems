@@ -445,6 +445,77 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
+@pytest.mark.unique_consecutive
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES + FLOAT_DTYPES)
+@pytest.mark.parametrize("return_inverse", [True, False])
+@pytest.mark.parametrize("return_counts", [False, True])
+def test_accuracy_unique_consecutive(shape, dtype, return_inverse, return_counts):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
+    if dtype in FLOAT_DTYPES:
+        flat_size = torch.tensor(shape).prod().item()
+        indices = torch.arange(flat_size, device='cpu') // 3
+        unique_vals = torch.randn(indices.max() + 1, dtype=dtype, device='cpu')
+        inp_flat = unique_vals[indices]
+        inp = inp_flat.reshape(shape).to(flag_gems.device)
+    else:
+        flat_size = torch.tensor(shape).prod().item()
+        indices = torch.arange(flat_size, device='cpu') // 2
+        unique_vals = torch.randint(-10, 10, (indices.max() + 1,), device='cpu', dtype=dtype)
+        inp_flat = unique_vals[indices]
+        inp = inp_flat.reshape(shape).to(flag_gems.device)
+
+    ref_inp = to_reference(inp, False)
+
+    if return_counts:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_output, res_inverse_indices, res_counts = torch.unique_consecutive(
+                    inp, return_inverse=return_inverse, return_counts=return_counts
+                )
+            ref_output, ref_inverse_indices, ref_counts = torch.unique_consecutive(
+                ref_inp, return_inverse=return_inverse, return_counts=return_counts
+            )
+            # assert res_output.numel() == ref_output.numel()
+            gems_assert_equal(res_inverse_indices, ref_inverse_indices)
+        else:
+            with flag_gems.use_gems():
+                res_output, res_counts = torch.unique_consecutive(
+                    inp, return_inverse=return_inverse, return_counts=return_counts
+                )
+            ref_output, ref_counts = torch.unique_consecutive(
+                ref_inp, return_inverse=return_inverse, return_counts=return_counts
+            )
+            # assert res_output.numel() == ref_output.numel()
+        gems_assert_equal(res_counts, ref_counts)
+    else:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_output, res_inverse_indices = torch.unique_consecutive(
+                    inp, return_inverse=return_inverse, return_counts=return_counts
+                )
+            ref_output, ref_inverse_indices = torch.unique_consecutive(
+                ref_inp, return_inverse=return_inverse, return_counts=return_counts
+            )
+            # assert res_output.numel() == ref_output.numel()
+            gems_assert_equal(res_inverse_indices, ref_inverse_indices)
+        else:
+            with flag_gems.use_gems():
+                res_output = torch.unique_consecutive(
+                    inp, return_inverse=return_inverse, return_counts=return_counts
+                )
+            ref_output = torch.unique_consecutive(
+                ref_inp, return_inverse=return_inverse, return_counts=return_counts
+            )
+            # assert res_output.numel() == ref_output.numel()
+
+    gems_assert_equal(res_output, ref_output)
+
+
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

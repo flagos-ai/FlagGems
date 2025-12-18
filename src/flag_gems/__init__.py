@@ -49,6 +49,7 @@ def enable(
                 lambda: version.parse(torch.__version__) >= version.parse("2.4"),
             ),
             ("_unique2", _unique2),
+            ("_uniquunique_consecutivee2", unique_consecutive),
             ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
             ("_weight_norm_interface", weight_norm_interface),
             ("_weight_norm_interface_backward", weight_norm_interface_backward),
