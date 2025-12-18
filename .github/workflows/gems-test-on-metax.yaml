@@ -42,12 +42,10 @@ jobs:
         shell: bash
         run: |
           source tools/run_command.sh
-          # FIXME(metax): error: invalid pointer element type: '!tt.ptr<i64>'
+          # FIXME(metax): Internal Triton link error
           # GEMS_VENDOR=metax run_command pytest -s tests/test_reduction_ops.py && \
-          # FIXME(metax): triton.compiler.errors.CompilationError
-          # GEMS_VENDOR=metax run_command pytest -s tests/test_general_reduction_ops.py && \
-          # FIXME(metax): Killed
-          # GEMS_VENDOR=metax run_command pytest -s tests/test_norm_ops.py
+          GEMS_VENDOR=metax run_command pytest -s tests/test_general_reduction_ops.py && \
+          GEMS_VENDOR=metax run_command pytest -s tests/test_norm_ops.py
 
       - name: FlagGems pointwise ops on metax
         shell: bash
@@ -59,8 +57,7 @@ jobs:
           source tools/run_command.sh
           GEMS_VENDOR=metax run_command pytest -s tests/test_pointwise_dynamic.py && \
           GEMS_VENDOR=metax run_command pytest -s tests/test_unary_pointwise_ops.py && \
-          # FIXME(metax): Fix AssertionError for this test
-          # GEMS_VENDOR=metax run_command pytest -s tests/test_binary_pointwise_ops.py && \
+          GEMS_VENDOR=metax run_command pytest -s tests/test_binary_pointwise_ops.py && \
           GEMS_VENDOR=metax run_command pytest -s tests/test_pointwise_type_promotion.py && \
           GEMS_VENDOR=metax run_command pytest -s tests/test_tensor_constructor_ops.py
 
@@ -68,7 +65,8 @@ jobs:
         shell: bash
         run: |
           source tools/run_command.sh
-          GEMS_VENDOR=metax run_command pytest -s tests/test_blas_ops.py
+          # FIXME(metax): bmm should be fixed in next maca release
+          # GEMS_VENDOR=metax run_command pytest -s tests/test_blas_ops.py
           # FIXME(metax): TypeError: 'list' object is not callable
           # GEMS_VENDOR=metax run_command pytest -s tests/test_attention_ops.py
 
@@ -76,8 +74,7 @@ jobs:
         shell: bash
         run: |
           source tools/run_command.sh
-          # FIXME(metax): Fix core dump for this test
-          # GEMS_VENDOR=metax run_command pytest -s tests/test_special_ops.py && \
+          GEMS_VENDOR=metax run_command pytest -s tests/test_special_ops.py && \
           GEMS_VENDOR=metax run_command pytest -s tests/test_distribution_ops.py
 
       - name: FlagGems utils on metax
