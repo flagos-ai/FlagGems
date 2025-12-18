@@ -43,6 +43,7 @@ jobs:
         # 使用 cyclonedx-py 生成 SBOM
         #poetry lock
         #cyclonedx-py poetry --output-file bom.xml
+        cat ./requirements.txt
         cyclonedx-py requirements ./requirements.txt --output-file sbom.json
         
         # 或者使用其他工具（根据您的需求选择）
