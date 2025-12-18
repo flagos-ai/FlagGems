@@ -35,9 +35,7 @@ jobs:
         # pip install pdm
         
         # 安装依赖
-        if [ -f "pyproject.toml" ]; then
-          poetry install --no-root || echo "依赖安装失败，继续执行..."
-        fi
+        poetry update
     
     - name: Generate SBOM from pyproject.toml
       run: |
