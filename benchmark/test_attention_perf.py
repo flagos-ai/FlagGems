@@ -373,8 +373,14 @@ class FlashAttnVarlenBenchmark(Benchmark):
             None,
             None,
             None,
-            0,
-            2,
+            {
+                "s_aux": None,
+                "num_splits": 0,
+                "cp_world_size": 1,
+                "cp_rank": 0,
+                "cp_tot_seqused_k": None,
+                "fa_version": 2,
+            },
         )
 
 
