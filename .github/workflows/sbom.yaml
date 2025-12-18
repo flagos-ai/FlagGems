@@ -36,6 +36,7 @@ jobs:
         
         # 安装依赖
         #poetry update
+        pip install .
         pip install triton
         pip freeze > requirements.txt
     
