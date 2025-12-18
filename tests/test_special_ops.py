@@ -445,12 +445,11 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
 @pytest.mark.unique_consecutive
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + FLOAT_DTYPES)
 @pytest.mark.parametrize("return_inverse", [True, False])
-@pytest.mark.parametrize("return_counts", [False, True])
+@pytest.mark.parametrize("return_counts", [True, False])
 def test_accuracy_unique_consecutive(shape, dtype, return_inverse, return_counts):
 
     if dtype in FLOAT_DTYPES:
