@@ -12,12 +12,26 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger(__name__)
 
 
+def prune_bmm_configs(configs, nargs, **kwargs):
+    pruned = list(
+        filter(
+            lambda cfg: not (
+                (nargs["M"] < 32 and cfg.kwargs["BLOCK_M"] > 32)
+                or (nargs["N"] < 32 and cfg.kwargs["BLOCK_N"] > 32)
+            ),
+            configs,
+        )
+    )
+    return early_config_prune(pruned, nargs, **kwargs)
+
+
 @libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("bmm"),
     key=["M", "N", "K"],
     prune_configs_by={
-        "early_config_prune": early_config_prune,
+        # "early_config_prune": early_config_prune,
+        "early_config_prune": prune_bmm_configs,
         "perf_model": estimate_matmul_time,
         "top_k": 10,
     },
