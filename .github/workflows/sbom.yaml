@@ -25,7 +25,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         # 根据您的包管理器选择安装（假设使用 poetry）
-        pip install poetry
+        #pip install poetry
         # 安装 SBOM 生成工具
         pip install cyclonedx-bom
         
@@ -35,7 +35,8 @@ jobs:
         # pip install pdm
         
         # 安装依赖
-        poetry update
+        #poetry update
+        pip install triton
         pip freeze > requirements.txt
     
     - name: Generate SBOM from pyproject.toml
