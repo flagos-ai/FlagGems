@@ -451,17 +451,18 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
 @pytest.mark.parametrize("return_inverse", [True, False])
 @pytest.mark.parametrize("return_counts", [True, False])
 def test_accuracy_unique_consecutive(shape, dtype, return_inverse, return_counts):
-
     if dtype in FLOAT_DTYPES:
         flat_size = torch.tensor(shape).prod().item()
-        indices = torch.arange(flat_size, device='cuda') // 3
-        unique_vals = torch.randn(indices.max() + 1, dtype=dtype, device='cuda')
+        indices = torch.arange(flat_size, device="cuda") // 3
+        unique_vals = torch.randn(indices.max() + 1, dtype=dtype, device="cuda")
         inp_flat = unique_vals[indices]
         inp = inp_flat.reshape(shape).to(flag_gems.device)
     else:
         flat_size = torch.tensor(shape).prod().item()
-        indices = torch.arange(flat_size, device='cuda') // 2
-        unique_vals = torch.randint(-10, 10, (indices.max() + 1,), device='cuda', dtype=dtype)
+        indices = torch.arange(flat_size, device="cuda") // 2
+        unique_vals = torch.randint(
+            -10, 10, (indices.max() + 1,), device="cuda", dtype=dtype
+        )
         inp_flat = unique_vals[indices]
         inp = inp_flat.reshape(shape).to(flag_gems.device)
 
