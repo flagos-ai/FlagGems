@@ -4,9 +4,13 @@ from typing import Optional
 import torch
 import triton
 
-from flag_gems.utils import pointwise_dynamic
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 
 @pointwise_dynamic(
@@ -62,8 +66,6 @@ def to_copy(
     non_blocking=False,
     memory_format=None,
 ):
-    logger.debug("GEMS_CAMBRICON _TO_COPY")
-
     # We only implement the dense strided kernel today; all other layouts fall back to PyTorch.
     if (layout is not None and layout != torch.strided) or x.layout != torch.strided:
         raise NotImplementedError(
@@ -82,6 +84,22 @@ def to_copy(
     target_device = _resolve_device(x, device)
     target_memory_format = _normalize_memory_format(memory_format)
 
+    if target_device != x.device or (
+        x.device.type == "cpu" and target_device.type == "cpu"
+    ):
+        # Device transfer (d2h/h2d etc.) relies on PyTorch's implementation.
+        return torch.ops.aten._to_copy.default.redispatch(
+            _FALLBACK_KEYSET,
+            x,
+            dtype=target_dtype,
+            layout=layout,
+            device=target_device,
+            pin_memory=pin_memory,
+            non_blocking=non_blocking,
+            memory_format=target_memory_format,
+        )
+
+    logger.debug("GEMS_CAMBRICON _TO_COPY")
     empty_kwargs = {"dtype": target_dtype, "device": target_device}
 
     if target_memory_format is torch.preserve_format:
@@ -89,8 +107,4 @@ def to_copy(
     else:
         out = torch.empty_like(x, memory_format=target_memory_format, **empty_kwargs)
 
-    if target_device == x.device and x.device.type != "cpu":
-        return _to_copy_func(x, out0=out)
-
-    out.copy_(x, non_blocking=non_blocking)
-    return out
+    return _to_copy_func(x, out0=out)

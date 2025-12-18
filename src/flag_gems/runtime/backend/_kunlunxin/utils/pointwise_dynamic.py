@@ -562,6 +562,7 @@ class KernelGenerator:
             code.writeline(
                 f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
             )
+        # code.writeline("print(\"in0\", in0)")
 
         code.newline()
 
@@ -684,6 +685,7 @@ class KernelGenerator:
             code.writeline(
                 f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
             )
+        # code.writeline("print(\"in0\", in0)")
 
         code.newline()
 
@@ -972,6 +974,8 @@ class WrapperGenerator:
                     code.writeline("buffer_size_limit=2048,")
                 if self.config.isCloseVectorization:
                     code.writeline("isCloseVectorization=True,")
+                if self.config.isCloseInterleave:
+                    code.writeline("isCloseInterleave=True,")
                 if self.config.isCloseDtypeConvert:
                     code.writeline("isCloseDtypeConvert=True,")
                 if not self.config.isCloseMemoryAsync:
@@ -1039,6 +1043,8 @@ class WrapperGenerator:
                     code.writeline("buffer_size_limit=2048,")
                 if self.config.isCloseVectorization:
                     code.writeline("isCloseVectorization=True,")
+                if self.config.isCloseInterleave:
+                    code.writeline("isCloseInterleave=True,")
                 if self.config.isCloseDtypeConvert:
                     code.writeline("isCloseDtypeConvert=True,")
                 if not self.config.isCloseMemoryAsync:
