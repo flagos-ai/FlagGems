@@ -120,7 +120,7 @@ def test_perf_unique_consecutive():
         input_fn=unique_consecutive_input_fn,
         op_name="unique_consecutive",
         torch_op=torch.unique_consecutive,
-        dtypes=INT_DTYPES,
+        dtypes=INT_DTYPES + FLOAT_DTYPES,
     )
     bench.run()
 

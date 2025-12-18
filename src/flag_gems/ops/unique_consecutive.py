@@ -9,22 +9,15 @@ from flag_gems.utils.libentry import libentry
 
 @libentry()
 @triton.jit
-def unique_consecutive_flat_kernel(
+def unique_consecutive_phase1_kernel(
     input_ptr: tl.tensor,           # Pointer to the input tensor data
-    input_indices_ptr: tl.tensor,   # Pointer to indices [0, 1, 2, ... N-1] (for inverse)
-    data_out_ptr: tl.tensor,        # Pointer to the output unique data tensor
-    inverse_indices_ptr: tl.tensor, # Pointer to the output inverse indices tensor
-    idx_ptr: tl.tensor,             # Pointer to the index buffer for counts
-    unique_size_ptr: tl.tensor,     # Pointer to store the final size of unique elements
+    ne_output_ptr: tl.tensor,       # Pointer to the output boolean mask (ne_result)
     numel: tl.constexpr,            # Total number of elements in the input
     tile_size: tl.constexpr,        # Tile size for processing
-    return_inverse: tl.constexpr,   # Flag to compute inverse indices
-    return_counts: tl.constexpr,    # Flag to compute counts
 ):
     """
-    Kernel to find unique consecutive elements and optionally compute inverse indices/counts.
+    Phase 1: Compute the 'not equal' mask indicating the start of new consecutive groups.
     """
-    # Create block indices
     block_start = tle.program_id(axis=0) * tile_size
     offsets = block_start + tl.arange(0, tile_size)
     mask = offsets < numel
@@ -32,40 +25,69 @@ def unique_consecutive_flat_kernel(
     # Load current element
     current_elem = tl.load(input_ptr + offsets, mask=mask)
 
-    # --- Compute 'not equal' mask ---
-    ne_result = tl.full([tile_size], 1, dtype=tl.int1)
+    # --- Compute 'not equal' mask (True if element is the start of a new group) ---
+    ne_result = tl.full([tile_size], False, dtype=tl.int1)
+    first_elem_global_mask = (offsets == 0) & mask
+    ne_result = tl.where(first_elem_global_mask, True, ne_result)
 
+    # Check against local predecessor within the same block
     has_local_predecessor = (offsets > 0) & mask
     if tl.max(has_local_predecessor.to(tl.int32)) > 0:
         prev_offsets = offsets - 1
         prev_elem = tl.load(input_ptr + prev_offsets, mask=has_local_predecessor)
-        local_ne = (current_elem != prev_elem) & has_local_predecessor
+        local_ne = (current_elem != prev_elem) & has_local_predecessor # Result is bool
         ne_result = tl.where(has_local_predecessor, local_ne, ne_result)
 
     # --- Handle cross-block boundary ---
     if block_start > 0:
-         first_elem_mask = (offsets == block_start) & mask
-         if tl.max(first_elem_mask.to(tl.int32)) > 0:
-              current_first_elem = tl.load(input_ptr + block_start, mask=first_elem_mask)
-              prev_block_last_elem = tl.load(input_ptr + block_start - 1)
-              is_first_unique = current_first_elem != prev_block_last_elem
-              ne_result = tl.where(first_elem_mask, is_first_unique, ne_result)
+        first_elem_in_tile_mask = (offsets == block_start) & mask
+        if tl.max(first_elem_in_tile_mask.to(tl.int32)) > 0:
+            prev_block_last_elem = tl.load(input_ptr + block_start - 1)
+            current_first_elem = tl.load(input_ptr + block_start)
+            is_first_in_tile_unique_scalar = current_first_elem != prev_block_last_elem
+            ne_result = tl.where(first_elem_in_tile_mask, is_first_in_tile_unique_scalar, ne_result)
 
-    # --- Convert bool to int for cumsum ---
+    # Store the boolean result
+    tl.store(ne_output_ptr + offsets, ne_result, mask=mask)
+
+
+@libentry()
+@triton.jit
+def unique_consecutive_phase3_kernel(
+    input_ptr: tl.tensor,
+    input_indices_ptr: tl.tensor,
+    ne_input_ptr: tl.tensor,
+    cumsum_indices_ptr: tl.tensor,
+    data_out_ptr: tl.tensor,
+    inverse_indices_ptr: tl.tensor,
+    idx_ptr: tl.tensor,
+    unique_size_ptr: tl.tensor,
+    numel: tl.constexpr,
+    tile_size: tl.constexpr,
+    return_inverse: tl.constexpr,
+    return_counts: tl.constexpr,
+):
+    """
+    Phase 3: Use precomputed masks and indices to scatter data, compute inverse, prepare counts.
+    """
+    block_start = tle.program_id(axis=0) * tile_size
+    offsets = block_start + tl.arange(0, tile_size)
+    mask = offsets < numel
+
+    # Load necessary inputs
+    current_elem = tl.load(input_ptr + offsets, mask=mask)
+    ne_result = tl.load(ne_input_ptr + offsets, mask=mask)
+    cumsum_indices = tl.load(cumsum_indices_ptr + offsets, mask=mask)
+
+    # --- Update global unique count atomically ---
     ne_result_int = ne_result.to(tl.int32)
-    cumsum_indices = tl.cumsum(ne_result_int, axis=0)
-
-    is_last_position_in_grid = (tle.program_id(axis=0) == tle.num_programs(axis=0) - 1)
-    is_last_valid_offset = offsets == (numel - 1)
-    last_cumsum_mask = is_last_position_in_grid & is_last_valid_offset & mask
-    if tl.max(last_cumsum_mask.to(tl.int32)) > 0:
-        last_cumsum_val = tl.load(cumsum_indices + offsets, mask=last_cumsum_mask)
-        tl.atomic_max(unique_size_ptr, last_cumsum_val)
+    local_unique_count = tl.sum(ne_result_int, axis=0).to(tl.int64)
+    tl.atomic_add(unique_size_ptr, local_unique_count, sem='relaxed')
 
     # --- Scatter Output Data ---
     scatter_mask = ne_result & mask
-    output_indices = cumsum_indices
-    tl.store(data_out_ptr + output_indices, current_elem, mask=scatter_mask)
+    data_to_write = tl.where(scatter_mask, current_elem, 0.0)
+    tl.store(data_out_ptr + cumsum_indices, data_to_write, mask=scatter_mask)
 
     # --- Compute Inverse Indices ---
     if return_inverse:
@@ -74,23 +96,22 @@ def unique_consecutive_flat_kernel(
 
     # --- Prepare for Counts (if needed) ---
     if return_counts:
-        store_count_idx_mask = ne_result & mask
-        tl.store(idx_ptr + output_indices, offsets, mask=store_count_idx_mask)
+        tl.store(idx_ptr + cumsum_indices, offsets, mask=scatter_mask)
 
 
-# --- Helper Kernel for Count Calculation (Reused) ---
+# --- Helper Kernel for Count Calculation ---
 @triton.jit
 def calculate_counts_from_indices_kernel(
-    idx_ptr: tl.tensor,       # Buffer containing start indices of unique runs
-    numel_input: int,         # Original input size (N)
-    counts_ptr: tl.tensor,    # Output buffer for counts
-    unique_size: int,         # Number of unique elements (M)
+    idx_ptr: tl.tensor,
+    numel_input: tl.constexpr,
+    counts_ptr: tl.tensor,
+    unique_size: tl.constexpr,
     tile_size: tl.constexpr,
 ):
     """Calculates counts from the stored indices."""
     block_start = tle.program_id(axis=0) * tile_size
     offsets = block_start + tl.arange(0, tile_size)
-    mask = offsets < unique_size
+    mask = offsets < unique_size # tl.int1
 
     # Load current index (start of run)
     current_idx = tl.load(idx_ptr + offsets, mask=mask)
@@ -98,15 +119,15 @@ def calculate_counts_from_indices_kernel(
     # Load next index (start of next run)
     next_offsets = offsets + 1
     next_mask = next_offsets < unique_size
-    next_idx = tl.load(idx_ptr + next_offsets, mask=next_mask)
+    next_idx = tl.load(idx_ptr + next_offsets, mask=next_mask, other=numel_input)
 
     # Calculate count for current unique element
-    count = tl.where(next_mask,
-                     next_idx - current_idx,
-                     numel_input - current_idx)
+    count = tl.where(next_mask, # tl.int1
+                     next_idx - current_idx, # Value if true
+                     numel_input - current_idx) # Value if false
 
     # Store the calculated count
-    tl.store(counts_ptr + offsets, count, mask=mask)
+    tl.store(counts_ptr + offsets, count, mask=mask) # mask is tl.int1
 
 
 def unique_consecutive(
@@ -133,54 +154,75 @@ def unique_consecutive(
         return empty_out, empty_inv, empty_counts
 
     # --- Grid and Block Configuration ---
-    # Similar heuristic to simple_unique_flat, adjusted for potentially longer sequences
-    TILE_SIZE = min(8192, triton.next_power_of_2(numel))
+    TILE_SIZE = min(8192, triton.next_power_of_2(max(numel, 1))) # Ensure at least 1
     NUM_BLOCKS = triton.cdiv(numel, TILE_SIZE)
-    NUM_WARPS = 4 if NUM_BLOCKS == 1 else 8 # Adjusted defaults
+    NUM_WARPS = max(1, min(8, (TILE_SIZE + 255) // 256))
 
-    # --- Allocate Output Tensors ---
-    data_out_buffer = torch.empty_like(flattened_input) # Buffer, might be larger than needed
+    # --- Allocate Intermediate and Output Tensors ---
+    ne_buffer = torch.empty(numel, dtype=torch.bool, device=flattened_input.device)
+    cumsum_indices_buffer = torch.empty(numel, dtype=torch.int32, device=flattened_input.device)
+
+    data_out_buffer = torch.empty_like(flattened_input)
     inverse_indices_out = None
     if return_inverse:
-        inverse_indices_out = torch.empty_like(flattened_input, dtype=torch.int64)
+        inverse_indices_out = torch.empty(numel, dtype=torch.int64, device=flattened_input.device)
     counts_out = None
     idx_buffer = None
     if return_counts:
-        idx_buffer = torch.empty_like(flattened_input, dtype=torch.int64) # Buffer for run start indices
-    unique_size_buffer = torch.zeros((), dtype=torch.int64, device=flattened_input.device) # Scalar tensor for size
+        idx_buffer = torch.empty(numel, dtype=torch.int64, device=flattened_input.device)
+    unique_size_buffer = torch.zeros((), dtype=torch.int64, device=flattened_input.device)
 
-    # Buffer for input indices [0, 1, ..., N-1]
     input_indices_buffer = torch.arange(numel, dtype=torch.int64, device=flattened_input.device)
 
-
-    # --- Launch Main Kernel ---
     grid = (NUM_BLOCKS, 1, 1)
+
+    # --- Phase 1: Compute ne_result ---
     with torch_device_fn.device(flattened_input.device.index):
-        unique_consecutive_flat_kernel[grid](
-            flattened_input,              # input_ptr
-            input_indices_buffer,         # input_indices_ptr
-            data_out_buffer,              # data_out_ptr
-            inverse_indices_out,          # inverse_indices_ptr
-            idx_buffer,                   # idx_ptr
-            unique_size_buffer,           # unique_size_ptr
-            numel,                        # numel
-            TILE_SIZE,                    # tile_size
-            return_inverse,               # return_inverse
-            return_counts,                # return_counts
+        unique_consecutive_phase1_kernel[grid](
+            flattened_input,
+            ne_buffer,
+            numel,
+            TILE_SIZE,
             num_warps=NUM_WARPS
         )
 
-    # Get the final unique size
-    unique_size_computed = unique_size_buffer.item() + 1
+    # --- Phase 2: Global Cumsum ---
+    cumsum_indices_buffer = torch.cumsum(ne_buffer.int(), dim=0, dtype=cumsum_indices_buffer.dtype) - 1
 
-    if unique_size_computed <= 0:
-         unique_size_computed = 1 if numel > 0 else 0
+    # --- Phase 3: Scatter, Inverse, Counts Prep ---
+    with torch_device_fn.device(flattened_input.device.index):
+        unique_consecutive_phase3_kernel[grid](
+            flattened_input,
+            input_indices_buffer,
+            ne_buffer,
+            cumsum_indices_buffer,
+            data_out_buffer,
+            inverse_indices_out,
+            idx_buffer,
+            unique_size_buffer,
+            numel,
+            TILE_SIZE,
+            return_inverse,
+            return_counts,
+            num_warps=NUM_WARPS
+        )
 
+    # Synchronize to ensure kernel completion before reading unique_size_buffer
+    torch_device_fn.synchronize()
+
+    # Get the final unique size computed by the kernel
+    unique_size_computed = unique_size_buffer.item()
+
+    # --- Prepare Final Outputs ---
     data_out_final = data_out_buffer[:unique_size_computed]
-    inverse_indices_final = inverse_indices_out if not return_inverse else inverse_indices_out
+
+    inverse_indices_final = inverse_indices_out if return_inverse else None
+    if return_inverse and inverse_indices_final is not None:
+        inverse_indices_final = inverse_indices_final.view_as(input_tensor)
+
     counts_final = None
-    if return_counts and idx_buffer is not None:
-        counts_buffer = torch.empty((unique_size_computed,), dtype=torch.int64, device=flattened_input.device)
+    if return_counts and idx_buffer is not None and unique_size_computed > 0:
+        counts_buffer = torch.empty(unique_size_computed, dtype=torch.int64, device=flattened_input.device)
         counts_grid = (triton.cdiv(unique_size_computed, TILE_SIZE), 1, 1)
         calculate_counts_from_indices_kernel[counts_grid](
             idx_buffer,
@@ -192,9 +234,4 @@ def unique_consecutive(
         )
         counts_final = counts_buffer
 
-    # Reshape inverse indices to match original input shape if needed
-    if return_inverse and inverse_indices_final is not None:
-        inverse_indices_final = inverse_indices_final.view_as(input_tensor)
-
     return data_out_final, inverse_indices_final, counts_final
-
