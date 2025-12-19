@@ -115,7 +115,14 @@ def test_perf_unique():
 def test_perf_unique_consecutive():
     def unique_consecutive_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
-        yield inp, {"return_inverse": True, "return_counts": True},
+        return_inverse = random.choice([True, False])
+        return_counts = random.choice([True, False])
+        dim = random.choice([None, 0])
+        yield inp, {
+            "return_inverse": return_inverse,
+            "return_counts": return_counts,
+            "dim": dim,
+        },
 
     bench = GenericBenchmark2DOnly(
         input_fn=unique_consecutive_input_fn,
