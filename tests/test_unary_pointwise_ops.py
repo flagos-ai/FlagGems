@@ -1197,13 +1197,31 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.inplace
 @pytest.mark.copy_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    FLOAT_DTYPES + [torch.int32, torch.int64]
+    if flag_gems.vendor_name == "cambricon"
+    else FLOAT_DTYPES,
+)
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
     reason="The copy operator implement required for torch >= 2.4",
 )
 def test_copy_inplace_same_dtype(shape, dtype):
-    src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        if dtype in FLOAT_DTYPES:
+            src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            src = torch.randint(
+                torch.iinfo(dtype).min,
+                torch.iinfo(dtype).max,
+                shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+    else:
+        src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
     ref_src = to_reference(src)
     ref_dst = torch.zeros_like(ref_src)
     res_dst = torch.zeros_like(src)
