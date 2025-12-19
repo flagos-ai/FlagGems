@@ -20,7 +20,7 @@ def copy_func(x):
 def hstack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]]
 ) -> torch.Tensor:
-    logging.debug("GEMS_ASCEND HSTACK")
+    logger.debug("GEMS_ASCEND HSTACK")
 
     if len(tensors) == 0:
         raise RuntimeError("hstack expected a non-empty TensorList")
