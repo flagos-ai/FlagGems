@@ -447,7 +447,7 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
 
 UNIQUE_CONSECUTIVE_SHAPE = [
     # (1024, 65536),
-    # (10000, 65563),
+    # (10000, 65536),
     (4096, 4096),
 ]
 
