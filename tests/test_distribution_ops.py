@@ -18,6 +18,9 @@ def test_accuracy_normal(float, shape, dtype):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
+    if flag_gems.vendor_name == "metax":
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
     loc = (
         3.0
         if float == "mean"
