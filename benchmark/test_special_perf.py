@@ -567,8 +567,6 @@ try:
     import os
 
     os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
-    from typing import Any, List, Optional
-
     import vllm._custom_ops as vllm_ops
 
     HAS_VLLM = True
