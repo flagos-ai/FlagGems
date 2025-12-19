@@ -8,6 +8,11 @@ from benchmark.performance_utils import Benchmark, generate_tensor_input
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
+    # Note: Importing transformer_engine (especially in some versions like on python 3.10) may automatically
+    # configure the Root Logger (adding handlers). This can cause subsequent `logging.basicConfig` calls
+    # (used by FlagGems benchmark) to be ignored/no-op, leading to missing result log files.
+    # See: https://github.com/NVIDIA/TransformerEngine/issues/1065
+
     TE_AVAILABLE = True
 except ImportError:
     TE_AVAILABLE = False
