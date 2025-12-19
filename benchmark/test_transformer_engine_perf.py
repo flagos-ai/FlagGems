@@ -8,6 +8,8 @@ from benchmark.performance_utils import Benchmark, generate_tensor_input
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
+    # note: the transformer_engine has its' own logging which may have conflict with flag_gems logging
+
     TE_AVAILABLE = True
 except ImportError:
     TE_AVAILABLE = False
