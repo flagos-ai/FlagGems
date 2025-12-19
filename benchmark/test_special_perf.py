@@ -562,14 +562,19 @@ def test_perf_moe_sum():
     bench.set_gems(gems_op)
     bench.run()
 
+
 try:
     import os
+
     os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
+    from typing import Any, List, Optional
+
     import vllm._custom_ops as vllm_ops
-    from typing import Optional, List, Any
+
     HAS_VLLM = True
 except ImportError:
     HAS_VLLM = False
+
 
 @pytest.mark.moe_align_block_size
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
@@ -579,13 +584,7 @@ def test_perf_moe_align_block_size():
         num_experts = shape[0]
         block_size = shape[1]
         dtype = torch.int32
-        topk_ids = torch.randint(
-            0,
-            num_experts,
-            (3, 4),
-            dtype=dtype,
-            device=device
-        )
+        topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device=device)
         max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
 
         # padded_num_experts in vllm._custom_ops.moe_align_block_size
@@ -593,22 +592,10 @@ def test_perf_moe_align_block_size():
         if max_num_tokens_padded >= 1024:
             return
 
-        sorted_ids = torch.empty(
-            (max_num_tokens_padded,),
-            dtype=dtype,
-            device=device
-        )
+        sorted_ids = torch.empty((max_num_tokens_padded,), dtype=dtype, device=device)
         max_num_m_blocks = max_num_tokens_padded // block_size
-        expert_ids = torch.empty(
-            (max_num_m_blocks,),
-            dtype=dtype,
-            device=device
-        )
-        num_tokens_post_pad = torch.empty(
-            1,
-            dtype=dtype,
-            device=device
-        )
+        expert_ids = torch.empty((max_num_m_blocks,), dtype=dtype, device=device)
+        num_tokens_post_pad = torch.empty(1, dtype=dtype, device=device)
 
         yield (
             topk_ids,
@@ -622,10 +609,16 @@ def test_perf_moe_align_block_size():
     class MoeAlignBlockSizeBenchmark(GenericBenchmark2DOnly):
         def set_more_shapes(self):
             return [
-                    (16, 8), (16, 16), ( 16, 32),
-                    (32, 8), (32, 16), ( 32, 32),
-                    (64, 8), (64, 16), (128,  8),
-                ]
+                (16, 8),
+                (16, 16),
+                (16, 32),
+                (32, 8),
+                (32, 16),
+                (32, 32),
+                (64, 8),
+                (64, 16),
+                (128, 8),
+            ]
 
     gems_op = flag_gems.moe_align_block_size_triton
     bench = MoeAlignBlockSizeBenchmark(
@@ -636,6 +629,6 @@ def test_perf_moe_align_block_size():
             torch.int32,
         ],
     )
-    
+
     bench.set_gems(gems_op)
     bench.run()
