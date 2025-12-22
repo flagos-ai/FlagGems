@@ -61,3 +61,18 @@ B = torch.randn((K, N), dtype=torch.float16, device=flag_gems.device)
 with flag_gems.use_gems():
     C = torch.mm(A, B)
 ```
+
+
+## How To Use Experimental Gems
+The `experimental` module provides a space for new operators that are not yet ready for production release. Operators in this module are accessible via `flag_gems.experimental.*` and follow the same development patterns as core operators.
+```
+import flag_gems
+
+# Global enablement
+flag_gems.enable()
+result = flag_gems.experimental.layer_norm(*args)
+
+# Or scoped usage
+with flag_gems.use_gems():
+    result = flag_gems.experimental.layer_norm(*args)
+```

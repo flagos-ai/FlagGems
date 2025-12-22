@@ -1,0 +1,34 @@
+name: gems-experimental-test
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'src/flag_gems/experimental/**'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'src/flag_gems/experimental/**'
+
+env:
+  CUDA_VISIBLE_DEVICES: 7
+  http_proxy: ${{ secrets.HTTP_PROXY }}
+  https_proxy: ${{ secrets.HTTPS_PROXY }}
+
+jobs:
+  experimental-test-on-hopper:
+    runs-on: hopper
+    concurrency:
+      group: experimental-test-on-hopper-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: FlagGems experimental accuracy tests on hopper
+        shell: bash
+        run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
+          source tools/run_command.sh
+          run_command pytest -s src/flag_gems/experimental/exp_tests/test_layer_norm_accuracy.py
