@@ -20,12 +20,6 @@ PERF_SHAPES = [
 
 
 class TestLayerNormPerf:
-    def setup_method(self):
-        flag_gems.enable()
-
-    def teardown_method(self):
-        flag_gems.disable()
-
     @pytest.mark.layer_norm
     @pytest.mark.parametrize("shape, normalized_shape", PERF_SHAPES)
     @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

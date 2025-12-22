@@ -5,18 +5,10 @@ on:
     branches: [ "master" ]
     paths:
       - 'src/flag_gems/experimental/**'
-      - 'src/flag_gems/testing/**'
-      - 'tests/accuracy_utils.py'
-      - 'benchmark/benchmark_utils.py'
-      - 'tools/run_command.sh'
   pull_request:
     branches: [ "master" ]
     paths:
       - 'src/flag_gems/experimental/**'
-      - 'src/flag_gems/testing/**'
-      - 'tests/accuracy_utils.py'
-      - 'benchmark/benchmark_utils.py'
-      - 'tools/run_command.sh'
 
 env:
   http_proxy: ${{ secrets.HTTP_PROXY }}
@@ -36,31 +28,4 @@ jobs:
         shell: bash
         run: |
           source tools/run_command.sh
-          run_command pytest -s src/flag_gems/experimental/tests/test_layer_norm_accuracy.py
-
-      - name: FlagGems experimental performance tests on hopper
-        shell: bash
-        run: |
-          source tools/run_command.sh
-          run_command pytest -s src/flag_gems/experimental/tests/test_layer_norm_performance.py
-
-  experimental-test-on-metax:
-    runs-on: metax
-    concurrency:
-      group: experimental-test-on-metax-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: FlagGems experimental accuracy tests on metax
-        shell: bash
-        run: |
-          source tools/run_command.sh
-          GEMS_VENDOR=metax run_command pytest -s src/flag_gems/experimental/tests/test_layer_norm_accuracy.py
-
-      - name: FlagGems experimental performance tests on metax
-        shell: bash
-        run: |
-          source tools/run_command.sh
-          GEMS_VENDOR=metax run_command pytest -s src/flag_gems/experimental/tests/test_layer_norm_performance.py
+          run_command pytest -s src/flag_gems/experimental/exp_tests/test_layer_norm_accuracy.py

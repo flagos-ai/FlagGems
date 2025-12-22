@@ -251,6 +251,14 @@ class LayerNorm(torch.autograd.Function):
         M, N = x_arg.shape
         mean = torch.empty((M,), dtype=torch.float32, device="cuda")
         rstd = torch.empty((M,), dtype=torch.float32, device="cuda")
+
+        # Create dummy tensors for None weight/bias to pass to kernel
+        if weight is None:
+            weight = torch.ones(N, dtype=x.dtype, device=x.device)
+
+        if bias is None:
+            bias = torch.zeros(N, dtype=x.dtype, device=x.device)
+
         # Less than 64KB per feature: enqueue fused kernel
         MAX_FUSED_SIZE = 65536 // x.element_size()
         BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
@@ -336,7 +344,21 @@ class LayerNorm(torch.autograd.Function):
         return dx, None, dw, db, None
 
 
-layer_norm = LayerNorm.apply
+def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+    """
+    Experimental layer normalization implementation.
+
+    Args:
+        input: Input tensor
+        normalized_shape: Shape to normalize over
+        weight: Optional weight tensor
+        bias: Optional bias tensor
+        eps: Epsilon for numerical stability
+
+    Returns:
+        Normalized tensor
+    """
+    return LayerNorm.apply(input, normalized_shape, weight, bias, eps)
 
 
 def test_layer_norm(M, N, dtype, eps=1e-5, device="cuda"):

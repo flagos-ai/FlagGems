@@ -24,7 +24,7 @@ src/flag_gems/experimental/
 ├── __init__.py                 # Module initialization
 ├── layer_norm.py          # Example operator implementation
 ├── [other_operators].py   # Additional operators
-├── tests/                 # Accuracy test and performance test
+├── exp_tests/                 # Accuracy test and performance test
     ├── __init__.py
     ├── test_layer_norm_accuracy.py
     ├── test_layer_norm_performace.py
@@ -64,7 +64,7 @@ The experimental module is already integrated in the main `__init__.py` . No cha
 
 # Testing
 ## Accuracy Tests
-Add accuracy test in `tests/test_your_ops_accuracy.py` following the pattern:
+Add accuracy test in `exp_tests/test_your_ops_accuracy.py` following the pattern:
 ```
 import pytest
 import torch
@@ -94,7 +94,7 @@ def test_accuracy_your_operator(shape, dtype):
 ```
 
 ## Performance Tests
-Add performance test in `tests/test_your_ops_performance.py` following the pattern:
+Add performance test in `exp_tests/test_your_ops_performance.py` following the pattern:
 ```
 import pytest
 import torch
