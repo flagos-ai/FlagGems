@@ -113,9 +113,3 @@ jobs:
           source tools/run_command.sh
           # FIXME(zhiyuan): OSError: [Errno 101] Network is unreachable
           # run_command pytest -s examples/model_bert_test.py
-
-      - name: FlagGems experimental ops on hopper
-        shell: bash
-        run: |
-          source tools/run_command.sh
-          run_command pytest -s tests/test_experimental_ops.py

@@ -30,7 +30,6 @@ In doing so, you will learn about:
 # Let’s first take a look at the forward pass implementation.
 
 import torch
-
 import triton
 import triton.language as tl
 
@@ -99,33 +98,43 @@ def _layer_norm_fwd_fused(
 # -------------
 #
 # The backward pass for the layer normalization operator is a bit more involved than the forward pass.
-# Let :math:`\hat{x}` be the normalized inputs :math:`\frac{ x - \text{E}[x] }{ \sqrt{\text{Var}(x) + \epsilon} }` before the linear transformation,
+# Let :math:`\hat{x}` be the normalized inputs :math:`\frac{ x - \text{E}[x] }{ \sqrt{\text{Var}(x) + \epsilon} }`
+# before the linear transformation,
 # the Vector-Jacobian Products (VJP) :math:`\nabla_{x}` of :math:`x` are given by:
 #
 # .. math::
-#    \nabla_{x} = \frac{1}{\sigma}\Big( \nabla_{y} \odot w - \underbrace{ \big( \frac{1}{N} \hat{x} \cdot (\nabla_{y} \odot w) \big) }_{c_1} \odot \hat{x} - \underbrace{ \frac{1}{N} \nabla_{y} \cdot w }_{c_2} \Big)
+#    \nabla_{x} = \frac{1}{\sigma}\Big( \nabla_{y} \odot w - \underbrace{ \big( \frac{1}{N} \hat{x} \cdot
+#  (\nabla_{y} \odot w) \big) }_{c_1} \odot \hat{x} - \underbrace{ \frac{1}{N} \nabla_{y} \cdot w }_{c_2} \Big)
 #
-# where :math:`\odot` denotes the element-wise multiplication, :math:`\cdot` denotes the dot product, and :math:`\sigma` is the standard deviation.
+# where :math:`\odot` denotes the element-wise multiplication, :math:`\cdot` denotes the dot product,
+# and :math:`\sigma` is the standard deviation.
 # :math:`c_1` and :math:`c_2` are intermediate constants that improve the readability of the following implementation.
 #
-# For the weights :math:`w` and biases :math:`b`, the VJPs :math:`\nabla_{w}` and :math:`\nabla_{b}` are more straightforward:
+# For the weights :math:`w` and biases :math:`b`, the VJPs :math:`\nabla_{w}` and :math:`\nabla_{b}`
+# are more straightforward:
 #
 # .. math::
 #    \nabla_{w} = \nabla_{y} \odot \hat{x} \quad \text{and} \quad \nabla_{b} = \nabla_{y}
 #
-# Since the same weights :math:`w` and biases :math:`b` are used for all rows in the same batch, their gradients need to sum up.
+# Since the same weights :math:`w` and biases :math:`b` are used for all rows in the same batch,
+# their gradients need to sum up.
 # To perform this step efficiently, we use a parallel reduction strategy: each kernel instance accumulates
-# partial :math:`\nabla_{w}` and :math:`\nabla_{b}` across certain rows into one of :math:`\text{GROUP_SIZE_M}` independent buffers.
-# These buffers stay in the L2 cache and then are further reduced by another function to compute the actual :math:`\nabla_{w}` and :math:`\nabla_{b}`.
+# partial :math:`\nabla_{w}` and :math:`\nabla_{b}` across certain rows into one of :math:`\text{GROUP_SIZE_M}`
+#  independent buffers.
+# These buffers stay in the L2 cache and then are further reduced by another function to compute the actual
+# :math:`\nabla_{w}` and :math:`\nabla_{b}`.
 #
 # Let the number of input rows :math:`M = 4` and :math:`\text{GROUP_SIZE_M} = 2`,
-# here's a diagram of the parallel reduction strategy for :math:`\nabla_{w}` (:math:`\nabla_{b}` is omitted for brevity):
+# here's a diagram of the parallel reduction strategy for :math:`\nabla_{w}` (:math:`\nabla_{b}`
+# is omitted for brevity):
 #
 #   .. image:: parallel_reduction.png
 #
-# In Stage 1, the rows of X that have the same color share the same buffer and thus a lock is used to ensure that only one kernel instance writes to the buffer at a time.
+# In Stage 1, the rows of X that have the same color share the same buffer and thus a lock is used to
+# ensure that only one kernel instance writes to the buffer at a time.
 # In Stage 2, the buffers are further reduced to compute the final :math:`\nabla_{w}` and :math:`\nabla_{b}`.
-# In the following implementation, Stage 1 is implemented by the function :code:`_layer_norm_bwd_dx_fused` and Stage 2 is implemented by the function :code:`_layer_norm_bwd_dwdb`.
+# In the following implementation, Stage 1 is implemented by the function :code:`_layer_norm_bwd_dx_fused`
+# and Stage 2 is implemented by the function :code:`_layer_norm_bwd_dwdb`.
 
 
 @triton.jit
@@ -382,20 +391,22 @@ def bench_layer_norm(M, N, dtype, provider, mode="backward", eps=1e-5, device="c
     # utility functions
     if provider == "triton":
 
-        def y_fwd():
+        def y_fwd():  # noqa: F811, E704
             return layer_norm(x, w_shape, weight, bias, eps)  # noqa: F811, E704
 
     if provider == "torch":
 
-        def y_fwd():
-            return torch.nn.functional.layer_norm(x, w_shape, weight, bias, eps)  # noqa: F811, E704
+        def y_fwd():  # noqa: F811, E704
+            return torch.nn.functional.layer_norm(
+                x, w_shape, weight, bias, eps
+            )  # noqa: F811, E704
 
     if provider == "apex":
         apex_layer_norm = (
             apex.normalization.FusedLayerNorm(w_shape).to(x.device).to(x.dtype)
         )
 
-        def y_fwd():
+        def y_fwd():  # noqa: F811
             return apex_layer_norm(x)  # noqa: F811, E704
 
     # forward pass
@@ -407,7 +418,7 @@ def bench_layer_norm(M, N, dtype, provider, mode="backward", eps=1e-5, device="c
     # backward pass
     if mode == "backward":
 
-        def gbps(ms):
+        def gbps(ms):  # noqa: F811
             return 3 * x.numel() * x.element_size() / ms * 1e-6  # noqa: F811, E704
 
         y = y_fwd()

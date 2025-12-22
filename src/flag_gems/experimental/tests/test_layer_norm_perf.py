@@ -1,8 +1,14 @@
+import os
+import sys
+import time
+
 import pytest
 import torch
-import time
+
 import flag_gems
-from benchmark.utils import benchmark_forward, get_tflops
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 
 # Performance test shapes
 PERF_SHAPES = [
@@ -11,6 +17,7 @@ PERF_SHAPES = [
     ((32, 128, 1024), (128, 1024)),
     ((16, 64, 512, 1024), (512, 1024)),
 ]
+
 
 class TestLayerNormPerf:
     def setup_method(self):
@@ -36,7 +43,7 @@ class TestLayerNormPerf:
         # Benchmark
         start_time = time.time()
         for _ in range(100):
-            out = flag_gems.experimental.layer_norm(inp, normalized_shape, weight, bias)
+            _ = flag_gems.experimental.layer_norm(inp, normalized_shape, weight, bias)
         torch.cuda.synchronize()
         end_time = time.time()
 
@@ -45,7 +52,7 @@ class TestLayerNormPerf:
         # PyTorch baseline
         start_time = time.time()
         for _ in range(100):
-            ref_out = torch.layer_norm(inp, normalized_shape, weight, bias)
+            _ = torch.layer_norm(inp, normalized_shape, weight, bias)
         torch.cuda.synchronize()
         end_time = time.time()
 
@@ -53,10 +60,11 @@ class TestLayerNormPerf:
         speedup = torch_time / gems_time
 
         print(f"LayerNorm {shape} {dtype}:")
-        print(f"  FlagGems: {gems_time*1000:.3f}ms")
-        print(f"  PyTorch: {torch_time*1000:.3f}ms")
+        print(f"  FlagGems: {gems_time * 1000:.3f}ms")
+        print(f"  PyTorch: {torch_time * 1000:.3f}ms")
         print(f"  Speedup: {speedup:.2f}x")
 
         # Assert reasonable speedup
-        assert speedup > 1.0, f"LayerNorm should be faster than PyTorch, got {speedup:.2f}x"
-
+        assert (
+            speedup > 1.0
+        ), f"LayerNorm should be faster than PyTorch, got {speedup:.2f}x"

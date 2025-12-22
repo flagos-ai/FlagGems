@@ -2,10 +2,11 @@ import logging
 
 import torch
 from packaging import version
+
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list
-from flag_gems.experimental import *
+from flag_gems.experimental import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
@@ -394,9 +395,10 @@ class use_gems:
                 logging.root.removeHandler(handler)
             logging.basicConfig(level=logging.INFO)
 
-    @property  
-    def experimental(self):  
-        import flag_gems.experimental  
+    @property
+    def experimental(self):
+        import flag_gems.experimental
+
         return flag_gems.experimental
 
 
