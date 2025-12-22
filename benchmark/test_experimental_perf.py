@@ -29,14 +29,14 @@ class TestLayerNormPerf:
 
         # Warmup
         for _ in range(10):
-            _ = flag_gems.experimental.generated_ops.layer_norm(inp, normalized_shape, weight, bias)
+            _ = flag_gems.experimental.layer_norm(inp, normalized_shape, weight, bias)
 
         torch.cuda.synchronize()
 
         # Benchmark
         start_time = time.time()
         for _ in range(100):
-            out = flag_gems.experimental.generated_ops.layer_norm(inp, normalized_shape, weight, bias)
+            out = flag_gems.experimental.layer_norm(inp, normalized_shape, weight, bias)
         torch.cuda.synchronize()
         end_time = time.time()
 

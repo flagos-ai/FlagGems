@@ -1,5 +1,5 @@
 # Overview
-The `experimental` module provides a space for new operators that are not yet ready for production release. Operators in this module are accessible via `flag_gems.experimental.generated_ops.*` and follow the same development patterns as core operators.
+The `experimental` module provides a space for new operators that are not yet ready for production release. Operators in this module are accessible via `flag_gems.experimental.*` and follow the same development patterns as core operators.
 
 # Usage Example
 Users can access operators as:
@@ -8,13 +8,13 @@ import flag_gems
   
 # Global enablement  
 flag_gems.enable()  
-result = flag_gems.experimental.generated_ops.layer_norm(*args)
-result = flag_gems.experimental.generated_ops.your_operator(*args)
+result = flag_gems.experimental.layer_norm(*args)
+result = flag_gems.experimental.your_operator(*args)
   
 # Or scoped usage
 with flag_gems.use_gems():
-    result = flag_gems.experimental.generated_ops.layer_norm(*args)
-    result = flag_gems.experimental.generated_ops.your_operator(*args)
+    result = flag_gems.experimental.layer_norm(*args)
+    result = flag_gems.experimental.your_operator(*args)
 ```
 
 
@@ -22,17 +22,15 @@ with flag_gems.use_gems():
 ```
 src/flag_gems/experimental/  
 ├── __init__.py                 # Module initialization  
-├── generated_ops/  
-│   ├── __init__.py            # Generated operators exports  
-│   ├── layer_norm.py          # Example operator implementation  
-│   └── [other_operators].py   # Additional operators 
+├── layer_norm.py          # Example operator implementation  
+│── [other_operators].py   # Additional operators 
 ```
 
 # Adding New Operators
 ## 1. Create Operator Implementation
-Create your operator file in `src/flag_gems/experimental/generated_ops/`:
+Create your operator file in `src/flag_gems/experimental/`:
 ```
-# src/flag_gems/experimental/generated_ops/your_operator.py   
+# src/flag_gems/experimental/your_operator.py   
 from flag_gems.utils import libentry  
   
 @libentry()  
@@ -50,7 +48,7 @@ def your_operator(*args, **kwargs):
 ```
 
 ## 2. Update Module Exports
-Add your operator to `src/flag_gems/experimental/generated_ops/__init__.py` :
+Add your operator to `src/flag_gems/experimental/__init__.py` :
 ```
 from .your_operator import your_operator  
 __all__ = ["layer_norm", "your_operator"]
@@ -86,7 +84,7 @@ def test_accuracy_your_operator(shape, dtype):
       
     # FlagGems implementation  
     with flag_gems.use_gems():  
-        res_out = flag_gems.experimental.generated_ops.your_operator(inp, ...)  
+        res_out = flag_gems.experimental.your_operator(inp, ...)  
       
     gems_assert_close(res_out, ref_out, dtype)
 ```
@@ -113,14 +111,14 @@ class TestYourOperatorPerf:
           
         # Warmup  
         for _ in range(10):  
-            _ = flag_gems.experimental.generated_ops.your_operator(inp)  
+            _ = flag_gems.experimental.your_operator(inp)  
           
         torch.cuda.synchronize()  
           
         # Benchmark FlagGems  
         start_time = time.time()  
         for _ in range(100):  
-            out = flag_gems.experimental.generated_ops.your_operator(inp)  
+            out = flag_gems.experimental.your_operator(inp)  
         torch.cuda.synchronize()  
         gems_time = (time.time() - start_time) / 100  
           

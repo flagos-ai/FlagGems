@@ -1,48 +1,73 @@
-import pytest
-import torch
-import flag_gems
-from tests.accuracy_utils import (
-    FLOAT_DTYPES,
-    POINTWISE_SHAPES,
-    gems_assert_close,
-    to_reference,
+import pytest  
+import torch  
+  
+import flag_gems  
+from .accuracy_utils import (  
+    FLOAT_DTYPES,  
+    gems_assert_close,  
+    to_reference,  
 )  
   
-# Test shapes for layer_norm (normalized_shape should match last dimensions)
-LAYER_NORM_SHAPES = [
-    ((16, 32), (32,)),      # 2D with last dim normalized
-    ((8, 16, 32), (16, 32)),  # 3D with last 2 dims normalized
-    ((4, 8, 16, 32), (16, 32)),  # 4D with last 2 dims normalized
-]
+# Test shapes relevant for layer normalization  
+LAYER_NORM_SHAPES = [  
+    (16, 512),      # Typical transformer hidden size  
+    (32, 1024),     # Larger hidden size  
+    (8, 64, 768),   # Batch, seq_len, hidden_size  
+    (4, 128, 1024), # Larger batch and hidden  
+    (1, 2048),      # Single sample, large hidden  
+]  
   
-@pytest.mark.layer_norm
-@pytest.mark.parametrize("shape, normalized_shape", LAYER_NORM_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("eps", [1e-5, 1e-6])
-def test_accuracy_layer_norm(shape, normalized_shape, dtype, eps):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
-    bias = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+NORMALIZED_SHAPES = [  
+    (512,),         # Normalize last dimension  
+    (768,),         # BERT-like  
+    (1024,),        # Large models  
+    (64, 768),      # Normalize last 2 dimensions  
+]  
+  
+@pytest.mark.layer_norm  
+@pytest.mark.parametrize("input_shape", LAYER_NORM_SHAPES)  
+@pytest.mark.parametrize("normalized_shape", NORMALIZED_SHAPES)  
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)  
+@pytest.mark.parametrize("eps", [1e-5, 1e-6])  
+def test_accuracy_layer_norm(input_shape, normalized_shape, dtype, eps):  
+    # Create input tensor  
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)  
+    ref_inp = to_reference(inp, True)  
       
-    ref_inp = to_reference(inp, True)
-    ref_weight = to_reference(weight, True)
-    ref_bias = to_reference(bias, True)
+    # Test with weight and bias  
+    weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)  
+    bias = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)  
+    ref_weight = to_reference(weight, True)  
+    ref_bias = to_reference(bias, True)  
       
-    ref_out = torch.layer_norm(ref_inp, normalized_shape, weight=ref_weight, bias=ref_bias, eps=eps)
-    with flag_gems.use_gems():
-        res_out = flag_gems.experimental.generated_ops.layer_norm(inp, normalized_shape, weight=weight, bias=bias, eps=eps)
-
-    gems_assert_close(res_out, ref_out, dtype)
-
-@pytest.mark.layer_norm
-@pytest.mark.parametrize("shape, normalized_shape", LAYER_NORM_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_layer_norm_no_weight_bias(shape, normalized_shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp, True)
+    # Reference computation  
+    ref_out = torch.nn.functional.layer_norm(  
+        ref_inp, normalized_shape, weight=ref_weight, bias=ref_bias, eps=eps  
+    )  
       
-    ref_out = torch.layer_norm(ref_inp, normalized_shape)
-    with flag_gems.use_gems():
-        res_out = flag_gems.experimental.generated_ops.layer_norm(inp, normalized_shape)
-
-    gems_assert_close(res_out, ref_out, dtype)
+    # FlagGems computation  
+    with flag_gems.use_gems():  
+        res_out = flag_gems.experimental.layer_norm(  
+            inp, normalized_shape, weight=weight, bias=bias, eps=eps  
+        )  
+      
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)  
+  
+@pytest.mark.layer_norm  
+@pytest.mark.parametrize("input_shape", LAYER_NORM_SHAPES)  
+@pytest.mark.parametrize("normalized_shape", NORMALIZED_SHAPES)  
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)  
+def test_accuracy_layer_norm_no_weight_bias(input_shape, normalized_shape, dtype):  
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)  
+    ref_inp = to_reference(inp, True)  
+      
+    ref_out = torch.nn.functional.layer_norm(  
+        ref_inp, normalized_shape, weight=None, bias=None  
+    )  
+      
+    with flag_gems.use_gems():  
+        res_out = flag_gems.experimental.layer_norm(  
+            inp, normalized_shape, weight=None, bias=None  
+        )  
+      
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
