@@ -2,7 +2,7 @@ import logging
 
 import torch
 from packaging import version
-
+from flag_gems import experimental
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list
@@ -402,4 +402,5 @@ def all_ops():
 __all__ = [
     "enable",
     "use_gems",
+    "experimental",
 ]
