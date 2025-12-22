@@ -24,12 +24,6 @@ vendor_info = VendorInfoBase(
     dispatch_key="PrivateUse1",
 )
 
-CUSTOMIZED_UNUSED_OPS = (
-    "randperm",  # skip now
-    "sort",  # skip now
-    "multinomial",  # skip now
-    "_upsample_bicubic2d_aa",  # skip now
-    "sort_stable",
-)
+CUSTOMIZED_UNUSED_OPS = ("_upsample_bicubic2d_aa",)  # skip now
 
 __all__ = ["*"]

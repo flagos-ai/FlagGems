@@ -71,6 +71,21 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
                               bool scale_grad_by_freq = false,
                               bool sparse = false);
 at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim = std::nullopt, bool keepdim = false);
+at::Tensor true_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor true_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor div_mode(const at::Tensor &a,
+                    const at::Tensor &b,
+                    const c10::optional<std::string> &rounding_mode);
+at::Tensor div_mode_(at::Tensor &a, const at::Tensor &b, const c10::optional<std::string> &rounding_mode);
+at::Tensor remainder_tt(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
+at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
+at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
 std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor &self, int64_t dim = -1, bool descending = false);
 std::tuple<at::Tensor, at::Tensor> sort_stable(const at::Tensor &inp,
                                                c10::optional<bool> stable,
@@ -126,6 +141,11 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(
     const std::optional<at::Tensor> &q_descale = std::nullopt,
     const std::optional<at::Tensor> &k_descale = std::nullopt,
     const std::optional<at::Tensor> &v_descale = std::nullopt,
+    std::optional<at::Tensor> s_aux = std::nullopt,
+    int64_t num_splits = 0,
+    int64_t cp_world_size = 1,
+    int64_t cp_rank = 0,
+    std::optional<at::Tensor> cp_tot_seqused_k = std::nullopt,
     int64_t fa_version = 2);
 
 struct FlashFwdParams {

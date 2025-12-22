@@ -68,7 +68,7 @@ CODEGEN_COFIGS = {
             8192,
             tuple([vendor_module.TOTAL_CORE_NUM, 1, 1]),
             32,
-            False,
+            True,
             prefer_1d_tile=int(triton.__version__[0]) < 3,
         )
         if vendor_module.vendor_info.vendor_name == "cambricon"
