@@ -13,6 +13,7 @@ from benchmark.attri_util import (
 )
 from benchmark.performance_utils import Benchmark, SkipVersion, generate_tensor_input
 
+vendor_name = flag_gems.vendor_name
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
@@ -90,6 +91,11 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["celu"] and SkipVersion("torch", "<2.5"):
+            pytest.skip(
+                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
+            )
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -135,6 +141,11 @@ forward_inplace_operations = [
     ],
 )
 def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["celu_"] and SkipVersion("torch", "<2.5"):
+            pytest.skip(
+                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
+            )
     bench = UnaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
     )
