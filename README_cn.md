@@ -1,17 +1,15 @@
 [English](./README.md)
 
-
 ## 介绍
 
-FlagGems 是一个使用 OpenAI 推出的[Triton 编程语言](https://github.com/openai/triton)实现的高性能通用算子库，旨在为大语言模型提供一系列可应用于 PyTorch 框架的算子，加速模型面向多种后端平台的推理与训练。
+FlagGems 是一个使用 OpenAI 推出的[Triton 编程语言](https://github.com/openai/triton)实现的高性能通用算子库，
+旨在为大语言模型提供一系列可应用于 PyTorch 框架的算子，加速模型面向多种后端平台的推理与训练。
 
-FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算子库的无缝替换，一方面模型开发者能够在无需修改底层 API 的情况下平稳地切换到 triton 算子库，使用其熟悉的 PyTorch API 同时享受新硬件带来的加速能力，另一方面对 kernel 开发者而言，Triton 语言提供了更好的可读性和易用性，可媲美 CUDA 的性能，因此开发者只需付出较低的学习成本，即可参与 FlagGems 的算子开发与建设。
-
-我们为 FlagGems 创建了微信群。扫描二维码即可加入群聊！第一时间了解我们的动态和信息和新版本发布，或者有任何问题或想法，请立即加入我们！
-
-<p align="center">
-<img width="204" height="180" alt="开源小助手" src="https://github.com/user-attachments/assets/4e9a8566-c91e-4120-a011-6b5577c1a53d" />
-</p>
+FlagGems 通过对 PyTorch 的后端 ATen 算子进行覆盖重写，实现算子库的无缝替换，
+一方面使得模型开发者能够在无需修改底层 API 的情况下平稳地切换到 Triton 算子库，
+使用其熟悉的 PyTorch API 同时享受新硬件带来的加速能力，
+另一方面对 kernel 开发者而言，Triton 语言提供了更好的可读性和易用性，可媲美 CUDA 的性能，
+因此开发者只需付出较低的学习成本，即可参与 FlagGems 的算子开发与算子库建设。
 
 ## 特性
 
@@ -46,7 +44,7 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ### v4.2（即将发布）
 
-- 计划支持 216 个算子，并与最新的 [Operator List](docs/operator_list.md) 保持一致
+- 计划支持 216 个算子，并与最新的 [Operator List](./docs/operators.md) 保持一致
 - 计划新增算子：`tan`、`tan_`、`baddbmm`、`avg_pool2d`、`clamp_min`、`clamp_min_`、`std`、`trace`、`max_pool2d`、`bitwise_left_shift`、`bitwise_right_shift`
 - 原有的 `upsample` 算子将拆分为 `upsample_nearest2d` 与 `upsample_bicubic2d_aa`
 
@@ -91,11 +89,11 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 快速入门
 
-参考文档 [开始使用](docs/get_start_with_flaggems.md) 快速安装使用 flag_gems
+参考文档 [开始使用](./docs/getting-started.md) 快速安装使用 FlagGems。
 
 ## 支持算子
 
-算子将按照文档 [OperatorList](docs/operator_list.md) 的顺序逐步实现。
+算子将按照文档 [OperatorList](./docs/operators.md) 的顺序逐步实现。
 
 ## 支持模型
 
@@ -146,7 +144,11 @@ FlagGems 相比 Torch Eager 模式下 ATen 算子库的加速比如下图所示�
 ## 联系我们
 
 如有疑问，请提交 issue，或发送邮件至<a href="mailto:contact@flagos.io">contact@flagos.io</a>。
+我们为 FlagGems 创建了微信群。扫描二维码即可加入群聊！第一时间了解我们的动态和信息和新版本发布，或者有任何问题或想法，请立即加入我们！
 
-## 证书
+<img width="204" height="180" alt="开源小助手" src="https://github.com/user-attachments/assets/4e9a8566-c91e-4120-a011-6b5577c1a53d" />
 
-本项目基于[Apache 2.0](./LICENSE)。
+## 许可证
+
+本项目采用 [Apache License (version 2.0)](./LICENSE) 授权许可。
+
