@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 )
 @triton.heuristics(runtime.get_heuristic_config("upsample_nearest1d"))
 @triton.jit
-
 def upsample_nearest1d_kernel(
     ptr_o,
     ptr_i,
@@ -42,30 +41,22 @@ def upsample_nearest1d_kernel(
     if SAME_L:
         il = ol
     else:
-        # tl.floor() cannot be found in 2.3.1, using int trunc
-        il = tl.minimum((ol * reciprocal_scale_l).to(tl.int32), IL - 1)
+        il = tl.minimum(
+            tl.math.floor(ol.to(tl.float32) * reciprocal_scale_l).to(tl.int32),
+            IL - 1
+        )
 
     offset_o = nc_iter * OL + ol
     offset_i = nc_iter * IL + il
     src_index_stride = nc_stride * IL
     dst_index_stride = nc_stride * OL
 
-    # mask = idx < OL
-    # tl.store(
-    #     ptr_o + offset_o,
-    #     tl.load(ptr_i + offset_i, mask=mask),
-    #     mask=mask,
-    #     other=0.0,
-    #     src_index_stride=src_index_stride,
-    #     dst_index_stride=dst_index_stride,
-    # )
     while nc_iter < NC:
         data = tl.load(ptr_i + offset_i)
         tl.store(ptr_o + offset_o, data)
         ptr_i += src_index_stride
         ptr_o += dst_index_stride
         nc_iter += nc_stride
-        
     
 def upsample_nearest1d(
     input: torch.Tensor,
@@ -81,12 +72,15 @@ def upsample_nearest1d(
 
     OL = output_size[0] if output_size is not None else int(input.shape[2] * scales)
     N, C, IL = input.shape
-    
+
     if scales is not None:
-        reciprocal_scale_l = 1 / scales
+        reciprocal_scale_l = float(torch.tensor(1.0 / scales, dtype=torch.float32).item())
     else:
-        reciprocal_scale_l = IL / OL
-        
+        # Use float32 division to match PyTorch's behavior
+        reciprocal_scale_l = float(
+            (torch.tensor(IL, dtype=torch.float32) / torch.tensor(OL, dtype=torch.float32)).item()
+        )
+
     # allocate output
     output = torch.empty((N, C, OL), device=input.device, dtype=input.dtype)
     total_threads = OL
@@ -94,7 +88,7 @@ def upsample_nearest1d(
         triton.cdiv(total_threads, meta["BLOCK_SIZE"]),
         triton.cdiv(N * C, 4),
     )
-    
+
     with torch_device_fn.device(input.device):
         upsample_nearest1d_kernel[grid](
             output,
@@ -104,8 +98,5 @@ def upsample_nearest1d(
             OL,
             IL,
             reciprocal_scale_l,
-            # BLOCK_SIZE=1024,
-            # SAME_L=OL == IL,
-            # USE_INT32_IDX=OL * N * C <= 2**31 - 1,
         )
     return output
