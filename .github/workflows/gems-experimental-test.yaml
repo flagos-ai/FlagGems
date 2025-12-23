@@ -4,11 +4,11 @@ on:
   push:
     branches: [ "master" ]
     paths:
-      - 'src/flag_gems/experimental/**'
+      - 'src/flag_gems/experimental_ops/**'
   pull_request:
     branches: [ "master" ]
     paths:
-      - 'src/flag_gems/experimental/**'
+      - 'src/flag_gems/experimental_ops/**'
 
 env:
   CUDA_VISIBLE_DEVICES: 7
@@ -24,11 +24,34 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: FlagGems experimental accuracy tests on hopper
+      - name: FlagGems experimental tests on hopper
         shell: bash
         run: |
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
           conda activate flag_gems
           source tools/run_command.sh
-          run_command pytest -s src/flag_gems/experimental/exp_tests/test_layer_norm_accuracy.py
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          HEAD_SHA=${{ github.sha }}
+
+          echo "Diffing $BASE_SHA...$HEAD_SHA"
+
+          changed_ops=$(git diff --name-only $BASE_SHA...$HEAD_SHA | grep '^src/flag_gems/experimental_ops/.*\.py$' || true)
+
+          tests=""
+          for f in $changed_ops; do
+              base=$(basename "$f" .py)
+              test_file="src/flag_gems/experimental_ops/exp_tests/${base}_test.py"
+              if [ -f "$test_file" ]; then
+                  tests="$tests $test_file"
+              fi
+          done
+
+          if [ -n "$tests" ]; then
+              echo "Running tests:$tests"
+              run_command pytest -s $tests
+          else
+              echo "No relevant ops changes, skipping tests"
+          fi

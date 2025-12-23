@@ -1,5 +1,5 @@
 # Overview
-The `experimental` module provides a space for new operators that are not yet ready for production release. Operators in this module are accessible via `flag_gems.experimental.*` and follow the same development patterns as core operators.
+The `experimental_ops` module provides a space for new operators that are not yet ready for production release. Operators in this module are accessible via `flag_gems.experimental_ops.*` and follow the same development patterns as core operators.
 
 # Usage Example
 Users can access operators as:
@@ -8,33 +8,31 @@ import flag_gems
 
 # Global enablement
 flag_gems.enable()
-result = flag_gems.experimental.layer_norm(*args)
-result = flag_gems.experimental.your_operator(*args)
+result = flag_gems.experimental_ops.your_operator(*args)
 
 # Or scoped usage
 with flag_gems.use_gems():
-    result = flag_gems.experimental.layer_norm(*args)
-    result = flag_gems.experimental.your_operator(*args)
+    result = flag_gems.experimental_ops.your_operator(*args)
 ```
 
 
 # File Structure
 ```
-src/flag_gems/experimental/
+src/flag_gems/experimental_ops/
 ├── __init__.py                 # Module initialization
-├── layer_norm.py          # Example operator implementation
+├── rmsnorm.py          # Example operator implementation
 ├── [other_operators].py   # Additional operators
 ├── exp_tests/                 # Accuracy test and performance test
     ├── __init__.py
-    ├── test_layer_norm_accuracy.py
-    ├── test_layer_norm_performace.py
+    ├── rmsnorm_test.py
+    ├── [other_operators]_test.py
 ```
 
 # Adding New Operators
 ## 1. Create Operator Implementation
-Create your operator file in `src/flag_gems/experimental/`:
+Create your operator file in `src/flag_gems/experimental_ops/`:
 ```
-# src/flag_gems/experimental/your_operator.py
+# src/flag_gems/experimental_ops/your_operator.py
 from flag_gems.utils import libentry
 
 @libentry()
@@ -52,19 +50,19 @@ def your_operator(*args, **kwargs):
 ```
 
 ## 2. Update Module Exports
-Add your operator to `src/flag_gems/experimental/__init__.py` :
+Add your operator to `src/flag_gems/experimental_ops/__init__.py` :
 ```
 from .your_operator import your_operator
-__all__ = ["layer_norm", "your_operator"]
+__all__ = ["rmsnorm", "your_operator"]
 ```
 
 ## 3. Update Main Module
-The experimental module is already integrated in the main `__init__.py` . No changes needed there.
+The experimental_ops module is already integrated in the main `__init__.py` . No changes needed there.
 
 
 # Testing
 ## Accuracy Tests
-Add accuracy test in `exp_tests/test_your_ops_accuracy.py` following the pattern:
+Add accuracy test in `exp_tests/your_ops_test.py`:
 ```
 import pytest
 import torch
@@ -88,13 +86,13 @@ def test_accuracy_your_operator(shape, dtype):
 
     # FlagGems implementation
     with flag_gems.use_gems():
-        res_out = flag_gems.experimental.your_operator(inp, ...)
+        res_out = flag_gems.experimental_ops.your_operator(inp, ...)
 
     gems_assert_close(res_out, ref_out, dtype)
 ```
 
 ## Performance Tests
-Add performance test in `exp_tests/test_your_ops_performance.py` following the pattern:
+Add performance test in `exp_tests/your_ops_test.py`:
 ```
 import pytest
 import torch
@@ -115,14 +113,14 @@ class TestYourOperatorPerf:
 
         # Warmup
         for _ in range(10):
-            _ = flag_gems.experimental.your_operator(inp)
+            _ = flag_gems.experimental_ops.your_operator(inp)
 
         torch.cuda.synchronize()
 
         # Benchmark FlagGems
         start_time = time.time()
         for _ in range(100):
-            out = flag_gems.experimental.your_operator(inp)
+            out = flag_gems.experimental_ops.your_operator(inp)
         torch.cuda.synchronize()
         gems_time = (time.time() - start_time) / 100
 
@@ -140,4 +138,4 @@ class TestYourOperatorPerf:
 ```
 
 # CI Integration
-Add accuracy tests ad performace tests to the CI workflow `.github/workflows/gems-experimental-test.yaml.yaml` .
+Add tests ad performace tests to the CI workflow `.github/workflows/gems-experimental-test.yaml` .
