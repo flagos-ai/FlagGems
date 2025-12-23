@@ -415,6 +415,8 @@ class Benchmark:
                     pytest.fail(str(e))  # raise exception again
                 finally:
                     metrics.append(metric)
+                    del args,kwargs,metric
+                    torch.cuda.empty_cache()
                     gc.collect()
             result = BenchmarkResult(
                 level=Config.bench_level.value,
