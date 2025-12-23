@@ -1152,7 +1152,7 @@ def flash_attention_forward(
             return_debug_mask,
             disable_splitkv=disable_splitkv,
         )
-
+    out = out.reshape(out.shape)
     return (out, lse, philox_seed, philox_offset, p)
 
 
