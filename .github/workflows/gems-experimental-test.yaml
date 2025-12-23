@@ -38,12 +38,12 @@ jobs:
 
           echo "Diffing $BASE_SHA...$HEAD_SHA"
 
-          changed_ops=$(git diff --name-only $BASE_SHA...$HEAD_SHA | grep '^ops/.*\.py$' || true)
+          changed_ops=$(git diff --name-only $BASE_SHA...$HEAD_SHA | grep '^src/flag_gems/experimental_ops/.*\.py$' || true)
 
           tests=""
           for f in $changed_ops; do
               base=$(basename "$f" .py)
-              test_file="test/${base}_test.py"
+              test_file="src/flag_gems/experimental_ops/exp_tests/${base}_test.py"
               if [ -f "$test_file" ]; then
                   tests="$tests $test_file"
               fi
