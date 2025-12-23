@@ -15,14 +15,15 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    unroll_num=8,
+    unroll_num=4,
 )
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def exp2_func(x):
-    return tl.exp2(x.to(tl.float32))
+    LN2 = 0.69314718056
+    return tl.exp(x.to(tl.float32) * LN2)
 
 
 def exp2(A):
