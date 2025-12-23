@@ -338,6 +338,32 @@ def custom_get_scheduler_metadata(
     )
 
 
+def custom_per_token_group_fp8_quant(
+    input: torch.Tensor,
+    output_q: torch.Tensor,
+    output_s: torch.Tensor,
+    group_size: int,
+    eps: float,
+    fp8_min: float,
+    fp8_max: float,
+    scale_ue8m0: bool = False,
+):
+    from flag_gems.ops.per_token_group_quant_fp8 import per_token_group_quant_fp8
+
+    column_major_scales = output_s.stride(0) < output_s.stride(1)
+
+    x_q, x_s = per_token_group_quant_fp8(
+        x=input,
+        group_size=group_size,
+        eps=eps,
+        column_major_scales=column_major_scales,
+        scale_ue8m0=scale_ue8m0,
+    )
+
+    output_q.copy_(x_q)
+    output_s.copy_(x_s)
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
@@ -373,6 +399,13 @@ def apply_gems_patches_to_vllm(verbose=True):
         "_vllm_fa3_C",
         "get_scheduler_metadata",
         custom_get_scheduler_metadata,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib(
+        "_C",
+        "per_token_group_fp8_quant",
+        custom_per_token_group_fp8_quant,
         "CUDA",
         verbose,
     )
