@@ -12,21 +12,47 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
-try:
-    pair_uniform_to_normal = tl.pair_uniform_to_normal
-except AttributeError:
-
-    @triton.jit
-    def pair_uniform_to_normal(u1, u2):
-        """Box-Muller transform"""
-        u1 = tl.maximum(1.0e-7, u1)
-        th = 6.283185307179586 * u2
-        r = tl.sqrt(-2.0 * tl.log(u1))
-        return r * tl.cos(th), r * tl.sin(th)
-
-
 device_ = device
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._nvidia.ops.{__name__.split(".")[-1]}'
+)
+
+
+@triton.jit
+def fast_cos_ptx(x):
+    return tl.inline_asm_elementwise(
+        "cos.approx.ftz.f32 $0, $1;",
+        "=f,f",
+        [x],
+        dtype=tl.float32,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@triton.jit
+def fast_sin_ptx(x):
+    return tl.inline_asm_elementwise(
+        "sin.approx.ftz.f32 $0, $1;",
+        "=f,f",
+        [x],
+        dtype=tl.float32,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@triton.jit
+def fast_box_muller_ptx(u1, u2):
+    u1 = tl.maximum(1.0e-7, u1)
+    th = 6.283185307179586 * u2
+
+    r = tl.sqrt(-2.0 * tl.log(u1))
+
+    return r * fast_cos_ptx(th), r * fast_sin_ptx(th)
+
+
+pair_uniform_to_normal = fast_box_muller_ptx
 
 
 @triton.heuristics(runtime.get_heuristic_config("randn"))
@@ -71,18 +97,20 @@ UNROLL = 4
 
 
 def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS RANDN")
+    logger.debug("GEMS_NVIDIA RANDN")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
+
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-    # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
-    # hence we cannot obtain the per thread offset as in Pytorch.
+
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
+
     with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
+
     return out
