@@ -345,6 +345,7 @@ def enable(
             ("where.self_out", where_self_out),
             ("zeros", zeros),
             ("zeros_like", zeros_like),
+            ("scatter_add_", scatter_add_),
             ("dreglu", dreglu),
             ("reglu", reglu),
             ("scaled_softmax_forward", scaled_softmax_forward),
