@@ -181,6 +181,7 @@ from .stack import stack
 from .std import std
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
@@ -452,6 +453,8 @@ __all__ = [
     "tanh",
     "tanh_",
     "tanh_backward",
+    "tan",
+    "tan_",
     "threshold",
     "threshold_backward",
     "tile",
