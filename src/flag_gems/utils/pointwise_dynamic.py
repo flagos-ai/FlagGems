@@ -1138,7 +1138,6 @@ class PointwiseDynamicFunction:
         if tensors[0].numel() > INT32_MAX:
             self.config.prefer_block_pointer = False
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
-            # if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
                 torch.empty_like(tensors[0], dtype=dtype)
                 for dtype in outputs_dtypes_for_allocation
