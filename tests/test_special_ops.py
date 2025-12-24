@@ -359,7 +359,7 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
 @pytest.mark.unique
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -692,7 +692,7 @@ def test_logspace(start, end, steps, base, dtype, device, pin_memory):
         gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -1168,7 +1168,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     gems_assert_equal(res_in_grad, ref_in_grad)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize(

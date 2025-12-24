@@ -46,6 +46,7 @@ class CodeGenConfig:
     isCloseDtypeConvert: bool = False
     isCloseMemoryAsync: bool = True
     isCloseInterleave: bool = False
+    kunlunAutoGrid: bool = False
     buffer_size_limit: int = 0
     unroll_num: int = 0
 
