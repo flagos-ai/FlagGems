@@ -90,7 +90,7 @@ SHAPE_CONV2D = [
 ]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
@@ -102,6 +102,8 @@ SHAPE_CONV2D = [
 def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation, bias):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if flag_gems.vendor_name == "hygon":
+        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
@@ -169,6 +171,8 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
 
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         del os.environ["MUSA_ENABLE_SQMMA"]
+    if flag_gems.vendor_name == "hygon":
+        del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
