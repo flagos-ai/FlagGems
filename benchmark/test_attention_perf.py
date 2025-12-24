@@ -23,11 +23,14 @@ class AttentionBenchmark(GenericBenchmark):
 
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0])
 @pytest.mark.parametrize("is_causal", [True, False])
 def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
+    if flag_gems.vendor_name == "hygon":
+        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
+
     def scaled_dot_product_attention_kwargs(shape, dtype, device):
         query = torch.randn(shape, device=device, dtype=dtype)
         key = torch.randn(shape, device=device, dtype=dtype)
@@ -61,6 +64,8 @@ def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
     )
     bench.set_gems(flag_gems.scaled_dot_product_attention)
     bench.run()
+    if flag_gems.vendor_name == "hygon":
+        del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
 class FlashMLABenchmark(GenericBenchmark):

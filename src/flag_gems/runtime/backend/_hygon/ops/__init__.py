@@ -21,7 +21,9 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .randperm import randperm
 from .silu import silu, silu_, silu_backward
+from .sort import sort, sort_stable
 from .unique import _unique2
 
 __all__ = [
@@ -54,4 +56,7 @@ __all__ = [
     "silu_backward",
     "_unique2",
     "mm",
+    "randperm",
+    "sort",
+    "sort_stable",
 ]

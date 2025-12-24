@@ -184,7 +184,7 @@ def test_tensor_constructor_inplace_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.randperm
 def test_perf_randperm():
     if flag_gems.vendor_name == "mthreads":

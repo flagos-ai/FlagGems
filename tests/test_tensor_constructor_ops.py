@@ -180,7 +180,7 @@ def test_accuracy_full_like(shape, dtype, xdtype, fill_value):
     gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.randperm
 @pytest.mark.parametrize("n", [123, 12345, 123456])
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES)

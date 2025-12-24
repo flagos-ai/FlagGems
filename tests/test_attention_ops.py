@@ -290,7 +290,7 @@ def gems_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
@@ -339,6 +339,8 @@ def test_sdpa_legacy(
     dtype,
     enable_gqa,
 ):
+    if flag_gems.vendor_name == "hygon":
+        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
     device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch,
@@ -366,6 +368,8 @@ def test_sdpa_legacy(
     )
 
     gems_assert_close(gems_result, torch_result, dtype)
+    if flag_gems.vendor_name == "hygon":
+        del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
 @pytest.mark.skipif(True, reason="something wrong here, disable it for temp")
