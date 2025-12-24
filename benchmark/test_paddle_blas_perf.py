@@ -120,7 +120,7 @@ def addmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
 def bmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     element_size = 4 if cur_dtype == torch.float32 else 2
     memory_required = (b * m * k + b * (n * k if b_column_major else k * n) + b * m * n) * element_size / (1024**3)
-    if memory_required > 15 and flag_gems.framework == 'paddle': # when b_column_major is True, 加上triton算子占用的显存会超过40G，暂时跳过
+    if memory_required > 15 and flag_gems.framework_name == 'paddle': # when b_column_major is True, 加上triton算子占用的显存会超过40G，暂时跳过
         print(f"skip配置: batch={b}, m={m}, n={n}, k={k}, 预计需要 {memory_required:.2f}GB显存")
         return  
     
