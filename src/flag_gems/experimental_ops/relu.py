@@ -4,11 +4,13 @@ import triton.language as tl
 
 
 @triton.jit
-def relu_kernel(input_ptr,  # Pointer to input tensor
-         output_ptr,  # Pointer to output tensor
-         n_elements,  # Number of elements
-         COMPUTE_FP32: tl.constexpr,  # Whether to upcast to fp32 for computation
-         BLOCK_SIZE: tl.constexpr):
+def relu_kernel(
+    input_ptr,  # Pointer to input tensor
+    output_ptr,  # Pointer to output tensor
+    n_elements,  # Number of elements
+    COMPUTE_FP32: tl.constexpr,  # Whether to upcast to fp32 for computation
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -34,7 +36,9 @@ def relu(input: torch.Tensor) -> torch.Tensor:
         raise TypeError("relu does not support complex tensors.")
 
     if not input.is_cuda:
-        raise RuntimeError("Triton kernels require CUDA tensors. Move the tensor to a CUDA device.")
+        raise RuntimeError(
+            "Triton kernels require CUDA tensors. Move the tensor to a CUDA device."
+        )
 
     dtype = input.dtype
 
@@ -61,7 +65,9 @@ def relu(input: torch.Tensor) -> torch.Tensor:
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     relu_kernel[grid](
-        x, out, n_elements,
+        x,
+        out,
+        n_elements,
         COMPUTE_FP32=compute_in_fp32,
         BLOCK_SIZE=BLOCK_SIZE,
     )

@@ -2,7 +2,13 @@
 # Please provide the test code here
 
 # PyTorch baseline
+import pytest
 import torch
+import triton
+
+import flag_gems
+from flag_gems.experimental_ops.relu import relu as gems_relu
+
 
 def relu(input: torch.Tensor) -> torch.Tensor:
     if not isinstance(input, torch.Tensor):
@@ -28,12 +34,6 @@ def relu(input: torch.Tensor) -> torch.Tensor:
     return torch.clamp_min(input, 0)
 
 
-import pytest
-import triton
-
-import flag_gems
-from flag_gems.experimental_ops.relu import relu as gems_relu
-
 @pytest.mark.relu
 @pytest.mark.parametrize("shape", [(512,), (64, 128), (8, 32, 64), (2, 4, 8, 16), (1,)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
@@ -49,6 +49,7 @@ def test_relu_accuracy(shape, dtype):
 
     torch.testing.assert_close(res_out.cpu(), ref_out, rtol=1e-3, atol=1e-3)
 
+
 @pytest.mark.relu
 @pytest.mark.parametrize("shape", [(512,), (64, 128), (8, 32, 64), (2, 4, 8, 16), (1,)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
@@ -61,8 +62,12 @@ def test_relu_performance(shape, dtype):
     # cast to reference dtype if necessary
     ref_input = input.clone()
 
-    ms_torch, _, _ = triton.testing.do_bench(lambda: relu(ref_input), rep=100, quantiles=quantiles)
-    ms_triton, _, _ = triton.testing.do_bench(lambda: gems_relu(input), rep=100, quantiles=quantiles)
+    ms_torch, _, _ = triton.testing.do_bench(
+        lambda: relu(ref_input), rep=100, quantiles=quantiles
+    )
+    ms_triton, _, _ = triton.testing.do_bench(
+        lambda: gems_relu(input), rep=100, quantiles=quantiles
+    )
 
     speedup = ms_torch / ms_triton
 
