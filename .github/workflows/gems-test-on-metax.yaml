@@ -14,8 +14,7 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
-    paths-ignore:
-      - 'src/flag_gems/experimental_ops/**'
+      - '!src/flag_gems/experimental_ops/**'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -29,8 +28,7 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
-    paths-ignore:
-      - 'src/flag_gems/experimental_ops/**'
+      - '!src/flag_gems/experimental_ops/**'
 
 jobs:
   op-test-on-metax:

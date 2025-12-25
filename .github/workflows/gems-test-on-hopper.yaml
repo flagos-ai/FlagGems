@@ -15,8 +15,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
-    paths-ignore:
-      - 'src/flag_gems/experimental_ops/**'
+      - '!src/flag_gems/experimental_ops/**'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -31,8 +30,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
-    paths-ignore:
-      - 'src/flag_gems/experimental_ops/**'
+      - '!src/flag_gems/experimental_ops/**'
 
 env:
   CUDA_VISIBLE_DEVICES: 7
