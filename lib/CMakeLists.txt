@@ -36,7 +36,7 @@ target_include_directories(operators
 
 target_link_libraries(operators
   PUBLIC Torch::Torch
-  PRIVATE TritonJIT::triton_jit)
+  PRIVATE TritonJIT::triton_jit pybind11::embed)
 add_library(FlagGems::operators ALIAS operators)
 
 
