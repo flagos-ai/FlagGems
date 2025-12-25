@@ -246,29 +246,55 @@ class KernelGenerator:
     def gen_config_prune(self, code):
         code.writeline("def config_prune(configs, named_args, **kwargs):")
         with code.indent():
-            max_tiles_sizes = [1024, 2048, 4096, 8192, 16000]
+            code.writeline("new_configs = []")
+            code.writeline("elem_sizes = []")
+            for i in range(self.fx.num_input_tensors()):
+                code.writeline(
+                    f"elem_sizes.append(named_args['in{i}_ptr'].dtype.itemsize)"
+                )
+            for i in range(self.fx.num_output_tensors()):
+                code.writeline(
+                    f"elem_sizes.append(named_args['out{i}_ptr'].dtype.itemsize)"
+                )
+
+            code.writeline("max_elem_size = max(elem_sizes)")
             shape = ", ".join(f"s{i}" for i in range(self.ndim))
             named_shape = ", ".join(f"named_args['s{i}']" for i in range(self.ndim))
+            code.writeline(f"{shape} = {named_shape}")
             tile_sizes = ", ".join(f"tile_size{i}" for i in range(self.ndim))
             tile_size_dict = ", ".join(
                 f"'tile_size{i}': tile_size{i}" for i in range(self.ndim)
             )
 
-            code.writeline(f"{shape} = {named_shape}")
+            code.writeline("if max_elem_size < 8:")
+            with code.indent():
+                code.writeline("max_tile_sizes = [1024, 2048, 4096, 8192, 16000]")
+                code.writeline("for max_tile_size in max_tile_sizes:")
+                with code.indent():
+                    code.writeline(
+                        f"({tile_sizes}, ) = heuristics_for_tile_size(max_tile_size, {shape})"
+                    )
+                    code.writeline(
+                        f"new_configs.append(triton.Config({{{tile_size_dict}}}, num_stages=3, num_warps=1))"
+                    )
+            code.writeline("else:")
+            with code.indent():
+                code.writeline("max_tile_sizes = [1024, 2048, 4096, 8000]")
+                code.writeline("for max_tile_size in max_tile_sizes:")
+                with code.indent():
+                    code.writeline(
+                        f"({tile_sizes}, ) = heuristics_for_tile_size(max_tile_size, {shape})"
+                    )
+                    code.writeline(
+                        f"new_configs.append(triton.Config({{{tile_size_dict}}}, num_stages=3, num_warps=1))"
+                    )
 
-            for max_tiles_size in max_tiles_sizes:
-                code.writeline(
-                    f"{tile_sizes} = heuristics_for_tile_size({max_tiles_size}, {shape})"
-                )
-                code.writeline(
-                    f"configs.append(triton.Config({{{tile_size_dict}}}, num_stages=3, num_warps=1))"
-                )
-            code.writeline("return configs")
+            code.writeline("return new_configs")
         code.newline()
         code.newline()
 
     def gen_decorators(self, code):
-        if self.ndim in [2, 3, 4] and (not self.config.prefer_1d_tile):
+        if self.ndim in [1, 2, 3, 4] and (not self.config.prefer_1d_tile):
             self.gen_config_prune(code)
 
         num_non_tensor_args = self.fx.num_non_tensor_args()
@@ -296,15 +322,6 @@ class KernelGenerator:
                     code.writeline(
                         "triton.Config({'tile_size0': 2048}, num_stages=3, num_warps=1),"
                     )
-                    code.writeline(
-                        "triton.Config({'tile_size0': 4096}, num_stages=3, num_warps=1),"
-                    )
-                    code.writeline(
-                        "triton.Config({'tile_size0': 8192}, num_stages=3, num_warps=1),"
-                    )
-                    code.writeline(
-                        "triton.Config({'tile_size0': 16000}, num_stages=3, num_warps=1),"
-                    )
                 code.writeline("],")
                 if num_non_tensor_args > 0:
                     code.writeline(
@@ -312,6 +329,7 @@ class KernelGenerator:
                     )
                 else:
                     code.writeline(f"key=['num_tasks', {_cs(stride_args)}],")
+                code.writeline("prune_configs_by={'early_config_prune': config_prune},")
                 output_params = [
                     f"out{i}_ptr" for i in range(self.fx.num_output_tensors())
                 ]
