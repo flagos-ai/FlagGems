@@ -348,7 +348,7 @@ def custom_per_token_group_fp8_quant(
     fp8_max: float,
     scale_ue8m0: bool = False,
 ):
-    from flag_gems.ops.per_token_group_quant_fp8 import per_token_group_quant_fp8
+    from flag_gems.ops import per_token_group_quant_fp8
 
     column_major_scales = output_s.stride(0) < output_s.stride(1)
 
