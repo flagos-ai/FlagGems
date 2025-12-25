@@ -3,7 +3,7 @@ name: flag-gems-test-on-hopper
 on:
   push:
     branches: [ "master" ]
-    paths: 
+    paths:
       - '**.py'
       - '**.cpp'
       - '**.cu'
