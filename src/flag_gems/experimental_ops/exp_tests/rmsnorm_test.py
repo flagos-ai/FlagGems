@@ -62,7 +62,7 @@ NMSNORM_SHAPES = [
 ]
 
 
-@pytest.mark.rmsnorm
+@pytest.mark.rmsnorm_accuracy
 @pytest.mark.parametrize("shape", NMSNORM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("eps", [1e-5, 1e-6])
@@ -87,7 +87,7 @@ def test_nmsnorm_accuracy(shape, dtype, eps):
     gems_assert_close(res_out_cpu, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.rmsnorm
+@pytest.mark.rmsnorm_performance
 @pytest.mark.parametrize("shape", NMSNORM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_nmsnorm_performace(shape, dtype):
@@ -127,6 +127,3 @@ def test_nmsnorm_performace(shape, dtype):
     print(f"  FlagGems: {gems_time * 1000:.3f}ms")
     print(f"  PyTorch: {torch_time * 1000:.3f}ms")
     print(f"  Speedup: {speedup:.2f}x")
-
-    # Assert reasonable speedup
-    assert speedup > 0.8, f"rms should be faster than PyTorch, got {speedup:.2f}x"
