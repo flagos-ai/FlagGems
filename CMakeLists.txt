@@ -82,6 +82,23 @@ if(FLAGGEMS_BUILD_CTESTS)
   FetchContent_MakeAvailable(googletest)
 endif()
 
+execute_process(
+  COMMAND ${Python_EXECUTABLE}
+          -c "import triton, sys; sys.stdout.write(triton.__version__)"
+  RESULT_VARIABLE _ret
+  OUTPUT_VARIABLE TRITON_VERSION
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(NOT _ret EQUAL 0)
+  message(FATAL_ERROR "Triton IS NOT installed properly")
+endif()
+message(STATUS "Detected Triton version: ${TRITON_VERSION}")
+if(TRITON_VERSION VERSION_GREATER_EQUAL "3.5")
+  set(TRITON_GE_3P5 TRUE)
+else()
+  set(TRITON_GE_3P5 FALSE)
+endif()
+
 # --------------------------- subdirectories ---------------------------
 add_subdirectory(lib)
 add_subdirectory(src/flag_gems/csrc)

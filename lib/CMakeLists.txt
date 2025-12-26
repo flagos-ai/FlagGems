@@ -29,6 +29,8 @@ add_library(operators
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp)
 
+target_compile_definitions(operators PRIVATE TRITON_GE_3P5="${TRITON_GE_3P5}")
+
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -36,7 +38,7 @@ target_include_directories(operators
 
 target_link_libraries(operators
   PUBLIC Torch::Torch
-  PRIVATE TritonJIT::triton_jit pybind11::embed)
+  PRIVATE TritonJIT::triton_jit)
 add_library(FlagGems::operators ALIAS operators)
 
 
