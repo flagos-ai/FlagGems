@@ -107,6 +107,8 @@ def moe_align_block_size_triton(
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
     numel = topk_ids.numel()
+    # The tensor needs to be padded before calculating IDs,
+    # to prevent out-of-bounds address access.
     sorted_token_ids.fill_(numel)
     expert_ids.fill_(0)
 
