@@ -92,12 +92,10 @@ execute_process(
 if(NOT _ret EQUAL 0)
   message(FATAL_ERROR "Triton IS NOT installed properly")
 endif()
-message(STATUS "Detected Triton version: ${TRITON_VERSION}")
 if(TRITON_VERSION VERSION_GREATER_EQUAL "3.5")
-  set(TRITON_GE_3P5 TRUE)
-else()
-  set(TRITON_GE_3P5 FALSE)
+  set(TRITON_GE_3P5 1)
 endif()
+message(STATUS "Detected Triton version: ${TRITON_VERSION}")
 
 # --------------------------- subdirectories ---------------------------
 add_subdirectory(lib)

@@ -29,7 +29,9 @@ add_library(operators
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp)
 
-target_compile_definitions(operators PRIVATE TRITON_GE_3P5="${TRITON_GE_3P5}")
+if (TRITON_GE_3P5)
+  target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
+endif()
 
 target_include_directories(operators
   PUBLIC
