@@ -562,6 +562,7 @@ class KernelGenerator:
             code.writeline(
                 f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
             )
+        # code.writeline("print(\"in0\", in0)")
 
         code.newline()
 
@@ -684,6 +685,7 @@ class KernelGenerator:
             code.writeline(
                 f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
             )
+        # code.writeline("print(\"in0\", in0)")
 
         code.newline()
 
@@ -865,9 +867,19 @@ class WrapperGenerator:
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
             # max_grid_size0 = self.config.max_grid_size[0]
             # code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
-
-            code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
-            code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
+            determine_num_ctas_and_tiles = [
+                "if sum(out0.shape) <= 2048*64:",
+                "   num_ctas = 1 # XPU BLOCK_NUM",
+                "   num_tiles = 1 # XPU BLOCK_NUM",
+                "else:",
+                "   num_ctas = 12 # XPU BLOCK_NUM",
+                "   num_tiles = 12 # XPU BLOCK_NUM",
+            ]
+            if self.config.kunlunAutoGrid is True:
+                code.writelines(determine_num_ctas_and_tiles)
+            else:
+                code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
+                code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
             code.writeline(
                 "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
             )
@@ -972,12 +984,16 @@ class WrapperGenerator:
                     code.writeline("buffer_size_limit=2048,")
                 if self.config.isCloseVectorization:
                     code.writeline("isCloseVectorization=True,")
+                if self.config.isCloseInterleave:
+                    code.writeline("isCloseInterleave=True,")
                 if self.config.isCloseDtypeConvert:
                     code.writeline("isCloseDtypeConvert=True,")
                 if not self.config.isCloseMemoryAsync:
                     code.writeline("isCloseMemoryAsync=False,")
                 if os.getenv("XPU_cmp_nan") == "1":
                     code.writeline("isOpenCmpNan=True,")
+                if self.config.unroll_num:
+                    code.writeline(f"unroll_num={self.config.unroll_num},")
             code.writeline(")")
 
     def gen_kernel_launch_1d(
@@ -1037,12 +1053,16 @@ class WrapperGenerator:
                     code.writeline("buffer_size_limit=2048,")
                 if self.config.isCloseVectorization:
                     code.writeline("isCloseVectorization=True,")
+                if self.config.isCloseInterleave:
+                    code.writeline("isCloseInterleave=True,")
                 if self.config.isCloseDtypeConvert:
                     code.writeline("isCloseDtypeConvert=True,")
                 if not self.config.isCloseMemoryAsync:
                     code.writeline("isCloseMemoryAsync=False,")
                 if os.getenv("XPU_cmp_nan") == "1":
                     code.writeline("isOpenCmpNan=True,")
+                if self.config.unroll_num:
+                    code.writeline(f"unroll_num={self.config.unroll_num},")
             code.writeline(")")
 
     def gen_return(self, code: IndentedBuffer):

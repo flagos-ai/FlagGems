@@ -31,7 +31,7 @@ from .bmm import bmm
 from .cat import cat
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
-from .copy import copy
+from .copy import copy, copy_
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummin import cummin
@@ -204,6 +204,7 @@ __all__ = [
     "clamp_tensor",
     "clamp_tensor_",
     "copy",
+    "copy_",
     "cos",
     "cos_",
     "count_nonzero",

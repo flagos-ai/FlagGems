@@ -26,7 +26,7 @@ vendor_info = VendorInfoBase(
 
 CUSTOMIZED_UNUSED_OPS = (
     "_upsample_bicubic2d_aa",  # skip now
-    "copy_",
+    "scatter_add_",
 )
 
 __all__ = ["*"]
