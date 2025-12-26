@@ -29,6 +29,10 @@ add_library(operators
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp)
 
+if (TRITON_GE_3P5)
+  target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
+endif()
+
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
