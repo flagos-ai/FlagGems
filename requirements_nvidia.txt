@@ -1,0 +1,14 @@
+--index-url https://resource.flagos.net/repository/flagos-pypi-hosted/simple
+--extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
+--trusted-host resource.flagos.net pypi.tuna.tsinghua.edu.cn
+torch>=2.2.0
+packaging
+pybind11
+PyYAML
+sqlalchemy
+setuptools>=64.0
+scikit-build-core>=0.11
+cmake
+ninja
+wheel
+flagtree==0.3.0rc1+3.3
