@@ -10,8 +10,10 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
+# relu another way: maximum(x, 0)
+# tl.maximum(x, 0) to one max_instr，but tl.where two instr compare and select
 def relu_forward(x):
-    return tl.where(x > 0, x, 0)
+    return tl.maximum(x, 0)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
