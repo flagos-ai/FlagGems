@@ -121,7 +121,7 @@ def debug_topk_results(actual, expected, inputs, test_name=""):
         print(f"  Actual indices: {sorted(actual_set)[:m]}...")  # Only show first 10
         print(f"  Expected indices: {sorted(expected_set)[:m]}...")
         print(
-            f"  Intersection: {len(intersection)}/{len(expected_set)} = {len(intersection)/len(expected_set):.4f}"
+            f"  Intersection: {len(intersection)}/{len(expected_set)} = {len(intersection) / len(expected_set):.4f}"
         )
 
         # Check quality of actually selected values
