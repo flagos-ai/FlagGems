@@ -22,6 +22,8 @@ from flag_gems.runtime import torch_device_fn
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+recordLogger = logging.getLogger("flag_gems.benchmark.record")
+recordLogger.propagate = False
 
 
 class BenchConfig:
@@ -165,12 +167,21 @@ def pytest_configure(config):
             for arg in config.invocation_params.args
         ]
 
-        logging.basicConfig(
-            filename="result_{}.log".format("_".join(cmd_args)).replace("_-", "-"),
-            filemode="w",
-            level=logging.INFO,
-            format="[%(levelname)s] %(message)s",
-        )
+        log_file = "result_{}.log".format("_".join(cmd_args)).replace("_-", "-")
+
+        for h in list(recordLogger.handlers):
+            recordLogger.removeHandler(h)
+            try:
+                h.close()
+            except Exception:
+                pass
+
+        handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+        recordLogger.addHandler(handler)
+        recordLogger.setLevel(logging.INFO)
+        recordLogger.info("Benchmark record logger enabled")
 
 
 BUILTIN_MARKS = {
