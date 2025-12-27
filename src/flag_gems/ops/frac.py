@@ -11,14 +11,6 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def frac_func(x):
-    """
-    Match torch.frac semantics:
-      out = x - trunc(x)   (trunc rounds toward 0)
-
-    Implement trunc with floor:
-      trunc(x) = floor(x)            if x >= 0
-      trunc(x) = -floor(-x) (ceil)   if x < 0
-    """
     xf = x.to(tl.float32)
     trunc_f = tl.where(xf < 0.0, -tl.floor(-xf), tl.floor(xf))
     return xf - trunc_f
