@@ -1389,3 +1389,58 @@ def test_moe_sum(shape, dtype):
     with flag_gems.use_gems():
         flag_gems.moe_sum(inp1, res_out)
     gems_assert_close(res_out, ref_out, dtype)
+
+
+try:
+    import vllm._custom_ops as vllm_ops
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
+
+
+# ref: https://github.com/vllm-project/vllm/blob/main/tests/kernels/moe/test_moe.py
+@pytest.mark.moe_align_block_size
+@pytest.mark.parametrize("num_experts", [32, 256, 512])
+@pytest.mark.parametrize("block_size", [8, 16, 32])
+@pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
+def test_accuracy_moe_align_block_size(
+    num_experts,
+    block_size,
+):
+    # ------------ parameters ------------
+    dtype = torch.int32
+    topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device="cuda")
+    max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+    sorted_ids = torch.empty((max_num_tokens_padded,), dtype=dtype, device="cuda")
+    max_num_m_blocks = max_num_tokens_padded // block_size
+    expert_ids = torch.empty((max_num_m_blocks,), dtype=dtype, device="cuda")
+    num_tokens_post_pad = torch.empty(1, dtype=dtype, device="cuda")
+
+    topk_ids_vllm = topk_ids.clone()
+    sorted_ids_vllm = sorted_ids.clone()
+    expert_ids_vllm = expert_ids.clone()
+    num_tokens_post_pad_vllm = num_tokens_post_pad.clone()
+
+    flag_gems.moe_align_block_size_triton(
+        topk_ids=topk_ids,
+        num_experts=num_experts,
+        block_size=block_size,
+        sorted_token_ids=sorted_ids,
+        expert_ids=expert_ids,
+        num_tokens_post_pad=num_tokens_post_pad,
+    )
+
+    vllm_ops.moe_align_block_size(
+        topk_ids=topk_ids_vllm,
+        num_experts=num_experts,
+        block_size=block_size,
+        sorted_token_ids=sorted_ids_vllm,
+        experts_ids=expert_ids_vllm,
+        num_tokens_post_pad=num_tokens_post_pad_vllm,
+    )
+
+    torch.cuda.synchronize()
+    gems_assert_close(sorted_ids, sorted_ids_vllm, dtype=dtype)
+    gems_assert_close(expert_ids, expert_ids_vllm, dtype=dtype)
+    gems_assert_close(num_tokens_post_pad, num_tokens_post_pad_vllm, dtype=dtype)
