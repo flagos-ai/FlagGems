@@ -26,6 +26,7 @@ from .accuracy_utils import (
     unsqueeze_tensor,
     unsqueeze_tuple,
 )
+from .conftest import TO_CPU
 
 
 @pytest.mark.abs
