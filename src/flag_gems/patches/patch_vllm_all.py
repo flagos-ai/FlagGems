@@ -286,6 +286,17 @@ def custom_topk_softmax(
     )
 
 
+def custom_apply_repetition_penalties(
+    logits: torch.Tensor,
+    prompt_mask: torch.Tensor,
+    output_mask: torch.Tensor,
+    repetition_penalties: torch.Tensor,
+):
+    return flag_gems.apply_repetition_penalties(
+        logits, prompt_mask, output_mask, repetition_penalties
+    )
+
+
 def custom_get_scheduler_metadata(
     batch_size: int,
     max_seqlen_q: int,
@@ -373,6 +384,13 @@ def apply_gems_patches_to_vllm(verbose=True):
         "_vllm_fa3_C",
         "get_scheduler_metadata",
         custom_get_scheduler_metadata,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib(
+        "_C",
+        "apply_repetition_penalties_",
+        custom_apply_repetition_penalties,
         "CUDA",
         verbose,
     )
