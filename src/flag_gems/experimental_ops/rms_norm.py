@@ -52,7 +52,7 @@ def rmsnorm(
 rmsnorm_kernel = rmsnorm
 
 
-def rmsnorm(input_tensor: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6):
+def rms_norm(input_tensor: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6):
     assert input_tensor.is_cuda and weight.is_cuda, "Tensors must be on CUDA device."
     assert (
         input_tensor.shape[-1] == weight.numel()

@@ -81,7 +81,7 @@ def test_nmsnorm_accuracy(shape, dtype, eps):
 
     # FlagGems computation
     with flag_gems.use_gems():
-        res_out = flag_gems.experimental_ops.rmsnorm(inp, weight=weight, eps=eps)
+        res_out = flag_gems.experimental_ops.rms_norm(inp, weight=weight, eps=eps)
 
     # Move result to CPU for comparison
     res_out_cpu = res_out.cpu()
@@ -101,14 +101,14 @@ def test_nmsnorm_performace(shape, dtype):
 
     # Warmup
     for _ in range(10):
-        _ = flag_gems.experimental_ops.rmsnorm(inp, weight)
+        _ = flag_gems.experimental_ops.rms_norm(inp, weight)
 
     torch.cuda.synchronize()
 
     # Benchmark
     start_time = time.time()
     for _ in range(100):
-        _ = flag_gems.experimental_ops.rmsnorm(inp, weight)
+        _ = flag_gems.experimental_ops.rms_norm(inp, weight)
     torch.cuda.synchronize()
     end_time = time.time()
 
