@@ -9,6 +9,7 @@ import torch
 import triton
 
 import flag_gems
+from flag_gems import fused
 
 try:
     import vllm.vllm_flash_attn.flash_attn_interface as _vllm  # noqa: F401
@@ -1186,7 +1187,7 @@ def test_concat_and_cache_mla(
         else:
             ref_kv_cache = to_reference(ref_temp)
         with flag_gems.use_gems():
-            flag_gems.concat_and_cache_mla(
+            fused.concat_and_cache_mla(
                 kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
             )
 
@@ -1295,7 +1296,7 @@ def test_reshape_and_cache(
         cloned_value_cache = value_cache.clone()
 
         # Call the reshape_and_cache kernel.
-        flag_gems.reshape_and_cache(
+        fused.reshape_and_cache(
             key,
             value,
             key_cache,
@@ -1444,7 +1445,7 @@ def test_reshape_and_cache_flash(
         cloned_value_cache = value_cache.clone()
 
         # Call the reshape_and_cache kernel.
-        flag_gems.reshape_and_cache_flash(
+        fused.reshape_and_cache_flash(
             key,
             value,
             key_cache,
@@ -1580,7 +1581,7 @@ def test_flash_mla(seqlen, dtype):
         dv,
         causal,
     )
-    res_out = flag_gems.flash_mla(
+    res_out = fused.flash_mla(
         q,
         block_table,
         blocked_k,

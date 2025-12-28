@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems import fused
 from flag_gems.ops.copy import _can_use_triton
 
 try:
@@ -348,7 +349,7 @@ def test_accuracy_geglu(shape, dtype):
     ref_out = to_reference(ref_out)
 
     with flag_gems.use_gems():
-        res_out = flag_gems.geglu(input_tensor)
+        res_out = fused.geglu(input_tensor)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -375,7 +376,7 @@ def test_accuracy_dgeglu(shape, dtype):
     ref_out = tex.dgeglu(grad_output, input_tensor, None)
     ref_out = to_reference(ref_out)
     with flag_gems.use_gems():
-        res_out = flag_gems.dgeglu(grad_output, input_tensor)
+        res_out = fused.dgeglu(grad_output, input_tensor)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -1417,7 +1418,7 @@ def test_accuracy_dreglu(shape, dtype):
     ref_out = tex.dreglu(grad_output, input_tensor, None)
     ref_out = to_reference(ref_out)
     with flag_gems.use_gems():
-        res_out = flag_gems.dreglu(grad_output, input_tensor, None)
+        res_out = fused.dreglu(grad_output, input_tensor, None)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -1455,6 +1456,6 @@ def test_accuracy_reglu(shape, dtype):
     ref_out = tex.reglu(input_tensor, None)
     ref_out = to_reference(ref_out)
     with flag_gems.use_gems():
-        res_out = flag_gems.reglu(input_tensor)
+        res_out = fused.reglu(input_tensor)
 
     gems_assert_close(res_out, ref_out, dtype)

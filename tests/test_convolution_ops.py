@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems import ops
 
 from .accuracy_utils import gems_assert_close, to_reference
 
@@ -35,7 +36,7 @@ def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
         ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
     )
 
-    res_out = flag_gems.conv1d(
+    res_out = ops.conv1d(
         inp, weight, bias=None, stride=stride, padding=padding, dilation=1
     )
     gems_assert_close(res_out, ref_out, dtype)
@@ -62,7 +63,7 @@ def test_accuracy_conv1d_padding(shape, kernel, stride, padding, dtype):
         ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
     )
 
-    res_out = flag_gems.conv1d(
+    res_out = ops.conv1d(
         inp, weight, bias=None, stride=stride, padding=padding, dilation=1
     )
     gems_assert_close(res_out, ref_out, dtype)
@@ -131,7 +132,7 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
         dilation=dilation,
     ).to(dtype)
 
-    res_out = flag_gems.conv2d(
+    res_out = ops.conv2d(
         inp,
         weight,
         bias=bias,
@@ -216,7 +217,7 @@ def test_accuracy_conv2d_padding(
         dilation=dilation,
     ).to(dtype)
 
-    res_out = flag_gems.conv2d(
+    res_out = ops.conv2d(
         inp,
         weight,
         bias=bias,
@@ -315,7 +316,7 @@ def test_accuracy_conv3d(shape, kernel, stride, padding, groups, dtype, dilation
         dilation=dilation,
     ).to(dtype)
 
-    res_out = flag_gems.conv3d(
+    res_out = ops.conv3d(
         inp,
         weight,
         bias=bias,

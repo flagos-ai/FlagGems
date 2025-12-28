@@ -6,6 +6,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems import fused, ops
 
 from .accuracy_utils import (
     FLOAT_DTYPES,
@@ -366,7 +367,7 @@ def test_accuracy_instancenorm(
         eps=eps,
     )
 
-    res_out = flag_gems.instance_norm(
+    res_out = fused.instance_norm(
         inp,
         weight=weight,
         bias=bias,
@@ -544,7 +545,7 @@ def test_accuracy_rmsnorm(shape, dtype):
         return weight * hidden_states
 
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
-    res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
+    res_out = ops.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
     res_grad = torch.tensor(
         np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -587,7 +588,7 @@ def test_accuracy_skip_layernorm(shape, dtype):
         bias=ref_bias,
         eps=eps,
     )
-    res_out = flag_gems.skip_layer_norm(
+    res_out = fused.skip_layer_norm(
         inp, residual, list(layer_shape), weight=weight, bias=bias, eps=eps
     )
 
@@ -624,7 +625,7 @@ def test_accuracy_fused_add_rms_norm(shape, dtype):
         eps=eps,
     )
 
-    res_out, res_new_residual = flag_gems.fused_add_rms_norm(
+    res_out, res_new_residual = fused.fused_add_rms_norm(
         inp, residual, list(layer_shape), weight=weight, eps=eps
     )
 
