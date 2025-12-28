@@ -36,6 +36,8 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("remainder_.Tensor", &flag_gems::remainder_);
   m.def("rwkv_mm_sparsity", &flag_gems::rwkv_mm_sparsity);
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
+  m.def("copy_",  &flag_gems::copy_);
+  m.def("to_copy",  &flag_gems::to_copy);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
@@ -123,6 +125,14 @@ TORCH_LIBRARY(flag_gems, m) {
 
   m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
   m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
+  m.def("copy_(Tensor(a!) dst, Tensor src) -> ()");
+  m.def(
+    "to_copy("
+    "Tensor self, "
+    "ScalarType? dtype=None, "
+    "Device? device=None, "
+    "MemoryFormat? memory_format=None"
+    ") -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -195,5 +205,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("flash_attn_varlen_func", TORCH_FN(flash_attn_varlen_func));
   m.impl("rwkv_mm_sparsity", TORCH_FN(rwkv_mm_sparsity));
   m.impl("rwkv_ka_fusion", TORCH_FN(rwkv_ka_fusion));
+  m.impl("to_copy", TORCH_FN(to_copy));
+  m.impl("copy_", TORCH_FN(copy_));
 }
 }  // namespace flag_gems

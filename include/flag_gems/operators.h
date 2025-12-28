@@ -226,4 +226,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &
                                                               int64_t H,
                                                               int64_t N);
 
+at::Tensor to_copy(const at::Tensor& x,
+                   c10::optional<at::ScalarType> dtype = c10::nullopt,
+                   c10::optional<at::Device> device = c10::nullopt,
+                   c10::optional<at::MemoryFormat> memory_format = c10::nullopt);
+
+void copy_(const at::Tensor& dst, const at::Tensor& src);
+
 }  // namespace flag_gems

@@ -1,4 +1,3 @@
-#include "c10/cuda/CUDAFunctions.h"
 #include "flag_gems/operators.h"
 #include "gtest/gtest.h"
 #include "torch/torch.h"
@@ -49,7 +48,7 @@ TEST(CopyTest, CopyInplaceContiguous) {
 TEST(CopyTest, CopyInplaceNonContiguous) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor src = torch::randn({3, 4, 5}, torch::TensorOptions().device(device));
-  torch::Tensor dst = torch::empty_like(src);
+  torch::Tensor dst = torch::empty({5, 4, 3}, torch::TensorOptions().device(device));
   torch::Tensor src_transposed = src.transpose(0, 2);
 
   flag_gems::copy_(dst, src_transposed);
