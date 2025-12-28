@@ -6,6 +6,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems import fused, ops
 
 from .accuracy_utils import (
     FLOAT_DTYPES,
@@ -143,7 +144,7 @@ def test_accuracy_baddbmm(M, N, K, scalar, dtype):
     alpha = beta = scalar
 
     ref_out = torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
-    res_out = flag_gems.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta)
+    res_out = ops.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
@@ -174,7 +175,7 @@ def test_accuracy_baddbmm_backward(M, N, K, scalar, dtype):
     alpha = beta = scalar
 
     ref_out = torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
-    res_out = flag_gems.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta)
+    res_out = ops.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
@@ -303,7 +304,7 @@ def test_accuracy_outer(M, N, dtype):
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.outer(ref_inp1, ref_inp2)
-    res_out = flag_gems.outer(inp1, inp2)
+    res_out = fused.outer(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out)

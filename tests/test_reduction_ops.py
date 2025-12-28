@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems import topk_softmax
+from flag_gems import fused, ops
 
 from .accuracy_utils import (
     CONTIGUOUS_SHAPE_STRIDES_2D,
@@ -179,7 +179,7 @@ def test_accuracy_cross_entropy_loss_indices(
         reduction=reduction,
         label_smoothing=label_smoothing,
     )
-    res_out = flag_gems.cross_entropy_loss(
+    res_out = fused.cross_entropy_loss(
         inp,
         target,
         weight=wgt,
@@ -217,7 +217,7 @@ def test_accuracy_cross_entropy_loss_probabilities(
         reduction=reduction,
         label_smoothing=label_smoothing,
     )
-    res_out = flag_gems.cross_entropy_loss(
+    res_out = fused.cross_entropy_loss(
         inp, target, weight=weight, reduction=reduction, label_smoothing=label_smoothing
     )
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
@@ -1265,7 +1265,7 @@ def test_accuracy_avg_pool2d_forward(
         divisor_override=divisor_override,
     )
 
-    res_out = flag_gems.avg_pool2d(
+    res_out = ops.avg_pool2d(
         inp,
         kernel_size=kernel_size,
         stride=stride,
@@ -1371,7 +1371,7 @@ def test_accuracy_max_pool2d(
         ceil_mode=ceil_mode,
     )
 
-    res_out, res_indices = flag_gems.max_pool2d_with_indices(
+    res_out, res_indices = ops.max_pool2d_with_indices(
         inp,
         kernel_size=kernel_size,
         stride=stride,
@@ -1401,7 +1401,7 @@ def test_accuracy_max_pool2d_backward(
         dilation=dilation,
         ceil_mode=ceil_mode,
     )
-    res_out, res_indices = flag_gems.max_pool2d_with_indices(
+    res_out, res_indices = ops.max_pool2d_with_indices(
         inp,
         kernel_size=kernel_size,
         stride=stride,
@@ -1412,7 +1412,7 @@ def test_accuracy_max_pool2d_backward(
     out_grad = torch.randn_like(res_out, device=flag_gems.device)
     ref_grad = to_reference(out_grad, upcast=True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    res_in_grad = flag_gems.max_pool2d_backward(
+    res_in_grad = ops.max_pool2d_backward(
         out_grad,
         inp,
         res_indices,
@@ -1556,7 +1556,7 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, 
     ref_indices = [to_reference(index) for index in indices]
     ref_values = to_reference(values)
     ref_out = torch.index_put(ref_inp, ref_indices, ref_values, accumulate)
-    out = flag_gems.index_put(inp, indices, values, accumulate)
+    out = ops.index_put(inp, indices, values, accumulate)
     gems_assert_close(out, ref_out, dtype)
 
 
@@ -1600,7 +1600,7 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, d
     ref_indices = [to_reference(index) for index in indices]
     ref_values = to_reference(values, upcast=True)
     ref_out = torch.index_put(ref_inp, ref_indices, ref_values, accumulate)
-    out = flag_gems.index_put(inp, indices, values, accumulate)
+    out = ops.index_put(inp, indices, values, accumulate)
     gems_assert_close(out, ref_out, dtype)
 
 
@@ -1631,7 +1631,7 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
     ref_indices = [to_reference(index) for index in indices]
     ref_values = to_reference(values)
     torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)
-    flag_gems.index_put_(inp, indices, values, accumulate)
+    ops.index_put_(inp, indices, values, accumulate)
     gems_assert_close(inp, ref_inp, dtype)
 
 
@@ -1677,7 +1677,7 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
     ref_indices = [to_reference(index) for index in indices]
     ref_values = to_reference(values, upcast=True)
     torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)
-    flag_gems.index_put_(inp, indices, values, accumulate)
+    ops.index_put_(inp, indices, values, accumulate)
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float16:
         from .accuracy_utils import to_cpu
 
@@ -1700,7 +1700,7 @@ def test_index_put_error_all_none(dtype):
     with pytest.raises(
         ValueError, match="At least one non-None index tensor is required"
     ):
-        flag_gems.index_put(inp, indices, values, accumulate=False)
+        ops.index_put(inp, indices, values, accumulate=False)
 
 
 @pytest.mark.index_put_
@@ -1714,7 +1714,7 @@ def test_index_put__error_all_none(dtype):
     with pytest.raises(
         ValueError, match="At least one non-None index tensor is required"
     ):
-        flag_gems.index_put_(inp, indices, values, accumulate=False)
+        ops.index_put_(inp, indices, values, accumulate=False)
 
 
 @pytest.mark.index
@@ -1736,7 +1736,7 @@ def test_accuracy_index(input_shape, indices_shape, dtype):
     except (IndexError, RuntimeError) as e:
         pytest.skip(f"PyTorch reference failed: {e}")
 
-    out = flag_gems.index(inp, indices)
+    out = ops.index(inp, indices)
     gems_assert_close(out, ref_out, dtype)
 
 
@@ -1761,7 +1761,7 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
     ref_inp = to_reference(inp)
     ref_indices = [None if idx is None else to_reference(idx) for idx in indices]
     ref_out = torch.ops.aten.index(ref_inp, ref_indices)
-    out = flag_gems.index(inp, indices)
+    out = ops.index(inp, indices)
     gems_assert_close(out, ref_out, dtype)
 
 
@@ -1776,7 +1776,7 @@ def test_index_boolean_mask(dtype):
     ref_inp = to_reference(inp)
     ref_indices = [to_reference(mask)]
     ref_out = torch.ops.aten.index(ref_inp, ref_indices)
-    out = flag_gems.index(inp, indices)
+    out = ops.index(inp, indices)
     gems_assert_close(out, ref_out, dtype)
 
 
@@ -1791,7 +1791,7 @@ def test_index_empty_tensor(dtype):
     ref_inp = to_reference(inp)
     ref_indices = [to_reference(idx), None]
     ref_out = torch.ops.aten.index(ref_inp, ref_indices)
-    out = flag_gems.index(inp, indices)
+    out = ops.index(inp, indices)
     gems_assert_close(out, ref_out, dtype)
 
 
@@ -1806,7 +1806,7 @@ def test_index_1d_special_case(dtype):
     ref_inp = to_reference(inp)
     ref_indices = [to_reference(idx)]
     ref_out = torch.ops.aten.index(ref_inp, ref_indices)
-    out = flag_gems.index(inp, indices)
+    out = ops.index(inp, indices)
     gems_assert_close(out, ref_out, dtype)
 
 
@@ -1818,7 +1818,7 @@ def test_index_error_empty_indices(dtype):
     indices = []
 
     with pytest.raises(ValueError, match="at least one index must be provided"):
-        flag_gems.index(inp, indices)
+        ops.index(inp, indices)
 
 
 @pytest.mark.index
@@ -1832,7 +1832,7 @@ def test_index_error_too_many_indices(dtype):
     indices = [idx1, idx2, idx3]  # Too many for 2D tensor
 
     with pytest.raises(IndexError, match="too many indices"):
-        flag_gems.index(inp, indices)
+        ops.index(inp, indices)
 
 
 @pytest.mark.mse_loss
@@ -1913,7 +1913,7 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
         (num_tokens, topk), device=device, dtype=torch.int32
     )
 
-    topk_softmax(topk_weights, topk_indices, token_expert_indices, gating_output)
+    fused.topk_softmax(topk_weights, topk_indices, token_expert_indices, gating_output)
 
     ref_weights, ref_indices, ref_source_rows = topk_softmax_torch_reference(
         gating_output, topk
@@ -1991,7 +1991,7 @@ def test_accuracy_scaled_softmax_forward(
     p_ref = tex.scaled_softmax_forward(s, scale_factor)
     p_ref = to_reference(p_ref)
     with flag_gems.use_gems():
-        p = flag_gems.scaled_softmax_forward(s, scale_factor)
+        p = ops.scaled_softmax_forward(s, scale_factor)
     gems_assert_close(p, p_ref, dtype, equal_nan=True)
 
 
@@ -2023,8 +2023,8 @@ def test_accuracy_scaled_softmax_backward(
 
     p_ref = tex.scaled_softmax_forward(s, scale_factor)
     with flag_gems.use_gems():
-        p = flag_gems.scaled_softmax_forward(s, scale_factor)
-        in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
+        p = ops.scaled_softmax_forward(s, scale_factor)
+        in_grad = ops.scaled_softmax_backward(out_grad, p, scale_factor)
     in_grad_ref = tex.scaled_softmax_backward(out_grad, p_ref, scale_factor)
     in_grad_ref = to_reference(in_grad_ref)
 

@@ -7,6 +7,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems import fused
 
 from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
@@ -977,7 +978,7 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
         torch.nn.functional.gelu(ref_inp1, approximate=approximate), ref_inp2
     )
     with flag_gems.use_gems():
-        res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
+        res_out = fused.gelu_and_mul(inp1, inp2, approximate)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
@@ -1389,7 +1390,7 @@ def test_accuracy_silu_and_mul(shape, dtype):
 
     ref_out = torch.mul(torch.nn.functional.silu(ref_inp1), ref_inp2)
     with flag_gems.use_gems():
-        res_out = flag_gems.silu_and_mul(inp1, inp2)
+        res_out = fused.silu_and_mul(inp1, inp2)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)

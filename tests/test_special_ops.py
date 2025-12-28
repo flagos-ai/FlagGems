@@ -8,6 +8,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems import fused, ops
 
 from .accuracy_utils import (
     ALL_INT_DTYPES,
@@ -208,7 +209,7 @@ def test_apply_rotary_pos_emb(
         position_ids=ref_position_ids if has_pos_id else None,
         rotary_interleaved=rotary_interleaved,
     )
-    q_embed_out, k_embed_out = flag_gems.apply_rotary_pos_emb(
+    q_embed_out, k_embed_out = fused.apply_rotary_pos_emb(
         q=q,
         k=k,
         cos=cos,
@@ -1267,7 +1268,7 @@ def test_accuracy_contiguous(shape, dtype):
 
 def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None):
     if dtype is None:
-        dtype = flag_gems.SUPPORTED_FP8_DTYPE
+        dtype = ops.SUPPORTED_FP8_DTYPE
 
     assert (
         x.shape[-1] % group_size == 0
@@ -1301,7 +1302,7 @@ def test_accuracy_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, se
 
     ref_out, ref_scale = native_per_token_group_quant_fp8(ref_x, group_size)
     with flag_gems.use_gems():
-        out, scale = flag_gems.per_token_group_quant_fp8(x, group_size)
+        out, scale = ops.per_token_group_quant_fp8(x, group_size)
 
     gems_assert_close(scale, ref_scale, dtype=torch.float32)
 
@@ -1323,7 +1324,7 @@ def test_accuracy_rwkv_kafusion(T, dtype):
     ka = torch.rand(C, dtype=dtype, device=flag_gems.device)
 
     with flag_gems.use_gems():
-        o_k, o_kk, o_kka = flag_gems.rwkv_ka_fusion(k, kk, a, ka, H, N)
+        o_k, o_kk, o_kka = fused.rwkv_ka_fusion(k, kk, a, ka, H, N)
 
     ref_k = to_reference(k, True)
     ref_kk = to_reference(kk, True)
@@ -1362,7 +1363,7 @@ def test_accuracy_rwkv_mmsparsity(dtype):
     V_ = torch.randn(n, embedding_dim, dtype=dtype, device=flag_gems.device)
 
     with flag_gems.use_gems():
-        res = flag_gems.rwkv_mm_sparsity(k, V_)
+        res = fused.rwkv_mm_sparsity(k, V_)
 
     ref_k = to_reference(k, True)
     ref_V_ = to_reference(V_, True)
@@ -1387,5 +1388,5 @@ def test_moe_sum(shape, dtype):
     ref_inp1 = to_reference(inp1)
     ref_out = torch.sum(ref_inp1, dim=1)
     with flag_gems.use_gems():
-        flag_gems.moe_sum(inp1, res_out)
+        fused.moe_sum(inp1, res_out)
     gems_assert_close(res_out, ref_out, dtype)
