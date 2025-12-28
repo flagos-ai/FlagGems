@@ -11,9 +11,9 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 div_rn = tl_extra_shim.div_rn
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def silu_forward(x):
+def silu_forward(x, inplace):
     x_fp32 = x.to(tl.float32)
     y = 1.0 / (1.0 + tl.exp(-x_fp32)) * x_fp32
     return y
@@ -31,7 +31,7 @@ def silu_backward_kernel(x, dy):
 
 def silu(self):
     logger.debug("GEMS_CAMBRICON SILU FORWARD")
-    output = silu_forward(self)
+    output = silu_forward(self, False)
     return output
 
 
@@ -43,5 +43,5 @@ def silu_backward(grad_output, self):
 
 def silu_(A):
     logger.debug("GEMS_CAMBRICON SILU_ FORWARD")
-    out = silu_forward(A, out0=A)
+    out = silu_forward(A, True, out0=A)
     return out

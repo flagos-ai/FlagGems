@@ -20,6 +20,7 @@ from flag_gems.ops.attention import (
     flash_attn_varlen_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
+    scaled_dot_product_attention_forward,
 )
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.baddbmm import baddbmm
@@ -75,6 +76,7 @@ from flag_gems.ops.div import (
     remainder_,
     true_divide,
     true_divide_,
+    true_divide_out,
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
@@ -156,6 +158,10 @@ from flag_gems.ops.normal import (
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.pad import constant_pad_nd, pad
+from flag_gems.ops.per_token_group_quant_fp8 import (
+    SUPPORTED_FP8_DTYPE,
+    per_token_group_quant_fp8,
+)
 from flag_gems.ops.polar import polar
 from flag_gems.ops.pow import (
     pow_scalar,
@@ -181,9 +187,11 @@ from flag_gems.ops.repeat_interleave import (
 )
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
-from flag_gems.ops.rms_norm import rms_norm
+from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
+from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
+from flag_gems.ops.scatter_add_ import scatter_add_
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
@@ -446,14 +454,18 @@ __all__ = [
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_forward",
+    "rms_norm_backward",
     "sqrt",
     "sqrt_",
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
+    "scaled_dot_product_attention_forward",
     "scaled_dot_product_attention_backward",
     "ScaleDotProductAttention",
     "scatter",
+    "scatter_add_",
     "scatter_",
     "select_scatter",
     "sigmoid",
@@ -490,6 +502,7 @@ __all__ = [
     "trace",
     "triu",
     "true_divide",
+    "true_divide_out",
     "true_divide_",
     "uniform_",
     "upsample_nearest2d",
@@ -498,6 +511,8 @@ __all__ = [
     "addr",
     "vector_norm",
     "vstack",
+    "per_token_group_quant_fp8",
+    "SUPPORTED_FP8_DTYPE",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",
@@ -507,4 +522,6 @@ __all__ = [
     "zeros",
     "zeros_like",
     "get_scheduler_metadata",
+    "scaled_softmax_forward",
+    "scaled_softmax_backward",
 ]

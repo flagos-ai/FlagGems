@@ -1,7 +1,5 @@
 [English](./README.md)
 
-[<img width="4750" height="958" alt="github+banner__2025-11-11+13_27_10" src="https://github.com/user-attachments/assets/10a072db-bbe1-463c-993e-a9e09f948a12" />](https://www.flagopen.ac.cn/)
-
 
 ## 介绍
 
@@ -46,6 +44,24 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 更新日志
 
+### v4.2（即将发布）
+
+- 计划支持 216 个算子，并与最新的 [Operator List](docs/operator_list.md) 保持一致
+- 计划新增算子：`tan`、`tan_`、`baddbmm`、`avg_pool2d`、`clamp_min`、`clamp_min_`、`std`、`trace`、`max_pool2d`、`bitwise_left_shift`、`bitwise_right_shift`
+- 原有的 `upsample` 算子将拆分为 `upsample_nearest2d` 与 `upsample_bicubic2d_aa`
+
+### v4.1
+
+- 面向 RWKV 模型的定制版本，共计支持 204 个算子
+- 包含针对 RWKV 推理加速场景优化的融合算子：`rwkv_mm_sparsity`、`rwkv_ka_fusion`
+- 已被 RWKV 项目采用，具体见 [BlinkDL/Albatross:faster_251101](https://github.com/BlinkDL/Albatross/tree/main/faster_251101)
+
+### v4.0
+
+- 共计支持 202 个算子
+- 新增通用算子：`addcdiv`、`addcmul`、`addmv`、`addr`、`atan`、`atan_`、`celu`、`celu_`、`elu_`、`exp2`、`exp2_`、`get_scheduler_metadata`、`index_add_`、`logspace`、`moe_align_block_size`、`softplus`、`sqrt_`、`topk_softmax`
+- Triton JIT runtime 新增支持的算子：`add`、`addmm`、`argmax`、`bmm`、`cat`、`contiguous`、`embedding`、`exponential_`、`fill`、`flash_attn_varlen_func`、`fused_add_rms_norm`、`max`、`mm`、`nonzero`、`reshape_and_cache_flash`、`rms_norm`、`rotary_embedding`、`softmax`、`sum`、`topk`、`zeros`
+
 ### v3.0
 
 - 共计支持 184 个算子，包括大模型推理使用的定制算子
@@ -77,6 +93,50 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 参考文档 [开始使用](docs/get_start_with_flaggems.md) 快速安装使用 flag_gems
 
+## 使用方法
+
+FlagGems 支持两种常见的使用模式：对 PyTorch ATen 算子打补丁（推荐）和显式调用 FlagGems 算子。
+
+### (1) 全局启用 FlagGems（对 ATen 算子打补丁）
+
+执行 `flag_gems.enable()` 后，支持的 `torch.*` / `torch.nn.functional.*` 调用将会自动分发（dispatch）到 FlagGems 的实现上。
+
+```python
+import torch
+import flag_gems
+
+flag_gems.enable()
+
+x = torch.randn(4096, 4096, device=flag_gems.device, dtype=torch.float16)
+y = torch.mm(x, x)
+```
+
+如果你只想在某个作用域内（例如用于基准测试）使用 FlagGems，请使用上下文管理器：
+
+```python
+import torch
+import flag_gems
+
+with flag_gems.use_gems():
+    x = torch.randn(4096, 4096, device=flag_gems.device, dtype=torch.float16)
+    y = torch.mm(x, x)
+```
+
+### (2) 显式调用 FlagGems 算子
+你也可以绕过 PyTorch 的分发机制，直接从 flag_gems.ops 中调用算子，此时无需调用 enable()：
+
+```python
+import torch
+from flag_gems import ops
+import flag_gems
+
+a = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
+b = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
+c = ops.mm(a, b)
+```
+若要了解更多详情和高级选项（例如禁用特定算子、运行时日志等），请参阅 [`how_to_use_flaggems`](docs/how_to_use_flaggems.md)。
+
+
 ## 支持算子
 
 算子将按照文档 [OperatorList](docs/operator_list.md) 的顺序逐步实现。
@@ -107,7 +167,7 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 FlagGems 相比 Torch Eager 模式下 ATen 算子库的加速比如下图所示。其中，每个算子的加速比综合了多个形状测例的数据，代表该算子的整体性能。
 
-![算子加速比](./docs/assets/speedup-20250423.png)
+![算子加速比](./docs/assets/speedup-20251225.png)
 
 ## 贡献代码
 

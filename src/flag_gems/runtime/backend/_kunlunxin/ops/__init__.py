@@ -47,6 +47,7 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
+from .copy import copy, copy_
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummax import cummax
@@ -180,10 +181,11 @@ from .stack import stack
 from .std import std
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
-from .to import to_dtype
+from .to import to_copy
 from .topk import topk
 from .trace import trace
 from .triu import triu
@@ -259,6 +261,8 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "copy",
+    "copy_",
     "cos",
     "cos_",
     "count_nonzero",
@@ -449,10 +453,12 @@ __all__ = [
     "tanh",
     "tanh_",
     "tanh_backward",
+    "tan",
+    "tan_",
     "threshold",
     "threshold_backward",
     "tile",
-    "to_dtype",
+    "to_copy",
     "topk",
     "trace",
     "triu",

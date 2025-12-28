@@ -320,11 +320,11 @@ class KernelGenerator:
                         )
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
@@ -379,11 +379,11 @@ class KernelGenerator:
                     code.writeline(f"{stride_args}, # strides for out{i}")
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
@@ -1134,6 +1134,9 @@ class PointwiseDynamicFunction:
             outputs_dtypes_for_allocation.append(dtype)
 
         tensors = out_tensors + in_tensors
+        INT32_MAX = torch.iinfo(torch.int32).max
+        if tensors[0].numel() > INT32_MAX:
+            self.config.prefer_block_pointer = False
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
                 torch.empty_like(tensors[0], dtype=dtype)

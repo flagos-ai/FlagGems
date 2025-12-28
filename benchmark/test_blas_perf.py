@@ -13,7 +13,7 @@ from benchmark.attri_util import (
     model_shapes,
 )
 from benchmark.conftest import Config
-from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly, vendor_name
+from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly
 
 
 class BlasBenchmark(Benchmark):
@@ -184,7 +184,7 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
-    if flag_gems.vendor_name == "mthreads" and op_name != "mm":
+    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
     bench = bench_cls(
@@ -192,7 +192,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     )
     bench.run()
 
-    if flag_gems.vendor_name == "mthreads" and op_name != "mm":
+    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
@@ -304,8 +304,6 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Segmentation fault")
 @pytest.mark.vdot
 def test_vdot_benchmark():
     def vdot_input_fn(m, cur_dtype, device):

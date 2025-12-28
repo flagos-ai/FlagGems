@@ -11,6 +11,7 @@ from benchmark.performance_utils import (
     GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
     GenericBenchmarkExcluse3D,
+    SkipVersion,
     generate_tensor_input,
     vendor_name,
 )
@@ -29,7 +30,10 @@ def topk_input_fn(shape, dtype, device):
 
 def resolve_neg_input_fn(shape, dtype, device):
     x = torch.randn(size=shape, dtype=dtype, device=device)
-    yield x.conj().imag,
+    if vendor_name == "mthreads":
+        yield x.conj(),
+    else:
+        yield x.conj().imag,
 
 
 def resolve_conj_input_fn(shape, dtype, device):
@@ -60,15 +64,13 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
-    if vendor_name == "mthreads" and op_name in ["resolve_neg", "resolve_conj"]:
-        pytest.skip("Torch not supported complex")
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
@@ -92,7 +94,7 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
@@ -108,7 +110,7 @@ def test_perf_unique():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.sort
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
@@ -244,6 +246,10 @@ class LerpBenchmark(GenericBenchmark):
 
 
 @pytest.mark.lerp
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
+    reason="The half dtype is only supported on torch >= 2.5.",
+)
 def test_perf_lerp():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
@@ -255,6 +261,10 @@ def test_perf_lerp():
 
 
 @pytest.mark.lerp_
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
+    reason="The half dtype is only supported on torch >= 2.5.",
+)
 def test_perf_lerp_inplace():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
@@ -389,8 +399,10 @@ def test_perf_diagonal_backward():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
+    reason="only support torch >= 2.5.",
+)
 @pytest.mark.kron
 def test_perf_kron():
     class KronBenchmark(GenericBenchmark2DOnly):
@@ -513,5 +525,108 @@ def test_perf_rwkv_ka_fusion():
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
+    bench.set_gems(gems_op)
+    bench.run()
+
+
+@pytest.mark.moe_sum
+def test_perf_moe_sum():
+    def moe_sum_input_fn(shape, dtype, device):
+        shape = (shape[0], 1, shape[1]) if len(shape) == 2 else shape
+        num_tokens, topk, hidden_size = shape
+        input_tensor = torch.randn(
+            num_tokens,
+            topk,
+            hidden_size,
+            dtype=dtype,
+            device=device,
+            requires_grad=False,
+        )
+
+        output_tensor = torch.empty(
+            num_tokens, hidden_size, dtype=dtype, device=device, requires_grad=False
+        )
+        yield input_tensor, output_tensor
+
+    def torch_op(input_tensor, output_tensor):
+        output_tensor.copy_(input_tensor.sum(dim=1))
+
+    gems_op = flag_gems.moe_sum
+
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=moe_sum_input_fn,
+        op_name="moe_sum",
+        torch_op=torch_op,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(gems_op)
+    bench.run()
+
+
+try:
+    import os
+
+    os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
+    import vllm._custom_ops as vllm_ops
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
+def test_perf_moe_align_block_size():
+    def moe_align_block_size_input_fn(shape, dtype, device):
+        # ------------ parameters ------------
+        num_experts = shape[0]
+        block_size = shape[1]
+        dtype = torch.int32
+        topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device=device)
+        max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+
+        # padded_num_experts in vllm._custom_ops.moe_align_block_size
+        # must be less than 1024
+        if max_num_tokens_padded >= 1024:
+            return
+
+        sorted_ids = torch.empty((max_num_tokens_padded,), dtype=dtype, device=device)
+        max_num_m_blocks = max_num_tokens_padded // block_size
+        expert_ids = torch.empty((max_num_m_blocks,), dtype=dtype, device=device)
+        num_tokens_post_pad = torch.empty(1, dtype=dtype, device=device)
+
+        yield (
+            topk_ids,
+            num_experts,
+            block_size,
+            sorted_ids,
+            expert_ids,
+            num_tokens_post_pad,
+        )
+
+    class MoeAlignBlockSizeBenchmark(GenericBenchmark2DOnly):
+        def set_more_shapes(self):
+            return [
+                (16, 8),
+                (16, 16),
+                (16, 32),
+                (32, 8),
+                (32, 16),
+                (32, 32),
+                (64, 8),
+                (64, 16),
+                (128, 8),
+            ]
+
+    gems_op = flag_gems.moe_align_block_size_triton
+    bench = MoeAlignBlockSizeBenchmark(
+        op_name="moe_align_block_size_triton",
+        input_fn=moe_align_block_size_input_fn,
+        torch_op=vllm_ops.moe_align_block_size,
+        dtypes=[
+            torch.int32,
+        ],
+    )
+
     bench.set_gems(gems_op)
     bench.run()

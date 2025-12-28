@@ -11,8 +11,9 @@ from benchmark.attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from benchmark.performance_utils import Benchmark, generate_tensor_input
+from benchmark.performance_utils import Benchmark, SkipVersion, generate_tensor_input
 
+vendor_name = flag_gems.vendor_name
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
@@ -91,12 +92,18 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["celu"] and SkipVersion("torch", "<2.5"):
+            pytest.skip(
+                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
+            )
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
 
 forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
+    # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
@@ -135,6 +142,11 @@ forward_inplace_operations = [
     ],
 )
 def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["celu_"] and SkipVersion("torch", "<2.5"):
+            pytest.skip(
+                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
+            )
     bench = UnaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
     )
@@ -195,6 +207,10 @@ class CopyInplaceBenchmark(Benchmark):
 
 
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_perf():
     bench = CopyInplaceBenchmark(
         op_name="copy_",
@@ -266,8 +282,8 @@ class BinaryPointwiseBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp1 = generate_tensor_input(shape, cur_dtype, self.device)
-            shift_amount = torch.randint(
-                0, 8, shape, dtype=cur_dtype, device=self.device
+            shift_amount = torch.randint(0, 8, shape, dtype=cur_dtype, device="cpu").to(
+                self.device
             )
             yield inp1, shift_amount
 

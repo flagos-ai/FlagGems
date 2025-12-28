@@ -14,6 +14,7 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
+      - '!src/flag_gems/experimental_ops/**'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -27,6 +28,7 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
+      - '!src/flag_gems/experimental_ops/**'
 
 jobs:
   build-C-extension:
