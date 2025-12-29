@@ -54,7 +54,7 @@ def calculate_indices(batch_idx, shape_a, shape_b):
     for dim_size in out_batch_dims[::-1]:
         out_indices.insert(0, remaining % dim_size)
         remaining //= dim_size
-    
+
     a_idx = b_idx = 0
     for out_idx, (a_dim, b_dim) in zip(out_indices, zip(a_batch_dims, b_batch_dims)):
         a_idx = a_idx * a_dim + (out_idx // b_dim)
@@ -65,7 +65,7 @@ def calculate_indices(batch_idx, shape_a, shape_b):
 
 @triton.autotune(configs=runtime.get_tuned_config("kron"), key=["M", "N"])
 @triton.jit
-def kron_kernel_1(
+def kron_kernel_for_batch_size_1(
     a_ptr,
     b_ptr,
     c_ptr,
@@ -85,14 +85,11 @@ def kron_kernel_1(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    #tl.static_print(BLOCK_M)
-    #tl.static_print(BLOCK_N)
     pid = tle.program_id(0)
     num_blocks_n = tl.cdiv(N, BLOCK_N)
     num_blocks_m = tl.cdiv(M, BLOCK_M)
     num_blocks_per_batch = num_blocks_m * num_blocks_n
 
-    #batch_id = pid // num_blocks_per_batch
     local_pid = pid % num_blocks_per_batch
     block_m = local_pid // num_blocks_n
     block_n = local_pid % num_blocks_n
@@ -101,11 +98,6 @@ def kron_kernel_1(
     offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
     mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-
-    #offset = batch_id * 2
-    #is_valid = batch_id < batch_size
-    #a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
-    #b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
 
     a_row = offs_m[:, None] // M2
     a_col = offs_n[None, :] // N2
@@ -119,10 +111,7 @@ def kron_kernel_1(
     b = tl.load(b_ptr + b_idx, mask=mask)
     c = a * b
 
-    c_idx = (
-        offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
+    c_idx = offs_m[:, None] * c_stride_0 + offs_n[None, :] * c_stride_1
     tl.store(c_ptr + c_idx, c, mask=mask)
 
 
@@ -191,6 +180,7 @@ def kron_kernel(
     )
     tl.store(c_ptr + c_idx, c, mask=mask)
 
+
 @triton.jit
 def calculate_batch_indices_kernel(
     batch_indices_ptr,
@@ -203,7 +193,7 @@ def calculate_batch_indices_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
-    
+
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
     out_indice1 = offset % out_batch1
@@ -213,11 +203,12 @@ def calculate_batch_indices_kernel(
     a_idx = a_idx * a_batch1 + (out_indice1 // b_batch1)
     b_idx = out_indice0 % b_batch0
     b_idx = b_idx * b_batch1 + (out_indice1 % b_batch1)
-    
+
     a_store_offset = 2 * offset
     b_store_offset = 2 * offset + 1
     tl.store(batch_indices_ptr + a_store_offset, a_idx)
     tl.store(batch_indices_ptr + b_store_offset, b_idx)
+
 
 def kron(A, B):
     logger.debug("GEMS KRON")
@@ -238,8 +229,6 @@ def kron(A, B):
     M1, N1 = A_prepared.shape[-2:]
     M2, N2 = B_prepared.shape[-2:]
     M, N = M1 * M2, N1 * N2
-    #print("A_prepared.shape", A_prepared.shape)
-    #print("B_prepared.shape", B_prepared.shape)
     batch_size = math.prod(out_shape[:-2]) if out_shape[:-2] else 1
 
     output_dtype = torch.promote_types(A.dtype, B.dtype)
@@ -255,15 +244,15 @@ def kron(A, B):
         B_view = B_view.contiguous()
     a_batch_stride = M1 * N1
     b_batch_stride = M2 * N2
-    c_batch_stride = M * N      
+    c_batch_stride = M * N
     if A_prepared.dim() == 4 and B_prepared.dim() == 4:
         batch_indices = torch.empty(batch_size * 2, device=A.device, dtype=torch.int64)
-        a_batch0, a_batch1= A_prepared.shape[:-2]
+        a_batch0, a_batch1 = A_prepared.shape[:-2]
         b_batch0, b_batch1 = B_prepared.shape[:-2]
         out_batch0 = a_batch0 * b_batch0
         out_batch1 = a_batch1 * b_batch1
         indice_tile_size = 256
-        grid_for_indice = (triton.cdiv(batch_size,indice_tile_size),)
+        grid_for_indice = (triton.cdiv(batch_size, indice_tile_size),)
         with torch_device_fn.device(A.device):
             calculate_batch_indices_kernel[grid_for_indice](
                 batch_indices,
@@ -274,7 +263,7 @@ def kron(A, B):
                 out_batch0,
                 out_batch1,
                 BLOCK_SIZE=indice_tile_size,
-            )           
+            )
             grid = lambda meta: (
                 batch_size
                 * triton.cdiv(M, meta["BLOCK_M"])
@@ -303,10 +292,12 @@ def kron(A, B):
                 b_batch_stride,
                 c_batch_stride,
             )
-        
+
     else:
-        if batch_size != 1: 
-            batch_indices = torch.empty(batch_size * 2, device=A.device, dtype=torch.int64)
+        if batch_size != 1:
+            batch_indices = torch.empty(
+                batch_size * 2, device=A.device, dtype=torch.int64
+            )
             for i in range(batch_size):
                 a_idx, b_idx = calculate_indices(i, A_prepared.shape, B_prepared.shape)
                 batch_indices[i * 2] = a_idx
@@ -346,7 +337,7 @@ def kron(A, B):
                     * triton.cdiv(M, meta["BLOCK_M"])
                     * triton.cdiv(N, meta["BLOCK_N"]),
                 )
-                kron_kernel_1[grid](
+                kron_kernel_for_batch_size_1[grid](
                     A_view,
                     B_view,
                     C_reshaped,
