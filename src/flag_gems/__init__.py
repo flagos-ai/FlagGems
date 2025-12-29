@@ -54,6 +54,7 @@ def enable(
             ("_weight_norm_interface_backward", weight_norm_interface_backward),
             ("moe_sum", moe_sum),
             ("abs", abs),
+            ("acos", acos),
             ("abs_", abs_),
             ("add.Tensor", add),
             ("add_.Tensor", add_),
