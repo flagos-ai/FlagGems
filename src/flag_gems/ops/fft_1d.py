@@ -31,21 +31,21 @@ def bit_reverse_kernel(real_in, imag_in, real_out, imag_out, n):
 
 @triton.jit
 def fft_stage_kernel(real_ptr, imag_ptr, n, stage):
-    """迭代 FFT 阶段"""
+    """iterate the FFT stage"""
     PI = math.pi
     tid = tl.program_id(0)
 
     if tid >= n // 2:
         return
 
-    # 计算当前阶段的参数
+    # compute current parameter
     half_block = 1 << (stage - 1)  # 2^stage
 
-    # 每个线程处理一个蝶形对
-    butterfly_group = tid // half_block  # 属于第几个大块
-    pos_in_group = tid % half_block  # 在块前半部分的位置
+    # Each thread processes one butterfly pair
+    butterfly_group = tid // half_block
+    pos_in_group = tid % half_block
 
-    # 计算蝶形对中两个元素的索引
+    # compute the index of two elements in butterfly pair
     first_idx = butterfly_group << stage + pos_in_group
     second_idx = first_idx + half_block
 
@@ -58,16 +58,15 @@ def fft_stage_kernel(real_ptr, imag_ptr, n, stage):
     b_real = tl.load(real_ptr + second_idx)
     b_imag = tl.load(imag_ptr + second_idx)
 
-    # 计算复数幅度
+    # calculate complex amplitude
     angle = PI * pos_in_group / half_block
     w_real = tl.cos(-angle)
     w_imag = tl.sin(-angle)
 
-    # 使用幅度
     tw_real = b_real * w_real - b_imag * w_imag
     tw_imag = b_real * w_imag + b_imag * w_real
 
-    # 蝶形运算
+    # butterfly
     result_a_real = a_real + tw_real
     result_a_imag = a_imag + tw_imag
     result_b_real = a_real - tw_real
@@ -82,12 +81,12 @@ def fft_stage_kernel(real_ptr, imag_ptr, n, stage):
 
 def fft_1d(x: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
     N = x.shape[0]
-    assert N > 0 and (N & (N - 1)) == 0  # 确保N是2的整数幂
+    # make sure N is an integer power of 2
+    assert N > 0 and (N & (N - 1)) == 0
 
     x_real = x.real.clone()
     x_imag = x.imag.clone()
 
-    # 位逆序
     temp_real = torch.zeros_like(x_real)
     temp_imag = torch.zeros_like(x_imag)
     bit_reverse_kernel[(N,)](x_real, x_imag, temp_real, temp_imag, N)
