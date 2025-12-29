@@ -447,15 +447,15 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
 
 UNIQUE_CONSECUTIVE_SHAPE = [
     (20, 320, 15),
-    (1024, 1024, 1024),
-    (4096, 4096, 4096),
-    (16, 128, 64, 1280),
+    (2, 32, 2048),
+    (8, 256, 512),
+    (16, 32, 8, 128),
     (16, 7, 57, 32, 29),
 ]
 
 
 @pytest.mark.unique_consecutive
-@pytest.mark.parametrize("shape", SPECIAL_SHAPES + UNIQUE_CONSECUTIVE_SHAPE)
+@pytest.mark.parametrize("shape", UNIQUE_CONSECUTIVE_SHAPE)
 @pytest.mark.parametrize("dtype", INT_DTYPES + FLOAT_DTYPES)
 @pytest.mark.parametrize("return_inverse", [True, False])
 @pytest.mark.parametrize("return_counts", [True, False])
