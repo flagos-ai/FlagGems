@@ -92,7 +92,6 @@ def test_nmsnorm_accuracy(shape, dtype, eps):
 @pytest.mark.parametrize("shape", NMSNORM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_nmsnorm_performace(shape, dtype):
-    flag_gems.enable(experimental_ops=["rms_norm"])
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 

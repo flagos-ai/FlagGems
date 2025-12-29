@@ -94,5 +94,4 @@ def rms_norm(
         BLOCK_SIZE=BLOCK_SIZE,
         num_warps=num_warps,
     )
-
     return out
