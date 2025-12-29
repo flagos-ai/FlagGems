@@ -50,7 +50,7 @@ def pair_uniform_to_normal_fast(u1, u2):
     u1 = tl.maximum(1.0e-7, u1)
     theta = 6.283185307179586 * u2
     r = tl.sqrt(-2.0 * tl.log(u1))
-    sin_t, cos_t = high_precision_fast_sin_cos(theta)  # 注意顺序
+    sin_t, cos_t = high_precision_fast_sin_cos(theta)
     return r * cos_t, r * sin_t
 
 
