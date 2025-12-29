@@ -34,14 +34,14 @@ jobs:
 
   experimental-noop:
     needs: detect-changes
-    if: needs.detect-changes.outputs.skip_ci == 'true'
+    if: needs.detect-changes.outputs.run_ci != 'true'
     runs-on: ubuntu-latest
     steps:
       - run: echo "Skipping CI experimental_ops only"
 
   op-test-on-metax:
     needs: detect-changes
-    if: needs.detect-changes.outputs.skip_ci != 'true'
+    if: needs.detect-changes.outputs.run_ci == 'true'
     runs-on: metax
     concurrency:
       group: op-test-on-metax-${{ github.event.pull_request.number || github.ref }}
