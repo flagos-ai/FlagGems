@@ -17,7 +17,7 @@ jobs:
         id: filter
         with:
           filters: |
-            skip_ci:
-              - 'src/flag_gems/experimental_ops/**'
+            # skip_ci:
+            #   - 'src/flag_gems/experimental_ops/**'
             run_ci:
               - '!src/flag_gems/experimental_ops/**'
