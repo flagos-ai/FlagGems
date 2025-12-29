@@ -21,6 +21,8 @@ pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
 ```shell
 git clone https://github.com/FlagOpen/FlagGems.git
 cd FlagGems
+# If you want to use the native Triton instead of FlagTree, please skip this step.
+pip install -r requirements_nvidia.txt
 pip install --no-build-isolation .
 # or editble install
 pip install --no-build-isolation -e .
