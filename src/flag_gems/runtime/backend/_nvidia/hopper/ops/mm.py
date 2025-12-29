@@ -185,6 +185,105 @@ def mm_kernel_general(
         tl.store(offsets, acc, mask=mask)
 
 
+def matmul_tma_set_block_size_hook(nargs):
+    BLOCK_M = nargs["BLOCK_M"]
+    BLOCK_N = nargs["BLOCK_N"]
+    BLOCK_K = nargs["BLOCK_K"]
+    if nargs["A_ROW_MAJOR"]:
+        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
+    else:
+        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
+
+    if nargs["B_ROW_MAJOR"]:
+        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
+    else:
+        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
+
+    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
+
+
+def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
+    return [
+        triton.Config(
+            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+            num_stages=s,
+            num_warps=w,
+            pre_hook=pre_hook,
+        )
+        for BM in [32, 64, 128, 256]
+        for BN in [32, 64, 128]
+        for BK in [32, 64, 128]
+        for s in [2, 3, 4]
+        for w in [4, 8]
+    ]
+
+
+@libentry()
+@libtuner(
+    configs=matmul_get_configs(),
+    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=5,
+)
+@triton.jit
+def mm_kernel_general_host_tma(
+    a_desc,
+    b_desc,
+    c_desc,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    A_ROW_MAJOR: tl.constexpr,
+    B_ROW_MAJOR: tl.constexpr,
+    dtype: tl.constexpr,
+    enable_warp_specialization=True,
+):
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // (group_size)
+
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    offset_am = (pid_m * BLOCK_M).to(tl.int32)
+    offset_bn = (pid_n * BLOCK_N).to(tl.int32)
+    iters = tl.cdiv(K, BLOCK_K)
+    for k in range(iters):
+        offset_ak = (k * BLOCK_K).to(tl.int32)
+
+        if A_ROW_MAJOR:
+            a = a_desc.load([offset_am, offset_ak])
+        else:
+            a_t = a_desc.load([offset_ak, offset_am])
+            a = tl.trans(a_t)
+
+        if B_ROW_MAJOR:
+            b = b_desc.load([offset_ak, offset_bn])
+        else:
+            b_t = b_desc.load([offset_bn, offset_ak])
+            b = tl.trans(b_t)
+
+        accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+
+    c = accumulator.to(c_desc.dtype)
+    c_desc.store([offset_am, offset_bn], c)
+
+
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
 
 
@@ -215,28 +314,74 @@ def general_mm(a, b, c, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
+    if (
+        (a.dtype == torch.float16 or a.dtype == torch.bfloat16)
+        and (b.dtype == torch.float16 or b.dtype == torch.bfloat16)
+        and N % 8 == 0
+        and K % 8 == 0
+        and triton.__version__ >= "3.5"
+    ):
+        a_row_major = a.stride(1) == 1
+        b_row_major = b.stride(1) == 1
+        dummy_block = [1, 1]
+        # triton 3.5.0
+        from triton.tools.tensor_descriptor import TensorDescriptor
 
-    def alloc_fn(size: int, align: int, stream: Optional[int]):
-        return torch.empty(size, dtype=torch.int8, device=a.device)
+        if a_row_major:
+            a_desc = TensorDescriptor(a, a.shape, a.stride(), dummy_block)
+        else:
+            a_desc = TensorDescriptor(a, a.T.shape, a.T.stride(), dummy_block)
+        if b_row_major:
+            b_desc = TensorDescriptor(b, b.shape, b.stride(), dummy_block)
+        else:
+            b_desc = TensorDescriptor(b, b.T.shape, b.T.stride(), dummy_block)
+        c_desc = TensorDescriptor(c, c.shape, c.stride(), dummy_block)
 
-    triton.set_allocator(alloc_fn)
+        input_dtype = a.dtype
+        dtype_str = str(input_dtype).split(".")[-1]
 
-    with torch_device_fn.device(a.device):
-        mm_kernel_general[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            GROUP_M=8,
-        )
+        with torch_device_fn.device(a.device):
+            mm_kernel_general_host_tma[grid](
+                a_desc,
+                b_desc,
+                c_desc,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                GROUP_M=8,
+                A_ROW_MAJOR=a_row_major,
+                B_ROW_MAJOR=b_row_major,
+                dtype=dtype_str,
+            )
+    else:
+
+        def alloc_fn(size: int, align: int, stream: Optional[int]):
+            return torch.empty(size, dtype=torch.int8, device=a.device)
+
+        triton.set_allocator(alloc_fn)
+
+        with torch_device_fn.device(a.device):
+            mm_kernel_general[grid](
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                GROUP_M=8,
+            )
     return c
 
 
