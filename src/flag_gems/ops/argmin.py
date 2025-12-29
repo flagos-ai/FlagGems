@@ -100,15 +100,15 @@ def argmin_kernel_opt_k1(
 
 @triton.autotune(
     configs=[
-        # 针对N=512, K=512的优化配置
+        # for N=512, K=512
         triton.Config(
             {"BLOCK_M": 4, "BLOCK_N": 512, "BLOCK_K": 32}, num_stages=3, num_warps=4
         ),
-        # 针对N=1024, K=1024的优化配置
+        # for N=1024, K=1024
         triton.Config(
             {"BLOCK_M": 8, "BLOCK_N": 64, "BLOCK_K": 64}, num_stages=4, num_warps=8
         ),
-        # 通用配置
+        # general config
         triton.Config(
             {"BLOCK_M": 8, "BLOCK_N": 128, "BLOCK_K": 32}, num_stages=3, num_warps=4
         ),
@@ -126,48 +126,38 @@ def argmin_kernel_opt_k1(
 )
 @triton.jit
 def argmin_split_K_kernel_merged(
-    inp,  # 输入指针：(M, N, K)
-    out_index,  # 输出指针：(M, 1, K)
-    M: tl.constexpr,  # M维度大小
-    N: tl.constexpr,  # N维度大小（reduce dim）
-    K: tl.constexpr,  # K维度大小
-    dtype: tl.constexpr,  # 数据类型（float16/bfloat16/float32）
-    BLOCK_M: tl.constexpr,  # M维度块大小
-    BLOCK_N: tl.constexpr,  # N维度块大小
-    BLOCK_K: tl.constexpr,  # K维度块大小
+    inp,
+    out_index,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    dtype: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
 ):
-    # 1. 全局线程块ID：处理M和K维度的块索引
-    pid_m = tle.program_id(0)  # M维度块索引
-    pid_k = tle.program_id(1)  # K维度块索引
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
 
-    # 2. 线程块内索引：每个线程处理1个(M,K)位置
     m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]  # (BLOCK_M, 1)
     k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)[None, :]  # (1, BLOCK_K)
 
-    # 边界检查
     m_mask = m < M
     k_mask = k < K
     mk_mask = m_mask & k_mask
 
-    # 3. 数据类型处理：仅bfloat16提升至float32避免精度损失
     compute_dtype = tl.float32 if dtype == tl.bfloat16 else dtype
     max_val = get_dtype_max(compute_dtype)
 
-    # 4. 初始化全局最小值和索引（寄存器存储）
     global_min = tl.full((BLOCK_M, BLOCK_K), max_val, dtype=compute_dtype)
     global_argmin = tl.full((BLOCK_M, BLOCK_K), 0, dtype=tl.int64)
 
-    # 5. N维度分块处理（适应不同的N和BLOCK_N）
     for start_n in range(0, N, BLOCK_N):
-        # 当前N块的索引
         n = start_n + tl.arange(0, BLOCK_N)
         n_mask = n < N
 
-        # 计算内存偏移：确保连续访问（M×N×K + n×K + k）
-        # 偏移 = m*N*K + n*K + k
         offset = m * N * K + n[:, None, None] * K + k[None, :, :]
 
-        # 加载数据，使用边界掩码
         inp_vals = tl.load(
             inp + offset,
             mask=(m_mask & n_mask[:, None, None] & k_mask[None, :, :]),
@@ -175,19 +165,15 @@ def argmin_split_K_kernel_merged(
         )
         inp_vals = inp_vals.to(compute_dtype)
 
-        # 6. 局部min/argmin计算（沿N维度，dim=0）
         local_min, local_argmin = tl.min(
             inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
         )
-        # 转换为全局N索引（局部索引+块起始偏移）
         local_argmin += start_n
 
-        # 7. 高效更新全局结果（向量指令，无分支开销）
         mask = local_min < global_min
         global_min = tl.where(mask, local_min, global_min)
         global_argmin = tl.where(mask, local_argmin, global_argmin)
 
-    # 8. 存储结果，使用边界掩码
     out_offset = m * K + k  # (BLOCK_M, BLOCK_K)
     tl.store(out_index + out_offset, global_argmin, mask=mk_mask)
 
