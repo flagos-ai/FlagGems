@@ -3,7 +3,7 @@ name: Detect Experimental-Only Changes
 on:
   workflow_call:
     outputs:
-      skip_ci:
+      run_ci:
         description: "True if PR only modifies experimental_ops"
         value: ${{ jobs.detect.outputs.run_ci }}
 
@@ -11,7 +11,7 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     outputs:
-      skip_ci: ${{ steps.filter.outputs.run_ci }}
+      run_ci: ${{ steps.filter.outputs.run_ci }}
     steps:
       - uses: dorny/paths-filter@v3
         id: filter
