@@ -205,12 +205,11 @@ def matmul_tma_set_block_size_hook(nargs):
 def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     return [
         triton.Config(
-            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK, "GROUP_M": GM},
+            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
             num_stages=s,
             num_warps=w,
             pre_hook=pre_hook,
         )
-        for GM in [8]
         for BM in [32, 64, 128, 256]
         for BN in [32, 64, 128]
         for BK in [32, 64, 128]
@@ -247,7 +246,6 @@ def mm_kernel_general_host_tma(
     GROUP_M: tl.constexpr,
     A_ROW_MAJOR: tl.constexpr,
     B_ROW_MAJOR: tl.constexpr,
-    C_ROW_MAJOR: tl.constexpr,
     dtype: tl.constexpr,
     enable_warp_specialization=True,
 ):
@@ -321,10 +319,10 @@ def general_mm(a, b, c, M, N, K):
         and (b.dtype == torch.float16 or b.dtype == torch.bfloat16)
         and N % 8 == 0
         and K % 8 == 0
+        and triton.__version__ >= "3.5"
     ):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
-        c_row_major = c.stride(1) == 1
         dummy_block = [1, 1]
         # triton 3.5.0
         from triton.tools.tensor_descriptor import TensorDescriptor
@@ -356,9 +354,9 @@ def general_mm(a, b, c, M, N, K):
                 b.stride(1),
                 c.stride(0),
                 c.stride(1),
+                GROUP_M=8,
                 A_ROW_MAJOR=a_row_major,
                 B_ROW_MAJOR=b_row_major,
-                C_ROW_MAJOR=c_row_major,
                 dtype=dtype_str,
             )
     else:
