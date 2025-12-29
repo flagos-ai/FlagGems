@@ -6,6 +6,7 @@ import torch
 import triton
 from triton.runtime.jit import JITFunction
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
@@ -21,7 +22,7 @@ from flag_gems.utils.shape_utils import (
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
-from flag_gems.runtime import torch_device_fn
+
 
 # ------------------ Operation Description ---------------------------
 def _type_name(type) -> str:
@@ -823,7 +824,9 @@ class WrapperGenerator:
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
 
-            capability = torch_device_fn.get_device_capability(torch_device_fn.current_device())
+            capability = torch_device_fn.get_device_capability(
+                torch_device_fn.current_device()
+            )
             if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
                 code.writeline("tile_sizes = tuple([64])")
             else:
@@ -861,7 +864,9 @@ class WrapperGenerator:
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
 
-            capability = torch_device_fn.get_device_capability(torch_device_fn.current_device())
+            capability = torch_device_fn.get_device_capability(
+                torch_device_fn.current_device()
+            )
             if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
                 code.writeline("tile_sizes = tuple([64])")
             else:
