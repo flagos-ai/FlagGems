@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
@@ -23,21 +22,19 @@ def safe_fast_log(x):
     # Construct FP32 constants matching x's dtype
     min_normal = x * 0.0 + 1.17549435e-38
     max_u = x * 0.0 + 0.99999994
-    neg_small = x * 0.0 - 1e-30
 
     x = tl.minimum(tl.maximum(x, min_normal), max_u)
 
     bits = x.to(tl.int32, bitcast=True)
     exponent = (bits >> 23) - 127
-    mantissa = (bits & 0x7fffff).to(tl.float32) * (1.0 / (1 << 23)) + 1.0
+    mantissa = (bits & 0x7FFFFF).to(tl.float32) * (1.0 / (1 << 23)) + 1.0
 
     m1 = mantissa - 1.0
     log_m = m1 * (1.0 + m1 * (-0.5 + m1 * (0.3333333333 - m1 * 0.25)))
     log_val = log_m + exponent.to(tl.float32) * 0.6931471805599453
 
-    log_val = tl.minimum(log_val, neg_small)
     return log_val
-    
+
 
 # ===== Unified transform function inside kernel =====
 @triton.jit
@@ -54,16 +51,16 @@ def transform_exponential_dispatch(u, inv_lambd, eps, USE_FAST_MATH: tl.constexp
 # ===== Kernel with constexpr switch =====
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK': 128}, num_warps=4),
-        triton.Config({'BLOCK': 256}, num_warps=4),
-        triton.Config({'BLOCK': 512}, num_warps=4),
-        triton.Config({'BLOCK': 1024}, num_warps=8),
-        triton.Config({'BLOCK': 1024}, num_warps=16),
-        triton.Config({'BLOCK': 2048}, num_warps=16),
-        triton.Config({'BLOCK': 4096}, num_warps=16),
-        triton.Config({'BLOCK': 8192}, num_warps=32),
+        triton.Config({"BLOCK": 128}, num_warps=4),
+        triton.Config({"BLOCK": 256}, num_warps=4),
+        triton.Config({"BLOCK": 512}, num_warps=4),
+        triton.Config({"BLOCK": 1024}, num_warps=8),
+        triton.Config({"BLOCK": 1024}, num_warps=16),
+        triton.Config({"BLOCK": 2048}, num_warps=16),
+        triton.Config({"BLOCK": 4096}, num_warps=16),
+        triton.Config({"BLOCK": 8192}, num_warps=32),
     ],
-    key=['N', 'is_double', 'USE_FAST_MATH'],
+    key=["N", "is_double", "USE_FAST_MATH"],
 )
 @triton.jit
 def fused_exponential_kernel_switch(
@@ -138,7 +135,7 @@ def exponential_(
     lambd: float = 1.0,
     *,
     generator=None,
-    use_fast_math: bool = True,  # <-- 新增参数
+    use_fast_math: bool = True,  # <-- add new parameter
 ):
     logger.debug(f"GEMS EXPONENTIAL_ (use_fast_math={use_fast_math})")
     dtype = x.dtype
@@ -172,7 +169,7 @@ def exponential_(
             eps,
             philox_seed,
             philox_offset,
-            USE_FAST_MATH=use_fast_math,  # <-- 传入 constexpr
+            USE_FAST_MATH=use_fast_math,  # <-- new parameter
         )
 
     if not inplace:
