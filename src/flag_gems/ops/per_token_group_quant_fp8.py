@@ -21,6 +21,7 @@ def _per_token_group_quant_fp8(
     eps,
     fp8_min,
     fp8_max,
+    scale_ue8m0,
     BLOCK: tl.constexpr,
 ):
     groups_per_row = y_num_columns // group_size
@@ -39,6 +40,10 @@ def _per_token_group_quant_fp8(
     y = tl.load(y_ptr + cols, mask=mask, other=0.0).to(tl.float32)
     _absmax = tl.maximum(tl.max(tl.abs(y)), eps)
     y_s = _absmax / fp8_max
+
+    if scale_ue8m0:
+        y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
+
     y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
 
     tl.store(y_q_ptr + cols, y_q, mask=mask)
@@ -57,6 +62,7 @@ def _per_token_group_quant_fp8_colmajor(
     eps,
     fp8_min,
     fp8_max,
+    scale_ue8m0,
     BLOCK: tl.constexpr,
 ):
     groups_per_row = y_num_columns // group_size
@@ -75,6 +81,10 @@ def _per_token_group_quant_fp8_colmajor(
     y = tl.load(y_ptr + cols, mask=mask, other=0.0).to(tl.float32)
     _absmax = tl.maximum(tl.max(tl.abs(y)), eps)
     y_s = _absmax / fp8_max
+
+    if scale_ue8m0:
+        y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
+
     y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
 
     tl.store(y_q_ptr + cols, y_q, mask=mask)
@@ -87,6 +97,7 @@ def per_token_group_quant_fp8(
     eps: float = 1e-10,
     dtype: Optional[torch.dtype] = None,
     column_major_scales: bool = False,
+    scale_ue8m0: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     # dtype: The dype of output tensor. Note that only `torch.float8_e4m3fn`
     fp8_dtype = SUPPORTED_FP8_DTYPE if dtype is None else dtype
@@ -126,6 +137,7 @@ def per_token_group_quant_fp8(
             eps,
             fp8_min=fp8_min,
             fp8_max=fp8_max,
+            scale_ue8m0=scale_ue8m0,
             BLOCK=BLOCK,
             num_warps=num_warps,
             num_stages=num_stages,
@@ -141,6 +153,7 @@ def per_token_group_quant_fp8(
             eps,
             fp8_min=fp8_min,
             fp8_max=fp8_max,
+            scale_ue8m0=scale_ue8m0,
             BLOCK=BLOCK,
             num_warps=num_warps,
             num_stages=num_stages,

@@ -1265,7 +1265,9 @@ def test_accuracy_contiguous(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None):
+def native_per_token_group_quant_fp8(
+    x, group_size, eps=1e-10, dtype=None, scale_ue8m0=False
+):
     if dtype is None:
         dtype = flag_gems.SUPPORTED_FP8_DTYPE
 
@@ -1281,6 +1283,9 @@ def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None):
     x_ = x.reshape(x.numel() // group_size, group_size)
     amax = x_.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
     x_s = amax / fp8_max
+    if scale_ue8m0:
+        min_val = torch.tensor(1e-10, dtype=x_s.dtype, device=x_s.device)
+        x_s = torch.exp2(torch.ceil(torch.log2(torch.maximum(x_s.abs(), min_val))))
     x_q = (x_ / x_s).clamp(min=fp8_min, max=fp8_max).to(dtype)
     x_q = x_q.reshape(x.shape)
     x_s = x_s.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
@@ -1294,14 +1299,21 @@ def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None):
 @pytest.mark.parametrize("dtype", FP8_QUANT_SHAPES["DTYPES"])
 @pytest.mark.parametrize("d", FP8_QUANT_SHAPES["D"])
 @pytest.mark.parametrize("num_tokens", FP8_QUANT_SHAPES["NUM_TOKENS"])
-def test_accuracy_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, seed):
+@pytest.mark.parametrize("scale_ue8m0", [True, False])
+def test_accuracy_per_token_group_quant_fp8(
+    num_tokens, d, dtype, group_size, seed, scale_ue8m0
+):
     torch.manual_seed(seed)
     x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
 
-    ref_out, ref_scale = native_per_token_group_quant_fp8(ref_x, group_size)
+    ref_out, ref_scale = native_per_token_group_quant_fp8(
+        ref_x, group_size, scale_ue8m0=scale_ue8m0
+    )
     with flag_gems.use_gems():
-        out, scale = flag_gems.per_token_group_quant_fp8(x, group_size)
+        out, scale = flag_gems.per_token_group_quant_fp8(
+            x, group_size, scale_ue8m0=scale_ue8m0
+        )
 
     gems_assert_close(scale, ref_scale, dtype=torch.float32)
 
@@ -1389,3 +1401,58 @@ def test_moe_sum(shape, dtype):
     with flag_gems.use_gems():
         flag_gems.moe_sum(inp1, res_out)
     gems_assert_close(res_out, ref_out, dtype)
+
+
+try:
+    import vllm._custom_ops as vllm_ops
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
+
+
+# ref: https://github.com/vllm-project/vllm/blob/main/tests/kernels/moe/test_moe.py
+@pytest.mark.moe_align_block_size
+@pytest.mark.parametrize("num_experts", [32, 256, 512])
+@pytest.mark.parametrize("block_size", [8, 16, 32])
+@pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
+def test_accuracy_moe_align_block_size(
+    num_experts,
+    block_size,
+):
+    # ------------ parameters ------------
+    dtype = torch.int32
+    topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device="cuda")
+    max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+    sorted_ids = torch.empty((max_num_tokens_padded,), dtype=dtype, device="cuda")
+    max_num_m_blocks = max_num_tokens_padded // block_size
+    expert_ids = torch.empty((max_num_m_blocks,), dtype=dtype, device="cuda")
+    num_tokens_post_pad = torch.empty(1, dtype=dtype, device="cuda")
+
+    topk_ids_vllm = topk_ids.clone()
+    sorted_ids_vllm = sorted_ids.clone()
+    expert_ids_vllm = expert_ids.clone()
+    num_tokens_post_pad_vllm = num_tokens_post_pad.clone()
+
+    flag_gems.moe_align_block_size_triton(
+        topk_ids=topk_ids,
+        num_experts=num_experts,
+        block_size=block_size,
+        sorted_token_ids=sorted_ids,
+        expert_ids=expert_ids,
+        num_tokens_post_pad=num_tokens_post_pad,
+    )
+
+    vllm_ops.moe_align_block_size(
+        topk_ids=topk_ids_vllm,
+        num_experts=num_experts,
+        block_size=block_size,
+        sorted_token_ids=sorted_ids_vllm,
+        experts_ids=expert_ids_vllm,
+        num_tokens_post_pad=num_tokens_post_pad_vllm,
+    )
+
+    torch.cuda.synchronize()
+    gems_assert_close(sorted_ids, sorted_ids_vllm, dtype=dtype)
+    gems_assert_close(expert_ids, expert_ids_vllm, dtype=dtype)
+    gems_assert_close(num_tokens_post_pad, num_tokens_post_pad_vllm, dtype=dtype)

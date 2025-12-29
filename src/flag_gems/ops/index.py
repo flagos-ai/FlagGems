@@ -57,7 +57,6 @@ def generate_index_kernel(
     with code.indent():
         code.writeline('configs=runtime.get_tuned_config("index"),')
         code.writeline('key=["M", "N"],')
-        code.writeline('restore_value=["input_ptr"],')
         code.writeline('strategy=["align32", "align32"],')
         code.writeline("warmup=5,")
         code.writeline("rep=10,")
