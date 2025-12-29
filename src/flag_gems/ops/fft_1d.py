@@ -1,4 +1,5 @@
 import math
+
 import torch
 import torch.profiler
 import triton
@@ -39,7 +40,6 @@ def fft_stage_kernel(real_ptr, imag_ptr, n, stage):
 
     # 计算当前阶段的参数
     half_block = 1 << (stage - 1)  # 2^stage
-    block_size = half_block << 1
 
     # 每个线程处理一个蝶形对
     butterfly_group = tid // half_block  # 属于第几个大块
