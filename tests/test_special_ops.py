@@ -1265,7 +1265,9 @@ def test_accuracy_contiguous(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None):
+def native_per_token_group_quant_fp8(
+    x, group_size, eps=1e-10, dtype=None, scale_ue8m0=False
+):
     if dtype is None:
         dtype = flag_gems.SUPPORTED_FP8_DTYPE
 
@@ -1281,6 +1283,9 @@ def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None):
     x_ = x.reshape(x.numel() // group_size, group_size)
     amax = x_.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
     x_s = amax / fp8_max
+    if scale_ue8m0:
+        min_val = torch.tensor(1e-10, dtype=x_s.dtype, device=x_s.device)
+        x_s = torch.exp2(torch.ceil(torch.log2(torch.maximum(x_s.abs(), min_val))))
     x_q = (x_ / x_s).clamp(min=fp8_min, max=fp8_max).to(dtype)
     x_q = x_q.reshape(x.shape)
     x_s = x_s.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
@@ -1294,14 +1299,21 @@ def native_per_token_group_quant_fp8(x, group_size, eps=1e-10, dtype=None):
 @pytest.mark.parametrize("dtype", FP8_QUANT_SHAPES["DTYPES"])
 @pytest.mark.parametrize("d", FP8_QUANT_SHAPES["D"])
 @pytest.mark.parametrize("num_tokens", FP8_QUANT_SHAPES["NUM_TOKENS"])
-def test_accuracy_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, seed):
+@pytest.mark.parametrize("scale_ue8m0", [True, False])
+def test_accuracy_per_token_group_quant_fp8(
+    num_tokens, d, dtype, group_size, seed, scale_ue8m0
+):
     torch.manual_seed(seed)
     x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
 
-    ref_out, ref_scale = native_per_token_group_quant_fp8(ref_x, group_size)
+    ref_out, ref_scale = native_per_token_group_quant_fp8(
+        ref_x, group_size, scale_ue8m0=scale_ue8m0
+    )
     with flag_gems.use_gems():
-        out, scale = flag_gems.per_token_group_quant_fp8(x, group_size)
+        out, scale = flag_gems.per_token_group_quant_fp8(
+            x, group_size, scale_ue8m0=scale_ue8m0
+        )
 
     gems_assert_close(scale, ref_scale, dtype=torch.float32)
 
