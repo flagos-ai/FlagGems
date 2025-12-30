@@ -19,7 +19,7 @@ cd FlagGems/
 If you want to use the native Triton instead of FlagTree, please skip this step.
 
 ```shell
-# install FlagTree
+# If you are using a different backend, please replace it with the corresponding requirements_backendxxx.txt.
 pip install -r requirements_nvidia.txt
 ```
 
