@@ -15,12 +15,12 @@ cd FlagGems/
 
 ### Install FlagTree
 
-[FlagTree](https://github.com/flagos-ai/flagtree/) is an open source, unified compiler for multiple AI chips project.
+FlagTree is an open source, unified compiler for multiple AI chips project (see [FlagTree project](https://github.com/flagos-ai/flagtree/) for details)
 If you want to use the native Triton instead of FlagTree, please skip this step.
 
 ```shell
-# Other backends: replace with requirements_backendxxx.txt
-pip install -r requirements_nvidia.txt
+# install FlagTree
+pip install -r requirements/requirements_nvidia.txt
 ```
 
 ### Build system
