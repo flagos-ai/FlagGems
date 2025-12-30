@@ -3,6 +3,7 @@ import math
 from functools import partial
 
 import torch
+import torch.nn.functional as F
 import triton
 import triton.language as tl
 
@@ -1099,9 +1100,24 @@ def flash_attention_forward(
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 96, 128, 192, 256}
+    original_head_dim = HEAD_DIM_K
+    supported_head_dims = (16, 32, 64, 96, 128, 192, 256)
+    if HEAD_DIM_K not in supported_head_dims:
+        padded_head_dim = None
+        for d in supported_head_dims:
+            if d >= HEAD_DIM_K:
+                padded_head_dim = d
+                break
+        assert (
+            padded_head_dim is not None
+        ), f"Unsupported head dim {HEAD_DIM_K}, max supported is {supported_head_dims[-1]}"
+        pad = padded_head_dim - HEAD_DIM_K
+        query = F.pad(query, (0, pad))
+        key = F.pad(key, (0, pad))
+        value = F.pad(value, (0, pad))
+        HEAD_DIM_K = padded_head_dim
 
-    softmax_scale = scale or 1.0 / (HEAD_DIM_K**0.5)
+    softmax_scale = scale or 1.0 / (original_head_dim**0.5)
     if window_size_left is not None:
         non_null_window_left = window_size_left
     else:
@@ -1153,6 +1169,8 @@ def flash_attention_forward(
             disable_splitkv=disable_splitkv,
         )
 
+    if HEAD_DIM_K != original_head_dim:
+        out = out[..., :original_head_dim]
     return (out, lse, philox_seed, philox_offset, p)
 
 
