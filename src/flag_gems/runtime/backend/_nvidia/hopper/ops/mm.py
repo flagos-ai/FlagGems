@@ -434,11 +434,6 @@ def gemv_kernel(
 
 def gemv_mm(a, b, c, M, K):
     """Optimized matrix-vector multiplication for N=1 case"""
-    print(
-        "GEMS MM-hopper, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
-        M,
-        K,
-    )
     logger.debug(
         "GEMS MM-hopper, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
         M,
