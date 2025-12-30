@@ -98,31 +98,9 @@ def argmin_kernel_opt_k1(
     tl.store(out_ptr, argmin_vals, mask=True)
 
 
+@libentry()
 @triton.autotune(
-    configs=[
-        # for N=512, K=512
-        triton.Config(
-            {"BLOCK_M": 4, "BLOCK_N": 512, "BLOCK_K": 32}, num_stages=3, num_warps=4
-        ),
-        # for N=1024, K=1024
-        triton.Config(
-            {"BLOCK_M": 8, "BLOCK_N": 64, "BLOCK_K": 64}, num_stages=4, num_warps=8
-        ),
-        # general config
-        triton.Config(
-            {"BLOCK_M": 8, "BLOCK_N": 128, "BLOCK_K": 32}, num_stages=3, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_M": 8, "BLOCK_N": 64, "BLOCK_K": 32}, num_stages=4, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_M": 4, "BLOCK_N": 128, "BLOCK_K": 64}, num_stages=3, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_M": 16, "BLOCK_N": 64, "BLOCK_K": 32}, num_stages=4, num_warps=8
-        ),
-    ],
-    key=["M", "N", "K"],
+    configs=runtime.get_tuned_config("argmin_split_k"), key=["M", "N", "K"]
 )
 @triton.jit
 def argmin_split_K_kernel_merged(
@@ -292,7 +270,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 torch.bfloat16: tl.bfloat16,
                 torch.float32: tl.float32,
             }
-            # 泛化支持其他N和K的组合
+            # general support for other (N, K)
             if (
                 (N % 64 == 0 or N == 512)
                 and (K % 32 == 0)
@@ -301,10 +279,8 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 and inp.dtype != torch.int16
             ):
                 triton_dtype = torch2triton_dtype[inp.dtype]
-                grid_for_split_K = (
-                    triton.cdiv(M, 8),
-                    triton.cdiv(K, 32),
-                )  # 使用默认参数计算grid
+                # use default paramerter to calcualte grid
+                grid_for_split_K = (triton.cdiv(M, 8), triton.cdiv(K, 32))
                 with torch_device_fn.device(inp.device):
                     argmin_split_K_kernel_merged[grid_for_split_K](
                         inp,
