@@ -839,7 +839,7 @@ class WrapperGenerator:
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
             )
 
-            if capability[0] >= 9:
+            if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
                 code.writeline("num_ctas = num_tiles")
             else:
                 max_grid_size0 = self.config.max_grid_size[0]
@@ -877,7 +877,7 @@ class WrapperGenerator:
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
 
-            if capability[0] >= 9:
+            if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
                 code.writeline("num_ctas = num_tiles")
             else:
                 max_grid_size0 = self.config.max_grid_size[0]
