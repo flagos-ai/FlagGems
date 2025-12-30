@@ -394,7 +394,7 @@ class use_gems:
     ):
         self.lib = torch.library.Library("aten", "IMPL")
         self.unused = [] if unused is None else unused
-        self.experimental_ops = experimental_ops
+        self._experimental_ops = experimental_ops
         self.registrar = Register
         self.record = record
         self.once = once
@@ -404,7 +404,7 @@ class use_gems:
         enable(
             lib=self.lib,
             unused=self.unused,
-            experimental_ops=self.experimental_ops,
+            experimental_ops=self._experimental_ops,
             registrar=self.registrar,
             record=self.record,
             once=self.once,
