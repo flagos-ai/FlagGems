@@ -32,7 +32,17 @@ on:
 
 jobs:
   detect-changes:
-    uses: ./.github/workflows/detect-experimental-only.yaml
+    runs-on: ubuntu-latest
+    outputs:
+      run_ci: ${{ steps.filter.outputs.run_ci }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            run_ci:
+              - '!src/flag_gems/experimental_ops/**'
 
   blas-op-test:
     needs: detect-changes
