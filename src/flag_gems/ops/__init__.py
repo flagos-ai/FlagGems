@@ -124,6 +124,7 @@ from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
+from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
@@ -388,6 +389,8 @@ __all__ = [
     "lt_scalar",
     "masked_fill",
     "masked_fill_",
+    "masked_scatter",
+    "masked_scatter_",
     "masked_select",
     "max",
     "max_dim",
