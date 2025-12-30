@@ -306,7 +306,7 @@ def test_perf_avg_pool2d():
     bench.run()
 
 
-@pytest.mark.avg_pool2d_backward
+@pytest.mark.avg_pool2d
 def test_perf_avg_pool2d_backward():
     bench = AvgPool2dBenchmark(
         input_fn=avg_pool2d_input_fn,
@@ -381,7 +381,7 @@ def test_perf_max_pool2d():
     bench.run()
 
 
-@pytest.mark.max_pool2d_backward
+@pytest.mark.max_pool2d
 def test_perf_max_pool2d_backward():
     def max_pool2d_backward_input_fn(shape, dtype, device):
         for forward_args in max_pool2d_input_fn(shape, dtype, device):

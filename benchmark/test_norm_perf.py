@@ -149,7 +149,7 @@ def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn
         del os.environ["DISABLE_LLVM_OPT"]
 
 
-@pytest.mark.batch_norm_backward
+@pytest.mark.batch_norm
 def test_perf_batch_norm_backward():
     def batch_norm_backward_input_fn(shape, dtype, device):
         for forward_args in batchnorm_input_fn(shape, dtype, device):
