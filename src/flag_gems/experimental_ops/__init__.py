@@ -1,3 +1,3 @@
-from flag_gems.experimental_ops.rms_norm import rms_norm
+from flag_gems.experimental_ops.rmsnorm import rmsnorm
 
-__all__ = ["rms_norm"]
+__all__ = ["rmsnorm"]
