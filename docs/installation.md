@@ -15,7 +15,7 @@ cd FlagGems/
 
 ### Install FlagTree
 
-[FlagTree](https://github.com/flagos-ai/flagtree/) is an open source, unified compiler for multiple AI chips project. 
+[FlagTree](https://github.com/flagos-ai/flagtree/) is an open source, unified compiler for multiple AI chips project.
 If you want to use the native Triton instead of FlagTree, please skip this step.
 
 ```shell
