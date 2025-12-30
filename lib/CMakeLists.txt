@@ -27,7 +27,8 @@ add_library(operators
             reshape_and_cache_flash.cpp
             flash_attn_varlen_func.cpp
             rwkv_mm_sparsity.cpp
-            rwkv_ka_fusion.cpp)
+            rwkv_ka_fusion.cpp
+            copy.cpp)
 
 if (TRITON_GE_3P5)
   target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
