@@ -40,7 +40,8 @@ TORCH_LIBRARY_IMPL(aten, CUDA, m) {
   REGISTER_AND_LOG("fill_.Scalar", fill_scalar_);
   // REGISTER_AND_LOG("_to_copy", to_copy);
   // REGISTER_AND_LOG("copy_", copy_);
-  // REGISTER_AND_LOG("to.dtype", to_copy);
+  REGISTER_AND_LOG("to.dtype", to_dtype);
+  REGISTER_AND_LOG("to.other", to_other);
   REGISTER_AND_LOG("clone", clone);
 }
 
