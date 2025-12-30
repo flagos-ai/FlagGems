@@ -233,7 +233,7 @@ class EluBackwardBenchmark(UnaryPointwiseBenchmark):
             yield grad_out, alpha, scale, input_scale, is_result, inp
 
 
-@pytest.mark.elu_backward
+@pytest.mark.elu
 def test_elu_backward_perf():
     bench = EluBackwardBenchmark(
         op_name="elu_backward",
@@ -261,7 +261,7 @@ def test_glu_perf():
     bench.run()
 
 
-@pytest.mark.glu_backward
+@pytest.mark.glu
 def test_glu_backward_perf():
     bench = GluBenchmark(
         op_name="glu",
