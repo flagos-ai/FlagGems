@@ -14,6 +14,7 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
+      - '**.yaml'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -27,6 +28,7 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
+      - '**.yaml'
 
 jobs:
   detect-changes:
