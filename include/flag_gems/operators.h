@@ -226,6 +226,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &
                                                               int64_t H,
                                                               int64_t N);
 
+at::Tensor clone(const at::Tensor &self, c10::optional<at::MemoryFormat> memory_format = c10::nullopt);
+
 at::Tensor to_copy(const at::Tensor &self,
                    c10::optional<at::ScalarType> dtype = c10::nullopt,
                    c10::optional<at::Layout> layout = c10::nullopt,

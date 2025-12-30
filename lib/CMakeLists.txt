@@ -28,6 +28,7 @@ add_library(operators
             flash_attn_varlen_func.cpp
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp
+            clone.cpp
             copy.cpp
             accuracy_utils.cpp)
 
