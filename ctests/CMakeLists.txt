@@ -98,3 +98,8 @@ add_executable(test_triton_rwkv_mm_sparsity test_triton_rwkv_mm_sparsity.cpp)
 target_link_libraries(test_triton_rwkv_mm_sparsity
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_rwkv_mm_sparsity COMMAND test_triton_rwkv_mm_sparsity)
+
+add_executable(test_triton_copy test_triton_copy.cpp)
+target_link_libraries(test_triton_copy
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_copy COMMAND test_triton_copy)
