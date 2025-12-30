@@ -23,7 +23,7 @@ git clone https://github.com/FlagOpen/FlagGems.git
 cd FlagGems
 # If you want to use the native Triton instead of FlagTree, please skip this step.
 # Other backends: replace with requirements_backendxxx.txt
-pip install -r requirements/requirements_nvidia.txt
+pip install -r flag_tree_requirements/requirements_nvidia.txt
 pip install --no-build-isolation .
 # or editble install
 pip install --no-build-isolation -e .

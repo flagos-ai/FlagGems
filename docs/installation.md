@@ -20,7 +20,7 @@ If you want to use the native Triton instead of FlagTree, please skip this step.
 
 ```shell
 # Other backends: replace with requirements_backendxxx.txt
-pip install -r requirements/requirements_nvidia.txt
+pip install -r flag_tree_requirements/requirements_nvidia.txt
 ```
 
 ### Build system
