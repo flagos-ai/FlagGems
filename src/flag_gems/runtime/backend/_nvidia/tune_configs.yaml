@@ -25,6 +25,23 @@ attention:
       - 2
       - 3
       - 4
+attention_bwd:
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: warps
+      num_stages: stages
+    metas:
+      - {BLOCK_M1: 32, BLOCK_N1: 128, BLOCK_M2: 128, BLOCK_N2: 32}
+      - {BLOCK_M1: 64, BLOCK_N1: 128, BLOCK_M2: 64, BLOCK_N2: 64}
+      - {BLOCK_M1: 64, BLOCK_N1: 128, BLOCK_M2: 64, BLOCK_N2: 32}
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+      - 4
 bmm:
   - META:
       TILE_M: 32
@@ -1156,3 +1173,18 @@ argmin_split_k:
         - 8
         - 16
         - 32
+
+gated_activation:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+      num_warps: 4
+    block_m:
+      - 1
+      - 2
+      - 4
+      - 8
+    block_n:
+      - 1024
