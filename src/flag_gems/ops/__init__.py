@@ -330,6 +330,7 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "fft_1d",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
@@ -523,5 +524,4 @@ __all__ = [
     "get_scheduler_metadata",
     "scaled_softmax_forward",
     "scaled_softmax_backward",
-    "fft_1d",
 ]
