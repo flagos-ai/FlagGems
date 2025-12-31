@@ -13,6 +13,16 @@ git clone https://github.com/FlagOpen/FlagGems
 cd FlagGems/
 ```
 
+### Install FlagTree
+
+[FlagTree](https://github.com/flagos-ai/flagtree/) is an open source, unified compiler for multiple AI chips project.
+If you want to use the native Triton instead of FlagTree, please skip this step.
+
+```shell
+# Other backends: replace with requirements_backendxxx.txt
+pip install -r flag_tree_requirements/requirements_nvidia.txt
+```
+
 ### Build system
 
 FlagGems follows [PEP 518](https://peps.python.org/pep-0518/) and contains a `pyproject.toml` file to specify how to build the package.
