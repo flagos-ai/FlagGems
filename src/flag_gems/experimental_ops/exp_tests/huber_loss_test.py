@@ -22,6 +22,7 @@ from flag_gems.experimental_ops.huber_loss import huber_loss as gems_huber_loss,
 
 import torch
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
 
 @pytest.mark.huber_loss

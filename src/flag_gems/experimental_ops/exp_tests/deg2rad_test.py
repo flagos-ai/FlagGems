@@ -22,6 +22,7 @@ from flag_gems.experimental_ops.deg2rad import deg2rad as gems_deg2rad, deg2rad_
 
 import torch
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
 
 

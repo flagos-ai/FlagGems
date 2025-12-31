@@ -22,6 +22,7 @@ from flag_gems.experimental_ops.masked_select import masked_select as gems_maske
 
 import torch
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
 
 @pytest.mark.masked_select

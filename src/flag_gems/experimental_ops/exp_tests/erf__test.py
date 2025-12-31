@@ -22,6 +22,7 @@ from flag_gems.experimental_ops.erf_ import erf_ as gems_erf_
 
 import torch
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
 
 @pytest.mark.erf_
