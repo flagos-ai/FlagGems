@@ -1149,3 +1149,42 @@ index:
     block_size1:
       - 1024
       - 2048
+
+argmin_split_k:
+    - gen: true
+      param_map:
+        META:
+          BLOCK_M: block_m
+          BLOCK_N: block_n
+          BLOCK_K: block_k
+        num_warps: warps
+        num_stages: 4
+      block_m:
+        - 4
+        - 8
+      block_n:
+        - 64
+        - 512
+      block_k:
+        - 32
+        - 64
+      warps:
+        - 4
+        - 8
+        - 16
+        - 32
+
+gated_activation:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+      num_warps: 4
+    block_m:
+      - 1
+      - 2
+      - 4
+      - 8
+    block_n:
+      - 1024

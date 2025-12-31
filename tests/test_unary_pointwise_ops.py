@@ -19,13 +19,13 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    SkipVersion,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
     unsqueeze_tensor,
     unsqueeze_tuple,
 )
-from .conftest import TO_CPU
 
 
 @pytest.mark.abs
@@ -334,7 +334,7 @@ def test_accuracy_exp2_(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
 def test_accuracy_geglu(shape, dtype):
-    if len(shape) == 0 or TO_CPU:
+    if len(shape) == 0:
         pytest.skip("GEGLU does not support 0-dim scalar tensors.")
 
     if shape[-1] % 2 != 0:
@@ -345,19 +345,20 @@ def test_accuracy_geglu(shape, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = tex.geglu(input_tensor, None)
+    ref_out = to_reference(ref_out)
 
     with flag_gems.use_gems():
         res_out = flag_gems.geglu(input_tensor)
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.dreglu
+@pytest.mark.dgeglu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
-def test_accuracy_dreglu(shape, dtype):
-    if len(shape) == 0 or TO_CPU:
-        pytest.skip("dreglu does not support 0-dim scalar tensors.")
+def test_accuracy_dgeglu(shape, dtype):
+    if len(shape) == 0:
+        pytest.skip("dgeglu does not support 0-dim scalar tensors.")
 
     if shape[-1] % 2 != 0:
         shape = list(shape)
@@ -372,6 +373,7 @@ def test_accuracy_dreglu(shape, dtype):
         tuple(grad_output_shape), dtype=dtype, device=flag_gems.device
     )
     ref_out = tex.dgeglu(grad_output, input_tensor, None)
+    ref_out = to_reference(ref_out)
     with flag_gems.use_gems():
         res_out = flag_gems.dgeglu(grad_output, input_tensor)
     gems_assert_close(res_out, ref_out, dtype)
@@ -1195,9 +1197,31 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.inplace
 @pytest.mark.copy_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    FLOAT_DTYPES + [torch.int32, torch.int64]
+    if flag_gems.vendor_name == "cambricon"
+    else FLOAT_DTYPES,
+)
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_same_dtype(shape, dtype):
-    src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        if dtype in FLOAT_DTYPES:
+            src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            src = torch.randint(
+                torch.iinfo(dtype).min,
+                torch.iinfo(dtype).max,
+                shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+    else:
+        src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
     ref_src = to_reference(src)
     ref_dst = torch.zeros_like(ref_src)
     res_dst = torch.zeros_like(src)
@@ -1211,6 +1235,10 @@ def test_copy_inplace_same_dtype(shape, dtype):
 
 @pytest.mark.inplace
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_broadcast():
     dst_shape = (2, 3)
     src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
@@ -1229,6 +1257,10 @@ def test_copy_inplace_broadcast():
 
 @pytest.mark.inplace
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_dtype_fallback():
     src = torch.arange(0, 8, dtype=torch.int32, device=flag_gems.device)
     ref_src = to_reference(src)
@@ -1246,6 +1278,10 @@ def test_copy_inplace_dtype_fallback():
 
 @pytest.mark.inplace
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 @pytest.mark.parametrize(
     "src_dtype,dst_dtype",
     [
@@ -1338,4 +1374,87 @@ def test_accuracy_atan_(shape, dtype):
         res_out = torch.atan_(res_inp)
 
     ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+DREGU_SHAPES = [
+    (),
+    (1,),
+    (512, 512),
+    (1, 2048),
+    (2048, 1),
+    (1024, 1024),
+    (20, 320, 15),
+    (4096, 1024),
+    (2048, 2048),
+    (1024, 4096),
+    (512, 512, 512),
+    (512, 256, 512),
+]
+
+
+@pytest.mark.dreglu
+@pytest.mark.parametrize("shape", DREGU_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_dreglu(shape, dtype):
+    if len(shape) == 0:
+        pytest.skip("dreglu does not support 0-dim scalar tensors.")
+
+    if shape[-1] % 2 != 0:
+        shape = list(shape)
+        shape[-1] += 1
+        shape = tuple(shape)
+
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    grad_output_shape = list(shape)
+    grad_output_shape[-1] //= 2
+    grad_output = torch.randn(
+        tuple(grad_output_shape), dtype=dtype, device=flag_gems.device
+    )
+
+    ref_out = tex.dreglu(grad_output, input_tensor, None)
+    ref_out = to_reference(ref_out)
+    with flag_gems.use_gems():
+        res_out = flag_gems.dreglu(grad_output, input_tensor, None)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+REGLU_SHAPES = [
+    (),
+    (2,),
+    (512, 512),
+    (1, 2048),
+    (2048, 2),
+    (1024, 1024),
+    (20, 320, 16),
+    (4096, 1024),
+    (2048, 2048),
+    (1024, 4096),
+    (512, 512, 512),
+    (512, 256, 512),
+]
+
+
+@pytest.mark.reglu
+@pytest.mark.parametrize("shape", REGLU_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_reglu(shape, dtype):
+    if len(shape) == 0:
+        pytest.skip("reglu does not support 0-dim scalar tensors.")
+
+    if shape[-1] % 2 != 0:
+        pytest.skip(
+            f"reglu requires the last dimension to be even, but got shape {shape}."
+        )
+
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = tex.reglu(input_tensor, None)
+    ref_out = to_reference(ref_out)
+    with flag_gems.use_gems():
+        res_out = flag_gems.reglu(input_tensor)
+
     gems_assert_close(res_out, ref_out, dtype)

@@ -15,6 +15,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
+      - '!src/flag_gems/experimental_ops/**'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -29,6 +30,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
+      - '!src/flag_gems/experimental_ops/**'
 
 env:
   CUDA_VISIBLE_DEVICES: 7
@@ -86,6 +88,14 @@ jobs:
           source tools/run_command.sh
           run_command pytest -s tests/test_special_ops.py && \
           run_command pytest -s tests/test_distribution_ops.py
+
+      - name: FlagGems convolution ops on hopper
+        shell: bash
+        run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
+          source tools/run_command.sh
+          run_command pytest -s tests/test_convolution_ops.py
 
       - name: FlagGems utils on hopper
         shell: bash

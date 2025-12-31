@@ -11,8 +11,9 @@ from benchmark.attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from benchmark.performance_utils import Benchmark, generate_tensor_input
+from benchmark.performance_utils import Benchmark, SkipVersion, generate_tensor_input
 
+vendor_name = flag_gems.vendor_name
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
@@ -90,6 +91,11 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["celu"] and SkipVersion("torch", "<2.5"):
+            pytest.skip(
+                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
+            )
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -135,6 +141,11 @@ forward_inplace_operations = [
     ],
 )
 def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["celu_"] and SkipVersion("torch", "<2.5"):
+            pytest.skip(
+                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
+            )
     bench = UnaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
     )
@@ -195,6 +206,10 @@ class CopyInplaceBenchmark(Benchmark):
 
 
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
 def test_copy_inplace_perf():
     bench = CopyInplaceBenchmark(
         op_name="copy_",
@@ -218,7 +233,7 @@ class EluBackwardBenchmark(UnaryPointwiseBenchmark):
             yield grad_out, alpha, scale, input_scale, is_result, inp
 
 
-@pytest.mark.elu_backward
+@pytest.mark.elu
 def test_elu_backward_perf():
     bench = EluBackwardBenchmark(
         op_name="elu_backward",
@@ -246,7 +261,7 @@ def test_glu_perf():
     bench.run()
 
 
-@pytest.mark.glu_backward
+@pytest.mark.glu
 def test_glu_backward_perf():
     bench = GluBenchmark(
         op_name="glu",

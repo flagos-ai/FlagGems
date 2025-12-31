@@ -236,6 +236,12 @@ def test_accuracy_cross_entropy_loss_probabilities(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
 def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
     dim = 1
     target_shape = list(shape)
     del target_shape[dim]
@@ -678,7 +684,52 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.scatter_add_
+@pytest.mark.parametrize(
+    "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_scatter_add_(src_shape, inp_shape, dim, dtype):
+    init_seed(0)
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+    size_dim = min(src_shape[dim], inp_shape[dim])
+
+    import random
+
+    index_shape = [
+        random.randint(1, min(src_shape[0], inp_shape[0])),
+        random.randint(1, min(src_shape[1], inp_shape[1])),
+        random.randint(1, min(src_shape[2], inp_shape[2])),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+
+    m, n, o = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    ref_inp = to_reference(inp, upcast=True)
+    ref_index = to_reference(index)
+    ref_src = to_reference(src, upcast=True)
+    ref_out = ref_inp.scatter_add_(dim, ref_index, ref_src)
+    with flag_gems.use_gems():
+        res_out = inp.scatter_add_(dim, index, src)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -812,7 +863,7 @@ def test_accuracy_inplace_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scatter_
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -1597,6 +1648,8 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
     if flag_gems.vendor_name == "mthreads":
         torch.manual_seed(0)
         torch.musa.manual_seed_all(0)
@@ -1912,3 +1965,107 @@ def test_accuracy_std(shape, dim, correction, keepdim, dtype):
     ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.scaled_softmax
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
+@pytest.mark.parametrize("query_seq_len", [64, 128])
+@pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
+@pytest.mark.parametrize("scale_factor", [0.1])
+def test_accuracy_scaled_softmax_forward(
+    batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
+):
+    try:
+        from transformer_engine.pytorch import cpp_extensions as tex
+    except ImportError:
+        pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
+
+    s = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    p_ref = to_reference(p_ref)
+    with flag_gems.use_gems():
+        p = flag_gems.scaled_softmax_forward(s, scale_factor)
+    gems_assert_close(p, p_ref, dtype, equal_nan=True)
+
+
+@pytest.mark.scaled_softmax
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
+@pytest.mark.parametrize("query_seq_len", [64, 128])
+@pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
+@pytest.mark.parametrize("scale_factor", [0.1])
+def test_accuracy_scaled_softmax_backward(
+    batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
+):
+    try:
+        from transformer_engine.pytorch import cpp_extensions as tex
+    except ImportError:
+        pytest.skip("transformer_engine_torch is not available, skipping accuracy test")
+
+    out_grad = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    s = torch.randn(
+        (batch_size, attn_heads, query_seq_len, key_seq_len),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    p_ref = tex.scaled_softmax_forward(s, scale_factor)
+    with flag_gems.use_gems():
+        p = flag_gems.scaled_softmax_forward(s, scale_factor)
+        in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
+    in_grad_ref = tex.scaled_softmax_backward(out_grad, p_ref, scale_factor)
+    in_grad_ref = to_reference(in_grad_ref)
+
+    gems_assert_close(
+        in_grad, in_grad_ref, dtype, equal_nan=True, reduce_dim=s.shape[-1]
+    )
+
+
+@pytest.mark.masked_scatter
+@pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_masked_scatter(shape, dtype, threshold):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
+    numel = mask.sum().item()
+    src = torch.randn((numel,), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    ref_src = to_reference(src)
+    ref_out = torch.masked_scatter(ref_inp, ref_mask, ref_src)
+    with flag_gems.use_gems():
+        res_out = torch.masked_scatter(inp, mask, src)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.masked_scatter_
+@pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_masked_scatter_(shape, dtype, threshold):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
+    numel = mask.sum().item()
+    src = torch.randn((numel,), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    ref_src = to_reference(src)
+    ref_inp.masked_scatter_(ref_mask, ref_src)
+    with flag_gems.use_gems():
+        inp.masked_scatter_(mask, src)
+
+    gems_assert_equal(inp, ref_inp)

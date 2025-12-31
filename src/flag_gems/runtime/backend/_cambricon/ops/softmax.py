@@ -380,7 +380,13 @@ def softmax_kernel_inner_k_partial_stats(
         ).to(tl.float32)
 
         tile_max = tl.max(tile, axis=1)
-        tile_sum = tl.sum(tl.exp(tile - tile_max[:, None]), axis=1)
+        all_neg_inf = tile_max == -float("inf")
+
+        tile_sum = tl.where(
+            all_neg_inf,
+            0.0,
+            tl.sum(tl.exp(tile - tile_max[:, None]), axis=1),
+        )
 
         tl.store(max_buf_ptr + offs_m * T + tile_id, tile_max, mask=(offs_m < M))
         tl.store(sum_buf_ptr + offs_m * T + tile_id, tile_sum, mask=(offs_m < M))
@@ -459,7 +465,13 @@ def softmax_kernel_inner_k_write_softmax(
             other=-float("inf"),
         ).to(tl.float32)
 
-        out = tl.exp(tile - gmax[:, None]) / gsum[:, None]
+        valid = gsum[:, None] > 0
+
+        out = tl.where(
+            valid,
+            tl.exp(tile - gmax[:, None]) / gsum[:, None],
+            0.0,
+        )
 
         tl.store(y_ptr + offs_m[:, None] * N + offs_n[None, :], out, mask=mask)
 
