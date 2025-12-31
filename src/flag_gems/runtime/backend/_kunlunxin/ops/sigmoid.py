@@ -2,6 +2,7 @@ import logging
 
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.utils import tl_extra_shim
 
@@ -11,7 +12,20 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 exp2 = tl_extra_shim.exp2
 
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=True,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
+
+
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def sigmoid_forward(x):
     # log2e: tl.constexpr = math.log2(math.e)

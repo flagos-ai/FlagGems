@@ -6,6 +6,7 @@ from packaging import version
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list
+from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
@@ -216,6 +217,8 @@ def enable(
             ("masked_fill.Tensor", masked_fill),
             ("masked_fill_.Scalar", masked_fill_),
             ("masked_fill_.Tensor", masked_fill_),
+            ("masked_scatter", masked_scatter),
+            ("masked_scatter_", masked_scatter_),
             ("masked_select", masked_select),
             ("max", max),
             ("max.dim", max_dim),
@@ -266,7 +269,6 @@ def enable(
             ("pow_.Tensor", pow_tensor_tensor_),
             ("prod", prod),
             ("prod.dim_int", prod_dim),
-            ("per_token_group_quant_fp8", per_token_group_quant_fp8),
             ("quantile", quantile),
             ("rand", rand),
             ("rand_like", rand_like),
@@ -345,8 +347,6 @@ def enable(
             ("zeros", zeros),
             ("zeros_like", zeros_like),
             ("scatter_add_", scatter_add_),
-            ("dreglu", dreglu),
-            ("reglu", reglu),
             ("scaled_softmax_forward", scaled_softmax_forward),
             ("scaled_softmax_backward", scaled_softmax_backward),
             ("conv1d", conv1d),
@@ -394,6 +394,12 @@ class use_gems:
             for handler in logging.root.handlers[:]:
                 logging.root.removeHandler(handler)
             logging.basicConfig(level=logging.INFO)
+
+    @property
+    def experimental_ops(self):
+        import flag_gems.experimental_ops
+
+        return flag_gems.experimental_ops
 
 
 def all_ops():

@@ -444,6 +444,13 @@ class LibTuner(triton.runtime.Autotuner):
                 self.pre_hook(full_nargs, reset_only=True)
                 self.configs_timings = timings
             config = self.cache[key]
+            if config.pre_hook is None:
+                cached_kwargs = config.all_kwargs()
+                for original_config in self.configs:
+                    if original_config.all_kwargs() == cached_kwargs:
+                        # Use the original config which has the pre_hook
+                        config = original_config
+                        break
         else:
             config = self.configs[0]
         self.best_config = config
@@ -647,16 +654,30 @@ class LibEntry(triton.KernelInterface):
         k_args = OrderedDict()
         param_names = list(self.signature.parameters.keys())
         for i, arg in enumerate(args):
+            hashable_arg = arg
+            if (
+                hasattr(arg, "__class__")
+                and arg.__class__.__name__ == "TensorDescriptor"
+            ):
+                # Create a hashable representation of TensorDescriptor
+                hashable_arg = (
+                    "TensorDescriptor",
+                    tuple(arg.shape) if hasattr(arg, "shape") else None,
+                    tuple(arg.strides) if hasattr(arg, "strides") else None,
+                    tuple(arg.block_shape) if hasattr(arg, "block_shape") else None,
+                    arg.padding if hasattr(arg, "padding") else None,
+                    # Add other relevant attributes
+                )
             if i in self.specialize_indices:
                 k_args[param_names[i]] = arg
-                spec_args.append(arg)
+                spec_args.append(hashable_arg)
             elif i in self.do_not_specialize_indices:
                 k_args[param_names[i]] = arg
-                dns_args.append(arg)
+                dns_args.append(hashable_arg)
             else:
                 if major_version == 3 and 3 <= minor_version <= 5:
                     k_args[param_names[i]] = arg
-                const_args.append(arg)
+                const_args.append(hashable_arg)
         for p in self.jit_function.params[len(args) :]:
             if p.name in kwargs:
                 val = kwargs[p.name]
