@@ -3,6 +3,7 @@ add_library(operators
             device_info.cpp
             zeros.cpp
             utils.cpp
+            shape_utils.cpp
             add.cpp
             sum.cpp
             max.cpp
@@ -31,7 +32,8 @@ add_library(operators
             to.cpp
             clone.cpp
             copy.cpp
-            accuracy_utils.cpp)
+            accuracy_utils.cpp
+            pointwise_launch.cpp)
 
 if (TRITON_GE_3P5)
   target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
