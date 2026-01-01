@@ -28,7 +28,7 @@ def copy_kernel_wrapper_rank_0(in0: torch.Tensor, /, *, out0: torch.Tensor):
     num_ctas = 1
     grid = (num_ctas, 1, 1)
     with torch_device_fn.device(in0.device.index):
-        _copy_kernel_kernel_rank_0[grid](in0, out0, num_warps=num_warps)
+        _copy_kernel_cppwrapper_rank_0[grid](in0, out0, num_warps=num_warps)
     return out0
 
 
@@ -54,7 +54,7 @@ def copy_kernel_wrapper_rank_1(in0: torch.Tensor, /, *, out0: torch.Tensor):
     out0_strides = out0.stride()
     out0_stride_order = stride_order(out0_strides)
     with torch_device_fn.device(in0.device.index):
-        _copy_kernel_kernel_rank_1[grid](
+        _copy_kernel_cppwrapper_rank_1[grid](
             in0,
             out0,
             in0_strides[0],
@@ -93,7 +93,7 @@ def copy_kernel_wrapper_rank_2(in0: torch.Tensor, /, *, out0: torch.Tensor):
     out0_strides = out0.stride()
     out0_stride_order = stride_order(out0_strides)
     with torch_device_fn.device(in0.device.index):
-        _copy_kernel_kernel_rank_2[grid](
+        _copy_kernel_cppwrapper_rank_2[grid](
             in0,
             out0,
             in0_strides[0],
@@ -116,8 +116,116 @@ def copy_kernel_wrapper_rank_2(in0: torch.Tensor, /, *, out0: torch.Tensor):
     return out0
 
 
+def copy_kernel_wrapper_rank_3(in0: torch.Tensor, /, *, out0: torch.Tensor):
+    """Host-side wrapper mirroring pointwise_dynamic rank-3 codegen."""
+    assert in0.shape == out0.shape, "operand shapes mismatch"
+    shape = out0.shape
+    num_tasks = out0.numel()
+    if num_tasks == 0:
+        return out0
+    tile_sizes = heuristics_for_tile_size(512, *shape)
+    tile_size = math.prod(tile_sizes)
+    num_tiles = math.prod(
+        triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes)
+    )
+    num_ctas = num_tiles
+    tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
+    num_warps = heuristics_for_num_warps(tile_size)
+    one_tile_per_cta = tiles_per_cta == 1
+    grid = (num_ctas, 1, 1)
+    in0_strides = in0.stride()
+    in0_stride_order = stride_order(in0_strides)
+    out0_strides = out0.stride()
+    out0_stride_order = stride_order(out0_strides)
+    with torch_device_fn.device(in0.device.index):
+        _copy_kernel_cppwrapper_rank_3[grid](
+            in0,
+            out0,
+            in0_strides[0],
+            in0_strides[1],
+            in0_strides[2],
+            in0_stride_order[0],
+            in0_stride_order[1],
+            in0_stride_order[2],
+            out0_strides[0],
+            out0_strides[1],
+            out0_strides[2],
+            out0_stride_order[0],
+            out0_stride_order[1],
+            out0_stride_order[2],
+            shape[0],
+            shape[1],
+            shape[2],
+            num_tasks,
+            tiles_per_cta,
+            tile_sizes[0],
+            tile_sizes[1],
+            tile_sizes[2],
+            one_tile_per_cta,
+            num_warps=num_warps,
+        )
+    return out0
+
+
+def copy_kernel_wrapper_rank_4(in0: torch.Tensor, /, *, out0: torch.Tensor):
+    """Host-side wrapper mirroring pointwise_dynamic rank-4 codegen."""
+    assert in0.shape == out0.shape, "operand shapes mismatch"
+    shape = out0.shape
+    num_tasks = out0.numel()
+    if num_tasks == 0:
+        return out0
+    tile_sizes = heuristics_for_tile_size(512, *shape)
+    tile_size = math.prod(tile_sizes)
+    num_tiles = math.prod(
+        triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes)
+    )
+    num_ctas = num_tiles
+    tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
+    num_warps = heuristics_for_num_warps(tile_size)
+    one_tile_per_cta = tiles_per_cta == 1
+    grid = (num_ctas, 1, 1)
+    in0_strides = in0.stride()
+    in0_stride_order = stride_order(in0_strides)
+    out0_strides = out0.stride()
+    out0_stride_order = stride_order(out0_strides)
+    with torch_device_fn.device(in0.device.index):
+        _copy_kernel_cppwrapper_rank_4[grid](
+            in0,
+            out0,
+            in0_strides[0],
+            in0_strides[1],
+            in0_strides[2],
+            in0_strides[3],
+            in0_stride_order[0],
+            in0_stride_order[1],
+            in0_stride_order[2],
+            in0_stride_order[3],
+            out0_strides[0],
+            out0_strides[1],
+            out0_strides[2],
+            out0_strides[3],
+            out0_stride_order[0],
+            out0_stride_order[1],
+            out0_stride_order[2],
+            out0_stride_order[3],
+            shape[0],
+            shape[1],
+            shape[2],
+            shape[3],
+            num_tasks,
+            tiles_per_cta,
+            tile_sizes[0],
+            tile_sizes[1],
+            tile_sizes[2],
+            tile_sizes[3],
+            one_tile_per_cta,
+            num_warps=num_warps,
+        )
+    return out0
+
+
 @triton.jit
-def _copy_kernel_kernel_rank_0(
+def _copy_kernel_cppwrapper_rank_0(
     in0_ptr: tl.tensor,  # of tl.pointer_type
     out0_ptr: tl.tensor,  # of tl.pointer_type
 ):
@@ -132,7 +240,7 @@ def _copy_kernel_kernel_rank_0(
 
 
 @triton.jit
-def _copy_kernel_kernel_rank_1(
+def _copy_kernel_cppwrapper_rank_1(
     in0_ptr: tl.tensor,  # of tl.pointer_type
     out0_ptr: tl.tensor,  # of tl.pointer_type
     in0_stride0: int,  # strides for in0
@@ -225,7 +333,7 @@ def _copy_kernel_kernel_rank_1(
 
 
 @triton.jit
-def _copy_kernel_kernel_rank_2(
+def _copy_kernel_cppwrapper_rank_2(
     in0_ptr: tl.tensor,  # of tl.pointer_type
     out0_ptr: tl.tensor,  # of tl.pointer_type
     in0_stride0: int,
@@ -331,6 +439,313 @@ def _copy_kernel_kernel_rank_2(
                 out0_bptr,
                 out0.to(out0_bptr.type.element_ty),
                 boundary_check=(out0_stride_order0, out0_stride_order1),
+            )
+
+
+@triton.jit
+def _copy_kernel_cppwrapper_rank_3(
+    in0_ptr: tl.tensor,  # of tl.pointer_type
+    out0_ptr: tl.tensor,  # of tl.pointer_type
+    in0_stride0: int,
+    in0_stride1: int,
+    in0_stride2: int,
+    in0_stride_order0: tl.constexpr,
+    in0_stride_order1: tl.constexpr,
+    in0_stride_order2: tl.constexpr,
+    out0_stride0: int,
+    out0_stride1: int,
+    out0_stride2: int,
+    out0_stride_order0: tl.constexpr,
+    out0_stride_order1: tl.constexpr,
+    out0_stride_order2: tl.constexpr,
+    s0,
+    s1,
+    s2,
+    num_tasks,
+    tiles_per_cta: int,
+    tile_size0: tl.constexpr,
+    tile_size1: tl.constexpr,
+    tile_size2: tl.constexpr,
+    one_tile_per_cta: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    num_tiles2 = tl.cdiv(s2, tile_size2)
+    num_tiles1 = tl.cdiv(s1, tile_size1)
+    if one_tile_per_cta:
+        tile_id = pid
+        tile_id2 = tile_id % num_tiles2
+        tile_id //= num_tiles2
+        tile_id1 = tile_id % num_tiles1
+        tile_id //= num_tiles1
+        tile_id0 = tile_id
+
+        offset0 = (tile_id0 * tile_size0).to(tl.int32)
+        offset1 = (tile_id1 * tile_size1).to(tl.int32)
+        offset2 = (tile_id2 * tile_size2).to(tl.int32)
+        in0_bptr = tl.make_block_ptr(
+            in0_ptr,
+            (s0, s1, s2),
+            (in0_stride0, in0_stride1, in0_stride2),
+            (offset0, offset1, offset2),
+            (tile_size0, tile_size1, tile_size2),
+            order=(
+                in0_stride_order0,
+                in0_stride_order1,
+                in0_stride_order2,
+            ),
+        )
+        in0 = tl.load(
+            in0_bptr,
+            boundary_check=(
+                in0_stride_order0,
+                in0_stride_order1,
+                in0_stride_order2,
+            ),
+        ).to(in0_ptr.type.element_ty)
+
+        out0 = _copy_kernel(in0)
+
+        out0_bptr = tl.make_block_ptr(
+            out0_ptr,
+            (s0, s1, s2),
+            (out0_stride0, out0_stride1, out0_stride2),
+            (offset0, offset1, offset2),
+            (tile_size0, tile_size1, tile_size2),
+            order=(
+                out0_stride_order0,
+                out0_stride_order1,
+                out0_stride_order2,
+            ),
+        )
+        tl.store(
+            out0_bptr,
+            out0.to(out0_bptr.type.element_ty),
+            boundary_check=(
+                out0_stride_order0,
+                out0_stride_order1,
+                out0_stride_order2,
+            ),
+        )
+    else:
+        num_ctas = tle.num_programs(0)
+        for j in range(0, tiles_per_cta):
+            tile_id = pid + j * num_ctas
+            tile_id2 = tile_id % num_tiles2
+            tile_id //= num_tiles2
+            tile_id1 = tile_id % num_tiles1
+            tile_id //= num_tiles1
+            tile_id0 = tile_id
+
+            offset0 = (tile_id0 * tile_size0).to(tl.int32)
+            offset1 = (tile_id1 * tile_size1).to(tl.int32)
+            offset2 = (tile_id2 * tile_size2).to(tl.int32)
+            in0_bptr = tl.make_block_ptr(
+                in0_ptr,
+                (s0, s1, s2),
+                (in0_stride0, in0_stride1, in0_stride2),
+                (offset0, offset1, offset2),
+                (tile_size0, tile_size1, tile_size2),
+                order=(
+                    in0_stride_order0,
+                    in0_stride_order1,
+                    in0_stride_order2,
+                ),
+            )
+            in0 = tl.load(
+                in0_bptr,
+                boundary_check=(
+                    in0_stride_order0,
+                    in0_stride_order1,
+                    in0_stride_order2,
+                ),
+            ).to(in0_ptr.type.element_ty)
+
+            out0 = _copy_kernel(in0)
+
+            out0_bptr = tl.make_block_ptr(
+                out0_ptr,
+                (s0, s1, s2),
+                (out0_stride0, out0_stride1, out0_stride2),
+                (offset0, offset1, offset2),
+                (tile_size0, tile_size1, tile_size2),
+                order=(
+                    out0_stride_order0,
+                    out0_stride_order1,
+                    out0_stride_order2,
+                ),
+            )
+            tl.store(
+                out0_bptr,
+                out0.to(out0_bptr.type.element_ty),
+                boundary_check=(
+                    out0_stride_order0,
+                    out0_stride_order1,
+                    out0_stride_order2,
+                ),
+            )
+
+
+@triton.jit
+def _copy_kernel_cppwrapper_rank_4(
+    in0_ptr: tl.tensor,  # of tl.pointer_type
+    out0_ptr: tl.tensor,  # of tl.pointer_type
+    in0_stride0: int,
+    in0_stride1: int,
+    in0_stride2: int,
+    in0_stride3: int,
+    in0_stride_order0: tl.constexpr,
+    in0_stride_order1: tl.constexpr,
+    in0_stride_order2: tl.constexpr,
+    in0_stride_order3: tl.constexpr,
+    out0_stride0: int,
+    out0_stride1: int,
+    out0_stride2: int,
+    out0_stride3: int,
+    out0_stride_order0: tl.constexpr,
+    out0_stride_order1: tl.constexpr,
+    out0_stride_order2: tl.constexpr,
+    out0_stride_order3: tl.constexpr,
+    s0,
+    s1,
+    s2,
+    s3,
+    num_tasks,
+    tiles_per_cta: int,
+    tile_size0: tl.constexpr,
+    tile_size1: tl.constexpr,
+    tile_size2: tl.constexpr,
+    tile_size3: tl.constexpr,
+    one_tile_per_cta: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    num_tiles3 = tl.cdiv(s3, tile_size3)
+    num_tiles2 = tl.cdiv(s2, tile_size2)
+    num_tiles1 = tl.cdiv(s1, tile_size1)
+    if one_tile_per_cta:
+        tile_id = pid
+        tile_id3 = tile_id % num_tiles3
+        tile_id //= num_tiles3
+        tile_id2 = tile_id % num_tiles2
+        tile_id //= num_tiles2
+        tile_id1 = tile_id % num_tiles1
+        tile_id //= num_tiles1
+        tile_id0 = tile_id
+
+        offset0 = (tile_id0 * tile_size0).to(tl.int32)
+        offset1 = (tile_id1 * tile_size1).to(tl.int32)
+        offset2 = (tile_id2 * tile_size2).to(tl.int32)
+        offset3 = (tile_id3 * tile_size3).to(tl.int32)
+        in0_bptr = tl.make_block_ptr(
+            in0_ptr,
+            (s0, s1, s2, s3),
+            (in0_stride0, in0_stride1, in0_stride2, in0_stride3),
+            (offset0, offset1, offset2, offset3),
+            (tile_size0, tile_size1, tile_size2, tile_size3),
+            order=(
+                in0_stride_order0,
+                in0_stride_order1,
+                in0_stride_order2,
+                in0_stride_order3,
+            ),
+        )
+        in0 = tl.load(
+            in0_bptr,
+            boundary_check=(
+                in0_stride_order0,
+                in0_stride_order1,
+                in0_stride_order2,
+                in0_stride_order3,
+            ),
+        ).to(in0_ptr.type.element_ty)
+
+        out0 = _copy_kernel(in0)
+
+        out0_bptr = tl.make_block_ptr(
+            out0_ptr,
+            (s0, s1, s2, s3),
+            (out0_stride0, out0_stride1, out0_stride2, out0_stride3),
+            (offset0, offset1, offset2, offset3),
+            (tile_size0, tile_size1, tile_size2, tile_size3),
+            order=(
+                out0_stride_order0,
+                out0_stride_order1,
+                out0_stride_order2,
+                out0_stride_order3,
+            ),
+        )
+        tl.store(
+            out0_bptr,
+            out0.to(out0_bptr.type.element_ty),
+            boundary_check=(
+                out0_stride_order0,
+                out0_stride_order1,
+                out0_stride_order2,
+                out0_stride_order3,
+            ),
+        )
+    else:
+        num_ctas = tle.num_programs(0)
+        for j in range(0, tiles_per_cta):
+            tile_id = pid + j * num_ctas
+            tile_id3 = tile_id % num_tiles3
+            tile_id //= num_tiles3
+            tile_id2 = tile_id % num_tiles2
+            tile_id //= num_tiles2
+            tile_id1 = tile_id % num_tiles1
+            tile_id //= num_tiles1
+            tile_id0 = tile_id
+
+            offset0 = (tile_id0 * tile_size0).to(tl.int32)
+            offset1 = (tile_id1 * tile_size1).to(tl.int32)
+            offset2 = (tile_id2 * tile_size2).to(tl.int32)
+            offset3 = (tile_id3 * tile_size3).to(tl.int32)
+            in0_bptr = tl.make_block_ptr(
+                in0_ptr,
+                (s0, s1, s2, s3),
+                (in0_stride0, in0_stride1, in0_stride2, in0_stride3),
+                (offset0, offset1, offset2, offset3),
+                (tile_size0, tile_size1, tile_size2, tile_size3),
+                order=(
+                    in0_stride_order0,
+                    in0_stride_order1,
+                    in0_stride_order2,
+                    in0_stride_order3,
+                ),
+            )
+            in0 = tl.load(
+                in0_bptr,
+                boundary_check=(
+                    in0_stride_order0,
+                    in0_stride_order1,
+                    in0_stride_order2,
+                    in0_stride_order3,
+                ),
+            ).to(in0_ptr.type.element_ty)
+
+            out0 = _copy_kernel(in0)
+
+            out0_bptr = tl.make_block_ptr(
+                out0_ptr,
+                (s0, s1, s2, s3),
+                (out0_stride0, out0_stride1, out0_stride2, out0_stride3),
+                (offset0, offset1, offset2, offset3),
+                (tile_size0, tile_size1, tile_size2, tile_size3),
+                order=(
+                    out0_stride_order0,
+                    out0_stride_order1,
+                    out0_stride_order2,
+                    out0_stride_order3,
+                ),
+            )
+            tl.store(
+                out0_bptr,
+                out0.to(out0_bptr.type.element_ty),
+                boundary_check=(
+                    out0_stride_order0,
+                    out0_stride_order1,
+                    out0_stride_order2,
+                    out0_stride_order3,
+                ),
             )
 
 

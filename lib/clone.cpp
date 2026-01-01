@@ -16,10 +16,25 @@ namespace {
 
   constexpr int kCloneBlockSize = 1024;
 
+  at::Tensor redispatch_clone_fallback(const at::Tensor &self,
+                                       c10::optional<at::MemoryFormat> memory_format) {
+    static auto op = c10::Dispatcher::singleton()
+                         .findSchemaOrThrow("aten::clone", "")
+                         .typed<at::Tensor(const at::Tensor &, c10::optional<at::MemoryFormat>)>();
+
+    constexpr c10::DispatchKeySet fallback_keyset =
+        c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd);
+
+    return op.redispatch(fallback_keyset, self, memory_format);
+  }
+
 }  // namespace
 
 // clone(Tensor self, *, MemoryFormat? memory_format=None) -> Tensor
 at::Tensor clone(const at::Tensor &self, c10::optional<at::MemoryFormat> optional_memory_format) {
+  if (self.dim() > 4) {
+    return redispatch_clone_fallback(self, optional_memory_format);
+  }
   auto memory_format = optional_memory_format.value_or(at::MemoryFormat::Preserve);
   at::Tensor out;
   if (memory_format == at::MemoryFormat::Preserve && self.is_non_overlapping_and_dense()) {
@@ -45,13 +60,8 @@ at::Tensor clone(const at::Tensor &self, c10::optional<at::MemoryFormat> optiona
   const std::string copy_kernel_path = (utils::get_triton_src_path() / "copy.py").string();
 
   const int64_t ndim = out.dim();
-  if (ndim >= 0 && ndim <= 2) {
-    if (launch_pointwise_unary_rank0_to2(self,
-                                         out,
-                                         ndim,
-                                         raw_stream,
-                                         copy_kernel_path,
-                                         "_copy_kernel_kernel")) {
+  if (ndim >= 0 && ndim <= 4) {
+    if (launch_pointwise_low_rank(self, out, ndim, raw_stream, copy_kernel_path, "_copy_kernel_cppwrapper")) {
       return out;
     }
   }

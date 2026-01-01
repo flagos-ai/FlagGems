@@ -76,14 +76,13 @@ namespace {
 
 }  // namespace
 
-bool launch_pointwise_unary_rank0_to2(const at::Tensor &src,
-                                      at::Tensor &dst,
-                                      const int64_t rank,
-                                      CUstream raw_stream,
-                                      std::string_view triton_module_path,
-                                      std::string_view kernel_name_prefix) {
-  TORCH_CHECK(src.device() == dst.device(),
-              "launch_pointwise_unary_rank0_to2 expects tensors on same device");
+bool launch_pointwise_low_rank(const at::Tensor &src,
+                               at::Tensor &dst,
+                               const int64_t rank,
+                               CUstream raw_stream,
+                               std::string_view triton_module_path,
+                               std::string_view kernel_name_prefix) {
+  TORCH_CHECK(src.device() == dst.device(), "launch_pointwise_low_rank expects tensors on same device");
   TORCH_CHECK(src.scalar_type() == dst.scalar_type(), "Input/output dtype mismatch");
   TORCH_CHECK(src.sizes() == dst.sizes(), "Input/output shape mismatch");
 
@@ -148,6 +147,78 @@ bool launch_pointwise_unary_rank0_to2(const at::Tensor &src,
            config.tiles_per_cta,
            config.tile_sizes[0],
            config.tile_sizes[1],
+           config.one_tile_per_cta);
+    return true;
+  }
+
+  if (rank == 3) {
+    kernel(raw_stream,
+           config.grid_x,
+           config.grid_y,
+           config.grid_z,
+           config.num_warps,
+           config.num_stages,
+           src,
+           dst,
+           src.stride(0),
+           src.stride(1),
+           src.stride(2),
+           in_stride_order[0],
+           in_stride_order[1],
+           in_stride_order[2],
+           dst.stride(0),
+           dst.stride(1),
+           dst.stride(2),
+           out_stride_order[0],
+           out_stride_order[1],
+           out_stride_order[2],
+           dst.size(0),
+           dst.size(1),
+           dst.size(2),
+           dst.numel(),
+           config.tiles_per_cta,
+           config.tile_sizes[0],
+           config.tile_sizes[1],
+           config.tile_sizes[2],
+           config.one_tile_per_cta);
+    return true;
+  }
+
+  if (rank == 4) {
+    kernel(raw_stream,
+           config.grid_x,
+           config.grid_y,
+           config.grid_z,
+           config.num_warps,
+           config.num_stages,
+           src,
+           dst,
+           src.stride(0),
+           src.stride(1),
+           src.stride(2),
+           src.stride(3),
+           in_stride_order[0],
+           in_stride_order[1],
+           in_stride_order[2],
+           in_stride_order[3],
+           dst.stride(0),
+           dst.stride(1),
+           dst.stride(2),
+           dst.stride(3),
+           out_stride_order[0],
+           out_stride_order[1],
+           out_stride_order[2],
+           out_stride_order[3],
+           dst.size(0),
+           dst.size(1),
+           dst.size(2),
+           dst.size(3),
+           dst.numel(),
+           config.tiles_per_cta,
+           config.tile_sizes[0],
+           config.tile_sizes[1],
+           config.tile_sizes[2],
+           config.tile_sizes[3],
            config.one_tile_per_cta);
     return true;
   }
