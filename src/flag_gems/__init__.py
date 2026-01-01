@@ -33,11 +33,11 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_softmax", softmax),
     ("_softmax_backward_data", softmax_backward),
-    (
-        "_to_copy",
-        to_copy,
-        lambda: version.parse(torch.__version__) >= version.parse("2.4"),
-    ),
+    # (
+    #     "_to_copy",
+    #     to_copy,
+    #     lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+    # ),
     ("_unique2", _unique2),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_weight_norm_interface", weight_norm_interface),
@@ -106,11 +106,11 @@ _FULL_CONFIG = (
     ("conv2d.padding", conv2d),
     ("conv3d", conv3d),
     ("conv3d.padding", conv3d),
-    (
-        "copy_",
-        copy_,
-        lambda: version.parse(torch.__version__) >= version.parse("2.4"),
-    ),
+    # (
+    #     "copy_",
+    #     copy_,
+    #     lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+    # ),
     ("cos", cos),
     ("cos_", cos_),
     ("count_nonzero", count_nonzero),
