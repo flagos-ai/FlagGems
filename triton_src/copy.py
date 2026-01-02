@@ -448,19 +448,19 @@ def _copy_kernel_cppwrapper_rank_3(
     out0_ptr: tl.tensor,  # of tl.pointer_type
     in0_stride0: int,
     in0_stride1: int,
-    in0_stride2: int,
+    in0_stride2: int,  # strides for in0
     in0_stride_order0: tl.constexpr,
     in0_stride_order1: tl.constexpr,
-    in0_stride_order2: tl.constexpr,
+    in0_stride_order2: tl.constexpr,  # stride order for in0
     out0_stride0: int,
     out0_stride1: int,
-    out0_stride2: int,
+    out0_stride2: int,  # strides for out0
     out0_stride_order0: tl.constexpr,
     out0_stride_order1: tl.constexpr,
-    out0_stride_order2: tl.constexpr,
+    out0_stride_order2: tl.constexpr,  # stride order for out0
     s0,
     s1,
-    s2,
+    s2,  # task_space
     num_tasks,
     tiles_per_cta: int,
     tile_size0: tl.constexpr,
@@ -469,87 +469,79 @@ def _copy_kernel_cppwrapper_rank_3(
     one_tile_per_cta: tl.constexpr,
 ):
     pid = tle.program_id(0)
-    num_tiles2 = tl.cdiv(s2, tile_size2)
+    # num_tiles0 = tl.cdiv(s0, tile_size0)
     num_tiles1 = tl.cdiv(s1, tile_size1)
-    if one_tile_per_cta:
+    num_tiles2 = tl.cdiv(s2, tile_size2)
+    if one_tile_per_cta:  # monolitic kernel style
         tile_id = pid
+        # pid multi index recontruction: we use c ordering, right axes changes fastest
         tile_id2 = tile_id % num_tiles2
         tile_id //= num_tiles2
         tile_id1 = tile_id % num_tiles1
         tile_id //= num_tiles1
         tile_id0 = tile_id
 
+        # tile offsets
         offset0 = (tile_id0 * tile_size0).to(tl.int32)
         offset1 = (tile_id1 * tile_size1).to(tl.int32)
         offset2 = (tile_id2 * tile_size2).to(tl.int32)
+
+        # loads
         in0_bptr = tl.make_block_ptr(
             in0_ptr,
             (s0, s1, s2),
             (in0_stride0, in0_stride1, in0_stride2),
             (offset0, offset1, offset2),
             (tile_size0, tile_size1, tile_size2),
-            order=(
-                in0_stride_order0,
-                in0_stride_order1,
-                in0_stride_order2,
-            ),
+            order=(in0_stride_order0, in0_stride_order1, in0_stride_order2),
         )
         in0 = tl.load(
             in0_bptr,
-            boundary_check=(
-                in0_stride_order0,
-                in0_stride_order1,
-                in0_stride_order2,
-            ),
-        ).to(in0_ptr.type.element_ty)
+            boundary_check=(in0_stride_order0, in0_stride_order1, in0_stride_order2),
+        ).to(
+            in0_ptr.type.element_ty
+        )  # workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)
 
+        # compute
         out0 = _copy_kernel(in0)
 
+        # stores, note that store to block pointer does not automatically cast the value to the pointer's dtype
         out0_bptr = tl.make_block_ptr(
             out0_ptr,
             (s0, s1, s2),
             (out0_stride0, out0_stride1, out0_stride2),
             (offset0, offset1, offset2),
             (tile_size0, tile_size1, tile_size2),
-            order=(
-                out0_stride_order0,
-                out0_stride_order1,
-                out0_stride_order2,
-            ),
+            order=(out0_stride_order0, out0_stride_order1, out0_stride_order2),
         )
         tl.store(
             out0_bptr,
             out0.to(out0_bptr.type.element_ty),
-            boundary_check=(
-                out0_stride_order0,
-                out0_stride_order1,
-                out0_stride_order2,
-            ),
+            boundary_check=(out0_stride_order0, out0_stride_order1, out0_stride_order2),
         )
-    else:
+    else:  # grid-stride-loop style kernel
         num_ctas = tle.num_programs(0)
         for j in range(0, tiles_per_cta):
             tile_id = pid + j * num_ctas
+            # pid multi index recontruction: we use c ordering, right axes changes fastest
             tile_id2 = tile_id % num_tiles2
             tile_id //= num_tiles2
             tile_id1 = tile_id % num_tiles1
             tile_id //= num_tiles1
             tile_id0 = tile_id
 
+            # tile offsets
             offset0 = (tile_id0 * tile_size0).to(tl.int32)
             offset1 = (tile_id1 * tile_size1).to(tl.int32)
             offset2 = (tile_id2 * tile_size2).to(tl.int32)
+            # loads
             in0_bptr = tl.make_block_ptr(
                 in0_ptr,
                 (s0, s1, s2),
                 (in0_stride0, in0_stride1, in0_stride2),
                 (offset0, offset1, offset2),
                 (tile_size0, tile_size1, tile_size2),
-                order=(
-                    in0_stride_order0,
-                    in0_stride_order1,
-                    in0_stride_order2,
-                ),
+                order=(in0_stride_order0, in0_stride_order1, in0_stride_order2),
             )
             in0 = tl.load(
                 in0_bptr,
@@ -558,21 +550,20 @@ def _copy_kernel_cppwrapper_rank_3(
                     in0_stride_order1,
                     in0_stride_order2,
                 ),
-            ).to(in0_ptr.type.element_ty)
+            ).to(
+                in0_ptr.type.element_ty
+            )  # workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)
 
+            # compute
             out0 = _copy_kernel(in0)
-
+            # stores, note that store to block pointer does not automatically cast the value to the pointer's dtype
             out0_bptr = tl.make_block_ptr(
                 out0_ptr,
                 (s0, s1, s2),
                 (out0_stride0, out0_stride1, out0_stride2),
                 (offset0, offset1, offset2),
                 (tile_size0, tile_size1, tile_size2),
-                order=(
-                    out0_stride_order0,
-                    out0_stride_order1,
-                    out0_stride_order2,
-                ),
+                order=(out0_stride_order0, out0_stride_order1, out0_stride_order2),
             )
             tl.store(
                 out0_bptr,
@@ -592,23 +583,23 @@ def _copy_kernel_cppwrapper_rank_4(
     in0_stride0: int,
     in0_stride1: int,
     in0_stride2: int,
-    in0_stride3: int,
+    in0_stride3: int,  # strides for in0
     in0_stride_order0: tl.constexpr,
     in0_stride_order1: tl.constexpr,
     in0_stride_order2: tl.constexpr,
-    in0_stride_order3: tl.constexpr,
+    in0_stride_order3: tl.constexpr,  # stride order for in0
     out0_stride0: int,
     out0_stride1: int,
     out0_stride2: int,
-    out0_stride3: int,
+    out0_stride3: int,  # strides for out0
     out0_stride_order0: tl.constexpr,
     out0_stride_order1: tl.constexpr,
     out0_stride_order2: tl.constexpr,
-    out0_stride_order3: tl.constexpr,
+    out0_stride_order3: tl.constexpr,  # stride order for out0
     s0,
     s1,
     s2,
-    s3,
+    s3,  # task_space
     num_tasks,
     tiles_per_cta: int,
     tile_size0: tl.constexpr,
@@ -618,11 +609,13 @@ def _copy_kernel_cppwrapper_rank_4(
     one_tile_per_cta: tl.constexpr,
 ):
     pid = tle.program_id(0)
-    num_tiles3 = tl.cdiv(s3, tile_size3)
-    num_tiles2 = tl.cdiv(s2, tile_size2)
+    # num_tiles0 = tl.cdiv(s0, tile_size0)
     num_tiles1 = tl.cdiv(s1, tile_size1)
-    if one_tile_per_cta:
+    num_tiles2 = tl.cdiv(s2, tile_size2)
+    num_tiles3 = tl.cdiv(s3, tile_size3)
+    if one_tile_per_cta:  # monolitic kernel style
         tile_id = pid
+        # pid multi index recontruction: we use c ordering, right axes changes fastest
         tile_id3 = tile_id % num_tiles3
         tile_id //= num_tiles3
         tile_id2 = tile_id % num_tiles2
@@ -631,10 +624,12 @@ def _copy_kernel_cppwrapper_rank_4(
         tile_id //= num_tiles1
         tile_id0 = tile_id
 
+        # tile offsets
         offset0 = (tile_id0 * tile_size0).to(tl.int32)
         offset1 = (tile_id1 * tile_size1).to(tl.int32)
         offset2 = (tile_id2 * tile_size2).to(tl.int32)
         offset3 = (tile_id3 * tile_size3).to(tl.int32)
+        # loads
         in0_bptr = tl.make_block_ptr(
             in0_ptr,
             (s0, s1, s2, s3),
@@ -656,10 +651,14 @@ def _copy_kernel_cppwrapper_rank_4(
                 in0_stride_order2,
                 in0_stride_order3,
             ),
-        ).to(in0_ptr.type.element_ty)
+        ).to(
+            in0_ptr.type.element_ty
+        )  # workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)
 
+        # compute
         out0 = _copy_kernel(in0)
 
+        # stores, note that store to block pointer does not automatically cast the value to the pointer's dtype
         out0_bptr = tl.make_block_ptr(
             out0_ptr,
             (s0, s1, s2, s3),
@@ -683,10 +682,11 @@ def _copy_kernel_cppwrapper_rank_4(
                 out0_stride_order3,
             ),
         )
-    else:
+    else:  # grid-stride-loop style kernel
         num_ctas = tle.num_programs(0)
         for j in range(0, tiles_per_cta):
             tile_id = pid + j * num_ctas
+            # pid multi index recontruction: we use c ordering, right axes changes fastest
             tile_id3 = tile_id % num_tiles3
             tile_id //= num_tiles3
             tile_id2 = tile_id % num_tiles2
@@ -695,10 +695,13 @@ def _copy_kernel_cppwrapper_rank_4(
             tile_id //= num_tiles1
             tile_id0 = tile_id
 
+            # tile offsets
             offset0 = (tile_id0 * tile_size0).to(tl.int32)
             offset1 = (tile_id1 * tile_size1).to(tl.int32)
             offset2 = (tile_id2 * tile_size2).to(tl.int32)
             offset3 = (tile_id3 * tile_size3).to(tl.int32)
+
+            # loads
             in0_bptr = tl.make_block_ptr(
                 in0_ptr,
                 (s0, s1, s2, s3),
@@ -720,10 +723,14 @@ def _copy_kernel_cppwrapper_rank_4(
                     in0_stride_order2,
                     in0_stride_order3,
                 ),
-            ).to(in0_ptr.type.element_ty)
+            ).to(
+                in0_ptr.type.element_ty
+            )  # workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)
 
+            # compute
             out0 = _copy_kernel(in0)
 
+            # stores, note that store to block pointer does not automatically cast the value to the pointer's dtype
             out0_bptr = tl.make_block_ptr(
                 out0_ptr,
                 (s0, s1, s2, s3),

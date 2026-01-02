@@ -12,29 +12,8 @@ namespace flag_gems {
 
 using namespace triton_jit;
 
-namespace {
-
-  constexpr int kCloneBlockSize = 1024;
-
-  at::Tensor redispatch_clone_fallback(const at::Tensor &self,
-                                       c10::optional<at::MemoryFormat> memory_format) {
-    static auto op = c10::Dispatcher::singleton()
-                         .findSchemaOrThrow("aten::clone", "")
-                         .typed<at::Tensor(const at::Tensor &, c10::optional<at::MemoryFormat>)>();
-
-    constexpr c10::DispatchKeySet fallback_keyset =
-        c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd);
-
-    return op.redispatch(fallback_keyset, self, memory_format);
-  }
-
-}  // namespace
-
 // clone(Tensor self, *, MemoryFormat? memory_format=None) -> Tensor
 at::Tensor clone(const at::Tensor &self, c10::optional<at::MemoryFormat> optional_memory_format) {
-  if (self.dim() > 4) {
-    return redispatch_clone_fallback(self, optional_memory_format);
-  }
   auto memory_format = optional_memory_format.value_or(at::MemoryFormat::Preserve);
   at::Tensor out;
   if (memory_format == at::MemoryFormat::Preserve && self.is_non_overlapping_and_dense()) {
@@ -59,44 +38,15 @@ at::Tensor clone(const at::Tensor &self, c10::optional<at::MemoryFormat> optiona
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   const std::string copy_kernel_path = (utils::get_triton_src_path() / "copy.py").string();
 
-  const int64_t ndim = out.dim();
-  if (ndim >= 0 && ndim <= 4) {
-    if (launch_pointwise_low_rank(self, out, ndim, raw_stream, copy_kernel_path, "_copy_kernel_cppwrapper")) {
+  const int64_t rank = self.sizes().size();
+  if (rank >= 0 && rank <= 4) {
+    if (launch_pointwise_low_rank(self, out, rank, raw_stream, copy_kernel_path, "_copy_kernel_cppwrapper")) {
       return out;
     }
   }
 
-  const int64_t numel = self.numel();
-  const unsigned int grid_x = (numel + kCloneBlockSize - 1) / kCloneBlockSize;
-  if (self.is_contiguous() && out.is_contiguous() && numel <= std::numeric_limits<int32_t>::max()) {
-    const TritonJITFunction &kernel_linear =
-        TritonJITFunction::get_instance(copy_kernel_path, "copy_kernel_linear");
-    kernel_linear(raw_stream, grid_x, 1, 1, 4, 0, self, out, numel, kCloneBlockSize);
-    return out;
-  }
-
-  std::vector<int64_t> task_shape(self.sizes().begin(), self.sizes().end());
-  int NDIMS = task_shape.size();
-
-  std::vector<int64_t> src_stride(self.strides().begin(), self.strides().end());
-  std::vector<int64_t> dst_stride(out.strides().begin(), out.strides().end());
-
-  const TritonJITFunction &kernel_nd = TritonJITFunction::get_instance(copy_kernel_path, "copy_kernel_nd");
-  kernel_nd(raw_stream,
-            grid_x,
-            1,
-            1,
-            4,
-            0,
-            self,
-            out,
-            torch::tensor(task_shape, torch::TensorOptions().dtype(torch::kInt64).device(out.device())),
-            torch::tensor(src_stride, torch::TensorOptions().dtype(torch::kInt64).device(out.device())),
-            torch::tensor(dst_stride, torch::TensorOptions().dtype(torch::kInt64).device(out.device())),
-            numel,
-            NDIMS,
-            kCloneBlockSize);
-
+  // fallback to original implementation
+  out.copy_(self);
   return out;
 }
 
