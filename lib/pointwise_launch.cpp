@@ -85,10 +85,7 @@ bool launch_pointwise_low_rank(const at::Tensor &src,
   TORCH_CHECK(src.device() == dst.device(), "launch_pointwise_low_rank expects tensors on same device");
   TORCH_CHECK(src.scalar_type() == dst.scalar_type(), "Input/output dtype mismatch");
   TORCH_CHECK(src.sizes() == dst.sizes(), "Input/output shape mismatch");
-
-  if (rank < 0 || rank > 2) {
-    return false;
-  }
+  TORCH_CHECK(rank >= 0 && rank <= 4, "Rank must be between 0 and 4 inclusive");
 
   const std::string kernel_name = make_kernel_name(kernel_name_prefix, rank);
   const triton_jit::TritonJITFunction &kernel =
