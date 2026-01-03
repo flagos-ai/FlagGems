@@ -91,7 +91,9 @@ def addcmul_(*args, **kwargs):
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     _addcmul_kernel[grid](
-        self, t1, t2,
+        self,
+        t1,
+        t2,
         n_elements,
         value,
         BLOCK_SIZE=BLOCK_SIZE,

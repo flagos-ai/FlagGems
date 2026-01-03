@@ -9,18 +9,20 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.addcdiv import addcdiv as gems_addcdiv, addcdiv_out as gems_addcdiv_out
+from flag_gems.experimental_ops.addcdiv import addcdiv as gems_addcdiv
+from flag_gems.experimental_ops.addcdiv import addcdiv_out as gems_addcdiv_out
 
-import torch
 
 @pytest.mark.addcdiv
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -63,13 +65,16 @@ def test_addcdiv_out(shape, dtype, value):
     ref_b = b.clone()
     ref_out_buf = torch.empty_like(ref_x)
 
-    ref_out = torch.ops.aten.addcdiv.out(ref_x, ref_a, ref_b, value=value, out=ref_out_buf)
+    ref_out = torch.ops.aten.addcdiv.out(
+        ref_x, ref_a, ref_b, value=value, out=ref_out_buf
+    )
 
     act_out_buf = torch.empty_like(x)
     with flag_gems.use_gems():
         act_out = gems_addcdiv_out(x, a, b, value=value, out=act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.addcdiv
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -95,18 +100,14 @@ def test_addcdiv_benchmark_tensor(shape, dtype, value):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.addcdiv(ref_x, ref_a, ref_b, value=value),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_addcdiv(x, a, b, value=value),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_addcdiv(x, a, b, value=value), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -121,7 +122,6 @@ def test_addcdiv_benchmark_tensor(shape, dtype, value):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("value", [1.0, 0.5, 2.0, -1.25])
 def test_addcdiv_benchmark_out(shape, dtype, value):
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -138,9 +138,11 @@ def test_addcdiv_benchmark_out(shape, dtype, value):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.addcdiv.out(ref_x, ref_a, ref_b, value=value, out=ref_out_buf),
+        lambda: torch.ops.aten.addcdiv.out(
+            ref_x, ref_a, ref_b, value=value, out=ref_out_buf
+        ),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
 
     act_out_buf = torch.empty_like(x)
@@ -150,9 +152,8 @@ def test_addcdiv_benchmark_out(shape, dtype, value):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems_addcdiv_out(x, a, b, value=value, out=act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

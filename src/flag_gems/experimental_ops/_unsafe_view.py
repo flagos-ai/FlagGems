@@ -27,23 +27,31 @@ def _infer_view_size(input_numel, size):
     for s in size:
         if s != -1:
             if s < 0:
-                raise ValueError("invalid size, negative dimensions other than -1 not allowed")
+                raise ValueError(
+                    "invalid size, negative dimensions other than -1 not allowed"
+                )
             known_prod *= s if s != 0 else 1
     if neg_one_count == 0:
         prod = 1
         for s in size:
             prod *= s
         if prod != input_numel:
-            raise ValueError(f"requested view size {tuple(size)} does not match input numel {input_numel}")
+            raise ValueError(
+                f"requested view size {tuple(size)} does not match input numel {input_numel}"
+            )
         return tuple(size)
     else:
         if known_prod == 0:
             if input_numel != 0:
-                raise ValueError(f"cannot infer dimension with zero known product and non-zero numel {input_numel}")
+                raise ValueError(
+                    f"cannot infer dimension with zero known product and non-zero numel {input_numel}"
+                )
             inferred = 0
         else:
             if input_numel % known_prod != 0:
-                raise ValueError("input numel not divisible by known product for inferred dimension")
+                raise ValueError(
+                    "input numel not divisible by known product for inferred dimension"
+                )
             inferred = input_numel // known_prod
         out = []
         inferred_used = False

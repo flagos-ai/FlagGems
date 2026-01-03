@@ -9,18 +9,21 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops._unsafe_view import _unsafe_view as gems__unsafe_view, _unsafe_view_out as gems__unsafe_view_out
-
-import torch
+from flag_gems.experimental_ops._unsafe_view import _unsafe_view as gems__unsafe_view
+from flag_gems.experimental_ops._unsafe_view import (
+    _unsafe_view_out as gems__unsafe_view_out,
+)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
@@ -85,13 +88,16 @@ def test__unsafe_view_out(case, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.unsafe_view
 def test_perf_aten__unsafe_view():
     # Define input generation logic matching the operator arguments
     def _unsafe_view_input_fn(shape, dtype, device):
         input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         # Generate the output size based on the input shape
-        output_size = (torch.prod(torch.tensor(shape)).item(),)  # Flatten the input shape
+        output_size = (
+            torch.prod(torch.tensor(shape)).item(),
+        )  # Flatten the input shape
         yield input_tensor, output_size
 
     # Initialize benchmark

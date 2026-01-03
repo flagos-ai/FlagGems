@@ -23,9 +23,9 @@ def absolute_(*args, **kwargs):
     if len(args) >= 1:
         x = args[0]
     else:
-        x = kwargs.get('self', None)
+        x = kwargs.get("self", None)
         if x is None:
-            x = kwargs.get('input', None)
+            x = kwargs.get("input", None)
     if x is None or not isinstance(x, torch.Tensor):
         raise TypeError("absolute_ expects a torch.Tensor as the first argument")
 
@@ -45,11 +45,7 @@ def absolute_(*args, **kwargs):
         torch.uint8,
     }
 
-    use_triton = (
-        x.is_cuda
-        and x.is_contiguous()
-        and x.dtype in supported_dtypes
-    )
+    use_triton = x.is_cuda and x.is_contiguous() and x.dtype in supported_dtypes
 
     if not use_triton:
         # Fallback to PyTorch implementation for unsupported cases (e.g., CPU, non-contiguous, unsupported dtype)

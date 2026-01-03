@@ -4,7 +4,9 @@ import triton.language as tl
 
 
 @triton.jit
-def addcdiv_kernel(self_ptr, t1_ptr, t2_ptr, out_ptr, n_elements, value, BLOCK_SIZE: tl.constexpr):
+def addcdiv_kernel(
+    self_ptr, t1_ptr, t2_ptr, out_ptr, n_elements, value, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -21,7 +23,9 @@ def addcdiv_kernel(self_ptr, t1_ptr, t2_ptr, out_ptr, n_elements, value, BLOCK_S
 
 def _prepare_addcdiv_tensors(self, tensor1, tensor2):
     if not (self.is_cuda and tensor1.is_cuda and tensor2.is_cuda):
-        raise NotImplementedError("addcdiv Triton implementation requires CUDA tensors.")
+        raise NotImplementedError(
+            "addcdiv Triton implementation requires CUDA tensors."
+        )
     if not (self.device == tensor1.device == tensor2.device):
         raise ValueError("All tensors must be on the same CUDA device.")
     a, b, c = torch.broadcast_tensors(self, tensor1, tensor2)
@@ -42,17 +46,14 @@ def _launch_addcdiv(a, b, c, out, value):
         if value.numel() != 1:
             raise ValueError("value must be a scalar.")
         # move to same device if needed, then to host scalar
-        if value.device.type == 'cuda' and value.device != a.device:
-            raise ValueError("Scalar tensor 'value' must be on the same device as inputs.")
+        if value.device.type == "cuda" and value.device != a.device:
+            raise ValueError(
+                "Scalar tensor 'value' must be on the same device as inputs."
+            )
         value = float(value.to(dtype=out.dtype).item())
     else:
         value = float(value)
-    addcdiv_kernel[grid](
-        a, b, c, out,
-        n_elements,
-        value,
-        BLOCK_SIZE=BLOCK_SIZE
-    )
+    addcdiv_kernel[grid](a, b, c, out, n_elements, value, BLOCK_SIZE=BLOCK_SIZE)
 
 
 def addcdiv(self, tensor1, tensor2, *, value=1):

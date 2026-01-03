@@ -99,7 +99,9 @@ def abs_out(x: torch.Tensor, out: torch.Tensor):
     if x.is_complex():
         expected_dtype = _complex_abs_out_dtype(x.dtype)
         if out.dtype != expected_dtype:
-            raise TypeError(f"abs_out: expected out.dtype={expected_dtype}, got {out.dtype}")
+            raise TypeError(
+                f"abs_out: expected out.dtype={expected_dtype}, got {out.dtype}"
+            )
         if out.shape != x.shape:
             raise ValueError(f"abs_out: expected out.shape={x.shape}, got {out.shape}")
         x_c = x.contiguous()

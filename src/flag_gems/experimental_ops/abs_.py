@@ -20,9 +20,11 @@ abs__kernel = abs_
 
 def abs_(*args, **kwargs):
     # Extract input tensor
-    x = args[0] if len(args) > 0 else kwargs.get('input', None)
+    x = args[0] if len(args) > 0 else kwargs.get("input", None)
     if x is None:
-        raise ValueError("abs_ expects a tensor as the first positional argument or 'input' keyword argument.")
+        raise ValueError(
+            "abs_ expects a tensor as the first positional argument or 'input' keyword argument."
+        )
     if not isinstance(x, torch.Tensor):
         raise TypeError("abs_ expects a torch.Tensor as input.")
 
@@ -42,6 +44,6 @@ def abs_(*args, **kwargs):
     # Launch kernel
     n_elements = x.numel()
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     abs__kernel[grid](x, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return x

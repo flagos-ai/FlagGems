@@ -9,18 +9,23 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops._adaptive_avg_pool3d import _adaptive_avg_pool3d as gems__adaptive_avg_pool3d, _adaptive_avg_pool3d_out as gems__adaptive_avg_pool3d_out
-
-import torch
+from flag_gems.experimental_ops._adaptive_avg_pool3d import (
+    _adaptive_avg_pool3d as gems__adaptive_avg_pool3d,
+)
+from flag_gems.experimental_ops._adaptive_avg_pool3d import (
+    _adaptive_avg_pool3d_out as gems__adaptive_avg_pool3d_out,
+)
 
 
 @pytest.mark.adaptive_avg_pool3d
@@ -73,13 +78,16 @@ def test__adaptive_avg_pool3d_out(shape, output_size, dtype):
 
     out_shape = (shape[0], shape[1], output_size[0], output_size[1], output_size[2])
     ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-    ref_out = torch.ops.aten._adaptive_avg_pool3d.out(ref_x, output_size, out=ref_out_buf)
+    ref_out = torch.ops.aten._adaptive_avg_pool3d.out(
+        ref_x, output_size, out=ref_out_buf
+    )
 
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         act_out = gems__adaptive_avg_pool3d_out(x, output_size, act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.adaptive_avg_pool3d
 @pytest.mark.parametrize(
@@ -109,18 +117,16 @@ def test__adaptive_avg_pool3d_benchmark_tensor(shape, output_size, dtype):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten._adaptive_avg_pool3d(ref_x, output_size),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems__adaptive_avg_pool3d(x, output_size),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -147,7 +153,6 @@ def test__adaptive_avg_pool3d_benchmark_tensor(shape, output_size, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test__adaptive_avg_pool3d_benchmark_out(shape, output_size, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -157,9 +162,11 @@ def test__adaptive_avg_pool3d_benchmark_out(shape, output_size, dtype):
     ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten._adaptive_avg_pool3d.out(ref_x, output_size, out=ref_out_buf),
+        lambda: torch.ops.aten._adaptive_avg_pool3d.out(
+            ref_x, output_size, out=ref_out_buf
+        ),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
 
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
@@ -169,9 +176,8 @@ def test__adaptive_avg_pool3d_benchmark_out(shape, output_size, dtype):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems__adaptive_avg_pool3d_out(x, output_size, act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

@@ -54,7 +54,9 @@ def absolute_out(input: torch.Tensor, out: torch.Tensor):
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     if x.is_complex():
-        assert out.dtype == x.real.dtype, "out dtype must be the real dtype of the complex input"
+        assert (
+            out.dtype == x.real.dtype
+        ), "out dtype must be the real dtype of the complex input"
         assert out.shape == x.shape, "out must have the same shape as input"
         assert out.is_contiguous(), "out must be contiguous"
         ri = torch.view_as_real(x).contiguous()

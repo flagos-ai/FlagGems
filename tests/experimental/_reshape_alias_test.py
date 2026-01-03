@@ -9,18 +9,21 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops._reshape_alias import _reshape_alias as gems__reshape_alias
+from flag_gems.experimental_ops._reshape_alias import (
+    _reshape_alias as gems__reshape_alias,
+)
 
-import torch
 
 @pytest.mark.reshape_alias
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (256, 256), (8, 16, 4)])
@@ -71,6 +74,7 @@ def test__reshape_alias_tensor(shape, dtype, case):
         act_out = gems__reshape_alias(x, new_size, new_stride)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.reshape_alias
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (256, 256), (8, 16, 4)])
@@ -124,7 +128,7 @@ def test__reshape_alias_benchmark_tensor(shape, dtype, case):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten._reshape_alias(ref_x, new_size, new_stride),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
 
     # Triton implementation
@@ -132,9 +136,8 @@ def test__reshape_alias_benchmark_tensor(shape, dtype, case):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems__reshape_alias(x, new_size, new_stride),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
