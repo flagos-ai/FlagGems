@@ -9,21 +9,25 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.diag import diag as gems_diag, diag_out as gems_diag_out
+from flag_gems.experimental_ops.diag import diag as gems_diag
+from flag_gems.experimental_ops.diag import diag_out as gems_diag_out
 
-import torch
 
 @pytest.mark.diag
-@pytest.mark.parametrize("shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)])
+@pytest.mark.parametrize(
+    "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_tensor(shape, dtype, diagonal):
@@ -39,7 +43,9 @@ def test_diag_tensor(shape, dtype, diagonal):
 
 
 @pytest.mark.diag
-@pytest.mark.parametrize("shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)])
+@pytest.mark.parametrize(
+    "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_out(shape, dtype, diagonal):
@@ -69,8 +75,11 @@ def test_diag_out(shape, dtype, diagonal):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.diag
-@pytest.mark.parametrize("shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)])
+@pytest.mark.parametrize(
+    "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_benchmark_tensor(shape, dtype, diagonal):
@@ -83,20 +92,14 @@ def test_diag_benchmark_tensor(shape, dtype, diagonal):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.diag(ref_x, diagonal),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.diag(ref_x, diagonal), rep=100, quantiles=quantiles
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_diag(x, diagonal),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_diag(x, diagonal), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -107,11 +110,12 @@ def test_diag_benchmark_tensor(shape, dtype, diagonal):
 
 
 @pytest.mark.diag
-@pytest.mark.parametrize("shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)])
+@pytest.mark.parametrize(
+    "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_benchmark_out(shape, dtype, diagonal):
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -137,18 +141,16 @@ def test_diag_benchmark_out(shape, dtype, diagonal):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.diag.out(ref_x, diagonal, out=ref_out_buf),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems_diag_out(x, diagonal, act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

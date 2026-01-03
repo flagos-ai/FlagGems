@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.erf_ import erf_ as gems_erf_
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.erf_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -32,7 +33,9 @@ from benchmark.performance_utils import GenericBenchmark
 def test_erf__tensor(shape, dtype, noncontig):
     device = "cuda"
     if noncontig:
-        base = torch.randn((shape[1], shape[0]), device=flag_gems.device, dtype=torch.float32)
+        base = torch.randn(
+            (shape[1], shape[0]), device=flag_gems.device, dtype=torch.float32
+        )
         input_tensor = base.transpose(0, 1).to(dtype)
     else:
         input_tensor = torch.randn(shape, device=flag_gems.device, dtype=dtype)
@@ -48,6 +51,7 @@ def test_erf__tensor(shape, dtype, noncontig):
         act_out = gems_erf_(act_input)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.erf_
 def test_perf_aten_erf_():

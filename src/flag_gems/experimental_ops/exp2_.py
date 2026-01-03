@@ -29,7 +29,9 @@ def exp2_(*args, **kwargs):
         x = kwargs.get("input", None)
         if x is None:
             x = kwargs.get("x", None)
-    assert isinstance(x, torch.Tensor), "exp2_ expects a torch.Tensor as its first argument"
+    assert isinstance(
+        x, torch.Tensor
+    ), "exp2_ expects a torch.Tensor as its first argument"
     assert x.is_cuda, "exp2_ Triton kernel requires a CUDA tensor"
     n_elements = x.numel()
     BLOCK_SIZE = 1024

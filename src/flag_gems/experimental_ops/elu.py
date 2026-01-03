@@ -4,7 +4,9 @@ import triton.language as tl
 
 
 @triton.jit
-def elu_kernel(x_ptr, out_ptr, n_elements, alpha, scale, input_scale, BLOCK_SIZE: tl.constexpr):
+def elu_kernel(
+    x_ptr, out_ptr, n_elements, alpha, scale, input_scale, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -59,7 +61,9 @@ def _parse_elu_args(args, kwargs, expect_out: bool = False):
     return x, alpha, scale, input_scale, out
 
 
-def _launch_elu_kernel(x: torch.Tensor, out: torch.Tensor, alpha: float, scale: float, input_scale: float):
+def _launch_elu_kernel(
+    x: torch.Tensor, out: torch.Tensor, alpha: float, scale: float, input_scale: float
+):
     if not x.is_cuda or not out.is_cuda:
         raise RuntimeError("elu Triton kernel requires CUDA tensors.")
     if x.numel() != out.numel():

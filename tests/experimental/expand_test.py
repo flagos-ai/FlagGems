@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.expand import expand as gems_expand
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.expand
 @pytest.mark.parametrize(
@@ -84,6 +85,7 @@ def test_expand_noncontiguous(base_shape, op, out_size, dtype, implicit):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.expand
 def test_perf_aten_expand():
     # Define input generation logic matching the operator arguments
@@ -91,7 +93,9 @@ def test_perf_aten_expand():
         # Generate input tensor and output size
         input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         # Create output size based on the input shape
-        out_size = tuple(s if s != -1 else input_tensor.size(i) for i, s in enumerate(shape))
+        out_size = tuple(
+            s if s != -1 else input_tensor.size(i) for i, s in enumerate(shape)
+        )
         yield input_tensor, out_size
 
     # Initialize benchmark

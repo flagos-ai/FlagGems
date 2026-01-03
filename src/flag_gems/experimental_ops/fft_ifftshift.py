@@ -4,17 +4,18 @@ import triton.language as tl
 
 
 @triton.jit
-def fft_ifftshift(in_ptr_u8,  # pointer to input tensor as bytes
-                  out_ptr_u8,  # pointer to output tensor as bytes
-                  sizes_ptr,  # int64[NDIMS]
-                  in_strides_ptr,  # int64[NDIMS], in elements
-                  out_strides_ptr,  # int64[NDIMS], in elements
-                  adds_ptr,  # int64[NDIMS], per-dim add = floor(size/2) if shifted else 0
-                  n_elements,  # total number of elements
-                  ELEMENT_SIZE: tl.constexpr,  # number of bytes per element
-                  NDIMS: tl.constexpr,  # number of dimensions
-                  BLOCK_SIZE: tl.constexpr  # tile size
-                  ):
+def fft_ifftshift(
+    in_ptr_u8,  # pointer to input tensor as bytes
+    out_ptr_u8,  # pointer to output tensor as bytes
+    sizes_ptr,  # int64[NDIMS]
+    in_strides_ptr,  # int64[NDIMS], in elements
+    out_strides_ptr,  # int64[NDIMS], in elements
+    adds_ptr,  # int64[NDIMS], per-dim add = floor(size/2) if shifted else 0
+    n_elements,  # total number of elements
+    ELEMENT_SIZE: tl.constexpr,  # number of bytes per element
+    NDIMS: tl.constexpr,  # number of dimensions
+    BLOCK_SIZE: tl.constexpr,  # tile size
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offs = block_start + tl.arange(0, BLOCK_SIZE)
@@ -67,7 +68,11 @@ def fft_ifftshift(*args, **kwargs):
         x = args[0]
     else:
         # try kwargs
-        x = kwargs.get('input', None) or kwargs.get('self', None) or kwargs.get('tensor', None)
+        x = (
+            kwargs.get("input", None)
+            or kwargs.get("self", None)
+            or kwargs.get("tensor", None)
+        )
     if x is None:
         raise ValueError("fft_ifftshift expects at least one tensor argument as input.")
 
@@ -75,7 +80,7 @@ def fft_ifftshift(*args, **kwargs):
     if len(args) >= 2:
         dims = args[1]
     else:
-        dims = kwargs.get('dim', kwargs.get('dims', None))
+        dims = kwargs.get("dim", kwargs.get("dims", None))
 
     # Normalize dims
     if dims is None:
@@ -110,7 +115,9 @@ def fft_ifftshift(*args, **kwargs):
     out_strides = torch.tensor(list(out.stride()), device=device, dtype=torch.int64)
 
     # Per-dimension add amount = floor(size/2) if dimension is included, else 0
-    add_list = [(sizes[d].item() // 2) if d in set(dims_list) else 0 for d in range(x.ndim)]
+    add_list = [
+        (sizes[d].item() // 2) if d in set(dims_list) else 0 for d in range(x.ndim)
+    ]
     adds = torch.tensor(add_list, device=device, dtype=torch.int64)
 
     n_elements = x.numel()
@@ -121,15 +128,19 @@ def fft_ifftshift(*args, **kwargs):
     x_u8 = x.view(torch.uint8)
     out_u8 = out.view(torch.uint8)
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     BLOCK_SIZE = 1024
 
     fft_ifftshift_kernel[grid](
-        x_u8, out_u8,
-        sizes, in_strides, out_strides, adds,
+        x_u8,
+        out_u8,
+        sizes,
+        in_strides,
+        out_strides,
+        adds,
         n_elements,
         ELEMENT_SIZE=ELEMENT_SIZE,
         NDIMS=NDIMS,
-        BLOCK_SIZE=BLOCK_SIZE
+        BLOCK_SIZE=BLOCK_SIZE,
     )
     return out

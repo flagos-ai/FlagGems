@@ -9,24 +9,27 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.fft_ifftshift import fft_ifftshift as gems_fft_ifftshift
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
 
+
 @pytest.mark.fft_ifftshift
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512), (1024,), (16, 17, 18)])
+@pytest.mark.parametrize(
+    "shape", [(2, 3), (128, 256), (512, 512), (1024,), (16, 17, 18)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("dim", [None, [0], [-1]])
 def test_fft_ifftshift_tensor(shape, dtype, dim):
@@ -36,6 +39,7 @@ def test_fft_ifftshift_tensor(shape, dtype, dim):
     with flag_gems.use_gems():
         act_out = gems_fft_ifftshift(input_tensor, dim)
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.fft_ifftshift
 def test_perf_aten_fft_ifftshift():

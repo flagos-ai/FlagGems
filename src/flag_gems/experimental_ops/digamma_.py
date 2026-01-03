@@ -4,9 +4,11 @@ import triton.language as tl
 
 
 @triton.jit
-def digamma_(x_ptr,  # Pointer to input/output tensor (in-place)
-             n_elements,  # Number of elements
-             BLOCK_SIZE: tl.constexpr):
+def digamma_(
+    x_ptr,  # Pointer to input/output tensor (in-place)
+    n_elements,  # Number of elements
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -36,7 +38,13 @@ def digamma_(x_ptr,  # Pointer to input/output tensor (in-place)
     t4 = t2 * t2
     t6 = t4 * t2
     t8 = t4 * t4
-    series = (-0.5 * r) + (-1.0 / 12.0) * t2 + (1.0 / 120.0) * t4 + (-1.0 / 252.0) * t6 + (1.0 / 240.0) * t8
+    series = (
+        (-0.5 * r)
+        + (-1.0 / 12.0) * t2
+        + (1.0 / 120.0) * t4
+        + (-1.0 / 252.0) * t6
+        + (1.0 / 240.0) * t8
+    )
     psi_y = tl.log(y) + s + series
 
     # Apply reflection if needed
@@ -63,7 +71,7 @@ def digamma_(*args, **kwargs):
         n_elements = y.numel()
         if n_elements == 0:
             return x
-        grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         _KERNEL_DIGAMMA_INPLACE[grid](y, n_elements, BLOCK_SIZE=1024)
         x.copy_(y)
         return x
@@ -71,6 +79,6 @@ def digamma_(*args, **kwargs):
     n_elements = x.numel()
     if n_elements == 0:
         return x
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _KERNEL_DIGAMMA_INPLACE[grid](x, n_elements, BLOCK_SIZE=1024)
     return x

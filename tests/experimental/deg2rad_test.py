@@ -9,18 +9,19 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.deg2rad import deg2rad as gems_deg2rad, deg2rad_out as gems_deg2rad_out
-
-import torch
+from flag_gems.experimental_ops.deg2rad import deg2rad as gems_deg2rad
+from flag_gems.experimental_ops.deg2rad import deg2rad_out as gems_deg2rad_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
@@ -56,6 +57,7 @@ def test_deg2rad_out(shape, dtype):
         gems_deg2rad_out(x, act_out)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.deg2rad
 def test_perf_aten_deg2rad():

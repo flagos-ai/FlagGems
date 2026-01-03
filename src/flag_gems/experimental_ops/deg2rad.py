@@ -1,4 +1,5 @@
 import math
+
 import torch
 import triton
 import triton.language as tl
@@ -20,11 +21,9 @@ def _launch_deg2rad_kernel(x_contig: torch.Tensor, out_contig: torch.Tensor):
     n_elements = out_contig.numel()
     if n_elements == 0:
         return
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     scale = math.pi / 180.0
-    deg2rad_kernel[grid](
-        x_contig, out_contig, n_elements, scale, BLOCK_SIZE=1024
-    )
+    deg2rad_kernel[grid](x_contig, out_contig, n_elements, scale, BLOCK_SIZE=1024)
 
 
 def deg2rad(*args, **kwargs):
@@ -45,7 +44,9 @@ def deg2rad(*args, **kwargs):
         raise AssertionError("deg2rad expects CUDA tensors")
 
     if x.is_complex():
-        raise NotImplementedError("Complex tensors are not supported in this Triton implementation")
+        raise NotImplementedError(
+            "Complex tensors are not supported in this Triton implementation"
+        )
 
     # Determine result dtype: keep floating dtype; promote integer/bool to float32
     if x.is_floating_point():
@@ -85,10 +86,14 @@ def deg2rad_out(*args, **kwargs):
         raise AssertionError("deg2rad_out expects CUDA tensors")
 
     if x.is_complex() or out.is_complex():
-        raise NotImplementedError("Complex tensors are not supported in this Triton implementation")
+        raise NotImplementedError(
+            "Complex tensors are not supported in this Triton implementation"
+        )
 
     if out.numel() != x.numel():
-        raise RuntimeError("deg2rad_out: 'out' must have the same number of elements as 'input'")
+        raise RuntimeError(
+            "deg2rad_out: 'out' must have the same number of elements as 'input'"
+        )
 
     if out.device != x.device:
         raise RuntimeError("deg2rad_out: 'out' must be on the same device as 'input'")
