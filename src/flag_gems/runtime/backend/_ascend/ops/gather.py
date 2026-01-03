@@ -158,11 +158,9 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     )
 
     if is_last_dim and inp.dim() == 2 and total_bytes < UB_SIZE_BYTES:
-        out = gather_high_perf(inp, index, out)
+        return gather_high_perf(inp, index, out)
 
-    else:
-        out = gather_flat_fixed(inp, dim, index, out)
-    return out
+    return gather_flat_fixed(inp, dim, index, out)
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
