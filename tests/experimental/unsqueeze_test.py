@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.unsqueeze import unsqueeze as gems_unsqueeze
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.unsqueeze
 @pytest.mark.parametrize(
@@ -67,13 +68,16 @@ def test_unsqueeze_tensor(shape_dim, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.unsqueeze
 def test_perf_aten_unsqueeze():
     # Define input generation logic matching the operator arguments
     def unsqueeze_input_fn(shape, dtype, device):
         # Generate and yield inputs as required by the operator
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        for dim in range(len(shape) + 1):  # Yielding all possible dimensions for unsqueeze
+        for dim in range(
+            len(shape) + 1
+        ):  # Yielding all possible dimensions for unsqueeze
             yield inp, dim
 
     # Initialize benchmark

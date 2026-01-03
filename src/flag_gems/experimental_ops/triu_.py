@@ -4,13 +4,17 @@ import triton.language as tl
 
 
 @triton.jit
-def triu_(x_ptr,
-          base_offsets_ptr,
-          diagonal,
-          M, N,
-          stride_m, stride_n,
-          BLOCK_M: tl.constexpr,
-          BLOCK_N: tl.constexpr):
+def triu_(
+    x_ptr,
+    base_offsets_ptr,
+    diagonal,
+    M,
+    N,
+    stride_m,
+    stride_n,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
     pid_m = tl.program_id(axis=0)
     pid_n = tl.program_id(axis=1)
     pid_b = tl.program_id(axis=2)
@@ -81,7 +85,9 @@ def triu_(*args, **kwargs):
     # Compute base offsets for each batch instance (in elements)
     batch_ndim = max(0, ndim - 2)
     if batch_ndim == 0:
-        base_offsets = torch.tensor([x.storage_offset()], dtype=torch.int64, device=device)
+        base_offsets = torch.tensor(
+            [x.storage_offset()], dtype=torch.int64, device=device
+        )
     else:
         batch_sizes = list(x.shape[:batch_ndim])
         batch_strides = list(x.stride()[:batch_ndim])
@@ -120,8 +126,10 @@ def triu_(*args, **kwargs):
         x,
         base_offsets,
         int(diagonal),
-        M, N,
-        stride_m, stride_n,
+        M,
+        N,
+        stride_m,
+        stride_n,
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
     )

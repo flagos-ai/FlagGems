@@ -9,18 +9,18 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.triu_ import triu_ as gems_triu_
-
-import torch
 
 
 @pytest.mark.triu_
@@ -39,6 +39,7 @@ def test_triu__tensor(shape, dtype, diagonal):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.triu_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512), (4, 64, 32)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -54,20 +55,14 @@ def test_triu__benchmark_tensor(shape, dtype, diagonal):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.triu_(ref_input, diagonal),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.triu_(ref_input, diagonal), rep=100, quantiles=quantiles
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_triu_(act_input, diagonal),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_triu_(act_input, diagonal), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

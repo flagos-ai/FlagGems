@@ -111,7 +111,9 @@ def zeros_like_out(*args, **kwargs):
     if dtype is not None and out.dtype != dtype:
         raise ValueError(f"Provided dtype {dtype} does not match out.dtype {out.dtype}")
     if device is not None and str(out.device) != str(device):
-        raise ValueError(f"Provided device {device} does not match out.device {out.device}")
+        raise ValueError(
+            f"Provided device {device} does not match out.device {out.device}"
+        )
     # Shape/layout checks could be added; we keep minimal checks for generality.
 
     _launch_fill_zero(out)

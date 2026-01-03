@@ -5,12 +5,12 @@ import triton.language as tl
 
 @triton.jit
 def _unsqueeze_copy_kernel(
-    src_ptr,          # pointer to input tensor data
-    dst_ptr,          # pointer to output tensor data
-    sizes_ptr,        # pointer to int64 sizes of src tensor (NDIM)
+    src_ptr,  # pointer to input tensor data
+    dst_ptr,  # pointer to output tensor data
+    sizes_ptr,  # pointer to int64 sizes of src tensor (NDIM)
     src_strides_ptr,  # pointer to int64 strides of src tensor (NDIM)
     dst_strides_ptr,  # pointer to int64 strides of dst tensor (NDIM + 1)
-    n_elements,       # total number of elements to copy (src.numel() == dst.numel())
+    n_elements,  # total number of elements to copy (src.numel() == dst.numel())
     NDIM: tl.constexpr,
     INSERT_DIM: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
@@ -30,7 +30,7 @@ def _unsqueeze_copy_kernel(
     rem = offs
     # Decompose linear index into multi-dimensional indices (row-major order)
     for rev_d in range(NDIM - 1, -1, -1):
-        sz_d = tl.load(sizes_ptr + rev_d)       # scalar int64
+        sz_d = tl.load(sizes_ptr + rev_d)  # scalar int64
         idx_d = rem % sz_d
         rem = rem // sz_d
 

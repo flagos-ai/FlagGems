@@ -9,21 +9,27 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.unsqueeze_copy import unsqueeze_copy as gems_unsqueeze_copy, unsqueeze_copy_out as gems_unsqueeze_copy_out
-
-import torch
+from flag_gems.experimental_ops.unsqueeze_copy import (
+    unsqueeze_copy as gems_unsqueeze_copy,
+)
+from flag_gems.experimental_ops.unsqueeze_copy import (
+    unsqueeze_copy_out as gems_unsqueeze_copy_out,
+)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.unsqueeze_copy
 @pytest.mark.parametrize("shape", [(2, 3), (128, 64), (64, 32, 16), (512, 512)])
@@ -85,6 +91,7 @@ def test_unsqueeze_copy_out(shape, dtype, where):
         act_out = gems_unsqueeze_copy_out(x, dim, act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.unsqueeze_copy
 def test_perf_aten_unsqueeze_copy():

@@ -5,14 +5,14 @@ import triton.language as tl
 
 @triton.jit
 def unsqueeze_kernel(
-    src_ptr,            # *Pointer* to input tensor data.
-    dst_ptr,            # *Pointer* to output tensor data.
-    out_numel,          # Total number of elements in output (same as input).
-    in_strides_ptr,     # *Pointer* to input strides (length = RANK-1).
-    out_shape_ptr,      # *Pointer* to output shape (length = RANK).
+    src_ptr,  # *Pointer* to input tensor data.
+    dst_ptr,  # *Pointer* to output tensor data.
+    out_numel,  # Total number of elements in output (same as input).
+    in_strides_ptr,  # *Pointer* to input strides (length = RANK-1).
+    out_shape_ptr,  # *Pointer* to output shape (length = RANK).
     BLOCK_SIZE: tl.constexpr,  # Number of elements processed by each program.
-    RANK: tl.constexpr,        # Rank of the output tensor.
-    UNSQ_DIM: tl.constexpr,    # The dimension at which to unsqueeze (compile-time constant).
+    RANK: tl.constexpr,  # Rank of the output tensor.
+    UNSQ_DIM: tl.constexpr,  # The dimension at which to unsqueeze (compile-time constant).
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
@@ -41,9 +41,11 @@ def unsqueeze(*args, **kwargs):
     if len(args) >= 2:
         x, dim = args[0], args[1]
     else:
-        x = kwargs.get('self', kwargs.get('input', None))
-        dim = kwargs.get('dim', None)
-    assert isinstance(x, torch.Tensor), "unsqueeze expects a torch.Tensor as the first argument."
+        x = kwargs.get("self", kwargs.get("input", None))
+        dim = kwargs.get("dim", None)
+    assert isinstance(
+        x, torch.Tensor
+    ), "unsqueeze expects a torch.Tensor as the first argument."
     assert isinstance(dim, int), "unsqueeze expects an integer 'dim' argument."
     assert x.is_cuda, "Input tensor must be on CUDA device."
 
@@ -63,11 +65,16 @@ def unsqueeze(*args, **kwargs):
 
     RANK = len(out_shape)
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(numel, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)
 
     unsqueeze_kernel[grid](
-        x, out, numel,
-        in_strides, out_shape_t,
-        BLOCK_SIZE=BLOCK_SIZE, RANK=RANK, UNSQ_DIM=dim
+        x,
+        out,
+        numel,
+        in_strides,
+        out_shape_t,
+        BLOCK_SIZE=BLOCK_SIZE,
+        RANK=RANK,
+        UNSQ_DIM=dim,
     )
     return out

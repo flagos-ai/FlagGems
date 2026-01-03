@@ -5,12 +5,20 @@ import triton.language as tl
 
 @triton.jit
 def triu_kernel(
-    in_ptr, out_ptr,
-    M, N, B,  # matrix rows, cols, number of batches
-    stride_in_b, stride_in_m, stride_in_n,
-    stride_out_b, stride_out_m, stride_out_n,
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    B,  # matrix rows, cols, number of batches
+    stride_in_b,
+    stride_in_m,
+    stride_in_n,
+    stride_out_b,
+    stride_out_m,
+    stride_out_n,
     diagonal: tl.constexpr,
-    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
@@ -38,8 +46,14 @@ def triu_kernel(
 
 
 def _check_supported_dtype(t: torch.Tensor):
-    if t.dtype in (torch.complex64, torch.complex128, torch.complex32 if hasattr(torch, "complex32") else None):
-        raise TypeError("Complex dtypes are not supported by this Triton triu implementation.")
+    if t.dtype in (
+        torch.complex64,
+        torch.complex128,
+        torch.complex32 if hasattr(torch, "complex32") else None,
+    ):
+        raise TypeError(
+            "Complex dtypes are not supported by this Triton triu implementation."
+        )
 
 
 def _launch_triu_kernel(inp: torch.Tensor, out: torch.Tensor, diagonal: int):
@@ -69,8 +83,20 @@ def _launch_triu_kernel(inp: torch.Tensor, out: torch.Tensor, diagonal: int):
     stride_out_m = out_c.stride(-2)
 
     # Batch stride: distance between consecutive matrices in flattened batch
-    stride_in_b = M * stride_in_m if len(batch_shape) == 0 else inp_c.stride(-3) * inp_c.size(-3) if ndim > 2 else M * stride_in_m
-    stride_out_b = M * stride_out_m if len(batch_shape) == 0 else out_c.stride(-3) * out_c.size(-3) if ndim > 2 else M * stride_out_m
+    stride_in_b = (
+        M * stride_in_m
+        if len(batch_shape) == 0
+        else inp_c.stride(-3) * inp_c.size(-3)
+        if ndim > 2
+        else M * stride_in_m
+    )
+    stride_out_b = (
+        M * stride_out_m
+        if len(batch_shape) == 0
+        else out_c.stride(-3) * out_c.size(-3)
+        if ndim > 2
+        else M * stride_out_m
+    )
 
     # For fully contiguous tensors, the above may not equal true batch stride for high dims.
     # Since we used .contiguous(), we can simply set:
@@ -89,12 +115,20 @@ def _launch_triu_kernel(inp: torch.Tensor, out: torch.Tensor, diagonal: int):
     grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N), B)
 
     triu_kernel[grid](
-        inp_c, out_c,
-        M, N, B,
-        stride_in_b, stride_in_m, stride_in_n,
-        stride_out_b, stride_out_m, stride_out_n,
+        inp_c,
+        out_c,
+        M,
+        N,
+        B,
+        stride_in_b,
+        stride_in_m,
+        stride_in_n,
+        stride_out_b,
+        stride_out_m,
+        stride_out_n,
         diagonal=diagonal,
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
     )
 
     if out.data_ptr() != out_c.data_ptr():
@@ -118,9 +152,13 @@ def triu_out(input: torch.Tensor, diagonal: int = 0, out: torch.Tensor = None):
         out = torch.empty_like(input)
     else:
         if out.shape != input.shape:
-            raise ValueError(f"out tensor must have the same shape as input, got {out.shape} vs {input.shape}")
+            raise ValueError(
+                f"out tensor must have the same shape as input, got {out.shape} vs {input.shape}"
+            )
         if out.dtype != input.dtype:
-            raise TypeError(f"out dtype must match input dtype, got {out.dtype} vs {input.dtype}")
+            raise TypeError(
+                f"out dtype must match input dtype, got {out.dtype} vs {input.dtype}"
+            )
         if not out.is_cuda or out.device != input.device:
             raise ValueError("out must be a CUDA tensor on the same device as input")
     _launch_triu_kernel(input, out, diagonal)
