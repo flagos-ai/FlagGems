@@ -9,18 +9,19 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.new_ones import new_ones as gems_new_ones, new_ones_out as gems_new_ones_out
-
-import torch
+from flag_gems.experimental_ops.new_ones import new_ones as gems_new_ones
+from flag_gems.experimental_ops.new_ones import new_ones_out as gems_new_ones_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
@@ -59,11 +60,14 @@ def test_new_ones_out(self_shape, size, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.new_ones
 def test_perf_aten_new_ones():
     # Define input generation logic matching the operator arguments
     def new_ones_input_fn(shape, dtype, device):
-        inp1 = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)  # self_tensor
+        inp1 = torch.randn(
+            shape, dtype=torch.float32, device=flag_gems.device
+        )  # self_tensor
         yield inp1, shape  # yield inputs as required by the operator (size as position, dtype as keyword)
 
     # Create a wrapper function to handle dtype as keyword argument

@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.negative_ import negative_ as gems_negative_
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.negative_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
@@ -39,6 +40,7 @@ def test_negative__tensor(shape, dtype):
         act_out = gems_negative_(act_input)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.negative_
 def test_perf_aten_negative_():

@@ -17,13 +17,15 @@ def rad2deg__kernel(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 def rad2deg_(*args, **kwargs):
     # Accept first positional argument or common keyword names
-    x = args[0] if len(args) > 0 else kwargs.get('input', kwargs.get('self', None))
+    x = args[0] if len(args) > 0 else kwargs.get("input", kwargs.get("self", None))
     if x is None:
         raise ValueError("rad2deg_ expects a tensor as its first argument")
     if not isinstance(x, torch.Tensor):
         raise TypeError("rad2deg_ expects a torch.Tensor")
     if not x.is_floating_point():
-        raise TypeError("rad2deg_ only supports floating point tensors for in-place operation")
+        raise TypeError(
+            "rad2deg_ only supports floating point tensors for in-place operation"
+        )
     if not x.is_cuda:
         raise AssertionError("Input tensor must be on CUDA device")
 
@@ -38,7 +40,7 @@ def rad2deg_(*args, **kwargs):
     if n_elements == 0:
         return original
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     rad2deg__kernel[grid](x, n_elements, BLOCK_SIZE=1024)
 
     if needs_copy_back:

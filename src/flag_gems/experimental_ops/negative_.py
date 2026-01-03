@@ -18,7 +18,7 @@ _negative__kernel = negative_
 
 
 def negative_(*args, **kwargs):
-    x = args[0] if len(args) > 0 else kwargs.get('input', kwargs.get('self', None))
+    x = args[0] if len(args) > 0 else kwargs.get("input", kwargs.get("self", None))
     if x is None:
         raise ValueError("negative_ expects a tensor as the first argument")
     assert x.is_cuda, "Input tensor must be on CUDA device"
@@ -26,6 +26,6 @@ def negative_(*args, **kwargs):
     n_elements = x.numel()
     if n_elements == 0:
         return x
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _negative__kernel[grid](x, n_elements, BLOCK_SIZE=1024)
     return x

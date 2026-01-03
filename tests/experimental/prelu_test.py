@@ -9,24 +9,28 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.prelu import prelu as gems_prelu
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
 
+
 @pytest.mark.prelu
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512), (4, 8, 16), (2, 32, 16, 16), (2, 128, 64, 64)])
+@pytest.mark.parametrize(
+    "shape",
+    [(2, 3), (128, 256), (512, 512), (4, 8, 16), (2, 32, 16, 16), (2, 128, 64, 64)],
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("weight_kind", ["scalar", "per_channel"])
 def test_prelu_tensor(shape, dtype, weight_kind):
@@ -47,6 +51,7 @@ def test_prelu_tensor(shape, dtype, weight_kind):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.prelu
 def test_perf_aten_prelu():
     # Define input generation logic matching the operator arguments
@@ -55,7 +60,9 @@ def test_perf_aten_prelu():
         if len(shape) == 1:
             w = torch.randn((), dtype=dtype, device=flag_gems.device)  # Scalar weight
         else:
-            w = torch.randn((shape[1],), dtype=dtype, device=flag_gems.device)  # Per-channel weight
+            w = torch.randn(
+                (shape[1],), dtype=dtype, device=flag_gems.device
+            )  # Per-channel weight
         yield x, w
 
     # Initialize benchmark

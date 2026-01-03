@@ -56,16 +56,22 @@ def _normalize_size_arg(size):
 
 def _extract_size_from_args(after_self_pos_args, kwargs):
     # Try positional
-    if len(after_self_pos_args) == 1 and isinstance(after_self_pos_args[0], (list, tuple, torch.Size, int)):
+    if len(after_self_pos_args) == 1 and isinstance(
+        after_self_pos_args[0], (list, tuple, torch.Size, int)
+    ):
         return _normalize_size_arg(after_self_pos_args[0])
-    if len(after_self_pos_args) >= 1 and all(isinstance(x, int) for x in after_self_pos_args):
+    if len(after_self_pos_args) >= 1 and all(
+        isinstance(x, int) for x in after_self_pos_args
+    ):
         return tuple(int(x) for x in after_self_pos_args)
     # Try kwargs
     if "size" in kwargs:
         return _normalize_size_arg(kwargs["size"])
     if "sizes" in kwargs:
         return _normalize_size_arg(kwargs["sizes"])
-    raise ValueError("Size must be provided as a list/tuple/torch.Size or as multiple integer positional arguments.")
+    raise ValueError(
+        "Size must be provided as a list/tuple/torch.Size or as multiple integer positional arguments."
+    )
 
 
 def _launch_fill_ones(out: torch.Tensor):
@@ -84,7 +90,9 @@ def _launch_fill_ones(out: torch.Tensor):
 def new_ones(*args, **kwargs):
     # Expected schema (aten): new_ones(Tensor self, int[] size, *, dtype?, layout?, device?, pin_memory?)
     if len(args) == 0:
-        raise TypeError("new_ones expects at least a 'self' tensor as the first argument.")
+        raise TypeError(
+            "new_ones expects at least a 'self' tensor as the first argument."
+        )
     self = args[0]
     after_self = list(args[1:])
     size = _extract_size_from_args(after_self, kwargs)
@@ -112,26 +120,46 @@ def new_ones(*args, **kwargs):
 def new_ones_out(*args, **kwargs):
     # Expected schema (aten): new_ones.out(Tensor self, int[] size, *, dtype?, layout?, device?, pin_memory?, Tensor(a!) out) -> Tensor(a!)
     if len(args) == 0:
-        raise TypeError("new_ones_out expects at least a 'self' tensor as the first argument.")
+        raise TypeError(
+            "new_ones_out expects at least a 'self' tensor as the first argument."
+        )
     self = args[0]
     # Determine 'out' tensor (either in kwargs or as the last positional argument)
     out = kwargs.get("out", None)
     pos_after_self = list(args[1:])
 
-    if out is None and len(pos_after_self) >= 1 and isinstance(pos_after_self[-1], torch.Tensor):
+    if (
+        out is None
+        and len(pos_after_self) >= 1
+        and isinstance(pos_after_self[-1], torch.Tensor)
+    ):
         out = pos_after_self[-1]
         pos_after_self = pos_after_self[:-1]
 
     if out is None or not isinstance(out, torch.Tensor):
-        raise TypeError("new_ones_out requires an 'out' tensor (as keyword 'out' or last positional argument).")
+        raise TypeError(
+            "new_ones_out requires an 'out' tensor (as keyword 'out' or last positional argument)."
+        )
 
     size = _extract_size_from_args(pos_after_self, kwargs)
 
     # Validate/align dtype/device if provided
-    if "dtype" in kwargs and kwargs["dtype"] is not None and out.dtype != kwargs["dtype"]:
-        raise TypeError(f"Provided dtype {kwargs['dtype']} does not match out.dtype {out.dtype}.")
-    if "device" in kwargs and kwargs["device"] is not None and torch.device(kwargs["device"]) != out.device:
-        raise TypeError(f"Provided device {kwargs['device']} does not match out.device {out.device}.")
+    if (
+        "dtype" in kwargs
+        and kwargs["dtype"] is not None
+        and out.dtype != kwargs["dtype"]
+    ):
+        raise TypeError(
+            f"Provided dtype {kwargs['dtype']} does not match out.dtype {out.dtype}."
+        )
+    if (
+        "device" in kwargs
+        and kwargs["device"] is not None
+        and torch.device(kwargs["device"]) != out.device
+    ):
+        raise TypeError(
+            f"Provided device {kwargs['device']} does not match out.device {out.device}."
+        )
 
     # Resize out to requested size if needed
     if tuple(out.shape) != tuple(size):

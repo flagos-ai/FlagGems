@@ -9,18 +9,20 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.negative import negative as gems_negative, negative_out as gems_negative_out
+from flag_gems.experimental_ops.negative import negative as gems_negative
+from flag_gems.experimental_ops.negative import negative_out as gems_negative_out
 
-import torch
 
 @pytest.mark.negative
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -54,6 +56,7 @@ def test_negative_out(shape, dtype):
 
     gems_assert_close(act_res, ref_res, dtype=dtype)
 
+
 @pytest.mark.negative
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -67,20 +70,14 @@ def test_negative_benchmark_tensor(shape, dtype):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.negative(ref_input),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.negative(ref_input), rep=100, quantiles=quantiles
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_negative(input_tensor),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_negative(input_tensor), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -94,7 +91,6 @@ def test_negative_benchmark_tensor(shape, dtype):
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_negative_benchmark_out(shape, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -107,18 +103,16 @@ def test_negative_benchmark_out(shape, dtype):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.negative.out(ref_input, out=ref_out),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems_negative_out(input_tensor, act_out),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

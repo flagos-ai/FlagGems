@@ -9,18 +9,19 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.rad2deg_ import rad2deg_ as gems_rad2deg_
 
-import torch
 
 @pytest.mark.rad2deg_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -36,6 +37,7 @@ def test_rad2deg__tensor(shape, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.rad2deg_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -49,20 +51,14 @@ def test_rad2deg__benchmark_tensor(shape, dtype):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.rad2deg_(ref_input),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.rad2deg_(ref_input), rep=100, quantiles=quantiles
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_rad2deg_(input_tensor),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_rad2deg_(input_tensor), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

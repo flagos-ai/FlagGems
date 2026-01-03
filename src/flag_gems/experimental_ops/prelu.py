@@ -4,14 +4,16 @@ import triton.language as tl
 
 
 @triton.jit
-def prelu(x_ptr,  # *Pointer* to input tensor.
-          w_ptr,  # *Pointer* to weight tensor (scalar or per-channel vector).
-          out_ptr,  # *Pointer* to output tensor.
-          n_elements,  # Total number of elements in input.
-          S,  # Spatial size = product of dims after channel dim (or 1 if none).
-          C,  # Number of channels (or 1).
-          w_is_scalar: tl.constexpr,  # Whether weight is a single scalar.
-          BLOCK_SIZE: tl.constexpr):
+def prelu(
+    x_ptr,  # *Pointer* to input tensor.
+    w_ptr,  # *Pointer* to weight tensor (scalar or per-channel vector).
+    out_ptr,  # *Pointer* to output tensor.
+    n_elements,  # Total number of elements in input.
+    S,  # Spatial size = product of dims after channel dim (or 1 if none).
+    C,  # Number of channels (or 1).
+    w_is_scalar: tl.constexpr,  # Whether weight is a single scalar.
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -39,8 +41,8 @@ def prelu(*args, **kwargs):
     if len(args) >= 2:
         x, weight = args[0], args[1]
     else:
-        x = kwargs.get('input', kwargs.get('self'))
-        weight = kwargs.get('weight')
+        x = kwargs.get("input", kwargs.get("self"))
+        weight = kwargs.get("weight")
     if x is None or weight is None:
         raise ValueError("prelu expects (input, weight) as arguments.")
 
@@ -80,7 +82,9 @@ def prelu(*args, **kwargs):
                 for d in x.shape[2:]:
                     S *= d
         if weight.numel() != C:
-            raise AssertionError(f"Weight numel ({weight.numel()}) must equal channel dimension size ({C}).")
+            raise AssertionError(
+                f"Weight numel ({weight.numel()}) must equal channel dimension size ({C})."
+            )
         w_is_scalar = False
 
     # Make sure S and C are at least 1 to avoid div/mod by zero in kernel math
@@ -88,12 +92,9 @@ def prelu(*args, **kwargs):
     S = max(int(S), 1)
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     prelu_kernel[grid](
-        x, weight, out,
-        n_elements, S, C,
-        w_is_scalar=w_is_scalar,
-        BLOCK_SIZE=BLOCK_SIZE
+        x, weight, out, n_elements, S, C, w_is_scalar=w_is_scalar, BLOCK_SIZE=BLOCK_SIZE
     )
     return out

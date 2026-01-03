@@ -9,18 +9,18 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.neg_ import neg_ as gems_neg_
-
-import torch
 
 
 @pytest.mark.neg_
@@ -37,6 +37,7 @@ def test_neg__tensor(shape, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.neg_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -50,20 +51,14 @@ def test_neg__benchmark_tensor(shape, dtype):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.neg_(ref_input),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.neg_(ref_input), rep=100, quantiles=quantiles
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_neg_(input_tensor),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_neg_(input_tensor), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

@@ -5,12 +5,17 @@ import triton.language as tl
 
 @triton.jit
 def pixel_unshuffle_kernel(
-    in_ptr,            # *Pointer* to input tensor (contiguous NCHW)
-    out_ptr,           # *Pointer* to output tensor (contiguous NCHW)
-    n_elements,        # total number of elements (N*C*H*W)
-    N, C, H, W,        # input dimensions
-    R,                 # downscale factor
-    C_out, H_out, W_out,  # output dimensions
+    in_ptr,  # *Pointer* to input tensor (contiguous NCHW)
+    out_ptr,  # *Pointer* to output tensor (contiguous NCHW)
+    n_elements,  # total number of elements (N*C*H*W)
+    N,
+    C,
+    H,
+    W,  # input dimensions
+    R,  # downscale factor
+    C_out,
+    H_out,
+    W_out,  # output dimensions
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -55,7 +60,9 @@ def pixel_unshuffle_kernel(
     tl.store(out_ptr + offsets, x, mask=mask)
 
 
-def _launch_pixel_unshuffle_kernel(inp: torch.Tensor, downscale_factor: int, out: torch.Tensor):
+def _launch_pixel_unshuffle_kernel(
+    inp: torch.Tensor, downscale_factor: int, out: torch.Tensor
+):
     assert inp.is_cuda and out.is_cuda, "Input and output must be CUDA tensors"
     assert inp.is_contiguous(), "Input must be contiguous (NCHW)"
     assert out.is_contiguous(), "Output must be contiguous (NCHW)"
@@ -63,7 +70,9 @@ def _launch_pixel_unshuffle_kernel(inp: torch.Tensor, downscale_factor: int, out
     N, C, H, W = inp.shape
     r = int(downscale_factor)
     assert r > 0, "downscale_factor must be > 0"
-    assert (H % r == 0) and (W % r == 0), "H and W must be divisible by downscale_factor"
+    assert (H % r == 0) and (
+        W % r == 0
+    ), "H and W must be divisible by downscale_factor"
     C_out = C * r * r
     H_out = H // r
     W_out = W // r
@@ -79,9 +88,14 @@ def _launch_pixel_unshuffle_kernel(inp: torch.Tensor, downscale_factor: int, out
         inp,
         out,
         n_elements,
-        N, C, H, W,
+        N,
+        C,
+        H,
+        W,
         r,
-        C_out, H_out, W_out,
+        C_out,
+        H_out,
+        W_out,
         BLOCK_SIZE=BLOCK_SIZE,
     )
 
@@ -101,7 +115,9 @@ def pixel_unshuffle(input, downscale_factor, *, layout=None):
     N, C, H, W = x.shape
     r = int(downscale_factor)
     assert r > 0, "downscale_factor must be > 0"
-    assert (H % r == 0) and (W % r == 0), "H and W must be divisible by downscale_factor"
+    assert (H % r == 0) and (
+        W % r == 0
+    ), "H and W must be divisible by downscale_factor"
 
     out_shape = (N, C * r * r, H // r, W // r)
     out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
@@ -124,7 +140,9 @@ def pixel_unshuffle_out(input, downscale_factor, out):
     N, C, H, W = x.shape
     r = int(downscale_factor)
     assert r > 0, "downscale_factor must be > 0"
-    assert (H % r == 0) and (W % r == 0), "H and W must be divisible by downscale_factor"
+    assert (H % r == 0) and (
+        W % r == 0
+    ), "H and W must be divisible by downscale_factor"
     expected_shape = (N, C * r * r, H // r, W // r)
     assert out.shape == expected_shape, f"out must have shape {expected_shape}"
     assert out.dtype == x.dtype, "out dtype must match input dtype"

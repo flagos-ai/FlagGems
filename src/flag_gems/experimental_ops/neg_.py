@@ -18,10 +18,10 @@ def neg_(*args, **kwargs):
     # Retrieve input tensor (first positional or from kwargs)
     if len(args) >= 1:
         x = args[0]
-    elif 'input' in kwargs:
-        x = kwargs['input']
-    elif 'self' in kwargs:
-        x = kwargs['self']
+    elif "input" in kwargs:
+        x = kwargs["input"]
+    elif "self" in kwargs:
+        x = kwargs["self"]
     else:
         raise ValueError("neg_ expects a tensor as the first argument")
 
@@ -38,6 +38,6 @@ def neg_(*args, **kwargs):
         raise ValueError("neg_ Triton kernel requires a contiguous tensor")
 
     n_elements = x.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     neg__kernel[grid](x, n_elements, BLOCK_SIZE=1024)
     return x

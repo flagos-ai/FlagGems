@@ -4,11 +4,12 @@ import triton.language as tl
 
 
 @triton.jit
-def positive(x_ptr,  # *Pointer* to input tensor.
-             output_ptr,  # *Pointer* to output tensor.
-             n_elements,  # Number of elements.
-             BLOCK_SIZE: tl.constexpr,  # Elements processed per program.
-             ):
+def positive(
+    x_ptr,  # *Pointer* to input tensor.
+    output_ptr,  # *Pointer* to output tensor.
+    n_elements,  # Number of elements.
+    BLOCK_SIZE: tl.constexpr,  # Elements processed per program.
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -26,7 +27,7 @@ def positive(*args, **kwargs):
     if args:
         x = args[0]
     else:
-        x = kwargs.get('input', kwargs.get('self', kwargs.get('x', None)))
+        x = kwargs.get("input", kwargs.get("self", kwargs.get("x", None)))
 
     if x is None:
         raise ValueError("positive expects a torch.Tensor as the first argument")
@@ -45,6 +46,6 @@ def positive(*args, **kwargs):
         return out
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _positive_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return out

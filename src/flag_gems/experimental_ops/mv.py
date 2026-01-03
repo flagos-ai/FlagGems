@@ -5,15 +5,15 @@ import triton.language as tl
 
 @triton.jit
 def mv_kernel(
-    A_ptr,            # *Pointer* to matrix A [M, N]
-    x_ptr,            # *Pointer* to vector x [N]
-    y_ptr,            # *Pointer* to output vector y [M]
-    M,                # rows of A
-    N,                # cols of A (and size of x)
-    stride_am,        # stride for A along M (row stride)
-    stride_an,        # stride for A along N (col stride)
-    stride_xn,        # stride for x along N
-    stride_ym,        # stride for y along M
+    A_ptr,  # *Pointer* to matrix A [M, N]
+    x_ptr,  # *Pointer* to vector x [N]
+    y_ptr,  # *Pointer* to output vector y [M]
+    M,  # rows of A
+    N,  # cols of A (and size of x)
+    stride_am,  # stride for A along M (row stride)
+    stride_an,  # stride for A along N (col stride)
+    stride_xn,  # stride for x along N
+    stride_ym,  # stride for y along M
     BLOCK_N: tl.constexpr,  # tile size along N
 ):
     pid_m = tl.program_id(axis=0)
@@ -38,9 +38,13 @@ def _launch_mv_kernel(A: torch.Tensor, x: torch.Tensor, y: torch.Tensor):
     assert x.numel() == N
     grid = (M,)
     mv_kernel[grid](
-        A, x, y,
-        M, N,
-        A.stride(0), A.stride(1),
+        A,
+        x,
+        y,
+        M,
+        N,
+        A.stride(0),
+        A.stride(1),
         x.stride(0),
         y.stride(0),
         BLOCK_N=256,
@@ -51,10 +55,14 @@ def _launch_mv_kernel(A: torch.Tensor, x: torch.Tensor, y: torch.Tensor):
 
 def mv(A: torch.Tensor, x: torch.Tensor):
     # Validate inputs
-    assert isinstance(A, torch.Tensor) and isinstance(x, torch.Tensor), "Inputs must be tensors"
+    assert isinstance(A, torch.Tensor) and isinstance(
+        x, torch.Tensor
+    ), "Inputs must be tensors"
     assert A.ndim == 2 and x.ndim == 1, "mv expects A: 2D tensor and x: 1D tensor"
     assert A.shape[1] == x.shape[0], "Incompatible dimensions for mv"
-    assert A.is_cuda and x.is_cuda and A.device == x.device, "All tensors must be on the same CUDA device"
+    assert (
+        A.is_cuda and x.is_cuda and A.device == x.device
+    ), "All tensors must be on the same CUDA device"
 
     # Determine output dtype following PyTorch's type promotion
     out_dtype = torch.result_type(A, x)
@@ -77,8 +85,14 @@ def mv(A: torch.Tensor, x: torch.Tensor):
 
 def mv_out(A: torch.Tensor, x: torch.Tensor, out: torch.Tensor):
     # Validate inputs
-    assert isinstance(A, torch.Tensor) and isinstance(x, torch.Tensor) and isinstance(out, torch.Tensor), "Inputs must be tensors"
-    assert A.ndim == 2 and x.ndim == 1 and out.ndim == 1, "Shapes must be A: [M, N], x: [N], out: [M]"
+    assert (
+        isinstance(A, torch.Tensor)
+        and isinstance(x, torch.Tensor)
+        and isinstance(out, torch.Tensor)
+    ), "Inputs must be tensors"
+    assert (
+        A.ndim == 2 and x.ndim == 1 and out.ndim == 1
+    ), "Shapes must be A: [M, N], x: [N], out: [M]"
     assert A.shape[1] == x.shape[0], "Incompatible dimensions for mv.out"
     assert out.shape[0] == A.shape[0], "Output shape must match rows of A"
     assert A.is_cuda and x.is_cuda and out.is_cuda, "All tensors must be CUDA tensors"
