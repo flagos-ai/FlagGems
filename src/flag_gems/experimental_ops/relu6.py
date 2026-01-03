@@ -20,9 +20,15 @@ relu6_kernel = relu6
 
 
 def relu6(*args, **kwargs):
-    x = args[0] if len(args) > 0 else kwargs.get('input', kwargs.get('self', kwargs.get('x')))
+    x = (
+        args[0]
+        if len(args) > 0
+        else kwargs.get("input", kwargs.get("self", kwargs.get("x")))
+    )
     if x is None:
-        raise TypeError("relu6 expects a tensor as the first positional argument or keyword 'input'/'self'/'x'.")
+        raise TypeError(
+            "relu6 expects a tensor as the first positional argument or keyword 'input'/'self'/'x'."
+        )
 
     x_contig = x.contiguous()
 
@@ -31,6 +37,6 @@ def relu6(*args, **kwargs):
 
     out = torch.empty_like(x_contig)
     n_elements = out.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     relu6_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=1024)
     return out

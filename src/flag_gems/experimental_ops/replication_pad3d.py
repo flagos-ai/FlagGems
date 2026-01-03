@@ -5,12 +5,29 @@ import triton.language as tl
 
 @triton.jit
 def replication_pad3d_kernel(
-    in_ptr, out_ptr,
-    N, C, D_in, H_in, W_in,
-    D_out, H_out, W_out,
-    pad_d_before, pad_h_before, pad_w_before,
-    in_stride_n, in_stride_c, in_stride_d, in_stride_h, in_stride_w,
-    out_stride_n, out_stride_c, out_stride_d, out_stride_h, out_stride_w,
+    in_ptr,
+    out_ptr,
+    N,
+    C,
+    D_in,
+    H_in,
+    W_in,
+    D_out,
+    H_out,
+    W_out,
+    pad_d_before,
+    pad_h_before,
+    pad_w_before,
+    in_stride_n,
+    in_stride_c,
+    in_stride_d,
+    in_stride_h,
+    in_stride_w,
+    out_stride_n,
+    out_stride_c,
+    out_stride_d,
+    out_stride_h,
+    out_stride_w,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -65,7 +82,9 @@ def replication_pad3d_kernel(
 def _normalize_3d_pad(padding):
     if isinstance(padding, (list, tuple)) and len(padding) == 6:
         return tuple(int(x) for x in padding)
-    raise ValueError("padding must be a sequence of 6 integers: (pad_w_left, pad_w_right, pad_h_top, pad_h_bottom, pad_d_front, pad_d_back)")
+    raise ValueError(
+        "padding must be a sequence of 6 integers: (pad_w_left, pad_w_right, pad_h_top, pad_h_bottom, pad_d_front, pad_d_back)"
+    )
 
 
 def _get_5d_shape_and_strides(t: torch.Tensor):
@@ -91,20 +110,41 @@ def _launch_replication_pad3d_kernel(x: torch.Tensor, padding, out: torch.Tensor
     assert x.is_cuda and out.is_cuda, "Tensors must be on CUDA device"
     assert x.dtype == out.dtype, "Input and output dtypes must match"
     assert x.device == out.device, "Input and output must be on the same device"
-    assert x.is_contiguous(memory_format=torch.contiguous_format), "Input must be contiguous"
+    assert x.is_contiguous(
+        memory_format=torch.contiguous_format
+    ), "Input must be contiguous"
     # Output can be non-contiguous; we handle via strides
 
-    pad_w_before, pad_w_after, pad_h_before, pad_h_after, pad_d_before, pad_d_after = _normalize_3d_pad(padding)
+    (
+        pad_w_before,
+        pad_w_after,
+        pad_h_before,
+        pad_h_after,
+        pad_d_before,
+        pad_d_after,
+    ) = _normalize_3d_pad(padding)
 
-    (N, C, D_in, H_in, W_in), (in_sN, in_sC, in_sD, in_sH, in_sW), x_was_4d = _get_5d_shape_and_strides(x)
-    (N_o, C_o, D_out, H_out, W_out), (out_sN, out_sC, out_sD, out_sH, out_sW), out_was_4d = _get_5d_shape_and_strides(out)
+    (
+        (N, C, D_in, H_in, W_in),
+        (in_sN, in_sC, in_sD, in_sH, in_sW),
+        x_was_4d,
+    ) = _get_5d_shape_and_strides(x)
+    (
+        (N_o, C_o, D_out, H_out, W_out),
+        (out_sN, out_sC, out_sD, out_sH, out_sW),
+        out_was_4d,
+    ) = _get_5d_shape_and_strides(out)
 
     # Validate shapes
     assert N_o == N and C_o == C, "Output N and C must match input"
     expected_D_out = D_in + pad_d_before + pad_d_after
     expected_H_out = H_in + pad_h_before + pad_h_after
     expected_W_out = W_in + pad_w_before + pad_w_after
-    assert (D_out, H_out, W_out) == (expected_D_out, expected_H_out, expected_W_out), "Output spatial shape mismatch"
+    assert (D_out, H_out, W_out) == (
+        expected_D_out,
+        expected_H_out,
+        expected_W_out,
+    ), "Output spatial shape mismatch"
 
     n_elements = out.numel()
     if n_elements == 0:
@@ -114,12 +154,29 @@ def _launch_replication_pad3d_kernel(x: torch.Tensor, padding, out: torch.Tensor
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     replication_pad3d_kernel[grid](
-        x, out,
-        N, C, D_in, H_in, W_in,
-        D_out, H_out, W_out,
-        pad_d_before, pad_h_before, pad_w_before,
-        in_sN, in_sC, in_sD, in_sH, in_sW,
-        out_sN, out_sC, out_sD, out_sH, out_sW,
+        x,
+        out,
+        N,
+        C,
+        D_in,
+        H_in,
+        W_in,
+        D_out,
+        H_out,
+        W_out,
+        pad_d_before,
+        pad_h_before,
+        pad_w_before,
+        in_sN,
+        in_sC,
+        in_sD,
+        in_sH,
+        in_sW,
+        out_sN,
+        out_sC,
+        out_sD,
+        out_sH,
+        out_sW,
         n_elements,
         BLOCK_SIZE=BLOCK_SIZE,
     )
@@ -127,7 +184,14 @@ def _launch_replication_pad3d_kernel(x: torch.Tensor, padding, out: torch.Tensor
 
 
 def replication_pad3d(input: torch.Tensor, padding):
-    pad_w_before, pad_w_after, pad_h_before, pad_h_after, pad_d_before, pad_d_after = _normalize_3d_pad(padding)
+    (
+        pad_w_before,
+        pad_w_after,
+        pad_h_before,
+        pad_h_after,
+        pad_d_before,
+        pad_d_after,
+    ) = _normalize_3d_pad(padding)
     (N, C, D_in, H_in, W_in), _, was_4d = _get_5d_shape_and_strides(input)
 
     D_out = D_in + pad_d_before + pad_d_after
@@ -140,12 +204,30 @@ def replication_pad3d(input: torch.Tensor, padding):
         out_shape = (N, C, D_out, H_out, W_out)
 
     out = torch.empty(out_shape, device=input.device, dtype=input.dtype)
-    _launch_replication_pad3d_kernel(input, (pad_w_before, pad_w_after, pad_h_before, pad_h_after, pad_d_before, pad_d_after), out)
+    _launch_replication_pad3d_kernel(
+        input,
+        (
+            pad_w_before,
+            pad_w_after,
+            pad_h_before,
+            pad_h_after,
+            pad_d_before,
+            pad_d_after,
+        ),
+        out,
+    )
     return out
 
 
 def replication_pad3d_out(input: torch.Tensor, padding, out: torch.Tensor):
-    pad_w_before, pad_w_after, pad_h_before, pad_h_after, pad_d_before, pad_d_after = _normalize_3d_pad(padding)
+    (
+        pad_w_before,
+        pad_w_after,
+        pad_h_before,
+        pad_h_after,
+        pad_d_before,
+        pad_d_after,
+    ) = _normalize_3d_pad(padding)
     (N, C, D_in, H_in, W_in), _, was_4d_in = _get_5d_shape_and_strides(input)
 
     D_out = D_in + pad_d_before + pad_d_after
@@ -159,7 +241,20 @@ def replication_pad3d_out(input: torch.Tensor, padding, out: torch.Tensor):
         expected_out_shape = (C, D_out, H_out, W_out)
     else:
         raise ValueError("out tensor must be 4D or 5D")
-    assert tuple(out.shape) == expected_out_shape, f"out has incorrect shape, expected {expected_out_shape}, got {tuple(out.shape)}"
+    assert (
+        tuple(out.shape) == expected_out_shape
+    ), f"out has incorrect shape, expected {expected_out_shape}, got {tuple(out.shape)}"
 
-    _launch_replication_pad3d_kernel(input, (pad_w_before, pad_w_after, pad_h_before, pad_h_after, pad_d_before, pad_d_after), out)
+    _launch_replication_pad3d_kernel(
+        input,
+        (
+            pad_w_before,
+            pad_w_after,
+            pad_h_before,
+            pad_h_after,
+            pad_d_before,
+            pad_d_after,
+        ),
+        out,
+    )
     return out

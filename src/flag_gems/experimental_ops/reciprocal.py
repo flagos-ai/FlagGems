@@ -30,7 +30,9 @@ def _reciprocal_impl(x: torch.Tensor, out: torch.Tensor = None):
     # Ensure same device and dtype
     assert out.device == x.device, "Input and output must be on the same device"
     assert out.dtype == x.dtype, "Output dtype must match input dtype"
-    assert out.numel() == x.numel(), "Output must have the same number of elements as input"
+    assert (
+        out.numel() == x.numel()
+    ), "Output must have the same number of elements as input"
 
     x_contig = x.contiguous()
     out_contig = out.contiguous()
@@ -55,7 +57,9 @@ def reciprocal(*args, **kwargs):
         x = args[0]
     else:
         # Try common keyword names
-        x = kwargs.get("input", kwargs.get("self", kwargs.get("a", kwargs.get("args", None))))
+        x = kwargs.get(
+            "input", kwargs.get("self", kwargs.get("a", kwargs.get("args", None)))
+        )
     if x is None:
         raise ValueError("reciprocal expects a tensor as the first argument")
     return _reciprocal_impl(x)

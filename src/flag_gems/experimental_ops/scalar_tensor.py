@@ -16,7 +16,9 @@ def _copy_scalar_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 def scalar_tensor(*args, **kwargs):
     # Expected usage: scalar_tensor(value, *, dtype=None, device=None)
     if len(args) == 0 and "value" not in kwargs:
-        raise TypeError("scalar_tensor expected a scalar 'value' as the first positional argument or 'value' kwarg")
+        raise TypeError(
+            "scalar_tensor expected a scalar 'value' as the first positional argument or 'value' kwarg"
+        )
     value = args[0] if len(args) > 0 else kwargs["value"]
     dtype = kwargs.get("dtype", None)
     device = kwargs.get("device", None)
@@ -26,12 +28,16 @@ def scalar_tensor(*args, **kwargs):
         inferred_dtype = value.dtype
     else:
         inferred_dtype = dtype
-    out = torch.empty((), dtype=inferred_dtype if inferred_dtype is not None else None, device=device)
+    out = torch.empty(
+        (), dtype=inferred_dtype if inferred_dtype is not None else None, device=device
+    )
 
     # Prepare a 1-element input tensor on the same device/dtype as out
     if isinstance(value, torch.Tensor):
         if value.numel() != 1:
-            raise ValueError("scalar_tensor expects a scalar or 0-d/1-element tensor as input.")
+            raise ValueError(
+                "scalar_tensor expects a scalar or 0-d/1-element tensor as input."
+            )
         in_buf = value.to(device=out.device, dtype=out.dtype).reshape(1)
     else:
         in_buf = torch.tensor(value, device=out.device, dtype=out.dtype).reshape(1)
@@ -46,7 +52,9 @@ def scalar_tensor(*args, **kwargs):
 def scalar_tensor_out(*args, **kwargs):
     # Expected usage: scalar_tensor.out(value, *, dtype=None, device=None, out=...)
     if len(args) == 0 and "value" not in kwargs:
-        raise TypeError("scalar_tensor_out expected a scalar 'value' as the first positional argument or 'value' kwarg")
+        raise TypeError(
+            "scalar_tensor_out expected a scalar 'value' as the first positional argument or 'value' kwarg"
+        )
     value = args[0] if len(args) > 0 else kwargs["value"]
 
     # 'out' can be provided as kwarg; attempt to also accept as last positional if provided (best-effort)
@@ -65,7 +73,9 @@ def scalar_tensor_out(*args, **kwargs):
     # Prepare a 1-element input tensor on the same device/dtype as out
     if isinstance(value, torch.Tensor):
         if value.numel() != 1:
-            raise ValueError("scalar_tensor_out expects a scalar or 0-d/1-element tensor as input.")
+            raise ValueError(
+                "scalar_tensor_out expects a scalar or 0-d/1-element tensor as input."
+            )
         in_buf = value.to(device=out.device, dtype=out.dtype).reshape(1)
     else:
         in_buf = torch.tensor(value, device=out.device, dtype=out.dtype).reshape(1)

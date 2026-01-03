@@ -19,7 +19,9 @@ def _launch_relu_kernel(x: torch.Tensor, out: torch.Tensor):
     assert x.is_cuda and out.is_cuda, "Tensors must be on CUDA device"
     assert x.device == out.device, "Input and output must be on the same device"
     assert x.dtype == out.dtype, "Input and output must have the same dtype"
-    assert x.numel() == out.numel(), "Input and output must have the same number of elements"
+    assert (
+        x.numel() == out.numel()
+    ), "Input and output must have the same number of elements"
 
     n_elements = x.numel()
     if n_elements == 0:

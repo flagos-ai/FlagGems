@@ -24,11 +24,11 @@ def reshape(*args, **kwargs):
     else:
         x = None
         target_shape = None
-        for key in ('x', 'input', 'a', 'tensor', 'self'):
+        for key in ("x", "input", "a", "tensor", "self"):
             if key in kwargs:
                 x = kwargs[key]
                 break
-        for key in ('shape', 'new_shape', 'size'):
+        for key in ("shape", "new_shape", "size"):
             if key in kwargs:
                 target_shape = kwargs[key]
                 break
@@ -52,7 +52,9 @@ def reshape(*args, **kwargs):
             if s != -1:
                 known_prod *= s
         total = x.numel()
-        assert known_prod != 0 and total % known_prod == 0, "Invalid shape for inference."
+        assert (
+            known_prod != 0 and total % known_prod == 0
+        ), "Invalid shape for inference."
         inferred = total // known_prod
         new_shape = tuple(inferred if s == -1 else s for s in new_shape)
 
@@ -62,6 +64,6 @@ def reshape(*args, **kwargs):
     assert x.numel() == n_elements, "Reshape must not change the number of elements."
 
     src = x.contiguous()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _reshape_kernel[grid](src, out, n_elements, BLOCK_SIZE=1024)
     return out

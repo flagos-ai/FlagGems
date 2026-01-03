@@ -9,23 +9,33 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.replication_pad3d import replication_pad3d as gems_replication_pad3d, replication_pad3d_out as gems_replication_pad3d_out
+from flag_gems.experimental_ops.replication_pad3d import (
+    replication_pad3d as gems_replication_pad3d,
+)
+from flag_gems.experimental_ops.replication_pad3d import (
+    replication_pad3d_out as gems_replication_pad3d_out,
+)
 
-import torch
 
 @pytest.mark.replication_pad3d
-@pytest.mark.parametrize("shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)])
+@pytest.mark.parametrize(
+    "shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)])
+@pytest.mark.parametrize(
+    "padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)]
+)
 def test_replication_pad3d_tensor(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = x.clone()
@@ -38,9 +48,13 @@ def test_replication_pad3d_tensor(shape, dtype, padding):
 
 
 @pytest.mark.replication_pad3d
-@pytest.mark.parametrize("shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)])
+@pytest.mark.parametrize(
+    "shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)])
+@pytest.mark.parametrize(
+    "padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)]
+)
 def test_replication_pad3d_out(shape, dtype, padding):
     def test__out_shape(s, p):
         return (s[0], s[1], s[2] + p[4] + p[5], s[3] + p[2] + p[3], s[4] + p[0] + p[1])
@@ -58,10 +72,15 @@ def test_replication_pad3d_out(shape, dtype, padding):
 
     gems_assert_close(act_ret, ref_ret, dtype=dtype)
 
+
 @pytest.mark.replication_pad3d
-@pytest.mark.parametrize("shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)])
+@pytest.mark.parametrize(
+    "shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)])
+@pytest.mark.parametrize(
+    "padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)]
+)
 def test_replication_pad3d_benchmark_tensor(shape, dtype, padding):
     import torch.utils.benchmark as benchmark
 
@@ -74,17 +93,14 @@ def test_replication_pad3d_benchmark_tensor(shape, dtype, padding):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.replication_pad3d(ref_x, padding),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_replication_pad3d(x, padding),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_replication_pad3d(x, padding), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -95,11 +111,14 @@ def test_replication_pad3d_benchmark_tensor(shape, dtype, padding):
 
 
 @pytest.mark.replication_pad3d
-@pytest.mark.parametrize("shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)])
+@pytest.mark.parametrize(
+    "shape", [(1, 2, 4, 5, 6), (2, 4, 16, 32, 32), (2, 4, 32, 64, 64)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)])
+@pytest.mark.parametrize(
+    "padding", [(0, 0, 0, 0, 0, 0), (1, 1, 1, 1, 1, 1), (2, 0, 1, 2, 0, 1)]
+)
 def test_replication_pad3d_benchmark_out(shape, dtype, padding):
-
     quantiles = [0.5, 0.2, 0.8]
 
     def test__out_shape(s, p):
@@ -116,7 +135,7 @@ def test_replication_pad3d_benchmark_out(shape, dtype, padding):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.replication_pad3d.out(ref_x, padding, out=ref_out_buf),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
 
     # Triton implementation
@@ -124,9 +143,8 @@ def test_replication_pad3d_benchmark_out(shape, dtype, padding):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems_replication_pad3d_out(x, padding, act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

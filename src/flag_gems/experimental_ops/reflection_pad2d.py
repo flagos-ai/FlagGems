@@ -5,9 +5,16 @@ import triton.language as tl
 
 @triton.jit
 def _reflection_pad2d_kernel(
-    in_ptr, out_ptr,
-    N, C, H_in, W_in, H_out, W_out,
-    pad_left, pad_top,
+    in_ptr,
+    out_ptr,
+    N,
+    C,
+    H_in,
+    W_in,
+    H_out,
+    W_out,
+    pad_left,
+    pad_top,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -31,8 +38,8 @@ def _reflection_pad2d_kernel(
     c = tmp % C
     n = tmp // C
 
-    w_in = (w_out - pad_left)
-    h_in = (h_out - pad_top)
+    w_in = w_out - pad_left
+    h_in = h_out - pad_top
 
     # reflection index for width
     m_w = W_in - 1
@@ -56,7 +63,9 @@ def _reflection_pad2d_kernel(
 
 def _parse_padding(padding):
     if not isinstance(padding, (list, tuple)) or len(padding) != 4:
-        raise ValueError("padding must be a sequence of four integers: (pad_left, pad_right, pad_top, pad_bottom)")
+        raise ValueError(
+            "padding must be a sequence of four integers: (pad_left, pad_right, pad_top, pad_bottom)"
+        )
     pad_left, pad_right, pad_top, pad_bottom = map(int, padding)
     if pad_left < 0 or pad_right < 0 or pad_top < 0 or pad_bottom < 0:
         raise ValueError("reflection_pad2d does not support negative padding")
@@ -87,17 +96,27 @@ def _launch_reflection_pad2d_kernel(inp, out, padding):
 
     # Validate output shape
     if tuple(out.shape) != expected_out_shape:
-        raise ValueError(f"output has incorrect shape, expected {expected_out_shape}, got {tuple(out.shape)}")
+        raise ValueError(
+            f"output has incorrect shape, expected {expected_out_shape}, got {tuple(out.shape)}"
+        )
 
     # PyTorch constraints for reflection padding
     if H_in <= 0 or W_in <= 0:
         raise ValueError("input spatial dimensions must be positive")
     if (pad_left >= W_in) or (pad_right >= W_in):
-        raise ValueError("Padding size should be less than the corresponding input dimension (width).")
+        raise ValueError(
+            "Padding size should be less than the corresponding input dimension (width)."
+        )
     if (pad_top >= H_in) or (pad_bottom >= H_in):
-        raise ValueError("Padding size should be less than the corresponding input dimension (height).")
-    if (H_in == 1 and (pad_top > 0 or pad_bottom > 0)) or (W_in == 1 and (pad_left > 0 or pad_right > 0)):
-        raise ValueError("For reflection padding, input size must be at least 2 in each dimension being padded.")
+        raise ValueError(
+            "Padding size should be less than the corresponding input dimension (height)."
+        )
+    if (H_in == 1 and (pad_top > 0 or pad_bottom > 0)) or (
+        W_in == 1 and (pad_left > 0 or pad_right > 0)
+    ):
+        raise ValueError(
+            "For reflection padding, input size must be at least 2 in each dimension being padded."
+        )
 
     # Prepare parameters for kernel
     if inp.dim() == 3:
@@ -107,12 +126,19 @@ def _launch_reflection_pad2d_kernel(inp, out, padding):
     n_elements = out.numel()
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     _reflection_pad2d_kernel[grid](
-        inp, out,
-        N, C, H_in, W_in, H_out, W_out,
-        pad_left, pad_top,
+        inp,
+        out,
+        N,
+        C,
+        H_in,
+        W_in,
+        H_out,
+        W_out,
+        pad_left,
+        pad_top,
         n_elements,
         BLOCK_SIZE=BLOCK_SIZE,
     )
@@ -134,7 +160,9 @@ def reflection_pad2d(input: torch.Tensor, padding):
     else:
         raise ValueError("reflection_pad2d expects 3D (C,H,W) or 4D (N,C,H,W) input")
 
-    _launch_reflection_pad2d_kernel(input.contiguous(), out, (pad_left, pad_right, pad_top, pad_bottom))
+    _launch_reflection_pad2d_kernel(
+        input.contiguous(), out, (pad_left, pad_right, pad_top, pad_bottom)
+    )
     return out
 
 
@@ -152,14 +180,20 @@ def reflection_pad2d_out(input: torch.Tensor, padding, out: torch.Tensor):
         W_out = W_in + pad_left + pad_right
         expected_shape = (C, H_out, W_out)
     else:
-        raise ValueError("reflection_pad2d_out expects 3D (C,H,W) or 4D (N,C,H,W) input")
+        raise ValueError(
+            "reflection_pad2d_out expects 3D (C,H,W) or 4D (N,C,H,W) input"
+        )
 
     if tuple(out.shape) != expected_shape:
-        raise ValueError(f"out tensor has incorrect shape, expected {expected_shape}, got {tuple(out.shape)}")
+        raise ValueError(
+            f"out tensor has incorrect shape, expected {expected_shape}, got {tuple(out.shape)}"
+        )
     if out.device != input.device:
         raise ValueError("input and out must be on the same device")
     if out.dtype != input.dtype:
         raise ValueError("input and out must have the same dtype")
 
-    _launch_reflection_pad2d_kernel(input.contiguous(), out, (pad_left, pad_right, pad_top, pad_bottom))
+    _launch_reflection_pad2d_kernel(
+        input.contiguous(), out, (pad_left, pad_right, pad_top, pad_bottom)
+    )
     return out

@@ -6,14 +6,14 @@ import triton.language as tl
 @triton.jit
 def _select_backward_scatter_kernel(
     grad_out_ptr,  # pointer to grad_output tensor
-    out_ptr,       # pointer to grad_input (output) tensor
-    n_elements,    # number of elements in grad_output
-    rank_out,      # ndim of grad_output (rank_in - 1)
+    out_ptr,  # pointer to grad_input (output) tensor
+    n_elements,  # number of elements in grad_output
+    rank_out,  # ndim of grad_output (rank_in - 1)
     index_in_dim,  # index selected along `dim` in the forward pass
-    stride_dim,    # stride of `out` along the selected dim
+    stride_dim,  # stride of `out` along the selected dim
     in_strides_no_dim_ptr,  # int64[stride] array of length rank_out for `out` excluding `dim`
-    out_strides_ptr,        # int64[stride] array for grad_output
-    out_sizes_ptr,          # int64[size] array for grad_output
+    out_strides_ptr,  # int64[stride] array for grad_output
+    out_sizes_ptr,  # int64[size] array for grad_output
     BLOCK_SIZE: tl.constexpr,
     MAX_RANK: tl.constexpr,
 ):
@@ -65,10 +65,14 @@ def _as_tuple_sizes(sizes):
     raise TypeError("input_sizes must be a torch.Size, list, or tuple of ints")
 
 
-def _launch_select_backward(grad_output: torch.Tensor, out: torch.Tensor, dim: int, index: int):
+def _launch_select_backward(
+    grad_output: torch.Tensor, out: torch.Tensor, dim: int, index: int
+):
     device = grad_output.device
     assert out.device == device, "grad_output and out must be on the same device"
-    assert grad_output.dtype == out.dtype, "grad_output and out must have the same dtype"
+    assert (
+        grad_output.dtype == out.dtype
+    ), "grad_output and out must have the same dtype"
 
     rank_in = out.dim()
     dim = _normalize_dim(dim, rank_in)
@@ -78,16 +82,18 @@ def _launch_select_backward(grad_output: torch.Tensor, out: torch.Tensor, dim: i
         index += size_dim
     # shape checks
     expected_out_shape = tuple(out.size(i) for i in range(rank_in) if i != dim)
-    assert tuple(grad_output.shape) == expected_out_shape, (
-        f"grad_output shape {tuple(grad_output.shape)} does not match expected shape {expected_out_shape}"
-    )
+    assert (
+        tuple(grad_output.shape) == expected_out_shape
+    ), f"grad_output shape {tuple(grad_output.shape)} does not match expected shape {expected_out_shape}"
 
     # Prepare strides and sizes (int64 on device)
     in_strides = out.stride()
     collapsed_in_strides = tuple(in_strides[:dim]) + tuple(in_strides[dim + 1 :])
     stride_dim = int(in_strides[dim])
 
-    in_strides_no_dim_t = torch.tensor(collapsed_in_strides, dtype=torch.int64, device=device)
+    in_strides_no_dim_t = torch.tensor(
+        collapsed_in_strides, dtype=torch.int64, device=device
+    )
     out_strides_t = torch.tensor(grad_output.stride(), dtype=torch.int64, device=device)
     out_sizes_t = torch.tensor(grad_output.shape, dtype=torch.int64, device=device)
 
@@ -167,11 +173,17 @@ def select_backward(*args, **kwargs):
 
 
 def select_backward_out(*args, **kwargs):
-    grad_output, input_sizes, dim, index, out = _unpack_select_backward_out_args(args, kwargs)
+    grad_output, input_sizes, dim, index, out = _unpack_select_backward_out_args(
+        args, kwargs
+    )
     input_sizes = _as_tuple_sizes(input_sizes)
     assert tuple(out.shape) == tuple(input_sizes), "out tensor has incorrect shape"
-    assert out.device == grad_output.device, "out and grad_output must be on the same device"
-    assert out.dtype == grad_output.dtype, "out and grad_output must have the same dtype"
+    assert (
+        out.device == grad_output.device
+    ), "out and grad_output must be on the same device"
+    assert (
+        out.dtype == grad_output.dtype
+    ), "out and grad_output must have the same dtype"
     out.zero_()
     _launch_select_backward(grad_output, out, dim, index)
     return out

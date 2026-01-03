@@ -7,9 +7,14 @@ import triton.language as tl
 def replication_pad2d_kernel(
     in_ptr,  # *Pointer* to input tensor
     out_ptr,  # *Pointer* to output tensor
-    N, C, H, W,  # input dimensions
-    OH, OW,  # output H and W
-    PAD_LEFT, PAD_TOP,  # padding sizes
+    N,
+    C,
+    H,
+    W,  # input dimensions
+    OH,
+    OW,  # output H and W
+    PAD_LEFT,
+    PAD_TOP,  # padding sizes
     TOTAL_ELEMS,  # total number of output elements
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -45,7 +50,7 @@ def replication_pad2d_kernel(
     ih = tl.maximum(zero, tl.minimum(Hm1, ih))
     iw = tl.maximum(zero, tl.minimum(Wm1, iw))
 
-    in_index = (((n * C_i64 + c) * H_i64 + ih) * W_i64 + iw)
+    in_index = ((n * C_i64 + c) * H_i64 + ih) * W_i64 + iw
     out_index = offs64
 
     x = tl.load(in_ptr + in_index, mask=mask)
@@ -54,7 +59,9 @@ def replication_pad2d_kernel(
 
 def _prepare_dims_and_out(input: torch.Tensor, padding, out: torch.Tensor | None):
     if not isinstance(padding, (tuple, list)) or len(padding) != 4:
-        raise ValueError("padding must be a sequence of 4 integers: (pad_left, pad_right, pad_top, pad_bottom)")
+        raise ValueError(
+            "padding must be a sequence of 4 integers: (pad_left, pad_right, pad_top, pad_bottom)"
+        )
     pad_left, pad_right, pad_top, pad_bottom = map(int, padding)
     if pad_left < 0 or pad_right < 0 or pad_top < 0 or pad_bottom < 0:
         raise ValueError("replication_pad2d does not support negative padding")
@@ -68,25 +75,42 @@ def _prepare_dims_and_out(input: torch.Tensor, padding, out: torch.Tensor | None
         out_shape = (C, H + pad_top + pad_bottom, W + pad_left + pad_right)
         kernel_N, kernel_C = 1, C
     else:
-        raise ValueError("replication_pad2d expects a 3D (C, H, W) or 4D (N, C, H, W) input")
+        raise ValueError(
+            "replication_pad2d expects a 3D (C, H, W) or 4D (N, C, H, W) input"
+        )
 
     if H <= 0 or W <= 0:
-        raise ValueError("Input height and width must be greater than 0 for replication padding")
+        raise ValueError(
+            "Input height and width must be greater than 0 for replication padding"
+        )
 
     if out is None:
         out = torch.empty(out_shape, device=input.device, dtype=input.dtype)
     else:
         if tuple(out.shape) != tuple(out_shape):
-            raise ValueError(f"Provided out tensor has shape {tuple(out.shape)}, expected {out_shape}")
+            raise ValueError(
+                f"Provided out tensor has shape {tuple(out.shape)}, expected {out_shape}"
+            )
         if out.device != input.device:
             raise ValueError("Input and out must be on the same device")
         if out.dtype != input.dtype:
             raise ValueError("Input and out must have the same dtype")
 
-    return (kernel_N, kernel_C, H, W, out.shape[-2], out.shape[-1], pad_left, pad_top), out
+    return (
+        kernel_N,
+        kernel_C,
+        H,
+        W,
+        out.shape[-2],
+        out.shape[-1],
+        pad_left,
+        pad_top,
+    ), out
 
 
-def _launch_replication_pad2d_kernel(input: torch.Tensor, out: torch.Tensor, kernel_params):
+def _launch_replication_pad2d_kernel(
+    input: torch.Tensor, out: torch.Tensor, kernel_params
+):
     if not input.is_cuda or not out.is_cuda:
         raise ValueError("Tensors must be CUDA tensors")
     if not input.is_contiguous() or not out.is_contiguous():
@@ -103,9 +127,14 @@ def _launch_replication_pad2d_kernel(input: torch.Tensor, out: torch.Tensor, ker
     replication_pad2d_kernel[grid](
         input,
         out,
-        N, C, H, W,
-        OH, OW,
-        pad_left, pad_top,
+        N,
+        C,
+        H,
+        W,
+        OH,
+        OW,
+        pad_left,
+        pad_top,
         total_elems,
         BLOCK_SIZE=BLOCK_SIZE,
     )
