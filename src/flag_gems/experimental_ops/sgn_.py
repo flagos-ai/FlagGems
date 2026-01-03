@@ -40,14 +40,17 @@ def sgn_(*args, **kwargs):
         raise TypeError("sgn_ expects a single Tensor argument")
 
     # Fallback for unsupported cases
-    unsupported = (
-        (not x.is_cuda)
-        or (not x.is_contiguous())
-        or x.is_complex()
-    )
+    unsupported = (not x.is_cuda) or (not x.is_contiguous()) or x.is_complex()
     supported_dtypes = {
-        torch.float16, torch.float32, torch.float64, torch.bfloat16,
-        torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8
+        torch.float16,
+        torch.float32,
+        torch.float64,
+        torch.bfloat16,
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+        torch.uint8,
     }
     if unsupported or x.dtype not in supported_dtypes:
         return torch.ops.aten.sgn_(x)

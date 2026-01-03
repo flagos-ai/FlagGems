@@ -30,14 +30,16 @@ def selu_(*args, **kwargs):
     x = None
     if len(args) > 0 and torch.is_tensor(args[0]):
         x = args[0]
-    elif 'input' in kwargs and torch.is_tensor(kwargs['input']):
-        x = kwargs['input']
-    elif 'self' in kwargs and torch.is_tensor(kwargs['self']):
-        x = kwargs['self']
-    elif 'x' in kwargs and torch.is_tensor(kwargs['x']):
-        x = kwargs['x']
+    elif "input" in kwargs and torch.is_tensor(kwargs["input"]):
+        x = kwargs["input"]
+    elif "self" in kwargs and torch.is_tensor(kwargs["self"]):
+        x = kwargs["self"]
+    elif "x" in kwargs and torch.is_tensor(kwargs["x"]):
+        x = kwargs["x"]
     else:
-        raise ValueError("selu_ expects a Tensor as the first argument or under 'input'/'self'/'x' keyword.")
+        raise ValueError(
+            "selu_ expects a Tensor as the first argument or under 'input'/'self'/'x' keyword."
+        )
 
     # Fallback for unsupported cases
     supported_dtypes = {torch.float16, torch.bfloat16, torch.float32}
@@ -50,6 +52,6 @@ def selu_(*args, **kwargs):
         return x
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     selu__kernel[grid](x, n_elements, BLOCK_SIZE=BLOCK_SIZE)
     return x

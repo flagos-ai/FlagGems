@@ -9,21 +9,27 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.smooth_l1_loss import smooth_l1_loss as gems_smooth_l1_loss, smooth_l1_loss_out as gems_smooth_l1_loss_out
-
-import torch
+from flag_gems.experimental_ops.smooth_l1_loss import (
+    smooth_l1_loss as gems_smooth_l1_loss,
+)
+from flag_gems.experimental_ops.smooth_l1_loss import (
+    smooth_l1_loss_out as gems_smooth_l1_loss_out,
+)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.smooth_l1_loss
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -59,13 +65,16 @@ def test_smooth_l1_loss_out(shape, dtype, reduction, beta):
     ref_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     ref_self = self.clone()
     ref_target = target.clone()
-    ref_out = torch.ops.aten.smooth_l1_loss.out(ref_self, ref_target, reduction, beta, out=ref_out)
+    ref_out = torch.ops.aten.smooth_l1_loss.out(
+        ref_self, ref_target, reduction, beta, out=ref_out
+    )
 
     with flag_gems.use_gems():
         act_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
         act_out = gems_smooth_l1_loss_out(self, target, reduction, beta, act_out)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.smooth_l1_loss
 def test_perf_aten_smooth_l1_loss():

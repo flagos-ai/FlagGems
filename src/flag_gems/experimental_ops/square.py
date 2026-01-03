@@ -1,7 +1,8 @@
+from typing import Optional
+
 import torch
 import triton
 import triton.language as tl
-from typing import Optional
 
 
 @triton.jit
@@ -32,7 +33,9 @@ def square(input: torch.Tensor, *, out: Optional[torch.Tensor] = None):
         assert isinstance(out, torch.Tensor), "out must be a torch.Tensor"
         assert out.is_cuda, "out must be on a CUDA device"
         assert out.dtype == input.dtype, "out dtype must match input dtype"
-        assert out.numel() == input.numel(), "out must have the same number of elements as input"
+        assert (
+            out.numel() == input.numel()
+        ), "out must have the same number of elements as input"
         assert out.shape == input.shape, "out must have the same shape as input"
 
     x_c = input.contiguous()
@@ -50,7 +53,9 @@ def square_out(input: torch.Tensor, out: torch.Tensor):
     assert isinstance(out, torch.Tensor), "out must be a torch.Tensor"
     assert input.is_cuda and out.is_cuda, "input and out must be on a CUDA device"
     assert out.dtype == input.dtype, "out dtype must match input dtype"
-    assert out.numel() == input.numel(), "out must have the same number of elements as input"
+    assert (
+        out.numel() == input.numel()
+    ), "out must have the same number of elements as input"
     assert out.shape == input.shape, "out must have the same shape as input"
 
     x_c = input.contiguous()

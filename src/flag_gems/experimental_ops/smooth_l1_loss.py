@@ -41,14 +41,14 @@ def smooth_l1_elementwise_kernel(
 
 def _normalize_reduction(reduction):
     if reduction is None:
-        return 'mean'
+        return "mean"
     if isinstance(reduction, str):
         reduction = reduction.lower()
-        if reduction in ('none', 'mean', 'sum'):
+        if reduction in ("none", "mean", "sum"):
             return reduction
         raise ValueError(f"Invalid reduction: {reduction}")
     if isinstance(reduction, int):
-        mapping = {0: 'none', 1: 'mean', 2: 'sum'}
+        mapping = {0: "none", 1: "mean", 2: "sum"}
         if reduction in mapping:
             return mapping[reduction]
         raise ValueError(f"Invalid reduction code: {reduction}")
@@ -62,9 +62,9 @@ def _parse_smooth_l1_args(args, kwargs, out_variant=False):
     x = args[0]
     y = args[1]
 
-    beta = kwargs.pop('beta', None)
-    reduction = kwargs.pop('reduction', None)
-    out = kwargs.pop('out', None) if out_variant else None
+    beta = kwargs.pop("beta", None)
+    reduction = kwargs.pop("reduction", None)
+    out = kwargs.pop("out", None) if out_variant else None
 
     # Parse remaining positional arguments flexibly
     rest = list(args[2:])
@@ -109,7 +109,7 @@ def _launch_smooth_l1_elementwise(x, y, out_buf, beta):
         return  # nothing to do
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     smooth_l1_elementwise_kernel[grid](
         x, y, out_buf, n_elements, beta, BLOCK_SIZE=BLOCK_SIZE
@@ -124,7 +124,7 @@ def _prepare_tensors_for_elementwise(x, y, dtype=None):
     device = x.device
     if x.device != y.device:
         raise ValueError("input and target must be on the same device")
-    if not device.type == 'cuda':
+    if not device.type == "cuda":
         return None, None, None, None  # signal fallback
 
     # Broadcast to a common shape
@@ -136,7 +136,9 @@ def _prepare_tensors_for_elementwise(x, y, dtype=None):
 
 
 def smooth_l1_loss(*args, **kwargs):
-    x, y, reduction, beta, _, leftover = _parse_smooth_l1_args(args, kwargs, out_variant=False)
+    x, y, reduction, beta, _, leftover = _parse_smooth_l1_args(
+        args, kwargs, out_variant=False
+    )
     if leftover:
         raise TypeError(f"Unexpected keyword arguments: {list(leftover.keys())}")
 
@@ -148,23 +150,25 @@ def smooth_l1_loss(*args, **kwargs):
     xb, yb, tmp, _ = prep
     _launch_smooth_l1_elementwise(xb, yb, tmp, beta)
 
-    if reduction == 'none':
+    if reduction == "none":
         return tmp
-    elif reduction == 'mean':
+    elif reduction == "mean":
         return tmp.mean()
-    elif reduction == 'sum':
+    elif reduction == "sum":
         return tmp.sum()
     else:
         raise ValueError(f"Invalid reduction: {reduction}")
 
 
 def smooth_l1_loss_out(*args, **kwargs):
-    x, y, reduction, beta, out, leftover = _parse_smooth_l1_args(args, kwargs, out_variant=True)
+    x, y, reduction, beta, out, leftover = _parse_smooth_l1_args(
+        args, kwargs, out_variant=True
+    )
     if leftover:
         raise TypeError(f"Unexpected keyword arguments: {list(leftover.keys())}")
 
     # Fallback if not CUDA
-    if x.device.type != 'cuda' or y.device.type != 'cuda':
+    if x.device.type != "cuda" or y.device.type != "cuda":
         res = torch.ops.aten.smooth_l1_loss(x, y, reduction=reduction, beta=beta)
         if out is None:
             return res
@@ -184,7 +188,7 @@ def smooth_l1_loss_out(*args, **kwargs):
 
     _launch_smooth_l1_elementwise(xb, yb, tmp, beta)
 
-    if reduction == 'none':
+    if reduction == "none":
         if out is None:
             return tmp
         # Validate 'out' shape/device/dtype for 'none'
@@ -200,9 +204,9 @@ def smooth_l1_loss_out(*args, **kwargs):
             out.reshape(-1).copy_(tmp.reshape(-1))
         return out
     else:
-        if reduction == 'mean':
+        if reduction == "mean":
             res = tmp.mean()
-        elif reduction == 'sum':
+        elif reduction == "sum":
             res = tmp.sum()
         else:
             raise ValueError(f"Invalid reduction: {reduction}")

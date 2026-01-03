@@ -23,7 +23,9 @@ def _sigmoid_common(x: torch.Tensor, out: torch.Tensor = None):
     if not x.is_cuda:
         raise ValueError("sigmoid: input tensor must be on CUDA device")
     if x.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        raise NotImplementedError(f"sigmoid: dtype {x.dtype} is not supported (supported: float16, bfloat16, float32)")
+        raise NotImplementedError(
+            f"sigmoid: dtype {x.dtype} is not supported (supported: float16, bfloat16, float32)"
+        )
 
     n_elements = x.numel()
     if out is None:
@@ -34,15 +36,23 @@ def _sigmoid_common(x: torch.Tensor, out: torch.Tensor = None):
         if not out.is_cuda:
             raise ValueError("sigmoid.out: 'out' tensor must be on CUDA device")
         if out.shape != x.shape:
-            raise ValueError(f"sigmoid.out: 'out' shape {out.shape} does not match input shape {x.shape}")
+            raise ValueError(
+                f"sigmoid.out: 'out' shape {out.shape} does not match input shape {x.shape}"
+            )
         if out.dtype != x.dtype:
-            raise ValueError(f"sigmoid.out: 'out' dtype {out.dtype} must match input dtype {x.dtype}")
+            raise ValueError(
+                f"sigmoid.out: 'out' dtype {out.dtype} must match input dtype {x.dtype}"
+            )
 
     if n_elements == 0:
         return out
 
     x_contig = x.contiguous()
-    out_contig = out if out.is_contiguous() else torch.empty_like(out, memory_format=torch.contiguous_format)
+    out_contig = (
+        out
+        if out.is_contiguous()
+        else torch.empty_like(out, memory_format=torch.contiguous_format)
+    )
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     sigmoid_kernel[grid](x_contig, out_contig, n_elements, BLOCK_SIZE=1024)

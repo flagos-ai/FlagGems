@@ -75,7 +75,9 @@ def special_xlog1py_self_scalar(self, other):
 
 def special_xlog1py_out(x, y, out):
     out = _ensure_cuda_tensor(out)
-    xb_fp32, yb_fp32, dtype_out = _prepare_inputs(_ensure_cuda_tensor(x), _ensure_cuda_tensor(y))
+    xb_fp32, yb_fp32, dtype_out = _prepare_inputs(
+        _ensure_cuda_tensor(x), _ensure_cuda_tensor(y)
+    )
     # Validate output shape
     expected_shape = torch.broadcast_shapes(xb_fp32.shape, yb_fp32.shape)
     if out.shape != expected_shape:

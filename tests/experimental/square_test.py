@@ -9,21 +9,23 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.square import square as gems_square, square_out as gems_square_out
-
-import torch
+from flag_gems.experimental_ops.square import square as gems_square
+from flag_gems.experimental_ops.square import square_out as gems_square_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.square
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
@@ -51,8 +53,12 @@ def test_square_out(shape, dtype, out_layout):
         ref_out_buf = torch.empty_like(x)
         act_out_buf = torch.empty_like(x)
     else:
-        ref_base = torch.empty((shape[0], shape[1] * 2), dtype=dtype, device=flag_gems.device)
-        act_base = torch.empty((shape[0], shape[1] * 2), dtype=dtype, device=flag_gems.device)
+        ref_base = torch.empty(
+            (shape[0], shape[1] * 2), dtype=dtype, device=flag_gems.device
+        )
+        act_base = torch.empty(
+            (shape[0], shape[1] * 2), dtype=dtype, device=flag_gems.device
+        )
         ref_out_buf = ref_base[:, ::2]
         act_out_buf = act_base[:, ::2]
 
@@ -62,6 +68,7 @@ def test_square_out(shape, dtype, out_layout):
         act_res = gems_square_out(x, act_out_buf)
 
     gems_assert_close(act_res, ref_res, dtype=dtype)
+
 
 @pytest.mark.square
 def test_perf_aten_square():
