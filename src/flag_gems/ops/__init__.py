@@ -97,6 +97,7 @@ from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.grid_sample import grid_sampler_2d, grid_sampler_2d_backward
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hstack import hstack
@@ -350,6 +351,8 @@ __all__ = [
     "gelu_backward",
     "glu",
     "glu_backward",
+    "grid_sampler_2d",
+    "grid_sampler_2d_backward",
     "group_norm",
     "group_norm_backward",
     "gt",
