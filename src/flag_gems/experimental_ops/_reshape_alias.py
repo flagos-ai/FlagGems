@@ -5,7 +5,7 @@ import triton.language as tl
 
 @triton.jit
 def _reshape_alias(dummy_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
+    pid = tl.program_id(axis=0)  # noqa: F841
     # No-op kernel: intentionally does nothing to preserve aliasing semantics.
 
 
