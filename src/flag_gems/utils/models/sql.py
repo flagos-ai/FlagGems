@@ -90,26 +90,29 @@ class SQLPersistantModel(PersistantModel):
         keys: Mapping[str, Union[Any, Type]] = {},
         values: Mapping[str, Union[Any, Type]] = {},
     ) -> Callable[[str, Optional[Mapping[str, Type]]], Optional[Type[Base]]]:
-        ModelCls: Optional[Type[Base]] = self.sql_model_pool.get(name)
-        if ModelCls is not None:
-            return ModelCls
-        ModelCls: Optional[Type[Base]] = SQLPersistantModel.build_sql_model_by_db(
-            name, self.engine
-        )
-        if ModelCls is not None:
+        with self.lock:
+            ModelCls: Optional[Type[Base]] = self.sql_model_pool.get(name)
+            if ModelCls is not None:
+                return ModelCls
+            ModelCls: Optional[Type[Base]] = SQLPersistantModel.build_sql_model_by_db(
+                name, self.engine
+            )
+            if ModelCls is not None:
+                self.sql_model_pool[name] = ModelCls
+                return ModelCls
+            if not keys or not values:
+                return None
+            ModelCls: Type[Base] = SQLPersistantModel.build_sql_model_by_py(
+                name, keys, values
+            )
+            with self.engine.begin() as conn:
+                conn.execute(
+                    sqlalchemy.schema.CreateTable(
+                        ModelCls.__table__, if_not_exists=True
+                    )
+                )
             self.sql_model_pool[name] = ModelCls
             return ModelCls
-        if not keys or not values:
-            return None
-        ModelCls: Type[Base] = SQLPersistantModel.build_sql_model_by_py(
-            name, keys, values
-        )
-        with self.engine.begin() as conn:
-            conn.execute(
-                sqlalchemy.schema.CreateTable(ModelCls.__table__, if_not_exists=True)
-            )
-        self.sql_model_pool[name] = ModelCls
-        return ModelCls
 
     @override
     def get_config(
