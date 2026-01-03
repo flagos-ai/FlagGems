@@ -5,11 +5,11 @@ import triton.language as tl
 
 @triton.jit
 def threshold_kernel(
-    x_ptr,         # *Pointer* to input tensor
-    y_ptr,         # *Pointer* to output tensor
-    n_elements,    # Number of elements
-    threshold,     # Scalar threshold
-    value,         # Scalar value to use when x <= threshold
+    x_ptr,  # *Pointer* to input tensor
+    y_ptr,  # *Pointer* to output tensor
+    n_elements,  # Number of elements
+    threshold,  # Scalar threshold
+    value,  # Scalar value to use when x <= threshold
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -50,8 +50,11 @@ def threshold(input: torch.Tensor, threshold, value):
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     threshold_kernel[grid](
-        x, out, n_elements,
-        thr_scalar, val_scalar,
+        x,
+        out,
+        n_elements,
+        thr_scalar,
+        val_scalar,
         BLOCK_SIZE=1024,
     )
     return out
@@ -61,9 +64,13 @@ def threshold_out(input: torch.Tensor, threshold, value, out: torch.Tensor):
     if input.device.type != "cuda" or out.device.type != "cuda":
         raise RuntimeError("This Triton implementation requires CUDA tensors.")
     if out.shape != input.shape:
-        raise RuntimeError(f"out shape {out.shape} must match input shape {input.shape}")
+        raise RuntimeError(
+            f"out shape {out.shape} must match input shape {input.shape}"
+        )
     if out.dtype != input.dtype:
-        raise RuntimeError(f"out dtype {out.dtype} must match input dtype {input.dtype}")
+        raise RuntimeError(
+            f"out dtype {out.dtype} must match input dtype {input.dtype}"
+        )
 
     x = input.contiguous()
     n_elements = x.numel()
@@ -80,8 +87,11 @@ def threshold_out(input: torch.Tensor, threshold, value, out: torch.Tensor):
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     threshold_kernel[grid](
-        x, y, n_elements,
-        thr_scalar, val_scalar,
+        x,
+        y,
+        n_elements,
+        thr_scalar,
+        val_scalar,
         BLOCK_SIZE=1024,
     )
 

@@ -9,22 +9,27 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.squeeze_copy import squeeze_copy as gems_squeeze_copy, squeeze_copy_out as gems_squeeze_copy_out
-
-import torch
+from flag_gems.experimental_ops.squeeze_copy import squeeze_copy as gems_squeeze_copy
+from flag_gems.experimental_ops.squeeze_copy import (
+    squeeze_copy_out as gems_squeeze_copy_out,
+)
 
 
 @pytest.mark.squeeze_copy
-@pytest.mark.parametrize("shape", [(2, 3), (2, 1, 3, 1), (128, 256), (128, 1, 256), (512, 512), (512, 1, 64)])
+@pytest.mark.parametrize(
+    "shape", [(2, 3), (2, 1, 3, 1), (128, 256), (128, 1, 256), (512, 512), (512, 1, 64)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_squeeze_copy_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -82,7 +87,9 @@ def test_squeeze_copy_dims(shape_dims, dtype):
 
 
 @pytest.mark.squeeze_copy
-@pytest.mark.parametrize("shape", [(2, 3), (2, 1, 3, 1), (128, 256), (128, 1, 256), (512, 512), (512, 1, 64)])
+@pytest.mark.parametrize(
+    "shape", [(2, 3), (2, 1, 3, 1), (128, 256), (128, 1, 256), (512, 512), (512, 1, 64)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_squeeze_copy_out(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -147,8 +154,11 @@ def test_squeeze_copy_dims_out(shape_dims, dtype):
         act_out = torch.ops.aten.squeeze_copy.dims_out(x, dims, out=act_out_buf)
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.squeeze_copy
-@pytest.mark.parametrize("shape", [(2, 3), (2, 1, 3, 1), (128, 256), (128, 1, 256), (512, 512), (512, 1, 64)])
+@pytest.mark.parametrize(
+    "shape", [(2, 3), (2, 1, 3, 1), (128, 256), (128, 1, 256), (512, 512), (512, 1, 64)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_squeeze_copy_benchmark_tensor(shape, dtype):
     import torch.utils.benchmark as benchmark
@@ -159,17 +169,13 @@ def test_squeeze_copy_benchmark_tensor(shape, dtype):
     ref_x = x.clone()
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.squeeze_copy(ref_x),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.squeeze_copy(ref_x), rep=100, quantiles=quantiles
     )
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_squeeze_copy(x),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_squeeze_copy(x), rep=100, quantiles=quantiles
         )
 
     # Calculate speedup and return result
@@ -194,7 +200,6 @@ def test_squeeze_copy_benchmark_tensor(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_squeeze_copy_dim_performance(shape_dim, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     shape, dim = shape_dim
@@ -204,7 +209,7 @@ def test_squeeze_copy_dim_performance(shape_dim, dtype):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.squeeze_copy.dim(ref_x, dim),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
 
     # Triton implementation
@@ -212,7 +217,7 @@ def test_squeeze_copy_dim_performance(shape_dim, dtype):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: torch.ops.aten.squeeze_copy.dim(x, dim),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
 
     # Calculate speedup and return result
@@ -237,7 +242,6 @@ def test_squeeze_copy_dim_performance(shape_dim, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_squeeze_copy_dims_performance(shape_dims, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     shape, dims = shape_dims
@@ -247,7 +251,7 @@ def test_squeeze_copy_dims_performance(shape_dims, dtype):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.squeeze_copy.dims(ref_x, dims),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
 
     # Triton implementation
@@ -255,7 +259,7 @@ def test_squeeze_copy_dims_performance(shape_dims, dtype):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: torch.ops.aten.squeeze_copy.dims(x, dims),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
 
     # Calculate speedup and return result
@@ -267,10 +271,11 @@ def test_squeeze_copy_dims_performance(shape_dims, dtype):
 
 
 @pytest.mark.squeeze_copy
-@pytest.mark.parametrize("shape", [(2, 3), (2, 1, 3, 1), (128, 256), (128, 1, 256), (512, 512), (512, 1, 64)])
+@pytest.mark.parametrize(
+    "shape", [(2, 3), (2, 1, 3, 1), (128, 256), (128, 1, 256), (512, 512), (512, 1, 64)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_squeeze_copy_benchmark_out(shape, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -281,16 +286,14 @@ def test_squeeze_copy_benchmark_out(shape, dtype):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.squeeze_copy.out(ref_x, out=ref_out_buf),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
     act_out_buf = torch.empty_like(tmp)
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_squeeze_copy_out(x, act_out_buf),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_squeeze_copy_out(x, act_out_buf), rep=100, quantiles=quantiles
         )
 
     # Calculate speedup and return result
@@ -315,7 +318,6 @@ def test_squeeze_copy_benchmark_out(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_squeeze_copy_dim_benchmark_out(shape_dim, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     shape, dim = shape_dim
@@ -327,7 +329,7 @@ def test_squeeze_copy_dim_benchmark_out(shape_dim, dtype):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.squeeze_copy.dim_out(ref_x, dim, out=ref_out_buf),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
     act_out_buf = torch.empty_like(tmp)
 
@@ -336,7 +338,7 @@ def test_squeeze_copy_dim_benchmark_out(shape_dim, dtype):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: torch.ops.aten.squeeze_copy.dim_out(x, dim, out=act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
 
     # Calculate speedup and return result
@@ -361,7 +363,6 @@ def test_squeeze_copy_dim_benchmark_out(shape_dim, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_squeeze_copy_dims_benchmark_out(shape_dims, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     shape, dims = shape_dims
@@ -373,7 +374,7 @@ def test_squeeze_copy_dims_benchmark_out(shape_dims, dtype):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.squeeze_copy.dims_out(ref_x, dims, out=ref_out_buf),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
     act_out_buf = torch.empty_like(tmp)
 
@@ -382,7 +383,7 @@ def test_squeeze_copy_dims_benchmark_out(shape_dims, dtype):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: torch.ops.aten.squeeze_copy.dims_out(x, dims, out=act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
 
     # Calculate speedup and return result

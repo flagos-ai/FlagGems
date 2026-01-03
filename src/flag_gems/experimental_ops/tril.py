@@ -4,8 +4,9 @@ import triton.language as tl
 
 
 @triton.jit
-def _tril_kernel(in_ptr, out_ptr, M, N, B, diag,
-                 BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+def _tril_kernel(
+    in_ptr, out_ptr, M, N, B, diag, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
+):
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
     pid_b = tl.program_id(2)
@@ -25,7 +26,9 @@ def _tril_kernel(in_ptr, out_ptr, M, N, B, diag,
 
 def _launch_tril_kernel(input: torch.Tensor, out: torch.Tensor, diagonal: int):
     assert input.is_cuda and out.is_cuda, "Input and output must be CUDA tensors"
-    assert input.is_contiguous() and out.is_contiguous(), "Only contiguous tensors are supported"
+    assert (
+        input.is_contiguous() and out.is_contiguous()
+    ), "Only contiguous tensors are supported"
     assert input.shape == out.shape, "Input and output must have the same shape"
     assert input.dtype == out.dtype, "Input and output must have the same dtype"
 
@@ -46,10 +49,15 @@ def _launch_tril_kernel(input: torch.Tensor, out: torch.Tensor, diagonal: int):
     grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N), B)
 
     _tril_kernel[grid](
-        input, out,
-        M, N, B, int(diagonal),
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
-        num_warps=4
+        input,
+        out,
+        M,
+        N,
+        B,
+        int(diagonal),
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        num_warps=4,
     )
     return out
 

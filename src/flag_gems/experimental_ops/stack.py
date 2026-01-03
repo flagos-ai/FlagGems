@@ -1,17 +1,18 @@
+from typing import Sequence
+
 import torch
 import triton
 import triton.language as tl
-from typing import Sequence
 
 
 @triton.jit
 def _stack_copy_kernel(
-    src_ptr,           # *Pointer* to source tensor (flattened, contiguous)
-    out_ptr,           # *Pointer* to output tensor (flattened, contiguous)
-    numel_in,          # Number of elements in one input tensor (P * Q)
-    Q,                 # Inner product size
-    K,                 # Number of tensors to stack
-    k_idx,             # Which tensor index [0..K-1] this launch is copying
+    src_ptr,  # *Pointer* to source tensor (flattened, contiguous)
+    out_ptr,  # *Pointer* to output tensor (flattened, contiguous)
+    numel_in,  # Number of elements in one input tensor (P * Q)
+    Q,  # Inner product size
+    K,  # Number of tensors to stack
+    k_idx,  # Which tensor index [0..K-1] this launch is copying
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -52,7 +53,9 @@ def _prepare_stack_shapes(tensors: Sequence[torch.Tensor], dim: int):
     D = len(shape)
     dim = dim if dim >= 0 else dim + (D + 1)
     if not (0 <= dim <= D):
-        raise ValueError(f"dim out of range (expected to be in range [{-D-1}, {D}], but got {dim})")
+        raise ValueError(
+            f"dim out of range (expected to be in range [{-D-1}, {D}], but got {dim})"
+        )
 
     # Compute P and Q
     P = 1
@@ -67,7 +70,9 @@ def _prepare_stack_shapes(tensors: Sequence[torch.Tensor], dim: int):
     return device, dtype, shape, out_shape, P, Q, K, dim
 
 
-def _launch_stack_kernels(tensors: Sequence[torch.Tensor], out: torch.Tensor, P: int, Q: int, K: int):
+def _launch_stack_kernels(
+    tensors: Sequence[torch.Tensor], out: torch.Tensor, P: int, Q: int, K: int
+):
     # Input must be contiguous; output must be contiguous
     if not out.is_contiguous():
         raise ValueError("Output tensor must be contiguous")
@@ -96,7 +101,9 @@ def _launch_stack_kernels(tensors: Sequence[torch.Tensor], out: torch.Tensor, P:
 
 
 def stack(tensors: Sequence[torch.Tensor], dim: int = 0):
-    device, dtype, in_shape, out_shape, P, Q, K, dim = _prepare_stack_shapes(tensors, dim)
+    device, dtype, in_shape, out_shape, P, Q, K, dim = _prepare_stack_shapes(
+        tensors, dim
+    )
     out = torch.empty(out_shape, device=device, dtype=dtype)
     _launch_stack_kernels(tensors, out, P, Q, K)
     return out
@@ -105,14 +112,18 @@ def stack(tensors: Sequence[torch.Tensor], dim: int = 0):
 def stack_out(tensors: Sequence[torch.Tensor], dim: int = 0, out: torch.Tensor = None):
     if out is None:
         raise ValueError("stack_out requires an 'out' tensor")
-    device, dtype, in_shape, out_shape, P, Q, K, dim = _prepare_stack_shapes(tensors, dim)
+    device, dtype, in_shape, out_shape, P, Q, K, dim = _prepare_stack_shapes(
+        tensors, dim
+    )
 
     if out.device != device:
         raise ValueError("Output tensor device must match input tensors' device")
     if out.dtype != dtype:
         raise ValueError("Output tensor dtype must match input tensors' dtype")
     if list(out.shape) != list(out_shape):
-        raise ValueError(f"Output tensor has incorrect shape. Expected {out_shape}, got {list(out.shape)}")
+        raise ValueError(
+            f"Output tensor has incorrect shape. Expected {out_shape}, got {list(out.shape)}"
+        )
 
     _launch_stack_kernels(tensors, out, P, Q, K)
     return out

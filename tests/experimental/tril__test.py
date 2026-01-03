@@ -9,18 +9,19 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.tril_ import tril_ as gems_tril_
 
-import torch
 
 @pytest.mark.tril_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512), (32, 64, 64)])
@@ -54,6 +55,7 @@ def test_tril__tensor_default_diagonal(shape, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.tril_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512), (32, 64, 64)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -69,20 +71,14 @@ def test_tril__benchmark_tensor(shape, dtype, diagonal):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.tril_(ref_x, diagonal),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.tril_(ref_x, diagonal), rep=100, quantiles=quantiles
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_tril_(act_x, diagonal),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_tril_(act_x, diagonal), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -96,7 +92,6 @@ def test_tril__benchmark_tensor(shape, dtype, diagonal):
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (32, 64, 64)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_tril__tensor_default_diagonal_performance(shape, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -105,20 +100,14 @@ def test_tril__tensor_default_diagonal_performance(shape, dtype):
 
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.tril_(ref_x),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.tril_(ref_x), rep=100, quantiles=quantiles
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_tril_(act_x),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_tril_(act_x), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

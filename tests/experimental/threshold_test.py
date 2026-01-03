@@ -9,21 +9,23 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.threshold import threshold as gems_threshold, threshold_out as gems_threshold_out
-
-import torch
+from flag_gems.experimental_ops.threshold import threshold as gems_threshold
+from flag_gems.experimental_ops.threshold import threshold_out as gems_threshold_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.threshold
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -54,13 +56,14 @@ def test_threshold_out(shape, dtype, threshold, value):
         act_out = gems_threshold_out(x, threshold, value, act_out_buf)
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.threshold
 def test_perf_aten_threshold():
     # Define input generation logic matching the operator arguments
     def threshold_input_fn(shape, dtype, device):
         x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         threshold = 0.5  # Example threshold
-        value = 1.0      # Example value
+        value = 1.0  # Example value
         yield x, threshold, value
 
     # Initialize benchmark

@@ -4,11 +4,18 @@ import triton.language as tl
 
 
 @triton.jit
-def t(in_ptr, out_ptr,
-      M, N,
-      stride_in_0, stride_in_1,
-      stride_out_0, stride_out_1,
-      BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+def t(
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    stride_in_0,
+    stride_in_1,
+    stride_out_0,
+    stride_out_1,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
     pid_m = tl.program_id(axis=0)
     pid_n = tl.program_id(axis=1)
 
@@ -34,10 +41,10 @@ def t(*args, **kwargs):
     x = None
     if len(args) > 0 and isinstance(args[0], torch.Tensor):
         x = args[0]
-    elif 'self' in kwargs and isinstance(kwargs['self'], torch.Tensor):
-        x = kwargs['self']
-    elif 'input' in kwargs and isinstance(kwargs['input'], torch.Tensor):
-        x = kwargs['input']
+    elif "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
+        x = kwargs["self"]
+    elif "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
+        x = kwargs["input"]
     if x is None:
         raise TypeError("t expects a single Tensor argument")
 
@@ -51,15 +58,22 @@ def t(*args, **kwargs):
     M, N = x.shape
     y = torch.empty((N, M), device=x.device, dtype=x.dtype)
 
-    grid = lambda meta: (triton.cdiv(M, meta['BLOCK_M']),
-                         triton.cdiv(N, meta['BLOCK_N']))
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(N, meta["BLOCK_N"]),
+    )
 
     _t_kernel[grid](
-        x, y,
-        M, N,
-        x.stride(0), x.stride(1),
-        y.stride(0), y.stride(1),
-        BLOCK_M=32, BLOCK_N=32,
-        num_warps=4
+        x,
+        y,
+        M,
+        N,
+        x.stride(0),
+        x.stride(1),
+        y.stride(0),
+        y.stride(1),
+        BLOCK_M=32,
+        BLOCK_N=32,
+        num_warps=4,
     )
     return y

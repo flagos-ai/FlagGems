@@ -1,19 +1,20 @@
+from typing import Iterable, List, Optional
+
 import torch
 import triton
 import triton.language as tl
-from typing import Iterable, List, Optional
 
 
 @triton.jit
 def _squeeze_copy_kernel(
-    in_ptr,                      # data pointer: same dtype as input tensor
-    out_ptr,                     # data pointer: same dtype as output tensor
-    n_elements,                  # total number of elements in output
-    index_strides_ptr,           # int64* of length OUT_NDIM: input strides mapped to output dims (in elements)
-    out_shape_ptr,               # int64* of length OUT_NDIM: output sizes
-    out_lin_strides_ptr,         # int64* of length OUT_NDIM: linearization strides of output dims
-    BLOCK_SIZE: tl.constexpr,    # per-program elements
-    OUT_NDIM: tl.constexpr       # number of output dimensions
+    in_ptr,  # data pointer: same dtype as input tensor
+    out_ptr,  # data pointer: same dtype as output tensor
+    n_elements,  # total number of elements in output
+    index_strides_ptr,  # int64* of length OUT_NDIM: input strides mapped to output dims (in elements)
+    out_shape_ptr,  # int64* of length OUT_NDIM: output sizes
+    out_lin_strides_ptr,  # int64* of length OUT_NDIM: linearization strides of output dims
+    BLOCK_SIZE: tl.constexpr,  # per-program elements
+    OUT_NDIM: tl.constexpr,  # number of output dimensions
 ):
     pid = tl.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -26,8 +27,8 @@ def _squeeze_copy_kernel(
     # Unroll across output dimensions
     for i in range(OUT_NDIM):
         s_lin = tl.load(out_lin_strides_ptr + i)  # scalar int64
-        sz = tl.load(out_shape_ptr + i)           # scalar int64
-        idx_i = (lin // s_lin) % sz               # [BLOCK_SIZE] int64
+        sz = tl.load(out_shape_ptr + i)  # scalar int64
+        idx_i = (lin // s_lin) % sz  # [BLOCK_SIZE] int64
         in_stride_i = tl.load(index_strides_ptr + i)  # scalar int64
         in_offsets += idx_i * in_stride_i
 
@@ -39,7 +40,9 @@ def _normalize_dim(dim: int, ndim: int) -> int:
     if dim < 0:
         dim += ndim
     if dim < 0 or dim >= ndim:
-        raise IndexError(f"Dimension out of range (expected to be in range of [{-ndim}, {ndim-1}], but got {dim - (ndim if dim < 0 else 0)})")
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of [{-ndim}, {ndim-1}], but got {dim - (ndim if dim < 0 else 0)})"
+        )
     return dim
 
 
@@ -108,14 +111,36 @@ def _prepare_indexing_params(x: torch.Tensor, kept_dims: List[int]):
     else:
         index_strides_t = torch.tensor(index_strides, dtype=torch.int64, device=device)
         out_shape_t = torch.tensor(out_shape, dtype=torch.int64, device=device)
-        out_lin_strides_t = torch.tensor(out_lin_strides, dtype=torch.int64, device=device)
+        out_lin_strides_t = torch.tensor(
+            out_lin_strides, dtype=torch.int64, device=device
+        )
         n_elements = int(prod)
 
-    return out_shape, out_ndim, index_strides_t, out_shape_t, out_lin_strides_t, n_elements, dtype, device
+    return (
+        out_shape,
+        out_ndim,
+        index_strides_t,
+        out_shape_t,
+        out_lin_strides_t,
+        n_elements,
+        dtype,
+        device,
+    )
 
 
-def _launch_squeeze_copy(x: torch.Tensor, kept_dims: List[int], out: Optional[torch.Tensor] = None) -> torch.Tensor:
-    out_shape, out_ndim, index_strides_t, out_shape_t, out_lin_strides_t, n_elements, dtype, device = _prepare_indexing_params(x, kept_dims)
+def _launch_squeeze_copy(
+    x: torch.Tensor, kept_dims: List[int], out: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    (
+        out_shape,
+        out_ndim,
+        index_strides_t,
+        out_shape_t,
+        out_lin_strides_t,
+        n_elements,
+        dtype,
+        device,
+    ) = _prepare_indexing_params(x, kept_dims)
 
     if out is None:
         out = torch.empty(out_shape, device=device, dtype=dtype)
@@ -125,7 +150,9 @@ def _launch_squeeze_copy(x: torch.Tensor, kept_dims: List[int], out: Optional[to
         if out.dtype != dtype:
             raise ValueError("Output tensor dtype must match input dtype.")
         if tuple(out.shape) != tuple(out_shape):
-            raise ValueError(f"Output tensor has incorrect shape. Expected {tuple(out_shape)}, got {tuple(out.shape)}.")
+            raise ValueError(
+                f"Output tensor has incorrect shape. Expected {tuple(out_shape)}, got {tuple(out.shape)}."
+            )
         if not out.is_contiguous():
             raise ValueError("Output tensor must be contiguous.")
 
@@ -133,10 +160,14 @@ def _launch_squeeze_copy(x: torch.Tensor, kept_dims: List[int], out: Optional[to
         return out
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _squeeze_copy_kernel[grid](
-        x, out, n_elements,
-        index_strides_t, out_shape_t, out_lin_strides_t,
+        x,
+        out,
+        n_elements,
+        index_strides_t,
+        out_shape_t,
+        out_lin_strides_t,
         BLOCK_SIZE=BLOCK_SIZE,
         OUT_NDIM=out_ndim,
     )
@@ -145,17 +176,22 @@ def _launch_squeeze_copy(x: torch.Tensor, kept_dims: List[int], out: Optional[to
 
 # Wrappers corresponding to ATen operator interfaces:
 
+
 def squeeze_copy_out(self: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
     kept_dims = _compute_kept_dims_for_all(self)
     return _launch_squeeze_copy(self, kept_dims, out=out)
 
 
-def squeeze_copy_dim_out(self: torch.Tensor, dim: int, out: torch.Tensor) -> torch.Tensor:
+def squeeze_copy_dim_out(
+    self: torch.Tensor, dim: int, out: torch.Tensor
+) -> torch.Tensor:
     kept_dims = _compute_kept_dims_for_dim(self, dim)
     return _launch_squeeze_copy(self, kept_dims, out=out)
 
 
-def squeeze_copy_dims_out(self: torch.Tensor, dims: Iterable[int], out: torch.Tensor) -> torch.Tensor:
+def squeeze_copy_dims_out(
+    self: torch.Tensor, dims: Iterable[int], out: torch.Tensor
+) -> torch.Tensor:
     kept_dims = _compute_kept_dims_for_dims(self, dims)
     return _launch_squeeze_copy(self, kept_dims, out=out)
 

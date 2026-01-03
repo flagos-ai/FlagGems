@@ -4,11 +4,13 @@ import triton.language as tl
 
 
 @triton.jit
-def threshold_(x_ptr,  # Pointer to input/output tensor (in-place)
-               n_elements,  # Number of elements
-               threshold_ptr,  # Pointer to scalar threshold (0-d tensor)
-               value_ptr,  # Pointer to scalar value (0-d tensor)
-               BLOCK_SIZE: tl.constexpr):
+def threshold_(
+    x_ptr,  # Pointer to input/output tensor (in-place)
+    n_elements,  # Number of elements
+    threshold_ptr,  # Pointer to scalar threshold (0-d tensor)
+    value_ptr,  # Pointer to scalar value (0-d tensor)
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -34,15 +36,17 @@ threshold__triton_kernel = threshold_
 
 def threshold_(*args, **kwargs):
     # Extract arguments similar to aten.threshold_ signature: (self, threshold, value=0)
-    x = kwargs.get('input', args[0] if len(args) > 0 else None)
-    threshold = kwargs.get('threshold', args[1] if len(args) > 1 else None)
-    value = kwargs.get('value', args[2] if len(args) > 2 else 0)
+    x = kwargs.get("input", args[0] if len(args) > 0 else None)
+    threshold = kwargs.get("threshold", args[1] if len(args) > 1 else None)
+    value = kwargs.get("value", args[2] if len(args) > 2 else 0)
 
     if x is None or threshold is None:
         raise ValueError("threshold_ requires at least (input, threshold) arguments")
 
     if not x.is_cuda:
-        raise ValueError("Input tensor must be on CUDA device for Triton kernel execution")
+        raise ValueError(
+            "Input tensor must be on CUDA device for Triton kernel execution"
+        )
     if x.is_complex():
         raise ValueError("Complex dtypes are not supported by this kernel")
     if not x.is_contiguous():
@@ -56,7 +60,7 @@ def threshold_(*args, **kwargs):
 
     # Launch configuration
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     # Launch the Triton kernel (in-place)
     threshold__triton_kernel[grid](x, n_elements, thr_t, val_t, BLOCK_SIZE=BLOCK_SIZE)

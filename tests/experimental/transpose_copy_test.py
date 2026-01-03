@@ -9,18 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.transpose_copy import transpose_copy_int, transpose_copy_int_out
+from flag_gems.experimental_ops.transpose_copy import (
+    transpose_copy_int,
+    transpose_copy_int_out,
+)
 
-import torch
 
 @pytest.mark.transpose_copy
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -62,6 +66,7 @@ def test_transpose_copy_int_out(shape, dtype, dims):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.transpose_copy
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -79,18 +84,14 @@ def test_transpose_copy_int_performance(shape, dtype, dims):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.transpose_copy(ref_inp, d0, d1),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: transpose_copy_int(inp, d0, d1),
-            rep=100,
-            quantiles=quantiles
+            lambda: transpose_copy_int(inp, d0, d1), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -105,7 +106,6 @@ def test_transpose_copy_int_performance(shape, dtype, dims):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("dims", [(0, 1), (1, 0)])
 def test_transpose_copy_int_benchmark_out(shape, dtype, dims):
-
     quantiles = [0.5, 0.2, 0.8]
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -123,18 +123,16 @@ def test_transpose_copy_int_benchmark_out(shape, dtype, dims):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.transpose_copy(ref_inp, d0, d1, out=ref_out_buf),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: transpose_copy_int_out(inp, d0, d1, act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

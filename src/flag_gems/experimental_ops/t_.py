@@ -21,10 +21,10 @@ def t_(*args, **kwargs):
     # Expect a single tensor argument.
     if len(args) >= 1:
         x = args[0]
-    elif 'input' in kwargs:
-        x = kwargs['input']
-    elif 'self' in kwargs:
-        x = kwargs['self']
+    elif "input" in kwargs:
+        x = kwargs["input"]
+    elif "self" in kwargs:
+        x = kwargs["self"]
     else:
         raise TypeError("t_() missing required positional argument: 'input'")
 

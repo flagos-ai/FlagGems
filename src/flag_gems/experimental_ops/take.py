@@ -5,11 +5,11 @@ import triton.language as tl
 
 @triton.jit
 def take_kernel(
-    in_ptr,       # pointer to input flattened tensor
-    idx_ptr,      # pointer to flattened indices (int32)
-    out_ptr,      # pointer to flattened output tensor
-    n_index,      # number of indices (int32)
-    in_numel,     # number of elements in input (int32)
+    in_ptr,  # pointer to input flattened tensor
+    idx_ptr,  # pointer to flattened indices (int32)
+    out_ptr,  # pointer to flattened output tensor
+    n_index,  # number of indices (int32)
+    in_numel,  # number of elements in input (int32)
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -30,7 +30,9 @@ def take_kernel(
 
 
 def _launch_take(input: torch.Tensor, index: torch.Tensor, out_flat: torch.Tensor):
-    assert input.is_cuda and index.is_cuda and out_flat.is_cuda, "All tensors must be CUDA tensors"
+    assert (
+        input.is_cuda and index.is_cuda and out_flat.is_cuda
+    ), "All tensors must be CUDA tensors"
     # Flatten input as per torch.take semantics (use contiguous flattened memory)
     input_flat = input.contiguous().view(-1)
     # Indices flattened and converted to int32 for kernel
@@ -65,10 +67,14 @@ def take_out(input: torch.Tensor, index: torch.Tensor, out: torch.Tensor):
     Wrapper for aten::take.out
     Writes result into 'out' and returns it.
     """
-    assert input.device == index.device == out.device, "All tensors must be on the same device"
+    assert (
+        input.device == index.device == out.device
+    ), "All tensors must be on the same device"
     # Ensure output has correct dtype and shape; resize if needed
     if out.dtype != input.dtype:
-        raise TypeError(f"out dtype {out.dtype} does not match input dtype {input.dtype}")
+        raise TypeError(
+            f"out dtype {out.dtype} does not match input dtype {input.dtype}"
+        )
     if out.numel() != index.numel() or tuple(out.shape) != tuple(index.shape):
         out.resize_(index.shape)
 

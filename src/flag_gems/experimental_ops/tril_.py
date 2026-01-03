@@ -5,16 +5,16 @@ import triton.language as tl
 
 @triton.jit
 def tril___kernel(
-    x_ptr,                   # *Pointer* to input tensor data (in-place)
-    offsets_ptr,             # *Pointer* to base offsets per batch
-    stride_m,                # stride for the row dimension (elements)
-    stride_n,                # stride for the col dimension (elements)
-    M,                       # number of rows
-    N,                       # number of cols
-    B,                       # number of batch matrices
-    diagonal,                # diagonal offset (int)
-    BLOCK_M: tl.constexpr,   # block size along M
-    BLOCK_N: tl.constexpr,   # block size along N
+    x_ptr,  # *Pointer* to input tensor data (in-place)
+    offsets_ptr,  # *Pointer* to base offsets per batch
+    stride_m,  # stride for the row dimension (elements)
+    stride_n,  # stride for the col dimension (elements)
+    M,  # number of rows
+    N,  # number of cols
+    B,  # number of batch matrices
+    diagonal,  # diagonal offset (int)
+    BLOCK_M: tl.constexpr,  # block size along M
+    BLOCK_N: tl.constexpr,  # block size along N
 ):
     pid_n = tl.program_id(axis=0)  # tile id along N
     pid_m = tl.program_id(axis=1)  # tile id along M
@@ -54,19 +54,19 @@ def tril___kernel(
 
 def tril_(*args, **kwargs):
     # Parse arguments similar to torch.ops.aten.tril_(x, diagonal=0)
-    if len(args) == 0 and 'input' not in kwargs and 'self' not in kwargs:
+    if len(args) == 0 and "input" not in kwargs and "self" not in kwargs:
         raise ValueError("tril_ expects at least a tensor argument")
     x = None
     if len(args) >= 1:
         x = args[0]
     else:
-        x = kwargs.get('input', kwargs.get('self', None))
+        x = kwargs.get("input", kwargs.get("self", None))
     if x is None:
         raise ValueError("tril_ could not find the input tensor argument")
 
     # Diagonal argument
-    if 'diagonal' in kwargs:
-        diagonal = int(kwargs['diagonal'])
+    if "diagonal" in kwargs:
+        diagonal = int(kwargs["diagonal"])
     elif len(args) >= 2:
         diagonal = int(args[1])
     else:
@@ -119,14 +119,14 @@ def tril_(*args, **kwargs):
     grid = (triton.cdiv(N, BLOCK_N), triton.cdiv(M, BLOCK_M), B)
 
     tril___kernel[grid](
-        x,                           # x_ptr
-        offsets,                     # offsets_ptr
-        stride_m,                    # stride_m
-        stride_n,                    # stride_n
-        M,                           # M
-        N,                           # N
-        B,                           # B
-        int(diagonal),               # diagonal
+        x,  # x_ptr
+        offsets,  # offsets_ptr
+        stride_m,  # stride_m
+        stride_n,  # stride_n
+        M,  # M
+        N,  # N
+        B,  # B
+        int(diagonal),  # diagonal
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
     )

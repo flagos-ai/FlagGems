@@ -5,14 +5,14 @@ import triton.language as tl
 
 @triton.jit
 def transpose_copy_kernel(
-    src_ptr,                  # *Pointer* to source tensor data
-    dst_ptr,                  # *Pointer* to destination tensor data
-    sizes_ptr,                # *Pointer* to int64 sizes of output tensor (after transpose)
-    src_strides_mapped_ptr,   # *Pointer* to int64 source strides mapped to output dims
-    dst_strides_ptr,          # *Pointer* to int64 destination strides
-    n_elements,               # total number of elements
-    RANK: tl.constexpr,       # tensor rank (ndim)
-    BLOCK_SIZE: tl.constexpr  # block size
+    src_ptr,  # *Pointer* to source tensor data
+    dst_ptr,  # *Pointer* to destination tensor data
+    sizes_ptr,  # *Pointer* to int64 sizes of output tensor (after transpose)
+    src_strides_mapped_ptr,  # *Pointer* to int64 source strides mapped to output dims
+    dst_strides_ptr,  # *Pointer* to int64 destination strides
+    n_elements,  # total number of elements
+    RANK: tl.constexpr,  # tensor rank (ndim)
+    BLOCK_SIZE: tl.constexpr,  # block size
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
@@ -46,7 +46,9 @@ def _normalize_dim(dim: int, ndim: int) -> int:
     if dim < 0:
         dim += ndim
     if not (0 <= dim < ndim):
-        raise IndexError(f"Dimension out of range (expected to be in range of [{-ndim}, {ndim-1}], but got {dim - ndim if dim >= ndim else dim})")
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of [{-ndim}, {ndim-1}], but got {dim - ndim if dim >= ndim else dim})"
+        )
     return dim
 
 
@@ -64,13 +66,18 @@ def transpose_copy_int_out(x: torch.Tensor, dim0: int, dim1: int, out: torch.Ten
 
     # Validate output shape
     if list(out.size()) != sizes_out:
-        raise ValueError(f"out tensor has incorrect shape. Expected {sizes_out}, got {list(out.size())}")
+        raise ValueError(
+            f"out tensor has incorrect shape. Expected {sizes_out}, got {list(out.size())}"
+        )
 
     # Prepare strides
     strides_src = list(x.stride())
     # Map source strides to output dimensions (swap dim0 and dim1)
     src_strides_mapped = strides_src.copy()
-    src_strides_mapped[dim0], src_strides_mapped[dim1] = strides_src[dim1], strides_src[dim0]
+    src_strides_mapped[dim0], src_strides_mapped[dim1] = (
+        strides_src[dim1],
+        strides_src[dim0],
+    )
 
     # Destination strides from 'out' as-is
     dst_strides = list(out.stride())
@@ -78,7 +85,9 @@ def transpose_copy_int_out(x: torch.Tensor, dim0: int, dim1: int, out: torch.Ten
     # Prepare metadata tensors on device
     device = x.device
     sizes_t = torch.tensor(sizes_out, dtype=torch.int64, device=device)
-    src_strides_mapped_t = torch.tensor(src_strides_mapped, dtype=torch.int64, device=device)
+    src_strides_mapped_t = torch.tensor(
+        src_strides_mapped, dtype=torch.int64, device=device
+    )
     dst_strides_t = torch.tensor(dst_strides, dtype=torch.int64, device=device)
 
     n_elements = x.numel()
@@ -88,8 +97,11 @@ def transpose_copy_int_out(x: torch.Tensor, dim0: int, dim1: int, out: torch.Ten
     BLOCK_SIZE = 1024
     grid = lambda META: (triton.cdiv(n_elements, META["BLOCK_SIZE"]),)
     transpose_copy_kernel[grid](
-        x, out,
-        sizes_t, src_strides_mapped_t, dst_strides_t,
+        x,
+        out,
+        sizes_t,
+        src_strides_mapped_t,
+        dst_strides_t,
         n_elements,
         RANK=ndim,
         BLOCK_SIZE=BLOCK_SIZE,
@@ -111,19 +123,22 @@ def transpose_copy_int(x: torch.Tensor, dim0: int, dim1: int):
     strides_out[dim0], strides_out[dim1] = strides_out[dim1], strides_out[dim0]
 
     # Allocate output tensor with transposed strides
-    out = torch.empty_strided(
-        sizes_out, strides_out, dtype=x.dtype, device=x.device
-    )
+    out = torch.empty_strided(sizes_out, strides_out, dtype=x.dtype, device=x.device)
 
     # Prepare strides mapping for source (match output dims)
     strides_src = list(x.stride())
     src_strides_mapped = strides_src.copy()
-    src_strides_mapped[dim0], src_strides_mapped[dim1] = strides_src[dim1], strides_src[dim0]
+    src_strides_mapped[dim0], src_strides_mapped[dim1] = (
+        strides_src[dim1],
+        strides_src[dim0],
+    )
 
     # Metadata tensors
     device = x.device
     sizes_t = torch.tensor(sizes_out, dtype=torch.int64, device=device)
-    src_strides_mapped_t = torch.tensor(src_strides_mapped, dtype=torch.int64, device=device)
+    src_strides_mapped_t = torch.tensor(
+        src_strides_mapped, dtype=torch.int64, device=device
+    )
     dst_strides_t = torch.tensor(out.stride(), dtype=torch.int64, device=device)
 
     n_elements = x.numel()
@@ -133,8 +148,11 @@ def transpose_copy_int(x: torch.Tensor, dim0: int, dim1: int):
     BLOCK_SIZE = 1024
     grid = lambda META: (triton.cdiv(n_elements, META["BLOCK_SIZE"]),)
     transpose_copy_kernel[grid](
-        x, out,
-        sizes_t, src_strides_mapped_t, dst_strides_t,
+        x,
+        out,
+        sizes_t,
+        src_strides_mapped_t,
+        dst_strides_t,
         n_elements,
         RANK=ndim,
         BLOCK_SIZE=BLOCK_SIZE,
