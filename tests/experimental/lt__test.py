@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.lt_ import lt__Scalar, lt__Tensor
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.lt_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -59,6 +60,7 @@ def test_lt__scalar(shape, dtype, other):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.lt_
 def test_perf_aten_lt_():
     # Define input generation logic matching the operator arguments
@@ -70,14 +72,14 @@ def test_perf_aten_lt_():
     # Initialize benchmark - using lt__Tensor for performance test
     def lt__Tensor_wrapper(self, other):
         return lt__Tensor(self, other)
-    
+
     bench = GenericBenchmark(
         input_fn=lt__input_fn,
         op_name="lt_",
         torch_op=torch.ops.aten.lt_,
         dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
-    
+
     # Replace the op with lt__Tensor
     bench.op = lt__Tensor_wrapper
 

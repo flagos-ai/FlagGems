@@ -20,7 +20,7 @@ LIFT_FRESH_KERNEL = lift_fresh
 def lift_fresh(*args, **kwargs):
     # Return the first argument unchanged, matching aten.lift_fresh semantics.
     # Launch a no-op Triton kernel to satisfy kernel launch requirement.
-    x = args[0] if len(args) > 0 else kwargs.get('args', None)
+    x = args[0] if len(args) > 0 else kwargs.get("args", None)
 
     # Try to find a tensor to determine device/dtype for the dummy launch
     tensor_arg = None
@@ -31,8 +31,8 @@ def lift_fresh(*args, **kwargs):
             if isinstance(a, torch.Tensor):
                 tensor_arg = a
                 break
-        if tensor_arg is None and isinstance(kwargs.get('args', None), torch.Tensor):
-            tensor_arg = kwargs['args']
+        if tensor_arg is None and isinstance(kwargs.get("args", None), torch.Tensor):
+            tensor_arg = kwargs["args"]
 
     if tensor_arg is not None and tensor_arg.is_cuda:
         dummy = torch.empty((1,), device=tensor_arg.device, dtype=tensor_arg.dtype)

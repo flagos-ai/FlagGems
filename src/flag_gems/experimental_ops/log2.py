@@ -17,14 +17,18 @@ def log2_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 def _launch_log2_kernel(x_fp32: torch.Tensor, y_fp32: torch.Tensor):
     assert x_fp32.is_cuda and y_fp32.is_cuda, "Inputs must be CUDA tensors."
-    assert x_fp32.dtype == torch.float32 and y_fp32.dtype == torch.float32, "Kernel expects float32 tensors."
-    assert x_fp32.numel() == y_fp32.numel(), "Input and output must have the same number of elements."
+    assert (
+        x_fp32.dtype == torch.float32 and y_fp32.dtype == torch.float32
+    ), "Kernel expects float32 tensors."
+    assert (
+        x_fp32.numel() == y_fp32.numel()
+    ), "Input and output must have the same number of elements."
     n_elements = x_fp32.numel()
     if n_elements == 0:
         return
     x_flat = x_fp32.contiguous().view(-1)
     y_flat = y_fp32.contiguous().view(-1)
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     log2_kernel[grid](x_flat, y_flat, n_elements, BLOCK_SIZE=1024)
 
 
@@ -34,7 +38,9 @@ def log2(input: torch.Tensor):
     if not input.is_cuda:
         raise RuntimeError("log2: input must be a CUDA tensor for Triton execution.")
     if input.is_complex():
-        raise NotImplementedError("log2: complex dtypes are not supported by this Triton implementation.")
+        raise NotImplementedError(
+            "log2: complex dtypes are not supported by this Triton implementation."
+        )
 
     # Determine output dtype (follow PyTorch behavior: integers -> float32)
     if input.is_floating_point():
@@ -56,9 +62,13 @@ def log2_out(input: torch.Tensor, out: torch.Tensor):
     if not isinstance(input, torch.Tensor) or not isinstance(out, torch.Tensor):
         raise TypeError("log2_out: both input and out must be torch.Tensors")
     if not input.is_cuda or not out.is_cuda:
-        raise RuntimeError("log2_out: input and out must be CUDA tensors for Triton execution.")
+        raise RuntimeError(
+            "log2_out: input and out must be CUDA tensors for Triton execution."
+        )
     if input.is_complex() or out.is_complex():
-        raise NotImplementedError("log2_out: complex dtypes are not supported by this Triton implementation.")
+        raise NotImplementedError(
+            "log2_out: complex dtypes are not supported by this Triton implementation."
+        )
     if not out.is_floating_point():
         raise TypeError("log2_out: out tensor must have a floating-point dtype.")
     if out.shape != input.shape:

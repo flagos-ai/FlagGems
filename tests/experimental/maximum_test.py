@@ -9,18 +9,19 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.maximum import maximum as gems_maximum, maximum_out as gems_maximum_out
-
-import torch
+from flag_gems.experimental_ops.maximum import maximum as gems_maximum
+from flag_gems.experimental_ops.maximum import maximum_out as gems_maximum_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
@@ -89,6 +90,7 @@ def test_maximum_tensor_broadcast(shapes, dtype):
         act_out = gems_maximum(x, y)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.maximum
 def test_perf_aten_maximum():

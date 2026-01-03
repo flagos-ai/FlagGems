@@ -9,18 +9,19 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.mse_loss import mse_loss as gems_mse_loss, mse_loss_out as gems_mse_loss_out
-
-import torch
+from flag_gems.experimental_ops.mse_loss import mse_loss as gems_mse_loss
+from flag_gems.experimental_ops.mse_loss import mse_loss_out as gems_mse_loss_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
@@ -67,6 +68,7 @@ def test_mse_loss_out(shape, dtype, reduction):
         act_out = gems_mse_loss_out(x, y, reduction, act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.mse_loss
 def test_perf_aten_mse_loss():

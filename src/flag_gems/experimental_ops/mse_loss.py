@@ -18,7 +18,9 @@ def _mse_elemwise_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.const
 
 
 @triton.jit
-def _mse_reduce_kernel(x_ptr, y_ptr, acc_ptr, n_elements, scale, BLOCK_SIZE: tl.constexpr):
+def _mse_reduce_kernel(
+    x_ptr, y_ptr, acc_ptr, n_elements, scale, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -77,7 +79,9 @@ def _launch_mse_reduce(x, y, n_elements, scale):
 def mse_loss(*args, **kwargs):
     # Expected calling pattern: mse_loss(self, target, reduction=Mean)
     if len(args) < 2:
-        raise TypeError("mse_loss requires at least 2 positional arguments: (input, target)")
+        raise TypeError(
+            "mse_loss requires at least 2 positional arguments: (input, target)"
+        )
     inp = args[0]
     target = args[1]
     reduction = kwargs.get("reduction", args[2] if len(args) > 2 else 1)
@@ -87,7 +91,9 @@ def mse_loss(*args, **kwargs):
         raise TypeError("mse_loss expects tensor inputs")
 
     if inp.numel() != target.numel():
-        raise ValueError("mse_loss: input and target must have the same number of elements")
+        raise ValueError(
+            "mse_loss: input and target must have the same number of elements"
+        )
 
     if inp.device != target.device:
         raise ValueError("mse_loss: input and target must be on the same device")
@@ -126,7 +132,9 @@ def mse_loss(*args, **kwargs):
 def mse_loss_out(*args, **kwargs):
     # Expected calling pattern: mse_loss_out(self, target, reduction=Mean, *, out)
     if len(args) < 2:
-        raise TypeError("mse_loss_out requires at least 2 positional arguments: (input, target)")
+        raise TypeError(
+            "mse_loss_out requires at least 2 positional arguments: (input, target)"
+        )
     inp = args[0]
     target = args[1]
     reduction = kwargs.get("reduction", args[2] if len(args) > 2 else 1)
@@ -141,7 +149,9 @@ def mse_loss_out(*args, **kwargs):
         raise TypeError("mse_loss_out expects tensor inputs")
 
     if inp.numel() != target.numel():
-        raise ValueError("mse_loss_out: input and target must have the same number of elements")
+        raise ValueError(
+            "mse_loss_out: input and target must have the same number of elements"
+        )
 
     if inp.device != target.device:
         raise ValueError("mse_loss_out: input and target must be on the same device")
@@ -156,11 +166,15 @@ def mse_loss_out(*args, **kwargs):
     if reduction == 0:  # 'none'
         # out must have same shape as input
         if out.numel() != n_elements:
-            raise ValueError("mse_loss_out (reduction='none'): 'out' must have the same number of elements as input")
+            raise ValueError(
+                "mse_loss_out (reduction='none'): 'out' must have the same number of elements as input"
+            )
         if out.device != x.device:
             raise ValueError("mse_loss_out: 'out' must be on the same device as input")
         if out.dtype != inp.dtype:
-            raise TypeError("mse_loss_out (reduction='none'): 'out' dtype must match input dtype")
+            raise TypeError(
+                "mse_loss_out (reduction='none'): 'out' dtype must match input dtype"
+            )
 
         if out.is_contiguous():
             _launch_mse_elemwise(x, y, out)
@@ -174,10 +188,14 @@ def mse_loss_out(*args, **kwargs):
     if out.device != x.device:
         raise ValueError("mse_loss_out: 'out' must be on the same device as input")
     if out.numel() != 1:
-        raise ValueError("mse_loss_out (reduction in ['sum','mean']): 'out' must be a scalar tensor")
+        raise ValueError(
+            "mse_loss_out (reduction in ['sum','mean']): 'out' must be a scalar tensor"
+        )
     # out dtype must be a supported float dtype
     if out.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        raise TypeError("mse_loss_out: 'out' dtype must be one of float16, bfloat16, or float32 for Triton kernel")
+        raise TypeError(
+            "mse_loss_out: 'out' dtype must be one of float16, bfloat16, or float32 for Triton kernel"
+        )
 
     if n_elements == 0:
         out.fill_(0)

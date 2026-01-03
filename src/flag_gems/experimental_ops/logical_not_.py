@@ -27,7 +27,9 @@ def logical_not_(*args, **kwargs):
         raise ValueError("logical_not_ expects a tensor as the first argument.")
 
     if x.dtype is not torch.bool:
-        raise TypeError("logical_not_ only supports bool tensors (in-place operation cannot change dtype).")
+        raise TypeError(
+            "logical_not_ only supports bool tensors (in-place operation cannot change dtype)."
+        )
 
     # If not CUDA tensor, fall back to PyTorch implementation for correctness
     if not x.is_cuda:

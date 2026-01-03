@@ -9,28 +9,32 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.masked_select import masked_select as gems_masked_select, masked_select_out as gems_masked_select_out
-
-import torch
+from flag_gems.experimental_ops.masked_select import masked_select as gems_masked_select
+from flag_gems.experimental_ops.masked_select import (
+    masked_select_out as gems_masked_select_out,
+)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.masked_select
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_masked_select_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    mask = (torch.rand(shape, device=flag_gems.device) > 0.5)
+    mask = torch.rand(shape, device=flag_gems.device) > 0.5
 
     ref_x = x.clone()
     ref_mask = mask.clone()
@@ -48,7 +52,7 @@ def test_masked_select_tensor(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_masked_select_out(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    mask = (torch.rand(shape, device=flag_gems.device) > 0.5)
+    mask = torch.rand(shape, device=flag_gems.device) > 0.5
 
     ref_x = x.clone()
     ref_mask = mask.clone()
@@ -64,12 +68,13 @@ def test_masked_select_out(shape, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.masked_select
 def test_perf_aten_masked_select():
     # Define input generation logic matching the operator arguments
     def masked_select_input_fn(shape, dtype, device):
         x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        mask = (torch.rand(shape, device=flag_gems.device) > 0.5)
+        mask = torch.rand(shape, device=flag_gems.device) > 0.5
         yield x, mask
 
     # Initialize benchmark

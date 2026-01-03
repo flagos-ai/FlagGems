@@ -5,9 +5,9 @@ import triton.language as tl
 
 @triton.jit
 def _masked_select_count_kernel(
-    mask_ptr,         # int32* flattened mask (0/1)
-    n_elements,       # int32 number of elements
-    counts_ptr,       # int32* per-block counts
+    mask_ptr,  # int32* flattened mask (0/1)
+    n_elements,  # int32 number of elements
+    counts_ptr,  # int32* per-block counts
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -22,11 +22,11 @@ def _masked_select_count_kernel(
 
 @triton.jit
 def _masked_select_scatter_kernel(
-    input_ptr,         # * input data (flattened, contiguous)
-    mask_ptr,          # int32* flattened mask (0/1)
-    block_offsets_ptr, # int32* per-block exclusive offsets
-    output_ptr,        # * output data
-    n_elements,        # int32 number of elements
+    input_ptr,  # * input data (flattened, contiguous)
+    mask_ptr,  # int32* flattened mask (0/1)
+    block_offsets_ptr,  # int32* per-block exclusive offsets
+    output_ptr,  # * output data
+    n_elements,  # int32 number of elements
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -75,7 +75,9 @@ def masked_select(input: torch.Tensor, mask: torch.Tensor):
 
     counts = torch.empty(num_blocks, dtype=torch.int32, device=device)
     grid = (num_blocks,)
-    _masked_select_count_kernel[grid](msk_flat_i32, n_elements, counts, BLOCK_SIZE=BLOCK_SIZE)
+    _masked_select_count_kernel[grid](
+        msk_flat_i32, n_elements, counts, BLOCK_SIZE=BLOCK_SIZE
+    )
 
     # Compute per-block exclusive offsets and total number of selected elements
     if num_blocks == 1:
@@ -112,7 +114,9 @@ def masked_select_out(input: torch.Tensor, mask: torch.Tensor, out: torch.Tensor
 
     counts = torch.empty(num_blocks, dtype=torch.int32, device=device)
     grid = (num_blocks,)
-    _masked_select_count_kernel[grid](msk_flat_i32, n_elements, counts, BLOCK_SIZE=BLOCK_SIZE)
+    _masked_select_count_kernel[grid](
+        msk_flat_i32, n_elements, counts, BLOCK_SIZE=BLOCK_SIZE
+    )
 
     # Compute per-block exclusive offsets and total number of selected elements
     if num_blocks == 1:

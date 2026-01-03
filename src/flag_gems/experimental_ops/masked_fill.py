@@ -61,7 +61,9 @@ def masked_fill_kernel(
     tl.store(out_ptr + out_off, out_val, mask=valid)
 
 
-def _launch_masked_fill(x: torch.Tensor, mask: torch.Tensor, fill: torch.Tensor, out: torch.Tensor):
+def _launch_masked_fill(
+    x: torch.Tensor, mask: torch.Tensor, fill: torch.Tensor, out: torch.Tensor
+):
     assert x.is_cuda and mask.is_cuda and fill.is_cuda and out.is_cuda
     assert x.device == mask.device == fill.device == out.device
 
@@ -121,7 +123,9 @@ def masked_fill_Tensor(self: torch.Tensor, mask: torch.Tensor, value: torch.Tens
     return out
 
 
-def masked_fill_Scalar_out(self: torch.Tensor, mask: torch.Tensor, value, out: torch.Tensor):
+def masked_fill_Scalar_out(
+    self: torch.Tensor, mask: torch.Tensor, value, out: torch.Tensor
+):
     assert out.is_cuda and out.device == self.device
     assert out.shape == self.shape
     # Create a 1-element tensor of the scalar value on device with matching dtype
@@ -130,7 +134,9 @@ def masked_fill_Scalar_out(self: torch.Tensor, mask: torch.Tensor, value, out: t
     return out
 
 
-def masked_fill_Tensor_out(self: torch.Tensor, mask: torch.Tensor, value: torch.Tensor, out: torch.Tensor):
+def masked_fill_Tensor_out(
+    self: torch.Tensor, mask: torch.Tensor, value: torch.Tensor, out: torch.Tensor
+):
     assert out.is_cuda and out.device == self.device
     assert out.shape == self.shape
     fill = value.to(device=self.device, dtype=self.dtype)
