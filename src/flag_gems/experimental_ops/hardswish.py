@@ -30,26 +30,30 @@ def _launch_hardswish(x: torch.Tensor, out: torch.Tensor):
     n_elements = x.numel()
     if n_elements == 0:
         return
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     hardswish_kernel[grid](x, out, n_elements, BLOCK_SIZE=1024)
 
 
 def _parse_input_tensor(*args, **kwargs) -> torch.Tensor:
     if len(args) >= 1 and isinstance(args[0], torch.Tensor):
         return args[0]
-    if 'self' in kwargs and isinstance(kwargs['self'], torch.Tensor):
-        return kwargs['self']
-    if 'input' in kwargs and isinstance(kwargs['input'], torch.Tensor):
-        return kwargs['input']
-    raise ValueError("Expected input tensor as the first positional argument or as 'self'/'input' keyword argument.")
+    if "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
+        return kwargs["self"]
+    if "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
+        return kwargs["input"]
+    raise ValueError(
+        "Expected input tensor as the first positional argument or as 'self'/'input' keyword argument."
+    )
 
 
 def _parse_out_tensor(*args, **kwargs) -> torch.Tensor:
     if len(args) >= 2 and isinstance(args[1], torch.Tensor):
         return args[1]
-    if 'out' in kwargs and isinstance(kwargs['out'], torch.Tensor):
-        return kwargs['out']
-    raise ValueError("Expected 'out' tensor as the second positional argument or as 'out' keyword argument.")
+    if "out" in kwargs and isinstance(kwargs["out"], torch.Tensor):
+        return kwargs["out"]
+    raise ValueError(
+        "Expected 'out' tensor as the second positional argument or as 'out' keyword argument."
+    )
 
 
 def _ensure_cuda_tensor(t: torch.Tensor, name: str):

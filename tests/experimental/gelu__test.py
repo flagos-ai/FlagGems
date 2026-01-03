@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.gelu_ import gelu_ as gems_gelu_
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.gelu_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
@@ -40,6 +41,7 @@ def test_gelu__tensor(shape, dtype, approximate):
         act_out = gems_gelu_(act_input, approximate=approximate)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.gelu_
 def test_perf_aten_gelu_():

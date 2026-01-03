@@ -4,11 +4,13 @@ import triton.language as tl
 
 
 @triton.jit
-def hardtanh_(x_ptr,  # *Pointer* to input/output tensor (in-place).
-              n_elements,  # Number of elements.
-              min_val,  # Minimum clamp value (scalar).
-              max_val,  # Maximum clamp value (scalar).
-              BLOCK_SIZE: tl.constexpr):
+def hardtanh_(
+    x_ptr,  # *Pointer* to input/output tensor (in-place).
+    n_elements,  # Number of elements.
+    min_val,  # Minimum clamp value (scalar).
+    max_val,  # Maximum clamp value (scalar).
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -32,17 +34,17 @@ hardtanh___kernel = hardtanh_
 
 def hardtanh_(*args, **kwargs):
     # Parse arguments: expected signature hardtanh_(x, min_val=-1.0, max_val=1.0)
-    if len(args) == 0 and 'input' not in kwargs and 'self' not in kwargs:
+    if len(args) == 0 and "input" not in kwargs and "self" not in kwargs:
         raise TypeError("hardtanh_ expected at least 1 argument: a CUDA tensor")
 
     # Accept common naming: positional 0, or keyword 'input'/'self'
     x = None
     if len(args) >= 1:
         x = args[0]
-    elif 'input' in kwargs:
-        x = kwargs['input']
-    elif 'self' in kwargs:
-        x = kwargs['self']
+    elif "input" in kwargs:
+        x = kwargs["input"]
+    elif "self" in kwargs:
+        x = kwargs["self"]
 
     # Defaults
     min_val = -1.0
@@ -55,10 +57,10 @@ def hardtanh_(*args, **kwargs):
         max_val = args[2]
 
     # Override from kwargs if provided
-    if 'min_val' in kwargs and kwargs['min_val'] is not None:
-        min_val = kwargs['min_val']
-    if 'max_val' in kwargs and kwargs['max_val'] is not None:
-        max_val = kwargs['max_val']
+    if "min_val" in kwargs and kwargs["min_val"] is not None:
+        min_val = kwargs["min_val"]
+    if "max_val" in kwargs and kwargs["max_val"] is not None:
+        max_val = kwargs["max_val"]
 
     if not isinstance(x, torch.Tensor):
         raise TypeError("hardtanh_ expects a torch.Tensor as the first argument")
@@ -82,14 +84,10 @@ def hardtanh_(*args, **kwargs):
         return x
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     # Launch Triton kernel
     hardtanh___kernel[grid](
-        x,  # in-place
-        n_elements,
-        float(min_val),
-        float(max_val),
-        BLOCK_SIZE=BLOCK_SIZE
+        x, n_elements, float(min_val), float(max_val), BLOCK_SIZE=BLOCK_SIZE  # in-place
     )
     return x

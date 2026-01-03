@@ -4,7 +4,15 @@ import triton.language as tl
 
 
 @triton.jit
-def frac_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, IS_FP16: tl.constexpr, IS_BF16: tl.constexpr, IS_FP64: tl.constexpr):
+def frac_kernel(
+    x_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    IS_FP16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    IS_FP64: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -38,12 +46,16 @@ def frac_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, IS_FP16: t
 
 def _launch_frac(x: torch.Tensor, out: torch.Tensor):
     assert x.is_cuda and out.is_cuda, "Inputs must be CUDA tensors"
-    assert x.numel() == out.numel(), "Input and output must have the same number of elements"
+    assert (
+        x.numel() == out.numel()
+    ), "Input and output must have the same number of elements"
     assert x.dtype == out.dtype, "Input and output must have the same dtype"
     if not x.is_floating_point():
         raise NotImplementedError("frac is only implemented for floating point dtypes")
     if x.is_complex():
-        raise NotImplementedError("frac is not implemented for complex dtypes in this Triton kernel")
+        raise NotImplementedError(
+            "frac is not implemented for complex dtypes in this Triton kernel"
+        )
 
     n_elements = x.numel()
     if n_elements == 0:
@@ -59,7 +71,9 @@ def _launch_frac(x: torch.Tensor, out: torch.Tensor):
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     frac_kernel[grid](
-        x_contig, out_contig, n_elements,
+        x_contig,
+        out_contig,
+        n_elements,
         BLOCK_SIZE=1024,
         IS_FP16=is_fp16,
         IS_BF16=is_bf16,

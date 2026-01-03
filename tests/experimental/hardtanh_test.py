@@ -9,18 +9,20 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.hardtanh import hardtanh as gems_hardtanh, hardtanh_out as gems_hardtanh_out
+from flag_gems.experimental_ops.hardtanh import hardtanh as gems_hardtanh
+from flag_gems.experimental_ops.hardtanh import hardtanh_out as gems_hardtanh_out
 
-import torch
 
 @pytest.mark.hardtanh
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
@@ -95,6 +97,7 @@ def test_hardtanh_out_explicit(shape, dtype, min_max):
     gems_assert_close(act_out_buf, ref_out_buf, dtype=dtype)
     gems_assert_close(act_res, ref_res, dtype=dtype)
 
+
 @pytest.mark.hardtanh
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -108,21 +111,15 @@ def test_hardtanh_tensor_default_performance(shape, dtype):
     ref_x = x.clone()
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.hardtanh(ref_x),
-        rep=100,
-        quantiles=quantiles
+        lambda: torch.ops.aten.hardtanh(ref_x), rep=100, quantiles=quantiles
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         act_x = x.clone()
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_hardtanh(act_x),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_hardtanh(act_x), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -137,7 +134,6 @@ def test_hardtanh_tensor_default_performance(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("min_max", [(-1.0, 1.0), (-0.5, 0.5), (0.0, 6.0), (-2.0, 0.5)])
 def test_hardtanh_tensor_explicit_performance(shape, dtype, min_max):
-
     quantiles = [0.5, 0.2, 0.8]
 
     min_val, max_val = min_max
@@ -148,19 +144,15 @@ def test_hardtanh_tensor_explicit_performance(shape, dtype, min_max):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.hardtanh(ref_x, min_val, max_val),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
         act_x = x.clone()
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_hardtanh(act_x, min_val, max_val),
-            rep=100,
-            quantiles=quantiles
+            lambda: gems_hardtanh(act_x, min_val, max_val), rep=100, quantiles=quantiles
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -174,7 +166,6 @@ def test_hardtanh_tensor_explicit_performance(shape, dtype, min_max):
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_hardtanh_out_default_performance(shape, dtype):
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
@@ -185,9 +176,8 @@ def test_hardtanh_out_default_performance(shape, dtype):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.hardtanh.out(ref_x, out=ref_out_buf),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
@@ -196,9 +186,8 @@ def test_hardtanh_out_default_performance(shape, dtype):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems_hardtanh_out(act_x, out=act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
@@ -220,7 +209,6 @@ def test_hardtanh_out_default_performance(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("min_max", [(-1.0, 1.0), (-0.5, 0.5), (0.0, 6.0), (-2.0, 0.5)])
 def test_hardtanh_out_explicit_performance(shape, dtype, min_max):
-
     quantiles = [0.5, 0.2, 0.8]
 
     min_val, max_val = min_max
@@ -232,9 +220,8 @@ def test_hardtanh_out_explicit_performance(shape, dtype, min_max):
     ms_torch, _, _ = triton.testing.do_bench(
         lambda: torch.ops.aten.hardtanh.out(ref_x, min_val, max_val, out=ref_out_buf),
         rep=100,
-        quantiles=quantiles
+        quantiles=quantiles,
     )
-
 
     # Triton implementation
     with flag_gems.use_gems():
@@ -243,9 +230,8 @@ def test_hardtanh_out_explicit_performance(shape, dtype, min_max):
         ms_triton, _, _ = triton.testing.do_bench(
             lambda: gems_hardtanh_out(act_x, min_val, max_val, out=act_out_buf),
             rep=100,
-            quantiles=quantiles
+            quantiles=quantiles,
         )
-
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton

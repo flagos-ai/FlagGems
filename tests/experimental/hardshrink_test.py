@@ -9,21 +9,23 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.hardshrink import hardshrink as gems_hardshrink, hardshrink_out as gems_hardshrink_out
-
-import torch
+from flag_gems.experimental_ops.hardshrink import hardshrink as gems_hardshrink
+from flag_gems.experimental_ops.hardshrink import hardshrink_out as gems_hardshrink_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.hardshrink
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -58,6 +60,7 @@ def test_hardshrink_out(shape, dtype, lambd):
         act_out = gems_hardshrink_out(x, lambd, out_act)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.hardshrink
 def test_perf_aten_hardshrink():

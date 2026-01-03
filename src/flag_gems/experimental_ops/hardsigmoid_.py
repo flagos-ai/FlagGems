@@ -27,7 +27,7 @@ def hardsigmoid_(*args, **kwargs):
     if len(args) >= 1:
         x = args[0]
     else:
-        x = kwargs.get('input', kwargs.get('self', None))
+        x = kwargs.get("input", kwargs.get("self", None))
     if x is None:
         raise ValueError("hardsigmoid_ expects a tensor as the first argument.")
     if not isinstance(x, torch.Tensor):

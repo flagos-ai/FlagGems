@@ -9,18 +9,18 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.fill_ import fill__Scalar, fill__Tensor
-
-import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
@@ -60,6 +60,7 @@ def test_fill__tensor(shape, dtype, value):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.fill_
 def test_perf_aten_fill_():
     # Define input generation logic matching the operator arguments
@@ -71,14 +72,14 @@ def test_perf_aten_fill_():
     # Initialize benchmark - using fill__Scalar for performance test
     def fill__Scalar_wrapper(self, value):
         return fill__Scalar(self, value)
-    
+
     bench = GenericBenchmark(
         input_fn=fill__input_fn,
         op_name="fill_",
         torch_op=torch.ops.aten.fill_,
         dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
-    
+
     # Replace the op with fill__Scalar
     bench.op = fill__Scalar_wrapper
 

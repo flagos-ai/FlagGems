@@ -4,11 +4,12 @@ import triton.language as tl
 
 
 @triton.jit
-def gelu_(x_ptr,  # *Pointer* to the input/output tensor (in-place).
-          n_elements,  # Number of elements.
-          USE_TANH: tl.constexpr,  # Whether to use tanh approximation.
-          BLOCK_SIZE: tl.constexpr  # Elements per program.
-          ):
+def gelu_(
+    x_ptr,  # *Pointer* to the input/output tensor (in-place).
+    n_elements,  # Number of elements.
+    USE_TANH: tl.constexpr,  # Whether to use tanh approximation.
+    BLOCK_SIZE: tl.constexpr,  # Elements per program.
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -73,26 +74,28 @@ def gelu_(*args, **kwargs):
         x = args[0]
     else:
         # Try common names
-        x = kwargs.get('input', None)
+        x = kwargs.get("input", None)
         if x is None:
-            x = kwargs.get('self', None)
+            x = kwargs.get("self", None)
         if x is None:
-            x = kwargs.get('x', None)
+            x = kwargs.get("x", None)
     if x is None:
         raise ValueError("gelu_ expects a tensor as the first argument.")
 
     # Determine approximation mode
-    approx = kwargs.get('approximate', 'none')
+    approx = kwargs.get("approximate", "none")
     if isinstance(approx, bool):
         use_tanh = bool(approx)
     else:
         approx_str = str(approx).lower()
-        if approx_str in ('tanh', 'true'):
+        if approx_str in ("tanh", "true"):
             use_tanh = True
-        elif approx_str in ('none', 'false'):
+        elif approx_str in ("none", "false"):
             use_tanh = False
         else:
-            raise ValueError(f"Unsupported approximate mode: {approx}. Use 'none' or 'tanh'.")
+            raise ValueError(
+                f"Unsupported approximate mode: {approx}. Use 'none' or 'tanh'."
+            )
 
     if not x.is_cuda:
         raise AssertionError("Input tensor must be on CUDA device for Triton kernel.")
@@ -106,7 +109,7 @@ def gelu_(*args, **kwargs):
         return x
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     gelu__kernel[grid](x, n_elements, USE_TANH=use_tanh, BLOCK_SIZE=BLOCK_SIZE)
     return x

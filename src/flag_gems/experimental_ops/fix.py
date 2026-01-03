@@ -34,9 +34,13 @@ def _copy_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 def _launch_fix_kernel(x: torch.Tensor, out: torch.Tensor, block_size: int = 1024):
     assert x.is_cuda and out.is_cuda, "Input and output must be on CUDA device"
-    assert x.numel() == out.numel(), "Input and output must have the same number of elements"
+    assert (
+        x.numel() == out.numel()
+    ), "Input and output must have the same number of elements"
     assert x.device == out.device, "Input and output must be on the same device"
-    assert x.is_contiguous() and out.is_contiguous(), "Only contiguous tensors are supported"
+    assert (
+        x.is_contiguous() and out.is_contiguous()
+    ), "Only contiguous tensors are supported"
 
     n_elements = x.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
