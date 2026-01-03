@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.clamp_min_ import clamp_min_ as gems_clamp_min_
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.clamp_min_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -60,12 +61,15 @@ def test_clamp_min__tensor(shape, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.clamp_min_
 def test_perf_aten_clamp_min_():
     # Define input generation logic matching the operator arguments
     def clamp_min__input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        min_val = torch.tensor(0.0, dtype=dtype, device=flag_gems.device)  # Example min_val
+        min_val = torch.tensor(
+            0.0, dtype=dtype, device=flag_gems.device
+        )  # Example min_val
         yield inp, min_val
 
     # Initialize benchmark

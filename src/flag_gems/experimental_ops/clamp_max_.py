@@ -8,10 +8,38 @@ def clamp_max_tensor_kernel(
     x_ptr,
     other_ptr,
     n_elements,
-    in_size0, in_size1, in_size2, in_size3, in_size4, in_size5, in_size6, in_size7,
-    other_size0, other_size1, other_size2, other_size3, other_size4, other_size5, other_size6, other_size7,
-    in_stride0, in_stride1, in_stride2, in_stride3, in_stride4, in_stride5, in_stride6, in_stride7,
-    other_stride0, other_stride1, other_stride2, other_stride3, other_stride4, other_stride5, other_stride6, other_stride7,
+    in_size0,
+    in_size1,
+    in_size2,
+    in_size3,
+    in_size4,
+    in_size5,
+    in_size6,
+    in_size7,
+    other_size0,
+    other_size1,
+    other_size2,
+    other_size3,
+    other_size4,
+    other_size5,
+    other_size6,
+    other_size7,
+    in_stride0,
+    in_stride1,
+    in_stride2,
+    in_stride3,
+    in_stride4,
+    in_stride5,
+    in_stride6,
+    in_stride7,
+    other_stride0,
+    other_stride1,
+    other_stride2,
+    other_stride3,
+    other_stride4,
+    other_stride5,
+    other_stride6,
+    other_stride7,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -120,15 +148,44 @@ def _launch_clamp_max_tensor_kernel(x: torch.Tensor, other: torch.Tensor):
     _check_broadcastable(in_sizes, other_sizes)
 
     n_elements = x.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     clamp_max_tensor_kernel[grid](
-        x, other,
+        x,
+        other,
         n_elements,
-        in_sizes[0], in_sizes[1], in_sizes[2], in_sizes[3], in_sizes[4], in_sizes[5], in_sizes[6], in_sizes[7],
-        other_sizes[0], other_sizes[1], other_sizes[2], other_sizes[3], other_sizes[4], other_sizes[5], other_sizes[6], other_sizes[7],
-        in_strides[0], in_strides[1], in_strides[2], in_strides[3], in_strides[4], in_strides[5], in_strides[6], in_strides[7],
-        other_strides[0], other_strides[1], other_strides[2], other_strides[3], other_strides[4], other_strides[5], other_strides[6], other_strides[7],
+        in_sizes[0],
+        in_sizes[1],
+        in_sizes[2],
+        in_sizes[3],
+        in_sizes[4],
+        in_sizes[5],
+        in_sizes[6],
+        in_sizes[7],
+        other_sizes[0],
+        other_sizes[1],
+        other_sizes[2],
+        other_sizes[3],
+        other_sizes[4],
+        other_sizes[5],
+        other_sizes[6],
+        other_sizes[7],
+        in_strides[0],
+        in_strides[1],
+        in_strides[2],
+        in_strides[3],
+        in_strides[4],
+        in_strides[5],
+        in_strides[6],
+        in_strides[7],
+        other_strides[0],
+        other_strides[1],
+        other_strides[2],
+        other_strides[3],
+        other_strides[4],
+        other_strides[5],
+        other_strides[6],
+        other_strides[7],
         BLOCK_SIZE=1024,
     )
 
@@ -158,7 +215,9 @@ def clamp_max__Tensor(*args, **kwargs):
         other = kwargs.get("max")
     if x is None or other is None:
         raise ValueError("Expected arguments (Tensor self, Tensor max)")
-    assert isinstance(x, torch.Tensor) and isinstance(other, torch.Tensor), "Arguments must be torch.Tensors"
+    assert isinstance(x, torch.Tensor) and isinstance(
+        other, torch.Tensor
+    ), "Arguments must be torch.Tensors"
     assert x.is_cuda and other.is_cuda, "Tensors must be on CUDA device"
     if other.dtype != x.dtype:
         other = other.to(dtype=x.dtype)

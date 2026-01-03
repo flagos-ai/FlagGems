@@ -47,7 +47,7 @@ def celu(input: torch.Tensor, alpha: float = 1.0):
     if n_elements == 0:
         return out
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     celu_kernel[grid](x_contig, out, n_elements, alpha, BLOCK_SIZE=1024)
     return out
 
@@ -79,7 +79,7 @@ def celu_out(input: torch.Tensor, alpha: float = 1.0, out: torch.Tensor = None):
             out.copy_(out_contig)
         return out
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     celu_kernel[grid](x_contig, out_contig, n_elements, alpha, BLOCK_SIZE=1024)
 
     if out_contig is not out:

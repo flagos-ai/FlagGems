@@ -9,18 +9,19 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.celu import celu as gems_celu, celu_out as gems_celu_out
-
-import torch
+from flag_gems.experimental_ops.celu import celu as gems_celu
+from flag_gems.experimental_ops.celu import celu_out as gems_celu_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
@@ -37,6 +38,7 @@ def test_celu_tensor_default_alpha(shape, dtype):
         act_out = gems_celu(x)
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.celu
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -48,6 +50,7 @@ def test_celu_tensor_alpha(shape, dtype, alpha):
     with flag_gems.use_gems():
         act_out = gems_celu(x, alpha)
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.celu
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -62,6 +65,7 @@ def test_celu_out(shape, dtype, alpha):
     with flag_gems.use_gems():
         act_out = gems_celu_out(x, alpha, out_act)
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.celu
 def test_perf_aten_celu():

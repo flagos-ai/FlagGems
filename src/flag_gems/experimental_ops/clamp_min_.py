@@ -1,17 +1,18 @@
+from numbers import Number
+
 import torch
 import triton
 import triton.language as tl
-from numbers import Number
 
 
 @triton.jit
 def clamp_min_inplace_kernel(
-    x_ptr,            # *Pointer* to input tensor (in-place mutated).
-    other_ptr,        # *Pointer* to other tensor if using Tensor min, unused otherwise.
-    n_elements,       # Number of elements in the tensor.
-    min_val,          # Scalar minimum value if not using Tensor min.
+    x_ptr,  # *Pointer* to input tensor (in-place mutated).
+    other_ptr,  # *Pointer* to other tensor if using Tensor min, unused otherwise.
+    n_elements,  # Number of elements in the tensor.
+    min_val,  # Scalar minimum value if not using Tensor min.
     min_is_tensor: tl.constexpr,  # Whether to use tensor-based min.
-    BLOCK_SIZE: tl.constexpr      # Elements per program.
+    BLOCK_SIZE: tl.constexpr,  # Elements per program.
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
@@ -28,7 +29,9 @@ def clamp_min_inplace_kernel(
     tl.store(x_ptr + offsets, out, mask=mask)
 
 
-def _launch_clamp_min_inplace(x: torch.Tensor, other: torch.Tensor | None, min_val: Number | None):
+def _launch_clamp_min_inplace(
+    x: torch.Tensor, other: torch.Tensor | None, min_val: Number | None
+):
     assert x.is_cuda, "Input tensor must be on CUDA device."
     assert x.is_contiguous(), "Input tensor must be contiguous."
     n_elements = x.numel()
@@ -36,18 +39,32 @@ def _launch_clamp_min_inplace(x: torch.Tensor, other: torch.Tensor | None, min_v
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     if other is not None:
-        assert other.is_cuda and other.is_contiguous(), "Other tensor must be CUDA and contiguous."
+        assert (
+            other.is_cuda and other.is_contiguous()
+        ), "Other tensor must be CUDA and contiguous."
         if other.numel() == 1:
             # Treat single-element tensor as scalar min
             min_scalar = other.item()
-            clamp_min_inplace_kernel[grid](x, x, n_elements, min_scalar, min_is_tensor=False, BLOCK_SIZE=BLOCK_SIZE)
+            clamp_min_inplace_kernel[grid](
+                x, x, n_elements, min_scalar, min_is_tensor=False, BLOCK_SIZE=BLOCK_SIZE
+            )
         else:
-            assert other.numel() == n_elements, "Other tensor must have the same number of elements as input."
-            assert other.dtype == x.dtype, "Dtype of other tensor must match input dtype."
-            clamp_min_inplace_kernel[grid](x, other, n_elements, 0.0, min_is_tensor=True, BLOCK_SIZE=BLOCK_SIZE)
+            assert (
+                other.numel() == n_elements
+            ), "Other tensor must have the same number of elements as input."
+            assert (
+                other.dtype == x.dtype
+            ), "Dtype of other tensor must match input dtype."
+            clamp_min_inplace_kernel[grid](
+                x, other, n_elements, 0.0, min_is_tensor=True, BLOCK_SIZE=BLOCK_SIZE
+            )
     else:
-        assert isinstance(min_val, Number), "min must be a Python number when other tensor is not provided."
-        clamp_min_inplace_kernel[grid](x, x, n_elements, min_val, min_is_tensor=False, BLOCK_SIZE=BLOCK_SIZE)
+        assert isinstance(
+            min_val, Number
+        ), "min must be a Python number when other tensor is not provided."
+        clamp_min_inplace_kernel[grid](
+            x, x, n_elements, min_val, min_is_tensor=False, BLOCK_SIZE=BLOCK_SIZE
+        )
     return x
 
 

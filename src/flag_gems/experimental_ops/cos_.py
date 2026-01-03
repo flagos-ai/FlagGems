@@ -25,18 +25,24 @@ def cos_(*args, **kwargs):
     x = None
     if len(args) == 1 and isinstance(args[0], torch.Tensor):
         x = args[0]
-    elif 'input' in kwargs and isinstance(kwargs['input'], torch.Tensor):
-        x = kwargs['input']
+    elif "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
+        x = kwargs["input"]
     else:
-        raise TypeError("cos_ expects a single Tensor argument (positional or keyword 'input').")
+        raise TypeError(
+            "cos_ expects a single Tensor argument (positional or keyword 'input')."
+        )
 
     # Fallback to PyTorch for unsupported cases
-    if (not x.is_cuda) or (not x.is_contiguous()) or (x.dtype not in (
-        torch.float16, torch.bfloat16, torch.float32, torch.float64
-    )):
+    if (
+        (not x.is_cuda)
+        or (not x.is_contiguous())
+        or (
+            x.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+        )
+    ):
         return torch.cos_(x)
 
     n_elements = x.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     cos__kernel[grid](x, n_elements, BLOCK_SIZE=1024)
     return x

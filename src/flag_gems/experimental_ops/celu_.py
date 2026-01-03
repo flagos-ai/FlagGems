@@ -4,10 +4,12 @@ import triton.language as tl
 
 
 @triton.jit
-def celu_(x_ptr,  # Pointer to input tensor (will be modified in-place)
-          n_elements,  # Number of elements in the tensor
-          alpha,  # CELU alpha parameter (scalar)
-          BLOCK_SIZE: tl.constexpr):
+def celu_(
+    x_ptr,  # Pointer to input tensor (will be modified in-place)
+    n_elements,  # Number of elements in the tensor
+    alpha,  # CELU alpha parameter (scalar)
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -32,6 +34,6 @@ def celu_(x: torch.Tensor, alpha: float = 1.0):
     assert x.is_cuda, "Input tensor must be on CUDA device."
     assert x.is_floating_point(), "CELU requires a floating point tensor."
     n_elements = x.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     celu_kernel[grid](x, n_elements, alpha, BLOCK_SIZE=1024)
     return x

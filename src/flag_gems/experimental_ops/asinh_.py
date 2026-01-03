@@ -50,12 +50,16 @@ def asinh_(*args, **kwargs):
     if x.is_contiguous():
         n_elements = x.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        asinh__kernel[grid](x, n_elements, BLOCK_SIZE=BLOCK_SIZE, COMPUTE_FP32=COMPUTE_FP32)
+        asinh__kernel[grid](
+            x, n_elements, BLOCK_SIZE=BLOCK_SIZE, COMPUTE_FP32=COMPUTE_FP32
+        )
         return x
     else:
         y = x.contiguous()
         n_elements = y.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        asinh__kernel[grid](y, n_elements, BLOCK_SIZE=BLOCK_SIZE, COMPUTE_FP32=COMPUTE_FP32)
+        asinh__kernel[grid](
+            y, n_elements, BLOCK_SIZE=BLOCK_SIZE, COMPUTE_FP32=COMPUTE_FP32
+        )
         x.copy_(y)
         return x
