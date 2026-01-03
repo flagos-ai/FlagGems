@@ -55,6 +55,7 @@ def enable(
             ("moe_sum", moe_sum),
             ("abs", abs),
             ("abs_", abs_),
+            ("acosh", acosh),
             ("add.Tensor", add),
             ("add_.Tensor", add_),
             ("addcdiv", addcdiv),

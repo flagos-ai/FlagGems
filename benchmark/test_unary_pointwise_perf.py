@@ -41,6 +41,7 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
+    ("acosh", torch.acosh, FLOAT_DTYPES),
     ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
