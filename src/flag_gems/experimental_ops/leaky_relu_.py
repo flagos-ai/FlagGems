@@ -4,10 +4,12 @@ import triton.language as tl
 
 
 @triton.jit
-def leaky_relu_(x_ptr,  # *Pointer* to input tensor data (modified in-place).
-                n_elements,  # Number of elements to process.
-                negative_slope,  # Scalar negative slope.
-                BLOCK_SIZE: tl.constexpr):
+def leaky_relu_(
+    x_ptr,  # *Pointer* to input tensor data (modified in-place).
+    n_elements,  # Number of elements to process.
+    negative_slope,  # Scalar negative slope.
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -26,7 +28,7 @@ def leaky_relu_(*args, **kwargs):
     if len(args) >= 1:
         x = args[0]
     else:
-        x = kwargs.get('self', kwargs.get('input', None))
+        x = kwargs.get("self", kwargs.get("input", None))
     if x is None:
         raise TypeError("leaky_relu_ expected a tensor as the first argument")
 
@@ -34,7 +36,7 @@ def leaky_relu_(*args, **kwargs):
     if len(args) >= 2:
         negative_slope = args[1]
     else:
-        negative_slope = kwargs.get('negative_slope', negative_slope)
+        negative_slope = kwargs.get("negative_slope", negative_slope)
 
     if isinstance(negative_slope, torch.Tensor):
         negative_slope = negative_slope.item()
@@ -55,13 +57,13 @@ def leaky_relu_(*args, **kwargs):
     if not x.is_contiguous():
         tmp = x.contiguous()
         n_elements = tmp.numel()
-        grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         _leaky_relu_kernel[grid](tmp, n_elements, negative_slope, BLOCK_SIZE=1024)
         x.copy_(tmp)
         return x
 
     # Launch Triton kernel in-place
     n_elements = x.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _leaky_relu_kernel[grid](x, n_elements, negative_slope, BLOCK_SIZE=1024)
     return x

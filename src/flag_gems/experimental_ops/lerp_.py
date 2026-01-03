@@ -4,7 +4,9 @@ import triton.language as tl
 
 
 @triton.jit
-def _lerp_inplace_scalar_kernel(x_ptr, end_ptr, n_elements, weight, BLOCK_SIZE: tl.constexpr):
+def _lerp_inplace_scalar_kernel(
+    x_ptr, end_ptr, n_elements, weight, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -22,7 +24,9 @@ def _lerp_inplace_scalar_kernel(x_ptr, end_ptr, n_elements, weight, BLOCK_SIZE: 
 
 
 @triton.jit
-def _lerp_inplace_tensor_kernel(x_ptr, end_ptr, w_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _lerp_inplace_tensor_kernel(
+    x_ptr, end_ptr, w_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -52,9 +56,9 @@ def _parse_args_scalar(args, kwargs):
     # Accept either (self, end, weight) or args wrapped in a single tuple/list
     if len(args) == 1 and isinstance(args[0], (tuple, list)):
         args = tuple(args[0])
-    self_t = kwargs.get('self', args[0] if len(args) > 0 else None)
-    end = kwargs.get('end', args[1] if len(args) > 1 else None)
-    weight = kwargs.get('weight', args[2] if len(args) > 2 else None)
+    self_t = kwargs.get("self", args[0] if len(args) > 0 else None)
+    end = kwargs.get("end", args[1] if len(args) > 1 else None)
+    weight = kwargs.get("weight", args[2] if len(args) > 2 else None)
     return self_t, end, weight
 
 
@@ -62,9 +66,9 @@ def _parse_args_tensor(args, kwargs):
     # Accept either (self, end, weight) or args wrapped in a single tuple/list
     if len(args) == 1 and isinstance(args[0], (tuple, list)):
         args = tuple(args[0])
-    self_t = kwargs.get('self', args[0] if len(args) > 0 else None)
-    end = kwargs.get('end', args[1] if len(args) > 1 else None)
-    weight = kwargs.get('weight', args[2] if len(args) > 2 else None)
+    self_t = kwargs.get("self", args[0] if len(args) > 0 else None)
+    end = kwargs.get("end", args[1] if len(args) > 1 else None)
+    weight = kwargs.get("weight", args[2] if len(args) > 2 else None)
     return self_t, end, weight
 
 
@@ -73,16 +77,22 @@ def lerp__Scalar(*args, **kwargs):
     if not isinstance(self_t, torch.Tensor) or not isinstance(end, torch.Tensor):
         raise TypeError("lerp__Scalar expects tensors for 'self' and 'end'.")
     if not torch.is_floating_point(self_t):
-        raise TypeError("lerp__Scalar only supports floating point tensors for in-place operation.")
+        raise TypeError(
+            "lerp__Scalar only supports floating point tensors for in-place operation."
+        )
     if not self_t.is_cuda or not end.is_cuda:
         raise ValueError("lerp__Scalar requires CUDA tensors.")
     if not self_t.is_contiguous():
-        raise ValueError("lerp__Scalar requires 'self' to be contiguous for in-place operation.")
+        raise ValueError(
+            "lerp__Scalar requires 'self' to be contiguous for in-place operation."
+        )
 
     # Handle scalar weight (number or 0-dim tensor)
     if isinstance(weight, torch.Tensor):
         if weight.numel() != 1:
-            raise ValueError("Scalar overload received a non-scalar tensor for 'weight'.")
+            raise ValueError(
+                "Scalar overload received a non-scalar tensor for 'weight'."
+            )
         weight_val = float(weight.item())
     else:
         weight_val = float(weight)
@@ -90,7 +100,7 @@ def lerp__Scalar(*args, **kwargs):
     end_c = _ensure_contig_same_dtype_device(end, self_t)
 
     n_elements = self_t.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _lerp_inplace_scalar_kernel[grid](
         self_t, end_c, n_elements, float(weight_val), BLOCK_SIZE=1024
     )
@@ -99,20 +109,28 @@ def lerp__Scalar(*args, **kwargs):
 
 def lerp__Tensor(*args, **kwargs):
     self_t, end, weight = _parse_args_tensor(args, kwargs)
-    if not isinstance(self_t, torch.Tensor) or not isinstance(end, torch.Tensor) or not isinstance(weight, torch.Tensor):
+    if (
+        not isinstance(self_t, torch.Tensor)
+        or not isinstance(end, torch.Tensor)
+        or not isinstance(weight, torch.Tensor)
+    ):
         raise TypeError("lerp__Tensor expects tensors for 'self', 'end', and 'weight'.")
     if not torch.is_floating_point(self_t):
-        raise TypeError("lerp__Tensor only supports floating point tensors for in-place operation.")
+        raise TypeError(
+            "lerp__Tensor only supports floating point tensors for in-place operation."
+        )
     if not self_t.is_cuda or not end.is_cuda or not weight.is_cuda:
         raise ValueError("lerp__Tensor requires CUDA tensors.")
     if not self_t.is_contiguous():
-        raise ValueError("lerp__Tensor requires 'self' to be contiguous for in-place operation.")
+        raise ValueError(
+            "lerp__Tensor requires 'self' to be contiguous for in-place operation."
+        )
 
     end_c = _ensure_contig_same_dtype_device(end, self_t)
     weight_c = _ensure_contig_same_dtype_device(weight, self_t)
 
     n_elements = self_t.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _lerp_inplace_tensor_kernel[grid](
         self_t, end_c, weight_c, n_elements, BLOCK_SIZE=1024
     )

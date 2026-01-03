@@ -5,11 +5,11 @@ import triton.language as tl
 
 @triton.jit
 def hinge_embedding_loss(
-    input_ptr,      # *Pointer* to input tensor.
-    target_ptr,     # *Pointer* to target tensor.
-    output_ptr,     # *Pointer* to output tensor (per-element losses).
-    n_elements,     # Number of elements.
-    margin,         # Margin (float).
+    input_ptr,  # *Pointer* to input tensor.
+    target_ptr,  # *Pointer* to target tensor.
+    output_ptr,  # *Pointer* to output tensor (per-element losses).
+    n_elements,  # Number of elements.
+    margin,  # Margin (float).
     BLOCK_SIZE: tl.constexpr,  # Number of elements per program.
 ):
     pid = tl.program_id(axis=0)
@@ -46,10 +46,12 @@ def hinge_embedding_loss(
 _hinge_embedding_loss_kernel = hinge_embedding_loss
 
 
-def hinge_embedding_loss(input: torch.Tensor,
-                         target: torch.Tensor,
-                         margin: float = 1.0,
-                         reduction: str | int = "mean") -> torch.Tensor:
+def hinge_embedding_loss(
+    input: torch.Tensor,
+    target: torch.Tensor,
+    margin: float = 1.0,
+    reduction: str | int = "mean",
+) -> torch.Tensor:
     # Fallback for non-CUDA tensors
     if input.device.type != "cuda" or target.device.type != "cuda":
         return torch.ops.aten.hinge_embedding_loss(input, target, margin, reduction)
@@ -75,7 +77,11 @@ def hinge_embedding_loss(input: torch.Tensor,
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     _hinge_embedding_loss_kernel[grid](
-        input, target, out, n_elements, float(margin),
+        input,
+        target,
+        out,
+        n_elements,
+        float(margin),
         BLOCK_SIZE=BLOCK_SIZE,
     )
 
@@ -92,4 +98,6 @@ def hinge_embedding_loss(input: torch.Tensor,
     elif reduction == "sum":
         return out.sum()
     else:
-        raise ValueError(f"Invalid reduction: {reduction}. Supported: 'none', 'mean', 'sum'.")
+        raise ValueError(
+            f"Invalid reduction: {reduction}. Supported: 'none', 'mean', 'sum'."
+        )

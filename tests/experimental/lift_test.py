@@ -9,21 +9,23 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.lift import lift as gems_lift, lift_out as gems_lift_out
-
-import torch
+from flag_gems.experimental_ops.lift import lift as gems_lift
+from flag_gems.experimental_ops.lift import lift_out as gems_lift_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.lift
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -55,6 +57,7 @@ def test_lift_out_tensor(shape, dtype):
         act_out = gems_lift_out(x, act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.lift
 def test_perf_aten_lift():

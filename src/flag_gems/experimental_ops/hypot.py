@@ -16,7 +16,15 @@ def _torch_dtype_to_triton(dtype: torch.dtype):
 
 
 @triton.jit
-def _hypot_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, OUT_DTYPE: tl.constexpr, COMPUTE_DTYPE: tl.constexpr):
+def _hypot_kernel(
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    COMPUTE_DTYPE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -42,7 +50,9 @@ def _hypot_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr, O
 
 def _infer_hypot_out_dtype(a: torch.Tensor, b: torch.Tensor) -> torch.dtype:
     if a.is_complex() or b.is_complex():
-        raise NotImplementedError("Complex dtypes are not supported for hypot in this implementation.")
+        raise NotImplementedError(
+            "Complex dtypes are not supported for hypot in this implementation."
+        )
     if a.is_floating_point() or b.is_floating_point():
         return torch.result_type(a, b)
     # For integral/bool inputs, follow floating promotion behavior
@@ -67,7 +77,10 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
     COMPUTE_DTYPE = tl.float64 if out_dtype == torch.float64 else tl.float32
 
     _hypot_kernel[grid](
-        x, y, out, n_elements,
+        x,
+        y,
+        out,
+        n_elements,
         BLOCK_SIZE=BLOCK_SIZE,
         OUT_DTYPE=OUT_DTYPE,
         COMPUTE_DTYPE=COMPUTE_DTYPE,
@@ -98,7 +111,9 @@ def hypot_out(a: torch.Tensor, b: torch.Tensor, out: torch.Tensor):
     # Validate device and shape
     device = out.device
     if (not out.is_cuda) or a.device != device or b.device != device:
-        raise ValueError("All tensors (a, b, out) must be CUDA tensors on the same device")
+        raise ValueError(
+            "All tensors (a, b, out) must be CUDA tensors on the same device"
+        )
 
     # Validate dtype
     if out.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):

@@ -4,7 +4,9 @@ import triton.language as tl
 
 
 @triton.jit
-def less_inplace_kernel(x_ptr, y_ptr, n_elements, SCALAR: tl.constexpr, BLOCK_SIZE: tl.constexpr):
+def less_inplace_kernel(
+    x_ptr, y_ptr, n_elements, SCALAR: tl.constexpr, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -29,9 +31,11 @@ def _launch_less_inplace(x: torch.Tensor, y_tensor: torch.Tensor, scalar: bool):
     assert x.is_contiguous(), "Input tensor must be contiguous"
     assert y_tensor.is_contiguous(), "Other/scalar tensor must be contiguous"
     n_elements = x.numel()
-    assert scalar or (y_tensor.numel() == n_elements), "Shape mismatch for elementwise comparison"
+    assert scalar or (
+        y_tensor.numel() == n_elements
+    ), "Shape mismatch for elementwise comparison"
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     less_inplace_kernel[grid](x, y_tensor, n_elements, SCALAR=scalar, BLOCK_SIZE=1024)
     return x
 
@@ -46,7 +50,9 @@ def less__Scalar(self: torch.Tensor, other):
         x_work = x
 
     # Make scalar tensor on device, cast to x dtype
-    y_tensor = torch.tensor([other], dtype=x_work.dtype, device=x_work.device).contiguous()
+    y_tensor = torch.tensor(
+        [other], dtype=x_work.dtype, device=x_work.device
+    ).contiguous()
 
     _launch_less_inplace(x_work, y_tensor, scalar=True)
 
@@ -66,10 +72,14 @@ def less__Tensor(self: torch.Tensor, other: torch.Tensor):
 
     # Prepare 'other' on same device/dtype and choose scalar or tensor path
     if other.numel() == 1:
-        y_tensor = other.to(dtype=x_work.dtype, device=x_work.device).reshape(1).contiguous()
+        y_tensor = (
+            other.to(dtype=x_work.dtype, device=x_work.device).reshape(1).contiguous()
+        )
         scalar = True
     else:
-        assert other.numel() == x_work.numel(), "Shape mismatch for elementwise comparison"
+        assert (
+            other.numel() == x_work.numel()
+        ), "Shape mismatch for elementwise comparison"
         y_tensor = other.to(dtype=x_work.dtype, device=x_work.device).contiguous()
         scalar = False
 

@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.less_ import less__Scalar, less__Tensor
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.less_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -60,6 +61,7 @@ def test_less__tensor(shape, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.less_
 def test_perf_aten_less_():
     # Define input generation logic matching the operator arguments
@@ -71,14 +73,14 @@ def test_perf_aten_less_():
     # Initialize benchmark - using less__Tensor for performance test
     def less__Tensor_wrapper(self, other):
         return less__Tensor(self, other)
-    
+
     bench = GenericBenchmark(
         input_fn=less__input_fn,
         op_name="less_",
         torch_op=torch.ops.aten.less_,
         dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
-    
+
     # Replace the op with less__Tensor
     bench.op = less__Tensor_wrapper
 

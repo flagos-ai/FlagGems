@@ -17,28 +17,35 @@ def i0_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     t_small = ax / 3.75
     y_small = t_small * t_small
     poly_small = 1.0 + y_small * (
-        3.5156229 + y_small * (
-            3.0899424 + y_small * (
-                1.2067492 + y_small * (
-                    0.2659732 + y_small * (
-                        0.0360768 + y_small * 0.0045813
-                    )
-                )
+        3.5156229
+        + y_small
+        * (
+            3.0899424
+            + y_small
+            * (
+                1.2067492
+                + y_small * (0.2659732 + y_small * (0.0360768 + y_small * 0.0045813))
             )
         )
     )
 
     y_large = 3.75 / ax
     poly_large = 0.39894228 + y_large * (
-        0.01328592 + y_large * (
-            0.00225319 + y_large * (
-                -0.00157565 + y_large * (
-                    0.00916281 + y_large * (
-                        -0.02057706 + y_large * (
-                            0.02635537 + y_large * (
-                                -0.01647633 + y_large * 0.00392377
-                            )
-                        )
+        0.01328592
+        + y_large
+        * (
+            0.00225319
+            + y_large
+            * (
+                -0.00157565
+                + y_large
+                * (
+                    0.00916281
+                    + y_large
+                    * (
+                        -0.02057706
+                        + y_large
+                        * (0.02635537 + y_large * (-0.01647633 + y_large * 0.00392377))
                     )
                 )
             )
@@ -67,14 +74,18 @@ def i0_(*args, **kwargs):
                 x = kwargs[k]
                 break
     if x is None:
-        raise ValueError("i0_ expects a tensor as the first positional argument or in keyword 'input'/'self'/'x'.")
+        raise ValueError(
+            "i0_ expects a tensor as the first positional argument or in keyword 'input'/'self'/'x'."
+        )
 
     if not x.is_cuda:
         raise AssertionError("Input tensor must be on a CUDA device.")
     if not x.is_contiguous():
         raise AssertionError("Input tensor must be contiguous.")
     if x.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
-        raise AssertionError("Unsupported dtype for i0_. Supported: float16, bfloat16, float32, float64.")
+        raise AssertionError(
+            "Unsupported dtype for i0_. Supported: float16, bfloat16, float32, float64."
+        )
 
     n_elements = x.numel()
     if n_elements == 0:

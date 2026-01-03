@@ -9,21 +9,22 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
 from flag_gems.experimental_ops.lerp_ import lerp__Scalar, lerp__Tensor
 
-import torch
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
+
 
 @pytest.mark.lerp_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -66,6 +67,7 @@ def test_lerp__tensor(shape, dtype):
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.lerp_
 def test_perf_aten_lerp_():
     # Define input generation logic matching the operator arguments
@@ -78,14 +80,14 @@ def test_perf_aten_lerp_():
     # Initialize benchmark - using lerp__Tensor for performance test
     def lerp__Tensor_wrapper(self, end, weight):
         return lerp__Tensor(self, end, weight)
-    
+
     bench = GenericBenchmark(
         input_fn=lerp__input_fn,
         op_name="lerp_",
         torch_op=torch.ops.aten.lerp_,
         dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
-    
+
     # Replace the op with lerp__Tensor
     bench.op = lerp__Tensor_wrapper
 

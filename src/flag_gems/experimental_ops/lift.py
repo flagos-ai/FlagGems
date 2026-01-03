@@ -30,7 +30,9 @@ def lift_out(x: torch.Tensor, out: torch.Tensor):
     if not isinstance(x, torch.Tensor) or not isinstance(out, torch.Tensor):
         raise TypeError("lift_out expects (Tensor x, Tensor out)")
     if x.device.type != "cuda" or out.device.type != "cuda":
-        raise RuntimeError("lift_out: both input and out tensors must be on a CUDA device")
+        raise RuntimeError(
+            "lift_out: both input and out tensors must be on a CUDA device"
+        )
     if out.device != x.device:
         raise RuntimeError("lift_out: out tensor must be on the same device as input")
     if out.dtype != x.dtype:

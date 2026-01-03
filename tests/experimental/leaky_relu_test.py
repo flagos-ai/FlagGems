@@ -9,18 +9,19 @@ try:
     from tests.accuracy_utils import gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
-    
+
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
 
+
 import pytest
+import torch
 import triton
 
 import flag_gems
-from flag_gems.experimental_ops.leaky_relu import leaky_relu as gems_leaky_relu, leaky_relu_out as gems_leaky_relu_out
-
-import torch
+from flag_gems.experimental_ops.leaky_relu import leaky_relu as gems_leaky_relu
+from flag_gems.experimental_ops.leaky_relu import leaky_relu_out as gems_leaky_relu_out
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark
@@ -38,6 +39,7 @@ def test_leaky_relu_tensor(shape, dtype, negative_slope):
         act_out = gems_leaky_relu(input_tensor, negative_slope)
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
+
 @pytest.mark.leaky_relu
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -52,6 +54,7 @@ def test_leaky_relu_out(shape, dtype, negative_slope):
         act_out = gems_leaky_relu_out(input_tensor, negative_slope, act_out_buf)
     gems_assert_close(act_out, ref_out, dtype=dtype)
     gems_assert_close(act_out_buf, ref_out_buf, dtype=dtype)
+
 
 @pytest.mark.leaky_relu
 def test_perf_aten_leaky_relu():
