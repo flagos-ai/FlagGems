@@ -106,6 +106,7 @@ def enable(
             ("clamp_.Tensor", clamp_tensor_),
             ("clamp_min_", clamp_min_),
             ("constant_pad_nd", constant_pad_nd),
+            ("clone", clone),
             # ("contiguous", contiguous),
             (
                 "copy_",
@@ -327,6 +328,7 @@ def enable(
             ("threshold", threshold),
             ("threshold_backward", threshold_backward),
             ("tile", tile),
+            ("to.dtype", to_dtype),
             ("topk", topk),
             ("trace", trace),
             ("triu", triu),
