@@ -53,15 +53,13 @@ def test_hardswish_out(shape, dtype):
         act_ret = gems_hardswish_out(act_x, act_out)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
-    gems_assert_close(act_ret, ref_out, dtype=dtype)
+    gems_assert_close(act_ret, ref_ret, dtype=dtype)
 
 
 @pytest.mark.hardswish
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_hardswish_benchmark_tensor(shape, dtype):
-    import torch.utils.benchmark as benchmark
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)

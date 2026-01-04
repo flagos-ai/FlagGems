@@ -60,8 +60,6 @@ def test_frac_out(shape, dtype, alias_out):
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_frac_benchmark_tensor(shape, dtype):
-    import torch.utils.benchmark as benchmark
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)

@@ -42,8 +42,6 @@ def test_hardsigmoid__tensor(shape, dtype):
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_hardsigmoid__benchmark_tensor(shape, dtype):
-    import torch.utils.benchmark as benchmark
-
     quantiles = [0.5, 0.2, 0.8]
 
     x = torch.randn(shape, device=flag_gems.device, dtype=torch.float32).to(dtype)

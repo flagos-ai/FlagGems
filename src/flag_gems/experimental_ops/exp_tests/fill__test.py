@@ -5,7 +5,6 @@ import sys
 
 import pytest
 import torch
-import triton
 
 import flag_gems
 from flag_gems.experimental_ops.fill_ import fill__Scalar, fill__Tensor
@@ -20,6 +19,7 @@ except ImportError:
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
 
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
