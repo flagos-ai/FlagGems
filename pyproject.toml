@@ -2,7 +2,6 @@
 requires = ["setuptools>=64.0", "scikit-build-core>=0.11", "pybind11"]
 build-backend = "scikit_build_core.build"
 
-
 [project]
 name = "flag_gems"
 version = "4.1"
@@ -35,6 +34,7 @@ test = [
     "pytest>=7.1.0",
     "numpy>=1.26",
     "scipy>=1.14",
+    "ruff>=0.14.10",
 ]
 example = [
     "transformers>=4.40.2",
@@ -57,3 +57,11 @@ build.verbose = true
 logging.level = "INFO"
 wheel.install-dir = "flag_gems"
 build-dir = "build/{cache_tag}"
+
+[tool.ruff.lint]
+ignore = [
+    "E501",     # line-too-long
+    "E701",     # multiple-statements-on-oneline-colon
+    "E731",     # lambda-assignment
+    "E741",     # ambiguous-variable-name
+]
