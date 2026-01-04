@@ -19,7 +19,7 @@ By default, it does not build the C extensions, See [installation](./installatio
 ### Install Build Dependencies
 
 ```shell
-pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
+pip install -U scikit-build-core>=0.11 pybind11>3.0.1 ninja>=1.13.0 cmake>=4.2.1
 ```
 
 ### Installation
@@ -28,22 +28,29 @@ Clone the repo to your local environment:
 
 ```shell
 git clone https://github.com/flagos-ai/FlagGems.git
+cd FlagGems
 ```
+
+Install the FlagTree compiler using a command similar to the following one.
+
+```shell
+uv pip install .[flagtree_nvidia]
+```
+
+> [!Tip]
+> - If you want to use the native Triton instead of FlagTree, you can skip this step.
+> - The currently supported variants are `flagtree_ascend`, `flagtree_enflame`, `flagtree_hcu`,
+>   `flagtree_iluvatar`, `flagtree_nvidia`, `flagtree_xpu`.
 
 Then use the following command to trigger an installation:
 
 ```shell
-cd FlagGems
-# If you want to use the native Triton instead of FlagTree, please skip this step.
-# Other backends: replace with requirements_backendxxx.txt
-pip install -r flag_tree_requirements/requirements_nvidia.txt
 pip install --no-build-isolation .
 ```
 
-You can also make an editble install using the following command:
+You can also make an _editable install_ using the following command:
 
 ```shell
-cd FlagGems
 pip install --no-build-isolation -e .
 ```
 
