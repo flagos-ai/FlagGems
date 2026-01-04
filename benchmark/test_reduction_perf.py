@@ -87,9 +87,7 @@ backward_operations = [
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
     [
-        pytest.param(
-            name, op, dtype, marks=getattr(pytest.mark, name, None)
-        )
+        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
         for name, op, dtype in backward_operations
     ],
 )
