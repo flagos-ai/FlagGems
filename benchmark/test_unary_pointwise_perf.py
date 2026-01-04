@@ -305,3 +305,65 @@ def test_bitwise_right_shift_perf():
         dtypes=INT_DTYPES,
     )
     bench.run()
+
+
+class RepetitionPenaltyBenchmark(Benchmark):
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name, torch_op, dtypes)
+        self.gems_op = None
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (1, 1024),
+            (1, 4096),
+            (1, 8192),
+            (8, 4096),
+            (16, 4096),
+            (32, 1024),
+            (8, 8192),
+            (64, 32000),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            num_seqs, vocab_size = shape
+            yield (
+                torch.randn(shape, dtype=cur_dtype, device=self.device),
+                torch.randint(0, 2, shape, dtype=torch.bool, device=self.device),
+                torch.randint(0, 2, shape, dtype=torch.bool, device=self.device),
+                torch.empty(num_seqs, dtype=cur_dtype, device=self.device).uniform_(
+                    1.0, 2.0
+                ),
+            )
+
+    def set_gems(self, gems_op):
+        self.gems_op = gems_op
+
+
+UNSUPPORTED_VENDORS = {
+    "metax",
+    "kunlunxin",
+    "iluvatar",
+    "mthreads",
+    "hygon",
+    "cambricon",
+}
+
+
+@pytest.mark.skipif(SkipVersion("vllm", "<0.4"), reason="vLLM <0.4 not supported")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.skipif(
+    flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported"
+)
+@pytest.mark.apply_repetition_penalties
+@pytest.mark.performance
+def test_perf_repetition_penalty():
+    vllm_ops = pytest.importorskip("vllm._custom_ops")
+
+    bench = RepetitionPenaltyBenchmark(
+        op_name="apply_repetition_penalties",
+        torch_op=vllm_ops.apply_repetition_penalties,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.apply_repetition_penalties)
+    bench.run()
