@@ -45,6 +45,19 @@ def index_select_input_fn(shape, cur_dtype, device):
     yield inp, dim, index
 
 
+def masked_scatter_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    mask = generate_tensor_input(shape, cur_dtype, device) < 0.3
+    src = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, mask, src
+
+
+def masked_scatter_gbps(bench_fn_args, latency):
+    inp, mask, src = bench_fn_args
+    io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, mask, src, inp]])
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
 def masked_select_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     mask = generate_tensor_input(shape, cur_dtype, device) < 0.3
@@ -86,6 +99,31 @@ def test_perf_index_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
         torch_op=torch_op,
         dtypes=dtypes,
         get_gbps=gbps_fn,
+    )
+    bench.run()
+
+
+@pytest.mark.masked_scatter
+def test_perf_masked_scatter():
+    bench = TensorSelectBenchmark(
+        op_name="masked_scatter",
+        torch_op=torch.masked_scatter,
+        input_fn=masked_scatter_input_fn,
+        dtypes=FLOAT_DTYPES,
+        get_gbps=masked_scatter_gbps,
+    )
+    bench.run()
+
+
+@pytest.mark.masked_scatter_
+def test_perf_masked_scatter_inplace():
+    bench = TensorSelectBenchmark(
+        op_name="masked_scatter_",
+        torch_op=torch.Tensor.masked_scatter_,
+        input_fn=masked_scatter_input_fn,
+        dtypes=FLOAT_DTYPES,
+        get_gbps=masked_scatter_gbps,
+        is_inplace=True,
     )
     bench.run()
 

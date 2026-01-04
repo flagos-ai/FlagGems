@@ -216,7 +216,7 @@ def test_perf_embedding():
     bench.run()
 
 
-@pytest.mark.embedding_backward
+@pytest.mark.embedding
 def test_perf_embedding_backward():
     bench = EmbeddingBenchmark(
         input_fn=embedding_backward_input_fn,
