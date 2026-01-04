@@ -1,7 +1,6 @@
 [build-system]
-requires = ["setuptools>=64.0", "scikit-build-core>=0.11", "pybind11"]
+requires = ["setuptools>=64.0", "scikit-build-core>=0.11", "pybind11>=3.0.1"]
 build-backend = "scikit_build_core.build"
-
 
 [project]
 name = "flag_gems"
@@ -22,26 +21,53 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
-    "torch>=2.2.0",
-    "packaging",
-    "pybind11",
-    "PyYAML",
-    "packaging",
-    "sqlalchemy",
-]
-
-[project.optional-dependencies]
-test = [
-    "pytest>=7.1.0",
-    "numpy>=1.26",
-    "scipy>=1.14",
-]
-example = [
-    "transformers>=4.40.2",
+    "numpy>=2.4.0",  # used by backends, tests and utils
+    "packaging>=25.0",  # used for packaging and version determination
+    "pybind11>=3.0.1",  # TODO(Qiming): check if this is a runtime dependency
+    "PyYAML>=6.0.3",  # aka. 'yaml', used for benchmark, backend and runtime.
+    "SQLAlchemy>=2.0.45",  # aka. 'sqlalchemy', used in core
+    "torch>=2.2.0",  # core dependency
+    "triton>=3.1",  # core dependency
+    "typing_extensions>=4.15.0",  # core model dependency
+    "vllm>=0.13.0",  # core dependency
 ]
 
 [project.urls]
-Homepage = "https://github.com/FlagOpen/FlagGems"
+Homepage = "https://github.com/flagos-ai/FlagGems"
+
+[project.optional-dependencies]
+benchmark = [
+    "aiohttp>=3.13.3",  # models benchmark, Apache-2.0 and MIT
+    "datasets>=4.4.2",  # models benchmark, Apache-2.0
+    "flash_atten>=2.8.3",  # attention benchmark, BSD
+    "huggingface_hub>=1.2.3",  # models benchmark, Apache-2.0
+    "librosa>=0.11.0",  # models benchmark, ISCL
+    "modelscope>=1.33.0",  # models benchmark, Apache-2.0
+    "pandas>=2.3.3",  # models benchmark, BSD
+    "Pillow>=12.1.0",  # aka, 'PIL', models benchmark, MIT-CMU
+    "soundfile>=0.13.1",  # models benchmark, BSD
+    "torch_npu>=2.8.0",  # used by Ascend backend
+    "tqdm>=4.67.1",  # models benchmark, MIT
+    "transformer-engine>=2.11.0",  # aka. 'transformer_engine', Apache-2.0
+    "transformer-engine-torch>=2.11.0",  # aka. 'transformer_engine_torch', Apache-2.0
+    "transformers>=4.57.3",  # Apache-2.0
+    "uvloop>=1.22.0",  # MIT
+]
+
+test = [
+    "PyGithub>=2.8.1",  # aka. 'github', used for coverage test, to be removed, LGPL
+    "pytest>=8.4.2",  # MIT
+    "scipy>=1.14", # used in ks tests and distribution tests, BSD
+    "tilelang==0.1.7.post2",  # used in DSA tests, MIT
+    "transformer_engine>=2.11.0",  # Apache-2.0
+    "transformers>=4.57.3",  # Apache-2.0
+]
+
+example = [
+    "Pillow>=12.1.0",  # aka, 'PIL', MIT-CMU
+    "requests>=2.32.5",  # Apache-2.0
+    "transformers>=4.57.3",  # Apache-2.0
+]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
