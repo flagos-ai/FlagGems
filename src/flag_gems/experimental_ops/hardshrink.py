@@ -11,8 +11,8 @@ def hardshrink_kernel(x_ptr, out_ptr, n_elements, lambd, BLOCK_SIZE: tl.constexp
     mask = offsets < n_elements
 
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    l = lambd
-    keep = (x > l) | (x < -l)
+    lambda_val = lambd
+    keep = (x > lambda_val) | (x < -lambda_val)
     y = tl.where(keep, x, 0.0)
     tl.store(out_ptr + offsets, y, mask=mask)
 
