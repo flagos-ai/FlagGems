@@ -283,12 +283,12 @@ def generate_pad_kernel(
         code.writeline("if_pad_true_mask = tl.full((BLOCK_SIZE, ), 1, dtype=tl.int32)")
 
         code.writeline(
-            "cond = (dst_index_0 >= valid_dim0_start and dst_index_0 < valid_dim0_end) "
+            "cond = ((dst_index_0 >= valid_dim0_start) & (dst_index_0 < valid_dim0_end))"
         )
 
         for i in range(1, rank):
             code.writeline(
-                f"cond &= (dst_index_{i} >= valid_dim{i}_start and dst_index_{i} < valid_dim{i}_end)"
+                f"cond &= ((dst_index_{i} >= valid_dim{i}_start) & (dst_index_{i} < valid_dim{i}_end))"
             )
 
         code.writeline(
@@ -356,7 +356,7 @@ def generate_pad_kernel(
         code.writeline("if IS_CONSTANT: ")
         with code.indent():
             code.writeline(
-                "x_val = tl.load(in0_ptr + src_offset, mask=(not if_pad) and load_cond, other=value)"
+                "x_val = tl.load(in0_ptr + src_offset, mask=((if_pad == 0) & load_cond), other=value)"
             )
         code.writeline("else: ")
         with code.indent():
