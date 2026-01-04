@@ -280,7 +280,6 @@ def nansum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 
 def nansum(inp, dim=None, keepdim=False, *, dtype=None):
-    print("GEMS NANSUM")
     logger.debug("GEMS NANSUM")
     if dim is None:
         return nansum_comm(inp, dtype=dtype)
@@ -289,7 +288,6 @@ def nansum(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def nansum_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    print("GEMS NANSUM_OUT")
     logger.debug("GEMS NANSUM_OUT")
     if dim is None:
         return nansum_comm(inp, dtype=dtype, out=out)
