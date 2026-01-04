@@ -29,12 +29,12 @@ on:
       - 'Makefile'
 
 jobs:
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      run_ci: ${{ steps.filter.outputs.run_ci }}
+  build-C-extension:
+    runs-on: cpp
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -42,20 +42,14 @@ jobs:
             run_ci:
               - '!src/flag_gems/experimental_ops/**'
 
-  build-C-extension:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_ci == 'true'
-    runs-on: cpp
-
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Build FlagGems with C-extension
+        if: steps.filter.outputs.run_ci == 'true'
         shell: bash
         run: |
           SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
 
       - name: Run FlagGems CTests
+        if: steps.filter.outputs.run_ci == 'true'
         shell: bash
         run: |
           cd build/cpython-311/ctests

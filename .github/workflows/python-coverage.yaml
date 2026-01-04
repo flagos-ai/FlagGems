@@ -31,70 +31,43 @@ on:
       - '**.yaml'
 
 jobs:
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      run_ci: ${{ steps.filter.outputs.run_ci }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            run_ci:
-              - '!src/flag_gems/experimental_ops/**'
-
   blas-op-test:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_ci == 'true'
     concurrency:
       group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/blas-op-test.yaml
 
   model-test:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_ci == 'true'
     concurrency:
       group: model-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/model-test.yaml
 
   op-test-quick-cpu:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_ci == 'true'
     concurrency:
       group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/op-test-quick-cpu.yaml
 
   op-utils-test:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_ci == 'true'
     concurrency:
       group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/op-utils-test.yaml
 
   pointwise-op-test:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_ci == 'true'
     concurrency:
       group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/pointwise-op-test.yaml
 
   reduction-op-test:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_ci == 'true'
     concurrency:
       group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/reduction-op-test.yaml
 
   special-op-test:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.run_ci == 'true'
     concurrency:
       group: special-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -105,13 +78,20 @@ jobs:
       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     runs-on: cpu
-    needs: [detect-changes, blas-op-test, model-test, op-test-quick-cpu, op-utils-test, pointwise-op-test, reduction-op-test, special-op-test]
-    if: needs.detect-changes.outputs.run_ci == 'true'
+    needs: [blas-op-test, model-test, op-test-quick-cpu, op-utils-test, pointwise-op-test, reduction-op-test, special-op-test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            run_ci:
+              - '!src/flag_gems/experimental_ops/**'
+
       - name: Get python coverage
+        if: steps.filter.outputs.run_ci == 'true'
         shell: bash
         run: |
           echo "current dir: $(pwd)"
@@ -127,6 +107,7 @@ jobs:
           bash tools/code_coverage/coverage.sh ${PR_ID}
 
       - name: Report python coverage
+        if: steps.filter.outputs.run_ci == 'true'
         shell: bash
         run: |
           git config --global --add safe.directory ../FlagGems
