@@ -3,18 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close
-except ImportError:
-    # Fallback values when running outside pytest
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest
 import torch
 import triton
@@ -23,6 +11,17 @@ import flag_gems
 from flag_gems.experimental_ops._reshape_alias import (
     _reshape_alias as gems__reshape_alias,
 )
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+try:
+    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+except ImportError:
+    # Fallback values when running outside pytest
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
 
 
 @pytest.mark.reshape_alias
@@ -81,8 +80,6 @@ def test__reshape_alias_tensor(shape, dtype, case):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("case", ["identity", "flatten", "reshape2d", "permute"])
 def test__reshape_alias_benchmark_tensor(shape, dtype, case):
-    import torch.utils.benchmark as benchmark
-
     quantiles = [0.5, 0.2, 0.8]
 
     def test_contiguous_strides_for(sz):

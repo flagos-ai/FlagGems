@@ -1,12 +1,20 @@
-# RELU operator test
+# ABSOLUTE operator test
 
 import os
 import sys
 
+import pytest
+import torch
+import triton
+
+import flag_gems
+from flag_gems.experimental_ops.absolute import absolute as gems_absolute
+from flag_gems.experimental_ops.absolute import absolute_out as gems_absolute_out
+
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
 
@@ -15,83 +23,82 @@ except ImportError:
         torch.testing.assert_close(res, ref, **kwargs)
 
 
-import pytest
-import torch
-import triton
-
-import flag_gems
-from flag_gems.experimental_ops.relu import relu as gems_relu
-from flag_gems.experimental_ops.relu import relu_out as gems_relu_out
-
-
-@pytest.mark.relu
+@pytest.mark.absolute
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test_relu_tensor(shape, dtype):
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
-    ref_out = torch.ops.aten.relu(ref_x)
+def test_absolute_tensor(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = inp.clone()
+
+    ref_out = torch.ops.aten.absolute(ref_inp)
+
     with flag_gems.use_gems():
-        act_out = gems_relu(x)
+        act_out = gems_absolute(inp)
+
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
-@pytest.mark.relu
+@pytest.mark.absolute
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test_relu_out(shape, dtype):
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
-    ref_out_buf = torch.empty_like(ref_x)
-    act_out_buf = torch.empty_like(x)
-    ref_out = torch.ops.aten.relu.out(ref_x, out=ref_out_buf)
+def test_absolute_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = inp.clone()
+
+    ref_out_buf = torch.empty_like(ref_inp)
+    act_out_buf = torch.empty_like(inp)
+
+    ref_out = torch.ops.aten.absolute.out(ref_inp, out=ref_out_buf)
+
     with flag_gems.use_gems():
-        act_out = gems_relu_out(x, act_out_buf)
+        act_out = gems_absolute_out(inp, act_out_buf)
+
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
-@pytest.mark.relu
+@pytest.mark.absolute
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test_relu_benchmark_tensor(shape, dtype):
-    import torch.utils.benchmark as benchmark
-
+def test_absolute_benchmark_tensor(shape, dtype):
     quantiles = [0.5, 0.2, 0.8]
 
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = inp.clone()
+
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.relu(ref_x), rep=100, quantiles=quantiles
+        lambda: torch.ops.aten.absolute(ref_inp), rep=100, quantiles=quantiles
     )
 
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_relu(x), rep=100, quantiles=quantiles
+            lambda: gems_absolute(inp), rep=100, quantiles=quantiles
         )
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
 
-    print(f"relu {shape} {dtype}:")
+    print(f"absolute {shape} {dtype}:")
     print(f"  FlagGems: {ms_triton:.3f}ms")
     print(f"  Speedup: {speedup:.2f}x")
 
 
-@pytest.mark.relu
+@pytest.mark.absolute
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test_relu_benchmark_out(shape, dtype):
+def test_absolute_benchmark_out(shape, dtype):
     quantiles = [0.5, 0.2, 0.8]
 
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
-    ref_out_buf = torch.empty_like(ref_x)
-    act_out_buf = torch.empty_like(x)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = inp.clone()
+
+    ref_out_buf = torch.empty_like(ref_inp)
+    act_out_buf = torch.empty_like(inp)
+
     # PyTorch reference implementation
     ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.relu.out(ref_x, out=ref_out_buf),
+        lambda: torch.ops.aten.absolute.out(ref_inp, out=ref_out_buf),
         rep=100,
         quantiles=quantiles,
     )
@@ -99,12 +106,12 @@ def test_relu_benchmark_out(shape, dtype):
     # Triton implementation
     with flag_gems.use_gems():
         ms_triton, _, _ = triton.testing.do_bench(
-            lambda: gems_relu_out(x, act_out_buf), rep=100, quantiles=quantiles
+            lambda: gems_absolute_out(inp, act_out_buf), rep=100, quantiles=quantiles
         )
 
     # Calculate speedup and return result
     speedup = ms_torch / ms_triton
 
-    print(f"relu {shape} {dtype}:")
+    print(f"absolute {shape} {dtype}:")
     print(f"  FlagGems: {ms_triton:.3f}ms")
     print(f"  Speedup: {speedup:.2f}x")
