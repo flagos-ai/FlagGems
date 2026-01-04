@@ -141,6 +141,7 @@ from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
+from flag_gems.ops.nansum import nansum, nansum_out
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.nllloss import (
@@ -413,6 +414,8 @@ __all__ = [
     "multinomial",
     "mv",
     "nan_to_num",
+    "nansum",
+    "nansum_out",
     "ne",
     "ne_scalar",
     "neg",
