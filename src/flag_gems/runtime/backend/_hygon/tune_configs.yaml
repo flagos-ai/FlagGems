@@ -8,12 +8,13 @@ attention:
     num_warps: warps
     num_stages: stages
   block_m:
-  - 64
-  - 128
-  block_n:
   - 32
   - 64
   - 128
+  block_n:
+  - 16
+  # - 64
+  # - 128
   pre_load_v:
   - true
   - false

@@ -1,5 +1,13 @@
 from .all import all, all_dim, all_dims
 from .any import any, any_dim, any_dims
+from .attention import (
+    ScaleDotProductAttention,
+    flash_attention_forward,
+    flash_attn_varlen_func,
+    scaled_dot_product_attention,
+    scaled_dot_product_attention_backward,
+    scaled_dot_product_attention_forward,
+)
 from .div import (
     div_mode,
     div_mode_,
@@ -59,4 +67,10 @@ __all__ = [
     "randperm",
     "sort",
     "sort_stable",
+    "flash_attention_forward",
+    "flash_attn_varlen_func",
+    "scaled_dot_product_attention",
+    "scaled_dot_product_attention_forward",
+    "scaled_dot_product_attention_backward",
+    "ScaleDotProductAttention",
 ]
