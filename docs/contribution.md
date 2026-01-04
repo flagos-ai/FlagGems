@@ -1,13 +1,16 @@
 # FlagGems Code Contribution
 
-In pull requests, contributor should describe what changed and why. Please also provide test cases if applicable.
-Pull requests require approvals from **one member** before merging. Additionally, they must pass continuous integration checks.
+In pull requests, contributor should describe what changed and why.
+Please also provide test cases if applicable.
+Pull requests require approvals from **one member** before merging.
+Additionally, they must pass continuous integration checks.
 
 Currently, continuous integration checks include four pipelines:
 
 ## Code Format Check
 
-Using pre-commit git hooks with FlagGems, you can format source Python code and perform basic code pre-checks when calling the git commit command
+Using pre-commit git hooks with FlagGems, you can format source Python code and perform basic code pre-checks
+when calling the git commit command
 
 ```bash
 pip install pre-commit
@@ -17,7 +20,9 @@ pre-commit
 
 ## Op Unit Test
 
-Operator Unit Tests check the correctness of operators. If new operators are added, you need to add test cases in the corresponding file under the `tests` directory. If new test files are added, you should also add the test commands to the `cmd` variable in the `tools/coverage.sh` file.
+The unit tests check the correctness of operators.
+When adding new operators, you need to add test cases in the corresponding file under the `tests` directory.
+If new test files are added, you should also add the test commands to the `cmd` variable in the `tools/coverage.sh` file.
 
 For operator testing, decorate `@pytest.mark.{OP_NAME}` before the test function so that we can run the unit test function of the specified OP through `pytest -m`.
 
