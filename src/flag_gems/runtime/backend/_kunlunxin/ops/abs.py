@@ -16,6 +16,7 @@ def abs_func(x):
 
 def abs(A):
     logger.debug("GEMS ABS")
+    logger.debug("GEMS ABS")
     return abs_func(A)
 
 
