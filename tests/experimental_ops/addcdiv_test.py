@@ -12,7 +12,7 @@ from flag_gems.experimental_ops.addcdiv import addcdiv as gems_addcdiv
 from flag_gems.experimental_ops.addcdiv import addcdiv_out as gems_addcdiv_out
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from tests.accuracy_utils import gems_assert_close  # noqa: E402
 except ImportError:
