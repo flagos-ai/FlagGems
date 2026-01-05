@@ -160,8 +160,9 @@ def grid_sampler_2d_fwd_kernel(
 
     # Load Grid (x, y) - Grid is usually (N, H, W, 2)
     # PyTorch grid is (x, y) where x=width, y=height
-    gx = tl.load(grid_ptr + grid_offset + 0 * stride_grid_c)
-    gy = tl.load(grid_ptr + grid_offset + 1 * stride_grid_c)
+    # Convert to float32 for math operations (tl.floor, libdevice.nearbyint require fp32/fp64)
+    gx = tl.load(grid_ptr + grid_offset + 0 * stride_grid_c).to(tl.float32)
+    gy = tl.load(grid_ptr + grid_offset + 1 * stride_grid_c).to(tl.float32)
 
     # Transform coordinates
     ix = get_position(gx, w_in, align_corners)
@@ -384,9 +385,10 @@ def grid_sampler_2d_bwd_kernel(
         return
 
     # Load Grid coordinates
+    # Convert to float32 for math operations (tl.floor, libdevice.nearbyint require fp32/fp64)
     grid_offset = n_idx * stride_grid_n + h_idx * stride_grid_h + w_idx * stride_grid_w
-    gx = tl.load(grid_ptr + grid_offset + 0 * stride_grid_c)
-    gy = tl.load(grid_ptr + grid_offset + 1 * stride_grid_c)
+    gx = tl.load(grid_ptr + grid_offset + 0 * stride_grid_c).to(tl.float32)
+    gy = tl.load(grid_ptr + grid_offset + 1 * stride_grid_c).to(tl.float32)
 
     # 1. Compute Coordinates
     ix = get_position(gx, w_in, align_corners)
