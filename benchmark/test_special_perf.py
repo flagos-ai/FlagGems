@@ -631,9 +631,10 @@ def test_perf_moe_align_block_size():
     bench.set_gems(gems_op)
     bench.run()
 
+
 class GridSampleBenchmark(GenericBenchmark):
     """Custom benchmark class for grid_sampler_2d operation."""
-    
+
     # Custom shapes for grid_sample: (N, C, H_in, W_in, H_out, W_out)
     GRID_SAMPLE_SHAPES = [
         (1, 16, 64, 64, 64, 64),
@@ -651,6 +652,7 @@ class GridSampleBenchmark(GenericBenchmark):
     def init_user_config(self):
         """Override to use custom shapes instead of loading from yaml."""
         from .performance_utils import Config
+
         self.mode = Config.mode
         self.set_dtypes(Config.user_desired_dtypes)
         self.set_metrics(Config.user_desired_metrics)
@@ -673,9 +675,13 @@ class GridSampleBenchmark(GenericBenchmark):
         ]
 
 
-def grid_sampler_2d_wrapper(input, grid, interpolation_mode, padding_mode, align_corners):
+def grid_sampler_2d_wrapper(
+    input, grid, interpolation_mode, padding_mode, align_corners
+):
     """Wrapper to match torch.ops.aten.grid_sampler_2d signature."""
-    return torch.ops.aten.grid_sampler_2d(input, grid, interpolation_mode, padding_mode, align_corners)
+    return torch.ops.aten.grid_sampler_2d(
+        input, grid, interpolation_mode, padding_mode, align_corners
+    )
 
 
 @pytest.mark.grid_sample
@@ -710,8 +716,16 @@ def test_perf_grid_sample_backward():
 
     def grid_sample_backward_input_fn(shape, dtype, device):
         N, C, H_in, W_in, H_out, W_out = shape
-        x = torch.randn(N, C, H_in, W_in, device=device, dtype=dtype, requires_grad=True)
-        grid = torch.rand(N, H_out, W_out, 2, device=device, dtype=dtype, requires_grad=True) * 2 - 1
+        x = torch.randn(
+            N, C, H_in, W_in, device=device, dtype=dtype, requires_grad=True
+        )
+        grid = (
+            torch.rand(
+                N, H_out, W_out, 2, device=device, dtype=dtype, requires_grad=True
+            )
+            * 2
+            - 1
+        )
         # Use positional args for backward benchmark so that requires_grad tensors are in args
         yield x, grid, 0, 0, False  # input, grid, interpolation_mode, padding_mode, align_corners
 

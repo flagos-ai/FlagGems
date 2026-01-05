@@ -1509,7 +1509,9 @@ def test_accuracy_grid_sample(shape, mode, padding_mode, align_corners, dtype):
 
 
 @pytest.mark.grid_sample
-@pytest.mark.parametrize("shape", GRID_SAMPLE_SHAPES[:3])  # Use fewer shapes for backward
+@pytest.mark.parametrize(
+    "shape", GRID_SAMPLE_SHAPES[:3]
+)  # Use fewer shapes for backward
 @pytest.mark.parametrize("mode", ["bilinear"])  # Nearest has no grid gradient
 @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
 @pytest.mark.parametrize("align_corners", [True, False])
@@ -1526,9 +1528,7 @@ def test_accuracy_grid_sample_backward(shape, mode, padding_mode, align_corners,
     ref_inp = inp.clone().detach().requires_grad_(True)
 
     # Grid (requires grad)
-    grid = (
-        torch.rand(N, H_out, W_out, 2, dtype=dtype, device=flag_gems.device) * 2 - 1
-    )
+    grid = torch.rand(N, H_out, W_out, 2, dtype=dtype, device=flag_gems.device) * 2 - 1
     grid.requires_grad = True
     ref_grid = grid.clone().detach().requires_grad_(True)
 
