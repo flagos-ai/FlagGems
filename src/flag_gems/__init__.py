@@ -11,6 +11,7 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
+from flag_gems.ops.log10 import log10  # noqa: F401
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
@@ -210,6 +211,7 @@ def enable(
             ("linalg_vector_norm", vector_norm),
             ("linspace", linspace),
             ("log", log),
+            ("log10", log10),
             ("log_sigmoid", log_sigmoid),
             ("logical_and", logical_and),
             ("logical_not", logical_not),
