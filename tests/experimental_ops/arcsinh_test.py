@@ -11,7 +11,7 @@ from flag_gems.experimental_ops.arcsinh import arcsinh as gems_arcsinh
 from flag_gems.experimental_ops.arcsinh import arcsinh_out as gems_arcsinh_out
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:
