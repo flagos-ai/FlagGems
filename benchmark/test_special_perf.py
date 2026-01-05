@@ -70,7 +70,7 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
@@ -94,7 +94,7 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
@@ -110,7 +110,7 @@ def test_perf_unique():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.sort
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
@@ -216,7 +216,7 @@ def test_perf_embedding():
     bench.run()
 
 
-@pytest.mark.embedding_backward
+@pytest.mark.embedding
 def test_perf_embedding_backward():
     bench = EmbeddingBenchmark(
         input_fn=embedding_backward_input_fn,
@@ -559,5 +559,74 @@ def test_perf_moe_sum():
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
+    bench.set_gems(gems_op)
+    bench.run()
+
+
+try:
+    import os
+
+    os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
+    import vllm._custom_ops as vllm_ops
+
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
+def test_perf_moe_align_block_size():
+    def moe_align_block_size_input_fn(shape, dtype, device):
+        # ------------ parameters ------------
+        num_experts = shape[0]
+        block_size = shape[1]
+        dtype = torch.int32
+        topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device=device)
+        max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+
+        # padded_num_experts in vllm._custom_ops.moe_align_block_size
+        # must be less than 1024
+        if max_num_tokens_padded >= 1024:
+            return
+
+        sorted_ids = torch.empty((max_num_tokens_padded,), dtype=dtype, device=device)
+        max_num_m_blocks = max_num_tokens_padded // block_size
+        expert_ids = torch.empty((max_num_m_blocks,), dtype=dtype, device=device)
+        num_tokens_post_pad = torch.empty(1, dtype=dtype, device=device)
+
+        yield (
+            topk_ids,
+            num_experts,
+            block_size,
+            sorted_ids,
+            expert_ids,
+            num_tokens_post_pad,
+        )
+
+    class MoeAlignBlockSizeBenchmark(GenericBenchmark2DOnly):
+        def set_more_shapes(self):
+            return [
+                (16, 8),
+                (16, 16),
+                (16, 32),
+                (32, 8),
+                (32, 16),
+                (32, 32),
+                (64, 8),
+                (64, 16),
+                (128, 8),
+            ]
+
+    gems_op = flag_gems.moe_align_block_size_triton
+    bench = MoeAlignBlockSizeBenchmark(
+        op_name="moe_align_block_size_triton",
+        input_fn=moe_align_block_size_input_fn,
+        torch_op=vllm_ops.moe_align_block_size,
+        dtypes=[
+            torch.int32,
+        ],
+    )
+
     bench.set_gems(gems_op)
     bench.run()

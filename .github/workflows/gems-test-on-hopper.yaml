@@ -15,6 +15,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
+      - '!src/flag_gems/experimental_ops/**'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -29,6 +30,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
+      - '!src/flag_gems/experimental_ops/**'
 
 env:
   CUDA_VISIBLE_DEVICES: 7

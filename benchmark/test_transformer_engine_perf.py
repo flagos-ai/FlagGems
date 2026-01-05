@@ -85,9 +85,9 @@ glu_forward_ops = [
 ]
 
 glu_backward_ops = [
-    ("dgeglu", "dgeglu", FLOAT_DTYPES),
-    ("dswiglu", "dswiglu", FLOAT_DTYPES),
-    ("dreglu", "dreglu", FLOAT_DTYPES),
+    ("dgeglu", "dgeglu", FLOAT_DTYPES, "geglu"),
+    ("dswiglu", "dswiglu", FLOAT_DTYPES, "swiglu"),
+    ("dreglu", "dreglu", FLOAT_DTYPES, "reglu"),
 ]
 
 
@@ -132,9 +132,9 @@ def test_tex_glu_forward_perf(op_name, tex_attr_name, dtypes):
             name,
             tex_attr,
             dtype,
-            marks=getattr(pytest.mark, name, None),
+            marks=getattr(pytest.mark, op_name, None),
         )
-        for name, tex_attr, dtype in glu_backward_ops
+        for name, tex_attr, dtype, op_name in glu_backward_ops
     ],
 )
 def test_tex_glu_backward_perf(op_name, tex_attr_name, dtypes):

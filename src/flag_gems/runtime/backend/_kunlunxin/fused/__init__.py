@@ -2,10 +2,12 @@ from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
 from .flash_mla import flash_mla
 from .fused_add_rms_norm import fused_add_rms_norm
+from .geglu import dgeglu, geglu
 from .gelu_and_mul import gelu_and_mul
 from .instance_norm import instance_norm
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
 from .outer import outer
+from .reglu import dreglu, reglu
 from .reshape_and_cache import reshape_and_cache
 from .reshape_and_cache_flash import reshape_and_cache_flash
 from .rotary_embedding import apply_rotary_pos_emb
@@ -22,6 +24,8 @@ __all__ = [
     "fused_add_rms_norm",
     "silu_and_mul",
     "silu_and_mul_out",
+    "geglu",
+    "dgeglu",
     "gelu_and_mul",
     "cross_entropy_loss",
     "outer",
@@ -36,4 +40,6 @@ __all__ = [
     "topk_softmax",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
+    "dreglu",
+    "reglu",
 ]

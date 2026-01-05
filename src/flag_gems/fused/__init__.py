@@ -1,5 +1,7 @@
+from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
+from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.geglu import dgeglu, geglu
@@ -23,6 +25,7 @@ from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
+    "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "skip_layer_norm",
     "fused_add_rms_norm",
@@ -47,4 +50,5 @@ __all__ = [
     "rwkv_mm_sparsity",
     "dreglu",
     "reglu",
+    "cutlass_scaled_mm",
 ]

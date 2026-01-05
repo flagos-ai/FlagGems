@@ -6,6 +6,7 @@ from packaging import version
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list
+from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
@@ -13,7 +14,7 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
-__version__ = "4.1"
+__version__ = "4.2.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -51,16 +52,17 @@ def enable(
             ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
             ("_weight_norm_interface", weight_norm_interface),
             ("_weight_norm_interface_backward", weight_norm_interface_backward),
-            ("moe_sum", moe_sum),
             ("abs", abs),
             ("abs_", abs_),
             ("add.Tensor", add),
             ("add_.Tensor", add_),
             ("addcdiv", addcdiv),
+            ("addcmul", addcmul),
             ("addmv", addmv),
             ("addmv.out", addmv_out),
             ("addmm", addmm),
             ("addmm.out", addmm_out),
+            ("addr", addr),
             ("all", all),
             ("all.dim", all_dim),
             ("all.dims", all_dims),
@@ -106,6 +108,12 @@ def enable(
             ("clamp_min_", clamp_min_),
             ("constant_pad_nd", constant_pad_nd),
             # ("contiguous", contiguous),
+            ("conv1d", conv1d),
+            ("conv1d.padding", conv1d),
+            ("conv2d", conv2d),
+            ("conv2d.padding", conv2d),
+            ("conv3d", conv3d),
+            ("conv3d.padding", conv3d),
             (
                 "copy_",
                 copy_,
@@ -113,8 +121,6 @@ def enable(
             ),
             ("cos", cos),
             ("cos_", cos_),
-            ("tan", tan),
-            ("tan_", tan_),
             ("count_nonzero", count_nonzero),
             ("cummax", cummax),
             ("cummin", cummin),
@@ -216,6 +222,8 @@ def enable(
             ("masked_fill.Tensor", masked_fill),
             ("masked_fill_.Scalar", masked_fill_),
             ("masked_fill_.Tensor", masked_fill_),
+            ("masked_scatter", masked_scatter),
+            ("masked_scatter_", masked_scatter_),
             ("masked_select", masked_select),
             ("max", max),
             ("max.dim", max_dim),
@@ -229,6 +237,7 @@ def enable(
             ("minimum", minimum),
             ("mm", mm),
             ("mm.out", mm_out),
+            ("moe_sum", moe_sum),
             ("mse_loss", mse_loss),
             ("mul.Tensor", mul),
             ("mul_.Tensor", mul_),
@@ -266,7 +275,6 @@ def enable(
             ("pow_.Tensor", pow_tensor_tensor_),
             ("prod", prod),
             ("prod.dim_int", prod_dim),
-            ("per_token_group_quant_fp8", per_token_group_quant_fp8),
             ("quantile", quantile),
             ("rand", rand),
             ("rand_like", rand_like),
@@ -277,8 +285,6 @@ def enable(
             ("reciprocal_", reciprocal_),
             ("relu", relu),
             ("relu_", relu_),
-            ("addcmul", addcmul),
-            ("softplus", softplus),
             ("remainder.Scalar", remainder),
             ("remainder.Scalar_Tensor", remainder),
             ("remainder.Tensor", remainder),
@@ -291,14 +297,15 @@ def enable(
             ("resolve_conj", resolve_conj),
             ("resolve_neg", resolve_neg),
             ("rms_norm", rms_norm),
-            ("sqrt", sqrt),
-            ("sqrt_", sqrt_),
             ("rsqrt", rsqrt),
             ("rsqrt_", rsqrt_),
+            ("scaled_softmax_backward", scaled_softmax_backward),
+            ("scaled_softmax_forward", scaled_softmax_forward),
             ("scatter.reduce", scatter),
             ("scatter.src", scatter),
             ("scatter_.reduce", scatter_),
             ("scatter_.src", scatter_),
+            ("scatter_add_", scatter_add_),
             ("select_scatter", select_scatter),
             ("sigmoid", sigmoid),
             ("sigmoid_", sigmoid_),
@@ -309,8 +316,11 @@ def enable(
             ("sin", sin),
             ("sin_", sin_),
             ("slice_scatter", slice_scatter),
+            ("softplus", softplus),
             ("sort", sort),
             ("sort.stable", sort_stable),
+            ("sqrt", sqrt),
+            ("sqrt_", sqrt_),
             ("stack", stack),
             ("std.correction", std),
             ("sub.Tensor", sub),
@@ -319,6 +329,8 @@ def enable(
             ("sum.dim_IntList", sum_dim),
             ("sum.IntList_out", sum_dim_out),
             ("sum.out", sum_out),
+            ("tan", tan),
+            ("tan_", tan_),
             ("tanh", tanh),
             ("tanh_", tanh_),
             ("tanh_backward", tanh_backward),
@@ -336,7 +348,6 @@ def enable(
             ("upsample_nearest2d", upsample_nearest2d),
             ("var_mean.correction", var_mean),
             ("vdot", vdot),
-            ("addr", addr),
             ("vstack", vstack),
             ("where.ScalarOther", where_scalar_other),
             ("where.ScalarSelf", where_scalar_self),
@@ -344,16 +355,6 @@ def enable(
             ("where.self_out", where_self_out),
             ("zeros", zeros),
             ("zeros_like", zeros_like),
-            ("dreglu", dreglu),
-            ("reglu", reglu),
-            ("scaled_softmax_forward", scaled_softmax_forward),
-            ("scaled_softmax_backward", scaled_softmax_backward),
-            ("conv1d", conv1d),
-            ("conv2d", conv2d),
-            ("conv3d", conv3d),
-            ("conv1d.padding", conv1d),
-            ("conv2d.padding", conv2d),
-            ("conv3d.padding", conv3d),
         ),
         user_unused_ops_list=list(set(unused or [])),
         cpp_patched_ops_list=list(set(aten_patch_list)),
@@ -393,6 +394,12 @@ class use_gems:
             for handler in logging.root.handlers[:]:
                 logging.root.removeHandler(handler)
             logging.basicConfig(level=logging.INFO)
+
+    @property
+    def experimental_ops(self):
+        import flag_gems.experimental_ops
+
+        return flag_gems.experimental_ops
 
 
 def all_ops():

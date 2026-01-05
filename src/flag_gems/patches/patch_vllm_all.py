@@ -286,6 +286,17 @@ def custom_topk_softmax(
     )
 
 
+def custom_apply_repetition_penalties(
+    logits: torch.Tensor,
+    prompt_mask: torch.Tensor,
+    output_mask: torch.Tensor,
+    repetition_penalties: torch.Tensor,
+):
+    return flag_gems.apply_repetition_penalties(
+        logits, prompt_mask, output_mask, repetition_penalties
+    )
+
+
 def custom_get_scheduler_metadata(
     batch_size: int,
     max_seqlen_q: int,
@@ -338,8 +349,46 @@ def custom_get_scheduler_metadata(
     )
 
 
+def custom_per_token_group_fp8_quant(
+    input: torch.Tensor,
+    output_q: torch.Tensor,
+    output_s: torch.Tensor,
+    group_size: int,
+    eps: float,
+    fp8_min: float,
+    fp8_max: float,
+    scale_ue8m0: bool = False,
+):
+    from flag_gems.ops import per_token_group_quant_fp8
+
+    column_major_scales = output_s.stride(0) < output_s.stride(1)
+
+    x_q, x_s = per_token_group_quant_fp8(
+        x=input,
+        group_size=group_size,
+        eps=eps,
+        column_major_scales=column_major_scales,
+        scale_ue8m0=scale_ue8m0,
+    )
+
+    output_q.copy_(x_q)
+    output_s.copy_(x_s)
+
+
+def custom_cutlass_scaled_mm(
+    output: torch.Tensor,
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    bias: torch.Tensor | None = None,
+):
+    return flag_gems.cutlass_scaled_mm(output, input, weight, scale_a, scale_b, bias)
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
+    import vllm._custom_ops as ops  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
@@ -365,6 +414,7 @@ def apply_gems_patches_to_vllm(verbose=True):
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward, verbose
     )
     patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
+    patch_vllm_lib("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm, "CUDA", verbose)
     patch_vllm_lib(
         "_moe_C", "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
     )
@@ -373,6 +423,20 @@ def apply_gems_patches_to_vllm(verbose=True):
         "_vllm_fa3_C",
         "get_scheduler_metadata",
         custom_get_scheduler_metadata,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib(
+        "_C",
+        "per_token_group_fp8_quant",
+        custom_per_token_group_fp8_quant,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib(
+        "_C",
+        "apply_repetition_penalties_",
+        custom_apply_repetition_penalties,
         "CUDA",
         verbose,
     )
