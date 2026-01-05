@@ -9,18 +9,13 @@ from benchmark.conftest import Config
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 from flag_gems.utils import shape_utils
 
-def _inject_nans_(t: torch.Tensor) -> torch.Tensor:
+def _inject_nans_(t: torch.Tensor, ratio: float = 0.2) -> torch.Tensor:
     if not t.is_floating_point():
         return t
-    flat = t.view(-1)
-    if flat.numel() == 0:
+    if t.numel() == 0:
         return t
-    step = max(1, flat.numel() // 8)
-    flat[0] = float("nan")
-    flat[::step] = float("nan")
-    # Ensure at least one non-nan value
-    if flat.numel() > 1:
-        flat[1] = 0.0
+    mask = torch.rand_like(t) < ratio
+    t[mask] = float("nan")
     return t
 
 
