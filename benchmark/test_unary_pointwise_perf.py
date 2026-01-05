@@ -164,7 +164,7 @@ backward_operations = [
             name,
             op,
             dtype,
-            marks=getattr(pytest.mark, name + "_backward", None),
+            marks=getattr(pytest.mark, name, None),
         )
         for name, op, dtype in backward_operations
     ],
