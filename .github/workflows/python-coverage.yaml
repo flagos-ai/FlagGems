@@ -84,14 +84,15 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: dorny/paths-filter@v3
-        id: filter
+        id: experimental_ops
         with:
           filters: |
             run_ci:
               - '!src/flag_gems/experimental_ops/**'
+              - '!tests/experimental_ops/**'
 
       - name: Get python coverage
-        if: steps.filter.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           echo "current dir: $(pwd)"
@@ -107,7 +108,7 @@ jobs:
           bash tools/code_coverage/coverage.sh ${PR_ID}
 
       - name: Report python coverage
-        if: steps.filter.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           git config --global --add safe.directory ../FlagGems
