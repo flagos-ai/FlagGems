@@ -64,7 +64,6 @@ def _attn_fwd_inner(
     # loop over key, value and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
         kv_load_mask = (start_n + offs_n) < KV_CTX
-        # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         key = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
         if PRE_LOAD_V:
@@ -458,23 +457,23 @@ def _attn_bwd_dq(
     dq,
     query,
     K,
-    V,  #
+    V,
     do,
     m,
     D,
     # shared by Q/K/V/DO.
     stride_tok,
-    stride_d,  #
+    stride_d,
     H,
-    Q_CTX,  #
-    KV_CTX,  #
-    BLOCK_M2: tl.constexpr,  #
-    BLOCK_N2: tl.constexpr,  #
+    Q_CTX,
+    KV_CTX,
+    BLOCK_M2: tl.constexpr,
+    BLOCK_N2: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     # Filled in by the wrapper.
     start_m,
     start_n,
-    num_steps,  #
+    num_steps,
     MASK: tl.constexpr,
 ):
     offs_m = start_m + tl.arange(0, BLOCK_M2)
@@ -661,7 +660,6 @@ def _attn_bwd(
             num_steps,  #
             MASK=False,  #
         )
-    # tl.device_print("dv: ", dv)
 
     dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
     tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
@@ -954,8 +952,6 @@ def scaled_dot_product_attention_backward(
         else 128
     )
     grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
-    # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
-    # logger.info(f"{M.shape=}")
 
     _attn_bwd[grid](
         query,
