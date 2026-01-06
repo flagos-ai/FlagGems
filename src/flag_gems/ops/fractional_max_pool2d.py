@@ -9,8 +9,6 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
-TORCH_FALLBACK_ELEMS = 65536
-
 
 def fractional_max_pool2d_output_size(
     in_size: int,
@@ -307,21 +305,6 @@ def fractional_max_pool2d(
         output = torch.empty((in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype)
         indices = torch.empty((in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int64)
         return output, indices
-
-    out_elements = in_n * in_c * out_h * out_w
-    if out_elements <= TORCH_FALLBACK_ELEMS:
-        torch_samples = _normalize_random_samples(random_samples, input.dtype)
-        if torch.any((torch_samples < 0.0) | (torch_samples > 1.0)):
-            raise ValueError("random_samples values must be in [0, 1]")
-        torch_samples = torch_samples.contiguous()
-        out, idx = torch.nn.functional.fractional_max_pool2d(
-            input,
-            kernel_size=kernel_size,
-            output_size=(out_h, out_w),
-            _random_samples=torch_samples,
-            return_indices=True,
-        )
-        return out, idx
 
     random_samples = _normalize_random_samples(random_samples, torch.float64)
     if torch.any((random_samples < 0.0) | (random_samples >= 1.0)):
