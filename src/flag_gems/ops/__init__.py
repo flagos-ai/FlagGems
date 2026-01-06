@@ -216,6 +216,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.triu import triu
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
+from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.var_mean import var_mean
@@ -514,6 +515,7 @@ __all__ = [
     "true_divide_out",
     "true_divide_",
     "uniform_",
+    "unique_consecutive",
     "upsample_nearest2d",
     "var_mean",
     "vdot",

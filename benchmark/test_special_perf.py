@@ -266,7 +266,29 @@ def test_perf_unique():
     bench.run()
 
 
-# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.unique_consecutive
+def test_perf_unique_consecutive():
+    def unique_consecutive_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        return_inverse = random.choice([True, False])
+        return_counts = random.choice([True, False])
+        dim = random.choice([None, 0])
+        yield inp, {
+            "return_inverse": return_inverse,
+            "return_counts": return_counts,
+            "dim": dim,
+        },
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=unique_consecutive_input_fn,
+        op_name="unique_consecutive",
+        torch_op=torch.unique_consecutive,
+        dtypes=INT_DTYPES + FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.sort
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
