@@ -211,6 +211,8 @@ def enable(
             ("linalg_vector_norm", vector_norm),
             ("linspace", linspace),
             ("log", log),
+            ("log10", log10),
+            ("log10_", log10_),
             ("log_sigmoid", log_sigmoid),
             ("logical_and", logical_and),
             ("logical_not", logical_not),

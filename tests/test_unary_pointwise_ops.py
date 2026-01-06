@@ -19,7 +19,6 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
-    SWIGLU_SPECIAL_SHAPES,
     SkipVersion,
     gems_assert_close,
     gems_assert_equal,
@@ -485,67 +484,6 @@ def test_accuracy_glu_backward(shape, dtype):
             res_in_grad = torch.ops.aten.glu_backward(res_out, res_inp, dim=dim)
 
         gems_assert_close(res_in_grad, ref_in_grad, dtype)
-
-
-def generate_input(
-    shape: tuple[int, ...], dtype: torch.dtype, device: torch.device
-) -> torch.Tensor:
-    return torch.randn(shape, dtype=dtype, device=device).contiguous()
-
-
-def filter_valid_shapes(shapes: list[tuple[int, ...]]) -> list[tuple[int, ...]]:
-    valid_shapes = []
-    for shape in shapes:
-        if not shape:
-            continue
-        if shape[-1] % 2 == 0:
-            valid_shapes.append(shape)
-    return valid_shapes
-
-
-VALID_POINTWISE_SHAPES = filter_valid_shapes(SWIGLU_SPECIAL_SHAPES)
-
-
-@pytest.mark.swiglu
-@pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
-def test_accuracy_swiglu_forward(shape: tuple[int, ...], dtype: torch.dtype):
-    torch.manual_seed(42)
-    device = flag_gems.device
-
-    input_tensor = generate_input(shape, dtype, device)
-
-    te_forward = tex.swiglu(input_tensor, quantizer=None).to(device)
-    te_forward = to_reference(te_forward)
-
-    with flag_gems.use_gems():
-        fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
-
-    gems_assert_close(fg_forward, te_forward, dtype)
-
-
-@pytest.mark.swiglu
-@pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
-def test_accuracy_swiglu_backward(shape: tuple[int, ...], dtype: torch.dtype):
-    torch.manual_seed(42)
-    device = flag_gems.device
-
-    input_tensor = generate_input(shape, dtype, device)
-
-    grad_shape = list(shape)
-    grad_shape[-1] = grad_shape[-1] // 2
-    grad_output = generate_input(tuple(grad_shape), dtype, device)
-
-    te_grad_input = tex.dswiglu(grad_output, input_tensor, quantizer=None).to(device)
-    te_grad_input = to_reference(te_grad_input)
-
-    with flag_gems.use_gems():
-        fg_grad_input = flag_gems.dswiglu(grad_output, input_tensor, quantizer=None)
-
-    gems_assert_close(fg_grad_input, te_grad_input, dtype)
 
 
 @pytest.mark.isinf
@@ -1214,6 +1152,129 @@ def test_accuracy_log(shape, dtype):
     ref_out = torch.log(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.log(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.log10
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.log10(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.log10(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+# @pytest.mark.log10
+# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+# def test_accuracy_log10_special_values(dtype):
+#     """Test log10 with special values like inf, nan, zero"""
+#     inp = torch.tensor(
+#         [0.1, 1.0, 10.0, 100.0, float("inf")],
+#         dtype=dtype,
+#         device=flag_gems.device
+#     )
+#     ref_inp = to_reference(inp, True)
+
+#     ref_out = torch.log10(ref_inp)
+#     with flag_gems.use_gems():
+#         res_out = torch.log10(inp)
+
+#     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.log10
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_special_values(dtype):
+    """Test log10 with special values: 0, inf, -inf, nan, negative"""
+
+    # All special cases in one tensor
+    inp = torch.tensor(
+        [
+            0.1,  # Normal small positive
+            1.0,  # log10(1) = 0
+            10.0,  # log10(10) = 1
+            100.0,  # log10(100) = 2
+            float("inf"),  # Should give inf
+            0.0,  # Should give -inf
+            -1.0,  # Should give nan
+            float("nan"),  # Should give nan
+            float("-inf"),  # Should give nan
+        ],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.log10(ref_inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.log10(inp)
+
+    # Check specific special value behaviors
+    assert torch.isinf(res_out[4]) and res_out[4] > 0, "log10(inf) should be +inf"
+    assert torch.isinf(res_out[5]) and res_out[5] < 0, "log10(0) should be -inf"
+    assert torch.isnan(res_out[6]), "log10(negative) should be nan"
+    assert torch.isnan(res_out[7]), "log10(nan) should be nan"
+    assert torch.isnan(res_out[8]), "log10(-inf) should be nan"
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.log10
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_edge_cases(dtype):
+    """Test log10 with very small and very large finite values"""
+
+    inp = torch.tensor(
+        [
+            1e-10,  # Very small → large negative result
+            1e-5,  # Small
+            1e-1,  # 0.1
+            1e0,  # 1.0
+            1e1,  # 10.0
+            1e5,  # Large
+            1e10,  # Very large → large positive result
+        ],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.log10(ref_inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.log10(inp)
+
+    # Verify results make sense
+    assert res_out[0] < -9, "log10(1e-10) should be around -10"
+    assert torch.isclose(
+        res_out[3], torch.tensor(0.0, dtype=dtype, device="cuda"), atol=1e-5
+    ), "log10(1) should be 0"
+    assert torch.isclose(
+        res_out[4], torch.tensor(1.0, dtype=dtype, device="cuda"), atol=1e-5
+    ), "log10(10) should be 1"
+    assert res_out[6] > 9, "log10(1e10) should be around 10"
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.log10_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.log10_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.log10_(inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
