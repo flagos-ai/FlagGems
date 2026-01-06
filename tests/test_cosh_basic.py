@@ -1,6 +1,7 @@
 # tests/test_cosh_basic.py
 import pytest
 import torch
+
 import flag_gems
 
 pytestmark = pytest.mark.cosh

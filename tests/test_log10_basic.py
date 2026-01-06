@@ -1,5 +1,6 @@
-import torch
 import pytest
+import torch
+
 import flag_gems
 
 pytestmark = pytest.mark.log10

@@ -1,5 +1,6 @@
 import pytest
 import torch
+
 import flag_gems
 
 pytestmark = pytest.mark.gcd

@@ -11,6 +11,10 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
+from flag_gems.ops.asinh import asinh  # noqa: F401
+from flag_gems.ops.cosh import cosh  # noqa: F401
+from flag_gems.ops.gcd import gcd  # noqa: F401
+from flag_gems.ops.leaky_relu import leaky_relu  # noqa: F401
 from flag_gems.ops.log10 import log10  # noqa: F401
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
@@ -403,6 +407,7 @@ def enable(
             ("arange.start_step", arange_start),
             ("argmax", argmax),
             ("argmin", argmin),
+            ("asinh", asinh),
             ("avg_pool2d", avg_pool2d),
             ("avg_pool2d_backward", avg_pool2d_backward),
             ("atan", atan),
@@ -447,6 +452,7 @@ def enable(
             ),
             ("cos", cos),
             ("cos_", cos_),
+            ("cosh", cosh),
             ("count_nonzero", count_nonzero),
             ("cummax", cummax),
             ("cummin", cummin),
@@ -503,6 +509,7 @@ def enable(
             ("full_like", full_like),
             ("gather", gather),
             ("gather_backward", gather_backward),
+            ("gcd", gcd),
             ("ge.Scalar", ge_scalar),
             ("ge.Tensor", ge),
             ("gelu", gelu),
@@ -529,6 +536,7 @@ def enable(
             ("kron", kron),
             ("le.Scalar", le_scalar),
             ("le.Tensor", le),
+            ("leaky_relu", leaky_relu),
             ("lerp.Scalar", lerp_scalar),
             ("lerp.Tensor", lerp_tensor),
             ("lerp_.Scalar", lerp_scalar_),
