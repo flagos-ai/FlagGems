@@ -275,6 +275,30 @@ def custom_moe_align_block_size(
     )
 
 
+def custom_moe_grouped_topk(
+    gating_output: torch.Tensor,
+    n_group: int,
+    topk_group: int,
+    topk: int,
+    renormalize: bool,
+    routed_scaling_factor: float,
+    bias: torch.Tensor,
+    scoring_func: int = 0,
+):
+    from flag_gems.fused import grouped_topk
+
+    return grouped_topk(
+        scores=gating_output,
+        n_group=n_group,
+        topk_group=topk_group,
+        topk=topk,
+        renormalize=renormalize,
+        routed_scaling_factor=routed_scaling_factor,
+        bias=bias,
+        scoring_func=scoring_func,
+    )
+
+
 def custom_topk_softmax(
     topk_weights, topk_indices, token_expert_indices, gating_output
 ):
@@ -426,6 +450,7 @@ def apply_gems_patches_to_vllm(verbose=True):
         "CUDA",
         verbose,
     )
+    patch_vllm_lib("_moe_C", "grouped_topk", custom_moe_grouped_topk, "CUDA", verbose)
     patch_vllm_lib(
         "_C",
         "per_token_group_fp8_quant",
