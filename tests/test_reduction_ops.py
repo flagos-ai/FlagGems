@@ -1766,6 +1766,44 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
 
 
 @pytest.mark.index
+@pytest.mark.parametrize(
+    "input_shape, indices_idx",
+    [
+        ((22, 22), (None, 1)),
+        ((22, 22, 22), (None, 1, None)),
+        ((22, 22, 22), (None, None, 1)),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.int64])
+def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
+    inp = torch.randint(0, 10000, input_shape, dtype=dtype, device=flag_gems.device)
+    indices = []
+    for i in indices_idx:
+        if i is None:
+            indices.append(None)
+        else:
+            indices.append(
+                torch.tensor(
+                    [random.randint(0, input_shape[0] - 1)],
+                    device=flag_gems.device,
+                    dtype=dtype,
+                )
+            )
+    print(indices)
+
+    # test aten api
+    result_ref_ = torch.ops.aten.index(inp, indices)
+    result_gems_ = flag_gems.index(inp, indices)
+    gems_assert_close(result_gems_, result_ref_, dtype)
+
+    # test input[:, tensor]
+    with flag_gems.use_gems():
+        result_gems = inp[indices]
+    result_ref = inp[indices]
+    gems_assert_close(result_gems, result_ref, dtype)
+
+
+@pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_index_boolean_mask(dtype):
     """Test boolean mask indexing"""

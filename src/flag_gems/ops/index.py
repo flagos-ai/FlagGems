@@ -399,8 +399,34 @@ def index(inp, indices):
     # Step 10: Call kernel with tensor indices
     # Note: kernel needs to handle the fact that input was potentially permuted
     # and output shape includes None dimensions
+    # Special case 1: 1D tensor with single index
     if inp.ndim == 1 and len(tensor_indices) == 1:
         return gather(inp, 0, tensor_indices[0])
+    # Special case 2: others
+    elif len(tensor_indices) == 1:
+        # find tensor index in indices
+        dim = None
+        for i, idx in enumerate(indices):
+            if idx is not None:
+                dim = i
+                break
+
+        # check dim
+        if dim is None:
+            raise ValueError("No valid dimension found for tensor index")
+
+        position = tensor_indices[0]
+
+        # reshape position
+        reshape_shape = [1] * dim + [-1] + [1] * (inp.ndim - dim - 1)
+        position_reshaped = position.reshape(*reshape_shape)
+
+        # Compute the expanded shape
+        expand_shape = list(inp.shape)
+        expand_shape[dim] = position.shape[0]
+
+        position_expanded = position_reshaped.expand(*expand_shape)
+        return torch.gather(inp, dim, position_expanded)
 
     # For mixed indexing, we need to adjust the kernel call
     # The kernel should work with the permuted input and handle output shape correctly
