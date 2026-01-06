@@ -921,6 +921,9 @@ def test_accuracy_cat(shape, dim, dtype):
         (((0, 3), (2, 3)), 0),
         (((0, 3), (0, 3)), 0),
         (((0,), (0,)), 0),
+        (((0,), (1, 3)), -1),
+        (((0,), (1, 2, 3)), -2),
+        (((0,), (1, 1, 2, 3)), -3),
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
