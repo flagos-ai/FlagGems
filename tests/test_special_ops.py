@@ -587,7 +587,7 @@ def test_upsample_nearest1d(dtype, shape, scale):
     with flag_gems.use_gems():
         res_out = torch._C._nn.upsample_nearest1d(input, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
-    
+
 
 @pytest.mark.upsample_nearest2d
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])

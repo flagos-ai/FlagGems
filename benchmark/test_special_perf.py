@@ -336,7 +336,7 @@ def test_perf_upsample_nearest1d():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
-    
+
 
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():

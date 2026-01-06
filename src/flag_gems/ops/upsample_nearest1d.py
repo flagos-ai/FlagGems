@@ -59,6 +59,7 @@ def upsample_nearest1d_kernel(
         ptr_o += dst_index_stride
         nc_iter += nc_stride
 
+
 def upsample_nearest1d(
     input: torch.Tensor,
     output_size: Optional[Tuple[int]] = None,
