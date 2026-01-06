@@ -102,7 +102,7 @@ def permute(*args, **kwargs):
     out_postfix_t = torch.tensor(out_postfix, dtype=torch.int64, device=device)
 
     BLOCK_SIZE = 1024
-    MAX_DIMS = max(1, min(16, ndim))  # cap unrolling to 16
+    MAX_DIMS = max(1, min(16, ndim))  # noqa: F841 cap unrolling to 16
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     permute_kernel[grid](

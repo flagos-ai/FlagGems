@@ -73,11 +73,11 @@ def test_logit_out(shape, dtype, eps):
 
     ref_input = input_tensor.clone()
     ref_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    ref_out = torch.ops.aten.logit.out(ref_input, eps, out=ref_out_buf)
+    ref_out = torch.ops.aten.logit.out(ref_input, eps, out=ref_out_buf)  # noqa: F841
 
     with flag_gems.use_gems():
         act_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-        act_out = gems_logit_out(input_tensor, eps, act_out_buf)
+        act_out = gems_logit_out(input_tensor, eps, act_out_buf)  # noqa: F841
 
     gems_assert_close(act_out_buf, ref_out_buf, dtype=dtype)
 
