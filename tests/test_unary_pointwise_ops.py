@@ -1170,24 +1170,6 @@ def test_accuracy_log10(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-# @pytest.mark.log10
-# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-# def test_accuracy_log10_special_values(dtype):
-#     """Test log10 with special values like inf, nan, zero"""
-#     inp = torch.tensor(
-#         [0.1, 1.0, 10.0, 100.0, float("inf")],
-#         dtype=dtype,
-#         device=flag_gems.device
-#     )
-#     ref_inp = to_reference(inp, True)
-
-#     ref_out = torch.log10(ref_inp)
-#     with flag_gems.use_gems():
-#         res_out = torch.log10(inp)
-
-#     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
-
-
 @pytest.mark.log10
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log10_special_values(dtype):
@@ -1216,7 +1198,6 @@ def test_accuracy_log10_special_values(dtype):
     with flag_gems.use_gems():
         res_out = torch.log10(inp)
 
-    # Check specific special value behaviors
     assert torch.isinf(res_out[4]) and res_out[4] > 0, "log10(inf) should be +inf"
     assert torch.isinf(res_out[5]) and res_out[5] < 0, "log10(0) should be -inf"
     assert torch.isnan(res_out[6]), "log10(negative) should be nan"
@@ -1251,7 +1232,6 @@ def test_accuracy_log10_edge_cases(dtype):
     with flag_gems.use_gems():
         res_out = torch.log10(inp)
 
-    # Verify results make sense
     assert res_out[0] < -9, "log10(1e-10) should be around -10"
     assert torch.isclose(
         res_out[3], torch.tensor(0.0, dtype=dtype, device="cuda"), atol=1e-5
