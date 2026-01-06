@@ -66,13 +66,13 @@ def _run_as_strided_copy_kernel(x, size, in_stride, storage_offset, out):
     ndim = len(size)
     n_elements = _prod(size)
 
+    if n_elements == 0:
+        return out
+
     # Prepare metadata tensors on device
     size_t = _to_int64_device_tensor(size, device)
     in_stride_t = _to_int64_device_tensor(in_stride, device)
     out_stride_t = _to_int64_device_tensor(out.stride(), device)
-
-    if n_elements == 0:
-        return out
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     as_strided_copy_kernel[grid](
