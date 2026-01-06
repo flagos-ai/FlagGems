@@ -174,6 +174,8 @@ def enable(
             ("floor_divide.Scalar", floor_divide),
             ("floor_divide_.Scalar", floor_divide_),
             ("floor_divide_.Tensor", floor_divide_),
+            ("fractional_max_pool2d", fractional_max_pool2d),
+            ("fractional_max_pool2d_backward", fractional_max_pool2d_backward),
             ("full", full),
             ("full_like", full_like),
             ("gather", gather),

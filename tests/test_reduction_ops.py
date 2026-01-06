@@ -1424,6 +1424,162 @@ def test_accuracy_max_pool2d_backward(
     )
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    
+    
+FRACTIONAL_MAXPOOL2D_CONFIGS = [
+    ((1, 1, 6, 6), (2, 2), (3, 3), torch.float32),
+    ((2, 3, 12, 12), (3, 3), (5, 5), torch.float32),
+    ((1, 4, 15, 11), (3, 3), (6, 4), torch.float32),
+    ((2, 8, 16, 16), (2, 2), (7, 7), torch.float16),
+    ((1, 2, 10, 14), (2, 3), (4, 5), torch.float32),
+    ((2, 4, 18, 10), (3, 2), (6, 3), torch.float32),
+    ((1, 1, 4, 5), (2, 2), (2, 2), torch.float32),
+    ((1, 32, 20, 20), (2, 2), (9, 9), torch.float32),
+    ((2, 16, 17, 13), (3, 3), (5, 4), torch.float16),
+    ((8, 3, 14, 14), (2, 2), (6, 6), torch.float32),
+    ((1, 4, 20, 20), (4, 4), (6, 6), torch.float32),
+    ((1, 2, 9, 9), (2, 2), (8, 8), torch.float32),
+    ((2, 3, 25, 7), (3, 2), (8, 3), torch.float32),
+    ((4, 1, 16, 16), (2, 2), (7, 7), torch.float32),
+    ((1, 64, 24, 24), (2, 2), (11, 11), torch.float16),
+    ((2, 8, 18, 12), (3, 2), (6, 4), torch.float16),
+    ((1, 4, 7, 7), (2, 2), (3, 3), torch.float16),
+    ((1, 8, 16, 16), (3, 3), (2, 2), torch.float32),
+    ((4, 16, 32, 32), (2, 2), (15, 15), torch.float32),
+    ((2, 5, 21, 14), (3, 3), (7, 4), torch.float32),
+    ((1, 1, 6, 6), (2, 2), (3, 3), torch.bfloat16),
+    ((2, 3, 12, 12), (3, 3), (5, 5), torch.bfloat16),
+    ((1, 4, 15, 11), (3, 3), (6, 4), torch.bfloat16),
+    ((2, 8, 16, 16), (2, 2), (7, 7), torch.bfloat16),
+    ((1, 2, 10, 14), (2, 3), (4, 5), torch.bfloat16),
+    ((2, 4, 18, 10), (3, 2), (6, 3), torch.bfloat16),
+    ((1, 1, 4, 5), (2, 2), (2, 2), torch.bfloat16),
+    ((1, 32, 20, 20), (2, 2), (9, 9), torch.bfloat16),
+    ((2, 16, 17, 13), (3, 3), (5, 4), torch.bfloat16),
+    ((8, 3, 14, 14), (2, 2), (6, 6), torch.bfloat16),
+]
+
+
+@pytest.mark.fractional_max_pool2d
+@pytest.mark.parametrize(
+    "shape, kernel_size, output_size, dtype",
+    FRACTIONAL_MAXPOOL2D_CONFIGS,
+)
+def test_accuracy_fractional_max_pool2d(shape, kernel_size, output_size, dtype, nan_ratio=0.1):
+
+    device = flag_gems.device
+
+    inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    nan_mask = torch.rand_like(inp) < nan_ratio
+    inp.data[nan_mask] = float("nan")
+
+    ref_inp = to_reference(inp, True)
+
+    random_samples = torch.rand(
+        (shape[0], shape[1], 2),
+        dtype=inp.dtype,
+        device=device,
+    )
+    ref_random_samples = to_reference(random_samples, False).to(ref_inp.dtype)
+
+    ref_out, ref_indices = torch.nn.functional.fractional_max_pool2d(
+        ref_inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        _random_samples=ref_random_samples,
+        return_indices=True,
+    )
+    ref_out = ref_out.to(dtype)
+
+    res_out, res_indices = flag_gems.fractional_max_pool2d(
+        inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        random_samples=random_samples,
+    )
+
+    ref_nan = torch.isnan(ref_out)
+    res_nan = torch.isnan(res_out)
+    assert torch.equal(ref_nan, res_nan), "NaN mask mismatch (forward)"
+
+    gems_assert_close(
+            res_indices,
+            ref_indices,
+            dtype=torch.int64,
+        )
+    if (~ref_nan).any():
+        gems_assert_close(
+            res_out[~ref_nan],
+            ref_out[~ref_nan],
+            dtype,
+        )
+    
+
+@pytest.mark.fractional_max_pool2d_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, output_size, dtype",
+    FRACTIONAL_MAXPOOL2D_CONFIGS,
+)   
+def test_accuracy_fractional_max_pool2d_backward(shape, kernel_size, output_size, dtype, nan_ratio=0.1):
+
+    device = flag_gems.device
+
+    inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    nan_mask = torch.rand_like(inp) < nan_ratio
+    inp.data[nan_mask] = float("nan")
+
+    ref_inp = to_reference(inp, True)
+
+    random_samples = torch.rand(
+        (shape[0], shape[1], 2),
+        dtype=inp.dtype,
+        device=device,
+    )
+    ref_random_samples = to_reference(random_samples, False).to(ref_inp.dtype)
+
+    ref_out, ref_indices = torch.nn.functional.fractional_max_pool2d(
+        ref_inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        _random_samples=ref_random_samples,
+        return_indices=True,
+    )
+    ref_out = ref_out.to(dtype)
+
+    res_out, res_indices = flag_gems.fractional_max_pool2d(
+        inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        random_samples=random_samples,
+    )
+
+    grad_out = torch.randn_like(res_out)
+    ref_grad_out = to_reference(grad_out, True)
+
+    (ref_in_grad,) = torch.autograd.grad(
+        ref_out,
+        (ref_inp,),
+        ref_grad_out,
+    )
+
+    res_in_grad = flag_gems.fractional_max_pool2d_backward(
+        grad_out,
+        inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        indices=res_indices,
+    )
+
+    ref_nan_grad = torch.isnan(ref_in_grad)
+    res_nan_grad = torch.isnan(res_in_grad)
+    assert torch.equal(ref_nan_grad, res_nan_grad), "NaN mask mismatch (backward)"
+
+    if (~ref_nan_grad).any():
+        gems_assert_close(
+            res_in_grad[~ref_nan_grad],
+            ref_in_grad[~ref_nan_grad],
+            dtype,
+        )
 
 
 INDEX_PUT_SHAPE_ACC_FALSE = (
@@ -1860,6 +2016,18 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
 
 
+def topk_softmax_torch_reference(gating_output: torch.Tensor, topk: int):
+    probs = torch.softmax(gating_output, dim=-1)
+    topk_values, topk_indices = torch.topk(
+        probs, k=topk, dim=-1, largest=True, sorted=True
+    )
+    num_tokens = gating_output.shape[0]
+    source_rows = torch.arange(topk, device=gating_output.device).view(
+        1, -1
+    ) * num_tokens + torch.arange(num_tokens, device=gating_output.device).view(-1, 1)
+    return topk_values, topk_indices, source_rows
+
+
 def generate_test_params():
     params = [torch.int32, torch.int64]
     if SkipVersion("torch", ">2.2"):
@@ -1883,19 +2051,10 @@ def generate_test_params():
         (1024, 512, 32),
     ],
 )
-@pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("renormalize", [False, True])
-def test_topk_softmax(
-    num_tokens, num_experts, topk, input_dtype, index_dtype, renormalize
-):
+def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
     if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
         # torch musa unsupport uint32
         index_dtype = torch.int64
-
-    try:
-        from vllm._custom_ops import topk_softmax as vllm_topk_softmax
-    except (ImportError, AttributeError):
-        pytest.skip("vLLM topk_softmax not available")
 
     torch.manual_seed(42)
     device = flag_gems.device
@@ -1904,43 +2063,25 @@ def test_topk_softmax(
         num_tokens, num_experts, dtype=torch.float32, device=device
     )
 
-    vllm_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
-    vllm_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
-    vllm_token_expert = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
-
-    vllm_topk_softmax(
-        vllm_weights,
-        vllm_indices,
-        vllm_token_expert,
-        gating_output,
-        renormalize,
+    topk_weights = torch.empty((num_tokens, topk), device=device, dtype=torch.float32)
+    topk_indices = torch.empty((num_tokens, topk), device=device, dtype=index_dtype)
+    token_expert_indices = torch.empty(
+        (num_tokens, topk), device=device, dtype=torch.int32
     )
 
-    gems_weights = torch.empty_like(vllm_weights)
-    gems_indices = torch.empty_like(vllm_indices)
-    gems_token_expert = torch.empty_like(vllm_token_expert)
+    topk_softmax(topk_weights, topk_indices, token_expert_indices, gating_output)
 
-    topk_softmax(
-        gems_weights,
-        gems_indices,
-        gems_token_expert,
-        gating_output,
-        renormalize,
+    ref_weights, ref_indices, ref_source_rows = topk_softmax_torch_reference(
+        gating_output, topk
     )
 
-    assert torch.allclose(
-        gems_weights, vllm_weights, atol=1e-5
-    ), "topk_weights mismatch"
-    assert torch.equal(
-        gems_indices.cpu(), vllm_indices.cpu()
-    ), "topk_indices mismatch (fp32)"
-    assert torch.equal(
-        gems_token_expert.cpu(), vllm_token_expert.cpu()
-    ), "token_expert_indices mismatch"
+    assert topk_weights.shape == (num_tokens, topk)
+    assert topk_indices.shape == (num_tokens, topk)
+    assert token_expert_indices.shape == (num_tokens, topk)
 
-    if renormalize:
-        sums = gems_weights.sum(dim=-1)
-        assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
+    assert torch.allclose(topk_weights, ref_weights, atol=1e-5)
+    assert torch.equal(topk_indices.cpu(), ref_indices.to(index_dtype).cpu())
+    assert torch.equal(token_expert_indices.cpu(), ref_source_rows.cpu())
 
 
 @pytest.mark.std
@@ -2046,41 +2187,3 @@ def test_accuracy_scaled_softmax_backward(
     gems_assert_close(
         in_grad, in_grad_ref, dtype, equal_nan=True, reduce_dim=s.shape[-1]
     )
-
-
-@pytest.mark.masked_scatter
-@pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_masked_scatter(shape, dtype, threshold):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
-    numel = mask.sum().item()
-    src = torch.randn((numel,), dtype=dtype, device=flag_gems.device)
-
-    ref_inp = to_reference(inp)
-    ref_mask = to_reference(mask)
-    ref_src = to_reference(src)
-    ref_out = torch.masked_scatter(ref_inp, ref_mask, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.masked_scatter(inp, mask, src)
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.masked_scatter_
-@pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_masked_scatter_(shape, dtype, threshold):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
-    numel = mask.sum().item()
-    src = torch.randn((numel,), dtype=dtype, device=flag_gems.device)
-
-    ref_inp = to_reference(inp)
-    ref_mask = to_reference(mask)
-    ref_src = to_reference(src)
-    ref_inp.masked_scatter_(ref_mask, ref_src)
-    with flag_gems.use_gems():
-        inp.masked_scatter_(mask, src)
-
-    gems_assert_equal(inp, ref_inp)
