@@ -1,0 +1,205 @@
+{
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype0-shape0-2]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                8,
+                3,
+                3
+            ],
+            "groups": 2
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype0-shape1-3]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                12,
+                5,
+                6
+            ],
+            "groups": 3
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype0-shape2-4]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                4,
+                16,
+                32,
+                32
+            ],
+            "groups": 4
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype0-shape3-5]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                10,
+                7
+            ],
+            "groups": 5
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype1-shape0-2]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                8,
+                3,
+                3
+            ],
+            "groups": 2
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype1-shape1-3]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                12,
+                5,
+                6
+            ],
+            "groups": 3
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype1-shape2-4]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                4,
+                16,
+                32,
+                32
+            ],
+            "groups": 4
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype1-shape3-5]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                10,
+                7
+            ],
+            "groups": 5
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype2-shape0-2]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                8,
+                3,
+                3
+            ],
+            "groups": 2
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype2-shape1-3]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                12,
+                5,
+                6
+            ],
+            "groups": 3
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype2-shape2-4]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                4,
+                16,
+                32,
+                32
+            ],
+            "groups": 4
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_accuracy[dtype2-shape3-5]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                10,
+                7
+            ],
+            "groups": 5
+        },
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_groups_eq_1": {
+        "params": {},
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    },
+    "tests/test_channel_shuffle_ops.py::test_channel_shuffle_invalid_groups": {
+        "params": {},
+        "result": "passed",
+        "opname": [
+            "channel_shuffle"
+        ]
+    }
+}

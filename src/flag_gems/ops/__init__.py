@@ -53,6 +53,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor_,
 )
 from flag_gems.ops.contiguous import contiguous
+from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
@@ -295,6 +296,7 @@ __all__ = [
     "clamp_min_",
     "constant_pad_nd",
     "contiguous",
+    "channel_shuffle",
     "conv1d",
     "conv2d",
     "conv3d",

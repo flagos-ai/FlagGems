@@ -169,6 +169,7 @@ def enable(
             ("fill_.Scalar", fill_scalar_),
             ("fill_.Tensor", fill_tensor_),
             ("flip", flip),
+            ("channel_shuffle", channel_shuffle),
             ("floor_divide", floor_divide),
             ("floor_divide.Scalar", floor_divide),
             ("floor_divide_.Scalar", floor_divide_),
