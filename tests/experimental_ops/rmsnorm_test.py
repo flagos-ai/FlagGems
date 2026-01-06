@@ -14,6 +14,7 @@ import flag_gems
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+
 try:
     from tests.accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
 except ImportError:

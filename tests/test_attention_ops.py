@@ -469,7 +469,7 @@ def test_sdpa_legacy_backward(
     gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -503,7 +503,7 @@ def test_sdpa_square_qk_even_mn(
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -517,6 +517,8 @@ def test_sdpa_nonsquare_qk(
 ):
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if flag_gems.vendor_name == "hygon":
+        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
 
     device = torch_device_fn.current_device()
     q, k, v = make_input(
@@ -533,6 +535,8 @@ def test_sdpa_nonsquare_qk(
 
     if flag_gems.vendor_name == "mthreads":
         del os.environ["MUSA_ENABLE_SQMMA"]
+    if flag_gems.vendor_name == "hygon":
+        del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
