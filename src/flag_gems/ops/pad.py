@@ -406,9 +406,9 @@ class PadFunction:
             code = IndentedBuffer()
             code = generate_code(
                 args,
-                "_wrapper",
-                "_wrapper_out",
-                "_jit_function",
+                "_pad_wrapper",
+                "_pad_wrapper_out",
+                "_pad_jit_function",
                 code,
             )
 
