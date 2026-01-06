@@ -43,8 +43,7 @@ def upsample_nearest1d_kernel(
         il = ol
     else:
         il = tl.minimum(
-            tl.math.floor(ol.to(tl.float32) * reciprocal_scale_l).to(tl.int32),
-            IL - 1
+            tl.math.floor(ol.to(tl.float32) * reciprocal_scale_l).to(tl.int32), IL - 1
         )
 
     offset_o = nc_iter * OL + ol
@@ -68,19 +67,24 @@ def upsample_nearest1d(
     logger.debug("GEMS UPSAMPLE NEAREST1D")
     assert input.device.type == device
     assert input.ndim == 3, "The ndim of input must be 3"
-    assert output_size is not None or scales is not None, (
-        "Either output_size or scales should be defined."
-    )
+    assert (
+        output_size is not None or scales is not None
+    ), "Either output_size or scales should be defined."
 
     OL = output_size[0] if output_size is not None else int(input.shape[2] * scales)
     N, C, IL = input.shape
 
     if scales is not None:
-        reciprocal_scale_l = float(torch.tensor(1.0 / scales, dtype=torch.float32).item())
+        reciprocal_scale_l = float(
+            torch.tensor(1.0 / scales, dtype=torch.float32).item()
+        )
     else:
         # Use float32 division to match PyTorch's behavior
         reciprocal_scale_l = float(
-            (torch.tensor(IL, dtype=torch.float32) / torch.tensor(OL, dtype=torch.float32)).item()
+            (
+                torch.tensor(IL, dtype=torch.float32)
+                / torch.tensor(OL, dtype=torch.float32)
+            ).item()
         )
 
     # allocate output
