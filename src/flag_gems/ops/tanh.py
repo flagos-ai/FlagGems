@@ -1,45 +1,44 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
-from ..utils import unwrap
+from ..utils import pointwise_dynamic, tl_extra_shim
+
+try:
+    import torch_npu  # noqa: F401
+except:  # noqa: E722
+    pow = tl_extra_shim.pow
+_tanh = tl_extra_shim.tanh
+logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
-def tanh_forward(x):
-    out = tl.tanh(x.to(tl.float32))
-    return out.to(x.type.element_ty)
+def tanh_kernel(x):
+    return _tanh(x.to(tl.float32))
 
 
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
-def tanh_backward(y, dy, ONES, TWO):
-    y_f32 = y.to(tl.float32)
-    dy_f32 = dy.to(tl.float32)
-    out =  dy_f32 * (ONES - tl.pow(y_f32, TWO))
-    return out.to(y.type.element_ty)
+def tanh_backward_kernel(y, dy):
+    y = y.to(tl.float32)
+    return dy.to(tl.float32) * (1.0 - y * y)
 
 
-class Tanh(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, A):
-        logging.debug("GEMS TANH FORWARD")
-        if A.requires_grad is True:
-            out = unwrap(tanh_forward[(1,)](A.to(torch.float32)))
-            ctx.save_for_backward(out)
-            return out.to(A.dtype)
-        else:
-            out = unwrap(tanh_forward[(1,)](A))
-            return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logging.debug("GEMS TANH BACKWARD")
-        (out,) = ctx.saved_tensors
-        in_grad = unwrap(tanh_backward[(1,)](out, out_grad, 1.0, 2.0))
-        return in_grad
+def tanh(self):
+    logger.debug("GEMS TANH FORWARD")
+    out = tanh_kernel(self)
+    return out
 
 
-def tanh(A):
-    return Tanh.apply(A)
+def tanh_backward(grad_output, output):
+    logger.debug("GEMS TANH BACKWARD")
+    in_grad = tanh_backward_kernel(output, grad_output)
+    return in_grad
+
+
+def tanh_(A):
+    logger.debug("GEMS TANH_ FORWARD")
+    out = tanh_kernel(A, out0=A)
+    return out

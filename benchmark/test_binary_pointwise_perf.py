@@ -1,14 +1,13 @@
-import torch
-import pytest
-from benchmark.op_configs import op_configs
+from typing import Generator
 
-from .performance_utils import (
-    Benchmark,
-    binary_args,
-    binary_int_args,
-    device,
-    DEFAULT_METRICS
-)
+import pytest
+import torch
+
+import flag_gems
+
+from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
+from .performance_utils import Benchmark, generate_tensor_input
+
 
 class BinaryPointwiseBenchmark(Benchmark):
     """
@@ -17,168 +16,78 @@ class BinaryPointwiseBenchmark(Benchmark):
 
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
 
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
+        return special_shapes_2d + shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = generate_tensor_input(shape, cur_dtype, self.device)
+            inp2 = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp1, inp2
+
     def get_tflops(self, op, *args, **kwargs):
         shape1 = list(args[0].shape)
         shape2 = list(args[0].shape)
         return torch.tensor(shape1).prod().item() + torch.tensor(shape2).prod().item()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "add"])
-@pytest.mark.add
-def test_perf_add(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="add",
-        torch_op=torch.add,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name,
+            op,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, op, dtype in [
+            # Arithmetic operations
+            ("add", torch.add, FLOAT_DTYPES),
+            ("div", torch.div, FLOAT_DTYPES),
+            ("mul", torch.mul, FLOAT_DTYPES),
+            ("sub", torch.sub, FLOAT_DTYPES),
+            *(
+                [
+                    ("polar", torch.polar, [torch.float32]),
+                    ("floor_divide", torch.floor_divide, INT_DTYPES),
+                    ("remainder", torch.remainder, INT_DTYPES),
+                ]
+                if flag_gems.device != "musa"
+                else []
+            ),
+            *(
+                [
+                    ("pow", torch.pow, FLOAT_DTYPES),
+                    ("rsub", torch.rsub, FLOAT_DTYPES),
+                ]
+                if flag_gems.device != "npu"
+                else []
+            ),
+            ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
+            ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
+            ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
+            # Comparison operations
+            ("eq", torch.eq, FLOAT_DTYPES),
+            ("ge", torch.ge, FLOAT_DTYPES),
+            ("gt", torch.gt, FLOAT_DTYPES),
+            ("le", torch.le, FLOAT_DTYPES),
+            ("lt", torch.lt, FLOAT_DTYPES),
+            ("ne", torch.ne, FLOAT_DTYPES),
+            # Minimum and maximum operations
+            ("maximum", torch.maximum, FLOAT_DTYPES),
+            ("minimum", torch.minimum, FLOAT_DTYPES),
+            # Bitwise operations
+            ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
+            ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
+            ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
+            # Numerical Checks
+            ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
+            ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
+        ]
+    ],
+)
+def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
+    bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "bitwise_and"])
-@pytest.mark.bitwise_and
-def test_perf_bitwiseand(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="bitwise_and",
-        torch_op=torch.bitwise_and,
-        arg_func=binary_int_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "bitwise_or"])
-@pytest.mark.bitwise_or
-def test_perf_bitwiseor(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="bitwiseor_int",
-        torch_op=torch.bitwise_or,
-        arg_func=binary_int_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "div"])
-@pytest.mark.div
-def test_perf_div(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="div",
-        torch_op=torch.div,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "eq"])
-@pytest.mark.eq
-def test_perf_eq(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="eq",
-        torch_op=torch.eq,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "ge"])
-@pytest.mark.ge
-def test_perf_ge(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="ge",
-        torch_op=torch.ge,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "gt"])
-@pytest.mark.gt
-def test_perf_gt(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="gt",
-        torch_op=torch.gt,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "le"])
-@pytest.mark.le
-def test_perf_le(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="le",
-        torch_op=torch.le,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "lt"])
-@pytest.mark.lt
-def test_perf_lt(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="lt",
-        torch_op=torch.lt,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "mul"])
-@pytest.mark.mul
-def test_perf_mul(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="mul",
-        torch_op=torch.mul,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "ne"])
-@pytest.mark.ne
-def test_perf_ne(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="ne",
-        torch_op=torch.ne,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "pow"])
-@pytest.mark.pow
-def test_perf_pow(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="pow",
-        torch_op=torch.pow,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "sub"])
-@pytest.mark.sub
-def test_perf_sub(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="sub",
-        torch_op=torch.sub,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "rsub"])
-@pytest.mark.rsub
-def test_perf_rsub(config):
-    bench = BinaryPointwiseBenchmark(
-        op_name="rsub",
-        torch_op=torch.rsub,
-        arg_func=binary_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-    

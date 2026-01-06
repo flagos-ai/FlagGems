@@ -1,41 +1,58 @@
+[build-system]
+requires = ["setuptools>=64.0", "scikit-build-core>=0.11"]
+build-backend = "scikit_build_core.build"
+
+
 [project]
 name = "flag_gems"
-version = "2.0"
-authors = [
-    {name = "Zhixin Li", email = "strongspoon@outlook.com"},
-    {name = "Tongxin Bai", email = "waffle.bai@gmail.com"},
-    {name = "Yuming Huang", email = "jokmingwong@gmail.com"},
-    {name = "Feiyu Chen", email = "iclementine@outlook.com"},
-]
+version = "2.2"
 description = "FlagGems is a function library written in Triton."
-readme = {file= "README.md", content-type="text/markdown"}
-requires-python = ">=3.8"
-license = {text = "LICENSE.txt"}
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.8.0"
+license = { text = "Apache Software License" }
+authors = [
+    { name = "Zhixin Li", email = "strongspoon@outlook.com" },
+    { name = "Tongxin Bai", email = "waffle.bai@gmail.com" },
+    { name = "Yuming Huang", email = "jokmingwong@gmail.com" },
+    { name = "Feiyu Chen", email = "iclementine@outlook.com" },
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
-    "triton>=2.2.0, <3.0.0",
-    "torch>=2.1.2",
-    "transformers>=4.40.2"
+    "torch>=2.2.0",
+    "packaging",
+    "pybind11",
+    "PyYAML",
+    "packaging",
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest>=7.1.0",
     "numpy>=1.26",
-    "scipy>=1.14"
+    "scipy>=1.14",
+]
+example = [
+    "transformers>=4.40.2",
 ]
 
 [project.urls]
-homepage = "https://github.com/FlagOpen/FlagGems"
+Homepage = "https://github.com/FlagOpen/FlagGems"
 
-[tool.pytest.ini_options]
-testpaths = [
-    "tests",
-]
-pythonpath = [
-    "src",
-]
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"flag_gems.runtime" = ["*/**/*.yaml"]
+
+[tool.scikit-build]
+build.verbose = true
+logging.level = "INFO"
+wheel.install-dir = "flag_gems"
+build-dir = "build/{cache_tag}"

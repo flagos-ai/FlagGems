@@ -4,251 +4,266 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import unwrap
+from ..runtime import torch_device_fn
+from ..utils import libentry, tl_extra_shim
+from ..utils import triton_lang_extension as tle
+
+rsqrt = tl_extra_shim.rsqrt
+logger = logging.getLogger(__name__)
 
 
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
 def group_norm_kernel(
-    input,
+    X,
+    Y,
     W,
     B,
-    N : tl.constexpr,
-    C : tl.constexpr,
-    HW : tl.constexpr,
-    num_groups : tl.constexpr,
-    eps : tl.constexpr,
-    outdtype : tl.constexpr,
-    axis_dim : tl.constexpr
+    Mean,
+    Rstd,
+    group_size,
+    C,
+    HW,
+    num_groups,
+    eps,
+    BLOCK_GROUP_SIZE: tl.constexpr,
+    BLOCK_HW_SIZE: tl.constexpr,
 ):
-    input = input.to(tl.float32)
-    W = W.to(tl.float32)
-    B = B.to(tl.float32)
+    pid = tle.program_id(0)
+    group = pid % num_groups
+    num_elements = group_size * HW
+    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
+    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
 
-    # compute mean
-    # (N, num_groups, C * HW // num_groups)
-    reshaped_input = tl.reshape(input, (N, num_groups, C * HW // num_groups))
-    # (N, num_groups)
-    mean = tl.sum_(reshaped_input, axis=2) / reshaped_input.shape[2]
+    wb_offset = group * group_size + group_offset
+    wb_mask = wb_offset < C
 
-    # compute var and rstd
-    # (N, num_groups, 1)
-    mean_tmp = tl.expand_dims(mean, -1)
-    # (N, num_groups, C * HW // num_groups)
-    mean_tmp = tl.broadcast_to(mean_tmp, (N, num_groups, C * HW // num_groups))
-    # (N, num_groups, C * HW // num_groups)
-    tmp = reshaped_input - mean_tmp
-    # (N, num_groups, C * HW // num_groups)
-    var = tmp * tmp
-    # (N, num_groups, 1)
-    var = tl.sum_(var, axis=2) / reshaped_input.shape[2]
-    # (N, num_groups)
-    rstd = tl.rsqrt(var + eps)
-    # (N, num_groups, 1)
-    rstd_tmp = tl.expand_dims(rstd, -1)
-    # (N, num_groups, C * HW // num_groups)
-    rstd_tmp = tl.broadcast_to(rstd_tmp, tmp.shape)
+    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
 
-    # compute output
-    output = tmp * rstd_tmp
-    # (N, C, H, W)
-    output = tl.reshape(output, input.shape)
-    # (1, C, 1, 1)
-    W = tl.expand_dims(W, axis_dim)
-    W = tl.broadcast_to(W, output.shape)
-    # (1, C, 1, 1)
-    B = tl.expand_dims(B, axis_dim)
-    B = tl.broadcast_to(B, output.shape)
-    output = output * W + B
-    output = output.to(outdtype)
-    mean = mean.to(outdtype)
-    rstd = rstd.to(outdtype)
-    return output, mean, rstd
+    Mean_ptr = Mean + pid
+    Rstd_ptr = Rstd + pid
+
+    X_ptr = X + xy_offset
+    Y_ptr = Y + xy_offset
+
+    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    mean = tl.sum(X_val) / num_elements
+    x = tl.where(xy_mask, X_val - mean, 0.0)
+
+    var = tl.sum(x * x) / num_elements
+    rstd = rsqrt(var + eps)
+    x_hat = x * rstd
+
+    if W is None:
+        weight = 1
+    else:
+        weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0)[:, None]
+    if B is None:
+        bias = 0
+    else:
+        bias = tl.load(B + wb_offset, mask=wb_mask, other=0.0)[:, None]
+    Y_val = x_hat * weight + bias
+
+    tl.store(Y_ptr, Y_val, mask=xy_mask)
+    tl.store(Mean_ptr, mean)
+    tl.store(Rstd_ptr, rstd)
 
 
+@libentry()
 @triton.jit
 def group_norm_backward_kernel(
-    y_grad,
-    mean,
-    rstd,
-    x,
-    num_groups : tl.constexpr,
-    weight,
-    N : tl.constexpr,
-    C : tl.constexpr,
-    HW : tl.constexpr,
-    outdtype : tl.constexpr,
-    axis_dim : tl.constexpr
+    grad_y,
+    X,
+    W,
+    Mean,
+    Rstd,
+    num_groups,
+    group_size,
+    grad_x,
+    C,
+    HW,
+    BLOCK_GROUP_SIZE: tl.constexpr,
+    BLOCK_HW_SIZE: tl.constexpr = 128,
 ):
-    y_grad = y_grad.to(tl.float32)
-    mean = mean.to(tl.float32)
-    rstd = rstd.to(tl.float32)
-    x = x.to(tl.float32)
-    weight = weight.to(tl.float32)
+    pid = tle.program_id(0)
+    group = pid % num_groups
+    num_elements = group_size * HW
 
-    M : tl.constexpr = C * HW // num_groups
+    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
+    wb_offset = group * group_size + group_offset
 
-    # y = weight * x_norm + bias
-    # dbias = sum(dy)
-    # (N, C, H, W) ==> (C)
-    bias_grad = tl.sum_(y_grad, axis=axis_dim)
+    wb_mask = wb_offset < C
 
-    # (N, num_groups) ==> (N, num_groups, 1)
-    mean_reshape = tl.expand_dims(mean, -1)
-    # (N, num_groups, 1) ==> (N, num_groups, C * HW // num_groups)
-    mean_reshape = tl.broadcast_to(mean_reshape, (N, num_groups, M))
+    rstd = tl.load(Rstd + pid).to(tl.float32)
+    mean = tl.load(Mean + pid).to(tl.float32)
+    if W is None:
+        weight = 1
+    else:
+        weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
 
-    # (N, num_groups) ==> (N, num_groups, 1)
-    rstd_reshape = tl.expand_dims(rstd, -1)
-    # (N, num_groups, 1) ==> (N, num_groups, C * HW // num_groups)
-    rstd_reshape = tl.broadcast_to(rstd_reshape, (N, num_groups, M))
+    dx_part2 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
+    dx_part3 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
+    for off in range(0, HW, BLOCK_HW_SIZE):
+        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
+        hw_mask = hw_offset < HW
+        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+        xy_mask = wb_mask[:, None] & hw_mask[None, :]
 
-    # (N, C, H, W)    ==> (N, num_groups, C * HW // num_groups)
-    x_reshape = tl.reshape(x, (N, num_groups, M))
+        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
+        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
 
-    # y = weight * x_norm + bias
-    # x_norm = (x - mean) * rstd
-    # dweight = sum(dy * x_norm)
-    tmp = x_reshape - mean_reshape
-    x_norm = tmp * rstd_reshape
-    # (N, num_groups, C * HW // num_groups) ==> (N, C, H, W)
-    x_norm_reshape = tl.reshape(x_norm, x.shape)
-    # (N, C, H, W) ==> (C)
-    weight_grad = tl.sum_(y_grad * x_norm_reshape, axis=axis_dim)
+        x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
+        dx_hat = weight * dY_val
+        dx_part2 += dx_hat
+        dx_part3 += dx_hat * x_hat
 
-    # dx = dx_norm * rstd + dvar * 2.0 * (x - mean) / M + dmean / M
+    dx_2 = tl.sum(dx_part2)
+    dx_3 = tl.sum(dx_part3)
 
-    # dx_norm = dy * weight
-    # (C, 1) ==> (1, C, 1, 1)
-    weight_reshape = tl.expand_dims(weight, axis_dim)
-    # (1, C, 1, 1) ==> (N, C, H, W)
-    weight_reshape = tl.broadcast_to(weight_reshape, x.shape)
-    # (N, C, H, W)
-    dx_norm = weight_reshape * y_grad
-    # (N, C, H, W) ==> (N, num_groups, C * HW // num_groups)
-    dx_norm_reshape = tl.reshape(dx_norm, (N, num_groups, M))
+    for off in range(0, HW, BLOCK_HW_SIZE):
+        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
+        hw_mask = hw_offset < HW
+        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+        xy_mask = wb_mask[:, None] & hw_mask[None, :]
 
-    # dvar = sum (dx_norm * (-0.5) * (x - mean) * rstd ** 3)
-    # (N, num_groups, C * HW // num_groups)
-    dvar_tmp = (-0.5) * x_norm * rstd_reshape * rstd_reshape * dx_norm_reshape
-    # (N, num_groups)
-    dvar = tl.sum_(dvar_tmp, axis=2)
-    # (N, num_groups, 1)
-    dvar_reshape = tl.expand_dims(dvar * 2.0 / M, -1)
-    # (N, num_groups, C * HW // num_groups)
-    dvar_reshape = tl.broadcast_to(dvar_reshape, (N, num_groups, M))
+        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
+        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
 
-    # dmean = sum (dx_norm * (-1.0) * rstd)
-    #       + dvar * sum ((-2.0) * (x - mean) / (C * HW // num_groups))
-    # (N, num_groups, C * HW // num_groups) ==> (N, num_groups)
-    dmean_tmp1 = tl.sum_(dx_norm_reshape * (-1.0) * rstd_reshape, axis=2)
-    # (N, num_groups, C * HW // num_groups) ==> (N, num_groups)
-    dmean_tmp2 = tl.sum_((-2.0) * tmp / M, axis=2)
-    # (N, num_groups)
-    dmean = dmean_tmp1 + dvar * dmean_tmp2
-    # (N, num_groups, 1)
-    dmean_reshape = tl.expand_dims(dmean / M, -1)
-    # (N, num_groups, C * HW // num_groups)
-    dmean_reshape = tl.broadcast_to(dmean_reshape, (N, num_groups, M))
+        x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
+        dx_hat = weight * dY_val
+        dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / num_elements)
 
-    # (N, num_groups, C * HW // num_groups)
-    dx = dx_norm_reshape * rstd_reshape + dvar_reshape * tmp + dmean_reshape
-    # (N, C, H, W)
-    x_grad = tl.reshape(dx, x.shape)
+        tl.store(grad_x + xy_offset, dx, xy_mask)
 
-    x_grad = x_grad.to(outdtype)
-    weight_grad = weight_grad.to(outdtype)
-    bias_grad = bias_grad.to(outdtype)
 
-    return x_grad, weight_grad, bias_grad
+@libentry()
+@triton.jit
+def weight_bias_backward_kernel(
+    dY,
+    X,
+    Mean,
+    Rstd,
+    dW,
+    dB,
+    num_groups,
+    group_size,
+    N,
+    C,
+    HW,
+    BLOCK_N: tl.constexpr,
+    BLOCK_HW: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    group = pid // group_size
+    n_offset = tl.arange(0, BLOCK_N)
+    hw_offset = tl.arange(0, BLOCK_HW)
+    xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+    mr_mask = n_offset < N
 
-def type_convert(dtype):
-    if dtype == torch.float16:
-        return tl.float16
-    if dtype == torch.float32:
-        return tl.float32
-    if dtype == torch.bfloat16:
-        return tl.bfloat16
+    mean_ptr = Mean + group + n_offset * num_groups
+    rstd_ptr = Rstd + group + n_offset * num_groups
 
-class GroupNorm(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
-        logging.debug("GEMS GROUPNORM FORWARD")
-        group_size = C // num_groups
-        x = x.contiguous()
-        if weight is not None:
-            weight = weight.contiguous()
-        else:
-            weight = torch.ones((C,), dtype=x.dtype, device=x.device)
-        if bias is not None:
-            bias = bias.contiguous()
-        else:
-            bias = torch.zeros((C,), dtype=x.dtype, device=x.device)
-        y = torch.empty_like(x)
-        mean = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
-        rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
+    dY_ptr = dY + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+    x_ptr = X + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
 
-        axis_dim = [i for i in range(len(x.shape)) if i != 1]
+    grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    x = tl.load(x_ptr, mask=xy_mask, other=0.0)
+    x_f32 = x.to(tl.float32)
+    mean = tl.load(mean_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
+    rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
 
-        (y, mean, rstd) = unwrap(group_norm_kernel[(1,)](
-            x,
+    if dW is not None:
+        dw = tl.sum((x_f32 - mean) * rstd * grad_y)
+        tl.store(dW + pid, dw)
+    if dB is not None:
+        db = tl.sum(grad_y)
+        tl.store(dB + pid, db)
+
+
+def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
+    logger.debug("GEMS GROUPNORM FORWARD")
+
+    group_size = triton.cdiv(C, group)
+    input = input.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    bias = None if bias is None else bias.contiguous()
+
+    y = torch.empty_like(input)
+    mean = torch.empty((N, group), dtype=input.dtype, device=input.device)
+    rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
+
+    grid = (N * group,)
+    with torch_device_fn.device(input.device):
+        group_norm_kernel[grid](
+            input,
+            y,
             weight,
             bias,
-            N,
-            C,
-            HW,
-            num_groups,
-            eps,
-            type_convert(x.dtype),
-            axis_dim
-        ))
-        if x.requires_grad:
-            ctx.save_for_backward(x, weight, bias, mean, rstd)
-            ctx.num_groups = num_groups
-            ctx.group_size = group_size
-            ctx.N = N
-            ctx.C = C
-            ctx.HW = HW
-        return y, mean, rstd
-
-    @staticmethod
-    def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS GROUPNORM BACKWARD")
-        y_grad = y_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
-        num_groups = ctx.num_groups
-        N = ctx.N
-        C = ctx.C
-        HW = ctx.HW
-        x_grad = torch.empty_like(x)
-        weight_grad = torch.empty_like(weight)
-        bias_grad = torch.empty_like(bias)
-
-        axis_dim = [i for i in range(len(y_grad.shape)) if i != 1]
-
-        (x_grad, weight_grad, bias_grad) = unwrap(group_norm_backward_kernel[(1,)](
-            y_grad,
             mean,
             rstd,
-            x,
-            num_groups,
-            weight,
+            group_size,
+            C,
+            HxW,
+            group,
+            eps,
+            BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
+            BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
+        )
+    return y, mean, rstd
+
+
+def group_norm_backward(
+    grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
+):
+    logger.debug("GEMS GROUPNORM BACKWARD")
+
+    grad_out = grad_out.contiguous()
+    input = input.contiguous()
+    mean = mean.contiguous()
+    rstd = rstd.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    group_size = triton.cdiv(C, group)
+
+    if output_mask[0]:
+        grad_inp = torch.empty_like(input)
+        grid = (N * group,)
+        with torch_device_fn.device(input.device):
+            group_norm_backward_kernel[grid](
+                grad_out,
+                input,
+                weight,
+                mean,
+                rstd,
+                group,
+                group_size,
+                grad_inp,
+                C,
+                HxW,
+                BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
+            )
+    else:
+        grad_inp = None
+
+    if output_mask[1] is False and output_mask[2] is False:
+        return grad_inp, None, None
+
+    weight_grad = torch.empty_like(weight) if output_mask[1] else None
+    bias_grad = torch.empty_like(weight) if output_mask[2] else None
+    with torch_device_fn.device(input.device):
+        weight_bias_backward_kernel[(C, 1, 1)](
+            grad_out,
+            input,
+            mean,
+            rstd,
+            weight_grad,
+            bias_grad,
+            group,
+            group_size,
             N,
             C,
-            HW,
-            type_convert(x.dtype),
-            axis_dim
-        ))
-        return (
-            x_grad,      # grad for x
-            None,        # grad for N (integer, doesn't need gradient)
-            None,        # grad for C (integer, doesn't need gradient)
-            None,        # grad for HW (integer, doesn't need gradient)
-            None,        # grad for num_groups (integer, doesn't need gradient)
-            weight_grad, # grad for weight
-            bias_grad,   # grad for bias
-            None         # grad for eps (float, doesn't need gradient)
+            HxW,
+            BLOCK_N=triton.next_power_of_2(N),
+            BLOCK_HW=triton.next_power_of_2(HxW),
         )
-
-
-def group_norm(x, weight, bias, N, C, HW, num_groups, eps):
-    return GroupNorm.apply(x, N, C, HW, num_groups, weight, bias, eps)
+    return grad_inp, weight_grad, bias_grad

@@ -59,9 +59,13 @@
 import builtins
 import contextlib
 import keyword
+import os
 import re
+import threading
+import uuid
 from collections import defaultdict
 from io import StringIO
+from pathlib import Path
 from typing import Dict, Set
 
 
@@ -98,9 +102,20 @@ class IndentedBuffer:
         else:
             self._lines.append("")
 
+    def tpl(self, format_str, **kwargs):
+        assert isinstance(format_str, str), "format_str must be string of type."
+        format_str = format_str.format(**kwargs)
+        lines = format_str.strip().splitlines()
+        for line in lines:
+            line = line.replace("\t", " " * self.tabwidth)
+            self.writeline(line)
+
     def writelines(self, lines):
         for line in lines:
             self.writeline(line)
+
+    def writemultiline(self, s):
+        self.writelines(s.splitlines())
 
     def indent(self, offset=1):
         @contextlib.contextmanager
@@ -167,3 +182,20 @@ class NameSpace:
             return True
 
         return False
+
+
+def write_atomic(
+    path_: str,
+    content: str,
+    make_dirs: bool = False,
+    encoding: str = "utf-8",
+) -> None:
+    path = Path(path_)
+    if make_dirs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = (
+        path.parent / f".{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+    )
+    with tmp_path.open("wt", encoding=encoding) as f:
+        f.write(content)
+    tmp_path.replace(path)

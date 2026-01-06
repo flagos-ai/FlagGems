@@ -3,14 +3,22 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import unwrap
+from ..utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def exp_func(x):
-    return tl.exp(x)
+    return tl.exp(x.to(tl.float32))
 
 
 def exp(A):
-    logging.debug("GEMS EXP")
-    return unwrap(exp_func[(1,)](A))
+    logger.debug("GEMS EXP")
+    return exp_func(A)
+
+
+def exp_(A):
+    logger.debug("GEMS EXP_")
+    return exp_func(A, out0=A)

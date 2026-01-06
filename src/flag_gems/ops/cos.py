@@ -3,13 +3,23 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import unwrap
+from ..utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def cos_func(x):
-    return tl.cos(x)
+    return tl.cos(x.to(tl.float32))
+
 
 def cos(A):
-    logging.debug("GEMS COS")
-    return unwrap(cos_func[(1,)](A))
+    logger.debug("GEMS COS")
+    return cos_func(A)
+
+
+def cos_(A):
+    logger.debug("GEMS COS_")
+    cos_func(A, out0=A)
+    return A

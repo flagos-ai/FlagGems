@@ -3,14 +3,22 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import unwrap
+from ..utils import pointwise_dynamic, tl_extra_shim
+
+try:
+    import torch_npu  # noqa: F401
+except:  # noqa: E722
+    _isinf = tl_extra_shim.isinf
+
+logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def isinf_func(x):
-    return x + 1 == x
+    return _isinf(x.to(tl.float32))
 
 
 def isinf(A):
-    logging.debug("GEMS ISINF")
-    return unwrap(isinf_func[(1,)](A))
+    logger.debug("GEMS ISINF")
+    return isinf_func(A)

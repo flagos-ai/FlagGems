@@ -1,23 +1,25 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
-from ..utils import unwrap
+from ..utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def sin_func(x):
-    return tl.sin(x)
+    return tl.sin(x.to(tl.float32))
 
-def promote_unary_type(x):
-    x = torch.as_tensor(x)
-    if x.dtype == torch.int64:
-        x = x.to(torch.float32)
-    return x
 
 def sin(A):
-    logging.debug("GEMS SIN")
-    A = promote_unary_type(A)
-    return unwrap(sin_func[(1,)](A))
+    logger.debug("GEMS SIN")
+    return sin_func(A)
+
+
+def sin_(A):
+    logger.debug("GEMS SIN_")
+    sin_func(A, out0=A)
+    return A

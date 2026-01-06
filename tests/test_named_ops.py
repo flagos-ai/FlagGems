@@ -3,6 +3,8 @@ import logging
 
 import pytest
 
+import flag_gems
+
 # This is a collection of unit test by op name for testing the
 # accuracy of each op.
 
@@ -18,8 +20,7 @@ blas_ops_ut_map = {
 
 reduction_ops_ut_map = {
     "all": (
-        "test_accuracy_all",
-        "test_accuracy_all_dim",
+        "test_accuracy_all_without_dim",
         "test_accuracy_all_dims",
     ),
     "cross_entropy_loss": (
@@ -32,31 +33,30 @@ reduction_ops_ut_map = {
     "native_layer_norm": ("test_accuracy_layernorm",),
     "log_softmax": ("test_accuracy_log_softmax",),
     "max": (
-        "test_accuracy_max",
+        "test_accuracy_max_without_dim",
         "test_accuracy_max_dim",
     ),
     "mean": (
-        "test_accuracy_mean",
+        "test_accuracy_mean_without_dim",
         "test_accuracy_mean_dim",
     ),
     "min": (
-        "test_accuracy_min",
+        "test_accuracy_min_without_dim",
         "test_accuracy_min_dim",
     ),
     "prod": (
-        "test_accuracy_prod",
+        "test_accuracy_prod_without_dim",
         "test_accuracy_prod_dim",
     ),
     "softmax": ("test_accuracy_softmax",),
     "sum": (
-        "test_accuracy_sum",
+        "test_accuracy_sum_without_dim",
         "test_accuracy_sum_dim",
     ),
     "var_mean": ("test_accuracy_varmean",),
     "amax": ("test_accuracy_amax",),
     "any": (
-        "test_accuracy_any",
-        "test_accuracy_any_dim",
+        "test_accuracy_any_without_dim",
         "test_accuracy_any_dims",
     ),
     "argmax": ("test_accuracy_argmax",),
@@ -73,6 +73,7 @@ unary_pointwise_ops_ut_map = {
     "cos": ("test_accuracy_cos",),
     "exp": ("test_accuracy_exp",),
     "gelu": ("test_accuracy_gelu",),
+    "glu": ("test_accuracy_glu",),
     "isinf": ("test_accuracy_isinf",),
     "isnan": ("test_accuracy_isnan",),
     "neg": ("test_accuracy_neg",),
@@ -86,7 +87,7 @@ unary_pointwise_ops_ut_map = {
     "triu": ("test_accuracy_triu",),
     "erf": ("test_accuracy_erf",),
     "isfinite": ("test_accuracy_isfinite",),
-    "flip": ("test_accuracy_flip",),
+    "flip": ("test_accuracy_flip", "test_accuracy_flip_with_non_dense_input"),
 }
 
 distribution_ops_ut_map = {
@@ -105,6 +106,7 @@ tensor_constructor_ops_ut_map = {
     "ones_like": ("test_accuracy_ones_like",),
     "full": ("test_accuracy_full",),
     "full_like": ("test_accuracy_full_like",),
+    "randperm": ("test_accuracy_randperm",),
 }
 
 binary_pointwise_ops_ut_map = {
@@ -196,9 +198,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--device",
         action="store",
-        default="cuda",
-        choices=["cuda", "cpu"],
-        help="device to run reference tests on. Choose 'cuda' or 'cpu'. Default is 'cuda'.",
+        default=flag_gems.device,
+        choices=[flag_gems.device, "cpu"],
+        help=f"device to run reference tests on. Choose {flag_gems.device} or 'cpu'. Default is {flag_gems.device}.",
     )
     args = parser.parse_args()
 
@@ -221,7 +223,7 @@ if __name__ == "__main__":
             for op, uts in collection.items():
                 for ut in uts:
                     cmd = f"{file_name}::{ut}"
-                    result = pytest.main(["-v", "--disable-warnings", cmd, "--device", device])
+                    result = pytest.main(["-s", cmd, "--device", device])
         print("final_result: ", final_result)
         exit(final_result)
 
@@ -237,7 +239,7 @@ if __name__ == "__main__":
                     for ut in uts:
                         cmd = f"{file_name}::{ut}"
                         print(cmd)
-                        result = pytest.main(["-v", "--disable-warnings", cmd, "--device", device])
+                        result = pytest.main(["-s", cmd, "--ref", device])
                         final_result += result
         print("final_result: ", final_result)
         exit(final_result)

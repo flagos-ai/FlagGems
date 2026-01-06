@@ -3,15 +3,22 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import unwrap
+from ..utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def reciprocal_func(x):
-    out = 1.0 / x.to(tl.float32)
-    return out.to(x.type.element_ty)
+    return 1.0 / x.to(tl.float32)
 
 
 def reciprocal(A):
-    logging.debug("GEMS RECIPROCAL")
-    return unwrap(reciprocal_func[(1,)](A))
+    logger.debug("GEMS RECIPROCAL")
+    return reciprocal_func(A)
+
+
+def reciprocal_(A):
+    logger.debug("GEMS RECIPROCAL_")
+    return reciprocal_func(A, out0=A)

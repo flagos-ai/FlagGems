@@ -7,6 +7,9 @@ import flag_gems
 
 from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES
 
+if flag_gems.vendor_name == "kunlunxin":
+    pytestmark = pytest.mark.skip("Test Files for Operators Not Pending Testing")
+
 # The Kolmogorov-Smirnov test (K-S test or KS test) is performed on the
 # distribution operator. By having randomness, CI does not perform
 
@@ -15,7 +18,9 @@ from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_normal_pvalue(shape, dtype):
     loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device=flag_gems.device)
-    scale = torch.full(size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device)
+    scale = torch.full(
+        size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
+    )
     with flag_gems.use_gems():
         res_out = torch.distributions.normal.Normal(loc, scale).sample()
     pvalue = scipy.stats.kstest(

@@ -4,8 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import (
+    philox_backend_seed_offset,
+    uint_to_uniform_float,
+)
 from flag_gems.utils.shape_utils import volume
+
+from .. import runtime
+from ..runtime import device, torch_device_fn
 
 try:
     pair_uniform_to_normal = tl.pair_uniform_to_normal
@@ -20,28 +26,11 @@ except AttributeError:
         return r * tl.cos(th), r * tl.sin(th)
 
 
-def heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
+device_ = device
+logger = logging.getLogger(__name__)
 
 
-def heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
-
-
-@triton.heuristics(
-    {
-        "BLOCK": heur_block,
-        "num_warps": heur_num_warps,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("randn"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
     out_ptr,
@@ -78,18 +67,18 @@ UNROLL = 4
 
 
 def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS RANDN")
+    logger.debug("GEMS RANDN")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
-        device = torch.device("cuda")
+        device = torch.device(device_.name)
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-    with torch.cuda.device(device):
+    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

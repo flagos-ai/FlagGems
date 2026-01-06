@@ -1,32 +1,44 @@
 import logging
 
-import torch
 import triton
 
-from ..utils import unwrap
+from ..utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def bitwise_or_func(x, y):
-    r = x | y
-    return r.to(x.type.element_ty)
+    return x | y
 
+
+def bitwise_or_tensor(A, B):
+    logger.debug("GEMS BITWISE OR")
+    return bitwise_or_func(A, B)
+
+
+def bitwise_or_tensor_(A, B):
+    logger.debug("GEMS BITWISE OR_")
+    return bitwise_or_func(A, B, out0=A)
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def bitwise_or_tensor_scalar(x, y):
-    r = x | y
-    return r.to(x.type.element_ty)
+def bitwise_or_func_scalar(x, y):
+    return x | y
 
-@triton.jit
-def bitwise_or_scalar_tensor(x, y):
-    r = x | y
-    return r.to(y.type.element_ty)
 
-def bitwise_or(x, y):
-    if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
-        return unwrap(bitwise_or_func[(1,)](x, y))
-    elif isinstance(x, torch.Tensor):
-        return unwrap(bitwise_or_tensor_scalar[(1,)](x, y))
-    elif isinstance(y, torch.Tensor):
-        return unwrap(bitwise_or_scalar_tensor[(1,)](x, y))
-    else:
-        return torch.tensor(x | y)
+def bitwise_or_scalar(A, B):
+    logger.debug("GEMS BITWISE OR SCALAR")
+    return bitwise_or_func_scalar(A, B)
+
+
+def bitwise_or_scalar_(A, B):
+    logger.debug("GEMS BITWISE OR_ SCALAR")
+    return bitwise_or_func_scalar(A, B, out0=A)
+
+
+def bitwise_or_scalar_tensor(A, B):
+    logger.debug("GEMS BITWISE OR SCALAR TENSOR")
+    return bitwise_or_func_scalar(B, A)

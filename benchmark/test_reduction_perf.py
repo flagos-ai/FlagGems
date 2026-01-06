@@ -1,271 +1,312 @@
-import torch
+import random
+from typing import Generator
+
 import pytest
-from benchmark.op_configs import op_configs
+import torch
+
+import flag_gems
+from flag_gems.utils import shape_utils
+
+from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Benchmark,
-    unary_arg,
-    get_shape,
-    device
+    Config,
+    GenericBenchmark,
+    GenericBenchmark2DOnly,
+    generate_tensor_input,
+    unary_input_fn,
+    vendor_name,
 )
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "all"])
-@pytest.mark.all
-def test_perf_all(config):
-    bench = Benchmark(
-        op_name="all",
-        torch_op=torch.all,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
-    )
+
+class UnaryReductionBenchmark(Benchmark):
+    """
+    Base class for benchmarking reduction operations.
+    """
+
+    def set_more_metrics(self):
+        return ["gbps"]
+
+    def get_gbps(self, args, latency):
+        inp = args[0]
+        io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, inp]])
+        return io_amount * 1e-9 / (latency * 1e-3)
+
+    def set_more_shapes(self):
+        more_shapes_1d = [
+            (1025 * 1024,),
+            (1024 * 1024 * 1024,),
+        ]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 21, 4)]
+        more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            if inp.ndim > 1:
+                yield inp, 1
+            else:
+                yield inp,
+
+
+forward_operations = [
+    ("all", torch.all, FLOAT_DTYPES),
+    *(
+        [
+            ("any", torch.any, FLOAT_DTYPES),
+        ]
+        if flag_gems.device != "musa"
+        else []
+    ),
+    ("amax", torch.amax, FLOAT_DTYPES),
+    ("argmax", torch.argmax, FLOAT_DTYPES),
+    ("argmin", torch.argmin, FLOAT_DTYPES),
+    ("max", torch.max, FLOAT_DTYPES),
+    ("mean", torch.mean, FLOAT_DTYPES),
+    ("min", torch.min, FLOAT_DTYPES),
+    ("prod", torch.prod, FLOAT_DTYPES),
+    ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
+    ("sum", torch.sum, FLOAT_DTYPES),
+    ("var_mean", torch.var_mean, FLOAT_DTYPES),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
+        for name, op, dtype in forward_operations
+    ],
+)
+def test_general_reduction_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin" and op_name in ["softmax"]:
+        pytest.skip("RUNTIME TODOFIX.")
+    bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "amax"])
-@pytest.mark.amax
-def test_perf_amax(config):
-    bench = Benchmark(
-        op_name="amax",
-        torch_op=torch.amax,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
-    )
-    bench.run()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "any"])
-def test_perf_any(config):
-    bench = Benchmark(
-        op_name="any",
-        torch_op=torch.any,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
+backward_operations = [
+    ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
+]
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "argmax"])
-@pytest.mark.argmax
-def test_perf_argmax(config):
-    def argmax_kwargs(dtype,batch,size):
-        return {"keep_dim": False}
-    bench = Benchmark(
-        op_name="argmax",
-        torch_op=torch.argmax,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
-    )
-    bench.run()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "CrossEntropyLoss"])
-@pytest.mark.CrossEntropyLoss
-def test_perf_CrossEntropyLoss(config):
-    def cross_entropy_loss_args(dtype, batch, size):
-        shape = get_shape(batch, size)
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        target = torch.randint(0, shape[1], [shape[0],], device=device,)
-        return inp, target
-
-    bench = Benchmark(
-        op_name="CrossEntropyLoss",
-        torch_op=torch.nn.CrossEntropyLoss(),
-        arg_func=cross_entropy_loss_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "cumsum"])
-@pytest.mark.cumsum
-def test_perf_cumsum(config):
-    def cumsum_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device=device)
-        return inp, 1
-
-    bench = Benchmark(
-        op_name="cumsum",
-        torch_op=torch.cumsum,
-        arg_func=cumsum_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "group_norm"])
-@pytest.mark.group_norm
-def test_perf_group_norm(config):
-    def group_norm_args(dtype, batch, size):
-        shape = get_shape(batch, size)
-        G = 8
-        if shape[1] == 6:
-            G=3
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        weight = torch.randn(
-            [shape[1]],
-            dtype=dtype,
-            device=device,
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name, op, dtype, marks=getattr(pytest.mark, name + "_backward", None)
         )
-        bias = torch.randn(
-            [shape[1]],
-            dtype=dtype,
-            device=device,
-        )
-        return inp, G, weight, bias
-
-    bench = Benchmark(
-        op_name="groupnorm",
-        torch_op=torch.nn.functional.group_norm,
-        arg_func=group_norm_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "layernorm"])
-@pytest.mark.layernorm
-def test_perf_layernorm(config):
-    def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device=device)
-        weight = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device=device,
-        )
-        bias = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device=device,
-        )
-        return (
-            inp,
-            [
-                size,
-            ],
-            weight,
-            bias,
-        )
-
-    bench = Benchmark(
-        op_name="layernorm",
-        torch_op=torch.layer_norm,
-        arg_func=layer_norm_args,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "log_softmax"])
-@pytest.mark.log_softmax
-def test_perf_log_softmax(config):
-    bench = Benchmark(
-        op_name="log_softmax",
-        torch_op=torch.nn.functional.log_softmax,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "max"])
-@pytest.mark.max
-def test_perf_max(config):
-    bench = Benchmark(
-        op_name="max",
-        torch_op=torch.max,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "mean"])
-@pytest.mark.mean
-def test_perf_mean(config):
-    bench = Benchmark(
-        op_name="mean",
-        torch_op=torch.mean,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "min"])
-@pytest.mark.min
-def test_perf_min(config):
-    bench = Benchmark(
-        op_name="min",
-        torch_op=torch.min,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "prod"])
-@pytest.mark.prod
-def test_perf_prod(config):
-    bench = Benchmark(
-        op_name="prod",
-        torch_op=torch.prod,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "softmax"])
-@pytest.mark.softmax
-def test_perf_softmax(config):
-    bench = Benchmark(
-        op_name="softmax",
-        torch_op=torch.nn.functional.softmax,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "softmax_backward"])
-@pytest.mark.softmax_backward
-def test_perf_softmax_backward(config):
-    bench = Benchmark(
-        op_name="softmax",
-        torch_op=torch.nn.functional.softmax,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
+        for name, op, dtype in backward_operations
+    ],
+)
+def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin" and op_name == "softmax":
+        pytest.skip("RUNTIME TODOFIX.")
+    bench = UnaryReductionBenchmark(
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
         is_backward=True,
     )
     bench.run()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "sum"])
-@pytest.mark.sum
-def test_perf_sum(config):
-    bench = Benchmark(
-        op_name="sum",
-        torch_op=torch.sum,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-        need_dim=True,
+
+def cross_entropy_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = torch.randint(0, shape[-1], (shape[0],), device=device)
+    yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[-1], dtype=cur_dtype, device=device)
+        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+        yield inp, target, {
+            "weight": weight,
+            "reduction": "sum",
+            "label_smoothing": 0.1,
+        }
+
+
+def nll_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = torch.randint(0, shape[-1], (shape[0],), device=device)
+    yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[-1], dtype=cur_dtype, device=device)
+        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+
+
+def cumsum_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, 1
+
+
+def mse_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        yield inp, target, {"reduction": "mean"}
+        yield inp, target, {"reduction": "sum"}
+        yield inp, target, {"reduction": "none"}
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "log_softmax",
+            torch.nn.functional.log_softmax,
+            unary_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.log_softmax,
+        ),
+        pytest.param(
+            "nonzero",
+            torch.nonzero,
+            unary_input_fn,
+            FLOAT_DTYPES
+            + ([torch.int32] if vendor_name == "kunlunxin" else INT_DTYPES)
+            + BOOL_DTYPES,
+            marks=[
+                pytest.mark.nonzero,
+                pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError"),
+            ],
+        ),
+        pytest.param(
+            "CrossEntropyLoss",
+            torch.nn.functional.cross_entropy,
+            cross_entropy_loss_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.CrossEntropyLoss,
+        ),
+        pytest.param(
+            "cumsum",
+            torch.cumsum,
+            cumsum_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=[
+                pytest.mark.cumsum,
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
+        ),
+        pytest.param(
+            "cummin",
+            torch.cummin,
+            cumsum_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=[
+                pytest.mark.cummin,
+                pytest.mark.skipif(True, reason="triton not supported"),
+            ],
+        ),
+        pytest.param(
+            "nll_loss",
+            torch.nn.functional.nll_loss,
+            nll_loss_input_fn,
+            FLOAT_DTYPES,
+            marks=[
+                pytest.mark.NLLLoss,
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
+        ),
+        pytest.param(
+            "mse_loss",
+            torch.nn.functional.mse_loss,
+            mse_loss_input_fn,
+            FLOAT_DTYPES,
+            marks=[
+                pytest.mark.MSELoss,
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
+        ),
+    ],
+)
+def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["CrossEntropyLoss", "nll_loss"]:
+            pytest.skip("RUNTIME TODOFIX")
+        elif op_name in ["cummin"]:
+            pytest.skip("CUMSUM UNSUPPORTED")
+    bench = GenericBenchmark2DOnly(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "var_mean"])
-@pytest.mark.var_mean
-def test_perf_var_mean(config):
-    bench = Benchmark(
-        op_name="var_mean",
-        torch_op=torch.var_mean,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
+
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
+)
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
+@pytest.mark.count_nonzero
+def test_perf_count_nonzero():
+    def count_nonzero_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = random.choice([None, 0, 1])
+
+        yield inp, dim
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=count_nonzero_input_fn,
+        op_name="count_nonzero",
+        torch_op=torch.count_nonzero,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "vector_norm"])
-@pytest.mark.vector_norm
-def test_perf_vector_norm(config):
-    bench = Benchmark(
-        op_name="vector_norm",
-        torch_op=torch.linalg.vector_norm,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
+
+@pytest.mark.dot
+def test_perf_dot():
+    def dot_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype=dtype, device=device)
+        if inp.dim() > 1:
+            inp = inp.flatten()
+        yield inp, inp
+
+    bench = GenericBenchmark(
+        input_fn=dot_input_fn,
+        op_name="dot",
+        torch_op=torch.dot,
+        dtypes=FLOAT_DTYPES,
+    )
+
+    bench.run()
+
+
+class quantileBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        more_shapes_1d = [(4,), (1024,), (65535)]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 15, 3)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 3)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+
+def quantile_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    q = torch.tensor([0.0, 0.2, 0.4, 0.6, 0.8, 1.0], dtype=cur_dtype, device=device)
+    yield inp, q, 0
+
+
+@pytest.mark.skipif(True, reason="Skipping Triton version")
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "quantile",
+            torch.quantile,
+            quantile_input_fn,
+            [torch.float32],
+            marks=pytest.mark.quantile,
+        )
+    ],
+)
+def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
+    bench = quantileBenchmark(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()

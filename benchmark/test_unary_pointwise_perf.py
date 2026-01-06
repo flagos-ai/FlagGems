@@ -1,14 +1,19 @@
-import torch
-import pytest
-from benchmark.op_configs import op_configs
+from typing import Generator
 
-from .performance_utils import (
-    Benchmark,
-    unary_arg,
-    unary_int_arg,
-    device,
-    DEFAULT_METRICS
+import pytest
+import torch
+
+import flag_gems
+
+from .attri_util import (
+    BOOL_DTYPES,
+    COMPLEX_DTYPES,
+    DEFAULT_METRICS,
+    FLOAT_DTYPES,
+    INT_DTYPES,
 )
+from .performance_utils import Benchmark, generate_tensor_input, vendor_name
+
 
 class UnaryPointwiseBenchmark(Benchmark):
     """
@@ -17,194 +22,138 @@ class UnaryPointwiseBenchmark(Benchmark):
 
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
 
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return special_shapes_2d + sp_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
+
     def get_tflops(self, op, *args, **kwargs):
         shape = list(args[0].shape)
         return torch.tensor(shape).prod().item()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "abs"])
-@pytest.mark.abs
-def test_perf_abs(config):
+
+forward_operations = [
+    ("abs", torch.abs, FLOAT_DTYPES),
+    *(
+        []
+        if flag_gems.device == "musa"  # angle is not supported on musa
+        else [
+            (
+                "angle",
+                torch.angle,
+                COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES,
+            )
+        ]
+    ),
+    ("erf", torch.erf, FLOAT_DTYPES),
+    ("exp", torch.exp, FLOAT_DTYPES),
+    ("neg", torch.neg, FLOAT_DTYPES),
+    ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
+    ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
+    ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
+    ("log", torch.log, FLOAT_DTYPES),
+    # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
+    # Dropout
+    ("native_dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
+    ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
+    # Activation operations
+    ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
+    ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
+    ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
+    ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
+    ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
+    ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
+    # Trigonometric operations
+    ("cos", torch.cos, FLOAT_DTYPES),
+    ("sin", torch.sin, FLOAT_DTYPES),
+    ("tanh", torch.tanh, FLOAT_DTYPES),
+    # Bitwise operations
+    ("bitwise_not", torch.bitwise_not, INT_DTYPES),
+    # Numerical Checks
+    ("isinf", torch.isinf, FLOAT_DTYPES),
+    ("isnan", torch.isnan, FLOAT_DTYPES),
+    ("isfinite", torch.isfinite, FLOAT_DTYPES),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name,
+            op,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, op, dtype in forward_operations
+    ],
+)
+def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin" and op_name == "elu":
+        pytest.skip("RUNTIME TODOFIX")
+    bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+    bench.run()
+
+
+backward_operations = [
+    ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name,
+            op,
+            dtype,
+            marks=getattr(pytest.mark, name + "_backward", None),
+        )
+        for name, op, dtype in backward_operations
+    ],
+)
+def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
     bench = UnaryPointwiseBenchmark(
-        op_name="abs",
-        torch_op=torch.abs,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        is_backward=True,
     )
     bench.run()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "bitwise_not"])
-@pytest.mark.bitwise_not
-def test_perf_bitwisenot(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="bitwisenot_int",
-        torch_op=torch.bitwise_not,
-        arg_func=unary_int_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
+
+class ToDtypeBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=torch.float32, device=self.device)
+            yield inp, cur_dtype
+
+
+@pytest.mark.to_dtype
+def test_to_dtype_perf():
+    bench = ToDtypeBenchmark(
+        op_name="to_dtype",
+        torch_op=torch.Tensor.to,
+        dtypes=[torch.float16, torch.bfloat16, torch.float64],
     )
     bench.run()
 
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "cos"])
-@pytest.mark.cos
-def test_perf_cos(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="cos",
-        torch_op=torch.cos,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
+
+class GluBenchmark(UnaryPointwiseBenchmark):
+    def set_more_shapes(self):
+        return
+
+
+@pytest.mark.to_dtype
+def test_glu_perf():
+    bench = GluBenchmark(
+        op_name="glu",
+        torch_op=torch.nn.functional.glu,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "dropout"])
-@pytest.mark.dropout
-def test_perf_dropout(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="dropout",
-        torch_op=torch.nn.Dropout(p=0.5),
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "native_dropout"])
-@pytest.mark.native_dropout
-def test_perf_native_dropout(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="native_dropout",
-        torch_op=torch.nn.Dropout(p=0.5),
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "exp"])
-@pytest.mark.exp
-def test_perf_exp(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="exp",
-        torch_op=torch.exp,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "gelu"])
-@pytest.mark.gelu
-def test_perf_gelu(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="gelu",
-        torch_op=torch.nn.functional.gelu,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "isinf"])
-@pytest.mark.isinf
-def test_perf_isinf(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="isinf",
-        torch_op=torch.isinf,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "isnan"])
-@pytest.mark.isnan
-def test_perf_isnan(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="isnan",
-        torch_op=torch.isnan,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "isnan"])
-@pytest.mark.neg
-def test_perf_neg(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="neg",
-        torch_op=torch.neg,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "reciprocal"])
-@pytest.mark.reciprocal
-def test_perf_reciprocal(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="reciprocal",
-        torch_op=torch.reciprocal,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "relu"])
-@pytest.mark.relu
-def test_perf_relu(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="relu",
-        torch_op=torch.nn.functional.relu,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "rsqrt"])
-@pytest.mark.rsqrt
-def test_perf_rsqrt(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="rsqrt",
-        torch_op=torch.rsqrt,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "sigmoid"])
-@pytest.mark.sigmoid
-def test_perf_sigmoid(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="sigmoid",
-        torch_op=torch.sigmoid,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "silu"])
-@pytest.mark.silu
-def test_perf_silu(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="silu",
-        torch_op=torch.nn.functional.silu,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "sin"])
-@pytest.mark.sin
-def test_perf_sin(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="sin",
-        torch_op=torch.sin,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-
-@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "tanh"])
-@pytest.mark.tanh
-def test_perf_tanh(config):
-    bench = UnaryPointwiseBenchmark(
-        op_name="tanh",
-        torch_op=torch.tanh,
-        arg_func=unary_arg,
-        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
-    )
-    bench.run()
-

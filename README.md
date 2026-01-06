@@ -1,75 +1,37 @@
 [中文版](./README_cn.md)
 
+![img_v3_02gp_8115f603-cc89-4e96-ae9d-f01b4fef796g](https://github.com/user-attachments/assets/97950fc6-62bb-4b6a-b8d5-5751c14492fa)
+
 ## Introduction
 
 FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It aims to provide a suite of kernel functions to accelerate LLM training and inference.
 
 By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing users to switch to the Triton function library without the need to modify their model code. Users can still utilize the ATen backend as usual while experiencing significant performance enhancement. The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
 
+We created WeChat group for FlagGems. Scan the QR code to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
 
-## Feature
+<p align="center">
+ <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
+</p>
+
+## Features
+
+### Multi-Backend Hardware Support
+FlagGems supports a wide range of hardware platforms and has been extensively tested across different hardware configurations.
 
 ### Automatic Codegen
+FlagGems provides an automatic code generation mechanism that enables developers to easily generate both pointwise and fused operators.
+The auto-generation system supports a variety of needs, including standard element-wise computations, non-tensor parameters, and specifying output types.
+For more details, please refer to pointwise_dynamic(docs/pointwise_dynamic.md).
 
-In FlagGems, we provide automatic code generation that developers can use to conveniently generate pointwise single operators and pointwise fused operators. Automatic code generation can handle various needs such as normal pointwise computations, non-tensor arguments, and specifying output data types.
+### LibEntry
+FlagGems introduces `LibEntry`, which independently manages the kernel cache and bypasses the runtime of `Autotuner`, `Heuristics`, and `JitFunction`. To use it, simply decorate the Triton kernel with LibEntry.
 
-#### Normal Pointwise Operator
+`LibEntry` also supports direct wrapping of `Autotuner`, `Heuristics`, and `JitFunction`, preserving full tuning functionality. However, it avoids nested runtime type invocations, eliminating redundant parameter processing. This means no need for binding or type wrapping, resulting in a simplified cache key format and reduced unnecessary key computation.
 
-Decorating the pointwise operator function with `pointwise_dynamic` can save the manual handling of tensor addressing, tensor read/write, parallel tiling, tensor broadcasting, dynamic dimensions, non-contiguous storage, etc. For example, in the following code, developers only need to describe the computational logic to generate flexible and efficient Triton code.
-
-```python
-@pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
-@triton.jit
-def abs_func(x):
-    return tl.abs(x)
-```
-
-#### Non-Tensor Argument
-
-By default, `pointwise_dynamic` treats all parameters as tensors, and by passing a list of boolean values to the parameter `is_tensor`, developers can specify which parameters are tensors and which are not. Additionally, developers can pass in `dtypes` to indicate the data types of non-tensor parameters, but this is not required. For example, in the following code, the `alpha` parameter is defined as a non-tensor floating point number, while the `x` and `y` parameters are defined as tensors.
-
-```python
-@pointwise_dynamic(
-    is_tensor=[True, True, False],
-    dtypes=[None, None, float],
-    promotion_methods=[(0,"DEFAULT")]
-)
-@triton.jit
-def add_func(x, y, alpha):
-    return x + y * alpha
-```
-
-#### Output Data Type
-
-Furthermore, developers MUST provide promotion_methods to specify how type promotion should be handled for the operation to achieve the correct output type during computation.
-
-```python
-@pointwise_dynamic(output_dtypes=[torch.bool])
-@triton.jit
-def ge(x, y):
-    return x > y
-```
-
-In `promotion_methods`, an `int` is used to indicate the position of the parameter requiring type promotion, while a `str` denotes the method of type promotion. The `str` corresponds to the following enumerated types:
-
-```python
-class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
-    DEFAULT = (0,)
-    NO_OPMATH = (1,)
-    INT_TO_FLOAT = (2,)
-    ALWAYS_BOOL = (3,)
-    COMPLEX_TO_FLOAT = (4,)
-    BOOL_TO_LONG = (5,)
-```
-
-Examples：
-
-- `DEFAULT` ：add
-- `NO_OPMATH` ： where, nextafter, cat
-- `INT_TO_FLOAT` ：sin
-- `ALWAYS_BOOL` ：eq
-- `COMPLEX_TO_FLOAT` ：abs
-- `BOOL_TO_LONG` ：pow
+### C++ Runtime
+FlagGems can be installed either as a pure Python package or as a package with C++ extensions. The C++ runtime is designed to address the overhead of the Python runtime and improve end-to-end performance.
+For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_extensions.md).
 
 ## Changelog
 
@@ -79,97 +41,25 @@ Examples：
 - support reduction operators: cumsum, layernorm, mean, softmax
 
 ### v2.0
-- support BLAS operator: mv, outer
+- support BLAS operators: mv, outer
 - support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
 - support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
 - support fused operators: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
 
-## Quick Start
+### v2.1
+- support Tensor operators: where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
+- support neural network operator: embedding
+- support basic math operators: allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
+- support distribution operators: normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
+- support science operators: erf, resolve_conj, resolve_neg
 
-### Requirements
+## Get Start
 
-1. Triton >= 2.2.0, <3.0.0
-2. PyTorch >= 2.1.2
-3. Transformers >= 4.40.2
-
-### Installation
-
-```shell
-git clone https://github.com/FlagOpen/FlagGems.git
-cd FlagGems
-pip install .
-```
-
-## Usage
-
-### Import
-
-1. Enable permanently
-    ```python
-    import flag_gems
-    flag_gems.enable()
-    ```
-
-2. Enable temporarily
-    ```python
-    import flag_gems
-    with flag_gems.use_gems():
-        pass
-    ```
-
-3. Example
-    ```python
-    import torch
-    import flag_gems
-
-    M, N, K = 1024, 1024, 1024
-    A = torch.randn((M, K), dtype=torch.float16, device="cuda")
-    B = torch.randn((K, N), dtype=torch.float16, device="cuda")
-    with flag_gems.use_gems():
-        C = torch.mm(A, B)
-    ```
-
-### Execute
-
-1. Test Operator Accuracy
-    - Run reference on cuda
-        ```shell
-        cd tests
-        pytest test_xx_ops.py
-        ```
-    - Run reference on cpu
-        ```shell
-        cd tests
-        pytest test_xx_ops.py --device cpu
-        ```
-
-2. Test Model Accuracy
-    ```shell
-    cd examples
-    pytest model_xx_test.py
-    ```
-
-3. Test Operator Performance
-    - Test CUDA performance
-        ```shell
-        cd benchmark
-        pytest test_xx_perf.py -s
-        ```
-    - Test end-to-end performance
-        ```shell
-        cd benchmark
-        pytest test_xx_perf.py -s --mode cpu
-        ```
-
-4. Run tests with logging infomation
-    ```shell
-    pytest program.py --log-cli-level debug
-    ```
-    Not recommended in performance testing.
+For a quick start with installing and using flag_gems, please refer to the documentation [GetStart](docs/get_start_with_flaggems.md).
 
 ## Supported Operators
 
-Operators will be implemented according to [OperatorList.md](./OperatorList.md).
+Operators will be implemented according to [OperatorList](docs/operator_list.md).
 
 ## Supported Models
 
@@ -181,17 +71,31 @@ Operators will be implemented according to [OperatorList.md](./OperatorList.md).
 
 | Platform | float16 | float32 | bfloat16 |
 | :---: | :---: | :---: | :---: |
-| Nvidia A100 | ✓ | ✓ | ✓ |
+| Nvidia GPU | ✓ | ✓ | ✓ |
 
 ## Performance
 
 The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode. The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
 
-![Operator Speedup](./assets/speedup-0708-eng.png)
+![Operator Speedup](./docs/assets/speedup-20250423.png)
 
 ## Contributions
 
 If you are interested in contributing to the FlagGems project, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md). Any contributions would be highly appreciated.
+
+## Citation
+
+If you find our work useful, please consider citing our project:
+
+```bibtex
+@misc{flaggems2024,
+    title={FlagOpen/FlagGems: FlagGems is an operator library for large language models implemented in the Triton language.},
+    url={https://github.com/FlagOpen/FlagGems},
+    journal={GitHub},
+    author={BAAI FlagOpen team},
+    year={2024}
+}
+```
 
 ## Contact us
 
