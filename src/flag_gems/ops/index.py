@@ -269,6 +269,11 @@ def index(inp, indices):
     if not indices:
         raise ValueError("at least one index must be provided")
 
+    indices = [
+        index.to(inp.device) if index.device != inp.device else index
+        for index in indices
+    ]
+
     # Step 1: Process indices (convert bool/int8 to long, handle None)
     # Following PyTorch meta implementation
     processed_indices = []
