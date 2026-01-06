@@ -1,0 +1,80 @@
+name: gems-experimental-test
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'src/flag_gems/experimental_ops/**'
+      - 'tests/experimental_ops/**'
+
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'src/flag_gems/experimental_ops/**'
+      - 'tests/experimental_ops/**'
+env:
+  CUDA_VISIBLE_DEVICES: 7
+  http_proxy: ${{ secrets.HTTP_PROXY }}
+  https_proxy: ${{ secrets.HTTPS_PROXY }}
+
+jobs:
+  experimental-test-on-hopper:
+    runs-on: hopper
+    concurrency:
+      group: experimental-test-on-hopper-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: FlagGems experimental tests on hopper
+        shell: bash
+        run: |
+          source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+          conda activate flag_gems
+          source tools/run_command.sh
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          HEAD_SHA=${{ github.sha }}
+
+          echo "Diffing $BASE_SHA...$HEAD_SHA"
+
+          changed_files=$(git diff --name-only $BASE_SHA...$HEAD_SHA || true)
+          tests_to_run=""
+          missing_tests=""
+
+          for f in $changed_files; do
+              if [[ $f == src/flag_gems/experimental_ops/*.py ]]; then
+                  if [[ $(basename "$f") == __*__* ]]; then continue; fi
+
+                  base=$(basename "$f" .py)
+                  test_file="tests/experimental_ops/${base}_test.py"
+                  if [ -f "$test_file" ]; then
+                      tests_to_run="$tests_to_run $test_file"
+                  else
+                      missing_tests="$missing_tests $test_file"
+                  fi
+
+              elif [[ $f == tests/experimental_ops/*_test.py ]]; then
+                  if [ -f "$f" ]; then
+                      tests_to_run="$tests_to_run $f"
+                  fi
+              fi
+          done
+
+          if [ -n "$missing_tests" ]; then
+              echo "Error: The following operator files were modified, but their corresponding test files are missing:"
+              for m in $missing_tests; do
+                  echo "  - Expected: $m"
+              done
+          fi
+
+          unique_tests=$(echo "$tests_to_run" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+
+          if [ -n "$unique_tests" ]; then
+              echo "Running tests: $unique_tests"
+              run_command pytest -s $unique_tests
+          else
+              echo "No relevant changes in ops or tests, skipping."
+          fi

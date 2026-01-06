@@ -1,0 +1,86 @@
+name: release-build-wheels
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-wheels:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Pull manylinux2_28 image
+        run: docker pull quay.io/pypa/manylinux_2_28_x86_64
+
+      - name: Prepare directories
+        run: |
+          rm -rf ${{ runner.temp }}/wheelhouse ${{ runner.temp }}/build_temp
+          mkdir -p ${{ runner.temp }}/wheelhouse
+          mkdir -p ${{ runner.temp }}/build_temp
+
+      - name: Start manylinux builder container
+        run: |
+          container=$(docker run -td \
+            --name "flaggems_builder" \
+            -v ${{ github.workspace }}:/workspace \
+            -v ${{ runner.temp }}/build_temp:/workspace/build \
+            -v ${{ runner.temp }}/wheelhouse:/wheelhouse \
+            -w /workspace \
+            quay.io/pypa/manylinux_2_28_x86_64)
+          echo "CONTAINER=$container" >> $GITHUB_ENV
+
+      - name: Install build tools inside container
+        run: |
+          docker exec -t $CONTAINER bash -c "
+            set -e
+            /opt/python/cp38-cp38/bin/python -m pip install --upgrade pip setuptools wheel build
+          "
+
+      - name: Patch pyproject.toml to use setuptools backend
+        run: |
+          docker exec -t $CONTAINER bash -c "
+            set -e
+            sed -i 's/build-backend = \"scikit_build_core.build\"/build-backend = \"setuptools.build_meta\"/' pyproject.toml
+          "
+
+      - name: Build wheel for Python 3.8
+        run: |
+          docker exec -t $CONTAINER bash -c "
+            set -e
+            /opt/python/cp38-cp38/bin/python -m build --wheel --outdir /wheelhouse
+          "
+
+      - name: Upload wheel as artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: built-wheel-${{ github.ref_name }}
+          path: ${{ runner.temp }}/wheelhouse/*.whl
+
+      - name: Cleanup container
+        if: always()
+        run: docker rm -f $CONTAINER
+
+  publish:
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Download built wheel
+        uses: actions/download-artifact@v5
+        with:
+          name: built-wheel-${{ github.ref_name }}
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__

@@ -867,9 +867,19 @@ class WrapperGenerator:
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
             # max_grid_size0 = self.config.max_grid_size[0]
             # code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
-
-            code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
-            code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
+            determine_num_ctas_and_tiles = [
+                "if sum(out0.shape) <= 2048*64:",
+                "   num_ctas = 1 # XPU BLOCK_NUM",
+                "   num_tiles = 1 # XPU BLOCK_NUM",
+                "else:",
+                "   num_ctas = 12 # XPU BLOCK_NUM",
+                "   num_tiles = 12 # XPU BLOCK_NUM",
+            ]
+            if self.config.kunlunAutoGrid is True:
+                code.writelines(determine_num_ctas_and_tiles)
+            else:
+                code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
+                code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
             code.writeline(
                 "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
             )

@@ -684,7 +684,52 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.scatter_add_
+@pytest.mark.parametrize(
+    "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_scatter_add_(src_shape, inp_shape, dim, dtype):
+    init_seed(0)
+    inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+    size_dim = min(src_shape[dim], inp_shape[dim])
+
+    import random
+
+    index_shape = [
+        random.randint(1, min(src_shape[0], inp_shape[0])),
+        random.randint(1, min(src_shape[1], inp_shape[1])),
+        random.randint(1, min(src_shape[2], inp_shape[2])),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=flag_gems.device)
+
+    m, n, o = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    ref_inp = to_reference(inp, upcast=True)
+    ref_index = to_reference(index)
+    ref_src = to_reference(src, upcast=True)
+    ref_out = ref_inp.scatter_add_(dim, ref_index, ref_src)
+    with flag_gems.use_gems():
+        res_out = inp.scatter_add_(dim, index, src)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -818,7 +863,7 @@ def test_accuracy_inplace_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scatter_
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -1815,18 +1860,6 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
 
 
-def topk_softmax_torch_reference(gating_output: torch.Tensor, topk: int):
-    probs = torch.softmax(gating_output, dim=-1)
-    topk_values, topk_indices = torch.topk(
-        probs, k=topk, dim=-1, largest=True, sorted=True
-    )
-    num_tokens = gating_output.shape[0]
-    source_rows = torch.arange(topk, device=gating_output.device).view(
-        1, -1
-    ) * num_tokens + torch.arange(num_tokens, device=gating_output.device).view(-1, 1)
-    return topk_values, topk_indices, source_rows
-
-
 def generate_test_params():
     params = [torch.int32, torch.int64]
     if SkipVersion("torch", ">2.2"):
@@ -1850,10 +1883,19 @@ def generate_test_params():
         (1024, 512, 32),
     ],
 )
-def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
+@pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("renormalize", [False, True])
+def test_topk_softmax(
+    num_tokens, num_experts, topk, input_dtype, index_dtype, renormalize
+):
     if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
         # torch musa unsupport uint32
         index_dtype = torch.int64
+
+    try:
+        from vllm._custom_ops import topk_softmax as vllm_topk_softmax
+    except (ImportError, AttributeError):
+        pytest.skip("vLLM topk_softmax not available")
 
     torch.manual_seed(42)
     device = flag_gems.device
@@ -1862,25 +1904,43 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
         num_tokens, num_experts, dtype=torch.float32, device=device
     )
 
-    topk_weights = torch.empty((num_tokens, topk), device=device, dtype=torch.float32)
-    topk_indices = torch.empty((num_tokens, topk), device=device, dtype=index_dtype)
-    token_expert_indices = torch.empty(
-        (num_tokens, topk), device=device, dtype=torch.int32
+    vllm_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
+    vllm_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
+    vllm_token_expert = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
+
+    vllm_topk_softmax(
+        vllm_weights,
+        vllm_indices,
+        vllm_token_expert,
+        gating_output,
+        renormalize,
     )
 
-    topk_softmax(topk_weights, topk_indices, token_expert_indices, gating_output)
+    gems_weights = torch.empty_like(vllm_weights)
+    gems_indices = torch.empty_like(vllm_indices)
+    gems_token_expert = torch.empty_like(vllm_token_expert)
 
-    ref_weights, ref_indices, ref_source_rows = topk_softmax_torch_reference(
-        gating_output, topk
+    topk_softmax(
+        gems_weights,
+        gems_indices,
+        gems_token_expert,
+        gating_output,
+        renormalize,
     )
 
-    assert topk_weights.shape == (num_tokens, topk)
-    assert topk_indices.shape == (num_tokens, topk)
-    assert token_expert_indices.shape == (num_tokens, topk)
+    assert torch.allclose(
+        gems_weights, vllm_weights, atol=1e-5
+    ), "topk_weights mismatch"
+    assert torch.equal(
+        gems_indices.cpu(), vllm_indices.cpu()
+    ), "topk_indices mismatch (fp32)"
+    assert torch.equal(
+        gems_token_expert.cpu(), vllm_token_expert.cpu()
+    ), "token_expert_indices mismatch"
 
-    assert torch.allclose(topk_weights, ref_weights, atol=1e-5)
-    assert torch.equal(topk_indices.cpu(), ref_indices.to(index_dtype).cpu())
-    assert torch.equal(token_expert_indices.cpu(), ref_source_rows.cpu())
+    if renormalize:
+        sums = gems_weights.sum(dim=-1)
+        assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
 
 
 @pytest.mark.std
@@ -1986,3 +2046,41 @@ def test_accuracy_scaled_softmax_backward(
     gems_assert_close(
         in_grad, in_grad_ref, dtype, equal_nan=True, reduce_dim=s.shape[-1]
     )
+
+
+@pytest.mark.masked_scatter
+@pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_masked_scatter(shape, dtype, threshold):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
+    numel = mask.sum().item()
+    src = torch.randn((numel,), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    ref_src = to_reference(src)
+    ref_out = torch.masked_scatter(ref_inp, ref_mask, ref_src)
+    with flag_gems.use_gems():
+        res_out = torch.masked_scatter(inp, mask, src)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.masked_scatter_
+@pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_masked_scatter_(shape, dtype, threshold):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
+    numel = mask.sum().item()
+    src = torch.randn((numel,), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    ref_src = to_reference(src)
+    ref_inp.masked_scatter_(ref_mask, ref_src)
+    with flag_gems.use_gems():
+        inp.masked_scatter_(mask, src)
+
+    gems_assert_equal(inp, ref_inp)

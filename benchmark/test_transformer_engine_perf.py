@@ -8,6 +8,11 @@ from benchmark.performance_utils import Benchmark, generate_tensor_input
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
+    # Note: Importing transformer_engine (especially in some versions like on python 3.10) may automatically
+    # configure the Root Logger (adding handlers). This can cause subsequent `logging.basicConfig` calls
+    # (used by FlagGems benchmark) to be ignored/no-op, leading to missing result log files.
+    # See: https://github.com/NVIDIA/TransformerEngine/issues/1065
+
     TE_AVAILABLE = True
 except ImportError:
     TE_AVAILABLE = False
@@ -80,9 +85,9 @@ glu_forward_ops = [
 ]
 
 glu_backward_ops = [
-    ("dgeglu", "dgeglu", FLOAT_DTYPES),
-    ("dswiglu", "dswiglu", FLOAT_DTYPES),
-    ("dreglu", "dreglu", FLOAT_DTYPES),
+    ("dgeglu", "dgeglu", FLOAT_DTYPES, "geglu"),
+    ("dswiglu", "dswiglu", FLOAT_DTYPES, "swiglu"),
+    ("dreglu", "dreglu", FLOAT_DTYPES, "reglu"),
 ]
 
 
@@ -127,9 +132,9 @@ def test_tex_glu_forward_perf(op_name, tex_attr_name, dtypes):
             name,
             tex_attr,
             dtype,
-            marks=getattr(pytest.mark, name, None),
+            marks=getattr(pytest.mark, op_name, None),
         )
-        for name, tex_attr, dtype in glu_backward_ops
+        for name, tex_attr, dtype, op_name in glu_backward_ops
     ],
 )
 def test_tex_glu_backward_perf(op_name, tex_attr_name, dtypes):
