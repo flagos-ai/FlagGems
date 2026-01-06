@@ -85,15 +85,16 @@ def cat(
         return A[0]
 
     # remove torch.Size([0]) tensors
-    A_list = list(A)
-    for i in range(len(A_list) - 1, -1, -1):
-        if A_list[i].shape == torch.Size([0]):
-            A_list.pop(i)
-    if len(A_list) == 0:
-        return torch.tensor([], device=A[0].device, dtype=A[0].dtype)
-    elif len(A_list) == 1:
-        return A_list[0]
-    A = A_list
+    device = A[0].device
+    dtype = A[0].dtype
+    A = list(A)
+    for i in range(len(A) - 1, -1, -1):
+        if A[i].shape == torch.Size([0]):
+            A.pop(i)
+    if len(A) == 0:
+        return torch.tensor([], device=device, dtype=dtype)
+    elif len(A) == 1:
+        return A[0]
 
     assert dim >= -A[0].ndim and dim < A[0].ndim, f"Invalid dim: {dim}"
     dim %= A[0].ndim
