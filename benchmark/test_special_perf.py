@@ -472,6 +472,28 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
+@pytest.mark.upsample_nearest1d
+def test_perf_upsample_nearest1d():
+    def upsample_nearest1d_input_fn(shape, dtype, device):
+        batch, channel, length = shape
+        input = torch.randn(size=shape, device=device, dtype=dtype)
+        scale_factors = 2
+        output_size = int(length * scale_factors)
+        yield {
+            "input": input,
+            "output_size": (output_size,),
+            "scales": None,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_nearest1d_input_fn,
+        op_name="upsample_nearest1d",
+        torch_op=torch._C._nn.upsample_nearest1d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
     def upsample_nearest2d_input_fn(shape, dtype, device):
