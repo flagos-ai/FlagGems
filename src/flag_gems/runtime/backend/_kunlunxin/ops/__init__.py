@@ -164,7 +164,7 @@ from .repeat_interleave import (
 )
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
-from .rms_norm import rms_norm
+from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub
 from .scatter import scatter, scatter_
@@ -418,6 +418,8 @@ __all__ = [
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_forward",
+    "rms_norm_backward",
     "sqrt",
     "sqrt_",
     "rsqrt",

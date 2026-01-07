@@ -257,40 +257,116 @@ def rms_norm_grad_dw_kernel(
     )
 
 
+def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
+    logger.debug("GEMS RMS_NORM FORWARD")
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
+
+    # BLOCK_SIZE = triton.next_power_of_2(N)
+    BLOCK_SIZE = builtins.min(
+        64 * 128, triton.next_power_of_2(N)
+    )  # core_num * buffer_size_limit
+
+    x = x.contiguous()
+    weight = weight.contiguous()
+    y = torch.empty_like(x)
+    inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+
+    with torch_device_fn.device(x.device):
+        if N > 64 * 128:
+            rms_norm_kerne_tile[M,](
+                y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+            )
+        else:
+            rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
+
+    return y, inv_rms
+
+
+def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
+    logger.debug("GEMS RMS_NORM BACKWARD")
+
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])
+    N = math.prod(normalized_shape)
+
+    BLOCK_SIZE = triton.next_power_of_2(N)
+    x = x.contiguous()
+    dy = dy.contiguous()
+    weight = weight.contiguous()
+    dx = torch.empty_like(x)
+
+    with torch_device_fn.device(x.device):
+        if N > 64 * 128:
+            BLOCK_SIZE = 8192
+            rms_norm_grad_dx_kernel_tile[M,](
+                x,
+                dy,
+                inv_rms,
+                dx,
+                weight,
+                N,
+                1,
+                N,
+                1,
+                N,
+                eps,
+                BLOCK_SIZE,
+                isCloseUnrollControl=True,
+                isCloseVectorization=True,
+            )
+        else:
+            rms_norm_grad_dx_kernel[M,](
+                x,
+                dy,
+                inv_rms,
+                dx,
+                weight,
+                N,
+                1,
+                N,
+                1,
+                N,
+                eps,
+                BLOCK_SIZE,
+                isCloseUnrollControl=True,
+            )
+
+    ROW_BLOCK_SIZE = 1
+    COL_BLOCK_SIZE = 256
+    row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
+    col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
+
+    partial_buffer = torch.empty(
+        (row_block_num, N), dtype=torch.float32, device=x.device
+    )
+
+    with torch_device_fn.device(x.device):
+        rms_norm_grad_dw_kernel[row_block_num, col_block_num](
+            x,
+            dy,
+            inv_rms,
+            partial_buffer,
+            N,
+            1,
+            N,
+            1,
+            M,
+            N,
+            ROW_BLOCK_SIZE,
+            COL_BLOCK_SIZE,
+            isCloseUnrollControl=True,
+            isCloseCoreTiling=True,
+        )
+        dw = torch.sum(partial_buffer, dim=0, dtype=x.dtype).reshape(-1)
+    return dx, dw
+
+
 class RmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, eps=1e-5):
-        logger.debug("GEMS LAYERNORM FORWARD")
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
-
-        # BLOCK_SIZE = triton.next_power_of_2(N)
-        BLOCK_SIZE = builtins.min(
-            64 * 128, triton.next_power_of_2(N)
-        )  # core_num * buffer_size_limit
-
-        x = x.contiguous()
-        weight = weight.contiguous()
-        y = torch.empty_like(x)
-        inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
-
-        with torch_device_fn.device(x.device):
-            if N > 64 * 128:
-                rms_norm_kerne_tile[M,](
-                    y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-                )
-            else:
-                rms_norm_kernel[M,](
-                    y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-                )
-
-        # print(f"ref_inv_rms = {ref_inv_rms.cpu()}")
-        # print(f"inv_rms = {inv_rms.cpu()}")
-        # from tests.accuracy_utils import gems_assert_close
-
-        # gems_assert_close(ref_inv_rms.cpu(), inv_rms.cpu(), torch.float32)
-        # print("inv_rms pass!")
+        y, inv_rms = rms_norm_forward(x, normalized_shape, weight, eps)
         ctx.save_for_backward(x, inv_rms, weight)
         ctx.normalized_shape = normalized_shape
         ctx.eps = eps
@@ -298,97 +374,12 @@ class RmsNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dy):
-        logger.debug("GEMS LAYERNORM BACKWARD")
         x, inv_rms, weight = ctx.saved_tensors
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps
 
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
-        N = math.prod(normalized_shape)
-
-        BLOCK_SIZE = triton.next_power_of_2(N)
-        x = x.contiguous()
-        weight = weight.contiguous()
-        dx = torch.empty_like(x)
-
-        with torch_device_fn.device(x.device):
-            # import os
-            # os.environ["TRITONXPU_OTHER_SIM"] = "1"
-            # os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-            # print(f"x.shape = {x.shape}")
-            # print(f"dy.shape = {dy.shape}")
-            # print(f"inv_rms.shape = {inv_rms.shape}")
-            # print(f"dx.shape = {dx.shape}")
-            # print(f"weight.shape = {weight.shape}")
-            if N > 64 * 128:
-                BLOCK_SIZE = 8192
-                rms_norm_grad_dx_kernel_tile[M,](
-                    x,
-                    dy,
-                    inv_rms,
-                    dx,
-                    weight,
-                    N,
-                    1,
-                    N,
-                    1,
-                    N,
-                    eps,
-                    BLOCK_SIZE,
-                    isCloseUnrollControl=True,
-                    isCloseVectorization=True,
-                )
-            else:
-                rms_norm_grad_dx_kernel[M,](
-                    x,
-                    dy,
-                    inv_rms,
-                    dx,
-                    weight,
-                    N,
-                    1,
-                    N,
-                    1,
-                    N,
-                    eps,
-                    BLOCK_SIZE,
-                    isCloseUnrollControl=True,
-                )
-            # if "TRITONXPU_OTHER_SIM" in os.environ:
-            #     del os.environ["TRITONXPU_OTHER_SIM"]
-            # if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-            #     del os.environ["TRITONXPU_STORE_MASK_SIM"]
-
-        ROW_BLOCK_SIZE = 1
-        COL_BLOCK_SIZE = 256
-        row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
-        col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
-
-        partial_buffer = torch.empty(
-            (row_block_num, N), dtype=torch.float32, device=x.device
-        )
-
-        with torch_device_fn.device(x.device):
-            rms_norm_grad_dw_kernel[row_block_num, col_block_num](
-                x,
-                dy,
-                inv_rms,
-                partial_buffer,
-                N,
-                1,
-                N,
-                1,
-                M,
-                N,
-                ROW_BLOCK_SIZE,
-                COL_BLOCK_SIZE,
-                isCloseUnrollControl=True,
-                isCloseCoreTiling=True,
-            )
-            dw = torch.sum(partial_buffer, dim=0, dtype=x.dtype).reshape(-1)
-
-        return dx, None, dw, None, None
+        dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
+        return dx, None, dw, None
 
 
 def rms_norm(x, normalized_shape, weight, eps=1e-5):
