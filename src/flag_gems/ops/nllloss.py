@@ -1,5 +1,4 @@
 import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -107,56 +106,66 @@ def nll_loss_backward_kernel(
 @libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss2d_forward_kernel(
-    inp_ptr,
-    tgt_ptr,
-    wgt_ptr,
-    out_ptr,
+    inp_ptr, tgt_ptr, wgt_ptr, out_ptr,
     ignore_index,
-    N,
-    C,
-    D,
+    N, C, H, W,
+    # 新增: Strides 参数
+    stride_inp_n, stride_inp_c, stride_inp_h, stride_inp_w,
+    stride_tgt_n, stride_tgt_h, stride_tgt_w,
     reduction: tl.constexpr = 1,
-    BLOCK_ND: tl.constexpr = 128,
+    BLOCK_SIZE: tl.constexpr = 128,
 ):
-    pid_nd = tl.program_id(0)
-    offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
-    offset_d = offset_nd % D
-    offset_n = offset_nd // D
+    # 处理 N*H*W 个元素
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    
+    n_elements = N * H * W
+    mask = offsets < n_elements
 
-    mask_block = offset_nd < N * D
+    # --- 坐标反解: Linear Index -> (n, h, w) ---
+    _w = offsets % W
+    _h = (offsets // W) % H
+    _n = offsets // (W * H)
 
-    tgt_ptrs = tgt_ptr + offset_n * D + offset_d
-    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
-    ignore_mask = not (tgt == ignore_index) and mask_block
+    # --- Target 读取 (使用 Stride) ---
+    tgt_offset = _n * stride_tgt_n + _h * stride_tgt_h + _w * stride_tgt_w
+    tgt = tl.load(tgt_ptr + tgt_offset, mask=mask, other=0)
+    
+    ignore_mask = (tgt != ignore_index) & mask
 
+    # --- Weight 读取 ---
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
         wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
-    inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt * D + offset_d
-    inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
+    # --- Input 读取 (使用 Stride) ---
+    # Input Offset = n*s_n + class*s_c + h*s_h + w*s_w
+    inp_offset = _n * stride_inp_n + tgt * stride_inp_c + _h * stride_inp_h + _w * stride_inp_w
+    inp_tgt = tl.load(inp_ptr + inp_offset, mask=ignore_mask, other=0).to(tl.float32)
+    
     out = inp_tgt * wgt_tgt * -1
 
-    # none
+    # --- 输出 ---
     if reduction == 0:
-        out_ptrs = out_ptr + offset_n * D + offset_d
-        tl.store(out_ptrs, out, mask=mask_block)
-    # mean
-    elif reduction == 1:
+        # Output 是新创建的连续 Tensor，直接用 linear offset
+        tl.store(out_ptr + offsets, out, mask=mask)
+    elif reduction == 1: # Mean
         total_out = tl.sum(out)
         total_wgt = tl.sum(wgt_tgt)
-        tl.atomic_add(out_ptr, total_out, sem="relaxed")  # output
-        tl.atomic_add(out_ptr + 1, total_wgt, sem="relaxed")  # weight
-        tl.atomic_add(out_ptr + 2, 1, sem="release")  # counter
+        tl.atomic_add(out_ptr, total_out, sem="relaxed")
+        tl.atomic_add(out_ptr + 1, total_wgt, sem="relaxed")
+        tl.atomic_add(out_ptr + 2, 1, sem="release")
+        
         counter = tl.load(out_ptr + 2)
         if counter == tl.num_programs(0):
             total_out = tl.load(out_ptr)
             total_wgt = tl.load(out_ptr + 1)
-            tl.store(out_ptr + 3, total_out / total_wgt)
-    # sum
-    else:
+            if total_wgt == 0:
+                tl.store(out_ptr + 3, 0.0)
+            else:
+                tl.store(out_ptr + 3, total_out / total_wgt)
+    else: # Sum
         total_out = tl.sum(out)
         tl.atomic_add(out_ptr, total_out, sem="relaxed")
 
@@ -164,47 +173,56 @@ def nll_loss2d_forward_kernel(
 @libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss2d_backward_kernel(
-    out_grad_ptr,
-    tgt_ptr,
-    wgt_ptr,
-    inp_grad_ptr,
-    ignore_index,
-    total_weight,
-    N,
-    C,
-    D,
+    out_grad_ptr, tgt_ptr, wgt_ptr, inp_grad_ptr,
+    ignore_index, total_weight,
+    N, C, H, W,
+    # 新增: 各种 Stride 参数
+    stride_grad_inp_n, stride_grad_inp_c, stride_grad_inp_h, stride_grad_inp_w,
+    stride_tgt_n, stride_tgt_h, stride_tgt_w,
+    stride_grad_out_n, stride_grad_out_h, stride_grad_out_w,
     reduction: tl.constexpr = 1,
-    BLOCK_ND: tl.constexpr = 128,
+    BLOCK_SIZE: tl.constexpr = 128,
 ):
-    pid_nd = tl.program_id(0)
-    offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
-    offset_d = offset_nd % D
-    offset_n = offset_nd // D
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < N * H * W
 
-    mask_block = offset_nd < N * D
+    # 坐标反解
+    _w = offsets % W
+    _h = (offsets // W) % H
+    _n = offsets // (W * H)
 
-    tgt_ptrs = tgt_ptr + offset_n * D + offset_d
-    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    ignore_mask = not (tgt == ignore_index) and mask_block
+    # 读取 Target
+    tgt_offset = _n * stride_tgt_n + _h * stride_tgt_h + _w * stride_tgt_w
+    tgt = tl.load(tgt_ptr + tgt_offset, mask=mask, other=0)
+    
+    ignore_mask = (tgt != ignore_index) & mask
 
+    # 读取 Weight
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
     else:
         wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
+    # 读取 Grad Output
     if reduction == 0:
-        out_grad_ptrs = out_grad_ptr + offset_n * D + offset_d
-        out_grad = tl.load(out_grad_ptrs, mask=mask_block, other=0).to(tl.float32)
+        grad_out_off = _n * stride_grad_out_n + _h * stride_grad_out_h + _w * stride_grad_out_w
+        out_grad = tl.load(out_grad_ptr + grad_out_off, mask=mask, other=0).to(tl.float32)
     else:
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
 
+    total_w = tl.load(total_weight).to(tl.float32) if reduction == 1 else 1.0
+
+    grad_val = -1 * out_grad * wgt_tgt
     if reduction == 1:
-        total_w = tl.load(total_weight).to(tl.float32)
-    else:
-        total_w = 1
-    inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
-    inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + tgt * D + offset_d
-    tl.store(inp_grad_ptrs, inp_grad, mask=mask_block)
+        grad_val = grad_val / total_w
+
+    # 写入 Input Grad (利用 Stride)
+    inp_grad_off = _n * stride_grad_inp_n + tgt * stride_grad_inp_c + _h * stride_grad_inp_h + _w * stride_grad_inp_w
+    
+    # 仅当 Mask 有效且该位置是 Target Class 时写入
+    store_mask = mask & (tgt != ignore_index)
+    tl.store(inp_grad_ptr + inp_grad_off, grad_val, mask=store_mask)
 
 
 # Negative Log Likelihood Loss (NLLLoss)
@@ -333,81 +351,78 @@ def nll_loss_backward(
 # 3d+ tensor
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS NLL Loss2d FWD")
-    assert self.ndim == 4, "Invalid input ndim"
+    assert self.ndim == 4
+    N, C, H, W = self.shape
+    assert list(target.shape) == [N, H, W]
 
-    shape = list(target.shape)
-    N, C, _, D = self.shape
-    assert shape == [N, 1, D], "Invalid target size"
-
-    self = self.contiguous()
-    target = target.contiguous()
+    # 不再强制 self.contiguous() 和 target.contiguous()
+    # Weight 通常很小，保持 contiguous 以简化逻辑
     weight = None if weight is None else weight.contiguous()
 
     if reduction == 0:
-        out = torch.empty(shape, dtype=self.dtype, device=self.device)
+        out = torch.empty((N, H, W), dtype=self.dtype, device=self.device)
     elif reduction == 1:
-        out = torch.zeros(
-            [
-                4,
-            ],
-            dtype=torch.float32,
-            device=self.device,
-        )
+        out = torch.zeros([4], dtype=torch.float32, device=self.device)
     else:
         out = torch.zeros([], dtype=torch.float32, device=self.device)
 
-    grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
+    # 获取 Strides
+    s_n, s_c, s_h, s_w = self.stride()
+    t_s_n, t_s_h, t_s_w = target.stride()
+
+    grid = lambda meta: (triton.cdiv(N * H * W, meta["BLOCK_SIZE"]),)
+    
     with torch_device_fn.device(self.device):
         nll_loss2d_forward_kernel[grid](
-            self, target, weight, out, ignore_index, N, C, D, reduction
+            self, target, weight, out,
+            ignore_index,
+            N, C, H, W,
+            # 传入 Strides
+            s_n, s_c, s_h, s_w,
+            t_s_n, t_s_h, t_s_w,
+            reduction
         )
 
-    # redution: 0-None, 1-mean, 2-sum
     if reduction == 0:
-        output = out
-        total_weight = torch.empty([], dtype=self.dtype, device=self.device)
+        return out, torch.empty([], dtype=self.dtype, device=self.device)
     elif reduction == 1:
         out = out.to(self.dtype)
-        output = out[3]
-        total_weight = out[1]
+        return out[3], out[1]
     else:
-        output = out.to(self.dtype)
-        total_weight = torch.empty([], dtype=self.dtype, device=self.device)
-
-    return output, total_weight
+        return out.to(self.dtype), torch.empty([], dtype=self.dtype, device=self.device)
 
 
-def nll_loss2d_backward(
-    grad_output,
-    self,
-    target,
-    weight=None,
-    reduction=1,
-    ignore_index=-100,
-    total_weight=None,
-):
+def nll_loss2d_backward(grad_output, self, target, weight=None, reduction=1, ignore_index=-100, total_weight=None):
     logger.debug("GEMS NLL Loss2d BWD")
-    N, C, _, D = self.shape
+    N, C, H, W = self.shape
 
-    grad_output = grad_output.contiguous()
-    target = target.contiguous()
+    # Input Grad 虽然是新创建的，但也获取 Stride 以保持通用性
+    grad_input = torch.zeros_like(self)
+    gi_s_n, gi_s_c, gi_s_h, gi_s_w = grad_input.stride()
+    
+    # Target Strides
+    t_s_n, t_s_h, t_s_w = target.stride()
+    
+    # Grad Output Strides
+    if reduction == 0:
+        go_s_n, go_s_h, go_s_w = grad_output.stride()
+    else:
+        go_s_n, go_s_h, go_s_w = 0, 0, 0
+        
     weight = None if weight is None else weight.contiguous()
 
-    grad_input = torch.zeros_like(self).contiguous()
-
-    grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
+    grid = lambda meta: (triton.cdiv(N * H * W, meta["BLOCK_SIZE"]),)
+    
     with torch_device_fn.device(self.device):
         nll_loss2d_backward_kernel[grid](
-            grad_output,
-            target,
-            weight,
-            grad_input,
-            ignore_index,
-            total_weight,
-            N,
-            C,
-            D,
-            reduction,
+            grad_output, target, weight, grad_input,
+            ignore_index, total_weight,
+            N, C, H, W,
+            # 传入所有 Strides
+            gi_s_n, gi_s_c, gi_s_h, gi_s_w,
+            t_s_n, t_s_h, t_s_w,
+            go_s_n, go_s_h, go_s_w,
+            reduction
         )
 
     return grad_input
