@@ -1484,11 +1484,12 @@ def test_accuracy_grid_sample(shape, mode, padding_mode, align_corners, dtype):
 
     # Input image
     inp = torch.randn(N, C, H_in, W_in, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp)
+    # CPU grid_sampler_2d doesn't support Half, use float32 for reference
+    ref_inp = to_reference(inp).to(torch.float32)
 
     # Grid: normalized coordinates in [-1, 1]
     grid = torch.rand(N, H_out, W_out, 2, dtype=dtype, device=flag_gems.device) * 2 - 1
-    ref_grid = to_reference(grid)
+    ref_grid = to_reference(grid).to(torch.float32)
 
     # Convert mode/padding to int
     mode_int = GRID_SAMPLE_MODE_MAP[mode]
@@ -1497,7 +1498,7 @@ def test_accuracy_grid_sample(shape, mode, padding_mode, align_corners, dtype):
     # Reference (PyTorch ATen)
     ref_out = torch.ops.aten.grid_sampler_2d(
         ref_inp, ref_grid, mode_int, padding_int, align_corners
-    )
+    ).to(dtype)
 
     # Result (FlagGems)
     with flag_gems.use_gems():
@@ -1524,13 +1525,26 @@ def test_accuracy_grid_sample_backward(shape, mode, padding_mode, align_corners,
     inp = torch.randn(
         N, C, H_in, W_in, dtype=dtype, device=flag_gems.device, requires_grad=True
     )
-    # Create reference with requires_grad and retain_grad
-    ref_inp = inp.clone().detach().requires_grad_(True)
+    # Create reference with requires_grad
+    # CPU grid_sampler_2d doesn't support Half, use float32 for reference
+    # Use detach() and clone() to ensure it's a leaf tensor
+    ref_device = "cpu" if TO_CPU else flag_gems.device
+    ref_inp = (
+        inp.detach()
+        .clone()
+        .to(device=ref_device, dtype=torch.float32)
+        .requires_grad_(True)
+    )
 
     # Grid (requires grad)
     grid = torch.rand(N, H_out, W_out, 2, dtype=dtype, device=flag_gems.device) * 2 - 1
     grid.requires_grad = True
-    ref_grid = grid.clone().detach().requires_grad_(True)
+    ref_grid = (
+        grid.detach()
+        .clone()
+        .to(device=ref_device, dtype=torch.float32)
+        .requires_grad_(True)
+    )
 
     # Convert mode/padding to int
     mode_int = GRID_SAMPLE_MODE_MAP[mode]
@@ -1551,6 +1565,7 @@ def test_accuracy_grid_sample_backward(shape, mode, padding_mode, align_corners,
     res_loss = res_out.sum()
     res_loss.backward()
 
-    # Check gradients
-    gems_assert_close(inp.grad, ref_inp.grad, dtype)
-    gems_assert_close(grid.grad, ref_grid.grad, dtype)
+    # Check gradients (convert ref grads to original dtype for comparison)
+    # ref grads are already on ref_device, just convert dtype
+    gems_assert_close(inp.grad, ref_inp.grad.to(dtype), dtype)
+    gems_assert_close(grid.grad, ref_grid.grad.to(dtype), dtype)
