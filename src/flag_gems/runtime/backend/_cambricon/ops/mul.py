@@ -32,10 +32,6 @@ def mul(A, B):
             elif B.dim() == 0:
                 assert B.device == torch.device("cpu"), "expect scalar tensor on cpu"
                 B = B.to(A.device)
-        if A.shape != B.shape:
-            A, B = torch.broadcast_tensors(A, B)
-            A = A.clone()
-            B = B.clone()
         return mul_func(A, B, False)
     elif isinstance(A, torch.Tensor):
         return mul_func_scalar(A, B, False)
@@ -52,10 +48,6 @@ def mul_(A, B):
         if B.device != A.device and B.dim() == 0:
             assert B.device == torch.device("cpu"), "expect scalar tensor on cpu"
             B = B.to(A.device)
-        if A.shape != B.shape:
-            A, B = torch.broadcast_tensors(A, B)
-            A = A.clone()
-            B = B.clone()
         return mul_func(A, B, True, out0=A)
     else:
         return mul_func_scalar(A, B, True, out0=A)
