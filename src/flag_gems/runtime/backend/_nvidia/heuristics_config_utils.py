@@ -295,6 +295,14 @@ def var_mean_heur_block_n(args):
     return triton.next_power_of_2(args["BLOCK_NUM"])
 
 
+def upsample_nearest1d_SAME_L(args):
+    return args["OL"] == args["IL"]
+
+
+def upsample_nearest1d_USE_INT32_IDX(args):
+    return args["N"] * args["C"] * args["OL"] <= (2**31 - 1)  # INT32 MAX
+
+
 def upsample_nearest2d_SAME_H(args):
     return args["OH"] == args["IH"]
 
@@ -445,6 +453,10 @@ HEURISTICS_CONFIGS = {
     "uniform": {
         "BLOCK": uniform_heur_block,
         "num_warps": uniform_heur_num_warps,
+    },
+    "upsample_nearest1d": {
+        "SAME_L": upsample_nearest1d_SAME_L,
+        "USE_INT32_IDX": upsample_nearest1d_USE_INT32_IDX,
     },
     "upsample_nearest2d": {
         "SAME_H": upsample_nearest2d_SAME_H,
