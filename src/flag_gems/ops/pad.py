@@ -426,7 +426,7 @@ class PadFunction:
             # do not expose it to sys.modules
             # sys.modules["_add_module"] = m
             spec.loader.exec_module(m)
-            overload = getattr(m, "_wrapper")
+            overload = getattr(m, "_pad_wrapper")
             self.overloads[key] = overload
         return overload(*args, **kwargs)
 
