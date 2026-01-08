@@ -1,5 +1,4 @@
 # Experimental Operator List
-Total: 122 operators
 | Op name | Speedup vs CUDA |
 |---|---:|
 | _safe_softmax | 7.344881 |
