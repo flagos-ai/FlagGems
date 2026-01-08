@@ -1,8 +1,13 @@
+<<<<<<< HEAD
 # This file contains code copied from the flash-linear-attention project.
 # The original source code was licensed under the MIT license and included
 # the following copyright notice:
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # ruff: noqa: E501
+=======
+# SPDX-License-Identifier: Apache-2.0
+# Lightweight helpers for Triton device ops shared across FLA kernels.
+>>>>>>> df000e19 (update fla kernels)
 
 import os
 

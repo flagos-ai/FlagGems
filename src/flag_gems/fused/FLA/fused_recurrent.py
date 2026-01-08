@@ -3,7 +3,10 @@
 # the following copyright notice:
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # ruff: noqa: E501
+<<<<<<< HEAD
 import logging
+=======
+>>>>>>> df000e19 (update fla kernels)
 
 import torch
 import triton
@@ -11,6 +14,7 @@ import triton.language as tl
 
 from flag_gems.fused.FLA.triton_ops_helper import exp
 
+<<<<<<< HEAD
 logger = logging.getLogger(__name__)
 
 
@@ -175,6 +179,8 @@ def fused_recurrent_gated_delta_rule_fwd_sp_for_qwen3_next_kernel(
         p_g += HV
         p_beta += HV * (V if IS_BETA_HEADWISE else 1)
 
+=======
+>>>>>>> df000e19 (update fla kernels)
 
 @triton.heuristics(
     {
@@ -350,16 +356,23 @@ def fused_recurrent_gated_delta_rule_fwd(
     B, T, H, K, V = *k.shape, v.shape[-1]
     HV = v.shape[2]
     N = B if cu_seqlens is None else len(cu_seqlens) - 1
+<<<<<<< HEAD
     BK, BV = triton.next_power_of_2(K), min(triton.next_power_of_2(V), 32)
+=======
+    BK, BV = triton.next_power_of_2(K), min(triton.next_power_of_2(V), 8)
+>>>>>>> df000e19 (update fla kernels)
     NK, NV = triton.cdiv(K, BK), triton.cdiv(V, BV)
     assert NK == 1, "NK > 1 is not supported yet"
     num_stages = 3
     num_warps = 1
+<<<<<<< HEAD
     qkv_contiguous = (
         (q.stride(0) == q.stride(1) + q.stride(2))
         and (k.stride(0) == k.stride(1) + k.stride(2))
         and (v.stride(0) == v.stride(1) + v.stride(2))
     )
+=======
+>>>>>>> df000e19 (update fla kernels)
 
     o = q.new_empty(NK, *v.shape)
     if inplace_final_state:
@@ -378,6 +391,7 @@ def fused_recurrent_gated_delta_rule_fwd(
         stride_indices_seq, stride_indices_tok = ssm_state_indices.stride()
 
     grid = (NK, NV, N * HV)
+<<<<<<< HEAD
     if qkv_contiguous:
         fused_recurrent_gated_delta_rule_fwd_kernel[grid](
             q=q,
@@ -487,5 +501,40 @@ def fused_recurrent_gated_delta_rule_fwd(
             num_stages=num_stages,
         )
 
+=======
+    fused_recurrent_gated_delta_rule_fwd_kernel[grid](
+        q=q,
+        k=k,
+        v=v,
+        g=g,
+        beta=beta,
+        o=o,
+        h0=initial_state,
+        ht=final_state,
+        cu_seqlens=cu_seqlens,
+        ssm_state_indices=ssm_state_indices,
+        num_accepted_tokens=num_accepted_tokens,
+        scale=scale,
+        N=N,
+        T=T,
+        B=B,
+        H=H,
+        HV=HV,
+        K=K,
+        V=V,
+        BK=BK,
+        BV=BV,
+        stride_init_state_token=stride_init_state_token,
+        stride_final_state_token=stride_final_state_token,
+        stride_indices_seq=stride_indices_seq,
+        stride_indices_tok=stride_indices_tok,
+        IS_BETA_HEADWISE=beta.ndim == v.ndim,
+        USE_QK_L2NORM_IN_KERNEL=use_qk_l2norm_in_kernel,
+        INPLACE_FINAL_STATE=inplace_final_state,
+        IS_KDA=False,
+        num_warps=num_warps,
+        num_stages=num_stages,
+    )
+>>>>>>> df000e19 (update fla kernels)
     o = o.squeeze(0)
     return o, final_state

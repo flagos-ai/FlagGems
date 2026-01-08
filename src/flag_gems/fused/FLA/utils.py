@@ -1,9 +1,12 @@
+<<<<<<< HEAD
 # This file contains code copied from the flash-linear-attention project.
 # The original source code was licensed under the MIT license and included
 # the following copyright notice:
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # ruff: noqa: E501
 
+=======
+>>>>>>> df000e19 (update fla kernels)
 import contextlib
 import functools
 import os
@@ -13,9 +16,12 @@ from typing import Any
 import torch
 import triton
 
+<<<<<<< HEAD
 from flag_gems import runtime
 from flag_gems.utils.device_info import get_device_capability
 
+=======
+>>>>>>> df000e19 (update fla kernels)
 # envrironments setting
 SUPPRESS_LEVEL = int(os.getenv("GDN_RECOMPUTE_SUPPRESS_LEVEL", "0"))
 FLA_GDN_FIX_BT = os.getenv("FLA_GDN_FIX_BT", "0") == "1"
@@ -23,6 +29,7 @@ FLA_GDN_FIX_BT = os.getenv("FLA_GDN_FIX_BT", "0") == "1"
 use_cuda_graph = os.environ.get("FLA_USE_CUDA_GRAPH", "0") == "1"
 
 
+<<<<<<< HEAD
 def _detect_nvidia_hopper() -> bool:
     """Return True if current device is NVIDIA and SM major version >= 9.
 
@@ -39,6 +46,11 @@ def _detect_nvidia_hopper() -> bool:
 is_nvidia_hopper = _detect_nvidia_hopper()
 
 is_tma_supported = is_nvidia_hopper and (
+=======
+is_nvidia_hopper = torch.cuda.get_device_capability()[0] >= 9  # TODO
+
+is_tma_supported = (is_nvidia_hopper) and (
+>>>>>>> df000e19 (update fla kernels)
     hasattr(triton.language, "_experimental_make_tensor_descriptor")
     or hasattr(triton.language, "make_tensor_descriptor")
 )
@@ -65,7 +77,11 @@ def tensor_cache(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+<<<<<<< HEAD
         nonlocal cache_entries
+=======
+        nonlocal cache_entries, cache_size
+>>>>>>> df000e19 (update fla kernels)
         for i, entry in enumerate(cache_entries):
             last_args, last_kwargs, last_result = entry
             if (
@@ -130,6 +146,7 @@ def input_guard(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
     return wrapper
 
 
+<<<<<<< HEAD
 def check_shared_mem(arch: str = "none", tensor_idx: int = 0) -> bool:
     from flag_gems.utils.device_info import get_device_properties
 
@@ -146,3 +163,26 @@ def check_shared_mem(arch: str = "none", tensor_idx: int = 0) -> bool:
         return False
     # Use the AMPERE threshold used in the original project as heuristic
     return max_shared >= 166_000
+=======
+# TODO: fixme
+def check_shared_mem(arch: str = "none", tensor_idx: int = 0) -> bool:
+    return False  # TODO
+    try:
+        # torch.cuda.get_device_properties exists when CUDA is available
+        import torch
+
+        if not torch.cuda.is_available():
+            return False
+        prop = torch.cuda.get_device_properties(tensor_idx)
+        # property names differ across torch versions/drivers; try common ones
+        max_shared = getattr(prop, "max_shared_memory_per_multiprocessor", None)
+        if max_shared is None:
+            max_shared = getattr(prop, "max_shared_memory", None)
+        if max_shared is None:
+            # fallback conservative default
+            return False
+        # Use the AMPERE threshold used in the original project as heuristic
+        return max_shared >= 166_000
+    except Exception:
+        return False
+>>>>>>> df000e19 (update fla kernels)
