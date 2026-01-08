@@ -4,7 +4,7 @@ import torch
 
 from .full import check_dtype, full_
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 def full_like(
