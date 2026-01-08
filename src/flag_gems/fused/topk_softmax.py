@@ -69,7 +69,7 @@ def topk_softmax(
     topk_indices: torch.Tensor,
     token_expert_indices: torch.Tensor,
     gating_output: torch.Tensor,
-    renormalize: bool,
+    renormalize: bool = False,
 ) -> None:
     num_tokens, num_experts = gating_output.shape
     topk = topk_weights.size(-1)
