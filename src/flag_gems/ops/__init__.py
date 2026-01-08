@@ -91,7 +91,10 @@ from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from flag_gems.ops.flip import flip
-from flag_gems.ops.fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
+from flag_gems.ops.fractional_max_pool2d import (
+    fractional_max_pool2d,
+    fractional_max_pool2d_backward,
+)
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward

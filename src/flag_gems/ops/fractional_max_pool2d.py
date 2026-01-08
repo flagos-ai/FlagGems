@@ -100,12 +100,14 @@ def fractional_max_pool2d_forward_kernel(
 
     alpha_h = tl.where(
         out_h > 1,
-        tl.full((), in_h - kernel_h, sample_dtype) / tl.full((), out_h - 1, sample_dtype),
+        tl.full((), in_h - kernel_h, sample_dtype)
+        / tl.full((), out_h - 1, sample_dtype),
         tl.full((), 0.0, sample_dtype),
     )
     alpha_w = tl.where(
         out_w > 1,
-        tl.full((), in_w - kernel_w, sample_dtype) / tl.full((), out_w - 1, sample_dtype),
+        tl.full((), in_w - kernel_w, sample_dtype)
+        / tl.full((), out_w - 1, sample_dtype),
         tl.full((), 0.0, sample_dtype),
     )
 
@@ -118,8 +120,12 @@ def fractional_max_pool2d_forward_kernel(
     row_tmp = tl.floor((h_offsets_f[:, None] + sample_h) * alpha_h) - base_h
     col_tmp = tl.floor((w_offsets_f[None, :] + sample_w) * alpha_w) - base_w
 
-    row_start = tl.where(h_out_offsets[:, None] == (out_h - 1), in_h - kernel_h, row_tmp)
-    col_start = tl.where(w_out_offsets[None, :] == (out_w - 1), in_w - kernel_w, col_tmp)
+    row_start = tl.where(
+        h_out_offsets[:, None] == (out_h - 1), in_h - kernel_h, row_tmp
+    )
+    col_start = tl.where(
+        w_out_offsets[None, :] == (out_w - 1), in_w - kernel_w, col_tmp
+    )
     row_start = tl.where(active, row_start, 0).to(tl.int32)
     col_start = tl.where(active, col_start, 0).to(tl.int32)
 
@@ -129,7 +135,9 @@ def fractional_max_pool2d_forward_kernel(
             w_in = col_start + kw
             in_mask = active & (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
             input_offset = h_in * in_stride_h + w_in * in_stride_w
-            current_val = tl.load(input_base_ptr + input_offset, mask=in_mask, other=min_val)
+            current_val = tl.load(
+                input_base_ptr + input_offset, mask=in_mask, other=min_val
+            )
             current_idx = h_in * in_w + w_in
 
             if dtype == tl.bfloat16:
@@ -146,12 +154,16 @@ def fractional_max_pool2d_forward_kernel(
 
     out_base_ptr = output_ptr + pid_nc * out_h * out_w
     indices_base_ptr = indices_ptr + pid_nc * out_h * out_w
-    output_block_ptr = out_base_ptr + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
-    indices_block_ptr = indices_base_ptr + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
+    output_block_ptr = (
+        out_base_ptr + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
+    )
+    indices_block_ptr = (
+        indices_base_ptr + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
+    )
 
     tl.store(output_block_ptr, max_val_acc, mask=active)
     tl.store(indices_block_ptr, max_idx_acc, mask=active)
-    
+
 
 @libentry()
 @triton.autotune(
@@ -227,11 +239,7 @@ def fractional_max_pool2d_backward_kernel(
     in_bounds = max_indices >= 0
     target_h = max_indices // in_w
     target_w = max_indices % in_w
-    target_mask = (
-        in_bounds
-        & (target_h < in_h)
-        & (target_w < in_w)
-    )
+    target_mask = in_bounds & (target_h < in_h) & (target_w < in_w)
 
     grad_input_tile_ptr = grad_input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
     input_offsets = target_h * in_stride_h + target_w * in_stride_w
@@ -240,7 +248,7 @@ def fractional_max_pool2d_backward_kernel(
         grad_vals.to(grad_input_ptr.type.element_ty),
         mask=target_mask,
     )
-    
+
 
 def _parse_fractional_pool_params(kernel_size, output_size):
     def _as_pair(value, name):
@@ -265,6 +273,7 @@ def _parse_fractional_pool_params(kernel_size, output_size):
         "output_h": out_h,
         "output_w": out_w,
     }
+
 
 def fractional_max_pool2d(
     input: torch.Tensor,
@@ -302,8 +311,12 @@ def fractional_max_pool2d(
         return samples
 
     if out_h == 0 or out_w == 0:
-        output = torch.empty((in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype)
-        indices = torch.empty((in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int64)
+        output = torch.empty(
+            (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
+        )
+        indices = torch.empty(
+            (in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int64
+        )
         return output, indices
 
     random_samples = _normalize_random_samples(random_samples, torch.float64)
@@ -375,7 +388,8 @@ def fractional_max_pool2d_backward(
 
     grid = lambda meta: (
         in_n * in_c,
-        triton.cdiv(out_h, meta["BLOCK_OUT_H"]) * triton.cdiv(out_w, meta["BLOCK_OUT_W"]),
+        triton.cdiv(out_h, meta["BLOCK_OUT_H"])
+        * triton.cdiv(out_w, meta["BLOCK_OUT_W"]),
     )
 
     fractional_max_pool2d_backward_kernel[grid](
