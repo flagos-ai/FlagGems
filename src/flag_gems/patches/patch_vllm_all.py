@@ -300,13 +300,10 @@ def custom_moe_grouped_topk(
 
 
 def custom_topk_softmax(
-    topk_weights, topk_indices, token_expert_indices, gating_output
+    topk_weights, topk_indices, token_expert_indices, gating_output, renormalize=False
 ):
     flag_gems.topk_softmax(
-        topk_weights,
-        topk_indices,
-        token_expert_indices,
-        gating_output,
+        topk_weights, topk_indices, token_expert_indices, gating_output, renormalize
     )
 
 
