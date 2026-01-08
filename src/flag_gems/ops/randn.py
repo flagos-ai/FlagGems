@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry, libtuner
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
@@ -68,8 +69,8 @@ configs = [
     triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=4),
 ]
 
-
-@triton.autotune(configs=configs, key=["N"])
+@libentry()
+@libtuner(configs=configs, key=["N"])
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
     out_ptr,
