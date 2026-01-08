@@ -11,7 +11,7 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @libentry()

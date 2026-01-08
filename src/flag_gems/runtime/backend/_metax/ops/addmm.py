@@ -10,7 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @libentry()
@@ -99,6 +99,17 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     ), "Incompatible input shape"
     M, K = mat1.shape
     _, N = mat2.shape
+
+    logger.debug(
+        "METAX GEMS ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+        M,
+        N,
+        K,
+        mat1.stride(0) == 1,
+        mat2.stride(0) == 1,
+        bias.stride(0) == 1,
+    )
 
     mat1 = mat1.contiguous()
     mat2 = mat2.contiguous()

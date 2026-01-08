@@ -10,7 +10,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 eps: tl.constexpr = [
     2.220446049250313e-16,
     1.1920928955078125e-07,

@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 exp2 = tl_extra_shim.exp2
 
 

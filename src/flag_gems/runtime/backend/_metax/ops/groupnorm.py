@@ -10,7 +10,7 @@ from flag_gems.utils import triton_lang_extension as tle
 
 rsqrt = tl_extra_shim.rsqrt
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @libentry()
