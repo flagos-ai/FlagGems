@@ -10,7 +10,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @libentry()
@@ -140,6 +140,16 @@ def bmm(A, B):
     logger.debug("METAX GEMS BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
+    logger.debug(
+        "METAX GEMS ADDMM_OUT, [shape info]: [%s, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s",
+        batch,
+        M,
+        N,
+        K,
+        A.stride(0) == 1,
+        B.stride(0) == 1,
+    )
     A = A.contiguous()
     B = B.contiguous()
     out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
