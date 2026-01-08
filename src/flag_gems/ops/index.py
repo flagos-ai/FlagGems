@@ -5,7 +5,6 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
-from flag_gems.ops.gather import gather
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -375,7 +374,7 @@ def index(inp, indices):
         # Permute input
         inp = inp.permute(dims)
         indices = transposed_indices
-        
+
         # Check if we need post-processing
         # (only when originally started with None and was contiguous)
         if starts_with_none and has_any_tensor and has_contiguous_subspace:
@@ -407,7 +406,7 @@ def index(inp, indices):
 
     # Step 6: Build output shape and create output tensor
     out_shape = before_shape + replacement_shape + after_shape
-    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)    
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
     # Step 7: Handle empty tensor case
     if inp.numel() == 0:
@@ -421,7 +420,7 @@ def index(inp, indices):
 
     # Step 9: Call kernel with tensor indices
     _index_func(inp, tensor_indices, out)
-    
+
     # Step 10: Post-process if needed (for originally contiguous tensor indices starting with None)
     if need_post_process:
         # Calculate index_rank from the first tensor index
