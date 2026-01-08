@@ -264,6 +264,7 @@ _index_func = IndexFunction()
 
 def index(inp, indices):
     logger.debug("GEMS INDEX")
+    original_indices = list(indices)  # Save original indices for later checks
     indices = list(indices)
 
     if not indices:
@@ -317,6 +318,10 @@ def index(inp, indices):
             f"too many indices for tensor of dimension {inp.ndim} (got {len(indices)})"
         )
 
+    # Save for later use
+    has_any_tensor = any(idx is not None for idx in indices)
+    starts_with_none = indices[0] is None if indices else False
+
     # Step 2: Broadcast indices (only tensor indices, not None)
     tensor_indices = [idx for idx in indices if idx is not None]
     if tensor_indices:
@@ -351,9 +356,10 @@ def index(inp, indices):
     else:
         has_contiguous_subspace = True
 
-    # Step 5: Transpose to front if needed
-    # If not contiguous, transpose input so all non-None indices come first
-    if not has_contiguous_subspace:
+    # New logic: Transpose if not contiguous OR starts with None (and has tensor indices)
+    need_post_process = False
+    first_tensor_dim = None
+    if not has_contiguous_subspace or (starts_with_none and has_any_tensor):
         dims = []
         transposed_indices = []
         # First add all non-None index positions
@@ -369,8 +375,17 @@ def index(inp, indices):
         # Permute input
         inp = inp.permute(dims)
         indices = transposed_indices
+        
+        # Check if we need post-processing (only when originally started with None and was contiguous)
+        if starts_with_none and has_any_tensor and has_contiguous_subspace:
+            need_post_process = True
+            # Find first tensor dimension in original indices
+            for i, idx in enumerate(original_indices):
+                if idx is not None:
+                    first_tensor_dim = i
+                    break
 
-    # Step 6: Now indices have contiguous subspace
+    # Step 5: Now indices have contiguous subspace (after potential transpose)
     # Calculate output shape: before_shape + replacement_shape + after_shape
     before_shape = []
     after_shape = []
@@ -389,50 +404,58 @@ def index(inp, indices):
             if not replacement_shape:
                 replacement_shape = list(index.shape)
 
-    # Step 7: Build output shape and create output tensor
+    # Step 6: Build output shape and create output tensor
     out_shape = before_shape + replacement_shape + after_shape
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)    
 
-    # Step 8: Handle empty tensor case
+    # Step 7: Handle empty tensor case
     if inp.numel() == 0:
         return out
 
-    # Step 9: Extract only tensor indices for kernel
+    # Step 8: Extract only tensor indices for kernel
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         # All None, just reshape
         return inp.view(*out_shape)
 
+    # Step 9: Special case for single tensor index
+    # if len(tensor_indices) == 1:
+    #     # find tensor index in indices
+    #     dim = None
+    #     for i, idx in enumerate(indices):
+    #         if idx is not None:
+    #             dim = i
+    #             break
+
+    #     # check dim
+    #     if dim is None:
+    #         raise ValueError("No valid dimension found for tensor index")
+
+    #     position = tensor_indices[0]
+
+    #     # reshape position
+    #     reshape_shape = [1] * dim + [-1] + [1] * (inp.ndim - dim - 1)
+    #     position_reshaped = position.reshape(*reshape_shape)
+
+    #     # Compute the expanded shape
+    #     expand_shape = list(inp.shape)
+    #     expand_shape[dim] = position.shape[0]
+
+    #     position_expanded = position_reshaped.expand(*expand_shape)
+    #     return gather(inp, dim, position_expanded)
+
     # Step 10: Call kernel with tensor indices
-    # Note: kernel needs to handle the fact that input was potentially permuted
-    # and output shape includes None dimensions
-    # Special case 1: 1D tensor with single index
-    if len(tensor_indices) == 1:
-        # find tensor index in indices
-        dim = None
-        for i, idx in enumerate(indices):
-            if idx is not None:
-                dim = i
-                break
-
-        # check dim
-        if dim is None:
-            raise ValueError("No valid dimension found for tensor index")
-
-        position = tensor_indices[0]
-
-        # reshape position
-        reshape_shape = [1] * dim + [-1] + [1] * (inp.ndim - dim - 1)
-        position_reshaped = position.reshape(*reshape_shape)
-
-        # Compute the expanded shape
-        expand_shape = list(inp.shape)
-        expand_shape[dim] = position.shape[0]
-
-        position_expanded = position_reshaped.expand(*expand_shape)
-        return gather(inp, dim, position_expanded)
-
-    # For mixed indexing, we need to adjust the kernel call
-    # The kernel should work with the permuted input and handle output shape correctly
     _index_func(inp, tensor_indices, out)
+    
+    # Post-process if needed (for originally contiguous tensor indices starting with None)
+    if need_post_process:
+        # Calculate index_rank from the first tensor index
+        index_rank = tensor_indices[0].ndim
+        # Create permutation order to move broadcast dimensions to correct position
+        pre_dims = list(range(index_rank, index_rank + first_tensor_dim))
+        broadcast_dims = list(range(index_rank))
+        post_dims = list(range(index_rank + first_tensor_dim, out.ndim))
+        new_order = pre_dims + broadcast_dims + post_dims
+        out = out.permute(new_order)
+
     return out
