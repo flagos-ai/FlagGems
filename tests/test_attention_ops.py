@@ -372,7 +372,6 @@ def test_sdpa_legacy(
         del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
-@pytest.mark.skipif(True, reason="something wrong here, disable it for temp")
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
