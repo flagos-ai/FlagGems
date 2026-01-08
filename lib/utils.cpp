@@ -153,7 +153,13 @@ std::tuple<int64_t, int64_t, int64_t> parse_reduction_axes(const at::Tensor &ten
   }
   return {non_reduction_size, reduction_size, remain_size};
 }
-int cdiv(int a, int b) {
+
+int64_t cdiv(int64_t a, int64_t b) {
+  TORCH_CHECK(b > 0, "Divisor must be positive");
+  if (a <= 0) {
+    return 0;
+  }
   return (a + b - 1) / b;
 }
+
 }  // namespace flag_gems::utils
