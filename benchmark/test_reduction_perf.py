@@ -272,7 +272,6 @@ def test_perf_nansum():
 
 @pytest.mark.nansum
 def test_perf_nansum_backward():
-    # Clean up GPU memory before backward test
     bench = NansumBenchmark(
         op_name="nansum", torch_op=torch.nansum, dtypes=FLOAT_DTYPES, is_backward=True
     )
