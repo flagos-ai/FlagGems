@@ -1145,6 +1145,53 @@ index_put:
       - 2048
       - 4096
 
+index_fill:
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 1024
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_M: 16
+      BLOCK_N: 512
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 512
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 256
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 256
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 512
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 256
+    num_warps: 8
+    num_stages: 2
+
 index:
   - gen: true
     param_map:
