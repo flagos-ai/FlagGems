@@ -77,13 +77,6 @@ def test_accuracy_fast_exponential_(shape, dtype):
     var_res = torch.var(x_res.to(torch.float32)).to(dtype)
     mean_ref = 1.0 / lambd
     var_ref = 1.0 / (lambd**2)
-    print("")
-    print(
-        f"Mean: est={mean_res:.5f}, true={mean_ref:.5f}, rel_err={abs(mean_res-mean_ref)/mean_ref:.4f}"
-    )
-    print(
-        f"Var:  est={var_res:.5f}, true={var_ref:.5f}, rel_err={abs(var_res-var_ref)/var_ref:.4f}"
-    )
     assert torch.abs(mean_res - mean_ref) < mean_tol
     assert torch.abs(var_res - var_ref) < var_tol
 
