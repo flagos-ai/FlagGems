@@ -7,7 +7,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def prev_multiple_of(a, b):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("layer_norm_persistent"),
     key=["M", "N"],
 )
@@ -69,7 +69,7 @@ def layer_norm_persistent_kernel(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("layer_norm_persistent"),
     key=["M", "N"],
 )
@@ -123,7 +123,7 @@ def layer_norm_persistent_kernel_multiline(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("layer_norm_loop"),
     key=["M", "N"],
 )
@@ -220,7 +220,7 @@ def layer_norm_loop_kernel(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("layer_norm_backward"),
     key=["M", "N"],
 )
@@ -288,7 +288,7 @@ def layer_norm_backward_kernel(
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("weight_bias_backward"),
     key=["N"],
 )
