@@ -1770,26 +1770,45 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
     "input_shape, indices_idx",
     [
         ((22, 22), (None, 1)),
+        ((22, 22, 22), (1, None, None)),
         ((22, 22, 22), (None, 1, None)),
         ((22, 22, 22), (None, None, 1)),
+        ((22, 22, 22), (1, 1, None)),
+        ((22, 22, 22), (1, None, 1)),
+        ((22, 22, 22), (None, 1, 1)),
+        ((22, 22, 22, 22), (1, None, None, None)),
+        ((22, 22, 22, 22), (None, 1, None, None)),
+        ((22, 22, 22, 22), (None, None, 1, None)),
+        ((22, 22, 22, 22), (None, None, None, 1)),
+        ((22, 22, 22, 22), (1, 1, None, None)),
+        ((22, 22, 22, 22), (1, None, 1, None)),
+        ((22, 22, 22, 22), (1, None, None, 1)),
+        ((22, 22, 22, 22), (None, 1, 1, None)),
+        ((22, 22, 22, 22), (None, 1, None, 1)),
+        ((22, 22, 22, 22), (None, None, 1, 1)),
+        ((22, 22, 22, 22), (None, 1, 1, 1)),
+        ((22, 22, 22, 22), (1, None, 1, 1)),
+        ((22, 22, 22, 22), (1, 1, None, 1)),
+        ((22, 22, 22, 22), (1, 1, 1, None)),
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.int64])
 def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
     inp = torch.randint(0, 10000, input_shape, dtype=dtype, device=flag_gems.device)
     indices = []
-    for i in indices_idx:
-        if i is None:
+    for i, idx_pos in enumerate(indices_idx):
+        if idx_pos is None:
             indices.append(None)
         else:
+            dim_len = input_shape[i]
+            random_idx = random.randint(0, dim_len - 1)
             indices.append(
                 torch.tensor(
-                    [random.randint(0, input_shape[0] - 1)],
+                    [random_idx],
                     device=flag_gems.device,
                     dtype=dtype,
                 )
             )
-    print(indices)
 
     # test aten api
     result_ref_ = torch.ops.aten.index(inp, indices)

@@ -384,7 +384,7 @@ def index(inp, indices):
 
     # Step 7: Build output shape and create output tensor
     out_shape = before_shape + replacement_shape + after_shape
-    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
+    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)    
 
     # Step 8: Handle empty tensor case
     if inp.numel() == 0:
@@ -400,10 +400,7 @@ def index(inp, indices):
     # Note: kernel needs to handle the fact that input was potentially permuted
     # and output shape includes None dimensions
     # Special case 1: 1D tensor with single index
-    if inp.ndim == 1 and len(tensor_indices) == 1:
-        return gather(inp, 0, tensor_indices[0])
-    # Special case 2: others
-    elif len(tensor_indices) == 1:
+    if len(tensor_indices) == 1:
         # find tensor index in indices
         dim = None
         for i, idx in enumerate(indices):
@@ -426,7 +423,7 @@ def index(inp, indices):
         expand_shape[dim] = position.shape[0]
 
         position_expanded = position_reshaped.expand(*expand_shape)
-        return torch.gather(inp, dim, position_expanded)
+        return gather(inp, dim, position_expanded)
 
     # For mixed indexing, we need to adjust the kernel call
     # The kernel should work with the permuted input and handle output shape correctly
