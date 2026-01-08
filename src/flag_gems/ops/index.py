@@ -356,7 +356,7 @@ def index(inp, indices):
     else:
         has_contiguous_subspace = True
 
-    # New logic: Transpose if not contiguous OR starts with None (and has tensor indices)
+    # Transpose if not contiguous OR starts with None (and has tensor indices)
     need_post_process = False
     first_tensor_dim = None
     if not has_contiguous_subspace or (starts_with_none and has_any_tensor):
@@ -376,7 +376,8 @@ def index(inp, indices):
         inp = inp.permute(dims)
         indices = transposed_indices
         
-        # Check if we need post-processing (only when originally started with None and was contiguous)
+        # Check if we need post-processing
+        # (only when originally started with None and was contiguous)
         if starts_with_none and has_any_tensor and has_contiguous_subspace:
             need_post_process = True
             # Find first tensor dimension in original indices
@@ -418,36 +419,10 @@ def index(inp, indices):
         # All None, just reshape
         return inp.view(*out_shape)
 
-    # Step 9: Special case for single tensor index
-    # if len(tensor_indices) == 1:
-    #     # find tensor index in indices
-    #     dim = None
-    #     for i, idx in enumerate(indices):
-    #         if idx is not None:
-    #             dim = i
-    #             break
-
-    #     # check dim
-    #     if dim is None:
-    #         raise ValueError("No valid dimension found for tensor index")
-
-    #     position = tensor_indices[0]
-
-    #     # reshape position
-    #     reshape_shape = [1] * dim + [-1] + [1] * (inp.ndim - dim - 1)
-    #     position_reshaped = position.reshape(*reshape_shape)
-
-    #     # Compute the expanded shape
-    #     expand_shape = list(inp.shape)
-    #     expand_shape[dim] = position.shape[0]
-
-    #     position_expanded = position_reshaped.expand(*expand_shape)
-    #     return gather(inp, dim, position_expanded)
-
-    # Step 10: Call kernel with tensor indices
+    # Step 9: Call kernel with tensor indices
     _index_func(inp, tensor_indices, out)
     
-    # Post-process if needed (for originally contiguous tensor indices starting with None)
+    # Step 10: Post-process if needed (for originally contiguous tensor indices starting with None)
     if need_post_process:
         # Calculate index_rank from the first tensor index
         index_rank = tensor_indices[0].ndim
