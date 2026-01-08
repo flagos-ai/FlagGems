@@ -225,9 +225,6 @@ def nansum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         if dtype is torch.bool:
             dtype = torch.int64
 
-    # should we convert bool to int64 first?
-    if inp.dtype is torch.bool and dtype is torch.int64:
-        inp = inp.to(torch.int64)
 
     if dim == []:
         if not keepdim:

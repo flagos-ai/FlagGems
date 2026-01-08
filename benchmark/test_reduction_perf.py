@@ -239,6 +239,46 @@ def test_perf_count_nonzero():
     bench.run()
 
 
+def _inject_nans_(t: torch.Tensor, ratio: float = 0.2) -> torch.Tensor:
+    if not t.is_floating_point():
+        return t
+    if t.numel() == 0:
+        return t
+    mask = torch.rand_like(t) < ratio
+    t[mask] = float("nan")
+    return t
+
+
+class NansumBenchmark(UnaryReductionBenchmark):
+    """
+    Class for benchmarking nansum operation with NaN injection.
+    """
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            inp = _inject_nans_(inp)
+            if inp.ndim > 1:
+                yield inp, 1
+            else:
+                yield inp,
+
+
+@pytest.mark.nansum
+def test_perf_nansum():
+    bench = NansumBenchmark(op_name="nansum", torch_op=torch.nansum, dtypes=FLOAT_DTYPES)
+    bench.run()
+
+
+@pytest.mark.nansum
+def test_perf_nansum_backward():
+    # Clean up GPU memory before backward test
+    bench = NansumBenchmark(
+        op_name="nansum", torch_op=torch.nansum, dtypes=FLOAT_DTYPES, is_backward=True
+    )
+    bench.run()
+
+
 def avg_pool2d_input_fn(shape, dtype, device):
     inp = generate_tensor_input(shape, dtype, device)
     # Common case
