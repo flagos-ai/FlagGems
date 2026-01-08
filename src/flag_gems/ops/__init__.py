@@ -1,4 +1,5 @@
 from flag_gems.ops.abs import abs, abs_
+from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
@@ -217,6 +218,7 @@ from flag_gems.ops.triu import triu
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
@@ -241,6 +243,7 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "abs",
     "abs_",
+    "acos",
     "add",
     "add_",
     "addcdiv",
@@ -515,6 +518,7 @@ __all__ = [
     "true_divide_out",
     "true_divide_",
     "uniform_",
+    "upsample_nearest1d",
     "upsample_nearest2d",
     "var_mean",
     "vdot",

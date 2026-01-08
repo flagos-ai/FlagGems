@@ -275,14 +275,35 @@ def custom_moe_align_block_size(
     )
 
 
+def custom_moe_grouped_topk(
+    gating_output: torch.Tensor,
+    n_group: int,
+    topk_group: int,
+    topk: int,
+    renormalize: bool,
+    routed_scaling_factor: float,
+    bias: torch.Tensor,
+    scoring_func: int = 0,
+):
+    from flag_gems.fused import grouped_topk
+
+    return grouped_topk(
+        scores=gating_output,
+        n_group=n_group,
+        topk_group=topk_group,
+        topk=topk,
+        renormalize=renormalize,
+        routed_scaling_factor=routed_scaling_factor,
+        bias=bias,
+        scoring_func=scoring_func,
+    )
+
+
 def custom_topk_softmax(
-    topk_weights, topk_indices, token_expert_indices, gating_output
+    topk_weights, topk_indices, token_expert_indices, gating_output, renormalize=False
 ):
     flag_gems.topk_softmax(
-        topk_weights,
-        topk_indices,
-        token_expert_indices,
-        gating_output,
+        topk_weights, topk_indices, token_expert_indices, gating_output, renormalize
     )
 
 
@@ -375,8 +396,20 @@ def custom_per_token_group_fp8_quant(
     output_s.copy_(x_s)
 
 
+def custom_cutlass_scaled_mm(
+    output: torch.Tensor,
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    bias: torch.Tensor | None = None,
+):
+    return flag_gems.cutlass_scaled_mm(output, input, weight, scale_a, scale_b, bias)
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
+    import vllm._custom_ops as ops  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
@@ -402,6 +435,7 @@ def apply_gems_patches_to_vllm(verbose=True):
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward, verbose
     )
     patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
+    patch_vllm_lib("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm, "CUDA", verbose)
     patch_vllm_lib(
         "_moe_C", "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
     )
@@ -413,6 +447,7 @@ def apply_gems_patches_to_vllm(verbose=True):
         "CUDA",
         verbose,
     )
+    patch_vllm_lib("_moe_C", "grouped_topk", custom_moe_grouped_topk, "CUDA", verbose)
     patch_vllm_lib(
         "_C",
         "per_token_group_fp8_quant",

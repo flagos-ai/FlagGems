@@ -14,7 +14,6 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
-      - '!src/flag_gems/experimental_ops/**'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -28,7 +27,6 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
-      - '!src/flag_gems/experimental_ops/**'
 
 jobs:
   op-test-on-metax:
@@ -40,7 +38,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - uses: dorny/paths-filter@v3
+        id: experimental_ops
+        with:
+          filters: |
+            run_ci:
+              - '!src/flag_gems/experimental_ops/**'
+              - '!tests/experimental_ops/**'
+
       - name: FlagGems reduction ops on metax
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           source tools/run_command.sh
@@ -52,6 +59,7 @@ jobs:
           # GEMS_VENDOR=metax run_command pytest -s tests/test_norm_ops.py
 
       - name: FlagGems pointwise ops on metax
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           ### set private mem out of docker in case OOM
@@ -67,6 +75,7 @@ jobs:
           GEMS_VENDOR=metax run_command pytest -s tests/test_tensor_constructor_ops.py
 
       - name: FlagGems blas ops on metax
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           source tools/run_command.sh
@@ -75,6 +84,7 @@ jobs:
           # GEMS_VENDOR=metax run_command pytest -s tests/test_attention_ops.py
 
       - name: FlagGems special ops on metax
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           source tools/run_command.sh
@@ -83,6 +93,7 @@ jobs:
           GEMS_VENDOR=metax run_command pytest -s tests/test_distribution_ops.py
 
       - name: FlagGems utils on metax
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           source tools/run_command.sh
@@ -91,6 +102,7 @@ jobs:
           GEMS_VENDOR=metax run_command pytest -s tests/test_tensor_wrapper.py
 
       - name: FlagGems examples on metax
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           source tools/run_command.sh

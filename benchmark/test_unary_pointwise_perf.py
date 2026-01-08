@@ -69,6 +69,7 @@ forward_operations = [
     ("tan", torch.tan, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
     ("atan", torch.atan, FLOAT_DTYPES),
+    ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
     # Numerical Checks
@@ -164,7 +165,7 @@ backward_operations = [
             name,
             op,
             dtype,
-            marks=getattr(pytest.mark, name + "_backward", None),
+            marks=getattr(pytest.mark, name, None),
         )
         for name, op, dtype in backward_operations
     ],

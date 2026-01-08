@@ -1,10 +1,12 @@
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
+from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
+from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size,
@@ -20,6 +22,7 @@ from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
 from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
 from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out
 from flag_gems.fused.skip_layernorm import skip_layer_norm
+from flag_gems.fused.swiglu import dswiglu, swiglu
 from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.weight_norm import weight_norm
 
@@ -30,9 +33,12 @@ __all__ = [
     "fused_add_rms_norm",
     "silu_and_mul",
     "silu_and_mul_out",
+    "swiglu",
+    "dswiglu",
     "geglu",
     "dgeglu",
     "gelu_and_mul",
+    "grouped_topk",
     "cross_entropy_loss",
     "outer",
     "instance_norm",
@@ -49,4 +55,5 @@ __all__ = [
     "rwkv_mm_sparsity",
     "dreglu",
     "reglu",
+    "cutlass_scaled_mm",
 ]

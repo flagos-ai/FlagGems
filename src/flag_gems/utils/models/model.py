@@ -1,5 +1,4 @@
 import inspect
-import threading
 from abc import abstractmethod
 from typing import Dict, Final, Optional, Sequence, Tuple, Union, overload
 
@@ -11,7 +10,6 @@ class PersistantModel(object):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.lock: Final[threading.Lock] = threading.Lock()
 
     @staticmethod
     def parse_config(config: triton.Config) -> Dict[str, Union[int, float, str]]:

@@ -5,11 +5,13 @@ on:
     branches: [ "master" ]
     paths:
       - 'src/flag_gems/experimental_ops/**'
+      - 'tests/experimental_ops/**'
+
   pull_request:
     branches: [ "master" ]
     paths:
       - 'src/flag_gems/experimental_ops/**'
-
+      - 'tests/experimental_ops/**'
 env:
   CUDA_VISIBLE_DEVICES: 7
   http_proxy: ${{ secrets.HTTP_PROXY }}
@@ -38,20 +40,41 @@ jobs:
 
           echo "Diffing $BASE_SHA...$HEAD_SHA"
 
-          changed_ops=$(git diff --name-only $BASE_SHA...$HEAD_SHA | grep '^src/flag_gems/experimental_ops/.*\.py$' || true)
+          changed_files=$(git diff --name-only $BASE_SHA...$HEAD_SHA || true)
+          tests_to_run=""
+          missing_tests=""
 
-          tests=""
-          for f in $changed_ops; do
-              base=$(basename "$f" .py)
-              test_file="src/flag_gems/experimental_ops/exp_tests/${base}_test.py"
-              if [ -f "$test_file" ]; then
-                  tests="$tests $test_file"
+          for f in $changed_files; do
+              if [[ $f == src/flag_gems/experimental_ops/*.py ]]; then
+                  if [[ $(basename "$f") == __*__* ]]; then continue; fi
+
+                  base=$(basename "$f" .py)
+                  test_file="tests/experimental_ops/${base}_test.py"
+                  if [ -f "$test_file" ]; then
+                      tests_to_run="$tests_to_run $test_file"
+                  else
+                      missing_tests="$missing_tests $test_file"
+                  fi
+
+              elif [[ $f == tests/experimental_ops/*_test.py ]]; then
+                  if [ -f "$f" ]; then
+                      tests_to_run="$tests_to_run $f"
+                  fi
               fi
           done
 
-          if [ -n "$tests" ]; then
-              echo "Running tests:$tests"
-              run_command pytest -s $tests
+          if [ -n "$missing_tests" ]; then
+              echo "Error: The following operator files were modified, but their corresponding test files are missing:"
+              for m in $missing_tests; do
+                  echo "  - Expected: $m"
+              done
+          fi
+
+          unique_tests=$(echo "$tests_to_run" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+
+          if [ -n "$unique_tests" ]; then
+              echo "Running tests: $unique_tests"
+              run_command pytest -s $unique_tests
           else
-              echo "No relevant ops changes, skipping tests"
+              echo "No relevant changes in ops or tests, skipping."
           fi
