@@ -69,7 +69,7 @@ def pow_func_tensor_scalar_int(x, exponent):
 def pow_tensor_scalar(A, exponent):
     logger.debug("GEMS_CAMBRICON POW_TENSOR_SCALAR")
     if int(exponent) == exponent:
-        return pow_func_tensor_scalar_int(A, exponent)
+        return pow_func_tensor_scalar_int(A, int(exponent))
     return pow_func_tensor_scalar(A, exponent, False)
 
 
