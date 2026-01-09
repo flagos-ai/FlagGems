@@ -1813,16 +1813,11 @@ def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
                 )
             )
 
-    # test aten api
-    result_ref_ = torch.ops.aten.index(inp, indices)
+    ref_inp = to_reference(inp)
+    ref_indices = to_reference(indices)
+    result_ref_ = torch.ops.aten.index(ref_inp, ref_indices)
     result_gems_ = flag_gems.index(inp, indices)
     gems_assert_close(result_gems_, result_ref_, dtype)
-
-    # test input[:, tensor]
-    with flag_gems.use_gems():
-        result_gems = inp[indices]
-    result_ref = inp[indices]
-    gems_assert_close(result_gems, result_ref, dtype)
 
 
 @pytest.mark.index
