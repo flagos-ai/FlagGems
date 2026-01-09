@@ -212,6 +212,7 @@ def enable(
             ("linspace", linspace),
             ("log", log),
             ("log_sigmoid", log_sigmoid),
+            ("logaddexp", logaddexp),
             ("logical_and", logical_and),
             ("logical_not", logical_not),
             ("logical_or", logical_or),
