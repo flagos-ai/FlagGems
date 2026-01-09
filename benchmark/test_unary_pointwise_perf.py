@@ -66,6 +66,7 @@ forward_operations = [
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("hardsigmoid", torch.nn.functional.hardsigmoid, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
+    ("leaky_relu", torch.nn.functional.leaky_relu, FLOAT_DTYPES),
     ("relu6", torch.nn.functional.relu6, FLOAT_DTYPES),
     ("selu", torch.nn.functional.selu, FLOAT_DTYPES),
     ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
@@ -132,6 +133,13 @@ forward_inplace_operations = [
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("hardswish_", torch.ops.aten.hardswish_, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
+    (
+        "leaky_relu_",
+        lambda a, neg_slope=0.01: torch.nn.functional.leaky_relu(
+            a, negative_slope=neg_slope, inplace=True
+        ),
+        FLOAT_DTYPES,
+    ),
     ("selu_", torch.ops.aten.selu_, FLOAT_DTYPES),
     ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("sgn_", lambda a: a.sgn_(), FLOAT_DTYPES),
