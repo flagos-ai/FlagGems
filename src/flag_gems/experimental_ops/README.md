@@ -20,12 +20,10 @@ with flag_gems.use_gems():
 ```
 src/flag_gems/experimental_ops/
 ├── __init__.py                 # Module initialization
-├── rmsnorm.py          # Example operator implementation
-├── [other_operators].py   # Additional operators
+├── [your_operator].py   # Operator implementations
 ├── exp_tests/                 # Accuracy test and performance test
     ├── __init__.py
-    ├── rmsnorm_test.py
-    ├── [other_operators]_test.py
+    ├── [your_operator]_test.py
 ```
 
 # Adding New Operators
@@ -53,7 +51,7 @@ def your_operator(*args, **kwargs):
 Add your operator to `src/flag_gems/experimental_ops/__init__.py` :
 ```
 from .your_operator import your_operator
-__all__ = ["rmsnorm", "your_operator"]
+__all__ = ["your_operator"]
 ```
 
 ## 3. Update Main Module
