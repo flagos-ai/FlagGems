@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -31,6 +32,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.threshold
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -38,7 +53,7 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 @pytest.mark.parametrize("value", [0.0, 0.1, -1.0, 2.0])
 def test_threshold_tensor(shape, dtype, threshold, value):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
     ref_out = torch.ops.aten.threshold(ref_x, threshold, value)
     with flag_gems.use_gems():
         act_out = gems_threshold(x, threshold, value)
@@ -52,7 +67,7 @@ def test_threshold_tensor(shape, dtype, threshold, value):
 @pytest.mark.parametrize("value", [0.0, 0.1, -1.0, 2.0])
 def test_threshold_out(shape, dtype, threshold, value):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
     ref_out_buf = torch.empty_like(ref_x)
     ref_out = torch.ops.aten.threshold.out(ref_x, threshold, value, out=ref_out_buf)
     act_out_buf = torch.empty_like(x)

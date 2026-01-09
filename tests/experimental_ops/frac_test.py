@@ -14,13 +14,28 @@ from flag_gems.experimental_ops.frac import frac_out as gems_frac_out  # noqa: E
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.frac
@@ -28,7 +43,7 @@ except ImportError:
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_frac_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     ref_out = torch.ops.aten.frac(ref_x)
 
@@ -44,7 +59,7 @@ def test_frac_tensor(shape, dtype):
 @pytest.mark.parametrize("alias_out", [False, True])
 def test_frac_out(shape, dtype, alias_out):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     ref_out_buf = ref_x if alias_out else torch.empty_like(ref_x)
     ref_out = torch.ops.aten.frac(ref_x, out=ref_out_buf)

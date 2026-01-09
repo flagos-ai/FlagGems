@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -29,6 +30,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.new_ones
 @pytest.mark.parametrize("self_shape", [(2, 3), (128, 256)])
 @pytest.mark.parametrize("size", [(2, 3), (128, 256), (32, 16, 8), (512, 512)])
@@ -36,7 +51,7 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 def test_new_ones_default(self_shape, size, dtype):
     self_tensor = torch.randn(self_shape, dtype=torch.float32, device=flag_gems.device)
 
-    ref_self = self_tensor.clone()
+    ref_self = to_reference(self_tensor)
     ref_out = torch.ops.aten.new_ones(ref_self, size, dtype=dtype)
 
     with flag_gems.use_gems():
@@ -52,7 +67,7 @@ def test_new_ones_default(self_shape, size, dtype):
 def test_new_ones_out(self_shape, size, dtype):
     self_tensor = torch.randn(self_shape, dtype=torch.float32, device=flag_gems.device)
 
-    ref_self = self_tensor.clone()
+    ref_self = to_reference(self_tensor)
     ref_out_buf = torch.empty(size, device=flag_gems.device, dtype=dtype)
     ref_out = torch.ops.aten.new_ones.out(ref_self, size, out=ref_out_buf)
 

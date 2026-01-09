@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -24,6 +25,20 @@ from flag_gems.experimental_ops.diag import diag as gems_diag  # noqa: E402
 from flag_gems.experimental_ops.diag import diag_out as gems_diag_out  # noqa: E402
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.diag
 @pytest.mark.parametrize(
     "shape", [(5,), (2, 3), (128,), (128, 256), (512,), (512, 512)]
@@ -32,7 +47,7 @@ from flag_gems.experimental_ops.diag import diag_out as gems_diag_out  # noqa: E
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_tensor(shape, dtype, diagonal):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     ref_out = torch.ops.aten.diag(ref_x, diagonal)
 
@@ -50,7 +65,7 @@ def test_diag_tensor(shape, dtype, diagonal):
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 def test_diag_out(shape, dtype, diagonal):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     # compute out shape
     if len(shape) == 1:

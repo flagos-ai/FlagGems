@@ -19,15 +19,30 @@ from flag_gems.experimental_ops.soft_margin_loss import (
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 
 
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.soft_margin_loss
@@ -38,8 +53,8 @@ def test_soft_margin_loss_tensor(shape, dtype, reduction):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = (torch.randint(0, 2, shape, device=flag_gems.device).to(dtype) * 2) - 1
 
-    ref_self = self.clone()
-    ref_target = target.clone()
+    ref_self = to_reference(self)
+    ref_target = to_reference(target)
     ref_out = torch.ops.aten.soft_margin_loss(ref_self, ref_target, reduction)
 
     with flag_gems.use_gems():
@@ -63,8 +78,8 @@ def test_soft_margin_loss_out(shape, dtype, reduction):
         out_ref = torch.empty((), dtype=dtype, device=flag_gems.device)
         out_act = torch.empty((), dtype=dtype, device=flag_gems.device)
 
-    ref_self = self.clone()
-    ref_target = target.clone()
+    ref_self = to_reference(self)
+    ref_target = to_reference(target)
     ref_out = torch.ops.aten.soft_margin_loss.out(
         ref_self, ref_target, reduction, out=out_ref
     )

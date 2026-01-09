@@ -19,15 +19,30 @@ from flag_gems.experimental_ops.less_equal_ import (
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 
 
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.less_equal_
@@ -37,8 +52,8 @@ def test_less_equal__tensor(shape, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_input = input_tensor.clone()
-    ref_other = other_tensor.clone()
+    ref_input = to_reference(input_tensor)
+    ref_other = to_reference(other_tensor)
     act_input = input_tensor.clone()
     act_other = other_tensor.clone()
 
@@ -57,7 +72,7 @@ def test_less_equal__tensor(shape, dtype):
 def test_less_equal__scalar(shape, dtype, scalar):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_input = input_tensor.clone()
+    ref_input = to_reference(input_tensor)
     act_input = input_tensor.clone()
 
     ref_out = torch.ops.aten.less_equal_(ref_input, scalar)

@@ -18,13 +18,28 @@ from flag_gems.experimental_ops.as_strided_scatter import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.as_strided_scatter
@@ -53,8 +68,8 @@ def test_as_strided_scatter_tensor(dtype, spec):
     self_tensor = torch.randn((self_len,), dtype=dtype, device=flag_gems.device)
     src = torch.randn(size, dtype=dtype, device=flag_gems.device)
 
-    ref_self = self_tensor.clone()
-    ref_src = src.clone()
+    ref_self = to_reference(self_tensor)
+    ref_src = to_reference(src)
     ref_out = torch.ops.aten.as_strided_scatter(
         ref_self, ref_src, size, stride, storage_offset
     )
@@ -95,8 +110,8 @@ def test_as_strided_scatter_out(dtype, spec):
     self_tensor = torch.randn((self_len,), dtype=dtype, device=flag_gems.device)
     src = torch.randn(size, dtype=dtype, device=flag_gems.device)
 
-    ref_self = self_tensor.clone()
-    ref_src = src.clone()
+    ref_self = to_reference(self_tensor)
+    ref_src = to_reference(src)
     ref_out_buf = torch.empty_like(ref_self)
     ref_out = torch.ops.aten.as_strided_scatter.out(
         ref_self, ref_src, size, stride, storage_offset, out=ref_out_buf

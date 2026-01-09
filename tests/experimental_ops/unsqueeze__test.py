@@ -13,13 +13,28 @@ from flag_gems.experimental_ops.unsqueeze_ import unsqueeze_ as gems_unsqueeze_
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.unsqueeze_
@@ -28,7 +43,7 @@ except ImportError:
 @pytest.mark.parametrize("dim", [-2, -1, 0, 1])
 def test_unsqueeze__tensor_1d(shape, dtype, dim):
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_input = base.clone()
+    ref_input = to_reference(base)
     ref_out = torch.ops.aten.unsqueeze_(ref_input, dim)
     with flag_gems.use_gems():
         act_out = gems_unsqueeze_(base, dim)
@@ -41,7 +56,7 @@ def test_unsqueeze__tensor_1d(shape, dtype, dim):
 @pytest.mark.parametrize("dim", [-3, -1, 0, 1, 2])
 def test_unsqueeze__tensor_2d(shape, dtype, dim):
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_input = base.clone()
+    ref_input = to_reference(base)
     ref_out = torch.ops.aten.unsqueeze_(ref_input, dim)
     with flag_gems.use_gems():
         act_out = gems_unsqueeze_(base, dim)
@@ -54,7 +69,7 @@ def test_unsqueeze__tensor_2d(shape, dtype, dim):
 @pytest.mark.parametrize("dim", [-4, -1, 0, 2, 3])
 def test_unsqueeze__tensor_3d(shape, dtype, dim):
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_input = base.clone()
+    ref_input = to_reference(base)
     ref_out = torch.ops.aten.unsqueeze_(ref_input, dim)
     with flag_gems.use_gems():
         act_out = gems_unsqueeze_(base, dim)
@@ -66,7 +81,7 @@ def test_unsqueeze__tensor_3d(shape, dtype, dim):
 @pytest.mark.parametrize("dim", [-1, 0])
 def test_unsqueeze__scalar_0d(dtype, dim):
     base = torch.randn((), dtype=dtype, device=flag_gems.device)
-    ref_input = base.clone()
+    ref_input = to_reference(base)
     ref_out = torch.ops.aten.unsqueeze_(ref_input, dim)
     with flag_gems.use_gems():
         act_out = gems_unsqueeze_(base, dim)

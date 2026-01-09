@@ -18,13 +18,28 @@ from flag_gems.experimental_ops.rrelu_with_noise_backward import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.rrelu_with_noise_backward
@@ -41,9 +56,9 @@ def test_rrelu_with_noise_backward_tensor(shape, dtype, training):
     )
     self_is_result = False
 
-    ref_self = self.clone()
-    ref_grad_output = grad_output.clone()
-    ref_noise = noise.clone()
+    ref_self = to_reference(self)
+    ref_grad_output = to_reference(grad_output)
+    ref_noise = to_reference(noise)
 
     act_self = self.clone()
     act_grad_output = grad_output.clone()
@@ -75,9 +90,9 @@ def test_rrelu_with_noise_backward_out(shape, dtype, training):
     )
     self_is_result = True
 
-    ref_self = self.clone()
-    ref_grad_output = grad_output.clone()
-    ref_noise = noise.clone()
+    ref_self = to_reference(self)
+    ref_grad_output = to_reference(grad_output)
+    ref_noise = to_reference(noise)
     ref_out_buf = torch.empty_like(ref_self)
 
     act_self = self.clone()

@@ -18,13 +18,28 @@ from flag_gems.experimental_ops.reflection_pad1d import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.reflection_pad1d
@@ -33,7 +48,7 @@ except ImportError:
 @pytest.mark.parametrize("padding", [(1, 1), (3, 5), (8, 8)])
 def test_reflection_pad1d_tensor(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     ref_out = torch.ops.aten.reflection_pad1d(ref_x, padding)
 
@@ -49,7 +64,7 @@ def test_reflection_pad1d_tensor(shape, dtype, padding):
 @pytest.mark.parametrize("padding", [(1, 1), (3, 5), (8, 8)])
 def test_reflection_pad1d_out(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     out_shape = list(shape)
     out_shape[-1] = out_shape[-1] + padding[0] + padding[1]

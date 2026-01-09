@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -23,12 +24,26 @@ import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.log_ import log_ as gems_log_  # noqa: E402
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.log_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 1024)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_log__tensor(shape, dtype):
     input_tensor = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
-    ref_input = input_tensor.clone()
+    ref_input = to_reference(input_tensor)
     act_input = input_tensor.clone()
 
     ref_out = torch.ops.aten.log_(ref_input)

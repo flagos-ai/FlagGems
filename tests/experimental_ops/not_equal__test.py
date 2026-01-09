@@ -19,15 +19,30 @@ from flag_gems.experimental_ops.not_equal_ import (
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 
 
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.not_equal_
@@ -36,7 +51,7 @@ except ImportError:
 @pytest.mark.parametrize("other", [0.0, 1.0, -2.5])
 def test_not_equal__scalar(shape, dtype, other):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_input = input_tensor.clone()
+    ref_input = to_reference(input_tensor)
     ref_out = torch.ops.aten.not_equal_(ref_input, other)
     with flag_gems.use_gems():
         act_out = gems_not_equal__Scalar(input_tensor, other)
@@ -49,8 +64,8 @@ def test_not_equal__scalar(shape, dtype, other):
 def test_not_equal__tensor(shape, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_input = input_tensor.clone()
-    ref_other = other_tensor.clone()
+    ref_input = to_reference(input_tensor)
+    ref_other = to_reference(other_tensor)
     ref_out = torch.ops.aten.not_equal_(ref_input, ref_other)
     with flag_gems.use_gems():
         act_out = gems_not_equal__Tensor(input_tensor, other_tensor)

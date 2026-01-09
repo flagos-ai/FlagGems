@@ -18,13 +18,28 @@ from flag_gems.experimental_ops.upsample_nearest1d import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.upsample_nearest1d
@@ -33,7 +48,7 @@ except ImportError:
 @pytest.mark.parametrize("size_mode", ["same", "double", "half"])
 def test_upsample_nearest1d_default(shape, dtype, size_mode):
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     N, C, L = shape
     if size_mode == "same":
@@ -61,7 +76,7 @@ def test_upsample_nearest1d_default(shape, dtype, size_mode):
 @pytest.mark.parametrize("size_mode", ["same", "double", "half"])
 def test_upsample_nearest1d_vec_output_size(shape, dtype, size_mode):
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     N, C, L = shape
     if size_mode == "same":
@@ -90,7 +105,7 @@ def test_upsample_nearest1d_vec_output_size(shape, dtype, size_mode):
 @pytest.mark.parametrize("scale", [0.5, 1.0, 1.5, 2.0])
 def test_upsample_nearest1d_vec_scale(shape, dtype, scale):
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     output_size = None
     scale_factors = [float(scale)]
@@ -109,7 +124,7 @@ def test_upsample_nearest1d_vec_scale(shape, dtype, scale):
 @pytest.mark.parametrize("size_mode", ["same", "double", "half"])
 def test_upsample_nearest1d_out(shape, dtype, size_mode):
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     N, C, L = shape
     if size_mode == "same":

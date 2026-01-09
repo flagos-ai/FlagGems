@@ -14,13 +14,28 @@ from flag_gems.experimental_ops.addcdiv import addcdiv_out as gems_addcdiv_out
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.addcdiv
@@ -35,9 +50,9 @@ def test_addcdiv_tensor(shape, dtype, value):
     sgn = (torch.randint(0, 2, shape, device=flag_gems.device) * 2 - 1).to(dtype)
     b = mags * sgn
 
-    ref_x = x.clone()
-    ref_a = a.clone()
-    ref_b = b.clone()
+    ref_x = to_reference(x)
+    ref_a = to_reference(a)
+    ref_b = to_reference(b)
 
     ref_out = torch.ops.aten.addcdiv(ref_x, ref_a, ref_b, value=value)
 
@@ -59,9 +74,9 @@ def test_addcdiv_out(shape, dtype, value):
     sgn = (torch.randint(0, 2, shape, device=flag_gems.device) * 2 - 1).to(dtype)
     b = mags * sgn
 
-    ref_x = x.clone()
-    ref_a = a.clone()
-    ref_b = b.clone()
+    ref_x = to_reference(x)
+    ref_a = to_reference(a)
+    ref_b = to_reference(b)
     ref_out_buf = torch.empty_like(ref_x)
 
     ref_out = torch.ops.aten.addcdiv.out(

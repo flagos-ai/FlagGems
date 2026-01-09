@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -26,6 +27,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.prelu
 @pytest.mark.parametrize(
     "shape",
@@ -41,8 +56,8 @@ def test_prelu_tensor(shape, dtype, weight_kind):
         c = shape[1]
         w = torch.randn((c,), dtype=dtype, device=flag_gems.device)
 
-    ref_x = x.clone()
-    ref_w = w.clone()
+    ref_x = to_reference(x)
+    ref_w = to_reference(w)
 
     ref_out = torch.ops.aten.prelu(ref_x, ref_w)
 

@@ -14,13 +14,28 @@ from flag_gems.experimental_ops.amin import amin_out as gems_amin_out
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.amin
@@ -30,7 +45,7 @@ except ImportError:
 @pytest.mark.parametrize("keepdim", [False, True])
 def test_amin_tensor_reduce_2d(shape, dtype, dim, keepdim):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     if dim is None and not keepdim:
         ref_out = torch.ops.aten.amin(ref_x)
@@ -52,7 +67,7 @@ def test_amin_tensor_reduce_2d(shape, dtype, dim, keepdim):
 @pytest.mark.parametrize("keepdim", [False, True])
 def test_amin_tensor_reduce_3d(shape, dtype, dim, keepdim):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     if dim is None and not keepdim:
         ref_out = torch.ops.aten.amin(ref_x)
@@ -90,7 +105,7 @@ def test_amin_out_reduce_2d(shape, dtype, dim, keepdim):
             return tuple(shape[i] for i in remaining)
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     if dim is None and not keepdim:
         out_shape = test_compute_out_shape(shape, None, keepdim)
@@ -135,7 +150,7 @@ def test_amin_out_reduce_3d(shape, dtype, dim, keepdim):
             return tuple(shape[i] for i in remaining)
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     if dim is None and not keepdim:
         out_shape = test_compute_out_shape(shape, None, keepdim)

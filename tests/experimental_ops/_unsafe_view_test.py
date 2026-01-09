@@ -14,9 +14,10 @@ from flag_gems.experimental_ops._unsafe_view import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -25,6 +26,20 @@ except ImportError:
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.unsafe_view
@@ -46,7 +61,7 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 def test__unsafe_view_tensor(case, dtype):
     shape, size = case
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_input = input_tensor.clone()
+    ref_input = to_reference(input_tensor)
 
     ref_out = torch.ops.aten._unsafe_view(ref_input, size)
 
@@ -75,7 +90,7 @@ def test__unsafe_view_tensor(case, dtype):
 def test__unsafe_view_out(case, dtype):
     shape, size = case
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_input = input_tensor.clone()
+    ref_input = to_reference(input_tensor)
 
     ref_out_holder = torch.empty(0, dtype=dtype, device=flag_gems.device)
     ref_out = torch.ops.aten._unsafe_view.out(ref_input, size, out=ref_out_holder)

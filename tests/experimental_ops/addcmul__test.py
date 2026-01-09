@@ -12,9 +12,10 @@ from flag_gems.experimental_ops.addcmul_ import addcmul_ as gems_addcmul_
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -23,6 +24,20 @@ except ImportError:
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.addcmul_
@@ -45,9 +60,9 @@ def test_addcmul__inplace(self_shape, t1_shape, t2_shape, dtype, value):
     t1 = torch.randn(t1_shape, dtype=dtype, device=flag_gems.device)
     t2 = torch.randn(t2_shape, dtype=dtype, device=flag_gems.device)
 
-    ref_self = self_tensor.clone()
-    ref_t1 = t1.clone()
-    ref_t2 = t2.clone()
+    ref_self = to_reference(self_tensor)
+    ref_t1 = to_reference(t1)
+    ref_t2 = to_reference(t2)
     ref_out = torch.ops.aten.addcmul_(ref_self, ref_t1, ref_t2, value=value)
 
     act_self = self_tensor.clone()

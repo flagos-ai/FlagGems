@@ -15,15 +15,30 @@ from flag_gems.experimental_ops.logaddexp2 import logaddexp2_out as gems_logadde
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 
 
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.logaddexp2
@@ -33,8 +48,8 @@ def test_logaddexp2_tensor(shape, dtype):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_self = self.clone()
-    ref_other = other.clone()
+    ref_self = to_reference(self)
+    ref_other = to_reference(other)
 
     ref_out = torch.ops.aten.logaddexp2(ref_self, ref_other)
 
@@ -51,8 +66,8 @@ def test_logaddexp2_out(shape, dtype):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_self = self.clone()
-    ref_other = other.clone()
+    ref_self = to_reference(self)
+    ref_other = to_reference(other)
 
     ref_out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     torch.ops.aten.logaddexp2.out(ref_self, ref_other, out=ref_out)

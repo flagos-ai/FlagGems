@@ -18,13 +18,28 @@ from flag_gems.experimental_ops._adaptive_avg_pool2d import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.adaptive_avg_pool2d
@@ -47,7 +62,7 @@ except ImportError:
 def test__adaptive_avg_pool2d_tensor(case, dtype):
     shape, output_size = case
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     ref_out = torch.ops.aten._adaptive_avg_pool2d(ref_x, output_size)
 
@@ -77,7 +92,7 @@ def test__adaptive_avg_pool2d_tensor(case, dtype):
 def test__adaptive_avg_pool2d_out(case, dtype):
     shape, output_size = case
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     out_shape = (shape[0], shape[1], output_size[0], output_size[1])
     ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)

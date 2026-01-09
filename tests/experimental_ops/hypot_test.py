@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -27,6 +28,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.hypot
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (513, 257)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -36,8 +51,8 @@ def test_hypot_tensor(shape, dtype):
     self = self.to(dtype)
     other = other.to(dtype)
 
-    ref_self = self.clone()
-    ref_other = other.clone()
+    ref_self = to_reference(self)
+    ref_other = to_reference(other)
 
     ref_out = torch.ops.aten.hypot(ref_self, ref_other)
 
@@ -56,8 +71,8 @@ def test_hypot_out(shape, dtype):
     self = self.to(dtype)
     other = other.to(dtype)
 
-    ref_self = self.clone()
-    ref_other = other.clone()
+    ref_self = to_reference(self)
+    ref_other = to_reference(other)
 
     ref_out_buf = torch.empty(shape, device=flag_gems.device, dtype=dtype)
     ref_out = torch.ops.aten.hypot.out(ref_self, ref_other, out=ref_out_buf)

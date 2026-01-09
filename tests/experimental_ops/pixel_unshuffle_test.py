@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -28,6 +29,20 @@ from flag_gems.experimental_ops.pixel_unshuffle import (  # noqa: E402
 )
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.pixel_unshuffle
 @pytest.mark.parametrize(
     "shape_factor", [((1, 3, 8, 8), 2), ((2, 4, 12, 6), 3), ((4, 16, 64, 48), 4)]
@@ -39,7 +54,7 @@ def test_pixel_unshuffle_tensor(shape_factor, dtype):
         dtype
     )
 
-    ref_input = input_tensor.clone()
+    ref_input = to_reference(input_tensor)
     ref_out = torch.ops.aten.pixel_unshuffle(ref_input, downscale_factor)
 
     with flag_gems.use_gems():
@@ -62,7 +77,7 @@ def test_pixel_unshuffle_out(shape_factor, dtype):
     input_tensor = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).to(
         dtype
     )
-    ref_input = input_tensor.clone()
+    ref_input = to_reference(input_tensor)
 
     out_ref = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     ref_out = torch.ops.aten.pixel_unshuffle.out(

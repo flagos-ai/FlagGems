@@ -15,13 +15,28 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.heaviside
@@ -33,8 +48,8 @@ def test_heaviside_tensor(shape, dtype):
     mask = torch.rand(shape, device=flag_gems.device) < 0.1
     self_tensor[mask] = 0.0
 
-    ref_self = self_tensor.clone()
-    ref_values = values_tensor.clone()
+    ref_self = to_reference(self_tensor)
+    ref_values = to_reference(values_tensor)
 
     ref_out = torch.ops.aten.heaviside(ref_self, ref_values)
 
@@ -53,8 +68,8 @@ def test_heaviside_out(shape, dtype):
     mask = torch.rand(shape, device=flag_gems.device) < 0.1
     self_tensor[mask] = 0.0
 
-    ref_self = self_tensor.clone()
-    ref_values = values_tensor.clone()
+    ref_self = to_reference(self_tensor)
+    ref_values = to_reference(values_tensor)
     ref_out_buf = torch.empty_like(ref_self)
 
     ref_out = torch.ops.aten.heaviside.out(ref_self, ref_values, out=ref_out_buf)

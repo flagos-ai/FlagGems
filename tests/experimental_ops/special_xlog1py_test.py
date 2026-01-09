@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -31,14 +32,28 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.special_xlog1py
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_special_xlog1py_tensor(shape, dtype):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.3
-    ref_self = self.clone()
-    ref_other = other.clone()
+    ref_self = to_reference(self)
+    ref_other = to_reference(other)
     ref_out = torch.ops.aten.special_xlog1py(ref_self, ref_other)
     with flag_gems.use_gems():
         act_out = gems_special_xlog1py(self, other)
@@ -51,7 +66,7 @@ def test_special_xlog1py_tensor(shape, dtype):
 @pytest.mark.parametrize("other_scalar", [-0.25, 0.0, 0.5, 1.25])
 def test_special_xlog1py_other_scalar(shape, dtype, other_scalar):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_self = self.clone()
+    ref_self = to_reference(self)
     ref_out = torch.ops.aten.special_xlog1py.other_scalar(ref_self, other_scalar)
     with flag_gems.use_gems():
         act_out = torch.ops.aten.special_xlog1py.other_scalar(self, other_scalar)
@@ -64,7 +79,7 @@ def test_special_xlog1py_other_scalar(shape, dtype, other_scalar):
 @pytest.mark.parametrize("self_scalar", [-2.0, -0.5, 0.0, 2.0])
 def test_special_xlog1py_self_scalar(shape, dtype, self_scalar):
     other = torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.3
-    ref_other = other.clone()
+    ref_other = to_reference(other)
     ref_out = torch.ops.aten.special_xlog1py.self_scalar(self_scalar, ref_other)
     with flag_gems.use_gems():
         act_out = torch.ops.aten.special_xlog1py.self_scalar(self_scalar, other)
@@ -77,8 +92,8 @@ def test_special_xlog1py_self_scalar(shape, dtype, self_scalar):
 def test_special_xlog1py_out_tensor(shape, dtype):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.3
-    ref_self = self.clone()
-    ref_other = other.clone()
+    ref_self = to_reference(self)
+    ref_other = to_reference(other)
     ref_out = torch.empty_like(ref_self)
     torch.ops.aten.special_xlog1py.out(ref_self, ref_other, out=ref_out)
     with flag_gems.use_gems():
@@ -95,7 +110,7 @@ def test_special_xlog1py_out_tensor(shape, dtype):
 @pytest.mark.parametrize("self_scalar", [-2.0, -0.5, 0.0, 2.0])
 def test_special_xlog1py_self_scalar_out(shape, dtype, self_scalar):
     other = torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.3
-    ref_other = other.clone()
+    ref_other = to_reference(other)
     ref_out = torch.empty_like(ref_other)
     torch.ops.aten.special_xlog1py.self_scalar_out(self_scalar, ref_other, out=ref_out)
     with flag_gems.use_gems():
@@ -113,7 +128,7 @@ def test_special_xlog1py_self_scalar_out(shape, dtype, self_scalar):
 @pytest.mark.parametrize("other_scalar", [-0.25, 0.0, 0.5, 1.25])
 def test_special_xlog1py_other_scalar_out(shape, dtype, other_scalar):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_self = self.clone()
+    ref_self = to_reference(self)
     ref_out = torch.empty_like(ref_self)
     torch.ops.aten.special_xlog1py.other_scalar_out(ref_self, other_scalar, out=ref_out)
     with flag_gems.use_gems():

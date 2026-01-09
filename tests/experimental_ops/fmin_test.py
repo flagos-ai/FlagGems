@@ -15,13 +15,28 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.fmin
@@ -45,8 +60,8 @@ def test_fmin_tensor(shape_self, shape_other, dtype):
     self_tensor[self_mask] = float("nan")
     other_tensor[other_mask] = float("nan")
 
-    ref_self = self_tensor.clone()
-    ref_other = other_tensor.clone()
+    ref_self = to_reference(self_tensor)
+    ref_other = to_reference(other_tensor)
     ref_out = torch.ops.aten.fmin(ref_self, ref_other)
 
     with flag_gems.use_gems():
@@ -76,8 +91,8 @@ def test_fmin_out(shape_self, shape_other, dtype):
     self_tensor[self_mask] = float("nan")
     other_tensor[other_mask] = float("nan")
 
-    ref_self = self_tensor.clone()
-    ref_other = other_tensor.clone()
+    ref_self = to_reference(self_tensor)
+    ref_other = to_reference(other_tensor)
     ref_broadcast_self, ref_broadcast_other = torch.broadcast_tensors(
         ref_self, ref_other
     )

@@ -18,13 +18,28 @@ from flag_gems.experimental_ops.upsample_nearest3d import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.upsample_nearest3d
@@ -33,7 +48,7 @@ except ImportError:
 @pytest.mark.parametrize("output_size", [(2, 3, 4), (5, 7, 9), (16, 32, 32)])
 def test_upsample_nearest3d_base(shape, dtype, output_size):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.clone()
+    ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.upsample_nearest3d(ref_inp, output_size)
 
@@ -51,7 +66,7 @@ def test_upsample_nearest3d_base(shape, dtype, output_size):
 @pytest.mark.parametrize("scale_factors", [[2.0, 2.0, 2.0], [1.5, 2.0, 3.0]])
 def test_upsample_nearest3d_vec(shape, dtype, use_size, output_size, scale_factors):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.clone()
+    ref_inp = to_reference(inp)
 
     if use_size:
         ref_out = torch.ops.aten.upsample_nearest3d.vec(ref_inp, output_size, None)
@@ -71,7 +86,7 @@ def test_upsample_nearest3d_vec(shape, dtype, use_size, output_size, scale_facto
 @pytest.mark.parametrize("output_size", [(2, 3, 4), (6, 10, 12), (12, 24, 24)])
 def test_upsample_nearest3d_out(shape, dtype, output_size):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.clone()
+    ref_inp = to_reference(inp)
 
     N, C, _, _, _ = shape
     out_shape = (N, C, output_size[0], output_size[1], output_size[2])

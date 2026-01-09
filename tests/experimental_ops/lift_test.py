@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -27,13 +28,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
 @pytest.mark.lift
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_lift_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_x = x.clone()
+    ref_x = to_reference(x)
     ref_out = torch.ops.aten.lift(ref_x)
 
     with flag_gems.use_gems():
@@ -48,7 +63,7 @@ def test_lift_tensor(shape, dtype):
 def test_lift_out_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_x = x.clone()
+    ref_x = to_reference(x)
     ref_out_buf = torch.empty_like(ref_x)
     ref_out = torch.ops.aten.lift.out(ref_x, out=ref_out_buf)
 

@@ -17,15 +17,30 @@ from flag_gems.experimental_ops.xlogy_ import xlogy__Tensor as gems_xlogy__Tenso
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 
 
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.xlogy_
@@ -35,8 +50,8 @@ def test_xlogy__tensor(shape, dtype):
     self_base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other_base = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
 
-    ref_self = self_base.clone()
-    ref_other = other_base.clone()
+    ref_self = to_reference(self_base)
+    ref_other = to_reference(other_base)
     ref_out = torch.ops.aten.xlogy_(ref_self, ref_other)
 
     act_self = self_base.clone()
@@ -54,7 +69,7 @@ def test_xlogy__tensor(shape, dtype):
 def test_xlogy__scalar(shape, dtype, other_scalar):
     self_base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_self = self_base.clone()
+    ref_self = to_reference(self_base)
     ref_out = torch.ops.aten.xlogy_(ref_self, other_scalar)
 
     act_self = self_base.clone()

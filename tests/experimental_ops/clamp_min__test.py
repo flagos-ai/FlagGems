@@ -15,13 +15,28 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.clamp_min_
@@ -31,7 +46,7 @@ except ImportError:
 def test_clamp_min__scalar(shape, dtype, min_val):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = inp.clone()
+    ref_inp = to_reference(inp)
     act_inp = inp.clone()
 
     ref_out = torch.ops.aten.clamp_min_(ref_inp, min_val)
@@ -48,8 +63,8 @@ def test_clamp_min__tensor(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     min_t = torch.rand(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = inp.clone()
-    ref_min = min_t.clone()
+    ref_inp = to_reference(inp)
+    ref_min = to_reference(min_t)
     act_inp = inp.clone()
     act_min = min_t.clone()
 
