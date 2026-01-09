@@ -18,6 +18,8 @@ cd FlagGems/
 [FlagTree](https://github.com/flagos-ai/flagtree/) is an open source, unified compiler for multiple AI chips project.
 If you want to use the native Triton instead of FlagTree, please skip this step.
 
+[Environment Requirements for Other Backends](https://github.com/flagos-ai/FlagTree/blob/main/documents/build.md)
+
 ```shell
 # Other backends: replace with requirements_backendxxx.txt
 pip install -r flag_tree_requirements/requirements_nvidia.txt
