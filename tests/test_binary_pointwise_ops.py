@@ -826,6 +826,341 @@ def test_accuracy_floor_divide_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+BITWISE_SHAPES = [
+    ((512, 1024), (512, 1024)),
+    ((256, 512), (1, 512)),
+    ((256, 512), (256, 1)),
+    ((1, 512), (256, 512)),
+    ((256, 1), (256, 512)),
+    ((1024,), ()),
+    ((), (1024,)),
+]
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("shapes", BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd(shapes, dtype):
+    """Test GCD with various shapes and broadcasting."""
+    shape_a, shape_b = shapes
+
+    res_a = torch.randint(1, 1000, shape_a, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(1, 1000, shape_b, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(res_a, res_b)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_pointwise(shape, dtype):
+    """Test GCD with pointwise shapes (including 0D scalars and various dimensions)."""
+    res_a = torch.randint(1, 1000, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(1, 1000, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(res_a, res_b)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_with_negatives(dtype):
+    """Test GCD with negative numbers (gcd(-a, b) = gcd(a, b))."""
+    shape = (256, 512)
+
+    res_a = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(res_a, res_b)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_with_zeros(dtype):
+    """Test GCD with zeros (gcd(0, n) = n, gcd(n, 0) = n)."""
+    shape = (256, 512)
+
+    res_a = torch.randint(0, 1000, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(0, 1000, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(res_a, res_b)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_edge_cases(dtype):
+    """Test GCD with specific edge cases and known values."""
+    test_data = [
+        (12, 8, 4),
+        (18, 12, 6),
+        (100, 25, 25),
+        (17, 13, 1),  # Coprime numbers
+        (0, 5, 5),  # Zero cases
+        (10, 0, 10),
+        (-12, 8, 4),  # Negative
+        (24, -16, 8),
+        (1, 100, 1),  # One
+        (48, 48, 48),  # Same values
+    ]
+
+    a_vals = [t[0] for t in test_data]
+    b_vals = [t[1] for t in test_data]
+    expected_vals = [t[2] for t in test_data]
+
+    res_a = torch.tensor(a_vals, dtype=dtype, device=flag_gems.device)
+    res_b = torch.tensor(b_vals, dtype=dtype, device=flag_gems.device)
+    expected = torch.tensor(expected_vals, dtype=dtype, device=flag_gems.device)
+
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(res_a, res_b)
+
+    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_out, expected)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_large_numbers(dtype):
+    """Test GCD with large numbers near dtype limits."""
+    shape = (512, 512)
+
+    if dtype == torch.int16:
+        min_val, max_val = 16000, 32000
+    elif dtype == torch.int32:
+        min_val, max_val = 1000000000, 2000000000
+    else:
+        min_val, max_val = 4000000000000000000, 9000000000000000000
+
+    res_a = torch.randint(min_val, max_val, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(min_val, max_val, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(res_a, res_b)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_fibonacci_worst_case(dtype):
+    """
+    Test GCD with consecutive Fibonacci numbers (worst case for Euclidean algorithm).
+
+    This is the absolute worst case for the Euclidean algorithm, requiring
+    maximum iterations. With 64 iterations, we can handle:
+    - int16: F(17) = 2584 (requires 15 iterations)
+    - int32: F(33) = 3524578 (requires 31 iterations)
+    - int64: F(65) ≈ 1.7×10^19 (requires 63 iterations)
+    """
+    if dtype == torch.int16:
+        fib = [
+            1,
+            1,
+            2,
+            3,
+            5,
+            8,
+            13,
+            21,
+            34,
+            55,
+            89,
+            144,
+            233,
+            377,
+            610,
+            987,
+            1597,
+            2584,
+        ]
+    elif dtype == torch.int32:
+        fib = [
+            1,
+            1,
+            2,
+            3,
+            5,
+            8,
+            13,
+            21,
+            34,
+            55,
+            89,
+            144,
+            233,
+            377,
+            610,
+            987,
+            1597,
+            2584,
+            4181,
+            6765,
+            10946,
+            17711,
+            28657,
+            46368,
+            75025,
+            121393,
+            196418,
+            317811,
+            514229,
+            832040,
+            1346269,
+            2178309,
+            3524578,
+        ]
+    else:
+        fib = [
+            1,
+            1,
+            2,
+            3,
+            5,
+            8,
+            13,
+            21,
+            34,
+            55,
+            89,
+            144,
+            233,
+            377,
+            610,
+            987,
+            1597,
+            2584,
+            4181,
+            6765,
+            10946,
+            17711,
+            28657,
+            46368,
+        ]
+
+    fib = fib[:20]
+
+    res_a = torch.tensor(fib, dtype=dtype, device=flag_gems.device)
+    res_b = torch.roll(res_a, 1)
+
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(res_a, res_b)
+
+    gems_assert_equal(res_out, ref_out)
+
+    expected = torch.ones_like(res_a)
+    gems_assert_equal(res_out, expected)
+
+
+@pytest.mark.gcd
+def test_accuracy_gcd_dtype_rejection():
+    """Test that GCD rejects all non-integer dtypes with a single pattern."""
+    shape = (16, 16)
+
+    valid_int = torch.randint(1, 10, shape, dtype=torch.int32, device=flag_gems.device)
+
+    invalid_dtypes = [
+        torch.float16,
+        torch.float32,
+        torch.float64,
+        torch.bool,
+        torch.complex64,
+        torch.complex128,
+    ]
+
+    if hasattr(torch, "bfloat16"):
+        invalid_dtypes.append(torch.bfloat16)
+    if hasattr(torch, "complex32"):
+        invalid_dtypes.append(torch.complex32)
+
+    error_pattern = (
+        r"GCD does not support non-integer tensors.*GCD is only defined for integers"
+    )
+
+    for dtype in invalid_dtypes:
+        if dtype in [torch.complex64, torch.complex128] or (
+            hasattr(torch, "complex32") and dtype == torch.complex32
+        ):
+            tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        elif dtype == torch.bool:
+            tensor = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
+        else:
+            tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+        # Test 1: Both same invalid dtype
+        with pytest.raises(TypeError, match=error_pattern):
+            with flag_gems.use_gems():
+                torch.gcd(tensor, tensor)
+
+        # Test 2: Invalid dtype mixed with valid int
+        with pytest.raises(TypeError, match=error_pattern):
+            with flag_gems.use_gems():
+                torch.gcd(tensor, valid_int)
+
+        # Test 3: Valid int mixed with invalid dtype
+        with pytest.raises(TypeError, match=error_pattern):
+            with flag_gems.use_gems():
+                torch.gcd(valid_int, tensor)
+
+
 @pytest.mark.remainder
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
