@@ -1,6 +1,9 @@
 from . import backend, common, error
 from .backend.device import DeviceDetector
 
+# Global set to track registered operations
+_registered_ops = set()
+
 
 class Register:
     def __init__(
@@ -41,9 +44,14 @@ class Register:
         return []
 
     def register_impl(self, key, fn):
-        device_key = self.reg_key
+        # Check if this operation has already been registered
+        if key in _registered_ops:
+            # Skip registration - already registered
+            return
+        # Register the operation
         self.all_ops.append(key)
-        self.lib.impl(key, fn, device_key)
+        _registered_ops.add(key)
+        self.lib.impl(key, fn, self.reg_key)
 
     def for_each(self):
         try:
