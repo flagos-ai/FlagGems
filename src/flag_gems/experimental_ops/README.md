@@ -58,7 +58,7 @@ The experimental_ops module is already integrated in the main `__init__.py` . No
 
 # Testing
 ## Accuracy Tests
-Add accuracy test in `exp_tests/your_ops_test.py`:
+Add accuracy test in `tests/experimental_ops/your_ops_test.py`:
 ```
 import pytest
 import torch
@@ -88,7 +88,7 @@ def test_accuracy_your_operator(shape, dtype):
 ```
 
 ## Performance Tests
-Add performance test in `exp_tests/your_ops_test.py`:
+Add performance test in `tests/experimental_ops/your_ops_test.py`:
 ```
 import pytest
 import torch
