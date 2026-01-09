@@ -1,4 +1,5 @@
 import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -66,11 +67,11 @@ def tril_batch_kernel(
     mn_mask = cols < MN
     mask = batch_mask & mn_mask
     x = tl.load(X + cols, mask, other=0.0)
-    
+
     # Compute 2D indices from flattened position
     m = cols // N  # row index
-    n = cols % N   # col index
-    
+    n = cols % N  # col index
+
     # Lower triangular condition
     y = tl.where(n <= m + diagonal, x, 0.0)
     tl.store(Y + cols, y, mask=mask)
@@ -80,10 +81,10 @@ def tril(A, diagonal=0):
     logger.debug("GEMS TRIL")
     A = A.contiguous()
     out = torch.empty_like(A)
-    
+
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     M, N = A.shape[-2:]
-    
+
     with torch_device_fn.device(A.device):
         if len(A.shape) == 2:
             # Optimized path for 2D matrices
@@ -106,7 +107,7 @@ def tril(A, diagonal=0):
                 diagonal,
             )
             out = out.view(A.shape)
-    
+
     return out
 
 
@@ -121,7 +122,7 @@ def tril_out(A, diagonal=0, out=None):
     logger.debug("GEMS TRIL_OUT")
     if out is None:
         return tril(A, diagonal)
-    
+
     result = tril(A, diagonal)
     out.copy_(result)
     return out

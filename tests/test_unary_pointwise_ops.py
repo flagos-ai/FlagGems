@@ -1030,21 +1030,6 @@ def test_accuracy_tanh_(shape, dtype):
 SHAPE_DIAGONAL = list(zip(POINTWISE_SHAPES, [-2, -2, -1, 0, 1, 3]))
 
 
-@pytest.mark.triu
-@pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_triu(shape, diagonal, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp = unsqueeze_tensor(inp, 2)
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.triu(ref_inp, diagonal)
-    with flag_gems.use_gems():
-        res_out = torch.triu(inp, diagonal)
-
-    gems_assert_equal(res_out, ref_out)
-
-
 @pytest.mark.tril
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1203,6 +1188,21 @@ def test_accuracy_tril_out(shape, diagonal, dtype):
     with flag_gems.use_gems():
         res_out = torch.empty_like(inp)
         torch.tril(inp, diagonal, out=res_out)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.triu
+@pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_triu(shape, diagonal, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = unsqueeze_tensor(inp, 2)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.triu(ref_inp, diagonal)
+    with flag_gems.use_gems():
+        res_out = torch.triu(inp, diagonal)
 
     gems_assert_equal(res_out, ref_out)
 

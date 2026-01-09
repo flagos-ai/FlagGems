@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmarkExcluse1D, unary_input_fn
+from benchmark.performance_utils import GenericBenchmarkExcluse1D
 
 
 def tril_input_fn(shape, cur_dtype, device):
@@ -31,11 +31,11 @@ def test_tril_perf():
 @pytest.mark.inplace
 def test_tril_inplace_perf():
     """Performance test for tril_ (in-place) operator"""
-    
+
     def tril_input_fn_inplace(shape, cur_dtype, device):
         inp = torch.randn(shape, dtype=cur_dtype, device=device)
         yield inp, {"diagonal": 0}
-    
+
     bench = GenericBenchmarkExcluse1D(
         input_fn=tril_input_fn_inplace,
         op_name="tril_",
