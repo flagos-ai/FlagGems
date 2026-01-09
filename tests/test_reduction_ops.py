@@ -1814,7 +1814,7 @@ def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
             )
 
     ref_inp = to_reference(inp)
-    ref_indices = to_reference(indices)
+    ref_indices = [to_reference(x) for x in indices]
     result_ref_ = torch.ops.aten.index(ref_inp, ref_indices)
     result_gems_ = flag_gems.index(inp, indices)
     gems_assert_close(result_gems_, result_ref_, dtype)
