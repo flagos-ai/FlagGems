@@ -19,11 +19,9 @@ with flag_gems.use_gems():
 # File Structure
 ```
 src/flag_gems/experimental_ops/
-├── __init__.py                 # Module initialization
 ├── [your_operator].py   # Operator implementations
-├── exp_tests/                 # Accuracy test and performance test
-    ├── __init__.py
-    ├── [your_operator]_test.py
+tests/experimental_ops/                 # Accuracy test and performance test
+├── [your_operator]_test.py
 ```
 
 # Adding New Operators
