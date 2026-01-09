@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -24,6 +25,13 @@ from flag_gems.experimental_ops.stack import stack as gems_stack  # noqa: E402
 from flag_gems.experimental_ops.stack import stack_out as gems_stack_out  # noqa: E402
 
 
+def to_reference(inp):
+    """Convert tensor to reference device (CPU if TO_CPU is True)."""
+    if TO_CPU:
+        return inp.to("cpu")
+    return inp.clone()
+
+
 @pytest.mark.stack
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (64, 32, 16), (512, 256)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -34,7 +42,7 @@ def test_stack_tensor(shape, dtype, num_tensors, dim):
         torch.randn(shape, dtype=dtype, device=flag_gems.device)
         for _ in range(num_tensors)
     ]
-    ref_tensors = [t.clone() for t in tensors]
+    ref_tensors = [to_reference(t) for t in tensors]
     ref_out = torch.ops.aten.stack(ref_tensors, dim)
     with flag_gems.use_gems():
         act_out = gems_stack(tensors, dim)
@@ -51,7 +59,7 @@ def test_stack_out(shape, dtype, num_tensors, dim):
         torch.randn(shape, dtype=dtype, device=flag_gems.device)
         for _ in range(num_tensors)
     ]
-    ref_tensors = [t.clone() for t in tensors]
+    ref_tensors = [to_reference(t) for t in tensors]
 
     n_dims = len(shape)
     eff_dim = dim if dim >= 0 else dim + (n_dims + 1)

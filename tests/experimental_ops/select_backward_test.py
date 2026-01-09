@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -26,6 +27,13 @@ from flag_gems.experimental_ops.select_backward import (  # noqa: E402
 from flag_gems.experimental_ops.select_backward import (  # noqa: E402
     select_backward_out as gems_select_backward_out,
 )
+
+
+def to_reference(inp):
+    """Convert tensor to reference device (CPU if TO_CPU is True)."""
+    if TO_CPU:
+        return inp.to("cpu")
+    return inp.clone()
 
 
 @pytest.mark.select_backward
@@ -46,8 +54,9 @@ def test_select_backward_default(input_sizes, dim, index_mode, dtype):
     out_shape = list(input_sizes)
     del out_shape[dim_c]
     out_shape = tuple(out_shape) if len(out_shape) > 0 else ()
-    grad_ref = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
-    grad_act = grad_ref.clone()
+    grad = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
+    grad_ref = to_reference(grad)
+    grad_act = grad.clone()
 
     ref_out = torch.ops.aten.select_backward(grad_ref, list(input_sizes), dim, index)
 
@@ -75,8 +84,9 @@ def test_select_backward_out(input_sizes, dim, index_mode, dtype):
     out_shape = list(input_sizes)
     del out_shape[dim_c]
     out_shape = tuple(out_shape) if len(out_shape) > 0 else ()
-    grad_ref = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
-    grad_act = grad_ref.clone()
+    grad = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
+    grad_ref = to_reference(grad)
+    grad_act = grad.clone()
 
     ref_out_buf = torch.empty(input_sizes, dtype=dtype, device=flag_gems.device)
     ref_out = torch.ops.aten.select_backward.out(

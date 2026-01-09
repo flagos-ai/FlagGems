@@ -16,13 +16,28 @@ from flag_gems.experimental_ops.expand_copy import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.expand_copy
@@ -45,7 +60,7 @@ def test_expand_copy_default(self_shape, size, implicit, dtype):
         if len(self_shape) > 0
         else torch.randn((), device=flag_gems.device, dtype=dtype)
     )
-    x_ref = x.clone()
+    x_ref = to_reference(x)
     ref_out = torch.ops.aten.expand_copy(x_ref, list(size), implicit=implicit)
     with flag_gems.use_gems():
         act_out = gems_expand_copy(x, list(size), implicit=implicit)
@@ -85,7 +100,7 @@ def test_expand_copy_out(self_shape, size, implicit, dtype):
     out_ref = torch.empty(final_shape, device=flag_gems.device, dtype=dtype)
     out_act = torch.empty(final_shape, device=flag_gems.device, dtype=dtype)
 
-    x_ref = x.clone()
+    x_ref = to_reference(x)
     ref_out = torch.ops.aten.expand_copy.out(
         x_ref, list(size), implicit=implicit, out=out_ref
     )

@@ -16,13 +16,28 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.functional_sym_constrain_range_for_size
@@ -42,8 +57,9 @@ except ImportError:
     ],
 )
 def test__functional_sym_constrain_range_for_size_scalar_token(shape, dtype, case):
-    dep_token_ref = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    dep_token_act = dep_token_ref.clone()
+    dep_token = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    dep_token_ref = to_reference(dep_token)
+    dep_token_act = dep_token.clone()
 
     size = case["size"]
     min_val = case["min"]

@@ -13,13 +13,28 @@ from flag_gems.experimental_ops.expm1_ import expm1_ as gems_expm1_
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.expm1_
@@ -28,7 +43,7 @@ except ImportError:
 @pytest.mark.parametrize("noncontig", [False, True])
 def test_expm1__tensor(shape, dtype, noncontig):
     base = torch.randn(shape, device=flag_gems.device, dtype=dtype) * 0.5
-    base_ref = base.clone()
+    base_ref = to_reference(base)
     base_act = base.clone()
 
     ref_input = base_ref.transpose(0, 1) if noncontig else base_ref

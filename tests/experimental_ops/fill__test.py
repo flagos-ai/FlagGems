@@ -6,9 +6,10 @@ import sys
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
@@ -26,13 +27,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 
+def to_reference(inp):
+    """Convert tensor to reference device (CPU if TO_CPU is True)."""
+    if TO_CPU:
+        return inp.to("cpu")
+    return inp.clone()
+
+
 @pytest.mark.fill_
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("value", [0.0, 1.25, -3.5])
 def test_fill__scalar(shape, dtype, value):
-    x_ref = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    x_act = x_ref.clone()
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    x_ref = to_reference(x)
+    x_act = x.clone()
 
     ref_out = torch.ops.aten.fill_(x_ref, value)
 
@@ -47,11 +56,13 @@ def test_fill__scalar(shape, dtype, value):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("value", [0.0, 2.0, -1.5])
 def test_fill__tensor(shape, dtype, value):
-    x_ref = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    x_act = x_ref.clone()
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    x_ref = to_reference(x)
+    x_act = x.clone()
 
-    val_ref = torch.tensor(value, dtype=dtype, device=flag_gems.device)
-    val_act = torch.tensor(value, dtype=dtype, device=flag_gems.device)
+    val = torch.tensor(value, dtype=dtype, device=flag_gems.device)
+    val_ref = to_reference(val)
+    val_act = val.clone()
 
     ref_out = torch.ops.aten.fill_(x_ref, val_ref)
 
