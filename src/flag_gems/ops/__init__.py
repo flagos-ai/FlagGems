@@ -122,6 +122,7 @@ from flag_gems.ops.logical_and import logical_and
 from flag_gems.ops.logical_not import logical_not
 from flag_gems.ops.logical_or import logical_or
 from flag_gems.ops.logical_xor import logical_xor
+from flag_gems.ops.logit import logit, logit_, logit_backward, logit_out
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
@@ -390,6 +391,10 @@ __all__ = [
     "logical_not",
     "logical_or",
     "logical_xor",
+    "logit",
+    "logit_",
+    "logit_backward",
+    "logit_out",
     "logspace",
     "lt",
     "lt_scalar",
