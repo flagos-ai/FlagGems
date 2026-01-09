@@ -11,6 +11,7 @@ from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
+    GenericBenchmark4DOnly,
     SkipVersion,
     generate_tensor_input,
     unary_input_fn,
@@ -117,10 +118,12 @@ def cross_entropy_loss_input_fn(shape, cur_dtype, device):
 
 def nll_loss_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
-    target = torch.randint(0, shape[-1], (shape[0],), device=device)
+    target_shape = list(shape)
+    del target_shape[1]
+    target = torch.randint(0, shape[-1], target_shape, device=device)
     yield inp, target
     if Config.bench_level == BenchLevel.COMPREHENSIVE:
-        weight = torch.randn(shape[-1], dtype=cur_dtype, device=device)
+        weight = torch.randn(shape[1], dtype=cur_dtype, device=device)
         yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
 
 
@@ -216,6 +219,17 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     )
     if op_name == "cross_entropy_loss":
         bench.set_gems(flag_gems.cross_entropy_loss)
+    bench.run()
+
+
+@pytest.mark.nll_loss2d
+def test_nll_loss2d_benchmark():
+    bench = GenericBenchmark4DOnly(
+        input_fn=nll_loss_input_fn,
+        op_name="nll_loss",
+        torch_op=torch.nn.functional.nll_loss,
+        dtypes=FLOAT_DTYPES,
+    )
     bench.run()
 
 
