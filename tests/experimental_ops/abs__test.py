@@ -12,13 +12,29 @@ from flag_gems.experimental_ops.abs_ import abs_ as gems_abs_
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -29,8 +45,9 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_abs__tensor(shape, dtype):
-    ref_input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    act_input = ref_input.clone()
+    base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(base)
+    act_input = base.clone()
 
     ref_out = torch.ops.aten.abs_(ref_input)
 

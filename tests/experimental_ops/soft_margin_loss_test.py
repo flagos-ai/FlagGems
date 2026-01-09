@@ -34,9 +34,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -71,15 +72,16 @@ def test_soft_margin_loss_out(shape, dtype, reduction):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = (torch.randint(0, 2, shape, device=flag_gems.device).to(dtype) * 2) - 1
 
-    if reduction == 0:
-        out_ref = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-        out_act = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    else:
-        out_ref = torch.empty((), dtype=dtype, device=flag_gems.device)
-        out_act = torch.empty((), dtype=dtype, device=flag_gems.device)
-
     ref_self = to_reference(self)
     ref_target = to_reference(target)
+
+    if reduction == 0:
+        out_ref = torch.empty(shape, dtype=dtype, device=ref_self.device)
+        out_act = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        out_ref = torch.empty((), dtype=dtype, device=ref_self.device)
+        out_act = torch.empty((), dtype=dtype, device=flag_gems.device)
+
     ref_out = torch.ops.aten.soft_margin_loss.out(
         ref_self, ref_target, reduction, out=out_ref
     )

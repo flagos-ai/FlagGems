@@ -11,7 +11,7 @@ import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.positive import positive as gems_positive  # noqa: E402
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
 except ImportError:
@@ -26,9 +26,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)

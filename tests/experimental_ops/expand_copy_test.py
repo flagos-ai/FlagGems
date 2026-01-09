@@ -29,9 +29,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -97,10 +98,10 @@ def test_expand_copy_out(self_shape, size, implicit, dtype):
         else torch.randn((), device=flag_gems.device, dtype=dtype)
     )
     final_shape = compute_final_shape(self_shape, list(size))
-    out_ref = torch.empty(final_shape, device=flag_gems.device, dtype=dtype)
+    x_ref = to_reference(x)
+    out_ref = torch.empty(final_shape, device=x_ref.device, dtype=dtype)
     out_act = torch.empty(final_shape, device=flag_gems.device, dtype=dtype)
 
-    x_ref = to_reference(x)
     ref_out = torch.ops.aten.expand_copy.out(
         x_ref, list(size), implicit=implicit, out=out_ref
     )

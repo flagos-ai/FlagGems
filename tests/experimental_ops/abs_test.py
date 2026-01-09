@@ -30,9 +30,10 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -59,7 +60,7 @@ def test_abs_tensor(shape, dtype):
 def test_abs_out_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
-    ref_out_tensor = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_out_tensor = torch.empty(shape, dtype=dtype, device=ref_x.device)
     act_out_tensor = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_out = torch.ops.aten.abs.out(ref_x, out=ref_out_tensor)
     with flag_gems.use_gems():

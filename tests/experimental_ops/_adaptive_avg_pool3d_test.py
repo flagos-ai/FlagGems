@@ -31,9 +31,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -91,7 +92,7 @@ def test__adaptive_avg_pool3d_out(shape, output_size, dtype):
     ref_x = to_reference(x)
 
     out_shape = (shape[0], shape[1], output_size[0], output_size[1], output_size[2])
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     ref_out = torch.ops.aten._adaptive_avg_pool3d.out(
         ref_x, output_size, out=ref_out_buf
     )

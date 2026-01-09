@@ -2,20 +2,6 @@
 
 import os
 import sys
-
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import TO_CPU, gems_assert_close
-except ImportError:
-    # Fallback values when running outside pytest
-    TO_CPU = False
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -27,6 +13,19 @@ from flag_gems.experimental_ops.select_backward import (  # noqa: E402
 from flag_gems.experimental_ops.select_backward import (  # noqa: E402
     select_backward_out as gems_select_backward_out,
 )
+
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
 
 
 def to_reference(inp):
@@ -88,7 +87,7 @@ def test_select_backward_out(input_sizes, dim, index_mode, dtype):
     grad_ref = to_reference(grad)
     grad_act = grad.clone()
 
-    ref_out_buf = torch.empty(input_sizes, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(input_sizes, dtype=dtype, device=grad_ref.device)
     ref_out = torch.ops.aten.select_backward.out(
         grad_ref, list(input_sizes), dim, index, out=ref_out_buf
     )

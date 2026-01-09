@@ -13,13 +13,29 @@ from flag_gems.experimental_ops.transpose_ import transpose_ as gems_transpose_
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.transpose_
@@ -39,8 +55,9 @@ except ImportError:
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_transpose__tensor(case, dtype):
     shape, dim0, dim1 = case
-    ref_input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    act_input = ref_input.clone()
+    base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(base)
+    act_input = base.clone()
 
     ref_out = torch.ops.aten.transpose_(ref_input, dim0, dim1)
 

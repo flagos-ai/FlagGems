@@ -3,19 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
-except ImportError:
-    # Fallback values when running outside pytest
-    TO_CPU = False  # fallback
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -28,16 +15,30 @@ from flag_gems.experimental_ops.masked_select import (  # noqa: E402
     masked_select_out as gems_masked_select_out,
 )
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
 
 
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -75,7 +76,7 @@ def test_masked_select_out(shape, dtype):
     ref_mask = to_reference(mask)
 
     ref_n = int(ref_mask.sum().item())
-    ref_out_buf = torch.empty((ref_n,), dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty((ref_n,), dtype=dtype, device=ref_x.device)
     ref_out = torch.ops.aten.masked_select.out(ref_x, ref_mask, out=ref_out_buf)
 
     with flag_gems.use_gems():

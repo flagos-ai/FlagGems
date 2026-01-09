@@ -31,9 +31,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -108,7 +109,7 @@ def test_multiply_out(case, dtype):
 
     ref_self = to_reference(self)
     ref_other = to_reference(other)
-    ref_out = torch.empty(out_shape, device=flag_gems.device, dtype=dtype)
+    ref_out = torch.empty(out_shape, device=ref_self.device, dtype=dtype)
     torch.ops.aten.multiply.out(ref_self, ref_other, out=ref_out)
 
     act_out = torch.empty_like(ref_out)

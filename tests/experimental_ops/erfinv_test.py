@@ -3,8 +3,22 @@
 import os
 import sys
 
+import pytest  # noqa: E402
+import torch  # noqa: E402
+import triton  # noqa: E402, F401
+
+import flag_gems  # noqa: E402
+from flag_gems.experimental_ops.erfinv import erfinv as gems_erfinv  # noqa: E402
+from flag_gems.experimental_ops.erfinv import (  # noqa: E402
+    erfinv_out as gems_erfinv_out,
+)
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
@@ -16,26 +30,13 @@ except ImportError:
         torch.testing.assert_close(res, ref, **kwargs)
 
 
-import pytest  # noqa: E402
-import torch  # noqa: E402
-import triton  # noqa: E402, F401
-
-import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.erfinv import erfinv as gems_erfinv  # noqa: E402
-from flag_gems.experimental_ops.erfinv import (  # noqa: E402
-    erfinv_out as gems_erfinv_out,
-)
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
-from benchmark.performance_utils import GenericBenchmark  # noqa: E402
-
-
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -70,7 +71,7 @@ def test_erfinv_out(shape, dtype):
     input_tensor = (base * 1.98 - 0.99).to(dtype)
 
     ref_input = to_reference(input_tensor)
-    ref_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(shape, dtype=dtype, device=ref_input.device)
     ref_out = torch.ops.aten.erfinv.out(ref_input, out=ref_out_buf)
 
     with flag_gems.use_gems():

@@ -3,19 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
-except ImportError:
-    # Fallback values when running outside pytest
-    TO_CPU = False  # fallback
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -28,13 +15,26 @@ from flag_gems.experimental_ops.replication_pad3d import (  # noqa: E402
     replication_pad3d_out as gems_replication_pad3d_out,
 )
 
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
 
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -78,7 +78,7 @@ def test_replication_pad3d_out(shape, dtype, padding):
     ref_x = to_reference(x)
 
     out_shape = test__out_shape(shape, padding)
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_ret = torch.ops.aten.replication_pad3d.out(ref_x, padding, out=ref_out_buf)

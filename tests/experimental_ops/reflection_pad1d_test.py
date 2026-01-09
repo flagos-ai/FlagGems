@@ -31,9 +31,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -70,7 +71,7 @@ def test_reflection_pad1d_out(shape, dtype, padding):
     out_shape[-1] = out_shape[-1] + padding[0] + padding[1]
     out_shape = tuple(out_shape)
 
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.reflection_pad1d.out(ref_x, padding, out=ref_out_buf)

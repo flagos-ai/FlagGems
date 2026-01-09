@@ -27,9 +27,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -90,7 +91,7 @@ def test_im2col_out(shape, dtype, kernel_size, dilation, padding, stride):
     C, H, W = shape
     out_shape = compute_out_shape(C, H, W, kernel_size, dilation, padding, stride)
 
-    out_ref = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    out_ref = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     out_act = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.im2col.out(

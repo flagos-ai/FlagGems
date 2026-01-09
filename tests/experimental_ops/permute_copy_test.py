@@ -32,9 +32,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -107,7 +108,7 @@ def test_permute_copy_out(case, dtype):
     norm_dims = [d if d >= 0 else d + rank for d in dims]
     out_shape = tuple(shape[d] for d in norm_dims)
 
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.permute_copy.out(ref_x, dims, out=ref_out_buf)

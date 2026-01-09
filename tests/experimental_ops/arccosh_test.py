@@ -27,9 +27,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -63,13 +64,13 @@ def test_arccosh_out(shape, dtype, layout):
     act_input = input_tensor.clone()
 
     if layout == "contiguous":
-        ref_out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        ref_out = torch.empty(shape, dtype=dtype, device=ref_input.device)
         act_out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     else:
         dims = len(shape)
         perm = list(reversed(range(dims)))
         ref_base = torch.empty(
-            tuple(reversed(shape)), dtype=dtype, device=flag_gems.device
+            tuple(reversed(shape)), dtype=dtype, device=ref_input.device
         )
         act_base = torch.empty(
             tuple(reversed(shape)), dtype=dtype, device=flag_gems.device

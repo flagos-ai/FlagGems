@@ -30,9 +30,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -68,7 +69,7 @@ def test__upsample_nearest_exact1d_out(shape, dtype, factor):
     out_len = shape[-1] * factor
     out_shape = (shape[0], shape[1], out_len)
 
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     ref_out = torch.ops.aten._upsample_nearest_exact1d.out(
         ref_x, [out_len], None, out=ref_out_buf
     )

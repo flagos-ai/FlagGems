@@ -31,9 +31,10 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -92,7 +93,7 @@ def test__unsafe_view_out(case, dtype):
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_input = to_reference(input_tensor)
 
-    ref_out_holder = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    ref_out_holder = torch.empty(0, dtype=dtype, device=ref_input.device)
     ref_out = torch.ops.aten._unsafe_view.out(ref_input, size, out=ref_out_holder)
 
     act_out_holder = torch.empty(0, dtype=dtype, device=flag_gems.device)

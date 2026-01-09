@@ -31,9 +31,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -77,7 +78,7 @@ def test_replication_pad1d_out(shape, dtype, padding):
         C, _ = shape
         out_shape = (C, w_out)
 
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_inp.device)
     ref_out = torch.ops.aten.replication_pad1d.out(ref_inp, padding, out=ref_out_buf)
 
     with flag_gems.use_gems():

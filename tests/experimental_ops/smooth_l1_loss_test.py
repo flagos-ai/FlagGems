@@ -3,19 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
-except ImportError:
-    # Fallback values when running outside pytest
-    TO_CPU = False  # fallback
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -28,16 +15,30 @@ from flag_gems.experimental_ops.smooth_l1_loss import (  # noqa: E402
     smooth_l1_loss_out as gems_smooth_l1_loss_out,
 )
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import gems_assert_close, TO_CPU
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
 
 
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -77,9 +78,9 @@ def test_smooth_l1_loss_out(shape, dtype, reduction, beta):
 
     out_shape = shape if reduction == 0 else ()
 
-    ref_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     ref_self = to_reference(self)
     ref_target = to_reference(target)
+    ref_out = torch.empty(out_shape, dtype=dtype, device=ref_self.device)
     ref_out = torch.ops.aten.smooth_l1_loss.out(
         ref_self, ref_target, reduction, beta, out=ref_out
     )

@@ -27,9 +27,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -67,7 +68,7 @@ def test_glu_out(shape, dtype, dim):
     out_shape = list(shape)
     out_shape[dim_idx] = out_shape[dim_idx] // 2
 
-    out_ref = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    out_ref = torch.empty(out_shape, dtype=dtype, device=ref_input.device)
     out_act = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_ret = torch.ops.aten.glu.out(ref_input, dim, out=out_ref)

@@ -3,8 +3,22 @@
 import os
 import sys
 
+import pytest  # noqa: E402
+import torch  # noqa: E402
+import triton  # noqa: E402, F401
+
+import flag_gems  # noqa: E402
+from flag_gems.experimental_ops.maximum import maximum as gems_maximum  # noqa: E402
+from flag_gems.experimental_ops.maximum import (  # noqa: E402
+    maximum_out as gems_maximum_out,
+)
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
@@ -16,26 +30,13 @@ except ImportError:
         torch.testing.assert_close(res, ref, **kwargs)
 
 
-import pytest  # noqa: E402
-import torch  # noqa: E402
-import triton  # noqa: E402, F401
-
-import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.maximum import maximum as gems_maximum  # noqa: E402
-from flag_gems.experimental_ops.maximum import (  # noqa: E402
-    maximum_out as gems_maximum_out,
-)
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
-from benchmark.performance_utils import GenericBenchmark  # noqa: E402
-
-
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -72,7 +73,7 @@ def test_maximum_out(shape, dtype):
     ref_x = to_reference(x)
     ref_y = to_reference(y)
 
-    ref_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(shape, dtype=dtype, device=ref_x.device)
     act_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.maximum.out(ref_x, ref_y, out=ref_out_buf)

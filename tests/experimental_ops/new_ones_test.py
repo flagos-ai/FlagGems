@@ -3,8 +3,22 @@
 import os
 import sys
 
+import pytest  # noqa: E402
+import torch  # noqa: E402
+import triton  # noqa: E402, F401
+
+import flag_gems  # noqa: E402
+from flag_gems.experimental_ops.new_ones import new_ones as gems_new_ones  # noqa: E402
+from flag_gems.experimental_ops.new_ones import (  # noqa: E402
+    new_ones_out as gems_new_ones_out,
+)
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
@@ -16,26 +30,13 @@ except ImportError:
         torch.testing.assert_close(res, ref, **kwargs)
 
 
-import pytest  # noqa: E402
-import torch  # noqa: E402
-import triton  # noqa: E402, F401
-
-import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.new_ones import new_ones as gems_new_ones  # noqa: E402
-from flag_gems.experimental_ops.new_ones import (  # noqa: E402
-    new_ones_out as gems_new_ones_out,
-)
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
-from benchmark.performance_utils import GenericBenchmark  # noqa: E402
-
-
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -68,7 +69,7 @@ def test_new_ones_out(self_shape, size, dtype):
     self_tensor = torch.randn(self_shape, dtype=torch.float32, device=flag_gems.device)
 
     ref_self = to_reference(self_tensor)
-    ref_out_buf = torch.empty(size, device=flag_gems.device, dtype=dtype)
+    ref_out_buf = torch.empty(size, device=ref_self.device, dtype=dtype)
     ref_out = torch.ops.aten.new_ones.out(ref_self, size, out=ref_out_buf)
 
     with flag_gems.use_gems():

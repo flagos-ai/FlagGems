@@ -3,8 +3,22 @@
 import os
 import sys
 
+import pytest  # noqa: E402
+import torch  # noqa: E402
+import triton  # noqa: E402, F401
+
+import flag_gems  # noqa: E402
+from flag_gems.experimental_ops.mse_loss import mse_loss as gems_mse_loss  # noqa: E402
+from flag_gems.experimental_ops.mse_loss import (  # noqa: E402
+    mse_loss_out as gems_mse_loss_out,
+)
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from tests.accuracy_utils import gems_assert_close, TO_CPU
 except ImportError:
@@ -16,26 +30,13 @@ except ImportError:
         torch.testing.assert_close(res, ref, **kwargs)
 
 
-import pytest  # noqa: E402
-import torch  # noqa: E402
-import triton  # noqa: E402, F401
-
-import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.mse_loss import mse_loss as gems_mse_loss  # noqa: E402
-from flag_gems.experimental_ops.mse_loss import (  # noqa: E402
-    mse_loss_out as gems_mse_loss_out,
-)
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
-from benchmark.performance_utils import GenericBenchmark  # noqa: E402
-
-
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -70,15 +71,16 @@ def test_mse_loss_out(shape, dtype, reduction):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    if reduction == 0:
-        ref_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-        act_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    else:
-        ref_out_buf = torch.empty((), dtype=dtype, device=flag_gems.device)
-        act_out_buf = torch.empty((), dtype=dtype, device=flag_gems.device)
-
     ref_x = to_reference(x)
     ref_y = to_reference(y)
+
+    if reduction == 0:
+        ref_out_buf = torch.empty(shape, dtype=dtype, device=ref_x.device)
+        act_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        ref_out_buf = torch.empty((), dtype=dtype, device=ref_x.device)
+        act_out_buf = torch.empty((), dtype=dtype, device=flag_gems.device)
+
     ref_out = torch.ops.aten.mse_loss.out(ref_x, ref_y, reduction, out=ref_out_buf)
 
     with flag_gems.use_gems():

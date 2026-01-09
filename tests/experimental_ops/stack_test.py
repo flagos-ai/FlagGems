@@ -3,8 +3,17 @@
 import os
 import sys
 
+import pytest  # noqa: E402
+import torch  # noqa: E402
+import triton  # noqa: E402, F401
+
+import flag_gems  # noqa: E402
+from flag_gems.experimental_ops.stack import stack as gems_stack  # noqa: E402
+from flag_gems.experimental_ops.stack import stack_out as gems_stack_out  # noqa: E402
+
+
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:
@@ -14,15 +23,6 @@ except ImportError:
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
-
-
-import pytest  # noqa: E402
-import torch  # noqa: E402
-import triton  # noqa: E402, F401
-
-import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.stack import stack as gems_stack  # noqa: E402
-from flag_gems.experimental_ops.stack import stack_out as gems_stack_out  # noqa: E402
 
 
 def to_reference(inp):
@@ -66,7 +66,7 @@ def test_stack_out(shape, dtype, num_tensors, dim):
     out_shape = list(shape)
     out_shape.insert(eff_dim, num_tensors)
 
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_tensors[0].device)
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.stack.out(ref_tensors, dim, out=ref_out_buf)

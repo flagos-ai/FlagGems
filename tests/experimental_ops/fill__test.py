@@ -3,8 +3,19 @@
 import os
 import sys
 
+import pytest  # noqa: E402
+import torch  # noqa: E402
+import triton  # noqa: E402, F401
+
+import flag_gems  # noqa: E402
+from flag_gems.experimental_ops.fill_ import fill__Scalar, fill__Tensor  # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
@@ -14,17 +25,6 @@ except ImportError:
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
-
-
-import pytest  # noqa: E402
-import torch  # noqa: E402
-import triton  # noqa: E402, F401
-
-import flag_gems  # noqa: E402
-from flag_gems.experimental_ops.fill_ import fill__Scalar, fill__Tensor  # noqa: E402
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
-from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 
 def to_reference(inp):

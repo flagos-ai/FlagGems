@@ -29,9 +29,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -85,7 +86,7 @@ def test_pixel_shuffle_out(shape_r, dtype):
 
     ref_x = to_reference(x)
     out_shape = (n, c // (r * r), h * r, w * r)
-    ref_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     torch.ops.aten.pixel_shuffle.out(ref_x, r, out=ref_out)
 
     act_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)

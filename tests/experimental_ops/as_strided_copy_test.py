@@ -31,9 +31,10 @@ except ImportError:
 def to_reference(inp, upcast=False):
     if inp is None:
         return None
-    ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -103,7 +104,7 @@ def test_as_strided_copy_out(shape, dtype, kind):
         stride = strides
         storage_offset = i * strides[0] + j * strides[1]
 
-    ref_out_buf = torch.empty(size, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(size, dtype=dtype, device=ref_inp.device)
     ref_out = torch.ops.aten.as_strided_copy.out(
         ref_inp, size, stride, storage_offset, out=ref_out_buf
     )
