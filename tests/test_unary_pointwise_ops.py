@@ -388,6 +388,7 @@ def test_accuracy_frac_out(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
+
 @pytest.mark.geglu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
