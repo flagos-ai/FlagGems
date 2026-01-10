@@ -1,7 +1,9 @@
 import logging
+
 import torch
 
 logger = logging.getLogger(__name__)
+
 
 def channel_shuffle(self: torch.Tensor, groups: int) -> torch.Tensor:
     logger.debug("GEMS CHANNEL_SHUFFLE")

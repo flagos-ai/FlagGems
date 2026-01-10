@@ -1,8 +1,10 @@
 import pytest
 import torch
+
 import flag_gems
 from benchmark.attri_util import FLOAT_DTYPES
 from benchmark.performance_utils import GenericBenchmark
+
 
 def torch_channel_shuffle(x, groups):
     return torch.nn.ChannelShuffle(groups)(x)
@@ -12,6 +14,7 @@ def channel_shuffle_input_fn(shape, dtype, device):
     n, c, h, w, groups = shape
     x = torch.randn((n, c, h, w), dtype=dtype, device=device)
     yield x, {"groups": groups}
+
 
 class ChannelShuffleBenchmark(GenericBenchmark):
     def get_input_iter(self, cur_dtype):
@@ -23,6 +26,7 @@ class ChannelShuffleBenchmark(GenericBenchmark):
         ]
         for shape in shapes:
             yield from channel_shuffle_input_fn(shape, cur_dtype, self.device)
+
 
 @pytest.mark.channel_shuffle
 def test_channel_shuffle_perf():
