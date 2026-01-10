@@ -6,7 +6,7 @@ repos:
   - id: end-of-file-fixer
   - id: trailing-whitespace
   - id: flake8
-    args: ["--ignore=F405,E731,W503,E203", --max-line-length=120]
+    args: ["--ignore=F405,E731,W503,E203", "--max-line-length=120"]
     # F405 : Name may be undefined, or defined from star imports: module
     # E731 : Do not assign a lambda expression, use a def
     # W503 : Line break before binary operator

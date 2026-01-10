@@ -82,6 +82,8 @@ def enable(
             ("avg_pool2d_backward", avg_pool2d_backward),
             ("atan", atan),
             ("atan_", atan_),
+            ("asinh", asinh),
+            ("asinh_", asinh_),
             ("baddbmm", baddbmm),
             ("bitwise_and.Scalar", bitwise_and_scalar),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),

@@ -1453,6 +1453,111 @@ def test_accuracy_atan_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.asinh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(res_inp)
+    ref_out = ref_out.to(res_out.dtype)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_special_values(dtype):
+    """Test asinh with special values: zero, inf, -inf, nan, and edge cases"""
+    test_cases = [
+        # Basic cases
+        ([0.0, 0.0], "zeros"),  # asinh(0) = 0
+        ([1.0, -1.0], "unit values"),
+        # Moderate values
+        ([10.0, -10.0], "moderate values"),
+        # Small values
+        ([1e-6, 1e-5, 1e-4], "small positive"),
+        ([-1e-6, -1e-5, -1e-4], "small negative"),
+        # Large values - use relaxed tolerance
+        ([100.0, -100.0], "large values"),
+    ]
+
+    for vals, desc in test_cases:
+        inp = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+
+        ref_out = torch.asinh(ref_inp)
+        with flag_gems.use_gems():
+            res_out = torch.asinh(inp)
+
+        # Use relaxed tolerance for large values
+        if any(abs(v) >= 100.0 for v in vals):
+            gems_assert_close(res_out, ref_out, dtype, atol=1e-2)
+        else:
+            gems_assert_close(res_out, ref_out, dtype)
+
+    # Infinity and NaN cases - use equal_nan=True and manual check
+    test_cases_special = [
+        ([float("inf")], "positive inf"),
+        ([float("-inf")], "negative inf"),
+        ([float("nan")], "nan"),
+    ]
+
+    for vals, desc in test_cases_special:
+        inp = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+
+        ref_out = torch.asinh(ref_inp)
+        with flag_gems.use_gems():
+            res_out = torch.asinh(inp)
+
+        # Convert to CPU for comparison
+        if ref_out.is_cuda:
+            ref_out = ref_out.cpu()
+        if res_out.is_cuda:
+            res_out = res_out.cpu()
+
+        # Check NaN positions match
+        ref_is_nan = torch.isnan(ref_out)
+        res_is_nan = torch.isnan(res_out)
+        assert torch.equal(
+            ref_is_nan, res_is_nan
+        ), f"NaN positions mismatch for {desc}: ref_nan={ref_is_nan}, res_nan={res_is_nan}"
+
+        # Check non-NaN values
+        mask = ~ref_is_nan
+        if mask.any():
+            # For inf values, check they match
+            if torch.isinf(ref_out).any():
+                assert torch.equal(
+                    torch.isinf(res_out), torch.isinf(ref_out)
+                ), f"Inf positions mismatch for {desc}"
+                # For finite values, check with tolerance
+                finite_mask = mask & ~torch.isinf(ref_out)
+                if finite_mask.any():
+                    gems_assert_close(res_out[finite_mask], ref_out[finite_mask], dtype)
+            else:
+                gems_assert_close(res_out[mask], ref_out[mask], dtype)
+
+
+@pytest.mark.asinh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp.clone(), True)
+
+    ref_out = torch.asinh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh_(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 DREGU_SHAPES = [
     (),
     (1,),
