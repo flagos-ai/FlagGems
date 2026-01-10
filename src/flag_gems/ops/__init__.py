@@ -91,6 +91,7 @@ from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from flag_gems.ops.flip import flip
+from flag_gems.ops.frac import frac, frac_, frac_out
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -344,6 +345,9 @@ __all__ = [
     "flip",
     "floor_divide",
     "floor_divide_",
+    "frac",
+    "frac_",
+    "frac_out",
     "full",
     "full_like",
     "gather",
