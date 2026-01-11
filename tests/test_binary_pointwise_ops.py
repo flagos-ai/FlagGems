@@ -962,7 +962,7 @@ def test_accuracy_gcd_edge_cases(dtype):
         res_out = torch.gcd(res_a, res_b)
 
     gems_assert_equal(res_out, ref_out)
-    gems_assert_equal(res_out, expected)
+    gems_assert_equal(res_out, to_reference(expected))
 
 
 @pytest.mark.gcd
@@ -1107,7 +1107,7 @@ def test_accuracy_gcd_fibonacci_worst_case(dtype):
     gems_assert_equal(res_out, ref_out)
 
     expected = torch.ones_like(res_a)
-    gems_assert_equal(res_out, expected)
+    gems_assert_equal(res_out, to_reference(expected))
 
 
 @pytest.mark.gcd
