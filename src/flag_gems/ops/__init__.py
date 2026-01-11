@@ -105,6 +105,7 @@ from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_put import index_put, index_put_
 from flag_gems.ops.index_select import index_select
+from flag_gems.ops.int8_gemm import int8_gemm
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
@@ -367,6 +368,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "int8_gemm",
     "isclose",
     "isfinite",
     "isin",
