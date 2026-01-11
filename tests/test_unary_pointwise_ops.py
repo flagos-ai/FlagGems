@@ -891,7 +891,7 @@ def test_accuracy_leaky_relu_backward(shape, dtype, negative_slope):
     res_out.backward(res_grad_output)
     res_grad_input = res_inp.grad
 
-    gems_assert_close(res_grad_input, ref_grad_input.to(flag_gems.device), dtype)
+    gems_assert_close(res_grad_input, to_reference(ref_grad_input), dtype)
 
 
 @pytest.mark.leaky_relu
@@ -919,7 +919,7 @@ def test_accuracy_leaky_relu_backward_edge_cases(dtype):
     res_out.backward(res_grad_output)
     res_grad_input = res_inp.grad
 
-    gems_assert_close(res_grad_input, ref_grad_input.to(flag_gems.device), dtype)
+    gems_assert_close(res_grad_input, to_reference(ref_grad_input), dtype)
 
 
 @pytest.mark.relu6
