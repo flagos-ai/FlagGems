@@ -59,6 +59,7 @@ forward_operations = [
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
+    ("leaky_relu", torch.nn.functional.leaky_relu, FLOAT_DTYPES),
     ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
@@ -116,6 +117,13 @@ forward_inplace_operations = [
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
+    (
+        "leaky_relu_",
+        lambda a, neg_slope=0.01: torch.nn.functional.leaky_relu(
+            a, negative_slope=neg_slope, inplace=True
+        ),
+        FLOAT_DTYPES,
+    ),
     ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
     # Trigonometric operations
