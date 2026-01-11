@@ -25,7 +25,26 @@ export FlagGemsROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/../../" && pwd )"
 echo FlagGemsROOT ${FlagGemsROOT}
 
 FILES="/home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-op* /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-model*"
-coverage combine -q --keep --data-file=${ID_SHA} $FILES
+if ! compgen -G "/home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-op*" >/dev/null && \
+   ! compgen -G "/home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}/${ID_SHA}-model*" >/dev/null; then
+  echo "[WARN] No coverage data under /home/zhangbo/PR_Coverage; falling back to local ${ID_SHA}-op* and ${ID_SHA}-model*"
+  FILES_ARRAY=()
+  if compgen -G "${ID_SHA}-op*" >/dev/null; then
+    FILES_ARRAY+=( ${ID_SHA}-op* )
+  fi
+  if compgen -G "${ID_SHA}-model*" >/dev/null; then
+    FILES_ARRAY+=( ${ID_SHA}-model* )
+  fi
+  if [ ${#FILES_ARRAY[@]} -eq 0 ]; then
+    echo "[ERROR] No local coverage data found. Please run at least one test to generate coverage."
+    exit 1
+  fi
+fi
+if [ -n "${FILES_ARRAY+x}" ]; then
+  coverage combine -q --keep --data-file=${ID_SHA} "${FILES_ARRAY[@]}"
+else
+  coverage combine -q --keep --data-file=${ID_SHA} $FILES
+fi
 coverage report -m --data-file=${ID_SHA}
 coverage xml -i --data-file=${ID_SHA} -o ${ID_SHA}-python-coverage.xml
 
