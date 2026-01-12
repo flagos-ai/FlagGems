@@ -109,6 +109,97 @@ def test_accuracy_angle(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype_out)
 
 
+@pytest.mark.asinh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.asinh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.asinh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_special_values(dtype):
+    """Test asinh with special values: 0, inf, -inf, nan, large positive/negative"""
+
+    inp = torch.tensor(
+        [
+            0.0,  # asinh(0) = 0
+            1.0,  # asinh(1) ≈ 0.88137
+            -1.0,  # asinh(-1) ≈ -0.88137
+            1e-10,  # Very small positive
+            -1e-10,  # Very small negative
+            1e10,  # Very large positive
+            -1e10,  # Very large negative
+            float("inf"),  # Should give inf
+            float("-inf"),  # Should give -inf
+            float("nan"),  # Should give nan
+        ],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.asinh(ref_inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_edge_cases(dtype):
+    """Test asinh with edge cases around numerical stability threshold"""
+
+    inp = torch.tensor(
+        [
+            1e-8,  # Small positive
+            1e-4,  # Medium small
+            1.0,  # Unity
+            100.0,  # Moderate large
+            1e4,  # Large
+            1e8,  # Very large (near threshold)
+            1e10,  # Beyond threshold
+            -1e-8,  # Small negative
+            -1e4,  # Large negative
+            -1e10,  # Very large negative
+        ],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.asinh(ref_inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 BITWISE_SHAPES = [
     ((512, 1024), (512, 1024)),
     ((256, 512), (1, 512)),
