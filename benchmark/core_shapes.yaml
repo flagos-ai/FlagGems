@@ -144,6 +144,15 @@ GenericBenchmark2DOnly:
     - [4096, 4096]
     - [1024, 65536]
 
+# default 4d-only shapes
+GenericBenchmark4DOnly:
+  shapes:
+    - [64, 64,4,8]
+    - [256, 256,4,8]
+    - [1024, 1024,4,8]
+    - [4096, 4096,4,8]
+    - [1024, 65536,4,8]
+
 UnaryReductionBenchmark:
   shapes:
     - [1048576] # 1024 * 1024
