@@ -270,6 +270,153 @@ def test_accuracy_cos_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.cosh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh(shape, dtype):
+    """Test cosh with random values"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.cosh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_(shape, dtype):
+    """Test in-place cosh with random values"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.cosh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cosh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_special_values(dtype):
+    """Test cosh with special values: 0, inf, -inf, nan, and edge values for overflow"""
+
+    if dtype == torch.float16:
+        # Float16 overflows around |x| > 11.5
+        special_values = [
+            0.0,  # cosh(0) = 1
+            1.0,  # Normal small value
+            10.0,  # Near overflow threshold
+            11.0,  # Very near overflow
+            12.0,  # Should overflow to inf
+            float("inf"),  # Should give inf
+            float("-inf"),  # Should give inf (cosh is even)
+            float("nan"),  # Should give nan
+            -10.0,  # Test even function property
+            -11.0,
+        ]
+    elif dtype == torch.bfloat16:
+        # BFloat16 has similar range to float32 but less precision
+        special_values = [
+            0.0,
+            1.0,
+            50.0,
+            88.0,
+            89.0,  # Near overflow for float32
+            float("inf"),  # Should give inf
+            float("-inf"),  # Should give inf (cosh is even)
+            float("nan"),  # Should give nan
+            -88.0,
+        ]
+    else:
+        # Float32 overflows around |x| > 89
+        special_values = [
+            0.0,  # cosh(0) = 1
+            1.0,  # Normal value
+            10.0,  # Medium value
+            50.0,  # Large value
+            88.0,  # Near overflow threshold
+            89.0,  # Very near overflow - edge case!
+            float("inf"),  # Should give inf
+            float("-inf"),  # Should give inf (cosh is even)
+            float("nan"),  # Should give nan
+            -88.0,  # Test even function
+            -89.0,  # Edge case for negative
+        ]
+
+    inp = torch.tensor(special_values, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, upcast=True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    assert torch.isclose(
+        res_out[0], torch.tensor(1.0, dtype=dtype, device=flag_gems.device), atol=1e-5
+    )
+
+    inf_idx = special_values.index(float("inf"))
+    assert torch.isinf(res_out[inf_idx]) and res_out[inf_idx] > 0
+
+    neg_inf_idx = special_values.index(float("-inf"))
+    assert torch.isinf(res_out[neg_inf_idx]) and res_out[neg_inf_idx] > 0
+
+    nan_mask = torch.isnan(inp)
+    if nan_mask.any():
+        assert torch.isnan(res_out[nan_mask]).all(), "cosh(nan) should be nan"
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.cosh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_even_function(dtype):
+    """Test that cosh(-x) = cosh(x) (even function property)"""
+
+    test_values = torch.tensor(
+        [1.0, 5.0, 10.0, 50.0], dtype=dtype, device=flag_gems.device
+    )
+
+    with flag_gems.use_gems():
+        pos_result = torch.cosh(test_values)
+        neg_result = torch.cosh(-test_values)
+
+    gems_assert_close(pos_result, neg_result, dtype)
+
+
+@pytest.mark.cosh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_overflow_behavior(dtype):
+    """Test that cosh naturally overflows to infinity like PyTorch"""
+
+    if dtype == torch.float16:
+        overflow_value = 15.0  # Definitely overflows for fp16
+    elif dtype == torch.bfloat16:
+        overflow_value = 100.0  # Definitely overflows
+    else:
+        overflow_value = 100.0  # Definitely overflows for fp32
+
+    inp = torch.tensor([overflow_value], dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, upcast=False)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    assert torch.isinf(
+        ref_out[0]
+    ), f"PyTorch should overflow to inf for {dtype} at x={overflow_value}"
+    assert torch.isinf(
+        res_out[0]
+    ), f"FlagGems should overflow to inf for {dtype} at x={overflow_value}"
+    assert ref_out[0] > 0 and res_out[0] > 0, "Should be positive infinity"
+
+
 @pytest.mark.exp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
