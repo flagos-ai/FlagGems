@@ -28,49 +28,65 @@ def grouped_launch(
     return pid_m, pid_n
 
 
-def get_autotune_config():
+def matmul_tma_set_block_size_hook(nargs):
+    BLOCK_M = nargs["BLOCK_M"]
+    BLOCK_N = nargs["BLOCK_N"]
+    BLOCK_K = nargs["BLOCK_K"]
+    nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
+    nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
+    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
+
+
+def get_autotune_config(pre_hook=None):
     return [
         triton.Config(
             {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 8},
             num_stages=3,
             num_warps=8,
             num_ctas=1,
+            pre_hook=pre_hook,
         ),
         triton.Config(
             {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "GROUP_M": 8},
             num_stages=2,
             num_warps=4,
             num_ctas=1,
+            pre_hook=pre_hook,
         ),
         triton.Config(
             {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128, "GROUP_M": 8},
             num_stages=3,
             num_warps=4,
             num_ctas=2,
+            pre_hook=pre_hook,
         ),
         triton.Config(
             {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 8},
             num_stages=3,
             num_warps=8,
             num_ctas=1,
+            pre_hook=pre_hook,
         ),
         triton.Config(
             {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 32, "GROUP_M": 4},
             num_stages=4,
             num_warps=4,
             num_ctas=1,
+            pre_hook=pre_hook,
         ),
         triton.Config(
             {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 4},
             num_stages=4,
             num_warps=4,
             num_ctas=1,
+            pre_hook=pre_hook,
         ),
         triton.Config(
             {"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 8},
             num_stages=3,
             num_warps=8,
             num_ctas=2,
+            pre_hook=pre_hook,
         ),
     ]
 
@@ -282,6 +298,82 @@ def grouped_matmul_kernel(
         last_problem_end = last_problem_end + num_tiles
 
 
+@libentry()
+@libtuner(
+    configs=get_autotune_config(matmul_tma_set_block_size_hook), key=["M", "N", "K"]
+)
+@triton.jit
+def grouped_mm_tma_kernel(
+    a_desc,
+    b_desc,
+    c_desc,
+    C,
+    offs,
+    num_groups: tl.constexpr,
+    M,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    stride_cm: tl.constexpr,
+    stride_cn: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    total_grid = tl.num_programs(axis=0)
+    tile_idx = tl.program_id(axis=0)
+    num_n_tiles = tl.cdiv(N, BLOCK_N)
+    last_problem_end = 0
+    group_start = 0
+    group_end = 0
+
+    for group_idx in tl.range(num_groups):
+        group_end = tl.load(offs + group_idx).to(tl.int32)
+        m = group_end - group_start
+        num_m_tiles = tl.cdiv(m, BLOCK_M)
+        num_tiles = num_m_tiles * num_n_tiles
+
+        if tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles:
+            while (
+                tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles
+            ):
+                tile_idx_in_gemm = tile_idx - last_problem_end
+                tile_m_idx, tile_n_idx = grouped_launch(
+                    tile_idx_in_gemm, m, N, BLOCK_M, BLOCK_N, GROUP_M
+                )
+
+                offs_am = group_start + tile_m_idx * BLOCK_M
+                offs_bn = tile_n_idx * BLOCK_N
+                offs_bk = group_idx * K
+
+                accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+                for k in tl.range(0, tl.cdiv(K, BLOCK_K)):
+                    a = a_desc.load([offs_am, k * BLOCK_K])
+                    b = b_desc.load([offs_bk + k * BLOCK_K, offs_bn])
+                    accumulator = tl.dot(a, b, acc=accumulator)
+
+                c = accumulator.to(c_desc.dtype)
+
+                TMA_condition = offs_am + BLOCK_M <= group_end
+
+                if TMA_condition:
+                    c_desc.store([offs_am, offs_bn], c)
+                else:
+                    offs_cm = offs_am + tl.arange(0, BLOCK_M)
+                    offs_cn = offs_bn + tl.arange(0, BLOCK_N)
+                    c_ptrs = (
+                        C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+                    )
+                    c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
+                    tl.store(c_ptrs, c, mask=c_mask)
+
+                tile_idx += total_grid
+
+        last_problem_end = last_problem_end + num_tiles
+        group_start = group_end
+
+
 def supports_tma():
     return torch.cuda.get_device_capability()[0] >= 9
 
@@ -360,6 +452,46 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
         )
 
     return group_out
+
+
+def group_mm(
+    A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor, trans_b: bool = False
+) -> torch.Tensor:
+    assert A.dim() == 2
+    assert B.dim() == 3
+    M, K = A.shape
+    if trans_b:
+        num_groups, N, BK = B.shape
+        strideBN, strideBK = B.stride(1), B.stride(2)
+    else:
+        num_groups, BK, N = B.shape
+        strideBK, strideBN = B.stride(1), B.stride(2)
+
+    assert num_groups == offs.numel()
+    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    C = A.new_empty(M, N)
+    dummy_block = [1, 1]
+
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    a_desc = TensorDescriptor(A, A.shape, A.stride(), dummy_block)
+    b_desc = TensorDescriptor(B, [num_groups * K, N], [strideBK, strideBN], dummy_block)
+    c_desc = TensorDescriptor(C, C.shape, C.stride(), dummy_block)
+
+    grouped_mm_tma_kernel[(NUM_SMS,)](
+        a_desc,
+        b_desc,
+        c_desc,
+        C,
+        offs,
+        num_groups,
+        M,
+        N,
+        K,
+        C.stride(0),
+        C.stride(1),
+    )
+    return C
 
 
 @pytest.mark.parametrize(
@@ -516,4 +648,134 @@ def test_group_gemm_accuracy(groups, N, K, dtype):
             for i in range(group_size)
         ]
     ref = torch.cat([x for x in ref_out], dim=0)
+    assert torch.allclose(res, ref, atol=1e-2, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "groups, N, K", [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
+def test_group_mm_speedup(groups, N, K, dtype):
+    group_A_list = []
+    group_B_list = []
+    group_C_list = []
+    offs_table = []
+    M_list = []
+    group_size = groups
+    A_offs = 0
+    B_offs = 0
+    C_offs = 0
+    total_flops = 0
+    for i in range(group_size):
+        M_g = random.randint(1, 16384)
+        N_g = N
+        K_g = K
+        A_g = torch.rand([M_g, K_g], device="cuda", dtype=torch.bfloat16)
+        B_g = torch.rand([K_g, N_g], device="cuda", dtype=torch.bfloat16)
+        C_g = torch.rand([M_g, N_g], device="cuda", dtype=torch.bfloat16)
+        group_A_list.append(A_g)
+        group_B_list.append(B_g)
+        group_C_list.append(C_g)
+        offs_table.append([M_g, N_g, K_g, A_offs, B_offs, C_offs])
+        M_list.append(M_g)
+        A_offs += M_g
+        B_offs += K_g
+        C_offs += M_g
+        total_flops += 2 * M_g * N_g * K_g
+
+    group_A = torch.cat([x for x in group_A_list], dim=0)
+
+    mat_a = group_A
+    mat_b = torch.stack([x for x in group_B_list], dim=0)
+    offs = torch.tensor(
+        [sum(M_list[: i + 1]) for i in range(group_size)],
+        dtype=torch.int32,
+        device="cuda",
+    )
+
+    latency_base = triton.testing.do_bench(
+        lambda: torch._grouped_mm(mat_a, mat_b, offs),
+        warmup=1000,
+        rep=100,
+        return_mode="median",
+    )
+
+    latency = triton.testing.do_bench(
+        lambda: group_mm(mat_a, mat_b, offs),  # , workspace)
+        warmup=1000,
+        rep=100,
+        return_mode="median",
+    )
+
+    tflops = total_flops / latency / 1e12 * 1e3
+    speedup = latency_base / latency
+
+    latency_base_str = f"{latency_base:.6f}"
+    latency_str = f"{latency:.6f}"
+    speedup_str = f"{speedup:.3f}"
+    tflops_str = f"{tflops:.3f}"
+    col_names = [
+        f"{'Torch Latency (ms)'}",
+        f"{'Gems Latency (ms)':>20}",
+        f"{'Gems Speedup':>20}",
+        f"{'TFLOPS':>20}",
+    ]
+    col_names_str = " ".join(col_names)
+    print(f"\nTotal_M: {sum(M_list)}")
+    print("\n" + col_names_str)
+    header_break = "-" * len(col_names_str)
+    print(header_break)
+    print(
+        f"{latency_base_str:>15}",
+        f"{latency_str:>20}",
+        f"{speedup_str:>20}",
+        f"{tflops_str:>20}\n",
+    )
+
+
+@pytest.mark.parametrize(
+    "groups, N, K", [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
+def test_group_mm_accuracy(groups, N, K, dtype):
+    group_A_list = []
+    group_B_list = []
+    group_C_list = []
+    offs_table = []
+    M_list = []
+    group_size = groups
+    A_offs = 0
+    B_offs = 0
+    C_offs = 0
+
+    for i in range(group_size):
+        M_g = random.randint(1, 16384)
+        N_g = N
+        K_g = K
+        A_g = torch.rand([M_g, K_g], device="cuda", dtype=torch.bfloat16)
+        B_g = torch.rand([K_g, N_g], device="cuda", dtype=torch.bfloat16)
+        C_g = torch.rand([M_g, N_g], device="cuda", dtype=torch.bfloat16)
+        group_A_list.append(A_g)
+        group_B_list.append(B_g)
+        group_C_list.append(C_g)
+        M_list.append(M_g)
+        offs_table.append([M_g, N_g, K_g, A_offs, B_offs, C_offs])
+        A_offs += M_g
+        B_offs += K_g
+        C_offs += M_g
+
+    group_A = torch.cat([x for x in group_A_list], dim=0)
+
+    mat_a = group_A
+    mat_b = torch.stack([x for x in group_B_list], dim=0)
+    offs = torch.tensor(
+        [sum(M_list[: i + 1]) for i in range(group_size)],
+        dtype=torch.int32,
+        device="cuda",
+    )
+
+    ref = torch._grouped_mm(mat_a, mat_b, offs)
+    res = group_mm(mat_a, mat_b, offs)
+    print(ref)
+    print(res)
     assert torch.allclose(res, ref, atol=1e-2, rtol=0)
