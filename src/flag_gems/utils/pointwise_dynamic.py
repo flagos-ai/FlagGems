@@ -826,7 +826,13 @@ class WrapperGenerator:
             capability = torch_device_fn.get_device_capability(
                 torch_device_fn.current_device()
             )
-            if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
+            import flag_gems
+
+            if (
+                self.name.find("fill_scalar") != -1
+                and capability[0] >= 9
+                and flag_gems.vendor_name != "hygon"
+            ):
                 code.writeline("tile_sizes = tuple([64])")
             else:
                 code.writeline(
@@ -837,7 +843,11 @@ class WrapperGenerator:
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
             )
 
-            if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
+            if (
+                self.name.find("fill_scalar") != -1
+                and capability[0] >= 9
+                and flag_gems.vendor_name != "hygon"
+            ):
                 code.writeline("num_ctas = num_tiles")
             else:
                 max_grid_size0 = self.config.max_grid_size[0]
