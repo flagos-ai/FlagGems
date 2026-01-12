@@ -333,10 +333,10 @@ def grouped_mm_tma_kernel(
         num_m_tiles = tl.cdiv(m, BLOCK_M)
         num_tiles = num_m_tiles * num_n_tiles
 
-        if tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles:
-            while (
-                tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles
-            ):
+        current_problem_end = last_problem_end + num_tiles
+        if tile_idx >= last_problem_end and tile_idx < current_problem_end:
+            loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
+            for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
                 tile_m_idx, tile_n_idx = grouped_launch(
                     tile_idx_in_gemm, m, N, BLOCK_M, BLOCK_N, GROUP_M
@@ -370,7 +370,7 @@ def grouped_mm_tma_kernel(
 
                 tile_idx += total_grid
 
-        last_problem_end = last_problem_end + num_tiles
+        last_problem_end = current_problem_end
         group_start = group_end
 
 
@@ -701,7 +701,7 @@ def test_group_mm_speedup(groups, N, K, dtype):
     )
 
     latency = triton.testing.do_bench(
-        lambda: group_mm(mat_a, mat_b, offs),  # , workspace)
+        lambda: group_mm(mat_a, mat_b, offs),
         warmup=1000,
         rep=100,
         return_mode="median",
