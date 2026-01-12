@@ -657,6 +657,7 @@ __all__ = [
     "resolve_neg",
     "rms_norm",
     "rms_norm_backward",
+    "roll",
     "rms_norm_forward",
     "roll",
     "round",
