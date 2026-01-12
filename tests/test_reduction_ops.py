@@ -274,6 +274,56 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+NLLLOSS2D_SHAPES = (
+    [(2, 4, 4, 8)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
+
+
+@pytest.mark.nll_loss2d
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("weight", [True, False])
+@pytest.mark.parametrize("shape", [(2, 4, 4, 8)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("ignore_index", [1, 200, -100])
+def test_accuracy_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
+    dim = 1
+    target_shape = list(shape)
+    del target_shape[dim]
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randint(0, shape[dim], target_shape, device=flag_gems.device)
+    if weight:
+        weight = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
+    else:
+        weight = None
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target)
+    ref_weight = to_reference(weight, True)
+
+    ref_out = torch.nn.functional.nll_loss(
+        ref_inp, ref_target, ref_weight, reduction=reduction, ignore_index=ignore_index
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.nll_loss(
+            inp, target, weight, reduction=reduction, ignore_index=ignore_index
+        )
+    reduce_dim = 1 if reduction == "none" else target.numel()
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim, equal_nan=True)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
 CUMSUM_SHAPES = (
     [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
 )

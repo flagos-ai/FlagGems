@@ -487,6 +487,19 @@ class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
         super().__init__(exclude_dims=3, *args, **kwargs)
 
 
+class GenericBenchmark4DOnly(GenericBenchmarkFilterShapes):
+    """
+    4d shapes only
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=None, *args, **kwargs)
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [shape for shape in shapes if len(shape) == 4]
+
+
 class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):
     """
     2d shapes only
