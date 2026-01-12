@@ -32,6 +32,16 @@ def hstack(
     out_shape = list(inp0_shape)
     inp_shapes = [inp0_shape]
 
+    dtypes = [t.dtype for t in tensors]
+    dtype = dtypes[0]
+
+    for ty in dtypes[1:]:
+        dtype = torch.promote_types(dtype, ty)
+
+    for i, tensor in enumerate(tensors):
+        if tensor.dtype != dtype:
+            tensors[i] = tensor.to(dtype)
+
     if len(inp0_shape) == 1:
         dim = 0
     else:
