@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 @triton.autotune(
-    configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
+    configs=runtime.get_tuned_config("upsample_nearest2d"),
+    key=["N", "C", "OH", "OW"],
 )
 @triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d"))
 @triton.jit
@@ -33,51 +34,47 @@ def upsample_nearest2d_kernel(
     SAME_W: tl.constexpr,
     USE_INT32_IDX: tl.constexpr,
 ):
-    if USE_INT32_IDX:
-        pid = tl.program_id(axis=0)
-    else:
-        pid = tl.program_id(axis=0).to(tl.int64)
-    nc_stride = tl.num_programs(axis=1)
-    NC = N * C
-    nc_iter = tl.program_id(axis=1)
-    
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    ow = idx % OW
-    oh = idx // OW % OH
-    
-    if SAME_H:
-        ih = oh
-    else:
-        ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
-    
-    if SAME_W:
-        iw = ow
-    else:
-        iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
+    pid_spatial = tl.program_id(axis=0)
+    pid_nc = tl.program_id(axis=1)
 
-    base_o = nc_iter * OH * OW
-    base_i = nc_iter * IH * IW
-    
-    src_index_stride = nc_stride * IH * IW
-    dst_index_stride = nc_stride * OH * OW
-    
-    # 优化：在循环外计算偏移的基础部分，减少循环中的重复计算
-    # offset_o = base_o + oh * OW + ow = base_o + (oh * OW + ow)
-    # offset_i = base_i + ih * IW + iw = base_i + (ih * IW + iw)
-    offset_base_o = oh * OW + ow  # 向量，每个元素的基础偏移（预计算）
-    offset_base_i = ih * IW + iw  # 向量，每个元素的基础偏移（预计算）
-    
-    while nc_iter < NC:
-        # 优化：使用预计算的基础偏移，减少循环中的计算开销
-        offset_o = base_o + offset_base_o
-        offset_i = base_i + offset_base_i
-        
-        data = tl.load(ptr_i + offset_i)
-        tl.store(ptr_o + offset_o, data)
-        
-        base_o += dst_index_stride
-        base_i += src_index_stride
-        nc_iter += nc_stride
+    if USE_INT32_IDX:
+        nc = pid_nc
+    else:
+        nc = pid_nc.to(tl.int64)
+
+    NC = N * C
+    if nc >= NC:
+        return
+
+    idx = pid_spatial * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = idx < (OH * OW)
+
+    ow = idx % OW
+    oh = idx // OW
+
+    base_o = nc * OH * OW
+    base_i = nc * IH * IW
+
+    if (not SAME_H) and (not SAME_W) and reciprocal_scale_h == 0.5 and reciprocal_scale_w == 0.5:
+        ih = oh >> 1
+        iw = ow >> 1
+    else:
+        if SAME_H:
+            ih = oh
+        else:
+            ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
+
+        if SAME_W:
+            iw = ow
+        else:
+            iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
+
+    offset_o = base_o + oh * OW + ow
+    offset_i = base_i + ih * IW + iw
+
+    data = tl.load(ptr_i + offset_i, mask=mask, other=0)
+    tl.store(ptr_o + offset_o, data, mask=mask)
+
 
 
 def upsample_nearest2d(
@@ -86,39 +83,30 @@ def upsample_nearest2d(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE NEAREST2D")
     assert input.device.type == device
-    assert input.ndim == 4, "The ndim of input must be 4"
-    # assert len(output_size) == 2, "The len of output_size must be 2"
+    assert input.ndim == 4
+    # assert len(output_size) == 2
     OH, OW = output_size
     N, C, IH, IW = input.shape
+
     if scales_h is not None:
         reciprocal_scale_h = 1 / scales_h
     else:
         reciprocal_scale_h = IH / OH
+
     if scales_w is not None:
         reciprocal_scale_w = 1 / scales_w
     else:
         reciprocal_scale_w = IW / OW
-    
-    # allocate output
+
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    
-    # 优化：动态调整 Grid 第二维的步长，提高硬件利用率
-    nc_total = N * C
-    if nc_total <= 4:
-        nc_stride = 1
-    elif nc_total <= 16:
-        nc_stride = 2
-    elif nc_total <= 64:
-        nc_stride = 4
-    else:
-        nc_stride = 8  # 大尺寸时使用更大的步长
-    
-    total_threads = OH * OW
+
+    total_spatial = OH * OW
+    total_nc = N * C
+
     grid = lambda META: (
-        triton.cdiv(total_threads, META["BLOCK_SIZE"]),
-        triton.cdiv(nc_total, nc_stride),
+        triton.cdiv(total_spatial, META["BLOCK_SIZE"]),
+        total_nc,
     )
 
     with torch_device_fn.device(input.device):
@@ -134,4 +122,6 @@ def upsample_nearest2d(
             reciprocal_scale_h,
             reciprocal_scale_w,
         )
+
     return output
+
