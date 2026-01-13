@@ -1,0 +1,42 @@
+name: Docker Image Build Orchestrator
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      push_images:
+        description: 'push image or not'
+        type: boolean
+        default: false
+
+jobs:
+  build-matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - job_name: build-nvidia-image
+            push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
+            containerfile: 'containerfile.nvidia'
+            tag: 'flaggems-nvidia'
+            label: 'latest'
+            runson: 'ubuntu-latest'
+    
+    name: ${{ matrix.job_name }}
+    uses: ./.github/workflows/imagebuild.yml
+    with:
+      push: ${{ matrix.push }}
+      containerfile: ${{ matrix.containerfile }}
+      tag: ${{ matrix.tag }}
+      label: ${{ matrix.label }}
+      runson: ${{ matrix.runson }}
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      CONTAINER_REGISTRY: ${{ secrets.CONTAINER_REGISTRY }}
