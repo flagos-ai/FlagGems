@@ -18,7 +18,7 @@ from flag_gems.experimental_ops._log_softmax_backward_data import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
     TO_CPU = False
@@ -58,7 +58,9 @@ def test__log_softmax_backward_data_tensor(shape_dim, dtype):
     ref_grad_output = to_reference(grad_output)
     ref_output = to_reference(output)
 
-    ref_out = torch.ops.aten._log_softmax_backward_data(ref_grad_output, ref_output, dim, dtype)
+    ref_out = torch.ops.aten._log_softmax_backward_data(
+        ref_grad_output, ref_output, dim, dtype
+    )
 
     with flag_gems.use_gems():
         act_out = gems__log_softmax_backward_data(grad_output, output, dim, dtype)

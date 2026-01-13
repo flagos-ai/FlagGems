@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
     TO_CPU = False  # fallback
@@ -98,7 +98,9 @@ def test_fmin_out(shape_self, shape_other, dtype):
         ref_self, ref_other
     )
     ref_out_buf = torch.empty(
-        ref_broadcast_self.shape, dtype=ref_broadcast_self.dtype, device=ref_broadcast_self.device
+        ref_broadcast_self.shape,
+        dtype=ref_broadcast_self.dtype,
+        device=ref_broadcast_self.device,
     )
     ref_out = torch.ops.aten.fmin.out(ref_self, ref_other, out=ref_out_buf)
 

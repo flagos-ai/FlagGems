@@ -72,7 +72,9 @@ def test_slice_scatter_tensor_2d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.ops.aten.slice_scatter(to_reference(x), to_reference(src), dim, s, e, step)
+    ref_out = torch.ops.aten.slice_scatter(
+        to_reference(x), to_reference(src), dim, s, e, step
+    )
     with flag_gems.use_gems():
         act_out = gems_slice_scatter(x.clone(), src.clone(), dim, s, e, step)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -117,7 +119,9 @@ def test_slice_scatter_tensor_3d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.ops.aten.slice_scatter(to_reference(x), to_reference(src), dim, s, e, step)
+    ref_out = torch.ops.aten.slice_scatter(
+        to_reference(x), to_reference(src), dim, s, e, step
+    )
     with flag_gems.use_gems():
         act_out = gems_slice_scatter(x.clone(), src.clone(), dim, s, e, step)
     gems_assert_close(act_out, ref_out, dtype=dtype)

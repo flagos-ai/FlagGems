@@ -15,11 +15,10 @@ from flag_gems.experimental_ops.scalar_tensor import (  # noqa: E402
     scalar_tensor_out as gems_scalar_tensor_out,
 )
 
-
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
     TO_CPU = False
@@ -27,6 +26,7 @@ except ImportError:
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
 
 @pytest.mark.scalar_tensor
 @pytest.mark.parametrize("val", [-7, -1, 0, 3, 12345, -1.5, 2.75, 3.14159])

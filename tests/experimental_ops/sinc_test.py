@@ -15,7 +15,7 @@ from flag_gems.experimental_ops.sinc import sinc_out as gems_sinc_out
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 
 
 except ImportError:

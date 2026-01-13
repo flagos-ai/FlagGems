@@ -2,6 +2,7 @@
 
 import os
 import sys
+
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -13,7 +14,6 @@ from flag_gems.experimental_ops.select_backward import (  # noqa: E402
 from flag_gems.experimental_ops.select_backward import (  # noqa: E402
     select_backward_out as gems_select_backward_out,
 )
-
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))

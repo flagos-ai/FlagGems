@@ -11,7 +11,6 @@ import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.stack import stack as gems_stack  # noqa: E402
 from flag_gems.experimental_ops.stack import stack_out as gems_stack_out  # noqa: E402
 
-
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:

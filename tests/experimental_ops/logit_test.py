@@ -15,7 +15,7 @@ from flag_gems.experimental_ops.logit import logit_out as gems_logit_out
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 
 
 except ImportError:
@@ -51,13 +51,17 @@ def test_logit_tensor(shape, dtype, eps):
             flat[0] = 0.0
             flat[1] = 1.0
         # Avoid inf from exact 0/1 when eps is provided; widen clamp for low precision
-        effective_eps = max(eps, 1e-3) if dtype in (torch.float16, torch.bfloat16) else eps
+        effective_eps = (
+            max(eps, 1e-3) if dtype in (torch.float16, torch.bfloat16) else eps
+        )
         base = base.clamp(min=effective_eps, max=1 - effective_eps)
     input_tensor = base.to(dtype)
 
     ref_input = to_reference(input_tensor)
     # Use higher precision reference for low-precision inputs to avoid inf/NaN
-    ref_comp_inp = ref_input.float() if dtype in (torch.float16, torch.bfloat16) else ref_input
+    ref_comp_inp = (
+        ref_input.float() if dtype in (torch.float16, torch.bfloat16) else ref_input
+    )
     ref_out = torch.ops.aten.logit(ref_comp_inp, eps)
 
     with flag_gems.use_gems():
@@ -87,8 +91,12 @@ def test_logit_out(shape, dtype, eps):
     input_tensor = base.to(dtype)
 
     ref_input = to_reference(input_tensor)
-    ref_comp_inp = ref_input.float() if dtype in (torch.float16, torch.bfloat16) else ref_input
-    ref_out_buf = torch.empty(shape, dtype=ref_comp_inp.dtype, device=ref_comp_inp.device)
+    ref_comp_inp = (
+        ref_input.float() if dtype in (torch.float16, torch.bfloat16) else ref_input
+    )
+    ref_out_buf = torch.empty(
+        shape, dtype=ref_comp_inp.dtype, device=ref_comp_inp.device
+    )
     ref_out = torch.ops.aten.logit.out(ref_comp_inp, eps, out=ref_out_buf)  # noqa: F841
 
     with flag_gems.use_gems():

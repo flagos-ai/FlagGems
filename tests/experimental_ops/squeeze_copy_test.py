@@ -15,11 +15,10 @@ from flag_gems.experimental_ops.squeeze_copy import (  # noqa: E402
     squeeze_copy_out as gems_squeeze_copy_out,
 )
 
-
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
     TO_CPU = False  # fallback

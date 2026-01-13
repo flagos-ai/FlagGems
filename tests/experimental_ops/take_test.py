@@ -2,6 +2,7 @@
 
 import os
 import sys
+
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -13,7 +14,7 @@ from flag_gems.experimental_ops.take import take_out as gems_take_out  # noqa: E
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
+    from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
     TO_CPU = False  # fallback
@@ -21,6 +22,7 @@ except ImportError:
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
 
 def to_reference(inp, upcast=False):
     if inp is None:

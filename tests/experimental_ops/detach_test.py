@@ -10,7 +10,6 @@ import triton  # noqa: E402, F401
 import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.detach import detach as gems_detach  # noqa: E402
 
-
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:

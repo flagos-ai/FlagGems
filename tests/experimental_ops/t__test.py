@@ -10,11 +10,10 @@ import triton  # noqa: E402, F401
 import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.t_ import t_ as gems_t_  # noqa: E402
 
-
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close, TO_CPU  # noqa: E402
+    from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
     TO_CPU = False  # fallback

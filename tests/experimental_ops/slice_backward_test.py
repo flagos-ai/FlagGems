@@ -73,9 +73,7 @@ def test_slice_backward_tensor(shape, dtype):
                 continue
             grad_shape = list(input_sizes)
             grad_shape[dim] = length
-            grad_output = torch.randn(
-                grad_shape, device=flag_gems.device, dtype=dtype
-            )
+            grad_output = torch.randn(grad_shape, device=flag_gems.device, dtype=dtype)
             grad_output_ref = to_reference(grad_output)
             grad_output_act = grad_output.clone()
 
@@ -127,13 +125,13 @@ def test_slice_backward_out(shape, dtype):
                 continue
             grad_shape = list(input_sizes)
             grad_shape[dim] = length
-            grad_output = torch.randn(
-                grad_shape, device=flag_gems.device, dtype=dtype
-            )
+            grad_output = torch.randn(grad_shape, device=flag_gems.device, dtype=dtype)
             grad_output_ref = to_reference(grad_output)
             grad_output_act = grad_output.clone()
 
-            ref_out_buf = torch.empty(input_sizes, device=grad_output_ref.device, dtype=dtype)
+            ref_out_buf = torch.empty(
+                input_sizes, device=grad_output_ref.device, dtype=dtype
+            )
             act_out_buf = torch.empty(input_sizes, device=flag_gems.device, dtype=dtype)
 
             ref_out = torch.ops.aten.slice_backward.out(
