@@ -55,7 +55,12 @@ def upsample_nearest2d_kernel(
     base_o = nc * OH * OW
     base_i = nc * IH * IW
 
-    if (not SAME_H) and (not SAME_W) and reciprocal_scale_h == 0.5 and reciprocal_scale_w == 0.5:
+    if (
+        (not SAME_H)
+        and (not SAME_W)
+        and reciprocal_scale_h == 0.5
+        and reciprocal_scale_w == 0.5
+    ):
         ih = oh >> 1
         iw = ow >> 1
     else:
@@ -74,7 +79,6 @@ def upsample_nearest2d_kernel(
 
     data = tl.load(ptr_i + offset_i, mask=mask, other=0)
     tl.store(ptr_o + offset_o, data, mask=mask)
-
 
 
 def upsample_nearest2d(
@@ -125,4 +129,3 @@ def upsample_nearest2d(
         )
 
     return output
-

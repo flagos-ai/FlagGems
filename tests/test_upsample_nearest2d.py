@@ -138,7 +138,9 @@ def test_accuracy_upsample_nearest2d_small(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
@@ -156,7 +158,9 @@ def test_accuracy_upsample_nearest2d_medium(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
@@ -174,7 +178,9 @@ def test_accuracy_upsample_nearest2d_large(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
@@ -192,7 +198,9 @@ def test_accuracy_upsample_nearest2d_dimensions(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
@@ -202,15 +210,21 @@ def test_accuracy_upsample_nearest2d_dimensions(shape, output_size, dtype):
 
 
 @pytest.mark.upsample_nearest2d
-@pytest.mark.parametrize("shape, output_size, scales_h, scales_w", SHAPE_OUTPUT_SIZE_ONLY)
+@pytest.mark.parametrize(
+    "shape, output_size, scales_h, scales_w", SHAPE_OUTPUT_SIZE_ONLY
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_upsample_nearest2d_output_size_only(shape, output_size, scales_h, scales_w, dtype):
+def test_accuracy_upsample_nearest2d_output_size_only(
+    shape, output_size, scales_h, scales_w, dtype
+):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(
         inp, output_size=output_size, scales_h=scales_h, scales_w=scales_w
@@ -224,13 +238,17 @@ def test_accuracy_upsample_nearest2d_output_size_only(shape, output_size, scales
 @pytest.mark.upsample_nearest2d
 @pytest.mark.parametrize("shape, output_size, scales_h, scales_w", SHAPE_WITH_SCALES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_upsample_nearest2d_with_scales(shape, output_size, scales_h, scales_w, dtype):
+def test_accuracy_upsample_nearest2d_with_scales(
+    shape, output_size, scales_h, scales_w, dtype
+):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(
         inp, output_size=output_size, scales_h=scales_h, scales_w=scales_w
@@ -244,13 +262,17 @@ def test_accuracy_upsample_nearest2d_with_scales(shape, output_size, scales_h, s
 @pytest.mark.upsample_nearest2d
 @pytest.mark.parametrize("shape, output_size, scales_h, scales_w", SHAPE_MIXED_SCALES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_upsample_nearest2d_mixed_scales(shape, output_size, scales_h, scales_w, dtype):
+def test_accuracy_upsample_nearest2d_mixed_scales(
+    shape, output_size, scales_h, scales_w, dtype
+):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(
         inp, output_size=output_size, scales_h=scales_h, scales_w=scales_w
@@ -270,7 +292,9 @@ def test_accuracy_upsample_nearest2d_upsample(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
@@ -288,7 +312,9 @@ def test_accuracy_upsample_nearest2d_downsample(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
@@ -306,7 +332,9 @@ def test_accuracy_upsample_nearest2d_same_size(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
@@ -324,7 +352,9 @@ def test_accuracy_upsample_nearest2d_non_integer(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
@@ -342,7 +372,9 @@ def test_accuracy_upsample_nearest2d_asymmetric(shape, output_size, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
-    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(dtype)
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
 
     res_out = flag_gems.upsample_nearest2d(inp, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
