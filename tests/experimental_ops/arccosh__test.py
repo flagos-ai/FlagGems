@@ -13,13 +13,29 @@ from flag_gems.experimental_ops.arccosh_ import arccosh_ as gems_arccosh_
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.arccosh_
@@ -30,13 +46,14 @@ except ImportError:
 def test_arccosh__tensor(shape, dtype, scale, layout):
     if layout == "contig":
         data = 1 + torch.rand(shape, dtype=dtype, device=flag_gems.device) * scale
-        ref_input = data.clone()
+        ref_input = to_reference(data)
         act_input = data.clone()
     else:
         m, n = shape
         base = 1 + torch.rand((n, m), dtype=dtype, device=flag_gems.device) * scale
         base2 = base.clone()
-        ref_input = base.transpose(0, 1)
+        # Keep reference on CPU when TO_CPU to avoid device mismatch
+        ref_input = to_reference(base).transpose(0, 1)
         act_input = base2.transpose(0, 1)
 
     ref_out = torch.ops.aten.arccosh_(ref_input)

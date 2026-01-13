@@ -13,13 +13,29 @@ from flag_gems.experimental_ops.as_strided import as_strided as gems_as_strided
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.as_strided
@@ -30,7 +46,7 @@ except ImportError:
 )
 def test_as_strided_2d(base_shape, dtype, case):
     x = torch.randn(base_shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     s0, s1 = ref_x.stride()
     h, w = base_shape
@@ -82,7 +98,7 @@ def test_as_strided_2d(base_shape, dtype, case):
 @pytest.mark.parametrize("case", ["contig", "skip_step", "offset_start", "reshape2d"])
 def test_as_strided_1d(base_shape, dtype, case):
     x = torch.randn(base_shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     (N,) = base_shape
     (s,) = ref_x.stride()
@@ -131,7 +147,7 @@ def test_as_strided_1d(base_shape, dtype, case):
 )
 def test_as_strided_3d(base_shape, dtype, case):
     x = torch.randn(base_shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     d0, d1, d2 = base_shape
     s0, s1, s2 = ref_x.stride()

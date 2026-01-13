@@ -14,15 +14,23 @@ from flag_gems.experimental_ops.log2_ import log2_ as gems_log2_
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 
 
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp):
+    """Convert tensor to reference device (CPU if TO_CPU is True)."""
+    if TO_CPU:
+        return inp.to("cpu")
+    return inp.clone()
 
 
 @pytest.mark.log2_
@@ -31,14 +39,13 @@ except ImportError:
 @pytest.mark.parametrize("noncontig", [False, True])
 def test_log2__tensor(shape, dtype, noncontig):
     base = torch.rand(shape, dtype=dtype, device=flag_gems.device)
-    base2 = base.clone()
     eps = torch.tensor(0.1, dtype=dtype, device=flag_gems.device)
     if noncontig:
-        ref_input = (base + eps).transpose(0, 1)
-        act_input = (base2 + eps).transpose(0, 1)
+        inp = (base + eps).transpose(0, 1)
     else:
-        ref_input = base + eps
-        act_input = base2 + eps
+        inp = base + eps
+    ref_input = to_reference(inp)
+    act_input = inp.clone()
 
     ref_out = torch.ops.aten.log2_(ref_input)
 

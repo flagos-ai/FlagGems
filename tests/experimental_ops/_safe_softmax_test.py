@@ -13,13 +13,21 @@ from flag_gems.experimental_ops._safe_softmax import _safe_softmax as gems__safe
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp):
+    """Move to CPU when TO_CPU is set, keep dtype/device otherwise."""
+    if inp is None:
+        return None
+    return inp.to("cpu") if TO_CPU else inp.clone()
 
 
 @pytest.mark.safe_softmax
@@ -39,7 +47,7 @@ def test__safe_softmax_tensor(shape, in_dtype, dim, dtype_arg_sel):
     else:
         dtype_arg = dtype_arg_sel
 
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=dtype_arg)
 
@@ -47,7 +55,7 @@ def test__safe_softmax_tensor(shape, in_dtype, dim, dtype_arg_sel):
         act_out = gems__safe_softmax(x, dim, dtype=dtype_arg)
 
     expected_dtype = dtype_arg if dtype_arg is not None else in_dtype
-    # Use relaxed tolerance for float16 to handle rounding differences
+    # Match master tolerance: relax for float16 to cover rounding differences
     atol = 5e-4 if expected_dtype == torch.float16 else 1e-4
     gems_assert_close(act_out, ref_out, dtype=expected_dtype, atol=atol)
 

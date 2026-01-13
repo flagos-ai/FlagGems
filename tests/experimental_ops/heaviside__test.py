@@ -14,15 +14,31 @@ from flag_gems.experimental_ops.heaviside_ import heaviside_ as gems_heaviside_
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
     from benchmark.performance_utils import GenericBenchmark
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 
 
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.heaviside_
@@ -45,8 +61,8 @@ def test_heaviside__tensor(shape, dtype, values_kind, zero_fraction):
     elif values_kind == "col":
         values_tensor = torch.randn((shape[0], 1), dtype=dtype, device=flag_gems.device)
 
-    ref_self = self_input.clone()
-    ref_values = values_tensor.clone()
+    ref_self = to_reference(self_input)
+    ref_values = to_reference(values_tensor)
 
     ref_out = torch.ops.aten.heaviside_(ref_self, ref_values)
 

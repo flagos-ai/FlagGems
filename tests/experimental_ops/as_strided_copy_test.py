@@ -18,13 +18,29 @@ from flag_gems.experimental_ops.as_strided_copy import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.as_strided_copy
@@ -33,7 +49,7 @@ except ImportError:
 @pytest.mark.parametrize("kind", ["identity", "transpose", "slice"])
 def test_as_strided_copy_tensor(shape, dtype, kind):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.clone()
+    ref_inp = to_reference(inp)
     act_inp = inp.clone()
 
     strides = list(ref_inp.stride())
@@ -67,7 +83,7 @@ def test_as_strided_copy_tensor(shape, dtype, kind):
 @pytest.mark.parametrize("kind", ["identity", "transpose", "slice"])
 def test_as_strided_copy_out(shape, dtype, kind):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.clone()
+    ref_inp = to_reference(inp)
     act_inp = inp.clone()
 
     strides = list(ref_inp.stride())
@@ -88,7 +104,7 @@ def test_as_strided_copy_out(shape, dtype, kind):
         stride = strides
         storage_offset = i * strides[0] + j * strides[1]
 
-    ref_out_buf = torch.empty(size, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(size, dtype=dtype, device=ref_inp.device)
     ref_out = torch.ops.aten.as_strided_copy.out(
         ref_inp, size, stride, storage_offset, out=ref_out_buf
     )

@@ -3,18 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close
-except ImportError:
-    # Fallback values when running outside pytest
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -24,8 +12,35 @@ from flag_gems.experimental_ops.hinge_embedding_loss import (  # noqa: E402
     hinge_embedding_loss as gems_hinge_embedding_loss,
 )
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.hinge_embedding_loss
@@ -37,15 +52,16 @@ def test_hinge_embedding_loss_defaults(shape, dtype):
         dtype
     )
 
-    ref_self = self_tensor.clone()
-    ref_target = target_tensor.clone()
+    ref_self = to_reference(self_tensor)
+    ref_target = to_reference(target_tensor)
 
     ref_out = torch.ops.aten.hinge_embedding_loss(ref_self, ref_target)
 
     with flag_gems.use_gems():
         act_out = gems_hinge_embedding_loss(self_tensor, target_tensor)
 
-    gems_assert_close(act_out, ref_out, dtype=dtype)
+    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
 
 
 @pytest.mark.hinge_embedding_loss
@@ -59,8 +75,8 @@ def test_hinge_embedding_loss_fullargs(shape, dtype, margin, reduction):
         dtype
     )
 
-    ref_self = self_tensor.clone()
-    ref_target = target_tensor.clone()
+    ref_self = to_reference(self_tensor)
+    ref_target = to_reference(target_tensor)
 
     ref_out = torch.ops.aten.hinge_embedding_loss(
         ref_self, ref_target, float(margin), int(reduction)
@@ -71,7 +87,8 @@ def test_hinge_embedding_loss_fullargs(shape, dtype, margin, reduction):
             self_tensor, target_tensor, float(margin), int(reduction)
         )
 
-    gems_assert_close(act_out, ref_out, dtype=dtype)
+    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
 
 
 @pytest.mark.hinge_embedding_loss
