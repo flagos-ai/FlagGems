@@ -1,4 +1,2 @@
 src/flag_gems/runtime/backend/_iluvatar/**/* diff=nodiff
 src/flag_gems/runtime/backend/_metax/**/* diff=nodiff
-# SCM syntax highlighting & preventing 3-way merges
-pixi.lock merge=binary linguist-language=YAML linguist-generated=true
