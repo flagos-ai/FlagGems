@@ -28,19 +28,11 @@ except ImportError:
         torch.testing.assert_close(res, ref, **kwargs)
 
 
-def to_reference(inp, upcast=False):
+def to_reference(inp):
+    """Move to CPU when TO_CPU is set, keep dtype/device otherwise."""
     if inp is None:
         return None
-    if TO_CPU:
-        ref_inp = inp.to("cpu")
-    else:
-        ref_inp = inp.clone()
-    if upcast:
-        if ref_inp.is_complex():
-            ref_inp = ref_inp.to(torch.complex128)
-        else:
-            ref_inp = ref_inp.to(torch.float64)
-    return ref_inp
+    return inp.to("cpu") if TO_CPU else inp.clone()
 
 
 @pytest.mark.multiply
@@ -109,10 +101,10 @@ def test_multiply_out(case, dtype):
 
     ref_self = to_reference(self)
     ref_other = to_reference(other)
-    ref_out = torch.empty(out_shape, device=ref_self.device, dtype=dtype)
+    ref_out = torch.empty(out_shape, device=ref_self.device, dtype=ref_self.dtype)
     torch.ops.aten.multiply.out(ref_self, ref_other, out=ref_out)
 
-    act_out = torch.empty_like(ref_out)
+    act_out = torch.empty(out_shape, device=self.device, dtype=dtype)
     with flag_gems.use_gems():
         gems_multiply_out(self, other, act_out)
 

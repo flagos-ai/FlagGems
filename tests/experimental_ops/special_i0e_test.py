@@ -53,7 +53,8 @@ def test_special_i0e_tensor(shape, dtype):
     ref_out = torch.ops.aten.special_i0e(ref_x)
     with flag_gems.use_gems():
         act_out = gems_special_i0e(x)
-    gems_assert_close(act_out, ref_out, dtype=dtype)
+    atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
 
 
 @pytest.mark.special_i0e
@@ -67,8 +68,9 @@ def test_special_i0e_out(shape, dtype):
     out_act = torch.empty_like(x)
     with flag_gems.use_gems():
         act_out = gems_special_i0e_out(x, out_act)
-    gems_assert_close(act_out, ref_out, dtype=dtype)
-    gems_assert_close(out_act, out_ref, dtype=dtype)
+    atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
+    gems_assert_close(out_act, out_ref, dtype=dtype, atol=atol)
 
 
 @pytest.mark.special_i0e

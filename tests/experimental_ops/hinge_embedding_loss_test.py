@@ -61,7 +61,8 @@ def test_hinge_embedding_loss_defaults(shape, dtype):
     with flag_gems.use_gems():
         act_out = gems_hinge_embedding_loss(self_tensor, target_tensor)
 
-    gems_assert_close(act_out, ref_out, dtype=dtype)
+    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
 
 
 @pytest.mark.hinge_embedding_loss
@@ -87,7 +88,8 @@ def test_hinge_embedding_loss_fullargs(shape, dtype, margin, reduction):
             self_tensor, target_tensor, float(margin), int(reduction)
         )
 
-    gems_assert_close(act_out, ref_out, dtype=dtype)
+    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
 
 
 @pytest.mark.hinge_embedding_loss

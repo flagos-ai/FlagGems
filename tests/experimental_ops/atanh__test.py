@@ -51,7 +51,8 @@ def test_atanh__tensor(shape, dtype, contig):
     else:
         base_ref = base.clone()
         base_act = base.clone()
-        ref_input = base_ref.transpose(0, 1)
+        # Move reference to CPU when TO_CPU to keep devices aligned
+        ref_input = to_reference(base_ref).transpose(0, 1)
         act_input = base_act.transpose(0, 1)
 
     ref_out = torch.ops.aten.atanh_(ref_input)

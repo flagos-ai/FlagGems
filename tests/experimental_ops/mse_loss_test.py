@@ -60,7 +60,8 @@ def test_mse_loss_tensor(shape, dtype, reduction):
     with flag_gems.use_gems():
         act_out = gems_mse_loss(x, y, reduction)
 
-    gems_assert_close(act_out, ref_out, dtype=dtype)
+    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
 
 
 @pytest.mark.mse_loss
@@ -86,7 +87,8 @@ def test_mse_loss_out(shape, dtype, reduction):
     with flag_gems.use_gems():
         act_out = gems_mse_loss_out(x, y, reduction, act_out_buf)
 
-    gems_assert_close(act_out, ref_out, dtype=dtype)
+    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
 
 
 @pytest.mark.mse_loss

@@ -59,7 +59,8 @@ def test_frac__tensor_noncontiguous(shape, dtype):
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     base2 = base.clone()
 
-    ref_inp = base.transpose(0, 1)
+    # Reference should follow TO_CPU path when set
+    ref_inp = to_reference(base).transpose(0, 1)
     act_inp = base2.transpose(0, 1)
 
     ref_out = torch.ops.aten.frac_(ref_inp)

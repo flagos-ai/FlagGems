@@ -72,8 +72,9 @@ def test_reciprocal_out(shape, dtype):
     sign = (torch.randint(0, 2, shape, device=flag_gems.device) * 2 - 1).to(dtype)
     input_tensor = base * sign
 
-    ref_out = torch.empty_like(input_tensor)
-    torch.ops.aten.reciprocal.out(input_tensor.clone(), out=ref_out)
+    ref_input = to_reference(input_tensor)
+    ref_out = torch.empty_like(ref_input)
+    torch.ops.aten.reciprocal.out(ref_input, out=ref_out)
 
     act_out = torch.empty_like(input_tensor)
     with flag_gems.use_gems():

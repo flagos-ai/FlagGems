@@ -63,7 +63,8 @@ def test_erfinv__noncontiguous(dtype):
     base_ref = base.clone()
     base_act = base.clone()
 
-    ref_in = base_ref.t()[::2, ::2]
+    # Keep reference consistent with TO_CPU
+    ref_in = to_reference(base_ref).t()[::2, ::2]
     act_in = base_act.t()[::2, ::2]
 
     ref_out = torch.ops.aten.erfinv_(ref_in)

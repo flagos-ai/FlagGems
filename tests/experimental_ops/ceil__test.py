@@ -59,7 +59,8 @@ def test_ceil__tensor(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_ceil__tensor_noncontig(shape, dtype):
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_view = base.transpose(0, 1)
+    # Ensure reference follows TO_CPU behavior
+    ref_view = to_reference(base).transpose(0, 1)
     act_base = base.clone()
     act_view = act_base.transpose(0, 1)
 

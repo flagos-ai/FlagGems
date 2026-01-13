@@ -1,0 +1,1341 @@
+{
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype0-shape0]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype0-shape1]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype0-shape2]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype1-shape0]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype1-shape1]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype1-shape2]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype2-shape0]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype2-shape1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype2-shape2]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype0-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype0-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype0-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype1-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype1-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype1-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype2-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype2-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype2-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype0-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype0-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype0-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype1-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype1-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype1-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype2-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype2-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype2-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype0-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype0-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype0-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype1-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype1-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype1-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype2-shape0]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype2-shape1]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype2-shape2]": {
+        "params": {
+            "reduction": 0,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype0-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype0-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype0-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype1-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype1-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype1-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype2-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype2-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype2-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype0-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype0-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype0-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype1-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype1-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype1-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype2-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype2-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype2-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype0-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype0-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype0-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype1-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype1-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype1-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype2-shape0]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype2-shape1]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype2-shape2]": {
+        "params": {
+            "reduction": 1,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype0-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype0-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype0-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype1-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype1-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype1-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype2-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype2-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype2-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 0.5,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype0-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype0-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype0-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype1-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype1-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype1-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype2-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype2-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype2-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 1.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype0-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype0-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype0-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.float32",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype1-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype1-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype1-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.float16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype2-shape0]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype2-shape1]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype2-shape2]": {
+        "params": {
+            "reduction": 2,
+            "margin": 2.0,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                256,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    },
+    "tests/experimental_ops/hinge_embedding_loss_test.py::test_perf_aten_hinge_embedding_loss": {
+        "params": {},
+        "result": "passed",
+        "opname": [
+            "hinge_embedding_loss"
+        ]
+    }
+}

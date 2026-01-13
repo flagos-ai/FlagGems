@@ -52,7 +52,8 @@ def test_arccosh__tensor(shape, dtype, scale, layout):
         m, n = shape
         base = 1 + torch.rand((n, m), dtype=dtype, device=flag_gems.device) * scale
         base2 = base.clone()
-        ref_input = base.transpose(0, 1)
+        # Keep reference on CPU when TO_CPU to avoid device mismatch
+        ref_input = to_reference(base).transpose(0, 1)
         act_input = base2.transpose(0, 1)
 
     ref_out = torch.ops.aten.arccosh_(ref_input)

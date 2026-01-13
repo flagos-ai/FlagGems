@@ -305,11 +305,18 @@ def main():
     
     results["end_time"] = datetime.now().isoformat()
     
-    # 保存结果
+    # 保存结果（默认带时间戳，避免覆盖；若用户指定 --output 且已存在，也避免覆盖）
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if args.output:
         output_file = Path(args.output)
+        if output_file.exists():
+            output_file = output_file.with_name(
+                f"{output_file.stem}_{timestamp}{output_file.suffix}"
+            )
     else:
-        output_file = Path(__file__).parent / "experimental_ops_test_results.json"
+        output_file = (
+            Path(__file__).parent / f"experimental_ops_test_results_{timestamp}.json"
+        )
     
     with open(output_file, "w") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)

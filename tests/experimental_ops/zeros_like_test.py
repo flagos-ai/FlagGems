@@ -78,7 +78,11 @@ def test_zeros_like_default_overload(shape, in_dtype, opts_case):
     elif opts_case == "layout_device":
         kwargs = {"layout": torch.strided, "device": "cuda"}
 
-    ref_out = torch.ops.aten.zeros_like(ref_inp, **kwargs)
+    # Align reference device with reference input when using CPU reference
+    kwargs_ref = dict(kwargs)
+    kwargs_ref["device"] = ref_inp.device
+
+    ref_out = torch.ops.aten.zeros_like(ref_inp, **kwargs_ref)
     with flag_gems.use_gems():
         act_out = gems_zeros_like(act_inp, **kwargs)
 

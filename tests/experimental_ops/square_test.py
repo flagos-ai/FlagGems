@@ -67,12 +67,14 @@ def test_square_tensor(shape, dtype):
 def test_square_out(shape, dtype, out_layout):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
+    ref_x = to_reference(x)
+
     if out_layout == "contiguous":
-        ref_out_buf = torch.empty_like(x)
+        ref_out_buf = torch.empty_like(ref_x)
         act_out_buf = torch.empty_like(x)
     else:
         ref_base = torch.empty(
-            (shape[0], shape[1] * 2), dtype=dtype, device=flag_gems.device
+            (shape[0], shape[1] * 2), dtype=ref_x.dtype, device=ref_x.device
         )
         act_base = torch.empty(
             (shape[0], shape[1] * 2), dtype=dtype, device=flag_gems.device
@@ -80,7 +82,7 @@ def test_square_out(shape, dtype, out_layout):
         ref_out_buf = ref_base[:, ::2]
         act_out_buf = act_base[:, ::2]
 
-    ref_res = torch.ops.aten.square.out(x.clone(), out=ref_out_buf)
+    ref_res = torch.ops.aten.square.out(ref_x, out=ref_out_buf)
 
     with flag_gems.use_gems():
         act_res = gems_square_out(x, act_out_buf)

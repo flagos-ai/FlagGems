@@ -32,8 +32,9 @@ except ImportError:
 @pytest.mark.parametrize("val", [-7, -1, 0, 3, 12345, -1.5, 2.75, 3.14159])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_scalar_tensor_default(val, dtype):
+    ref_device = "cpu" if TO_CPU else flag_gems.device
     ref_out = torch.ops.aten.scalar_tensor(
-        val, dtype=dtype, device=flag_gems.device, layout=None, pin_memory=None
+        val, dtype=dtype, device=ref_device, layout=None, pin_memory=None
     )
     with flag_gems.use_gems():
         act_out = gems_scalar_tensor(

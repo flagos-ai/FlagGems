@@ -66,7 +66,8 @@ def test_sign__tensor_noncontiguous(shape, dtype):
     base_ref = base.clone()
     base_act = base.clone()
 
-    ref_input = base_ref.transpose(0, 1)
+    # Reference follows TO_CPU path for correct device during comparison
+    ref_input = to_reference(base_ref).transpose(0, 1)
     act_input = base_act.transpose(0, 1)
 
     ref_out = torch.ops.aten.sign_(ref_input)

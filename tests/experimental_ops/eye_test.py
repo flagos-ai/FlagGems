@@ -44,7 +44,8 @@ def to_reference(inp, upcast=False):
 @pytest.mark.parametrize("n", [2, 128, 1024])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_eye_base(n, dtype):
-    ref_out = torch.ops.aten.eye(n, dtype=dtype, device=flag_gems.device)
+    ref_device = "cpu" if TO_CPU else flag_gems.device
+    ref_out = torch.ops.aten.eye(n, dtype=dtype, device=ref_device)
     with flag_gems.use_gems():
         act_out = gems_eye(n, dtype=dtype, device=flag_gems.device)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -55,7 +56,8 @@ def test_eye_base(n, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_eye_m(nm, dtype):
     n, m = nm
-    ref_out = torch.ops.aten.eye(n, m, dtype=dtype, device=flag_gems.device)
+    ref_device = "cpu" if TO_CPU else flag_gems.device
+    ref_out = torch.ops.aten.eye(n, m, dtype=dtype, device=ref_device)
     with flag_gems.use_gems():
         act_out = gems_eye(n, m, dtype=dtype, device=flag_gems.device)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -65,9 +67,9 @@ def test_eye_m(nm, dtype):
 @pytest.mark.parametrize("n", [2, 128, 1024])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_eye_out(n, dtype):
-    base_out = torch.empty((n, n), dtype=dtype, device=flag_gems.device)
-    ref_out_tensor = to_reference(base_out)
-    act_out_tensor = base_out.clone()
+    ref_device = "cpu" if TO_CPU else flag_gems.device
+    ref_out_tensor = torch.empty((n, n), dtype=dtype, device=ref_device)
+    act_out_tensor = torch.empty((n, n), dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.eye(n, out=ref_out_tensor)
     with flag_gems.use_gems():
@@ -81,9 +83,9 @@ def test_eye_out(n, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_eye_m_out(nm, dtype):
     n, m = nm
-    base_out = torch.empty((n, m), dtype=dtype, device=flag_gems.device)
-    ref_out_tensor = to_reference(base_out)
-    act_out_tensor = base_out.clone()
+    ref_device = "cpu" if TO_CPU else flag_gems.device
+    ref_out_tensor = torch.empty((n, m), dtype=dtype, device=ref_device)
+    act_out_tensor = torch.empty((n, m), dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.eye(n, m, out=ref_out_tensor)
     with flag_gems.use_gems():

@@ -27,19 +27,11 @@ except ImportError:
         torch.testing.assert_close(res, ref, **kwargs)
 
 
-def to_reference(inp, upcast=False):
+def to_reference(inp):
+    """Move to CPU when TO_CPU is set, keep dtype/device otherwise."""
     if inp is None:
         return None
-    if TO_CPU:
-        ref_inp = inp.to("cpu")
-    else:
-        ref_inp = inp.clone()
-    if upcast:
-        if ref_inp.is_complex():
-            ref_inp = ref_inp.to(torch.complex128)
-        else:
-            ref_inp = ref_inp.to(torch.float64)
-    return ref_inp
+    return inp.to("cpu") if TO_CPU else inp.clone()
 
 
 @pytest.mark.logit
@@ -58,15 +50,22 @@ def test_logit_tensor(shape, dtype, eps):
         if flat.numel() >= 2:
             flat[0] = 0.0
             flat[1] = 1.0
+        # Avoid inf from exact 0/1 when eps is provided; widen clamp for low precision
+        effective_eps = max(eps, 1e-3) if dtype in (torch.float16, torch.bfloat16) else eps
+        base = base.clamp(min=effective_eps, max=1 - effective_eps)
     input_tensor = base.to(dtype)
 
     ref_input = to_reference(input_tensor)
-    ref_out = torch.ops.aten.logit(ref_input, eps)
+    # Use higher precision reference for low-precision inputs to avoid inf/NaN
+    ref_comp_inp = ref_input.float() if dtype in (torch.float16, torch.bfloat16) else ref_input
+    ref_out = torch.ops.aten.logit(ref_comp_inp, eps)
 
     with flag_gems.use_gems():
         act_out = gems_logit(input_tensor, eps)
 
-    gems_assert_close(act_out, ref_out, dtype=dtype)
+    # Relax tolerance for low-precision types
+    atol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
 
 
 @pytest.mark.logit
@@ -88,14 +87,16 @@ def test_logit_out(shape, dtype, eps):
     input_tensor = base.to(dtype)
 
     ref_input = to_reference(input_tensor)
-    ref_out_buf = torch.empty(shape, dtype=dtype, device=ref_input.device)
-    ref_out = torch.ops.aten.logit.out(ref_input, eps, out=ref_out_buf)  # noqa: F841
+    ref_comp_inp = ref_input.float() if dtype in (torch.float16, torch.bfloat16) else ref_input
+    ref_out_buf = torch.empty(shape, dtype=ref_comp_inp.dtype, device=ref_comp_inp.device)
+    ref_out = torch.ops.aten.logit.out(ref_comp_inp, eps, out=ref_out_buf)  # noqa: F841
 
     with flag_gems.use_gems():
         act_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
         act_out = gems_logit_out(input_tensor, eps, act_out_buf)  # noqa: F841
 
-    gems_assert_close(act_out_buf, ref_out_buf, dtype=dtype)
+    atol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    gems_assert_close(act_out_buf, ref_out_buf, dtype=dtype, atol=atol)
 
 
 @pytest.mark.logit

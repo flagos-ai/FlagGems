@@ -47,7 +47,7 @@ def test_logit__inplace_no_eps(shape, dtype):
     )
     input_tensor = torch.sigmoid(base).to(dtype=dtype)
 
-    ref_input = to_reference(input_tensor)
+    ref_input = to_reference(input_tensor, upcast=True)
     act_input = input_tensor.clone()
 
     ref_out = torch.ops.aten.logit_(ref_input)
@@ -67,7 +67,7 @@ def test_logit__inplace_with_eps(shape, dtype, eps):
     )
     input_tensor = base.to(dtype=dtype)
 
-    ref_input = to_reference(input_tensor)
+    ref_input = to_reference(input_tensor, upcast=True)
     act_input = input_tensor.clone()
 
     ref_out = torch.ops.aten.logit_(ref_input, eps)

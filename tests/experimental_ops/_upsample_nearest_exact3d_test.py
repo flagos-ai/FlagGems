@@ -55,7 +55,7 @@ def test__upsample_nearest_exact3d_tensor(shape, dtype, mults):
     md, mh, mw = mults
     output_size = [d * md, h * mh, w * mw]
 
-    ref_x = to_reference(x)
+    ref_x = to_reference(x, upcast=True)
     ref_out = torch.ops.aten._upsample_nearest_exact3d(
         ref_x, output_size, None, None, None
     )
@@ -76,17 +76,21 @@ def test__upsample_nearest_exact3d_out(shape, dtype, mults):
     md, mh, mw = mults
     out_size = [d * md, h * mh, w * mw]
 
-    ref_x = to_reference(x)
+    ref_x = to_reference(x, upcast=True)
     ref_out_buf = torch.empty(
         (n, c, out_size[0], out_size[1], out_size[2]),
-        dtype=dtype,
-        device=flag_gems.device,
+        dtype=ref_x.dtype,
+        device=ref_x.device,
     )
     ref_out = torch.ops.aten._upsample_nearest_exact3d.out(
         ref_x, out_size, None, None, None, out=ref_out_buf
     )
 
-    act_out_buf = torch.empty_like(ref_out_buf)
+    act_out_buf = torch.empty(
+        (n, c, out_size[0], out_size[1], out_size[2]),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
     with flag_gems.use_gems():
         act_out = gems__upsample_nearest_exact3d_out(
             x, out_size, None, None, None, act_out_buf

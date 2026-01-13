@@ -44,7 +44,7 @@ def to_reference(inp, upcast=False):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_trace_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = to_reference(x)
+    ref_x = to_reference(x, upcast=True)
 
     ref_out = torch.ops.aten.trace(ref_x)
 
@@ -59,9 +59,9 @@ def test_trace_tensor(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_trace_out(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = to_reference(x)
+    ref_x = to_reference(x, upcast=True)
 
-    ref_out_tensor = torch.empty([], dtype=dtype, device=ref_x.device)
+    ref_out_tensor = torch.empty([], dtype=ref_x.dtype, device=ref_x.device)
     act_out_tensor = torch.empty([], dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.trace.out(ref_x, out=ref_out_tensor)

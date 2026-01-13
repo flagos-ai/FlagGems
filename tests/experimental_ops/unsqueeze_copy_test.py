@@ -99,7 +99,7 @@ def test_unsqueeze_copy_out(shape, dtype, where):
     new_shape = shape[:pos] + (1,) + shape[pos:]
 
     ref_out_buf = torch.empty(new_shape, device=ref_x.device, dtype=dtype)
-    act_out_buf = torch.empty_like(ref_out_buf)
+    act_out_buf = torch.empty(new_shape, device=flag_gems.device, dtype=dtype)
 
     ref_out = torch.ops.aten.unsqueeze_copy(ref_x, dim, out=ref_out_buf)
 

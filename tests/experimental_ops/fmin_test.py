@@ -98,7 +98,7 @@ def test_fmin_out(shape_self, shape_other, dtype):
         ref_self, ref_other
     )
     ref_out_buf = torch.empty(
-        ref_broadcast_self.shape, dtype=dtype, device=flag_gems.device
+        ref_broadcast_self.shape, dtype=ref_broadcast_self.dtype, device=ref_broadcast_self.device
     )
     ref_out = torch.ops.aten.fmin.out(ref_self, ref_other, out=ref_out_buf)
 

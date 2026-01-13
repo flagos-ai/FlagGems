@@ -154,10 +154,12 @@ def test_slice_scatter_out_2d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    out_ref = torch.empty_like(x)
+    ref_x = to_reference(x)
+    ref_src = to_reference(src)
+    out_ref = torch.empty_like(ref_x)
     out_act = torch.empty_like(x)
     ref_out = torch.ops.aten.slice_scatter.out(
-        to_reference(x), to_reference(src), dim, s, e, step, out=out_ref
+        ref_x, ref_src, dim, s, e, step, out=out_ref
     )
     with flag_gems.use_gems():
         act_out = gems_slice_scatter_out(
@@ -193,10 +195,12 @@ def test_slice_scatter_out_3d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    out_ref = torch.empty_like(x)
+    ref_x = to_reference(x)
+    ref_src = to_reference(src)
+    out_ref = torch.empty_like(ref_x)
     out_act = torch.empty_like(x)
     ref_out = torch.ops.aten.slice_scatter.out(
-        to_reference(x), to_reference(src), dim, s, e, step, out=out_ref
+        ref_x, ref_src, dim, s, e, step, out=out_ref
     )
     with flag_gems.use_gems():
         act_out = gems_slice_scatter_out(

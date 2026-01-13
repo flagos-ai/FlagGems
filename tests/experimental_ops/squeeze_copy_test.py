@@ -112,10 +112,10 @@ def test_squeeze_copy_dims(shape_dims, dtype):
 def test_squeeze_copy_out(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
-    tmp = torch.ops.aten.squeeze_copy(ref_x)
-    ref_out_buf = torch.empty_like(tmp)
+    ref_tmp = torch.ops.aten.squeeze_copy(ref_x)
+    ref_out_buf = torch.empty_like(ref_tmp)
     ref_out = torch.ops.aten.squeeze_copy.out(ref_x, out=ref_out_buf)
-    act_out_buf = torch.empty_like(tmp)
+    act_out_buf = torch.empty(ref_tmp.shape, device=flag_gems.device, dtype=dtype)
     with flag_gems.use_gems():
         act_out = gems_squeeze_copy_out(x, act_out_buf)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -138,10 +138,10 @@ def test_squeeze_copy_dim_out(shape_dim, dtype):
     shape, dim = shape_dim
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
-    tmp = torch.ops.aten.squeeze_copy.dim(ref_x, dim)
-    ref_out_buf = torch.empty_like(tmp)
+    ref_tmp = torch.ops.aten.squeeze_copy.dim(ref_x, dim)
+    ref_out_buf = torch.empty_like(ref_tmp)
     ref_out = torch.ops.aten.squeeze_copy.dim_out(ref_x, dim, out=ref_out_buf)
-    act_out_buf = torch.empty_like(tmp)
+    act_out_buf = torch.empty(ref_tmp.shape, device=flag_gems.device, dtype=dtype)
     with flag_gems.use_gems():
         act_out = torch.ops.aten.squeeze_copy.dim_out(x, dim, out=act_out_buf)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -164,10 +164,10 @@ def test_squeeze_copy_dims_out(shape_dims, dtype):
     shape, dims = shape_dims
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
-    tmp = torch.ops.aten.squeeze_copy.dims(ref_x, dims)
-    ref_out_buf = torch.empty_like(tmp)
+    ref_tmp = torch.ops.aten.squeeze_copy.dims(ref_x, dims)
+    ref_out_buf = torch.empty_like(ref_tmp)
     ref_out = torch.ops.aten.squeeze_copy.dims_out(ref_x, dims, out=ref_out_buf)
-    act_out_buf = torch.empty_like(tmp)
+    act_out_buf = torch.empty(ref_tmp.shape, device=flag_gems.device, dtype=dtype)
     with flag_gems.use_gems():
         act_out = torch.ops.aten.squeeze_copy.dims_out(x, dims, out=act_out_buf)
     gems_assert_close(act_out, ref_out, dtype=dtype)

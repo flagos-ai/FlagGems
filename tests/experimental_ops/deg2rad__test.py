@@ -60,7 +60,8 @@ def test_deg2rad__tensor(shape, dtype):
 def test_deg2rad__noncontig(shape, dtype):
     base_ref = torch.randn((shape[1], shape[0]), dtype=dtype, device=flag_gems.device)
     base_act = base_ref.clone()
-    ref_view = base_ref.transpose(0, 1)
+    # Place reference on CPU when TO_CPU is set
+    ref_view = to_reference(base_ref).transpose(0, 1)
     act_view = base_act.transpose(0, 1)
 
     ref_out = torch.ops.aten.deg2rad_(ref_view)
