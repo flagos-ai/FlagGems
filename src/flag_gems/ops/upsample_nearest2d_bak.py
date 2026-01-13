@@ -40,43 +40,29 @@ def upsample_nearest2d_kernel(
     nc_stride = tl.num_programs(axis=1)
     NC = N * C
     nc_iter = tl.program_id(axis=1)
-    
+    pid = tl.program_id(axis=0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     ow = idx % OW
     oh = idx // OW % OH
-    
     if SAME_H:
         ih = oh
     else:
+        # tl.floor() cannot be found in 2.3.1, using int trunc
         ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
-    
     if SAME_W:
         iw = ow
     else:
         iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
 
-    base_o = nc_iter * OH * OW
-    base_i = nc_iter * IH * IW
-    
+    offset_o = (nc_iter * OH + oh) * OW + ow
+    offset_i = (nc_iter * IH + ih) * IW + iw
     src_index_stride = nc_stride * IH * IW
     dst_index_stride = nc_stride * OH * OW
-    
-    # 优化：在循环外计算偏移的基础部分，减少循环中的重复计算
-    # offset_o = base_o + oh * OW + ow = base_o + (oh * OW + ow)
-    # offset_i = base_i + ih * IW + iw = base_i + (ih * IW + iw)
-    offset_base_o = oh * OW + ow  # 向量，每个元素的基础偏移（预计算）
-    offset_base_i = ih * IW + iw  # 向量，每个元素的基础偏移（预计算）
-    
     while nc_iter < NC:
-        # 优化：使用预计算的基础偏移，减少循环中的计算开销
-        offset_o = base_o + offset_base_o
-        offset_i = base_i + offset_base_i
-        
         data = tl.load(ptr_i + offset_i)
         tl.store(ptr_o + offset_o, data)
-        
-        base_o += dst_index_stride
-        base_i += src_index_stride
+        ptr_i += src_index_stride
+        ptr_o += dst_index_stride
         nc_iter += nc_stride
 
 
@@ -100,25 +86,12 @@ def upsample_nearest2d(
         reciprocal_scale_w = 1 / scales_w
     else:
         reciprocal_scale_w = IW / OW
-    
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    
-    # 优化：动态调整 Grid 第二维的步长，提高硬件利用率
-    nc_total = N * C
-    if nc_total <= 4:
-        nc_stride = 1
-    elif nc_total <= 16:
-        nc_stride = 2
-    elif nc_total <= 64:
-        nc_stride = 4
-    else:
-        nc_stride = 8  # 大尺寸时使用更大的步长
-    
     total_threads = OH * OW
     grid = lambda META: (
         triton.cdiv(total_threads, META["BLOCK_SIZE"]),
-        triton.cdiv(nc_total, nc_stride),
+        triton.cdiv(N * C, 4),
     )
 
     with torch_device_fn.device(input.device):
