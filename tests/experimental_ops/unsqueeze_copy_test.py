@@ -3,18 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
-except ImportError:
-    # Fallback values when running outside pytest
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -27,8 +15,35 @@ from flag_gems.experimental_ops.unsqueeze_copy import (  # noqa: E402
     unsqueeze_copy_out as gems_unsqueeze_copy_out,
 )
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.unsqueeze_copy
@@ -37,7 +52,7 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 @pytest.mark.parametrize("where", ["zero", "neg1", "end", "minneg"])
 def test_unsqueeze_copy_default(shape, dtype, where):
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     n = len(shape)
     if where == "zero":
@@ -65,7 +80,7 @@ def test_unsqueeze_copy_default(shape, dtype, where):
 @pytest.mark.parametrize("where", ["zero", "neg1", "end", "minneg"])
 def test_unsqueeze_copy_out(shape, dtype, where):
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     n = len(shape)
     if where == "zero":
@@ -82,8 +97,8 @@ def test_unsqueeze_copy_out(shape, dtype, where):
     pos = dim + n + 1 if dim < 0 else dim
     new_shape = shape[:pos] + (1,) + shape[pos:]
 
-    ref_out_buf = torch.empty(new_shape, device=flag_gems.device, dtype=dtype)
-    act_out_buf = torch.empty_like(ref_out_buf)
+    ref_out_buf = torch.empty(new_shape, device=ref_x.device, dtype=dtype)
+    act_out_buf = torch.empty(new_shape, device=flag_gems.device, dtype=dtype)
 
     ref_out = torch.ops.aten.unsqueeze_copy(ref_x, dim, out=ref_out_buf)
 

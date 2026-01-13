@@ -14,13 +14,29 @@ from flag_gems.experimental_ops.amin import amin_out as gems_amin_out
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.amin
@@ -30,7 +46,7 @@ except ImportError:
 @pytest.mark.parametrize("keepdim", [False, True])
 def test_amin_tensor_reduce_2d(shape, dtype, dim, keepdim):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     if dim is None and not keepdim:
         ref_out = torch.ops.aten.amin(ref_x)
@@ -52,7 +68,7 @@ def test_amin_tensor_reduce_2d(shape, dtype, dim, keepdim):
 @pytest.mark.parametrize("keepdim", [False, True])
 def test_amin_tensor_reduce_3d(shape, dtype, dim, keepdim):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     if dim is None and not keepdim:
         ref_out = torch.ops.aten.amin(ref_x)
@@ -90,11 +106,11 @@ def test_amin_out_reduce_2d(shape, dtype, dim, keepdim):
             return tuple(shape[i] for i in remaining)
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     if dim is None and not keepdim:
         out_shape = test_compute_out_shape(shape, None, keepdim)
-        ref_out_t = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+        ref_out_t = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
         act_out_t = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
         ref_out = torch.ops.aten.amin.out(ref_x, out=ref_out_t)
@@ -103,7 +119,7 @@ def test_amin_out_reduce_2d(shape, dtype, dim, keepdim):
     else:
         use_dim = list(range(len(shape))) if dim is None else dim
         out_shape = test_compute_out_shape(shape, use_dim, keepdim)
-        ref_out_t = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+        ref_out_t = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
         act_out_t = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
         ref_out = torch.ops.aten.amin.out(ref_x, use_dim, keepdim, out=ref_out_t)
@@ -135,11 +151,11 @@ def test_amin_out_reduce_3d(shape, dtype, dim, keepdim):
             return tuple(shape[i] for i in remaining)
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     if dim is None and not keepdim:
         out_shape = test_compute_out_shape(shape, None, keepdim)
-        ref_out_t = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+        ref_out_t = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
         act_out_t = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
         ref_out = torch.ops.aten.amin.out(ref_x, out=ref_out_t)
@@ -148,7 +164,7 @@ def test_amin_out_reduce_3d(shape, dtype, dim, keepdim):
     else:
         use_dim = list(range(len(shape))) if dim is None else dim
         out_shape = test_compute_out_shape(shape, use_dim, keepdim)
-        ref_out_t = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+        ref_out_t = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
         act_out_t = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
         ref_out = torch.ops.aten.amin.out(ref_x, use_dim, keepdim, out=ref_out_t)

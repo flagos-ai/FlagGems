@@ -3,18 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
-except ImportError:
-    # Fallback values when running outside pytest
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -25,6 +13,33 @@ from flag_gems.experimental_ops.transpose_copy import (  # noqa: E402
     transpose_copy_int_out,
 )
 
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
 
 @pytest.mark.transpose_copy
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -32,7 +47,7 @@ from flag_gems.experimental_ops.transpose_copy import (  # noqa: E402
 @pytest.mark.parametrize("dims", [(0, 1), (1, 0)])
 def test_transpose_copy_int(shape, dtype, dims):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.clone()
+    ref_inp = to_reference(inp)
     d0, d1 = dims
 
     ref_out = torch.ops.aten.transpose_copy(ref_inp, d0, d1)
@@ -49,14 +64,14 @@ def test_transpose_copy_int(shape, dtype, dims):
 @pytest.mark.parametrize("dims", [(0, 1), (1, 0)])
 def test_transpose_copy_int_out(shape, dtype, dims):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.clone()
+    ref_inp = to_reference(inp)
     d0, d1 = dims
 
     out_shape = list(shape)
     out_shape[d0], out_shape[d1] = out_shape[d1], out_shape[d0]
     out_shape = tuple(out_shape)
 
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_inp.device)
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.transpose_copy(ref_inp, d0, d1, out=ref_out_buf)

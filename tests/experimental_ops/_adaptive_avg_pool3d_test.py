@@ -18,13 +18,29 @@ from flag_gems.experimental_ops._adaptive_avg_pool3d import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close  # noqa: E402
+    from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.adaptive_avg_pool3d
@@ -45,7 +61,8 @@ except ImportError:
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test__adaptive_avg_pool3d_tensor(shape, output_size, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    # Upcast reference for better numerical stability on CPU path
+    ref_x = to_reference(x, upcast=True)
 
     ref_out = torch.ops.aten._adaptive_avg_pool3d(ref_x, output_size)
 
@@ -73,10 +90,12 @@ def test__adaptive_avg_pool3d_tensor(shape, output_size, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test__adaptive_avg_pool3d_out(shape, output_size, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    # Upcast reference for better numerical stability on CPU path
+    ref_x = to_reference(x, upcast=True)
 
     out_shape = (shape[0], shape[1], output_size[0], output_size[1], output_size[2])
-    ref_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    # Keep reference buffer aligned with upcast dtype
+    ref_out_buf = torch.empty(out_shape, dtype=ref_x.dtype, device=ref_x.device)
     ref_out = torch.ops.aten._adaptive_avg_pool3d.out(
         ref_x, output_size, out=ref_out_buf
     )

@@ -13,13 +13,29 @@ from flag_gems.experimental_ops.sign_ import sign_ as gems_sign_
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.sign_
@@ -29,7 +45,7 @@ def test_sign__tensor(shape, dtype):
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if base.numel() >= 4:
         base.view(-1)[: base.numel() // 4] = 0
-    ref_input = base.clone()
+    ref_input = to_reference(base)
     act_input = base.clone()
 
     ref_out = torch.ops.aten.sign_(ref_input)
@@ -50,7 +66,8 @@ def test_sign__tensor_noncontiguous(shape, dtype):
     base_ref = base.clone()
     base_act = base.clone()
 
-    ref_input = base_ref.transpose(0, 1)
+    # Reference follows TO_CPU path for correct device during comparison
+    ref_input = to_reference(base_ref).transpose(0, 1)
     act_input = base_act.transpose(0, 1)
 
     ref_out = torch.ops.aten.sign_(ref_input)

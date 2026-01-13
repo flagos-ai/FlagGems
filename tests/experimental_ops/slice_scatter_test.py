@@ -16,13 +16,21 @@ from flag_gems.experimental_ops.slice_scatter import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp):
+    """Convert tensor to reference device (CPU if TO_CPU is True)."""
+    if TO_CPU:
+        return inp.to("cpu")
+    return inp.clone()
 
 
 @pytest.mark.slice_scatter
@@ -64,7 +72,9 @@ def test_slice_scatter_tensor_2d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.ops.aten.slice_scatter(x.clone(), src.clone(), dim, s, e, step)
+    ref_out = torch.ops.aten.slice_scatter(
+        to_reference(x), to_reference(src), dim, s, e, step
+    )
     with flag_gems.use_gems():
         act_out = gems_slice_scatter(x.clone(), src.clone(), dim, s, e, step)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -109,7 +119,9 @@ def test_slice_scatter_tensor_3d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.ops.aten.slice_scatter(x.clone(), src.clone(), dim, s, e, step)
+    ref_out = torch.ops.aten.slice_scatter(
+        to_reference(x), to_reference(src), dim, s, e, step
+    )
     with flag_gems.use_gems():
         act_out = gems_slice_scatter(x.clone(), src.clone(), dim, s, e, step)
     gems_assert_close(act_out, ref_out, dtype=dtype)
@@ -146,10 +158,12 @@ def test_slice_scatter_out_2d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    out_ref = torch.empty_like(x)
+    ref_x = to_reference(x)
+    ref_src = to_reference(src)
+    out_ref = torch.empty_like(ref_x)
     out_act = torch.empty_like(x)
     ref_out = torch.ops.aten.slice_scatter.out(
-        x.clone(), src.clone(), dim, s, e, step, out=out_ref
+        ref_x, ref_src, dim, s, e, step, out=out_ref
     )
     with flag_gems.use_gems():
         act_out = gems_slice_scatter_out(
@@ -185,10 +199,12 @@ def test_slice_scatter_out_3d(shape, dtype, dim, mode):
     src_shape[dim] = slice_len
     src = torch.randn(tuple(src_shape), dtype=dtype, device=flag_gems.device)
 
-    out_ref = torch.empty_like(x)
+    ref_x = to_reference(x)
+    ref_src = to_reference(src)
+    out_ref = torch.empty_like(ref_x)
     out_act = torch.empty_like(x)
     ref_out = torch.ops.aten.slice_scatter.out(
-        x.clone(), src.clone(), dim, s, e, step, out=out_ref
+        ref_x, ref_src, dim, s, e, step, out=out_ref
     )
     with flag_gems.use_gems():
         act_out = gems_slice_scatter_out(

@@ -3,18 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close
-except ImportError:
-    # Fallback values when running outside pytest
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -25,8 +13,35 @@ from flag_gems.experimental_ops.square import (  # noqa: E402
     square_out as gems_square_out,
 )
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.square
@@ -35,7 +50,7 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 def test_square_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_x = x.clone()
+    ref_x = to_reference(x)
     ref_out = torch.ops.aten.square(ref_x)
 
     with flag_gems.use_gems():
@@ -51,12 +66,14 @@ def test_square_tensor(shape, dtype):
 def test_square_out(shape, dtype, out_layout):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
+    ref_x = to_reference(x)
+
     if out_layout == "contiguous":
-        ref_out_buf = torch.empty_like(x)
+        ref_out_buf = torch.empty_like(ref_x)
         act_out_buf = torch.empty_like(x)
     else:
         ref_base = torch.empty(
-            (shape[0], shape[1] * 2), dtype=dtype, device=flag_gems.device
+            (shape[0], shape[1] * 2), dtype=ref_x.dtype, device=ref_x.device
         )
         act_base = torch.empty(
             (shape[0], shape[1] * 2), dtype=dtype, device=flag_gems.device
@@ -64,7 +81,7 @@ def test_square_out(shape, dtype, out_layout):
         ref_out_buf = ref_base[:, ::2]
         act_out_buf = act_base[:, ::2]
 
-    ref_res = torch.ops.aten.square.out(x.clone(), out=ref_out_buf)
+    ref_res = torch.ops.aten.square.out(ref_x, out=ref_out_buf)
 
     with flag_gems.use_gems():
         act_res = gems_square_out(x, act_out_buf)

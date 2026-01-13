@@ -3,18 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close
-except ImportError:
-    # Fallback values when running outside pytest
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -27,8 +15,35 @@ from flag_gems.experimental_ops.masked_fill import (  # noqa: E402
     masked_fill_Tensor_out,
 )
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.masked_fill
@@ -38,8 +53,8 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 def test_masked_fill_scalar(shape, dtype, value):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) > 0.5
-    ref_x = x.clone()
-    ref_mask = mask.clone()
+    ref_x = to_reference(x)
+    ref_mask = to_reference(mask)
     ref_out = torch.ops.aten.masked_fill.Scalar(ref_x, ref_mask, value)
     with flag_gems.use_gems():
         act_out = masked_fill_Scalar(x, mask, value)
@@ -54,9 +69,9 @@ def test_masked_fill_tensor(shape, dtype, value):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) > 0.5
     val = torch.tensor(value, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
-    ref_mask = mask.clone()
-    ref_val = val.clone()
+    ref_x = to_reference(x)
+    ref_mask = to_reference(mask)
+    ref_val = to_reference(val)
     ref_out = torch.ops.aten.masked_fill.Tensor(ref_x, ref_mask, ref_val)
     with flag_gems.use_gems():
         act_out = masked_fill_Tensor(x, mask, val)
@@ -70,8 +85,8 @@ def test_masked_fill_tensor(shape, dtype, value):
 def test_masked_fill_scalar_out(shape, dtype, value):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) > 0.5
-    ref_x = x.clone()
-    ref_mask = mask.clone()
+    ref_x = to_reference(x)
+    ref_mask = to_reference(mask)
     ref_out_buf = torch.empty_like(ref_x)
     ref_out = torch.ops.aten.masked_fill.Scalar_out(
         ref_x, ref_mask, value, out=ref_out_buf
@@ -90,9 +105,9 @@ def test_masked_fill_tensor_out(shape, dtype, value):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) > 0.5
     val = torch.tensor(value, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
-    ref_mask = mask.clone()
-    ref_val = val.clone()
+    ref_x = to_reference(x)
+    ref_mask = to_reference(mask)
+    ref_val = to_reference(val)
     ref_out_buf = torch.empty_like(ref_x)
     ref_out = torch.ops.aten.masked_fill.Tensor_out(
         ref_x, ref_mask, ref_val, out=ref_out_buf
