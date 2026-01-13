@@ -133,7 +133,7 @@ def upsample_nearest2d(
 
 @triton.autotune(
     configs=runtime.get_tuned_config("upsample_nearest2d_backward"),
-    key=["N", "C", "OH", "OW"],
+    key=["N", "C", "IH", "IW"],
 )
 @triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d_backward"))
 @triton.jit
@@ -153,51 +153,57 @@ def upsample_nearest2d_backward_kernel(
     SAME_W: tl.constexpr,
     USE_INT32_IDX: tl.constexpr,
 ):
-    pid_spatial = tl.program_id(axis=0)
-    pid_nc = tl.program_id(axis=1)
+    pid_spatial = tl.program_id(axis=0)  # IH * IW
+    pid_nc = tl.program_id(axis=1)  # N * C
 
-    if USE_INT32_IDX:
-        nc = pid_nc
-    else:
-        nc = pid_nc.to(tl.int64)
-
-    NC = N * C
-    if nc >= NC:
+    nc = pid_nc if USE_INT32_IDX else pid_nc.to(tl.int64)
+    if nc >= N * C:
         return
 
-    idx = pid_spatial * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = idx < (OH * OW)
+    offs = pid_spatial * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offs < (IH * IW)
 
-    ow = idx % OW
-    oh = idx // OW
+    iw = offs % IW
+    ih = offs // IW
 
     base_o = nc * OH * OW
     base_i = nc * IH * IW
 
-    if (
-        (not SAME_H)
-        and (not SAME_W)
-        and reciprocal_scale_h == 0.5
-        and reciprocal_scale_w == 0.5
-    ):
-        ih = oh >> 1
-        iw = ow >> 1
+    acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+
+    # ===== Torch-style index computation =====
+    if SAME_H:
+        oh0 = ih
+        oh1 = ih + 1
     else:
-        if SAME_H:
-            ih = oh
-        else:
-            ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
+        oh0 = tl.minimum((ih * reciprocal_scale_h).to(tl.int32), OH - 1)
+        oh1 = tl.minimum(((ih + 1) * reciprocal_scale_h).to(tl.int32), OH)
 
-        if SAME_W:
-            iw = ow
-        else:
-            iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
+    if SAME_W:
+        ow0 = iw
+        ow1 = iw + 1
+    else:
+        ow0 = tl.minimum((iw * reciprocal_scale_w).to(tl.int32), OW - 1)
+        ow1 = tl.minimum(((iw + 1) * reciprocal_scale_w).to(tl.int32), OW)
 
-    offset_o = base_o + oh * OW + ow
+    # ===== 静态展开的 reduction（关键！）=====
+    # 对 nearest，scale 通常很小（2 / 4）
+    # 我们给一个上界，比如 4
+    MAX_K: tl.constexpr = 4
+
+    for dh in tl.static_range(0, MAX_K):
+        oh = oh0 + dh
+        hmask = oh < oh1
+        for dw in tl.static_range(0, MAX_K):
+            ow = ow0 + dw
+            wmask = ow < ow1
+            valid = mask & hmask & wmask
+            offset_o = base_o + oh * OW + ow
+            grad = tl.load(ptr_grad_o + offset_o, mask=valid, other=0.0)
+            acc += grad
+
     offset_i = base_i + ih * IW + iw
-
-    grad_out = tl.load(ptr_grad_o + offset_o, mask=mask, other=0.0)
-    tl.atomic_add(ptr_grad_i + offset_i, grad_out, mask=mask)
+    tl.store(ptr_grad_i + offset_i, acc, mask=mask)
 
 
 def upsample_nearest2d_backward(
