@@ -1993,6 +1993,75 @@ def test_topk_softmax(
         assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
 
 
+@pytest.mark.index_fill
+@pytest.mark.parametrize("N", [64, 256, 1024])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_index_fill_1d(N, dtype):
+    input = torch.randn(N, dtype=dtype, device=flag_gems.device)
+    dim = 0
+    num_indices = min(5, N)
+    index = torch.randint(
+        0, N, (num_indices,), dtype=torch.long, device=flag_gems.device
+    )
+    value = 3.14
+
+    ref_input = to_reference(input, True)
+    ref_index = to_reference(index)  # Don't upcast index - must stay int64
+    ref_out = torch.index_fill(ref_input, dim, ref_index, value)
+    with flag_gems.use_gems():
+        res_out = torch.index_fill(input, dim, index, value)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
+
+
+@pytest.mark.index_fill
+@pytest.mark.parametrize("M, N", [(32, 64), (128, 256), (512, 1024)])
+@pytest.mark.parametrize("dim", [0, 1, -1, -2])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_index_fill_2d(M, N, dim, dtype):
+    input = torch.randn(M, N, dtype=dtype, device=flag_gems.device)
+    normalized_dim = dim if dim >= 0 else input.ndim + dim
+    dim_size = input.shape[normalized_dim]
+
+    num_indices = min(5, dim_size)
+    index = torch.randint(
+        0, dim_size, (num_indices,), dtype=torch.long, device=flag_gems.device
+    )
+    value = 3.14
+
+    ref_input = to_reference(input, True)
+    ref_index = to_reference(index)  # Don't upcast index - must stay int64
+    ref_out = torch.index_fill(ref_input, dim, ref_index, value)
+    with flag_gems.use_gems():
+        res_out = torch.index_fill(input, dim, index, value)
+
+    reduce_dim = M if normalized_dim == 0 else N
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.index_fill
+@pytest.mark.parametrize("B, S, H", [(4, 32, 64), (8, 128, 256)])
+@pytest.mark.parametrize("dim", [0, 1, 2, -1])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_index_fill_3d(B, S, H, dim, dtype):
+    input = torch.randn(B, S, H, dtype=dtype, device=flag_gems.device)
+    normalized_dim = dim if dim >= 0 else input.ndim + dim
+    dim_size = input.shape[normalized_dim]
+
+    num_indices = min(3, dim_size)
+    index = torch.randint(
+        0, dim_size, (num_indices,), dtype=torch.long, device=flag_gems.device
+    )
+    value = 0.0
+
+    ref_input = to_reference(input, True)
+    ref_index = to_reference(index)  # Don't upcast index - must stay int64
+    ref_out = torch.index_fill(ref_input, dim, ref_index, value)
+    with flag_gems.use_gems():
+        res_out = torch.index_fill(input, dim, index, value)
+
+    reduce_dim = [B, S, H][normalized_dim]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 @pytest.mark.std
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST + [None])
