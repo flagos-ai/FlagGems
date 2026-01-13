@@ -1,7 +1,8 @@
 {
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype0-shape0]": {
         "params": {
-            "dtype": "torch.float32",
+            "opts_case": "none",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -9,12 +10,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype0-shape1]": {
         "params": {
-            "dtype": "torch.float32",
+            "opts_case": "none",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -22,25 +25,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype0-shape2]": {
         "params": {
-            "dtype": "torch.float32",
+            "opts_case": "none",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype0-shape3]": {
         "params": {
-            "dtype": "torch.float16",
+            "opts_case": "none",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype1-shape0]": {
+        "params": {
+            "opts_case": "none",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -48,12 +72,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype1-shape1]": {
         "params": {
-            "dtype": "torch.float16",
+            "opts_case": "none",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -61,25 +87,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype1-shape2]": {
         "params": {
-            "dtype": "torch.float16",
+            "opts_case": "none",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype1-shape3]": {
         "params": {
-            "dtype": "torch.bfloat16",
+            "opts_case": "none",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype2-shape0]": {
+        "params": {
+            "opts_case": "none",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -87,12 +134,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype2-shape1]": {
         "params": {
-            "dtype": "torch.bfloat16",
+            "opts_case": "none",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -100,27 +149,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_defaults[dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype2-shape2]": {
         "params": {
-            "dtype": "torch.bfloat16",
+            "opts_case": "none",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[none-in_dtype2-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "opts_case": "none",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype0-shape0]": {
+        "params": {
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -128,14 +196,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype0-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -143,29 +211,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype0-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype0-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype1-shape0]": {
+        "params": {
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -173,14 +258,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype1-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -188,29 +273,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype1-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype1-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype2-shape0]": {
+        "params": {
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -218,14 +320,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype2-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -233,29 +335,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-0.5-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype2-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[dtype_override-in_dtype2-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "opts_case": "dtype_override",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype0-shape0]": {
+        "params": {
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -263,14 +382,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype0-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -278,29 +397,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype0-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype0-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype1-shape0]": {
+        "params": {
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -308,14 +444,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype1-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -323,29 +459,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype1-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype1-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype2-shape0]": {
+        "params": {
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -353,14 +506,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype2-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -368,29 +521,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-1.0-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype2-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[contig_memfmt-in_dtype2-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "opts_case": "contig_memfmt",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype0-shape0]": {
+        "params": {
+            "opts_case": "channels_last",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -398,14 +568,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype0-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -413,29 +583,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype0-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype0-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype1-shape0]": {
+        "params": {
+            "opts_case": "channels_last",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -443,14 +630,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype1-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -458,29 +645,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype1-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype1-shape3]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype2-shape0]": {
+        "params": {
+            "opts_case": "channels_last",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -488,14 +692,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype2-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -503,29 +707,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[0-2.0-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype2-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[channels_last-in_dtype2-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "opts_case": "channels_last",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype0-shape0]": {
+        "params": {
+            "opts_case": "layout_device",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -533,14 +754,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype0-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -548,29 +769,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype0-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype0-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype1-shape0]": {
+        "params": {
+            "opts_case": "layout_device",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -578,14 +816,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype1-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -593,29 +831,46 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype1-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype1-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype2-shape0]": {
+        "params": {
+            "opts_case": "layout_device",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -623,14 +878,14 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype2-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -638,29 +893,47 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-0.5-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype2-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_default_overload_performance[layout_device-in_dtype2-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "opts_case": "layout_device",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -668,14 +941,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype0-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -683,29 +957,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype0-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype0-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -713,14 +1007,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype1-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -728,29 +1023,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype1-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype1-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -758,14 +1073,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype2-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -773,29 +1089,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-1.0-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype2-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype0-in_dtype2-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -803,14 +1139,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype0-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -818,29 +1155,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype0-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype0-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -848,14 +1205,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype1-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -863,29 +1221,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype1-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype1-shape3]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -893,14 +1271,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype2-shape1]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -908,29 +1287,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[1-2.0-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype2-shape2]": {
         "params": {
-            "reduction": 1,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype1-in_dtype2-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -938,14 +1337,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype0-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -953,29 +1353,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype0-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype0-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -983,14 +1403,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype1-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -998,29 +1419,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype1-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype1-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -1028,14 +1469,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype2-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -1043,29 +1485,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-0.5-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype2-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[none-out_dtype2-in_dtype2-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "none",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -1073,14 +1535,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype0-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -1088,29 +1551,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype0-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype0-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -1118,14 +1601,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype1-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -1133,29 +1617,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype1-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype1-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -1163,14 +1667,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype2-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -1178,29 +1683,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-1.0-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype2-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype0-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype0-in_dtype2-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
             "shape": [
                 2,
                 3
@@ -1208,14 +1733,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype0-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype0-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
             "shape": [
                 128,
                 256
@@ -1223,29 +1749,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype0-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype0-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.float32",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype1-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype0-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
             "shape": [
                 2,
                 3
@@ -1253,14 +1799,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype1-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype1-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
             "shape": [
                 128,
                 256
@@ -1268,29 +1815,49 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype1-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype1-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.float16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
             "shape": [
-                256,
-                256
+                512,
+                512
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype2-shape0]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype1-shape3]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 2,
                 3
@@ -1298,14 +1865,15 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype2-shape1]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype2-shape1]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
                 128,
                 256
@@ -1313,29 +1881,834 @@
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_hinge_embedding_loss_fullargs[2-2.0-dtype2-shape2]": {
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype2-shape2]": {
         "params": {
-            "reduction": 2,
-            "margin": 2.0,
-            "dtype": "torch.bfloat16",
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
             "shape": [
-                256,
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype1-in_dtype2-shape3]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype0-shape1]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                128,
                 256
             ]
         },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
     },
-    "tests/experimental_ops/hinge_embedding_loss_test.py::test_perf_aten_hinge_embedding_loss": {
-        "params": {},
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype0-shape2]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                512,
+                512
+            ]
+        },
         "result": "passed",
         "opname": [
-            "hinge_embedding_loss"
-        ]
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype0-shape3]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype1-shape1]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype1-shape2]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype1-shape3]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype2-shape1]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype2-shape2]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[contiguous-out_dtype2-in_dtype2-shape3]": {
+        "params": {
+            "memfmt_case": "contiguous",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype0-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype0-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype0-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype1-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype1-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype1-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype2-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype2-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype0-in_dtype2-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float32",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype0-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype0-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype0-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype1-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype1-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype1-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype2-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype2-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype1-in_dtype2-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.float16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype0-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype0-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype0-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype0-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float32",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype1-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype1-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype1-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype1-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.float16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype2-shape0]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype2-shape1]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype2-shape2]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
+    },
+    "tests/experimental_ops/zeros_like_test.py::test_zeros_like_out_overload_performance[channels_last-out_dtype2-in_dtype2-shape3]": {
+        "params": {
+            "memfmt_case": "channels_last",
+            "out_dtype": "torch.bfloat16",
+            "in_dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                8,
+                32,
+                32
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "zeros_like"
+        ],
+        "skipped_reason": null
     }
 }
