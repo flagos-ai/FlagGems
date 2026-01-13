@@ -381,3 +381,95 @@ def test_accuracy_upsample_nearest2d_asymmetric(shape, output_size, dtype):
 
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         del os.environ["MUSA_ENABLE_SQMMA"]
+
+
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.parametrize("shape, output_size", SHAPE_SMALL)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_upsample_nearest2d_backward_small(shape, output_size, dtype):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    grad_output = torch.randn(
+        (shape[0], shape[1], output_size[0], output_size[1]),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    input_size = shape
+
+    ref_grad_output = to_reference(grad_output, True)
+    ref_grad_input = torch.ops.aten.upsample_nearest2d_backward(
+        ref_grad_output, output_size, input_size
+    ).to(dtype)
+
+    with flag_gems.use_gems():
+        res_grad_input = flag_gems.upsample_nearest2d_backward(
+            grad_output, output_size, input_size
+        )
+
+    gems_assert_close(res_grad_input, ref_grad_input, dtype)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
+
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.parametrize("shape, output_size", SHAPE_MEDIUM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_upsample_nearest2d_backward_medium(shape, output_size, dtype):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    grad_output = torch.randn(
+        (shape[0], shape[1], output_size[0], output_size[1]),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    input_size = shape
+
+    ref_grad_output = to_reference(grad_output, True)
+    ref_grad_input = torch.ops.aten.upsample_nearest2d_backward(
+        ref_grad_output, output_size, input_size
+    ).to(dtype)
+
+    with flag_gems.use_gems():
+        res_grad_input = flag_gems.upsample_nearest2d_backward(
+            grad_output, output_size, input_size
+        )
+
+    gems_assert_close(res_grad_input, ref_grad_input, dtype)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
+
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.parametrize("shape, output_size, scales_h, scales_w", SHAPE_WITH_SCALES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_upsample_nearest2d_backward_with_scales(
+    shape, output_size, scales_h, scales_w, dtype
+):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    grad_output = torch.randn(
+        (shape[0], shape[1], output_size[0], output_size[1]),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    input_size = shape
+
+    ref_grad_output = to_reference(grad_output, True)
+    ref_grad_input = torch.ops.aten.upsample_nearest2d_backward(
+        ref_grad_output, output_size, input_size, scales_h, scales_w
+    ).to(dtype)
+
+    with flag_gems.use_gems():
+        res_grad_input = flag_gems.upsample_nearest2d_backward(
+            grad_output, output_size, input_size, scales_h, scales_w
+        )
+
+    gems_assert_close(res_grad_input, ref_grad_input, dtype)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]

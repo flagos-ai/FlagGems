@@ -129,3 +129,127 @@ def upsample_nearest2d(
         )
 
     return output
+
+
+@triton.autotune(
+    configs=runtime.get_tuned_config("upsample_nearest2d_backward"),
+    key=["N", "C", "OH", "OW"],
+)
+@triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d_backward"))
+@triton.jit
+def upsample_nearest2d_backward_kernel(
+    ptr_grad_o,
+    ptr_grad_i,
+    N,
+    C,
+    OH,
+    OW,
+    IH,
+    IW,
+    reciprocal_scale_h,
+    reciprocal_scale_w,
+    BLOCK_SIZE: tl.constexpr,
+    SAME_H: tl.constexpr,
+    SAME_W: tl.constexpr,
+    USE_INT32_IDX: tl.constexpr,
+):
+    pid_spatial = tl.program_id(axis=0)
+    pid_nc = tl.program_id(axis=1)
+
+    if USE_INT32_IDX:
+        nc = pid_nc
+    else:
+        nc = pid_nc.to(tl.int64)
+
+    NC = N * C
+    if nc >= NC:
+        return
+
+    idx = pid_spatial * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = idx < (OH * OW)
+
+    ow = idx % OW
+    oh = idx // OW
+
+    base_o = nc * OH * OW
+    base_i = nc * IH * IW
+
+    if (
+        (not SAME_H)
+        and (not SAME_W)
+        and reciprocal_scale_h == 0.5
+        and reciprocal_scale_w == 0.5
+    ):
+        ih = oh >> 1
+        iw = ow >> 1
+    else:
+        if SAME_H:
+            ih = oh
+        else:
+            ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
+
+        if SAME_W:
+            iw = ow
+        else:
+            iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
+
+    offset_o = base_o + oh * OW + ow
+    offset_i = base_i + ih * IW + iw
+
+    grad_out = tl.load(ptr_grad_o + offset_o, mask=mask, other=0.0)
+    tl.atomic_add(ptr_grad_i + offset_i, grad_out, mask=mask)
+
+
+def upsample_nearest2d_backward(
+    grad_output: torch.Tensor,
+    output_size: Tuple[int],
+    input_size: Tuple[int],
+    scales_h: Optional[float] = None,
+    scales_w: Optional[float] = None,
+) -> torch.Tensor:
+    logger.debug("GEMS UPSAMPLE NEAREST2D BACKWARD")
+    assert grad_output.device.type == device
+    assert grad_output.ndim == 4, "The ndim of grad_output must be 4"
+    assert len(output_size) == 2, "The len of output_size must be 2"
+    assert len(input_size) == 4, "The len of input_size must be 4"
+
+    OH, OW = output_size
+    N, C, IH, IW = input_size
+
+    if scales_h is not None:
+        reciprocal_scale_h = 1 / scales_h
+    else:
+        reciprocal_scale_h = IH / OH
+
+    if scales_w is not None:
+        reciprocal_scale_w = 1 / scales_w
+    else:
+        reciprocal_scale_w = IW / OW
+
+    grad_input = torch.zeros(
+        (N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype
+    )
+
+    total_spatial = OH * OW
+    total_nc = N * C
+
+    grid = lambda META: (
+        triton.cdiv(total_spatial, META["BLOCK_SIZE"]),
+        total_nc,
+    )
+
+    with torch_device_fn.device(grad_output.device):
+        upsample_nearest2d_backward_kernel[grid](
+            grad_output,
+            grad_input,
+            N,
+            C,
+            OH,
+            OW,
+            IH,
+            IW,
+            reciprocal_scale_h,
+            reciprocal_scale_w,
+        )
+
+    return grad_input
