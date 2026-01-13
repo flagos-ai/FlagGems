@@ -1476,6 +1476,168 @@ def test_accuracy_max_pool2d_backward(
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
+FRACTIONAL_MAXPOOL2D_CONFIGS = [
+    ((1, 1, 6, 6), (2, 2), (3, 3), torch.float32),
+    ((2, 3, 12, 12), (3, 3), (5, 5), torch.float32),
+    ((1, 4, 15, 11), (3, 3), (6, 4), torch.float32),
+    ((2, 8, 16, 16), (2, 2), (7, 7), torch.float16),
+    ((1, 2, 10, 14), (2, 3), (4, 5), torch.float32),
+    ((2, 4, 18, 10), (3, 2), (6, 3), torch.float32),
+    ((1, 1, 4, 5), (2, 2), (2, 2), torch.float32),
+    ((1, 32, 20, 20), (2, 2), (9, 9), torch.float32),
+    ((2, 16, 17, 13), (3, 3), (5, 4), torch.float16),
+    ((8, 3, 14, 14), (2, 2), (6, 6), torch.float32),
+    ((1, 4, 20, 20), (4, 4), (6, 6), torch.float32),
+    ((1, 2, 9, 9), (2, 2), (8, 8), torch.float32),
+    ((2, 3, 25, 7), (3, 2), (8, 3), torch.float32),
+    ((4, 1, 16, 16), (2, 2), (7, 7), torch.float32),
+    ((1, 64, 24, 24), (2, 2), (11, 11), torch.float16),
+    ((2, 8, 18, 12), (3, 2), (6, 4), torch.float16),
+    ((1, 4, 7, 7), (2, 2), (3, 3), torch.float16),
+    ((1, 8, 16, 16), (3, 3), (2, 2), torch.float32),
+    ((4, 16, 32, 32), (2, 2), (15, 15), torch.float32),
+    ((2, 5, 21, 14), (3, 3), (7, 4), torch.float32),
+    ((1, 1, 6, 6), (2, 2), (3, 3), torch.bfloat16),
+    ((2, 3, 12, 12), (3, 3), (5, 5), torch.bfloat16),
+    ((1, 4, 15, 11), (3, 3), (6, 4), torch.bfloat16),
+    ((2, 8, 16, 16), (2, 2), (7, 7), torch.bfloat16),
+    ((1, 2, 10, 14), (2, 3), (4, 5), torch.bfloat16),
+    ((2, 4, 18, 10), (3, 2), (6, 3), torch.bfloat16),
+    ((1, 1, 4, 5), (2, 2), (2, 2), torch.bfloat16),
+    ((1, 32, 20, 20), (2, 2), (9, 9), torch.bfloat16),
+    ((2, 16, 17, 13), (3, 3), (5, 4), torch.bfloat16),
+    ((8, 3, 14, 14), (2, 2), (6, 6), torch.bfloat16),
+]
+
+
+@pytest.mark.fractional_max_pool2d
+@pytest.mark.parametrize(
+    "shape, kernel_size, output_size, dtype",
+    FRACTIONAL_MAXPOOL2D_CONFIGS,
+)
+def test_accuracy_fractional_max_pool2d(
+    shape, kernel_size, output_size, dtype, nan_ratio=0.1
+):
+    device = flag_gems.device
+
+    inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    nan_mask = torch.rand_like(inp) < nan_ratio
+    inp.data[nan_mask] = float("nan")
+
+    ref_inp = to_reference(inp, True)
+
+    random_samples = torch.rand(
+        (shape[0], shape[1], 2),
+        dtype=inp.dtype,
+        device=device,
+    )
+    ref_random_samples = to_reference(random_samples, False).to(ref_inp.dtype)
+
+    ref_out, ref_indices = torch.nn.functional.fractional_max_pool2d(
+        ref_inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        _random_samples=ref_random_samples,
+        return_indices=True,
+    )
+    ref_out = ref_out.to(dtype)
+
+    res_out, res_indices = flag_gems.fractional_max_pool2d(
+        inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        random_samples=random_samples,
+    )
+
+    ref_nan = torch.isnan(ref_out)
+    res_nan = torch.isnan(res_out)
+    assert torch.equal(
+        ref_nan.to(device), res_nan.to(device)
+    ), "NaN mask mismatch (forward)"
+
+    gems_assert_close(
+        res_indices,
+        ref_indices,
+        dtype=torch.int64,
+    )
+    if (~ref_nan).any():
+        gems_assert_close(
+            res_out[~ref_nan],
+            ref_out[~ref_nan],
+            dtype,
+        )
+
+
+@pytest.mark.fractional_max_pool2d_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, output_size, dtype",
+    FRACTIONAL_MAXPOOL2D_CONFIGS,
+)
+def test_accuracy_fractional_max_pool2d_backward(
+    shape, kernel_size, output_size, dtype, nan_ratio=0.1
+):
+    device = flag_gems.device
+
+    inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    nan_mask = torch.rand_like(inp) < nan_ratio
+    inp.data[nan_mask] = float("nan")
+
+    ref_inp = to_reference(inp, True)
+
+    random_samples = torch.rand(
+        (shape[0], shape[1], 2),
+        dtype=inp.dtype,
+        device=device,
+    )
+    ref_random_samples = to_reference(random_samples, False).to(ref_inp.dtype)
+
+    ref_out, ref_indices = torch.nn.functional.fractional_max_pool2d(
+        ref_inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        _random_samples=ref_random_samples,
+        return_indices=True,
+    )
+    ref_out = ref_out.to(dtype)
+
+    res_out, res_indices = flag_gems.fractional_max_pool2d(
+        inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        random_samples=random_samples,
+    )
+
+    grad_out = torch.randn_like(res_out)
+    ref_grad_out = to_reference(grad_out, True)
+
+    (ref_in_grad,) = torch.autograd.grad(
+        ref_out,
+        (ref_inp,),
+        ref_grad_out,
+    )
+
+    res_in_grad = flag_gems.fractional_max_pool2d_backward(
+        grad_out,
+        inp,
+        kernel_size=kernel_size,
+        output_size=output_size,
+        indices=res_indices,
+    )
+
+    ref_nan_grad = torch.isnan(ref_in_grad)
+    res_nan_grad = torch.isnan(res_in_grad)
+    assert torch.equal(
+        ref_nan_grad.to(device), res_nan_grad.to(device)
+    ), "NaN mask mismatch (backward)"
+
+    if (~ref_nan_grad).any():
+        gems_assert_close(
+            res_in_grad[~ref_nan_grad],
+            ref_in_grad[~ref_nan_grad],
+            dtype,
+        )
+
+
 INDEX_PUT_SHAPE_ACC_FALSE = (
     ((2**28,), ((2**16,),), (2**16,), False),
     ((32, 32), ((8,), (8,)), (8,), False),

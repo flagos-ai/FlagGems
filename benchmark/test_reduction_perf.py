@@ -88,7 +88,9 @@ backward_operations = [
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
     [
-        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
+        pytest.param(
+            name, op, dtype, marks=getattr(pytest.mark, name + "_backward", None)
+        )
         for name, op, dtype in backward_operations
     ],
 )
@@ -318,7 +320,7 @@ def test_perf_avg_pool2d():
     bench.run()
 
 
-@pytest.mark.avg_pool2d
+@pytest.mark.avg_pool2d_backward
 def test_perf_avg_pool2d_backward():
     bench = AvgPool2dBenchmark(
         input_fn=avg_pool2d_input_fn,
@@ -393,7 +395,7 @@ def test_perf_max_pool2d():
     bench.run()
 
 
-@pytest.mark.max_pool2d
+@pytest.mark.max_pool2d_backward
 def test_perf_max_pool2d_backward():
     def max_pool2d_backward_input_fn(shape, dtype, device):
         for forward_args in max_pool2d_input_fn(shape, dtype, device):
@@ -419,6 +421,117 @@ def test_perf_max_pool2d_backward():
     )
 
     bench.set_gems(flag_gems.max_pool2d_backward)
+    bench.run()
+
+
+def fractional_max_pool2d_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    N, C, H, W = shape
+    random_samples = torch.rand(N, C, 2, dtype=dtype, device=device)
+
+    yield inp, {
+        "kernel_size": (3, 3),
+        "output_size": (H // 2, W // 2),
+        "random_samples": random_samples,
+    }
+
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        random_samples2 = torch.rand(N, C, 2, dtype=dtype, device=device)
+        yield inp, {
+            "kernel_size": (2, 2),
+            "output_size": (H // 2, W // 2),
+            "random_samples": random_samples2,
+        }
+
+
+class FractionalMaxPool2dBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        shapes_4d = [
+            (4, 3, 224, 224),
+            (16, 64, 56, 56),
+            (32, 128, 28, 28),
+            (64, 256, 14, 14),
+            (128, 512, 7, 7),
+        ]
+
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.fractional_max_pool2d
+def test_perf_fractional_max_pool2d():
+    def torch_fractional_max_pool2d_wrapper(
+        input, kernel_size, output_size, random_samples=None, **kwargs
+    ):
+        return torch.nn.functional.fractional_max_pool2d(
+            input,
+            kernel_size,
+            output_size,
+            _random_samples=random_samples,
+            return_indices=True,
+            **kwargs,
+        )
+
+    bench = FractionalMaxPool2dBenchmark(
+        input_fn=fractional_max_pool2d_input_fn,
+        op_name="fractional_max_pool2d",
+        torch_op=torch_fractional_max_pool2d_wrapper,
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.set_gems(flag_gems.fractional_max_pool2d)
+    bench.run()
+
+
+@pytest.mark.fractional_max_pool2d_backward
+def test_perf_fractional_max_pool2d_backward():
+    def fractional_max_pool2d_backward_input_fn(shape, dtype, device):
+        for forward_args in fractional_max_pool2d_input_fn(shape, dtype, device):
+            inp, params = forward_args
+            inp.requires_grad_(True)
+
+            output, indices = torch.nn.functional.fractional_max_pool2d(
+                inp,
+                params["kernel_size"],
+                params["output_size"],
+                _random_samples=params["random_samples"],
+                return_indices=True,
+            )
+            grad_output = torch.randn_like(output)
+            yield grad_output, inp, indices, params
+
+    def torch_fractional_max_pool2d_backward_wrapper(
+        grad_output, input, indices, kernel_size, output_size, random_samples=None
+    ):
+        output, _ = torch.nn.functional.fractional_max_pool2d(
+            input,
+            kernel_size,
+            output_size,
+            _random_samples=random_samples,
+            return_indices=True,
+        )
+        grad_input = torch.autograd.grad(
+            outputs=(output,),
+            inputs=(input,),
+            grad_outputs=(grad_output,),
+        )
+        return grad_input[0]
+
+    def gems_fractional_max_pool2d_backward_wrapper(
+        grad_output, input, indices, kernel_size, output_size, random_samples=None
+    ):
+        return flag_gems.fractional_max_pool2d_backward(
+            grad_output, input, kernel_size, output_size, indices
+        )
+
+    bench = FractionalMaxPool2dBenchmark(
+        input_fn=fractional_max_pool2d_backward_input_fn,
+        op_name="fractional_max_pool2d_backward",
+        torch_op=torch_fractional_max_pool2d_backward_wrapper,
+        dtypes=[torch.float16, torch.float32],
+        is_backward=False,
+    )
+
+    bench.set_gems(gems_fractional_max_pool2d_backward_wrapper)
     bench.run()
 
 
