@@ -8,8 +8,11 @@ SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
 
 
 def get_sm_version_num():
-    major, minor = torch.cuda.get_device_capability()
-    return major * 10 + minor
+    try:
+        major, minor = torch.cuda.get_device_capability()
+        return major * 10 + minor
+    except Exception:
+        return 0
 
 
 SM_VERSION_NUM = get_sm_version_num()
