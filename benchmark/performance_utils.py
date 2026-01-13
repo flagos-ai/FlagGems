@@ -355,7 +355,9 @@ class Benchmark:
             args = [
                 (
                     a.clone().requires_grad_()
-                    if torch.is_tensor(a) and torch.is_floating_point(a)
+                    if torch.is_tensor(a)
+                    and torch.is_floating_point(a)
+                    and a.grad_fn is None
                     else a
                 )
                 for a in args

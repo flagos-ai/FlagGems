@@ -1508,7 +1508,9 @@ def test_accuracy_contiguous(shape, dtype):
     if shape[0] <= 2:
         return
     if dtype in FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randn(
+            shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
     else:
         inp = torch.randint(
             low=-10000, high=10000, size=shape, dtype=dtype, device="cpu"
@@ -1523,9 +1525,15 @@ def test_accuracy_contiguous(shape, dtype):
         res_out = inp.contiguous()
 
     assert res_out.is_contiguous() is True
-    assert res_out.is_contiguous() is True
+    assert ref_out.is_contiguous() is True
     assert res_out.stride() == ref_out.stride()
     gems_assert_equal(res_out, ref_out)
+    if dtype in FLOAT_DTYPES:
+        out_grad = torch.randn_like(inp)
+        ref_grad = to_reference(out_grad, True)
+        (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+        gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 def native_per_token_group_quant_fp8(
