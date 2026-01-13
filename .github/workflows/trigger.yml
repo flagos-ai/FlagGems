@@ -22,12 +22,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # due to disk space issue, we have to use self host instance for this job
           - job_name: build-nvidia-image
             push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
             containerfile: 'containerfile.nvidia'
             tag: 'flaggems-nvidia'
             label: 'latest'
-            runson: 'ubuntu-latest'
+            runson: 'h20'
     
     name: ${{ matrix.job_name }}
     uses: ./.github/workflows/imagebuild.yml
