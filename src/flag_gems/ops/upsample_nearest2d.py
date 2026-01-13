@@ -171,7 +171,6 @@ def upsample_nearest2d_backward_kernel(
 
     acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
 
-    # ===== Torch-style index computation =====
     if SAME_H:
         oh0 = ih
         oh1 = ih + 1
@@ -186,9 +185,6 @@ def upsample_nearest2d_backward_kernel(
         ow0 = tl.minimum((iw * reciprocal_scale_w).to(tl.int32), OW - 1)
         ow1 = tl.minimum(((iw + 1) * reciprocal_scale_w).to(tl.int32), OW)
 
-    # ===== 静态展开的 reduction（关键！）=====
-    # 对 nearest，scale 通常很小（2 / 4）
-    # 我们给一个上界，比如 4
     MAX_K: tl.constexpr = 4
 
     for dh in tl.static_range(0, MAX_K):
