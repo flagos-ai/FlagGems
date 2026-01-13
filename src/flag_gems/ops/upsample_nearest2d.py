@@ -312,8 +312,11 @@ def upsample_nearest2d_backward(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    assert grad_output.ndim == 4
+    logger.debug("GEMS UPSAMPLE NEAREST2D BACKWARD")
     assert grad_output.device.type == device
+    assert grad_output.ndim == 4, "The ndim of grad_output must be 4"
+    assert len(output_size) == 2, "The len of output_size must be 2"
+    assert len(input_size) == 4, "The len of input_size must be 4"
 
     OH, OW = output_size
     N, C, IH, IW = input_size
