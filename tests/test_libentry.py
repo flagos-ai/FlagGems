@@ -10,6 +10,7 @@ from triton import language as tl
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.libentry import libcache
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
@@ -365,8 +366,6 @@ def test_libcache_vllm_signal_scenario():
 
         import triton
 
-        from flag_gems.utils.libentry import libcache
-
         cache = libcache["test_vllm_operator"]
         cache[(128, 256, "torch.float32")] = triton.Config(
             {"TILE_SIZE": 64}, num_warps=4
@@ -396,8 +395,6 @@ def test_libcache_vllm_signal_scenario():
 
     cache_saved = False
     if cache_path.exists():
-        from flag_gems.utils.libentry import libcache
-
         cache = libcache["test_vllm_operator"]
         if (128, 256, "torch.float32") in cache and (
             256,
@@ -441,8 +438,6 @@ def test_libcache_concurrent_write_on_signal():
         import time
 
         import triton
-
-        from flag_gems.utils.libentry import libcache
 
         cache = libcache[TABLE_NAME]
         cache[(f"key_from_proc_{process_id}",)] = triton.Config(
