@@ -16,13 +16,29 @@ from flag_gems.experimental_ops.pixel_shuffle import (
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.pixel_shuffle
@@ -42,7 +58,7 @@ def test_pixel_shuffle_tensor(shape_r, dtype):
     n, c, h, w = shape
     x = torch.randn((n, c, h, w), dtype=dtype, device=flag_gems.device)
 
-    ref_x = x.clone()
+    ref_x = to_reference(x)
     ref_out = torch.ops.aten.pixel_shuffle(ref_x, r)
 
     with flag_gems.use_gems():
@@ -68,9 +84,9 @@ def test_pixel_shuffle_out(shape_r, dtype):
     n, c, h, w = shape
     x = torch.randn((n, c, h, w), dtype=dtype, device=flag_gems.device)
 
-    ref_x = x.clone()
+    ref_x = to_reference(x)
     out_shape = (n, c // (r * r), h * r, w * r)
-    ref_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    ref_out = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     torch.ops.aten.pixel_shuffle.out(ref_x, r, out=ref_out)
 
     act_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)

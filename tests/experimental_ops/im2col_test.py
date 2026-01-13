@@ -14,13 +14,29 @@ from flag_gems.experimental_ops.im2col import im2col_out as gems_im2col_out
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.im2col
@@ -37,7 +53,7 @@ except ImportError:
 )
 def test_im2col_tensor(shape, dtype, kernel_size, dilation, padding, stride):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     ref_out = torch.ops.aten.im2col(ref_x, kernel_size, dilation, padding, stride)
 
@@ -70,12 +86,12 @@ def test_im2col_out(shape, dtype, kernel_size, dilation, padding, stride):
         return (c * kH * kW, out_h * out_w)
 
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    ref_x = to_reference(x)
 
     C, H, W = shape
     out_shape = compute_out_shape(C, H, W, kernel_size, dilation, padding, stride)
 
-    out_ref = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    out_ref = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
     out_act = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.ops.aten.im2col.out(

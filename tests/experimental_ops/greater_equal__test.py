@@ -19,13 +19,29 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:
-    from tests.accuracy_utils import gems_assert_close
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
     # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
         # Simple fallback comparison
         torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
 
 
 @pytest.mark.greater_equal_
@@ -44,8 +60,8 @@ def test_greater_equal__tensor(self_shape, other_shape, dtype):
     self_tensor = torch.randn(self_shape, dtype=dtype, device=flag_gems.device)
     other_tensor = torch.randn(other_shape, dtype=dtype, device=flag_gems.device)
 
-    ref_self = self_tensor.clone()
-    ref_other = other_tensor.clone()
+    ref_self = to_reference(self_tensor)
+    ref_other = to_reference(other_tensor)
     ref_out = torch.ops.aten.greater_equal_(ref_self, ref_other)
 
     act_self = self_tensor.clone()
@@ -63,7 +79,7 @@ def test_greater_equal__tensor(self_shape, other_shape, dtype):
 def test_greater_equal__scalar(shape, dtype, scalar):
     self_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_self = self_tensor.clone()
+    ref_self = to_reference(self_tensor)
     ref_out = torch.ops.aten.greater_equal_(ref_self, scalar)
 
     act_self = self_tensor.clone()

@@ -3,18 +3,6 @@
 import os
 import sys
 
-# Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-try:
-    from tests.accuracy_utils import gems_assert_close
-except ImportError:
-    # Fallback values when running outside pytest
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
-
-
 import pytest  # noqa: E402
 import torch  # noqa: E402
 import triton  # noqa: E402, F401
@@ -27,6 +15,33 @@ from flag_gems.experimental_ops.native_dropout_backward import (  # noqa: E402
     native_dropout_backward_out as gems_native_dropout_backward_out,
 )
 
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
 
 @pytest.mark.native_dropout_backward
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
@@ -36,8 +51,8 @@ def test_native_dropout_backward_tensor(shape, dtype, scale):
     grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) > 0.3
 
-    ref_grad = grad_output.clone()
-    ref_mask = mask.clone()
+    ref_grad = to_reference(grad_output)
+    ref_mask = to_reference(mask)
     ref_out = torch.ops.aten.native_dropout_backward(ref_grad, ref_mask, float(scale))
 
     act_grad = grad_output.clone()
@@ -56,8 +71,8 @@ def test_native_dropout_backward_out(shape, dtype, scale):
     grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) > 0.6
 
-    ref_grad = grad_output.clone()
-    ref_mask = mask.clone()
+    ref_grad = to_reference(grad_output)
+    ref_mask = to_reference(mask)
     ref_out_tensor = torch.empty_like(ref_grad)
     ref_out = torch.ops.aten.native_dropout_backward.out(
         ref_grad, ref_mask, float(scale), out=ref_out_tensor
