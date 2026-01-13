@@ -29,7 +29,6 @@ jobs:
             tag: 'flaggems-nvidia'
             label: 'latest'
             runson: 'h20'
-    
     name: ${{ matrix.job_name }}
     uses: ./.github/workflows/imagebuild.yml
     with:
