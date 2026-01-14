@@ -15,7 +15,9 @@ from .accuracy_utils import (
 )
 
 
-def assert_median_indices_equal_if_no_duplicates(inp, res_out, ref_out, *, dim, keepdim):
+def assert_median_indices_equal_if_no_duplicates(
+    inp, res_out, ref_out, *, dim, keepdim
+):
     def _dup_mask_along_dim(inp: torch.Tensor, *, dim: int) -> torch.Tensor:
         dim = dim % inp.ndim
         x = inp.movedim(dim, -1).contiguous()
@@ -26,7 +28,7 @@ def assert_median_indices_equal_if_no_duplicates(inp, res_out, ref_out, *, dim, 
         xs, _ = torch.sort(x2d, dim=-1)
         dup = (xs[:, 1:] == xs[:, :-1]).any(dim=-1)
         return dup.reshape(x.shape[:-1])
-    
+
     dup = _dup_mask_along_dim(inp, dim=dim)
     if keepdim:
         dup = dup.unsqueeze(dim % inp.ndim)
@@ -544,7 +546,6 @@ def test_median_nan_handling():
         gems_assert_equal(res_out.indices, ref_out.indices)
 
 
-
 @pytest.mark.median
 def test_median_inf_handling():
     inp = torch.tensor(
@@ -562,4 +563,3 @@ def test_median_inf_handling():
     else:
         gems_assert_close(res_out.values, ref_out.values, torch.float32)
         gems_assert_equal(res_out.indices, ref_out.indices)
-

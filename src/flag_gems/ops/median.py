@@ -128,7 +128,9 @@ def _find_pattern_kernel(
         has = tl.sum(match, axis=0) > 0
         idx_in = tl.argmax(match, axis=0).to(tl.int32)
         cand_idx = (c + idx_in).to(tl.int32)
-        cand_val = tl.load(inp_ptr + row * stride_sm + cand_idx * stride_sn, mask=row_mask)
+        cand_val = tl.load(
+            inp_ptr + row * stride_sm + cand_idx * stride_sn, mask=row_mask
+        )
 
         do_set = (~found) & has
         first_idx = tl.where(do_set, cand_idx, first_idx)
@@ -192,7 +194,9 @@ def _radix_kthvalue_lastdim(inp_2d: torch.Tensor, k: int, *, largest: bool):
         prev = torch.zeros_like(k_to_find)
         has_prev = bin_idx_work > 0
         if has_prev.any():
-            prev_vals = prefix.gather(-1, (bin_idx_work - 1).clamp(min=0).unsqueeze(-1)).squeeze(-1)
+            prev_vals = prefix.gather(
+                -1, (bin_idx_work - 1).clamp(min=0).unsqueeze(-1)
+            ).squeeze(-1)
             prev = torch.where(has_prev, prev_vals, prev)
 
         k_to_find = k_to_find - prev
@@ -250,17 +254,23 @@ def median_dim(inp, dim=-1, keepdim=False):
         first_nan = nan_mask.int().argmax(dim=-1)
 
     if has_nan is not None and has_nan.any():
-        nan_val = torch.tensor(float("nan"), device=out_value.device, dtype=out_value.dtype)
+        nan_val = torch.tensor(
+            float("nan"), device=out_value.device, dtype=out_value.dtype
+        )
         out_value = torch.where(has_nan, nan_val, out_value)
         out_index[has_nan] = first_nan[has_nan]
 
         no_nan = ~has_nan
         if no_nan.any():
-            v, idx = _radix_kthvalue_lastdim(inp_2d[no_nan], median_pos + 1, largest=False)
+            v, idx = _radix_kthvalue_lastdim(
+                inp_2d[no_nan], median_pos + 1, largest=False
+            )
             out_value[no_nan] = v
             out_index[no_nan] = idx
     else:
-        out_value, out_index = _radix_kthvalue_lastdim(inp_2d, median_pos + 1, largest=False)
+        out_value, out_index = _radix_kthvalue_lastdim(
+            inp_2d, median_pos + 1, largest=False
+        )
 
     shape[dim] = 1
     out_value = out_value.reshape(shape)
