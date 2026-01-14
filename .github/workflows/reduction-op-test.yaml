@@ -18,8 +18,9 @@ jobs:
         with:
           filters: |
             run_ci:
+              - '**'
               - '!src/flag_gems/experimental_ops/**'
-              - '!tests/experimental_ops/**'
+              - '!experimental_tests/**'
 
       - name: Check GPU free
         if: steps.experimental_ops.outputs.run_ci == 'true'

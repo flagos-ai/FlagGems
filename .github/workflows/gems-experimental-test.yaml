@@ -5,13 +5,13 @@ on:
     branches: [ "master" ]
     paths:
       - 'src/flag_gems/experimental_ops/**'
-      - 'tests/experimental_ops/**'
+      - 'experimental_tests/**'
 
   pull_request:
     branches: [ "master" ]
     paths:
       - 'src/flag_gems/experimental_ops/**'
-      - 'tests/experimental_ops/**'
+      - 'experimental_tests/**'
 env:
   CUDA_VISIBLE_DEVICES: 7
   http_proxy: ${{ secrets.HTTP_PROXY }}
@@ -49,14 +49,14 @@ jobs:
                   if [[ $(basename "$f") == __*__* ]]; then continue; fi
 
                   base=$(basename "$f" .py)
-                  test_file="tests/experimental_ops/${base}_test.py"
+                  test_file="experimental_tests/${base}_test.py"
                   if [ -f "$test_file" ]; then
                       tests_to_run="$tests_to_run $test_file"
                   else
                       missing_tests="$missing_tests $test_file"
                   fi
 
-              elif [[ $f == tests/experimental_ops/*_test.py ]]; then
+              elif [[ $f == experimental_tests/*_test.py ]]; then
                   if [ -f "$f" ]; then
                       tests_to_run="$tests_to_run $f"
                   fi
@@ -68,6 +68,7 @@ jobs:
               for m in $missing_tests; do
                   echo "  - Expected: $m"
               done
+              exit 1
           fi
 
           unique_tests=$(echo "$tests_to_run" | tr ' ' '\n' | sort -u | tr '\n' ' ')
