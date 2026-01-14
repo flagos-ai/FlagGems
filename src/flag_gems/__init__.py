@@ -1,10 +1,12 @@
 import logging
 
 import torch
+from packaging import version
 
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list
+from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
@@ -12,13 +14,17 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
-__version__ = "3.0"
+__version__ = "4.2.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
+
+
+def torch_ge(v):
+    return version.parse(torch.__version__) >= version.parse(v)
 
 
 def enable(
@@ -37,19 +43,27 @@ def enable(
             ("_log_softmax_backward_data", log_softmax_backward),
             ("_softmax", softmax),
             ("_softmax_backward_data", softmax_backward),
+            (
+                "_to_copy",
+                to_copy,
+                lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+            ),
             ("_unique2", _unique2),
             ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
             ("_weight_norm_interface", weight_norm_interface),
             ("_weight_norm_interface_backward", weight_norm_interface_backward),
             ("abs", abs),
             ("abs_", abs_),
+            ("acos", acos),
             ("add.Tensor", add),
             ("add_.Tensor", add_),
             ("addcdiv", addcdiv),
+            ("addcmul", addcmul),
             ("addmv", addmv),
             ("addmv.out", addmv_out),
             ("addmm", addmm),
             ("addmm.out", addmm_out),
+            ("addr", addr),
             ("all", all),
             ("all.dim", all_dim),
             ("all.dims", all_dims),
@@ -68,6 +82,7 @@ def enable(
             ("avg_pool2d_backward", avg_pool2d_backward),
             ("atan", atan),
             ("atan_", atan_),
+            ("baddbmm", baddbmm),
             ("bitwise_and.Scalar", bitwise_and_scalar),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
             ("bitwise_and.Tensor", bitwise_and_tensor),
@@ -93,7 +108,18 @@ def enable(
             ("clamp_.Tensor", clamp_tensor_),
             ("clamp_min_", clamp_min_),
             ("constant_pad_nd", constant_pad_nd),
-            ("contiguous", contiguous),
+            # ("contiguous", contiguous),
+            ("conv1d", conv1d),
+            ("conv1d.padding", conv1d),
+            ("conv2d", conv2d),
+            ("conv2d.padding", conv2d),
+            ("conv3d", conv3d),
+            ("conv3d.padding", conv3d),
+            (
+                "copy_",
+                copy_,
+                lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+            ),
             ("cos", cos),
             ("cos_", cos_),
             ("count_nonzero", count_nonzero),
@@ -108,6 +134,7 @@ def enable(
             ("div.Scalar_mode", div_mode),
             ("div.Tensor", true_divide),
             ("div.Tensor_mode", div_mode),
+            ("div.out", true_divide_out),
             ("div_.Scalar", true_divide_),
             ("div_.Scalar_mode", div_mode_),
             ("div_.Tensor", true_divide_),
@@ -132,6 +159,7 @@ def enable(
             ("erf_", erf_),
             ("exp", exp),
             ("exp_", exp_),
+            ("exp.out", exp_out),
             ("exp2", exp2),
             ("exp2_", exp2_),
             ("exponential_", exponential_),
@@ -160,7 +188,7 @@ def enable(
             ("gt.Scalar", gt_scalar),
             ("gt.Tensor", gt),
             ("hstack", hstack),
-            # ("index.Tensor", index),
+            ("index.Tensor", index),
             ("index_add", index_add),
             ("index_add_", index_add_),
             ("index_put", index_put),
@@ -195,6 +223,8 @@ def enable(
             ("masked_fill.Tensor", masked_fill),
             ("masked_fill_.Scalar", masked_fill_),
             ("masked_fill_.Tensor", masked_fill_),
+            ("masked_scatter", masked_scatter),
+            ("masked_scatter_", masked_scatter_),
             ("masked_select", masked_select),
             ("max", max),
             ("max.dim", max_dim),
@@ -208,6 +238,7 @@ def enable(
             ("minimum", minimum),
             ("mm", mm),
             ("mm.out", mm_out),
+            ("moe_sum", moe_sum),
             ("mse_loss", mse_loss),
             ("mul.Tensor", mul),
             ("mul_.Tensor", mul_),
@@ -255,8 +286,6 @@ def enable(
             ("reciprocal_", reciprocal_),
             ("relu", relu),
             ("relu_", relu_),
-            ("addcmul", addcmul),
-            ("softplus", softplus),
             ("remainder.Scalar", remainder),
             ("remainder.Scalar_Tensor", remainder),
             ("remainder.Tensor", remainder),
@@ -269,14 +298,15 @@ def enable(
             ("resolve_conj", resolve_conj),
             ("resolve_neg", resolve_neg),
             ("rms_norm", rms_norm),
-            ("sqrt", sqrt),
-            ("sqrt_", sqrt_),
             ("rsqrt", rsqrt),
             ("rsqrt_", rsqrt_),
+            ("scaled_softmax_backward", scaled_softmax_backward),
+            ("scaled_softmax_forward", scaled_softmax_forward),
             ("scatter.reduce", scatter),
             ("scatter.src", scatter),
             ("scatter_.reduce", scatter_),
             ("scatter_.src", scatter_),
+            ("scatter_add_", scatter_add_),
             ("select_scatter", select_scatter),
             ("sigmoid", sigmoid),
             ("sigmoid_", sigmoid_),
@@ -287,8 +317,11 @@ def enable(
             ("sin", sin),
             ("sin_", sin_),
             ("slice_scatter", slice_scatter),
+            ("softplus", softplus),
             ("sort", sort),
             ("sort.stable", sort_stable),
+            ("sqrt", sqrt),
+            ("sqrt_", sqrt_),
             ("stack", stack),
             ("std.correction", std),
             ("sub.Tensor", sub),
@@ -297,13 +330,14 @@ def enable(
             ("sum.dim_IntList", sum_dim),
             ("sum.IntList_out", sum_dim_out),
             ("sum.out", sum_out),
+            ("tan", tan),
+            ("tan_", tan_),
             ("tanh", tanh),
             ("tanh_", tanh_),
             ("tanh_backward", tanh_backward),
             ("threshold", threshold),
             ("threshold_backward", threshold_backward),
             ("tile", tile),
-            ("to.dtype", to_dtype),
             ("topk", topk),
             ("trace", trace),
             ("triu", triu),
@@ -312,10 +346,10 @@ def enable(
             ("true_divide_.Scalar", true_divide_),
             ("true_divide_.Tensor", true_divide_),
             ("uniform_", uniform_),
+            ("upsample_nearest1d", upsample_nearest1d),
             ("upsample_nearest2d", upsample_nearest2d),
             ("var_mean.correction", var_mean),
             ("vdot", vdot),
-            ("addr", addr),
             ("vstack", vstack),
             ("where.ScalarOther", where_scalar_other),
             ("where.ScalarSelf", where_scalar_self),
@@ -352,6 +386,8 @@ class use_gems:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
+        if torch.__version__ >= "2.5":
+            self.lib._destroy()
         del self.lib
         del self.unused
         del self.registrar
@@ -360,6 +396,12 @@ class use_gems:
             for handler in logging.root.handlers[:]:
                 logging.root.removeHandler(handler)
             logging.basicConfig(level=logging.INFO)
+
+    @property
+    def experimental_ops(self):
+        import flag_gems.experimental_ops
+
+        return flag_gems.experimental_ops
 
 
 def all_ops():

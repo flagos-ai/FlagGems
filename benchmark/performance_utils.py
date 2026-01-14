@@ -1,6 +1,5 @@
 import gc
 import importlib
-import logging
 import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
@@ -26,7 +25,7 @@ from .attri_util import (
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config
+from .conftest import Config, recordLogger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -87,8 +86,8 @@ class Benchmark:
         **kwargs,
     ):
         self.op_name = op_name
-        if is_backward:
-            self.op_name += " backward"
+        if is_backward and self.op_name.find("_backward") == -1:
+            self.op_name += "_backward"
         self.torch_op = torch_op
         self.gems_op = None
         self.is_backward = is_backward
@@ -209,6 +208,10 @@ class Benchmark:
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
+                if vendor_name == "kunlunxin":
+                    if self.op_name in ["cummax"]:
+                        additional_shapes = []
+
                 # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
@@ -258,12 +261,7 @@ class Benchmark:
         self.gems_op = gems_op
 
     def get_latency(self, op, *args, **kwargs):
-        if self.is_inplace:
-            fn = lambda: op(
-                *[x.clone() if torch.is_tensor(x) else x for x in args], **kwargs
-            )
-        else:
-            fn = lambda: op(*args, **kwargs)
+        fn = lambda: op(*args, **kwargs)
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)
@@ -373,7 +371,7 @@ class Benchmark:
                 shape_desc=self.shape_desc,
             )
             print(attri)
-            logging.info(attri.to_dict())
+            recordLogger.info(attri.to_dict())
             return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
@@ -426,7 +424,7 @@ class Benchmark:
                 result=metrics,
             )
             print(result)
-            logging.info(result.to_json())
+            recordLogger.info(result.to_json())
 
 
 class GenericBenchmark(Benchmark):
@@ -487,6 +485,19 @@ class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
 
     def __init__(self, *args, **kwargs):
         super().__init__(exclude_dims=3, *args, **kwargs)
+
+
+class GenericBenchmark4DOnly(GenericBenchmarkFilterShapes):
+    """
+    4d shapes only
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=None, *args, **kwargs)
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [shape for shape in shapes if len(shape) == 4]
 
 
 class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):

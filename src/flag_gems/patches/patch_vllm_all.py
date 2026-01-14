@@ -149,6 +149,8 @@ def custom_gems_flash_attention_impl_forward(
     attn_metadata,  #: FlashAttentionMetadata,
     output: Optional[torch.Tensor] = None,
     output_scale: Optional[torch.Tensor] = None,
+    output_block_scale: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> torch.Tensor:
     from flag_gems import flash_attn_varlen_func, reshape_and_cache_flash
 
@@ -192,8 +194,11 @@ def custom_gems_flash_attention_impl_forward(
         # query = query.reshape((num_tokens, num_heads, head_size))
 
     # Compute attention and update output up to `num_actual_tokens`.
-    use_local_attn = self.use_irope and attn_metadata.local_attn_metadata is not None
-
+    # use_local_attn = self.use_irope and attn_metadata.local_attn_metadata is not None
+    use_local_attn = (
+        getattr(self, "use_irope", False)
+        and getattr(attn_metadata, "local_attn_metadata", None) is not None
+    )
     if not attn_metadata.use_cascade or use_local_attn:
         if use_local_attn:
             assert attn_metadata.local_attn_metadata is not None
@@ -234,6 +239,11 @@ def custom_gems_flash_attention_impl_forward(
             q_descale=layer._q_scale.expand(descale_shape),
             k_descale=layer._k_scale.expand(descale_shape),
             v_descale=layer._v_scale.expand(descale_shape),
+            s_aux=None,
+            num_splits=0,
+            cp_world_size=1,
+            cp_rank=0,
+            cp_tot_seqused_k=None,
         )
         return output
 
@@ -265,14 +275,46 @@ def custom_moe_align_block_size(
     )
 
 
+def custom_moe_grouped_topk(
+    gating_output: torch.Tensor,
+    n_group: int,
+    topk_group: int,
+    topk: int,
+    renormalize: bool,
+    routed_scaling_factor: float,
+    bias: torch.Tensor,
+    scoring_func: int = 0,
+):
+    from flag_gems.fused import grouped_topk
+
+    return grouped_topk(
+        scores=gating_output,
+        n_group=n_group,
+        topk_group=topk_group,
+        topk=topk,
+        renormalize=renormalize,
+        routed_scaling_factor=routed_scaling_factor,
+        bias=bias,
+        scoring_func=scoring_func,
+    )
+
+
 def custom_topk_softmax(
-    topk_weights, topk_indices, token_expert_indices, gating_output
+    topk_weights, topk_indices, token_expert_indices, gating_output, renormalize=False
 ):
     flag_gems.topk_softmax(
-        topk_weights,
-        topk_indices,
-        token_expert_indices,
-        gating_output,
+        topk_weights, topk_indices, token_expert_indices, gating_output, renormalize
+    )
+
+
+def custom_apply_repetition_penalties(
+    logits: torch.Tensor,
+    prompt_mask: torch.Tensor,
+    output_mask: torch.Tensor,
+    repetition_penalties: torch.Tensor,
+):
+    return flag_gems.apply_repetition_penalties(
+        logits, prompt_mask, output_mask, repetition_penalties
     )
 
 
@@ -328,8 +370,46 @@ def custom_get_scheduler_metadata(
     )
 
 
+def custom_per_token_group_fp8_quant(
+    input: torch.Tensor,
+    output_q: torch.Tensor,
+    output_s: torch.Tensor,
+    group_size: int,
+    eps: float,
+    fp8_min: float,
+    fp8_max: float,
+    scale_ue8m0: bool = False,
+):
+    from flag_gems.ops import per_token_group_quant_fp8
+
+    column_major_scales = output_s.stride(0) < output_s.stride(1)
+
+    x_q, x_s = per_token_group_quant_fp8(
+        x=input,
+        group_size=group_size,
+        eps=eps,
+        column_major_scales=column_major_scales,
+        scale_ue8m0=scale_ue8m0,
+    )
+
+    output_q.copy_(x_q)
+    output_s.copy_(x_s)
+
+
+def custom_cutlass_scaled_mm(
+    output: torch.Tensor,
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    bias: torch.Tensor | None = None,
+):
+    return flag_gems.cutlass_scaled_mm(output, input, weight, scale_a, scale_b, bias)
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
+    import vllm._custom_ops as ops  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
@@ -355,6 +435,7 @@ def apply_gems_patches_to_vllm(verbose=True):
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward, verbose
     )
     patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
+    patch_vllm_lib("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm, "CUDA", verbose)
     patch_vllm_lib(
         "_moe_C", "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
     )
@@ -363,6 +444,21 @@ def apply_gems_patches_to_vllm(verbose=True):
         "_vllm_fa3_C",
         "get_scheduler_metadata",
         custom_get_scheduler_metadata,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib("_moe_C", "grouped_topk", custom_moe_grouped_topk, "CUDA", verbose)
+    patch_vllm_lib(
+        "_C",
+        "per_token_group_fp8_quant",
+        custom_per_token_group_fp8_quant,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib(
+        "_C",
+        "apply_repetition_penalties_",
+        custom_apply_repetition_penalties,
         "CUDA",
         verbose,
     )

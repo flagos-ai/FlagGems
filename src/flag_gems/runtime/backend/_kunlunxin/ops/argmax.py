@@ -11,9 +11,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
-from ..utils.block_size_utils import get_block_size_1d
-
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -29,7 +27,8 @@ def argmax_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+    min_value = get_dtype_min(inp.type.element_ty)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
     max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
     max_index = max_index + pid * BLOCK_SIZE
     mid_value_ptr = mid_value + pid
@@ -44,7 +43,8 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid_value + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
+    min_value = get_dtype_min(mid_value.type.element_ty)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
     index_val = tl.argmax(mid_val, axis=0)
     mid_index_ptrs = mid_index + index_val
     out_val = tl.load(mid_index_ptrs)
@@ -116,8 +116,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype
-        # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        block_size = get_block_size_1d(M, inp.element_size())
+        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
 
@@ -138,16 +137,20 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 mid_index,
                 M,
                 block_size,
-                buffer_size_limit=2048,
             )
-            argmax_kernel_2[(1, 1, 1)](
-                mid_value, mid_index, out, mid_size, block_mid, buffer_size_limit=2048
-            )
+            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         shape = inp.shape
         dim = dim % inp.ndim
+        if inp.numel() == 0:
+            out_shape = list(shape)
+            if keepdim:
+                out_shape[dim] = 1
+            else:
+                del out_shape[dim]
+            return torch.zeros(out_shape, dtype=torch.int64, device=inp.device)
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
@@ -163,9 +166,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        isCloseCoreTiling = False
-        if inp.shape == (1024, 1):
-            isCloseCoreTiling = True
         with torch_device_fn.device(inp.device):
             argmax_kernel[grid](
                 inp,
@@ -173,7 +173,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 N,
                 K,
-                isCloseCoreTiling=isCloseCoreTiling,
+                is_use_mask_zero=True,
             )
 
         return out_index

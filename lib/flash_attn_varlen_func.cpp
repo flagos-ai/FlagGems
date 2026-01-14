@@ -5,6 +5,7 @@
 #include <tuple>
 #include "c10/cuda/CUDAStream.h"
 #include "c10/util/Optional.h"
+#include "flag_gems/device_info.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "torch/torch.h"
@@ -341,11 +342,10 @@ mha_varlan_fwd_internal(const at::Tensor& q,
     params.page_table_batch_stride = page_table_batch_stride;
     params.block_size = block_size;
 
-    int dev_id = 0;
-    cudaGetDevice(&dev_id);
-    cudaDeviceProp prop {};
-    cudaGetDeviceProperties(&prop, dev_id);
-    int num_sms = prop.multiProcessorCount > 0 ? prop.multiProcessorCount : 1;
+    int num_sms = flag_gems::device::current_sm_count();
+    if (num_sms <= 0) {
+      num_sms = 1;
+    }
     // We assess which phase the requests are likely to be in and set the config accordingly.
     const double total_rows = static_cast<double>(total_q_final) * static_cast<double>(num_heads_final);
     const double avg_rows_per_sm = total_rows / static_cast<double>(num_sms);
@@ -508,6 +508,11 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(const at::Tensor& q,
                                                           const std::optional<at::Tensor>& q_descale,
                                                           const std::optional<at::Tensor>& k_descale,
                                                           const std::optional<at::Tensor>& v_descale,
+                                                          std::optional<at::Tensor> s_aux,
+                                                          int64_t num_splits,
+                                                          int64_t cp_world_size,
+                                                          int64_t cp_rank,
+                                                          std::optional<at::Tensor> cp_tot_seqused_k,
                                                           int64_t fa_version) {
   TORCH_CHECK(cu_seqlens_k.has_value() || seqused_k.has_value(),
               "cu_seqlens_k or seqused_k must be provided");

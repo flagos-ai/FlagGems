@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -8,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 @triton.jit(do_not_specialize=["fill_value_or_ptr"])
@@ -67,6 +68,7 @@ def check_dtype(fill_value, dtype, device):
         and (fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max)
     ) or (
         dtype in ALL_FLOAT_DTYPES
+        and not (math.isinf(fill_value) or math.isnan(fill_value))
         and (fill_value < torch.finfo(dtype).min or fill_value > torch.finfo(dtype).max)
     ):
         raise RuntimeError(

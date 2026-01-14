@@ -522,7 +522,9 @@ def mha_varlan_fwd(
 
         # We assess which phase the requests are likely to be in and set the config accordingly.
         total_rows = total_q * num_heads
-        num_sms = torch_device_fn.get_device_properties("cuda").multi_processor_count
+        num_sms = torch_device_fn.get_device_properties(
+            flag_gems.device
+        ).multi_processor_count
         avg_rows_per_sm = total_rows / num_sms
         avg_rows_per_batch = total_q / batch_size
         avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
@@ -536,6 +538,8 @@ def mha_varlan_fwd(
             varlen_fwd_config_str = "mha_block_32"
         else:
             varlen_fwd_config_str = "mha_block_16"
+        if flag_gems.vendor_name == "mthreads":
+            varlen_fwd_config_str = "mha_block_32"
 
         cfg = runtime.get_heuristic_config(varlen_fwd_config_str)
         cfg_params = {

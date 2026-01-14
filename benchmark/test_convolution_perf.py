@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import torch
 
@@ -14,6 +16,10 @@ class Conv1DBenchmark(GenericBenchmark):
             (16, 24, 2048, 96, 7, 1, 3, 2),
             (8, 8, 8192, 16, 11, 4, 5, 1),
             (4, 4, 16384, 4, 15, 2, 7, 1),
+            (32, 64, 512, 64, 3, 1, "valid", 1),
+            (64, 48, 1024, 128, 5, 2, "valid", 1),
+            (16, 24, 2048, 96, 7, 1, "same", 2),
+            (8, 8, 8192, 16, 11, 1, "same", 1),
         ]
 
 
@@ -63,6 +69,10 @@ class Conv2DBenchmark(GenericBenchmark):
             (16, 32, 12, 12, 24, 3, 3, 2, 1, 1),
             (16, 32, 24, 24, 24, 3, 3, 2, 2, 2),
             (16, 32, 24, 24, 24, 3, 3, 1, 2, 2),
+            (16, 32, 12, 12, 24, 3, 3, 2, "valid", 1),
+            (32, 64, 128, 128, 32, 3, 3, 1, "valid", 1),
+            (16, 32, 24, 24, 24, 3, 3, 1, "same", 2),
+            (32, 64, 210, 210, 16, 5, 5, 1, "same", 1),
         ]
 
 
@@ -95,6 +105,8 @@ def test_perf_conv2d():
             "padding": padding,
         },
 
+    if flag_gems.vendor_name == "hygon":
+        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
     torch.backends.cudnn.allow_tf32 = False
     bench = Conv2DBenchmark(
         input_fn=conv2d_input_fn,
@@ -104,6 +116,8 @@ def test_perf_conv2d():
     )
     bench.set_gems(flag_gems.conv2d)
     bench.run()
+    if flag_gems.vendor_name == "hygon":
+        del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
 class Conv3DBenchmark(GenericBenchmark):
