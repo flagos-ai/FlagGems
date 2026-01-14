@@ -15,6 +15,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
+      - '**.md'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -29,6 +30,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
+      - '**.md'
 
 env:
   CUDA_VISIBLE_DEVICES: 7
@@ -50,8 +52,9 @@ jobs:
         with:
           filters: |
             run_ci:
+              - '**'
               - '!src/flag_gems/experimental_ops/**'
-              - '!tests/experimental_ops/**'
+              - '!experimental_tests/**'
 
       - name: FlagGems reduction ops on hopper
         if: steps.experimental_ops.outputs.run_ci == 'true'

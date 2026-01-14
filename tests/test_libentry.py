@@ -356,6 +356,10 @@ def test_hash_changes_when_dependency_modified():
     flag_gems.vendor_name == "mthreads",
     reason=" Cannot re-initialize MUSA in forked subprocess",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="It's not stable in full test thought it's passed by single test",
+)
 def test_libcache_vllm_signal_scenario():
     import multiprocessing
     import signal
