@@ -1719,3 +1719,116 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(sorted_ids, sorted_ids_vllm, dtype=dtype)
     gems_assert_close(expert_ids, expert_ids_vllm, dtype=dtype)
     gems_assert_close(num_tokens_post_pad, num_tokens_post_pad_vllm, dtype=dtype)
+
+
+GRID_SAMPLE_SHAPES = [
+    # (N, C, H_in, W_in, H_out, W_out)
+    (1, 1, 4, 4, 4, 4),
+    (2, 4, 32, 32, 32, 32),
+    (4, 16, 64, 64, 64, 64),
+    (2, 8, 128, 128, 64, 64),  # Downsampling
+    (2, 8, 32, 32, 64, 64),  # Upsampling
+]
+
+# Mode mapping: string to int for grid_sampler_2d
+GRID_SAMPLE_MODE_MAP = {"bilinear": 0, "nearest": 1}
+GRID_SAMPLE_PADDING_MAP = {"zeros": 0, "border": 1, "reflection": 2}
+
+
+@pytest.mark.grid_sample
+@pytest.mark.parametrize("shape", GRID_SAMPLE_SHAPES)
+@pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+@pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+@pytest.mark.parametrize("align_corners", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_grid_sample(shape, mode, padding_mode, align_corners, dtype):
+    """Test grid_sampler_2d forward accuracy against PyTorch reference."""
+    N, C, H_in, W_in, H_out, W_out = shape
+
+    # Input image
+    inp = torch.randn(N, C, H_in, W_in, dtype=dtype, device=flag_gems.device)
+    # CPU grid_sampler_2d doesn't support Half, use float32 for reference
+    ref_inp = to_reference(inp).to(torch.float32)
+
+    # Grid: normalized coordinates in [-1, 1]
+    grid = torch.rand(N, H_out, W_out, 2, dtype=dtype, device=flag_gems.device) * 2 - 1
+    ref_grid = to_reference(grid).to(torch.float32)
+
+    # Convert mode/padding to int
+    mode_int = GRID_SAMPLE_MODE_MAP[mode]
+    padding_int = GRID_SAMPLE_PADDING_MAP[padding_mode]
+
+    # Reference (PyTorch ATen)
+    ref_out = torch.ops.aten.grid_sampler_2d(
+        ref_inp, ref_grid, mode_int, padding_int, align_corners
+    ).to(dtype)
+
+    # Result (FlagGems)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.grid_sampler_2d(
+            inp, grid, mode_int, padding_int, align_corners
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.grid_sample
+@pytest.mark.parametrize(
+    "shape", GRID_SAMPLE_SHAPES[:3]
+)  # Use fewer shapes for backward
+@pytest.mark.parametrize("mode", ["bilinear"])  # Nearest has no grid gradient
+@pytest.mark.parametrize("padding_mode", ["zeros", "border"])
+@pytest.mark.parametrize("align_corners", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float32])  # Use float32 for gradient stability
+def test_accuracy_grid_sample_backward(shape, mode, padding_mode, align_corners, dtype):
+    """Test grid_sampler_2d backward accuracy against PyTorch reference."""
+    N, C, H_in, W_in, H_out, W_out = shape
+
+    # Input image (requires grad)
+    inp = torch.randn(
+        N, C, H_in, W_in, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    # Create reference with requires_grad
+    # CPU grid_sampler_2d doesn't support Half, use float32 for reference
+    # Use detach() and clone() to ensure it's a leaf tensor
+    ref_device = "cpu" if TO_CPU else flag_gems.device
+    ref_inp = (
+        inp.detach()
+        .clone()
+        .to(device=ref_device, dtype=torch.float32)
+        .requires_grad_(True)
+    )
+
+    # Grid (requires grad)
+    grid = torch.rand(N, H_out, W_out, 2, dtype=dtype, device=flag_gems.device) * 2 - 1
+    grid.requires_grad = True
+    ref_grid = (
+        grid.detach()
+        .clone()
+        .to(device=ref_device, dtype=torch.float32)
+        .requires_grad_(True)
+    )
+
+    # Convert mode/padding to int
+    mode_int = GRID_SAMPLE_MODE_MAP[mode]
+    padding_int = GRID_SAMPLE_PADDING_MAP[padding_mode]
+
+    # Forward + Backward (Reference - without FlagGems)
+    ref_out = torch.ops.aten.grid_sampler_2d(
+        ref_inp, ref_grid, mode_int, padding_int, align_corners
+    )
+    ref_loss = ref_out.sum()
+    ref_loss.backward()
+
+    # Forward + Backward (FlagGems)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.grid_sampler_2d(
+            inp, grid, mode_int, padding_int, align_corners
+        )
+    res_loss = res_out.sum()
+    res_loss.backward()
+
+    # Check gradients (convert ref grads to original dtype for comparison)
+    # ref grads are already on ref_device, just convert dtype
+    gems_assert_close(inp.grad, ref_inp.grad.to(dtype), dtype)
+    gems_assert_close(grid.grad, ref_grid.grad.to(dtype), dtype)

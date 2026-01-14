@@ -808,3 +808,111 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+class GridSampleBenchmark(GenericBenchmark):
+    """Custom benchmark class for grid_sampler_2d operation."""
+
+    # Custom shapes for grid_sample: (N, C, H_in, W_in, H_out, W_out)
+    GRID_SAMPLE_SHAPES = [
+        (1, 16, 64, 64, 64, 64),
+        (2, 32, 128, 128, 128, 128),
+        (4, 64, 256, 256, 256, 256),
+    ]
+    DEFAULT_SHAPE_DESC = "N, C, H_in, W_in, H_out, W_out"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Override shapes after parent init - these are 6D shapes for grid_sample
+        self.shapes = self.GRID_SAMPLE_SHAPES
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+    def init_user_config(self):
+        """Override to use custom shapes instead of loading from yaml."""
+        from .performance_utils import Config
+
+        self.mode = Config.mode
+        self.set_dtypes(Config.user_desired_dtypes)
+        self.set_metrics(Config.user_desired_metrics)
+        # Don't call set_shapes - use our custom shapes
+        self.shapes = self.GRID_SAMPLE_SHAPES
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+    def set_more_shapes(self):
+        return [
+            # (N, C, H_in, W_in, H_out, W_out)
+            (4, 64, 128, 128, 128, 128),
+            (4, 64, 256, 256, 256, 256),
+            (4, 64, 512, 512, 512, 512),
+            (4, 64, 1024, 1024, 1024, 1024),
+            (8, 32, 256, 256, 256, 256),
+            (8, 32, 512, 512, 512, 512),
+            (16, 16, 256, 256, 256, 256),
+            (2, 128, 256, 256, 128, 128),  # Downsampling
+            (2, 128, 128, 128, 256, 256),  # Upsampling
+        ]
+
+
+def grid_sampler_2d_wrapper(
+    input, grid, interpolation_mode, padding_mode, align_corners
+):
+    """Wrapper to match torch.ops.aten.grid_sampler_2d signature."""
+    return torch.ops.aten.grid_sampler_2d(
+        input, grid, interpolation_mode, padding_mode, align_corners
+    )
+
+
+@pytest.mark.grid_sample
+def test_perf_grid_sample():
+    """Performance benchmark for grid_sampler_2d forward pass."""
+
+    def grid_sample_input_fn(shape, dtype, device):
+        N, C, H_in, W_in, H_out, W_out = shape
+        x = torch.randn(N, C, H_in, W_in, device=device, dtype=dtype)
+        grid = torch.rand(N, H_out, W_out, 2, device=device, dtype=dtype) * 2 - 1
+        yield {
+            "input": x,
+            "grid": grid,
+            "interpolation_mode": 0,  # bilinear
+            "padding_mode": 0,  # zeros
+            "align_corners": False,
+        },
+
+    bench = GridSampleBenchmark(
+        input_fn=grid_sample_input_fn,
+        op_name="grid_sampler_2d",
+        torch_op=grid_sampler_2d_wrapper,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.grid_sampler_2d)
+    bench.run()
+
+
+@pytest.mark.grid_sample
+def test_perf_grid_sample_backward():
+    """Performance benchmark for grid_sampler_2d backward pass."""
+
+    def grid_sample_backward_input_fn(shape, dtype, device):
+        N, C, H_in, W_in, H_out, W_out = shape
+        x = torch.randn(
+            N, C, H_in, W_in, device=device, dtype=dtype, requires_grad=True
+        )
+        grid = (
+            torch.rand(
+                N, H_out, W_out, 2, device=device, dtype=dtype, requires_grad=True
+            )
+            * 2
+            - 1
+        )
+        # Use positional args for backward benchmark so that requires_grad tensors are in args
+        yield x, grid, 0, 0, False  # input, grid, interpolation_mode, padding_mode, align_corners
+
+    bench = GridSampleBenchmark(
+        input_fn=grid_sample_backward_input_fn,
+        op_name="grid_sampler_2d",
+        torch_op=grid_sampler_2d_wrapper,
+        dtypes=[torch.float32],  # Use float32 for stable gradient computation
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.grid_sampler_2d)
+    bench.run()
