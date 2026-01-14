@@ -101,6 +101,7 @@ def enable(
             ("cat", cat),
             ("celu", celu),
             ("celu_", celu_),
+            ("channel_shuffle", channel_shuffle),
             ("clamp", clamp),
             ("clamp.Tensor", clamp_tensor),
             ("clamp_min", clamp_min),

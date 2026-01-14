@@ -45,6 +45,7 @@ from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
 from flag_gems.ops.bmm import bmm
 from flag_gems.ops.cat import cat
 from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -298,6 +299,7 @@ __all__ = [
     "clamp_min_",
     "constant_pad_nd",
     "contiguous",
+    "channel_shuffle",
     "conv1d",
     "conv2d",
     "conv3d",
