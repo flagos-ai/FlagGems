@@ -24,7 +24,25 @@ logger = logging.getLogger("flag_gems." + __name__)
         "UPGRADE": lambda args: math.ceil(
             (args["M"] * args["N"]) / (args["BLOCK_M"] * args["BLOCK_N"])
         ).bit_length()
-        > 32,
+        > 31,
+    }
+)
+@triton.heuristics(
+    {
+        "UPGRADE_A_OFFS": lambda args: math.ceil(args["M"] * args["K"]).bit_length()
+        > 31,
+    }
+)
+@triton.heuristics(
+    {
+        "UPGRADE_B_OFFS": lambda args: math.ceil(args["K"] * args["N"]).bit_length()
+        > 31,
+    }
+)
+@triton.heuristics(
+    {
+        "UPGRADE_C_OFFS": lambda args: math.ceil(args["M"] * args["N"]).bit_length()
+        > 31,
     }
 )
 @triton.jit
@@ -49,6 +67,9 @@ def mm_kernel(
     SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
     UPGRADE: tl.constexpr,
+    UPGRADE_A_OFFS: tl.constexpr,
+    UPGRADE_B_OFFS: tl.constexpr,
+    UPGRADE_C_OFFS: tl.constexpr,
 ):
     # matrix multiplication
     if UPGRADE:
@@ -66,10 +87,19 @@ def mm_kernel(
     pid_m = group_id * GROUP_M + (pid % group_size)
     pid_n = (pid % width) // (group_size)
     # do matrix multiplication
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    if UPGRADE_A_OFFS:
+        rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+        ram = (tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)).to(tl.int64)
+    else:
+        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    if UPGRADE_B_OFFS:
+        rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
+        rbn = (tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)).to(tl.int64)
+    else:
+        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+
     rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
     # pointers
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
@@ -92,9 +122,14 @@ def mm_kernel(
         B += BLOCK_K * SPLIT_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
     # rematerialize rm and rn to save registers
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+    if UPGRADE_C_OFFS:
+        rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+        rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
+        C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn).to(tl.int64)
+    else:
+        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
     mask = (rm < M)[:, None] & (rn < N)[None, :]
     # handles write-back with reduction-splitting
     if SPLIT_K == 1:
