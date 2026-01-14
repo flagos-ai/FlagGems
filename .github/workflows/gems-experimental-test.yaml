@@ -35,7 +35,10 @@ jobs:
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
           conda activate flag_gems
           source tools/run_command.sh
-          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          BASE_SHA=$(git rev-parse HEAD~1)
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              BASE_SHA=${{ github.event.pull_request.base.sha }}
+          fi
           HEAD_SHA=${{ github.sha }}
 
           echo "Diffing $BASE_SHA...$HEAD_SHA"
@@ -50,20 +53,26 @@ jobs:
 
                   base=$(basename "$f" .py)
                   test_file="experimental_tests/${base}_test.py"
-                  if [ -f "$test_file" ]; then
+                  accuracy_test_file="experimental_tests/${base}_accuracy_test.py"
+                  speedup_test_file="experimental_tests/${base}_speedup_test.py"
+                  if [[ -f "$test_file" ]]; then
                       tests_to_run="$tests_to_run $test_file"
+                  elif [[ -f "$accuracy_test_file" ]]; then
+                      tests_to_run="$tests_to_run $accuracy_test_file"
+                  elif [[ -f "$speedup_test_file" ]]; then
+                      tests_to_run="$tests_to_run $speedup_test_file"
                   else
                       missing_tests="$missing_tests $test_file"
                   fi
 
               elif [[ $f == experimental_tests/*_test.py ]]; then
-                  if [ -f "$f" ]; then
+                  if [[ -f "$f" ]]; then
                       tests_to_run="$tests_to_run $f"
                   fi
               fi
           done
 
-          if [ -n "$missing_tests" ]; then
+          if [[ -n "$missing_tests" ]]; then
               echo "Error: The following operator files were modified, but their corresponding test files are missing:"
               for m in $missing_tests; do
                   echo "  - Expected: $m"
@@ -71,9 +80,9 @@ jobs:
               exit 1
           fi
 
-          unique_tests=$(echo "$tests_to_run" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+          unique_tests=$(echo "$tests_to_run" | tr ' ' '\n' | sort -u | xargs)
 
-          if [ -n "$unique_tests" ]; then
+          if [[ -n "$unique_tests" ]]; then
               echo "Running tests: $unique_tests"
               run_command pytest -s $unique_tests
           else
