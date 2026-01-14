@@ -647,6 +647,15 @@ cross_entropy_loss_sum_and_scale:
       - 256
       - 1024
 
+upsample_nearest1d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_n
+      num_warps: warps
+    block_n: [1024, 2048]
+    warps: [4, 8]
+
 upsample_nearest2d:
   - gen: true
     param_map:
@@ -1149,6 +1158,30 @@ index:
     block_size1:
       - 1024
       - 2048
+
+argmin_split_k:
+    - gen: true
+      param_map:
+        META:
+          BLOCK_M: block_m
+          BLOCK_N: block_n
+          BLOCK_K: block_k
+        num_warps: warps
+        num_stages: 4
+      block_m:
+        - 4
+        - 8
+      block_n:
+        - 64
+        - 512
+      block_k:
+        - 32
+        - 64
+      warps:
+        - 4
+        - 8
+        - 16
+        - 32
 
 gated_activation:
   - gen: true

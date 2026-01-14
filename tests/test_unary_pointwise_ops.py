@@ -19,6 +19,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    SWIGLU_SPECIAL_SHAPES,
     SkipVersion,
     gems_assert_close,
     gems_assert_equal,
@@ -55,6 +56,20 @@ def test_accuracy_abs_(shape, dtype):
         res_out = torch.abs_(inp)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.acos
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_acos(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.acos(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.acos(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, True)
 
 
 @pytest.mark.angle
@@ -470,6 +485,67 @@ def test_accuracy_glu_backward(shape, dtype):
             res_in_grad = torch.ops.aten.glu_backward(res_out, res_inp, dim=dim)
 
         gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+def generate_input(
+    shape: tuple[int, ...], dtype: torch.dtype, device: torch.device
+) -> torch.Tensor:
+    return torch.randn(shape, dtype=dtype, device=device).contiguous()
+
+
+def filter_valid_shapes(shapes: list[tuple[int, ...]]) -> list[tuple[int, ...]]:
+    valid_shapes = []
+    for shape in shapes:
+        if not shape:
+            continue
+        if shape[-1] % 2 == 0:
+            valid_shapes.append(shape)
+    return valid_shapes
+
+
+VALID_POINTWISE_SHAPES = filter_valid_shapes(SWIGLU_SPECIAL_SHAPES)
+
+
+@pytest.mark.swiglu
+@pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_swiglu_forward(shape: tuple[int, ...], dtype: torch.dtype):
+    torch.manual_seed(42)
+    device = flag_gems.device
+
+    input_tensor = generate_input(shape, dtype, device)
+
+    te_forward = tex.swiglu(input_tensor, quantizer=None).to(device)
+    te_forward = to_reference(te_forward)
+
+    with flag_gems.use_gems():
+        fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
+
+    gems_assert_close(fg_forward, te_forward, dtype)
+
+
+@pytest.mark.swiglu
+@pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_swiglu_backward(shape: tuple[int, ...], dtype: torch.dtype):
+    torch.manual_seed(42)
+    device = flag_gems.device
+
+    input_tensor = generate_input(shape, dtype, device)
+
+    grad_shape = list(shape)
+    grad_shape[-1] = grad_shape[-1] // 2
+    grad_output = generate_input(tuple(grad_shape), dtype, device)
+
+    te_grad_input = tex.dswiglu(grad_output, input_tensor, quantizer=None).to(device)
+    te_grad_input = to_reference(te_grad_input)
+
+    with flag_gems.use_gems():
+        fg_grad_input = flag_gems.dswiglu(grad_output, input_tensor, quantizer=None)
+
+    gems_assert_close(fg_grad_input, te_grad_input, dtype)
 
 
 @pytest.mark.isinf
@@ -1458,3 +1534,88 @@ def test_accuracy_reglu(shape, dtype):
         res_out = flag_gems.reglu(input_tensor)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+def _init_vllm():
+    if not torch.cuda.is_available():
+        return None, False
+    try:
+        from vllm._custom_ops import apply_repetition_penalties as fn
+
+        t, m = torch.randn(2, 1024, device="cuda"), torch.zeros(
+            2, 1024, dtype=torch.bool, device="cuda"
+        )
+        fn(t, m, m, torch.full((2,), 1.2, device="cuda"))
+        return fn, True
+    except (ImportError, RuntimeError):
+
+        def fallback(logits, pm, om, pens):
+            for i in range(logits.shape[0]):
+                m = pm[i] | om[i]
+                logits[i][m] = torch.where(
+                    logits[i][m] > 0, logits[i][m] / pens[i], logits[i][m] * pens[i]
+                )
+
+        return fallback, True
+
+
+_vllm_fn, _VLLM_OK = _init_vllm()
+
+_REP_PENALTY_CFG = {
+    "shapes": [
+        (1, 1024),
+        (1, 4096),
+        (1, 8192),
+        (8, 4096),
+        (16, 4096),
+        (32, 1024),
+        (8, 8192),
+    ],
+    "penalties": [1.0, 1.2, 1.5],
+    "device": torch.device("cuda:0"),
+}
+
+
+@pytest.mark.apply_repetition_penalties
+@pytest.mark.skipif(
+    not _VLLM_OK or not torch.cuda.is_available(), reason="need VLLM+CUDA"
+)
+@pytest.mark.parametrize("shape", _REP_PENALTY_CFG["shapes"])
+@pytest.mark.parametrize("penalty", _REP_PENALTY_CFG["penalties"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("mask_mode", ["random", "empty"])
+def test_repetition_penalty(shape, penalty, dtype, mask_mode):
+    device = _REP_PENALTY_CFG["device"]
+
+    logits = torch.randn(shape, dtype=dtype, device=device).contiguous()
+    logits_ori = logits.clone()
+
+    if mask_mode == "random":
+        prompt_mask = torch.randint(0, 2, shape, dtype=torch.bool, device=device)
+        output_mask = torch.randint(0, 2, shape, dtype=torch.bool, device=device)
+    else:
+        prompt_mask = torch.zeros(shape, dtype=torch.bool, device=device)
+        output_mask = torch.zeros(shape, dtype=torch.bool, device=device)
+
+    penalties = torch.full((shape[0],), penalty, dtype=dtype, device=device)
+
+    logits_vllm = logits.clone()
+    _vllm_fn(logits_vllm, prompt_mask.clone(), output_mask.clone(), penalties.clone())
+    ref = to_reference(logits_vllm, True).to(dtype)
+
+    with flag_gems.use_gems():
+        flag_gems.apply_repetition_penalties(
+            logits, prompt_mask, output_mask, penalties
+        )
+    res = to_reference(logits, True).to(dtype)
+
+    gems_assert_close(res, ref, dtype)
+
+    has_mask = (prompt_mask | output_mask).any().item()
+    should_modify = has_mask and penalty != 1.0
+    if should_modify:
+        assert not torch.equal(
+            to_reference(logits, True), to_reference(logits_ori, True)
+        ), "In-place未生效"
+    elif mask_mode == "empty":
+        gems_assert_close(res, to_reference(logits_ori, True).to(dtype), dtype)

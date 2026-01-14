@@ -19,13 +19,9 @@ with flag_gems.use_gems():
 # File Structure
 ```
 src/flag_gems/experimental_ops/
-├── __init__.py                 # Module initialization
-├── rmsnorm.py          # Example operator implementation
-├── [other_operators].py   # Additional operators
-├── exp_tests/                 # Accuracy test and performance test
-    ├── __init__.py
-    ├── rmsnorm_test.py
-    ├── [other_operators]_test.py
+├── [your_operator].py   # Operator implementations
+tests/experimental_ops/                 # Accuracy test and performance test
+├── [your_operator]_test.py
 ```
 
 # Adding New Operators
@@ -53,7 +49,7 @@ def your_operator(*args, **kwargs):
 Add your operator to `src/flag_gems/experimental_ops/__init__.py` :
 ```
 from .your_operator import your_operator
-__all__ = ["rmsnorm", "your_operator"]
+__all__ = ["your_operator"]
 ```
 
 ## 3. Update Main Module
@@ -62,7 +58,7 @@ The experimental_ops module is already integrated in the main `__init__.py` . No
 
 # Testing
 ## Accuracy Tests
-Add accuracy test in `exp_tests/your_ops_test.py`:
+Add accuracy test in `tests/experimental_ops/your_ops_test.py`:
 ```
 import pytest
 import torch
@@ -92,7 +88,7 @@ def test_accuracy_your_operator(shape, dtype):
 ```
 
 ## Performance Tests
-Add performance test in `exp_tests/your_ops_test.py`:
+Add performance test in `tests/experimental_ops/your_ops_test.py`:
 ```
 import pytest
 import torch
