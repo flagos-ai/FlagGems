@@ -1,31 +1,7 @@
-FROM nvcr.io/nvidia/cuda:12.4.1-devel-ubuntu22.04
+FROM harbor.baai.ac.cn/flagbase/flagbase-nvidia:latest
 
 # noninteractive to make apt-get work
 ENV DEBIAN_FRONTEND=noninteractive
-
-# base dependencies
-# todo as python3 3.x specific version as build args later
-RUN apt-get update -y && \
-    apt-get install -y --allow-change-held-packages \
-    python3 \
-    python3-pip \
-    python3-venv \
-    git \
-    autotools-dev \
-    wget \
-    gcc \
-    g++ \
-    build-essential \
-    cmake && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# device specific with clean up
-RUN apt-get install -y --allow-change-held-packages \
-    libnccl2 \
-    libnccl-dev && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
 
 # workdir
 WORKDIR /workspace
@@ -33,6 +9,5 @@ COPY . /workspace/FlagGems
 WORKDIR /workspace/FlagGems
 
 # build
-RUN pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
 RUN pip install -r flag_tree_requirements/requirements_nvidia.txt
 RUN pip install --no-build-isolation .
