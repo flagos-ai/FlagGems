@@ -411,9 +411,13 @@ def only_enable(
 
 
 class use_gems:
-    def __init__(self, unused=None, include=None, record=False, once=False, path=None):
+    """
+    The 'include' parameter has higher priority than 'exclude'.
+    When 'include' is not None, use_gems will not process 'exclude'.
+    """
+    def __init__(self, exclude=None, include=None, record=False, once=False, path=None):
         self.lib = torch.library.Library("aten", "IMPL")
-        self.unused = unused if isinstance(unused, list) else []
+        self.exclude = exclude if isinstance(exclude, list) else []
         self.include = include if isinstance(include, list) else []
         self.registrar = Register
         self.record = record
@@ -433,7 +437,7 @@ class use_gems:
         else:
             enable(
                 lib=self.lib,
-                unused=self.unused,
+                unused=self.exclude,
                 registrar=self.registrar,
                 record=self.record,
                 once=self.once,
@@ -445,7 +449,7 @@ class use_gems:
         if torch.__version__ >= "2.5":
             self.lib._destroy()
         del self.lib
-        del self.unused
+        del self.exclude
         del self.include
         del self.registrar
         del current_work_registrar

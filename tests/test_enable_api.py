@@ -68,11 +68,11 @@ def test_enable():
       assert op in found_ops, f"Expected op '{op}' not found in log file"
 
 
-@pytest.mark.enable_with_unused
-@pytest.mark.parametrize("unused_op", [["mul"], ["mul", "add"]])
-def test_enable_with_unused(unused_op):
+@pytest.mark.enable_with_exclude
+@pytest.mark.parametrize("exclude_op", [["mul"], ["mul", "add"]])
+def test_enable_with_exclude(exclude_op):
    path_file = get_path_log_name()
-   with flag_gems.use_gems(unused=unused_op, record=True, path=path_file):
+   with flag_gems.use_gems(exclude=exclude_op, record=True, path=path_file):
       a = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
       b = torch.tensor([4.0, 5.0, 6.0], device=flag_gems.device)
       _ = a + b
@@ -80,7 +80,7 @@ def test_enable_with_unused(unused_op):
       _ = flag_gems.sum(a)
       _ = torch.sum(a)
   
-   op_names_str = ops_list_to_str(unused_op)
+   op_names_str = ops_list_to_str(exclude_op)
    log_file = f"./gems_enable_without_{op_names_str}.log"
    save_log_file(path_file, log_file)
 
@@ -91,7 +91,7 @@ def test_enable_with_unused(unused_op):
    pattern = r"flag_gems\.ops\.(\w+):"
    found_ops = set(re.findall(pattern, log_content))
    for op in found_ops:
-      assert op not in unused_op, f"Found unused op '{op}' in log file."
+      assert op not in exclude_op, f"Found excluded op '{op}' in log file."
 
 
 @pytest.mark.only_enable
