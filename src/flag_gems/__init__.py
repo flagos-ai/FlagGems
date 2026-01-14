@@ -17,7 +17,8 @@ from flag_gems.runtime.register import Register
 __version__ = "4.2.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
-aten_lib = torch.library.Library("aten", "IMPL")
+# aten_lib = torch.library.Library("aten", "IMPL")
+aten_lib = None
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
@@ -25,6 +26,13 @@ runtime.replace_customized_ops(globals())
 
 def torch_ge(v):
     return version.parse(torch.__version__) >= version.parse(v)
+
+
+def disable():
+    global aten_lib
+    aten_lib._destroy()
+    del aten_lib
+    aten_lib = None  # noqa: F841
 
 
 def enable(
@@ -35,6 +43,10 @@ def enable(
     once=False,
     path=None,
 ):
+    if lib is None:
+        global aten_lib
+        aten_lib = torch.library.Library("aten", "IMPL")
+        lib = aten_lib
     global current_work_registrar
     current_work_registrar = registrar(
         (
@@ -409,6 +421,7 @@ def all_ops():
 
 
 __all__ = [
+    "disable",
     "enable",
     "use_gems",
 ]
