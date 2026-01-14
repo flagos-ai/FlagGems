@@ -626,6 +626,10 @@ def list_iluvatar_v3_1():
 
     }
     return UNSELECT_NODEIDS, UNSELECT_FUNCTION_NAMES
+def list_mthreads_v3_1():
+    UNSELECT_FUNCTION_NAMES={}
+    UNSELECT_NODEIDS={}
+    return UNSELECT_NODEIDS, UNSELECT_FUNCTION_NAMES
 
 import flag_gems
 import triton
@@ -636,6 +640,7 @@ vendor_name=flag_gems.vendor_name.lower()
 dispatch = { "nvidia_3.1.0": list_nvidia_v3_1, 
              "iluvatar_3.1.0": list_iluvatar_v3_1, 
              "hygon_3.0.0": list_hygon_v3_0,
+             "mthreads_3.1.0": list_mthreads_v3_1,
             }
 version = f"{vendor_name}_{version_name}" # set your version here
 UNSELECT_NODEIDS, UNSELECT_FUNCTION_NAMES = dispatch.get(version, lambda: [])()
