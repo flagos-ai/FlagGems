@@ -32,13 +32,18 @@ class VstackKernelCode(IndentedBuffer):
     def __init(self, tensors):
         """Initialize the vstack kernel."""
         self.device = tensors[0].device
-        self.dtype = tensors[0].dtype
-        for tensor in tensors:
+        dtypes = [t.dtype for t in tensors]
+        dtype = dtypes[0]
+        for ty in dtypes[1:]:
+            dtype = torch.promote_types(dtype, ty)
+        self.dtype = dtype
+        for i, tensor in enumerate(tensors):
             assert (
                 tensor.device == self.device
-                and tensor.dtype == self.dtype
                 and tensors[0].shape[1:] == tensor.shape[1:]
             )
+            if tensor.dtype != self.dtype:
+                tensors[i] = tensor.to(self.dtype)
         c_tensors = [t.contiguous() for t in tensors]
         self.inputs = []
         self.idxs = [0]

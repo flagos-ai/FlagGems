@@ -65,6 +65,25 @@ def test_accuracy_exponential_(shape, dtype):
     assert x.min() > 0
 
 
+@pytest.mark.exponential_
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_fast_exponential_(shape, dtype):
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    lambd = 1.0
+    mean_tol = 0.05
+    var_tol = 0.05
+    with flag_gems.use_gems():
+        x.exponential_()
+    x_res = to_reference(x)
+    mean_res = torch.mean(x_res.to(torch.float32)).to(dtype)
+    var_res = torch.var(x_res.to(torch.float32)).to(dtype)
+    mean_ref = 1.0 / lambd
+    var_ref = 1.0 / (lambd**2)
+    assert torch.abs(mean_res - mean_ref) < mean_tol
+    assert torch.abs(var_res - var_ref) < var_tol
+
+
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", [(1024, 10)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

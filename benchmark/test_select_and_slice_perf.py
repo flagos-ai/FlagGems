@@ -319,7 +319,6 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(
@@ -327,7 +326,7 @@ def test_perf_gather_backward():
         torch_op=torch.gather,
         input_fn=gather_input_fn,
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float32],
+        dtypes=[torch.float32, torch.float16],
         is_backward=True,
     )
     bench.run()

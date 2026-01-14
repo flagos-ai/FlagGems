@@ -363,9 +363,26 @@ def test_sdpa_legacy(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
 
-    gems_result = flag_gems.ops.scaled_dot_product_attention(
-        q, k, v, attn_mask=None, scale=scale, is_causal=is_causal, enable_gqa=enable_gqa
-    )
+    if flag_gems.vendor_name == "cambricon":
+        gems_result = flag_gems.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
+    else:
+        gems_result = flag_gems.ops.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
 
     gems_assert_close(gems_result, torch_result, dtype)
     if flag_gems.vendor_name == "hygon":
@@ -446,9 +463,26 @@ def test_sdpa_legacy_backward(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
 
-    gems_result = flag_gems.ops.scaled_dot_product_attention(
-        q, k, v, attn_mask=None, scale=scale, is_causal=is_causal, enable_gqa=enable_gqa
-    )
+    if flag_gems.vendor_name == "cambricon":
+        gems_result = flag_gems.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
+    else:
+        gems_result = flag_gems.ops.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
 
     gems_assert_close(gems_result, torch_result, dtype)
 
@@ -469,7 +503,7 @@ def test_sdpa_legacy_backward(
     gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -503,7 +537,7 @@ def test_sdpa_square_qk_even_mn(
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -517,6 +551,8 @@ def test_sdpa_nonsquare_qk(
 ):
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if flag_gems.vendor_name == "hygon":
+        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
 
     device = torch_device_fn.current_device()
     q, k, v = make_input(
@@ -533,6 +569,8 @@ def test_sdpa_nonsquare_qk(
 
     if flag_gems.vendor_name == "mthreads":
         del os.environ["MUSA_ENABLE_SQMMA"]
+    if flag_gems.vendor_name == "hygon":
+        del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
@@ -957,22 +995,40 @@ def test_flash_attn_varlen_func(
         else:
             alibi_slopes, attn_bias = None, None
 
-        output = flag_gems.ops.flash_attn_varlen_func(
-            q=query,
-            k=key_cache,
-            v=value_cache,
-            cu_seqlens_q=cu_query_lens,
-            seqused_k=seqused_k,
-            max_seqlen_q=max_query_len,
-            max_seqlen_k=max_kv_len,
-            softmax_scale=scale,
-            causal=causal,
-            window_size=window_size,
-            block_table=block_tables,
-            softcap=soft_cap if soft_cap is not None else 0,
-            alibi_slopes=alibi_slopes,
-            fa_version=2,
-        )
+        if flag_gems.vendor_name == "cambricon":
+            output = flag_gems.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=max_query_len,
+                max_seqlen_k=max_kv_len,
+                softmax_scale=scale,
+                causal=causal,
+                window_size=window_size,
+                block_table=block_tables,
+                softcap=soft_cap if soft_cap is not None else 0,
+                alibi_slopes=alibi_slopes,
+                fa_version=2,
+            )
+        else:
+            output = flag_gems.ops.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=max_query_len,
+                max_seqlen_k=max_kv_len,
+                softmax_scale=scale,
+                causal=causal,
+                window_size=window_size,
+                block_table=block_tables,
+                softcap=soft_cap if soft_cap is not None else 0,
+                alibi_slopes=alibi_slopes,
+                fa_version=2,
+            )
 
         ref_output = ref_paged_attn(
             query=query,
@@ -1049,21 +1105,38 @@ def test_flash_attn_varlen_func_swap_qg(
             0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
         )
 
-        output = flag_gems.ops.flash_attn_varlen_func(
-            q=query,
-            k=key_cache,
-            v=value_cache,
-            cu_seqlens_q=cu_query_lens,
-            seqused_k=seqused_k,
-            max_seqlen_q=max_query_len,
-            max_seqlen_k=max_kv_len,
-            softmax_scale=scale,
-            causal=True,
-            window_size=window_size,
-            block_table=block_tables,
-            softcap=soft_cap if soft_cap is not None else 0,
-            fa_version=2,
-        )
+        if flag_gems.vendor_name == "cambricon":
+            output = flag_gems.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=max_query_len,
+                max_seqlen_k=max_kv_len,
+                softmax_scale=scale,
+                causal=True,
+                window_size=window_size,
+                block_table=block_tables,
+                softcap=soft_cap if soft_cap is not None else 0,
+                fa_version=2,
+            )
+        else:
+            output = flag_gems.ops.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=max_query_len,
+                max_seqlen_k=max_kv_len,
+                softmax_scale=scale,
+                causal=True,
+                window_size=window_size,
+                block_table=block_tables,
+                softcap=soft_cap if soft_cap is not None else 0,
+                fa_version=2,
+            )
 
         ref_output = ref_paged_attn(
             query=query,
