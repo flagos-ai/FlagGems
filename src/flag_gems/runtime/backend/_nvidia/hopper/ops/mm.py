@@ -278,7 +278,10 @@ def mm_kernel_general_host_tma(
             b_t = b_desc.load([offset_bn, offset_ak])
             b = tl.trans(b_t)
 
-        accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+        if a_desc.dtype == tl.float16 or a_desc.dtype == tl.bfloat16:
+            accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+        else:
+            accumulator = tl.dot(a, b, acc=accumulator, input_precision="tf32x3")
 
     c = accumulator.to(c_desc.dtype)
     c_desc.store([offset_am, offset_bn], c)
@@ -315,12 +318,19 @@ def general_mm(a, b, c, M, N, K):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     if (
-        (a.dtype == torch.float16 or a.dtype == torch.bfloat16)
-        and (b.dtype == torch.float16 or b.dtype == torch.bfloat16)
-        and N % 8 == 0
-        and K % 8 == 0
-        and triton.__version__ >= "3.5"
-    ):
+        (
+            a.dtype in (torch.float16, torch.bfloat16)
+            and b.dtype in (torch.float16, torch.bfloat16)
+            and N % 8 == 0
+            and K % 8 == 0
+        )
+        or (
+            a.dtype in (torch.float32,)
+            and b.dtype in (torch.float32,)
+            and N % 4 == 0
+            and K % 4 == 0
+        )
+    ) and triton.__version__ >= "3.5":
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
