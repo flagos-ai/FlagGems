@@ -101,6 +101,29 @@ class BaddbmmBenchmark(BlasBenchmark):
         return total_flops
 
 
+class GroupmmBenchmark(BlasBenchmark):
+    """
+    benchmark for Groupmm
+    """
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for groups, n, k in self.shapes:
+            yield from self.input_fn(groups, n, k, cur_dtype, self.device)
+
+    def set_more_shapes(self):
+        return None
+
+    def get_tflops(self, op, *args, **kwargs):
+        groups, N, K = args[1].shape
+        size_per_group = torch.diff(
+            args[2], prepend=torch.zeros(1, device="cuda", dtype=torch.int32)
+        )
+        total_flops = 0
+        for i in range(groups):
+            total_flops += size_per_group[i].item() * N * K * 2
+        return total_flops
+
+
 def addmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
     bias = torch.randn([m, n], dtype=cur_dtype, device=device)
@@ -150,6 +173,36 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         yield inp1, inp2
 
 
+def group_mm_input_fn(groups, N, K, cur_dtype, device):
+    assert cur_dtype == torch.bfloat16
+    import random
+
+    group_A_list = []
+    group_B_list = []
+    A_offs = 0
+    B_offs = 0
+    M_list = []
+    for i in range(groups):
+        M_g = random.randint(1, 16384)
+        N_g = N
+        K_g = K
+        A_g = torch.rand([M_g, K_g], device="cuda", dtype=cur_dtype)
+        B_g = torch.rand([K_g, N_g], device="cuda", dtype=cur_dtype)
+        group_A_list.append(A_g)
+        group_B_list.append(B_g)
+        M_list.append(M_g)
+        A_offs += M_g * K_g
+        B_offs += K_g * N_g
+
+    mat_a = torch.cat([x for x in group_A_list], dim=0)
+    mat_b = torch.stack([x for x in group_B_list], dim=0)
+    offs = torch.tensor(
+        [sum(M_list[: i + 1]) for i in range(groups)], dtype=torch.int32, device="cuda"
+    )
+
+    yield mat_a, mat_b, offs
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, bench_cls",
     [
@@ -181,15 +234,29 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
             BaddbmmBenchmark,
             marks=pytest.mark.baddbmm,
         ),
+        pytest.param(
+            "groupmm",
+            torch._grouped_mm,  # torch 2.8.0
+            group_mm_input_fn,
+            GroupmmBenchmark,
+            marks=pytest.mark.groupmm,
+        ),
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    if op_name == "groupmm":
+        FLOAT_DTYPES = [torch.bfloat16]
 
     bench = bench_cls(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
+
+    if op_name == "groupmm":
+        gems_op = flag_gems.group_mm
+        bench.set_gems(gems_op)
+
     bench.run()
 
     if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":

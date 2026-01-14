@@ -1,15 +1,16 @@
 import logging
-import random
 
-import pytest
 import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
+
+
+def supports_tma():
+    return torch.cuda.get_device_capability()[0] >= 9
 
 
 @triton.jit
@@ -94,7 +95,7 @@ def get_autotune_config(pre_hook=None):
 @libentry()
 @libtuner(configs=get_autotune_config(), key=["M", "N", "K"])
 @triton.jit
-def grouped_matmul_tma_kernel(
+def grouped_gemm_tma_kernel(
     M,
     N,
     K,
@@ -105,7 +106,6 @@ def grouped_matmul_tma_kernel(
     group_gemm_sizes,
     g_lds,
     group_size,
-    NUM_SM: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -114,6 +114,7 @@ def grouped_matmul_tma_kernel(
     beta: tl.constexpr,
 ):
     tile_idx = tl.program_id(0)
+    total_grid = tl.num_programs(0)
     last_problem_end = 0
     for g in range(group_size):
         gm = tl.load(group_gemm_sizes + g * 3)
@@ -122,7 +123,9 @@ def grouped_matmul_tma_kernel(
         num_m_tiles = tl.cdiv(gm, BLOCK_M)
         num_n_tiles = tl.cdiv(gn, BLOCK_N)
         num_tiles = num_m_tiles * num_n_tiles
-        if tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles:
+
+        current_problem_end = last_problem_end + num_tiles
+        if tile_idx >= last_problem_end and tile_idx < current_problem_end:
             lda = tl.load(g_lds + g * 3)
             ldb = tl.load(g_lds + g * 3 + 1)
             ldc = tl.load(g_lds + g * 3 + 2)
@@ -159,9 +162,8 @@ def grouped_matmul_tma_kernel(
                 strides=[ldc, 1],
                 block_shape=[BLOCK_M, BLOCK_N],
             )
-            while (
-                tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles
-            ):
+            loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
+            for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
                 tile_m_idx, tile_n_idx = grouped_launch(
                     tile_idx_in_gemm, gm, gn, BLOCK_M, BLOCK_N, GROUP_M
@@ -174,7 +176,7 @@ def grouped_matmul_tma_kernel(
                 for kk in range(0, tl.cdiv(gk, BLOCK_K)):
                     a = a_desc.load([offs_am, kk * BLOCK_K])
                     b = b_desc.load([kk * BLOCK_K, offs_bn])
-                    accumulator = tl.dot(a, b, acc=accumulator)
+                    accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
 
                 offs_cm = tile_m_idx * BLOCK_M
                 offs_cn = tile_n_idx * BLOCK_N
@@ -185,15 +187,15 @@ def grouped_matmul_tma_kernel(
                 c = accumulator.to(c_desc.dtype)
                 out_desc.store([offs_cm, offs_cn], c)
 
-                tile_idx += NUM_SM
+                tile_idx += total_grid
 
-        last_problem_end = last_problem_end + num_tiles
+        last_problem_end = current_problem_end
 
 
 @libentry()
 @libtuner(configs=get_autotune_config(), key=["M", "N", "K"])
 @triton.jit
-def grouped_matmul_kernel(
+def grouped_gemm_kernel(
     M,
     N,
     K,
@@ -204,7 +206,6 @@ def grouped_matmul_kernel(
     group_gemm_sizes,
     g_lds,
     group_size,
-    NUM_SM: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -213,6 +214,7 @@ def grouped_matmul_kernel(
     beta: tl.constexpr,
 ):
     tile_idx = tl.program_id(0)
+    total_grid = tl.num_programs(0)
     last_problem_end = 0
     for g in range(group_size):
         gm = tl.load(group_gemm_sizes + g * 3)
@@ -221,7 +223,8 @@ def grouped_matmul_kernel(
         num_m_tiles = tl.cdiv(gm, BLOCK_M)
         num_n_tiles = tl.cdiv(gn, BLOCK_N)
         num_tiles = num_m_tiles * num_n_tiles
-        if tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles:
+        current_problem_end = last_problem_end + num_tiles
+        if tile_idx >= last_problem_end and tile_idx < current_problem_end:
             lda = tl.load(g_lds + g * 3)
             ldb = tl.load(g_lds + g * 3 + 1)
             ldc = tl.load(g_lds + g * 3 + 2)
@@ -231,9 +234,8 @@ def grouped_matmul_kernel(
             c_ptr = tl.load(group_c_ptrs + g).to(tl.pointer_type(tl.bfloat16))
             out_ptr = tl.load(group_out_ptrs + g).to(tl.pointer_type(tl.bfloat16))
 
-            while (
-                tile_idx >= last_problem_end and tile_idx < last_problem_end + num_tiles
-            ):
+            loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
+            for _ in tl.range(loop_count):
                 tile_idx_in_gemm = tile_idx - last_problem_end
                 tile_m_idx, tile_n_idx = grouped_launch(
                     tile_idx_in_gemm, gm, gn, BLOCK_M, BLOCK_N, GROUP_M
@@ -263,7 +265,7 @@ def grouped_matmul_kernel(
                 for kk in range(0, tl.cdiv(gk, BLOCK_K)):
                     a = tl.load(a_ptrs, boundary_check=(0, 1))
                     b = tl.load(b_ptrs, boundary_check=(0, 1))
-                    accumulator = tl.dot(a, b, acc=accumulator)
+                    accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
                     a_ptrs = tl.advance(a_ptrs, (0, BLOCK_K))
                     b_ptrs = tl.advance(b_ptrs, (BLOCK_K, 0))
 
@@ -293,9 +295,9 @@ def grouped_matmul_kernel(
                 c = accumulator.to(c_ptrs.dtype.element_ty)
                 tl.store(out_ptrs, c, boundary_check=(0, 1))
 
-                tile_idx += NUM_SM
+                tile_idx += total_grid
 
-        last_problem_end = last_problem_end + num_tiles
+        last_problem_end = current_problem_end
 
 
 @libentry()
@@ -351,13 +353,11 @@ def grouped_mm_tma_kernel(
                 for k in tl.range(0, tl.cdiv(K, BLOCK_K)):
                     a = a_desc.load([offs_am, k * BLOCK_K])
                     b = b_desc.load([offs_bk + k * BLOCK_K, offs_bn])
-                    accumulator = tl.dot(a, b, acc=accumulator)
+                    accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
 
                 c = accumulator.to(c_desc.dtype)
 
-                TMA_condition = offs_am + BLOCK_M <= group_end
-
-                if TMA_condition:
+                if offs_am + BLOCK_M <= group_end:
                     c_desc.store([offs_am, offs_bn], c)
                 else:
                     offs_cm = offs_am + tl.arange(0, BLOCK_M)
@@ -374,8 +374,109 @@ def grouped_mm_tma_kernel(
         group_start = group_end
 
 
-def supports_tma():
-    return torch.cuda.get_device_capability()[0] >= 9
+@libentry()
+@libtuner(configs=get_autotune_config(), key=["M", "N", "K"])
+@triton.jit
+def grouped_mm_kernel(
+    A,
+    B,
+    C,
+    offs,
+    num_groups: tl.constexpr,
+    M,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    stride_am: tl.constexpr,
+    stride_ak: tl.constexpr,
+    stride_bk: tl.constexpr,
+    stride_bn: tl.constexpr,
+    stride_cm: tl.constexpr,
+    stride_cn: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    total_grid = tl.num_programs(axis=0)
+    tile_idx = tl.program_id(axis=0)
+    num_n_tiles = tl.cdiv(N, BLOCK_N)
+    last_problem_end = 0
+    group_start = 0
+    group_end = 0
+
+    for group_idx in tl.range(num_groups):
+        group_end = tl.load(offs + group_idx).to(tl.int32)
+        m = group_end - group_start
+        num_m_tiles = tl.cdiv(m, BLOCK_M)
+        num_tiles = num_m_tiles * num_n_tiles
+
+        current_problem_end = last_problem_end + num_tiles
+        if tile_idx >= last_problem_end and tile_idx < current_problem_end:
+            loop_count = (current_problem_end - tile_idx + total_grid - 1) // total_grid
+            for _ in tl.range(loop_count):
+                tile_idx_in_gemm = tile_idx - last_problem_end
+                tile_m_idx, tile_n_idx = grouped_launch(
+                    tile_idx_in_gemm, m, N, BLOCK_M, BLOCK_N, GROUP_M
+                )
+
+                offs_am = group_start + tile_m_idx * BLOCK_M
+                offs_bn = tile_n_idx * BLOCK_N
+                offs_bk = group_idx * K
+
+                a_block_ptr = tl.make_block_ptr(
+                    base=A,
+                    shape=(M, K),
+                    strides=(stride_am, stride_ak),
+                    offsets=(offs_am, 0),
+                    block_shape=(BLOCK_M, BLOCK_K),
+                    order=(1, 0),
+                )
+
+                b_block_ptr = tl.make_block_ptr(
+                    base=B,
+                    shape=(num_groups * K, N),
+                    strides=(stride_bk, stride_bn),
+                    offsets=(offs_bk, offs_bn),
+                    block_shape=(BLOCK_K, BLOCK_N),
+                    order=(1, 0),
+                )
+
+                accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+                for k in tl.range(0, tl.cdiv(K, BLOCK_K)):
+                    a = tl.load(a_block_ptr, boundary_check=(0, 1))
+                    b = tl.load(b_block_ptr, boundary_check=(0, 1))
+                    accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+
+                    a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_K))
+                    b_block_ptr = tl.advance(b_block_ptr, (BLOCK_K, 0))
+
+                c = accumulator.to(C.dtype.element_ty)
+
+                c_block_ptr = tl.make_block_ptr(
+                    base=C,
+                    shape=(M, N),
+                    strides=(stride_cm, stride_cn),
+                    offsets=(offs_am, offs_bn),
+                    block_shape=(BLOCK_M, BLOCK_N),
+                    order=(1, 0),
+                )
+
+                if offs_am + BLOCK_M <= group_end:
+                    tl.store(c_block_ptr, c, boundary_check=(0, 1))
+                else:
+                    offs_cm = offs_am + tl.arange(0, BLOCK_M)
+                    offs_cn = offs_bn + tl.arange(0, BLOCK_N)
+                    c_ptrs = (
+                        C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+                    )
+                    c_mask = (offs_cm[:, None] < group_end) & (offs_cn[None, :] < N)
+                    tl.store(c_ptrs, c, mask=c_mask)
+
+                tile_idx += total_grid
+
+        last_problem_end = current_problem_end
+        group_start = group_end
 
 
 def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
@@ -411,7 +512,6 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
     d_g_sizes = torch.tensor(group_sizes, dtype=torch.int32, device=group_A.device)
     d_g_lds = torch.tensor(group_lds, dtype=torch.int32, device=group_A.device)
     NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
-    grid = lambda META: (META["NUM_SM"],)
 
     if hasattr(tl, "make_tensor_descriptor") and supports_tma():
 
@@ -419,7 +519,7 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
             return torch.empty(size, device=group_A.device, dtype=torch.int8)
 
         triton.set_allocator(alloc_fn)
-        grouped_matmul_tma_kernel[grid](
+        grouped_gemm_tma_kernel[(NUM_SMS,)](
             M,
             N,
             K,
@@ -430,12 +530,11 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
             d_g_sizes,
             d_g_lds,
             group_size,
-            NUM_SM=NUM_SMS,
             alpha=alpha,
             beta=beta,
         )
     else:
-        grouped_matmul_kernel[grid](
+        grouped_gemm_kernel[(NUM_SMS,)](
             M,
             N,
             K,
@@ -446,7 +545,6 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
             d_g_sizes,
             d_g_lds,
             group_size,
-            NUM_SM=NUM_SMS,
             alpha=alpha,
             beta=beta,
         )
@@ -454,328 +552,57 @@ def group_gemm(group_A, group_B, group_C, offs_table, alpha=1, beta=0):
     return group_out
 
 
-def group_mm(
-    A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor, trans_b: bool = False
-) -> torch.Tensor:
+def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tensor:
     assert A.dim() == 2
     assert B.dim() == 3
     M, K = A.shape
-    if trans_b:
-        num_groups, N, BK = B.shape
-        strideBN, strideBK = B.stride(1), B.stride(2)
-    else:
-        num_groups, BK, N = B.shape
-        strideBK, strideBN = B.stride(1), B.stride(2)
+
+    num_groups, BK, N = B.shape
+    strideBK, strideBN = B.stride(1), B.stride(2)
 
     assert num_groups == offs.numel()
     NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
     C = A.new_empty(M, N)
-    dummy_block = [1, 1]
+    if hasattr(triton.tools.tensor_descriptor, "TensorDescriptor") and supports_tma():
+        dummy_block = [1, 1]
 
-    from triton.tools.tensor_descriptor import TensorDescriptor
+        from triton.tools.tensor_descriptor import TensorDescriptor
 
-    a_desc = TensorDescriptor(A, A.shape, A.stride(), dummy_block)
-    b_desc = TensorDescriptor(B, [num_groups * K, N], [strideBK, strideBN], dummy_block)
-    c_desc = TensorDescriptor(C, C.shape, C.stride(), dummy_block)
+        a_desc = TensorDescriptor(A, A.shape, A.stride(), dummy_block)
+        b_desc = TensorDescriptor(
+            B, [num_groups * K, N], [strideBK, strideBN], dummy_block
+        )
+        c_desc = TensorDescriptor(C, C.shape, C.stride(), dummy_block)
 
-    grouped_mm_tma_kernel[(NUM_SMS,)](
-        a_desc,
-        b_desc,
-        c_desc,
-        C,
-        offs,
-        num_groups,
-        M,
-        N,
-        K,
-        C.stride(0),
-        C.stride(1),
-    )
+        grouped_mm_tma_kernel[(NUM_SMS,)](
+            a_desc,
+            b_desc,
+            c_desc,
+            C,
+            offs,
+            num_groups,
+            M,
+            N,
+            K,
+            C.stride(0),
+            C.stride(1),
+        )
+    else:
+        grouped_mm_kernel[(NUM_SMS,)](
+            A,
+            B,
+            C,
+            offs,
+            num_groups,
+            M,
+            N,
+            K,
+            A.stride(0),
+            A.stride(1),
+            strideBK,
+            strideBN,
+            C.stride(0),
+            C.stride(1),
+        )
+
     return C
-
-
-@pytest.mark.parametrize(
-    "groups, N, K", [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
-)
-@pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_group_gemm_speedup(groups, N, K, dtype):
-    # yapf: disable
-    M = [
-        1, 2, 4, 8, 16, 24, 32, 40,
-        48, 56, 64, 72, 80, 88, 96, 104,
-        112, 120, 128, 136, 144, 152, 160, 168,
-        176, 184, 192, 200, 208, 216, 224, 232,
-        240, 248, 256, 272, 288, 304, 320, 336,
-        352, 368, 384, 400, 416, 432, 448, 464,
-        480, 496, 512
-    ]
-    group_A_list = []
-    group_B_list = []
-    group_C_list = []
-    offs_table = []
-    group_size = groups
-    A_offs = 0
-    B_offs = 0
-    C_offs = 0
-    alpha = 1
-    beta = 1
-    total_flops = 0
-
-    for i in range(group_size):
-        M_g = random.choice(M)
-        N_g = N
-        K_g = K
-        A_g = torch.rand([M_g, K_g], device="cuda", dtype=torch.bfloat16)
-        B_g = torch.rand([K_g, N_g], device="cuda", dtype=torch.bfloat16)
-        C_g = torch.rand([M_g, N_g], device="cuda", dtype=torch.bfloat16)
-        group_A_list.append(A_g)
-        group_B_list.append(B_g)
-        group_C_list.append(C_g)
-        offs_table.append([M_g, N_g, K_g, A_offs, B_offs, C_offs])
-        A_offs += M_g
-        B_offs += K_g
-        C_offs += M_g
-        total_flops += 2 * M_g * N_g * K_g
-
-    group_A = torch.cat([x for x in group_A_list], dim=0)
-    group_B = torch.cat([x for x in group_B_list], dim=0)
-    group_C = torch.cat([x for x in group_C_list], dim=0)
-
-    latency = triton.testing.do_bench(
-        lambda: group_gemm(group_A, group_B, group_C, offs_table, alpha, beta),
-        warmup=1000,
-        rep=100,
-        return_mode="median",
-    )
-
-    def torch_addmm_fn():
-        with flag_gems.use_gems():
-            return [
-                torch.addmm(
-                    group_C_list[i],
-                    group_A_list[i],
-                    group_B_list[i],
-                    alpha=alpha,
-                    beta=beta,
-                )
-                for i in range(group_size)
-            ]
-
-    latency_base = triton.testing.do_bench(
-        torch_addmm_fn, warmup=1000, rep=100, return_mode="median"
-    )
-    tflops = total_flops / latency / 1e12 * 1e3
-    speedup = latency_base / latency
-
-    latency_base_str = f"{latency_base:.6f}"
-    latency_str = f"{latency:.6f}"
-    speedup_str = f"{speedup:.3f}"
-    tflops_str = f"{tflops:.3f}"
-    col_names = [
-        f"{'Base Latency (ms)'}",
-        f"{'Gems Latency (ms)':>20}",
-        f"{'Gems Speedup':>20}",
-        f"{'TFLOPS':>20}",
-    ]
-    col_names_str = " ".join(col_names)
-    print("\n\n" + col_names_str)
-    header_break = "-" * len(col_names_str)
-    print(header_break)
-    print(
-        f"{latency_base_str:>15}",
-        f"{latency_str:>20}",
-        f"{speedup_str:>20}",
-        f"{tflops_str:>20}\n",
-    )
-
-
-@pytest.mark.parametrize(
-    "groups, N, K", [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
-)
-@pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_group_gemm_accuracy(groups, N, K, dtype):
-    # yapf: disable
-    M = [
-        1, 2, 4, 8, 16, 24, 32, 40,
-        48, 56, 64, 72, 80, 88, 96, 104,
-        112, 120, 128, 136, 144, 152, 160, 168,
-        176, 184, 192, 200, 208, 216, 224, 232,
-        240, 248, 256, 272, 288, 304, 320, 336,
-        352, 368, 384, 400, 416, 432, 448, 464,
-        480, 496, 512
-    ]
-    group_A_list = []
-    group_B_list = []
-    group_C_list = []
-    offs_table = []
-    group_size = groups
-    A_offs = 0
-    B_offs = 0
-    C_offs = 0
-    alpha = 1
-    beta = 1
-
-    for i in range(group_size):
-        M_g = random.choice(M)
-        N_g = N
-        K_g = K
-        A_g = torch.rand([M_g, K_g], device="cuda", dtype=torch.bfloat16)
-        B_g = torch.rand([K_g, N_g], device="cuda", dtype=torch.bfloat16)
-        C_g = torch.rand([M_g, N_g], device="cuda", dtype=torch.bfloat16)
-        group_A_list.append(A_g)
-        group_B_list.append(B_g)
-        group_C_list.append(C_g)
-        offs_table.append([M_g, N_g, K_g, A_offs, B_offs, C_offs])
-        A_offs += M_g
-        B_offs += K_g
-        C_offs += M_g
-
-    group_A = torch.cat([x for x in group_A_list], dim=0)
-    group_B = torch.cat([x for x in group_B_list], dim=0)
-    group_C = torch.cat([x for x in group_C_list], dim=0)
-
-    res = group_gemm(group_A, group_B, group_C, offs_table, alpha, beta)
-
-    with flag_gems.use_gems():
-        ref_out = [
-            torch.addmm(
-                group_C_list[i],
-                group_A_list[i],
-                group_B_list[i],
-                alpha=alpha,
-                beta=beta,
-            )
-            for i in range(group_size)
-        ]
-    ref = torch.cat([x for x in ref_out], dim=0)
-    assert torch.allclose(res, ref, atol=1e-2, rtol=0)
-
-
-@pytest.mark.parametrize(
-    "groups, N, K", [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
-)
-@pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_group_mm_speedup(groups, N, K, dtype):
-    group_A_list = []
-    group_B_list = []
-    group_C_list = []
-    offs_table = []
-    M_list = []
-    group_size = groups
-    A_offs = 0
-    B_offs = 0
-    C_offs = 0
-    total_flops = 0
-    for i in range(group_size):
-        M_g = random.randint(1, 16384)
-        N_g = N
-        K_g = K
-        A_g = torch.rand([M_g, K_g], device="cuda", dtype=torch.bfloat16)
-        B_g = torch.rand([K_g, N_g], device="cuda", dtype=torch.bfloat16)
-        C_g = torch.rand([M_g, N_g], device="cuda", dtype=torch.bfloat16)
-        group_A_list.append(A_g)
-        group_B_list.append(B_g)
-        group_C_list.append(C_g)
-        offs_table.append([M_g, N_g, K_g, A_offs, B_offs, C_offs])
-        M_list.append(M_g)
-        A_offs += M_g
-        B_offs += K_g
-        C_offs += M_g
-        total_flops += 2 * M_g * N_g * K_g
-
-    group_A = torch.cat([x for x in group_A_list], dim=0)
-
-    mat_a = group_A
-    mat_b = torch.stack([x for x in group_B_list], dim=0)
-    offs = torch.tensor(
-        [sum(M_list[: i + 1]) for i in range(group_size)],
-        dtype=torch.int32,
-        device="cuda",
-    )
-
-    latency_base = triton.testing.do_bench(
-        lambda: torch._grouped_mm(mat_a, mat_b, offs),
-        warmup=1000,
-        rep=100,
-        return_mode="median",
-    )
-
-    latency = triton.testing.do_bench(
-        lambda: group_mm(mat_a, mat_b, offs),
-        warmup=1000,
-        rep=100,
-        return_mode="median",
-    )
-
-    tflops = total_flops / latency / 1e12 * 1e3
-    speedup = latency_base / latency
-
-    latency_base_str = f"{latency_base:.6f}"
-    latency_str = f"{latency:.6f}"
-    speedup_str = f"{speedup:.3f}"
-    tflops_str = f"{tflops:.3f}"
-    col_names = [
-        f"{'Torch Latency (ms)'}",
-        f"{'Gems Latency (ms)':>20}",
-        f"{'Gems Speedup':>20}",
-        f"{'TFLOPS':>20}",
-    ]
-    col_names_str = " ".join(col_names)
-    print(f"\nTotal_M: {sum(M_list)}")
-    print("\n" + col_names_str)
-    header_break = "-" * len(col_names_str)
-    print(header_break)
-    print(
-        f"{latency_base_str:>15}",
-        f"{latency_str:>20}",
-        f"{speedup_str:>20}",
-        f"{tflops_str:>20}\n",
-    )
-
-
-@pytest.mark.parametrize(
-    "groups, N, K", [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
-)
-@pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_group_mm_accuracy(groups, N, K, dtype):
-    group_A_list = []
-    group_B_list = []
-    group_C_list = []
-    offs_table = []
-    M_list = []
-    group_size = groups
-    A_offs = 0
-    B_offs = 0
-    C_offs = 0
-
-    for i in range(group_size):
-        M_g = random.randint(1, 16384)
-        N_g = N
-        K_g = K
-        A_g = torch.rand([M_g, K_g], device="cuda", dtype=torch.bfloat16)
-        B_g = torch.rand([K_g, N_g], device="cuda", dtype=torch.bfloat16)
-        C_g = torch.rand([M_g, N_g], device="cuda", dtype=torch.bfloat16)
-        group_A_list.append(A_g)
-        group_B_list.append(B_g)
-        group_C_list.append(C_g)
-        M_list.append(M_g)
-        offs_table.append([M_g, N_g, K_g, A_offs, B_offs, C_offs])
-        A_offs += M_g
-        B_offs += K_g
-        C_offs += M_g
-
-    group_A = torch.cat([x for x in group_A_list], dim=0)
-
-    mat_a = group_A
-    mat_b = torch.stack([x for x in group_B_list], dim=0)
-    offs = torch.tensor(
-        [sum(M_list[: i + 1]) for i in range(group_size)],
-        dtype=torch.int32,
-        device="cuda",
-    )
-
-    ref = torch._grouped_mm(mat_a, mat_b, offs)
-    res = group_mm(mat_a, mat_b, offs)
-    print(ref)
-    print(res)
-    assert torch.allclose(res, ref, atol=1e-2, rtol=0)
