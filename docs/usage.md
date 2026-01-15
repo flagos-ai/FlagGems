@@ -1,10 +1,12 @@
 ## Usage
 
-FlagGems supports two common usage patterns: patching PyTorch ATen ops (recommended) and calling FlagGems ops explicitly.
+FlagGems supports two common usage patterns: patching PyTorch ATen ops (recommended)
+and calling FlagGems ops explicitly.
 
 ### (1) Enable FlagGems globally (patch ATen ops)
 
-After `flag_gems.enable()`, supported `torch.*` / `torch.nn.functional.*` calls will be dispatched to FlagGems implementations automatically.
+After `flag_gems.enable()`, supported `torch.*` / `torch.nn.functional.*` calls will be dispatched
+to FlagGems implementations automatically.
 
 ```python
 import torch
@@ -42,4 +44,4 @@ c = ops.mm(a, b)
 ```
 
 For more details and advanced options (disabling specific ops, runtime logging,e.g.), see
-[`how_to_use_flaggems`](docs/how_to_use_flaggems.md).
+[`how_to_use_flaggems`](./how_to_use_flaggems.md).
