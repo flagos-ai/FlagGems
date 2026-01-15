@@ -12,7 +12,7 @@ from flag_gems.experimental_ops.glu import glu as gems_glu
 from flag_gems.experimental_ops.glu import glu_out as gems_glu_out
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:

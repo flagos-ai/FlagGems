@@ -10,7 +10,7 @@ import flag_gems
 from flag_gems.experimental_ops.log1p_ import log1p_ as gems_log1p_
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:
