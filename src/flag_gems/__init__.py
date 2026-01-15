@@ -378,9 +378,7 @@ def only_enable(
     path=None,
 ):
     if include is None:
-        warnings.warn(
-            "only_enable failed: No include parameter."
-        )
+        warnings.warn("only_enable failed: No include parameter.")
         return
 
     include_ops = set(include)
@@ -407,7 +405,7 @@ def only_enable(
             "only_enable failed: No op to register. Check if include is correct."
         )
         return
-    
+
     current_work_registrar = registrar(
         tuple(include_config),
         user_unused_ops_list=[],

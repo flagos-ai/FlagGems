@@ -9,23 +9,23 @@ import flag_gems
 
 
 def get_path_log_name():
-    '''
+    """
     When using flag_gems.use_gems(record=True, path=path_file) multiple times on the same file, modifying path_file has no effect.
     Log reads and writes all point to the first created log file.
     This phenomenon is related to the filehandler of the logging system.
     The current solution is to clear the current test log content after reading it.
-    '''
+    """
     return "./gems_enable_test.log"
 
 
 def save_log_file(ori_log, sv_log):
     if os.path.exists(ori_log):
-        with open(ori_log, 'rb') as f_in:
+        with open(ori_log, "rb") as f_in:
             content = f_in.read()
 
-        content = content.lstrip(b'\x00')
+        content = content.lstrip(b"\x00")
 
-        with open(sv_log, 'wb') as f_out:
+        with open(sv_log, "wb") as f_out:
             f_out.write(content)
 
 
@@ -60,7 +60,7 @@ def test_enable():
     save_log_file(path_file, log_file)
 
     assert os.path.exists(log_file), f"Log file {log_file} not found"
-    with open(log_file, 'r') as f:
+    with open(log_file, "r") as f:
         log_content = f.read()
 
     pattern = r"flag_gems\.ops\.(\w+):"
@@ -81,13 +81,13 @@ def test_enable_with_exclude(exclude_op):
         _ = a * b
         _ = flag_gems.sum(a)
         _ = torch.sum(a)
-  
+
     op_names_str = ops_list_to_str(exclude_op)
     log_file = f"./gems_enable_without_{op_names_str}.log"
     save_log_file(path_file, log_file)
 
     assert os.path.exists(log_file), f"Log file {log_file} not found"
-    with open(log_file, 'r') as f:
+    with open(log_file, "r") as f:
         log_content = f.read()
 
     pattern = r"flag_gems\.ops\.(\w+):"
@@ -113,10 +113,12 @@ def test_only_enable(include_op):
     save_log_file(path_file, log_file)
 
     assert os.path.exists(log_file), f"Log file {log_file} not found"
-    with open(log_file, 'r') as f:
+    with open(log_file, "r") as f:
         log_content = f.read()
 
     pattern = r"flag_gems\.ops\.(\w+):"
     found_ops = set(re.findall(pattern, log_content))
     for op in found_ops:
-        assert op in include_op, f"Found unexpected op '{op}' in log file. Allowed op: {include_op}"
+        assert (
+            op in include_op
+        ), f"Found unexpected op '{op}' in log file. Allowed op: {include_op}"
