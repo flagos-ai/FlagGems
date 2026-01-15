@@ -703,6 +703,63 @@ def test_accuracy_elu_backward(shape, dtype, is_result):
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    negative_slope = torch.rand(1).item() * 0.1  # Random slope between 0 and 0.1
+
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope)
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.leaky_relu_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    negative_slope = torch.rand(1).item() * 0.1
+
+    res_inp = inp.clone().to(flag_gems.device)
+    inp_clone = inp.clone()
+    ref_inp = to_reference(inp_clone, True)
+    torch.nn.functional.leaky_relu_(ref_inp, negative_slope)
+
+    with flag_gems.use_gems():
+        torch.nn.functional.leaky_relu_(res_inp, negative_slope)
+
+    gems_assert_close(res_inp, ref_inp, dtype)
+
+
+@pytest.mark.leaky_relu_backward
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_backward(shape, dtype):
+    negative_slope = torch.rand(1).item() * 0.1
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad_out = torch.randn_like(res_inp)
+
+    ref_inp = to_reference(res_inp, True)
+    ref_grad_out = to_reference(res_grad_out, True)
+
+    ref_in_grad = torch.ops.aten.leaky_relu_backward(
+        ref_grad_out, ref_inp, negative_slope, False
+    )
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.leaky_relu_backward(
+            res_grad_out, res_inp, negative_slope, False
+        )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 @pytest.mark.celu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
