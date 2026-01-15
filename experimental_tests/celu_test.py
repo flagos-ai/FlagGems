@@ -10,11 +10,11 @@ import flag_gems
 from flag_gems.experimental_ops.celu import celu as gems_celu
 from flag_gems.experimental_ops.celu import celu_out as gems_celu_out
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:

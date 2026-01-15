@@ -16,7 +16,7 @@ from flag_gems.experimental_ops.soft_margin_loss import (
 )
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from benchmark.performance_utils import GenericBenchmark
     from tests.accuracy_utils import TO_CPU, gems_assert_close

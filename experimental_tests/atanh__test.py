@@ -10,7 +10,7 @@ import flag_gems
 from flag_gems.experimental_ops.atanh_ import atanh_ as gems_atanh_
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:

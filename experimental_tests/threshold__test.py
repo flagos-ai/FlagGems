@@ -12,11 +12,11 @@ from flag_gems.experimental_ops.threshold_ import (  # noqa: E402
     threshold_ as gems_threshold_,
 )
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:

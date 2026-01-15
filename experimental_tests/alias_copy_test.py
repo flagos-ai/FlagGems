@@ -12,7 +12,7 @@ from flag_gems.experimental_ops.alias_copy import alias_copy as gems_alias_copy
 from flag_gems.experimental_ops.alias_copy import alias_copy_out as gems_alias_copy_out
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:

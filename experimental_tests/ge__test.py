@@ -11,7 +11,7 @@ from flag_gems.experimental_ops.ge_ import ge__Scalar as gems_ge__Scalar
 from flag_gems.experimental_ops.ge_ import ge__Tensor as gems_ge__Tensor
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:

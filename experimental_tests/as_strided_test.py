@@ -11,7 +11,7 @@ import flag_gems
 from flag_gems.experimental_ops.as_strided import as_strided as gems_as_strided
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:

@@ -12,7 +12,7 @@ from flag_gems.experimental_ops.amin import amin as gems_amin
 from flag_gems.experimental_ops.amin import amin_out as gems_amin_out
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:

@@ -12,7 +12,7 @@ from flag_gems.experimental_ops.frac import frac as gems_frac  # noqa: E402
 from flag_gems.experimental_ops.frac import frac_out as gems_frac_out  # noqa: E402
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
 except ImportError:
