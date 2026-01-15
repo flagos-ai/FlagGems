@@ -65,6 +65,7 @@ forward_operations = [
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     # Trigonometric operations
     ("cos", torch.cos, FLOAT_DTYPES),
+    ("cosh", torch.cosh, FLOAT_DTYPES),
     ("sin", torch.sin, FLOAT_DTYPES),
     ("tan", torch.tan, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
@@ -120,6 +121,7 @@ forward_inplace_operations = [
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
     # Trigonometric operations
     ("cos_", torch.cos_, FLOAT_DTYPES),
+    ("cosh_", torch.cosh_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
     ("tan_", torch.tan_, FLOAT_DTYPES),
     ("tanh_", torch.tanh_, FLOAT_DTYPES),
