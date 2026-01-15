@@ -24,8 +24,13 @@ except ImportError:
     TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
+        # Simple fallback comparison aligned with flag_gems.testing.assert_close
+        from flag_gems.testing import assert_close as fg_assert_close  # noqa: E402
+
+        kwargs = dict(kwargs)
+        reduce_dim = kwargs.pop("reduce_dim", 1)
+        equal_nan = kwargs.pop("equal_nan", False)
+        fg_assert_close(res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim)
 
 
 def to_reference(inp, upcast=False):
@@ -55,13 +60,20 @@ def test_hinge_embedding_loss_defaults(shape, dtype):
     ref_self = to_reference(self_tensor)
     ref_target = to_reference(target_tensor)
 
+    # Use higher-precision reference for bfloat16, then cast back
+    if dtype == torch.bfloat16:
+        ref_self = ref_self.float()
+        ref_target = ref_target.float()
+
     ref_out = torch.ops.aten.hinge_embedding_loss(ref_self, ref_target)
+
+    if dtype == torch.bfloat16:
+        ref_out = ref_out.to(dtype)
 
     with flag_gems.use_gems():
         act_out = gems_hinge_embedding_loss(self_tensor, target_tensor)
 
-    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
-    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
+    gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
 @pytest.mark.hinge_embedding_loss
@@ -78,17 +90,24 @@ def test_hinge_embedding_loss_fullargs(shape, dtype, margin, reduction):
     ref_self = to_reference(self_tensor)
     ref_target = to_reference(target_tensor)
 
+    # Use higher-precision reference for bfloat16, then cast back
+    if dtype == torch.bfloat16:
+        ref_self = ref_self.float()
+        ref_target = ref_target.float()
+
     ref_out = torch.ops.aten.hinge_embedding_loss(
         ref_self, ref_target, float(margin), int(reduction)
     )
+
+    if dtype == torch.bfloat16:
+        ref_out = ref_out.to(dtype)
 
     with flag_gems.use_gems():
         act_out = gems_hinge_embedding_loss(
             self_tensor, target_tensor, float(margin), int(reduction)
         )
 
-    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
-    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
+    gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
 @pytest.mark.hinge_embedding_loss
