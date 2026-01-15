@@ -27,6 +27,7 @@ runtime.replace_customized_ops(globals())
 def torch_ge(v):
     return version.parse(torch.__version__) >= version.parse(v)
 
+
 _FULL_CONFIG = (
     ("_flash_attention_forward", flash_attention_forward),
     ("_log_softmax", log_softmax),
@@ -349,6 +350,7 @@ _FULL_CONFIG = (
     ("zeros_like", zeros_like),
 )
 
+
 def enable(
     lib=aten_lib,
     unused=None,
@@ -366,6 +368,7 @@ def enable(
     )
     setup_flaggems_logging(path=path, record=record, once=once)
 
+
 def only_enable(
     lib=aten_lib,
     include=None,
@@ -375,7 +378,9 @@ def only_enable(
     path=None,
 ):
     if include is None:
-        warnings.warn(f"only_enable failed: No include parameter.")
+        warnings.warn(
+            "only_enable failed: No include parameter."
+        )
         return
 
     include_ops = set(include)
@@ -386,7 +391,7 @@ def only_enable(
         op_name = config_item[0]
 
         func = config_item[1]
-        func_name = func.__name__ if hasattr(func, '__name__') else str(func)
+        func_name = func.__name__ if hasattr(func, "__name__") else str(func)
         if func_name not in include_ops:
             continue
 
@@ -398,7 +403,9 @@ def only_enable(
         include_config.append((op_name, config_item[1]))
 
     if not include_config:
-        warnings.warn(f"only_enable failed: No op to register. Check if include is correct.")
+        warnings.warn(
+            "only_enable failed: No op to register. Check if include is correct."
+        )
         return
     
     current_work_registrar = registrar(
@@ -415,6 +422,7 @@ class use_gems:
     The 'include' parameter has higher priority than 'exclude'.
     When 'include' is not None, use_gems will not process 'exclude'.
     """
+
     def __init__(self, exclude=None, include=None, record=False, once=False, path=None):
         self.lib = torch.library.Library("aten", "IMPL")
         self.exclude = exclude if isinstance(exclude, list) else []
