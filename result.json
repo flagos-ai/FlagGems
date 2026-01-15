@@ -1,0 +1,57 @@
+{
+    "tests/test_blas_ops.py::test_accuracy_w8a8_block_fp8_matmul[128-256-512]": {
+        "params": {
+            "M": 128,
+            "N": 256,
+            "K": 512
+        },
+        "result": "passed",
+        "opname": [
+            "w8a8_block_fp8_matmul"
+        ]
+    },
+    "tests/test_blas_ops.py::test_accuracy_w8a8_block_fp8_matmul[64-128-128]": {
+        "params": {
+            "M": 64,
+            "N": 128,
+            "K": 128
+        },
+        "result": "passed",
+        "opname": [
+            "w8a8_block_fp8_matmul"
+        ]
+    },
+    "tests/test_blas_ops.py::test_accuracy_w8a8_block_fp8_matmul[256-256-256]": {
+        "params": {
+            "M": 256,
+            "N": 256,
+            "K": 256
+        },
+        "result": "passed",
+        "opname": [
+            "w8a8_block_fp8_matmul"
+        ]
+    },
+    "tests/test_blas_ops.py::test_accuracy_w8a8_block_fp8_matmul[83-7748-3884]": {
+        "params": {
+            "M": 83,
+            "N": 7748,
+            "K": 3884
+        },
+        "result": "passed",
+        "opname": [
+            "w8a8_block_fp8_matmul"
+        ]
+    },
+    "tests/test_blas_ops.py::test_accuracy_w8a8_block_fp8_matmul[84-7168-3884]": {
+        "params": {
+            "M": 84,
+            "N": 7168,
+            "K": 3884
+        },
+        "result": "passed",
+        "opname": [
+            "w8a8_block_fp8_matmul"
+        ]
+    }
+}

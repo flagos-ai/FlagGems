@@ -351,6 +351,7 @@ def enable(
             ("var_mean.correction", var_mean),
             ("vdot", vdot),
             ("vstack", vstack),
+            ("w8a8_block_fp8_matmul", w8a8_block_fp8_matmul),
             ("where.ScalarOther", where_scalar_other),
             ("where.ScalarSelf", where_scalar_self),
             ("where.self", where_self),
