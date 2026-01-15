@@ -129,7 +129,6 @@ def moe_align_block_size_kernel(
         off_c = (pid + 1) * num_experts
         
         for i in range(tokens_per_thread):
-            # i: [0:1:320)
             if start_idx_0 + i < numel:
                 idx = tl.load(topk_ids_ptr + start_idx_0 + i)
                 token_cnt_0 = tl.load(tokens_cnts_ptr + off_c + idx)
@@ -139,15 +138,13 @@ def moe_align_block_size_kernel(
 
     # tl.debug_barrier()  # --------------------------------------------------------------------------
 
-    stage1 = False
-    while not stage1:
-        if tl.load(sync_point_ptr_0) >= num_experts:
-            tl.device_print(" ")
-            stage1 = True
+    stage1 = True
+    while stage1:
+        if tl.load(sync_point_ptr_0, volatile=True, cache_modifier=".cv") >= num_experts:
+            stage1 = False
 
             last_cnt = 0
             for i in range(1, num_experts + 1):
-                # i: [1:1:512]
                 token_cnt_1 = tl.load(tokens_cnts_ptr + i * num_experts + pid)
                 last_cnt = last_cnt + token_cnt_1
                 tl.store(tokens_cnts_ptr + i * num_experts + pid, last_cnt)
@@ -156,16 +153,14 @@ def moe_align_block_size_kernel(
 
     # tl.debug_barrier()  # --------------------------------------------------------------------------
 
-    stage2 = False
-    while not stage2:
-        if tl.load(sync_point_ptr_1) >= num_experts:
-            tl.device_print(" ")
-            stage2 = True
+    stage2 = True
+    while stage2:
+        if tl.load(sync_point_ptr_1, volatile=True, cache_modifier=".cv") >= num_experts:
+            stage2 = False
 
             last_cumsum = 0
             off_cnt = num_experts * num_experts
             for i in range(1, num_experts + 1):
-                # i: [1:1:512]
                 token_cnt_2 = tl.load(tokens_cnts_ptr + off_cnt + i - 1)
                 last_cumsum = last_cumsum + tl.cdiv(token_cnt_2, block_size) * block_size
                 tl.store(cumsum_ptr + i, last_cumsum)
@@ -175,11 +170,10 @@ def moe_align_block_size_kernel(
 
     # tl.debug_barrier()  # --------------------------------------------------------------------------
 
-    stage3 = False
-    while not stage3:
-        if tl.load(sync_point_ptr_2) >= num_experts:
-            tl.device_print(" ")
-            stage3 = True
+    stage3 = True
+    while stage3:
+        if tl.load(sync_point_ptr_2, volatile=True, cache_modifier=".cv") >= num_experts:
+            stage3 = False
 
             start_idx_1 = tl.load(cumsum_ptr + pid)
             end_idx = tl.load(cumsum_ptr + pid + 1)
@@ -250,6 +244,7 @@ def moe_align_block_size_triton(
         sync_point_1,
         sync_point_2,
     )
+    # torch.cuda.synchronize()
     # print("after:")
     # print(f"sync_point_0:{sync_point_0}")
     # print(f"sync_point_1:{sync_point_1}")

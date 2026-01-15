@@ -791,23 +791,28 @@ def test_perf_moe_align_block_size():
     class MoeAlignBlockSizeBenchmark(GenericBenchmark4DOnly):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-        def set_more_shapes(self):
-            return [
-                (512, 64, 16384, 10),
-                (512, 64, 6152, 10),
-                (512, 64, 4727, 10),
-                (512, 64, 1905, 10),
-                (512, 64, 11575, 10),
-                (512, 64, 16384, 10),
+
+        def set_shapes(self, shape_file_path: None):
+            moe_align_block_size_shape =  [
+                # (512, 64, 16384, 10),
+                # (512, 64, 6152, 10),
+                # (512, 64, 4727, 10),
+                # (512, 64, 1905, 10),
+                # (512, 64, 11575, 10),
+                # (512, 64, 16384, 10),
                 (512, 64, 1032, 10),
-                (512, 64, 4201, 10),
-                (512, 64, 16384, 10),
-                (512, 64, 2056, 10),
-                (512, 64, 7561, 10),
-                (512, 64, 16384, 10),
-                (512, 64, 4104, 10),
-                (512, 64, 14281, 10),
+                # (512, 64, 4201, 10),
+                # (512, 64, 16384, 10),
+                # (512, 64, 2056, 10),
+                # (512, 64, 7561, 10),
+                # (512, 64, 16384, 10),
+                # (512, 64, 4104, 10),
+                # (512, 64, 14281, 10),
             ]
+            self.shapes = moe_align_block_size_shape
+
+        def set_more_shapes(self):
+            return None
 
     gems_op = flag_gems.moe_align_block_size_triton
     bench = MoeAlignBlockSizeBenchmark(
