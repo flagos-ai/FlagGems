@@ -29,6 +29,9 @@ def save_log_file(ori_log, sv_log):
         with open(sv_log, "wb") as f_out:
             f_out.write(content)
 
+        with open(ori_log, "wb") as f_ori:
+            f_ori.truncate(0)
+
 
 def cleanup_log_file():
     path_file = get_path_log_name()
