@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 # import triton.experimental.tle.language.gpu as tle
-import triton.experimental.tle.language as tle
+import triton.language.extra.tlx as tlx
 
 
 # # shared_memory
@@ -22,6 +22,12 @@ def ceil_div(a, b):
 
 def round_up(x: int, y: int) -> int:
     return ((x + y - 1) // y) * y
+
+
+def next_power_of_2(x: int) -> int:
+    if x <= 0:
+        return 1
+    return 1 << (x - 1).bit_length()
 
 
 @triton.jit(do_not_specialize=["numel", "tokens_per_thread"])
@@ -111,6 +117,10 @@ def moe_align_block_size_kernel(
     tokens_cnts_ptr,
     num_experts: tl.constexpr, # 512
     numel: tl.constexpr, # 163840
+    numel_sorted_token_ids: tl.constexpr,
+    numel_expert_ids: tl.constexpr,
+    block_size_sorted: tl.constexpr,
+    block_size_expert: tl.constexpr,
     tokens_per_thread, # (163840 + 512 - 1) // 512 = 320
     cumsum_ptr,
     block_size: tl.constexpr, # 64
@@ -123,18 +133,27 @@ def moe_align_block_size_kernel(
 ):
     pid = tl.program_id(0)
 
-    if True:
-        start_idx_0 = pid * tokens_per_thread
+    offsets_sorted = pid * block_size_sorted + tl.arange(0, block_size_sorted)
+    offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
+    mask_sorted = offsets_sorted < numel_sorted_token_ids
+    mask_expert = offsets_expert < numel_expert_ids
+    tl.store(sorted_token_ids_ptr + offsets_sorted, numel, mask=mask_sorted)
+    tl.store(expert_ids_ptr + offsets_expert, 0, mask=mask_expert)
 
-        off_c = (pid + 1) * num_experts
+    # tl.debug_barrier()  # --------------------------------------------------------------------------
+
+
+    start_idx_0 = pid * tokens_per_thread
+
+    off_c = (pid + 1) * num_experts
         
-        for i in range(tokens_per_thread):
-            if start_idx_0 + i < numel:
-                idx = tl.load(topk_ids_ptr + start_idx_0 + i)
-                token_cnt_0 = tl.load(tokens_cnts_ptr + off_c + idx)
-                tl.store(tokens_cnts_ptr + off_c + idx, token_cnt_0 + 1)
-            if i == tokens_per_thread - 1:
-                tl.atomic_add(sync_point_ptr_0, 1, sem="acq_rel", scope="sys")
+    for i in range(tokens_per_thread):
+        if start_idx_0 + i < numel:
+            idx = tl.load(topk_ids_ptr + start_idx_0 + i)
+            token_cnt_0 = tl.load(tokens_cnts_ptr + off_c + idx)
+            tl.store(tokens_cnts_ptr + off_c + idx, token_cnt_0 + 1)
+        if i == tokens_per_thread - 1:
+            tl.atomic_add(sync_point_ptr_0, 1, sem="acq_rel", scope="sys")
 
     # tl.debug_barrier()  # --------------------------------------------------------------------------
 
@@ -172,6 +191,7 @@ def moe_align_block_size_kernel(
 
     stage3 = True
     while stage3:
+        # tl.device_print("sync_point_ptr_2", tl.load(sync_point_ptr_2, volatile=True, cache_modifier=".cv"))
         if tl.load(sync_point_ptr_2, volatile=True, cache_modifier=".cv") >= num_experts:
             stage3 = False
 
@@ -201,10 +221,12 @@ def moe_align_block_size_triton(
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
     numel = topk_ids.numel()
+    numel_sorted_token_ids = expert_ids.numel()
+    numel_expert_ids = expert_ids.numel()
     # The tensor needs to be padded before calculating IDs,
     # to prevent out-of-bounds address access.
-    sorted_token_ids.fill_(numel)
-    expert_ids.fill_(0)
+    # sorted_token_ids.fill_(numel)
+    # expert_ids.fill_(0)
 
     grid = (num_experts,)
     tokens_cnts = torch.zeros(
@@ -223,6 +245,9 @@ def moe_align_block_size_triton(
         (1,), dtype=torch.int32, device=topk_ids.device
     )
 
+    block_size_sorted = next_power_of_2(ceil_div(numel, num_experts))
+    block_size_expert = next_power_of_2(ceil_div(numel_expert_ids, num_experts))
+
     # print(f"\n")
     # print("before:")
     # print(f"sync_point_0:{sync_point_0}")
@@ -234,6 +259,10 @@ def moe_align_block_size_triton(
         tokens_cnts,
         num_experts,
         numel,
+        numel_sorted_token_ids,
+        numel_expert_ids,
+        block_size_sorted,
+        block_size_expert,
         tokens_per_thread,
         cumsum,
         block_size,

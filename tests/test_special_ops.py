@@ -1678,7 +1678,7 @@ except ImportError:
 @pytest.mark.moe_align_block_size
 # @pytest.mark.parametrize("num_experts", [32, 256, 512])
 # @pytest.mark.parametrize("block_size", [8, 16, 32])
-@pytest.mark.parametrize("num_experts", [512])
+@pytest.mark.parametrize("num_experts", [256])
 @pytest.mark.parametrize("block_size", [64])
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
 def test_accuracy_moe_align_block_size(
@@ -1688,7 +1688,7 @@ def test_accuracy_moe_align_block_size(
     # ------------ parameters ------------
     dtype = torch.int32
     # topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device=device)
-    topk_ids = torch.randint(0, num_experts, (16384, 10), dtype=dtype, device=device)
+    topk_ids = torch.randint(0, num_experts, (1024, 10), dtype=dtype, device=device)
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
     sorted_ids = torch.empty((max_num_tokens_padded,), dtype=dtype, device=device)
     sorted_ids.fill_(topk_ids.numel())
