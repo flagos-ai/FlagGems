@@ -11,6 +11,9 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+# Reuse the namedtuple type across calls (avoid recreating it inside median_dim).
+Median_out = namedtuple("median", ["values", "indices"])
+
 
 @triton.jit
 def _radix_convert(v, elem_ty: tl.constexpr):
@@ -280,5 +283,4 @@ def median_dim(inp, dim=-1, keepdim=False):
         out_value = out_value.squeeze(dim)
         out_index = out_index.squeeze(dim)
 
-    Median_out = namedtuple("median", ["values", "indices"])
     return Median_out(values=out_value, indices=out_index)
