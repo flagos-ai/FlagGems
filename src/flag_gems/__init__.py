@@ -11,6 +11,7 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
+from flag_gems.ops.median import median_dim
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
@@ -233,6 +234,7 @@ def enable(
             ("max_pool2d_backward", max_pool2d_backward),
             ("mean", mean),
             ("mean.dim", mean_dim),
+            ("median.dim", median_dim),
             ("min", min),
             ("min.dim", min_dim),
             ("minimum", minimum),

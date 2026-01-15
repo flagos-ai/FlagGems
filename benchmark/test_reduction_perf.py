@@ -132,6 +132,16 @@ def cumsum_input_fn(shape, cur_dtype, device):
     yield inp, 1
 
 
+def median_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    dim = -1 if inp.ndim > 1 else 0
+    yield inp, dim
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        if inp.ndim > 1:
+            yield inp, 0
+            yield inp, dim, {"keepdim": True}
+
+
 def mse_loss_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     target = generate_tensor_input(shape, cur_dtype, device)
@@ -200,6 +210,13 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             mse_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.mse_loss,
+        ),
+        pytest.param(
+            "median",
+            torch.median,
+            median_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.median,
         ),
     ],
 )
