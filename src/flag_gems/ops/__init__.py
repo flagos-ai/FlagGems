@@ -118,6 +118,7 @@ from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
+from flag_gems.ops.logsumexp import logsumexp, logsumexp_backward
 from flag_gems.ops.logical_and import logical_and
 from flag_gems.ops.logical_not import logical_not
 from flag_gems.ops.logical_or import logical_or
@@ -386,6 +387,8 @@ __all__ = [
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
+    "logsumexp",
+    "logsumexp_backward",
     "logical_and",
     "logical_not",
     "logical_or",
