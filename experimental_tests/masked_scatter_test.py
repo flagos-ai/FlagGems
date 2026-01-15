@@ -15,7 +15,7 @@ from flag_gems.experimental_ops.masked_scatter import (
 )
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 try:

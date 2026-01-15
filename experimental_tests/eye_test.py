@@ -13,7 +13,7 @@ from flag_gems.experimental_ops.eye import eye_m_out as gems_eye_m_out
 from flag_gems.experimental_ops.eye import eye_out as gems_eye_out
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
