@@ -10,7 +10,8 @@ import flag_gems
 
 def get_path_log_name():
     """
-    When using flag_gems.use_gems(record=True, path=path_file) multiple times on the same file, modifying path_file has no effect.
+    When using flag_gems.use_gems(record=True, path=path_file) multiple times on the same file,
+    modifying path_file has no effect.
     Log reads and writes all point to the first created log file.
     This phenomenon is related to the filehandler of the logging system.
     The current solution is to clear the current test log content after reading it.
