@@ -11,7 +11,7 @@ import flag_gems  # noqa: E402
 from flag_gems.experimental_ops.reshape import reshape as gems_reshape  # noqa: E402
 
 # Add parent directory to path to import flag_gems
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 try:
     from tests.accuracy_utils import TO_CPU, gems_assert_close
 except ImportError:
