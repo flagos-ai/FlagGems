@@ -35,56 +35,86 @@ jobs:
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
           conda activate flag_gems
           source tools/run_command.sh
-          BASE_SHA=$(git rev-parse HEAD~1)
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-              BASE_SHA=${{ github.event.pull_request.base.sha }}
-          fi
           HEAD_SHA=${{ github.sha }}
-
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA=${{ github.event.pull_request.base.sha }}
+          else
+            BASE_SHA=${{ github.event.before }}
+          fi
           echo "Diffing $BASE_SHA...$HEAD_SHA"
 
-          changed_files=$(git diff --name-only $BASE_SHA...$HEAD_SHA || true)
-          tests_to_run=""
-          missing_tests=""
+          changed_files=$(git diff --name-only --diff-filter=AM $BASE_SHA...$HEAD_SHA || true)
+          if [[ -z "$changed_files" ]]; then
+            echo "No changed files detected, skipping."
+            exit 0
+          fi
+
+          functional_tests_to_run=""
+          performance_tests_to_run=""
+          functional_missing_tests=""
+          performance_missing_tests=""
 
           for f in $changed_files; do
               if [[ $f == src/flag_gems/experimental_ops/*.py ]]; then
                   if [[ $(basename "$f") == __*__* ]]; then continue; fi
 
                   base=$(basename "$f" .py)
-                  test_file="experimental_tests/${base}_test.py"
-                  accuracy_test_file="experimental_tests/${base}_accuracy_test.py"
-                  speedup_test_file="experimental_tests/${base}_speedup_test.py"
-                  if [[ -f "$test_file" ]]; then
-                      tests_to_run="$tests_to_run $test_file"
-                  elif [[ -f "$accuracy_test_file" ]]; then
-                      tests_to_run="$tests_to_run $accuracy_test_file"
-                  elif [[ -f "$speedup_test_file" ]]; then
-                      tests_to_run="$tests_to_run $speedup_test_file"
+                  functional_test_file="experimental_tests/functional/${base}_test.py"
+                  if [[ -f "$functional_test_file" ]]; then
+                      functional_tests_to_run="$functional_tests_to_run $functional_test_file"
                   else
-                      missing_tests="$missing_tests $test_file"
+                      functional_missing_tests="$functional_missing_tests $functional_test_file"
                   fi
 
-              elif [[ $f == experimental_tests/*_test.py ]]; then
+                  performance_test_file="experimental_tests/performance/${base}_test.py"
+                  if [[ -f "$performance_test_file" ]]; then
+                      performance_tests_to_run="$performance_tests_to_run $performance_test_file"
+                  else
+                      performance_missing_tests="$performance_missing_tests $performance_test_file"
+                  fi
+
+              elif [[ $f == experimental_tests/functional/*_test.py ]]; then
                   if [[ -f "$f" ]]; then
-                      tests_to_run="$tests_to_run $f"
+                      functional_tests_to_run="$functional_tests_to_run $f"
+                  fi
+              elif [[ $f == experimental_tests/performance/*_test.py ]]; then
+                  if [[ -f "$f" ]]; then
+                      performance_tests_to_run="$performance_tests_to_run $f"
                   fi
               fi
+
           done
 
-          if [[ -n "$missing_tests" ]]; then
-              echo "Error: The following operator files were modified, but their corresponding test files are missing:"
-              for m in $missing_tests; do
+          if [[ -n "$functional_missing_tests" ]]; then
+              echo "::error:: The following operator files were modified, but their corresponding functional test files are missing:"
+              for m in $functional_missing_tests; do
                   echo "  - Expected: $m"
               done
               exit 1
           fi
 
-          unique_tests=$(echo "$tests_to_run" | tr ' ' '\n' | sort -u | xargs)
+          if [[ -n "$performance_missing_tests" ]]; then
+              echo "::error:: The following operator files were modified, but their corresponding performance test files are missing:"
+              for m in $performance_missing_tests; do
+                  echo "  - Expected: $m"
+              done
+              exit 1
+          fi
 
-          if [[ -n "$unique_tests" ]]; then
-              echo "Running tests: $unique_tests"
-              run_command pytest -s $unique_tests
+          functional_unique_tests=$(echo "$functional_tests_to_run" | tr ' ' '\n' | sort -u | xargs)
+
+          if [[ -n "$functional_unique_tests" ]]; then
+              echo "Running tests: $functional_unique_tests"
+              run_command pytest -s $functional_unique_tests
+          else
+              echo "No relevant changes in ops or tests, skipping."
+          fi
+
+          performance_unique_tests=$(echo "$performance_tests_to_run" | tr ' ' '\n' | sort -u | xargs)
+
+          if [[ -n "$performance_unique_tests" ]]; then
+              echo "Running tests: $performance_unique_tests"
+              run_command pytest -s $performance_unique_tests
           else
               echo "No relevant changes in ops or tests, skipping."
           fi
