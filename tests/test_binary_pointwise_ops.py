@@ -1057,6 +1057,83 @@ def test_accuracy_le_scalar(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp(shape, dtype):
+    """Test logaddexp with random inputs across various shapes and dtypes"""
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_special_values(dtype):
+    """Test logaddexp with special values: inf, -inf, nan, zeros, and edge cases"""
+
+    test_cases = [
+        # Basic cases
+        ([0.0, 0.0], [0.0, 0.0]),  # zeros
+        ([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]),  # equal values (should give x + log(2))
+        # Infinity cases
+        ([float("inf"), 1.0], [1.0, float("inf")]),  # one +inf
+        ([float("inf"), float("inf")], [float("inf"), float("inf")]),  # both +inf
+        (
+            [float("-inf"), 1.0],
+            [1.0, float("-inf")],
+        ),  # one -inf (should give finite result)
+        ([float("-inf"), float("-inf")], [float("-inf"), float("-inf")]),  # both -inf
+        ([float("inf"), float("-inf")], [float("-inf"), float("inf")]),  # mixed inf
+        # NaN cases
+        ([float("nan"), 1.0], [1.0, float("nan")]),  # one nan
+        ([float("nan"), float("nan")], [float("nan"), float("nan")]),  # both nan
+        # Large magnitude differences
+        ([100.0, -100.0], [-100.0, 100.0]),  # extreme difference (exp(-200) ≈ 0)
+        # Edge cases for numerical stability
+        ([1e10, 1e-10], [1e-10, 1e10]),  # very different magnitudes
+    ]
+
+    for a_vals, b_vals in test_cases:
+        inp1 = torch.tensor(a_vals, dtype=dtype, device=flag_gems.device)
+        inp2 = torch.tensor(b_vals, dtype=dtype, device=flag_gems.device)
+
+        ref_inp1 = to_reference(inp1, True)
+        ref_inp2 = to_reference(inp2, True)
+
+        ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(inp1, inp2)
+
+        gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_broadcast(dtype):
+    """Test broadcasting compatibility"""
+
+    inp1 = torch.randn(5, 1, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(1, 10, dtype=dtype, device=flag_gems.device)
+
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.lt
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
