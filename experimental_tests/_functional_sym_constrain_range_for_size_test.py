@@ -7,8 +7,11 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.experimental_ops._functional_sym_constrain_range_for_size import (
-    _functional_sym_constrain_range_for_size as gems__functional_sym_constrain_range_for_size,
+from flag_gems.experimental_ops import _functional_sym_constrain_range_for_size
+
+# Use the module attribute to get the function to avoid a very long import line
+gems__functional_sym_constrain_range_for_size = (
+    _functional_sym_constrain_range_for_size._functional_sym_constrain_range_for_size
 )
 
 # Add parent directory to path to import flag_gems

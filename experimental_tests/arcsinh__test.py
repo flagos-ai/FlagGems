@@ -19,8 +19,13 @@ except ImportError:
     TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
+        # Simple fallback comparison aligned with flag_gems.testing.assert_close
+        from flag_gems.testing import assert_close as fg_assert_close  # noqa: E402
+
+        kwargs = dict(kwargs)
+        reduce_dim = kwargs.pop("reduce_dim", 1)
+        equal_nan = kwargs.pop("equal_nan", False)
+        fg_assert_close(res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim)
 
 
 def to_reference(inp, upcast=False):
