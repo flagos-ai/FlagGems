@@ -19,38 +19,42 @@ if [[ -z "$changed_files" ]]; then
 fi
 
 # 3. Categorize Tests
-functional_tests_to_run=""
+unit_tests_to_run=""
 performance_tests_to_run=""
-functional_missing_tests=""
+unit_missing_tests=""
 performance_missing_tests=""
+
+source_dir="${source_dir:-src/flag_gems/experimental_ops}"
+unit_test_dir="${unit_test_dir:-experimental_tests/unit}"
+performance_test_dir="${performance_test_dir:-experimental_tests/performance}"
 
 for f in $changed_files; do
     # Logic for files in experimental_ops
-    if [[ $f == src/flag_gems/experimental_ops/*.py ]]; then
+    if [[ $f == "$source_dir"/*.py ]]; then
         if [[ $(basename "$f") == __*__* ]]; then continue; fi
 
         base=$(basename "$f" .py)
 
-        # Check Functional
-        func_file="experimental_tests/functional/${base}_test.py"
-        [[ -f "$func_file" ]] && functional_tests_to_run+=" $func_file" || functional_missing_tests+=" $func_file"
+        # Check Unit Test
+        unit_test_file="$unit_test_dir/${base}_test.py"
+        [[ -f "$unit_test_file" ]] && unit_tests_to_run+=" $unit_test_file" || unit_missing_tests+=" $unit_test_file"
 
-        # Check Performance
-        perf_file="experimental_tests/performance/${base}_test.py"
-        [[ -f "$perf_file" ]] && performance_tests_to_run+=" $perf_file" || performance_missing_tests+=" $perf_file"
+        # Check Performance Test
+        performance_test_file="$performance_test_dir/${base}_test.py"
+        [[ -f "$performance_test_file" ]] && performance_tests_to_run+=" $performance_test_file" || performance_missing_tests+=" $performance_test_file"
 
     # Logic for direct test file changes
-    elif [[ $f == experimental_tests/functional/*_test.py && -f "$f" ]]; then
-        functional_tests_to_run+=" $f"
-    elif [[ $f == experimental_tests/performance/*_test.py && -f "$f" ]]; then
+    elif [[ $f == "$unit_test_dir"/*_test.py && -f "$f" ]]; then
+        unit_tests_to_run+=" $f"
+    elif [[ $f == "$performance_test_dir"/*_test.py && -f "$f" ]]; then
         performance_tests_to_run+=" $f"
     fi
 done
 
 # 4. Error Handling for Missing Tests
-if [[ -n "$functional_missing_tests" || -n "$performance_missing_tests" ]]; then
+if [[ -n "$unit_missing_tests" || -n "$performance_missing_tests" ]]; then
     echo "::error:: Modified operators are missing required test files."
-    [[ -n "$functional_missing_tests" ]] && echo "Missing Functional: $functional_missing_tests"
+    [[ -n "$unit_missing_tests" ]] && echo "Missing Unit: $unit_missing_tests"
     [[ -n "$performance_missing_tests" ]] && echo "Missing Performance: $performance_missing_tests"
     exit 1
 fi
@@ -68,5 +72,5 @@ run_pytest_group() {
     fi
 }
 
-run_pytest_group "Functional" "$functional_tests_to_run"
+run_pytest_group "Unit" "$unit_tests_to_run"
 run_pytest_group "Performance" "$performance_tests_to_run"
