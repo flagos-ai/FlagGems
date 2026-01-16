@@ -8,7 +8,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 
-from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
+from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, MAX_GRID_SIZE_X
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -70,24 +70,27 @@ def sum_kernel(
         cdtype = tl.int32
     else:
         cdtype = inp.dtype.element_ty
+    prog_num = tl.num_programs(0).to(tl.uint64)
+    sub_pid = tl.program_id(0).to(tl.uint64)
+    task_num = tl.cdiv(M, BLOCK_M).to(tl.uint64)
+    while sub_pid < task_num:
+        # Map the program id to the row of inp it should compute.
+        pid = sub_pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        inp_ = inp + pid * N
+        out_ = out + pid
+        row_mask = pid < M
 
-    # Map the program id to the row of inp it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + pid * N
-    out = out + pid
-    row_mask = pid < M
+        _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
-
-        a = tl.load(inp + cols, mask, other=0).to(cdtype)
-        _sum += a
-    sum = tl.sum(_sum, axis=1)[:, None]
-    tl.store(out, sum, row_mask)
-
+            a = tl.load(inp_ + cols, mask, other=0).to(cdtype)
+            _sum += a
+        sum = tl.sum(_sum, axis=1)[:, None]
+        tl.store(out_, sum, row_mask)
+        sub_pid += prog_num
 
 def sum(inp, *, dtype=None):
     logger.debug("GEMS_CAMBRICON SUM")
@@ -147,7 +150,8 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), MAX_GRID_SIZE_X
+                             // 4), )
     with torch_device_fn.device(inp.device):
         sum_kernel[grid](inp, out, M, N)
     if not keepdim:
@@ -178,7 +182,8 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
         shape[i] = 1
     M = inp.numel() // N
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), MAX_GRID_SIZE_X
+                             // 4), )
     with torch_device_fn.device(inp.device):
         sum_kernel[grid](inp, out, M, N)
     if not keepdim:
