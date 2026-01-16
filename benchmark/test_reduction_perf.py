@@ -226,7 +226,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
 def test_nll_loss2d_benchmark():
     bench = GenericBenchmark4DOnly(
         input_fn=nll_loss_input_fn,
-        op_name="nll_loss",
+        op_name="nll_loss2d",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=FLOAT_DTYPES,
     )
