@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-from flag_gems.ops.copy import copy
+from flag_gems.ops.copy import copy_
 
 logger = logging.getLogger(__name__)
 
@@ -13,4 +13,4 @@ def contiguous(inp, memory_format=torch.contiguous_format):
     if inp.is_contiguous(memory_format=memory_format):
         return inp
     out = torch.empty_like(inp, memory_format=memory_format)
-    return copy(inp, out0=out)
+    return copy_(out, inp)
