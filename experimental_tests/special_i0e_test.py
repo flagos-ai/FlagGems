@@ -25,8 +25,13 @@ except ImportError:
     TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
+        # Simple fallback comparison aligned with flag_gems.testing.assert_close
+        from flag_gems.testing import assert_close as fg_assert_close  # noqa: E402
+
+        kwargs = dict(kwargs)
+        reduce_dim = kwargs.pop("reduce_dim", 1)
+        equal_nan = kwargs.pop("equal_nan", False)
+        fg_assert_close(res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim)
 
 
 def to_reference(inp, upcast=False):
@@ -50,11 +55,13 @@ def to_reference(inp, upcast=False):
 def test_special_i0e_tensor(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
-    ref_out = torch.ops.aten.special_i0e(ref_x)
+    if dtype in (torch.float16, torch.bfloat16):
+        ref_out = torch.ops.aten.special_i0e(ref_x.float()).to(dtype)
+    else:
+        ref_out = torch.ops.aten.special_i0e(ref_x)
     with flag_gems.use_gems():
         act_out = gems_special_i0e(x)
-    atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
-    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
+    gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
 @pytest.mark.special_i0e
@@ -63,14 +70,19 @@ def test_special_i0e_tensor(shape, dtype):
 def test_special_i0e_out(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
-    out_ref = torch.empty_like(ref_x)
-    ref_out = torch.ops.aten.special_i0e.out(ref_x, out=out_ref)
+    if dtype in (torch.float16, torch.bfloat16):
+        out_ref = torch.empty_like(ref_x, dtype=torch.float32)
+        ref_out = torch.ops.aten.special_i0e.out(ref_x.float(), out=out_ref)
+        out_ref = out_ref.to(dtype)
+        ref_out = out_ref
+    else:
+        out_ref = torch.empty_like(ref_x)
+        ref_out = torch.ops.aten.special_i0e.out(ref_x, out=out_ref)
     out_act = torch.empty_like(x)
     with flag_gems.use_gems():
         act_out = gems_special_i0e_out(x, out_act)
-    atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
-    gems_assert_close(act_out, ref_out, dtype=dtype, atol=atol)
-    gems_assert_close(out_act, out_ref, dtype=dtype, atol=atol)
+    gems_assert_close(act_out, ref_out, dtype=dtype)
+    gems_assert_close(out_act, out_ref, dtype=dtype)
 
 
 @pytest.mark.special_i0e

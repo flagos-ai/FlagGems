@@ -8,6 +8,7 @@ import triton
 
 import flag_gems
 from flag_gems.experimental_ops.relu import relu as gems_relu
+from flag_gems.testing import assert_close as fg_assert_close
 
 
 def relu(input: torch.Tensor) -> torch.Tensor:
@@ -44,10 +45,10 @@ def test_relu_accuracy(shape, dtype):
     # cast to reference dtype if necessary
     ref_input = input.cpu()
 
-    ref_out = relu(ref_input)
-    res_out = gems_relu(input)
+    ref_out = relu(ref_input).to(dtype)
+    res_out = gems_relu(input).cpu()
 
-    torch.testing.assert_close(res_out.cpu(), ref_out, rtol=1e-3, atol=1e-3)
+    fg_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.relu

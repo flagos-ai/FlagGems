@@ -514,6 +514,8 @@ class KernelGenerator:
 
                 # number of tasks, used to compute mask
                 code.writeline("num_tasks,")
+                if self.config.prefer_block_pointer:
+                    code.writeline("FALLBACK_BPTR: tl.constexpr,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
@@ -574,6 +576,9 @@ class KernelGenerator:
 
                 # number of tasks, used to compute mask
                 code.writeline("num_tasks: int,")
+
+                if self.config.prefer_block_pointer:
+                    code.writeline("FALLBACK_BPTR: tl.constexpr,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
@@ -644,72 +649,155 @@ class KernelGenerator:
 
         # cta_offsets
         code.writeline("# tile offsets")
-        for i in range(ndim):
-            # Or else: AssertionError: Block pointers only support 32 bit
-            # `offsets/block_shape`, add a `.to(tl.int32)` or use regular indexing
-            # for 64 bit support
-            code.writeline(f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)")
 
-        # loads
-        code.writeline("# loads")
-        for i in range(schema.num_input_tensors()):
-            strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
-            order = _tuple_content(tuple(f"in{i}_stride_order{j}" for j in range(ndim)))
+        # Because block pointer only support `tl.int32` indexing, when max offsets
+        # of ptrs exceeding 2^31, we should fallback it to noraml indexing method.
+        code.writeline("if not FALLBACK_BPTR:")
+        with code.indent():
+            for i in range(ndim):
+                # Or else: AssertionError: Block pointers only support 32 bit
+                # `offsets/block_shape`, add a `.to(tl.int32)` or use regular indexing
+                # for 64 bit support
+                code.writeline(f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)")
 
-            for j in range(ndim):
-                code.writeline(f"if in{i}_zero_stride{j}:")
-                with code.indent():
-                    code.writeline(f"in{i}_stride{j} = 0")
+            # loads
+            code.writeline("# loads")
+            for i in range(schema.num_input_tensors()):
+                strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
+                order = _tuple_content(
+                    tuple(f"in{i}_stride_order{j}" for j in range(ndim))
+                )
 
+                for j in range(ndim):
+                    code.writeline(f"if in{i}_zero_stride{j}:")
+                    with code.indent():
+                        code.writeline(f"in{i}_stride{j} = 0")
+
+                code.writeline(
+                    f"in{i}_bptr = tl.make_block_ptr("
+                    f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                )
+
+                code.writeline(
+                    f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
+                )
+            code.newline()
+
+            # compute
+            # TODO: sepearate this part
+            inputs_to_scalar_fn = [
+                self.input_name(i) for i in range(schema.num_inputs())
+            ]
+            outputs_to_scalar_fn = [
+                self.output_name(i) for i in range(schema.num_output_tensors())
+            ]
+            inputs_to_scalar_fn = _cs(inputs_to_scalar_fn)
+            outputs_to_scalar_fn = _cs(outputs_to_scalar_fn)
+
+            code.writeline("# compute")
             code.writeline(
-                f"in{i}_bptr = tl.make_block_ptr("
-                f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                f"{outputs_to_scalar_fn} = {self.fn_name}({inputs_to_scalar_fn})"
             )
+            code.newline()
 
+            # stores
+            for i in range(schema.num_output_tensors()):
+                strides = _tuple_content(
+                    tuple(f"out{i}_stride{j}" for j in range(ndim))
+                )
+                order = _tuple_content(
+                    tuple(f"out{i}_stride_order{j}" for j in range(ndim))
+                )
+
+                for j in range(ndim):
+                    code.writeline(f"if out{i}_zero_stride{j}:")
+                    with code.indent():
+                        code.writeline(f"out{i}_stride{j} = 0")
+
+                code.writeline(
+                    f"out{i}_bptr = tl.make_block_ptr("
+                    f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
+                )
+
+                code.writeline(
+                    f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
+                )
+        code.writeline("else:")
+        with code.indent():
+            # offsets
+            for i in range(ndim):
+                code.writeline(
+                    f"offsets{i} = tile_id{i} * tile_size{i} + tl.arange(0, tile_size{i})"
+                )
+
+            # masks
+            for i in range(ndim):
+                code.writeline(f"mask{i} = offsets{i} < s{i}")
+            masks = tuple(f"mask{i}{_broadcast_vec(i, ndim)}" for i in range(ndim))
+            mask_combine = " & ".join(masks)
+            code.writeline(f"mask = {mask_combine}")
+
+            # loads
+            code.writeline("# loads")
+            for i in range(schema.num_input_tensors()):
+                strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
+                order = _tuple_content(
+                    tuple(f"in{i}_stride_order{j}" for j in range(ndim))
+                )
+
+                for j in range(ndim):
+                    code.writeline(f"if in{i}_zero_stride{j}:")
+                    with code.indent():
+                        code.writeline(f"in{i}_stride{j} = 0")
+                offsets = tuple(
+                    f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
+                    for j in range(ndim)
+                )
+                offset_combine = " + ".join(offsets)
+                code.writeline(
+                    f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                )
+
+            code.newline()
+
+            # compute
+            inputs_to_scalar_fn = [
+                self.input_name(i) for i in range(schema.num_inputs())
+            ]
+            outputs_to_scalar_fn = [
+                self.output_name(i) for i in range(schema.num_output_tensors())
+            ]
+            inputs_to_scalar_fn = _cs(inputs_to_scalar_fn)
+            outputs_to_scalar_fn = _cs(outputs_to_scalar_fn)
+
+            code.writeline("# compute")
             code.writeline(
-                f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
-                "# workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)"
+                f"{outputs_to_scalar_fn} = {self.fn_name}({inputs_to_scalar_fn})"
             )
-        code.newline()
+            code.newline()
 
-        # compute
-        # TODO: sepearate this part
-        inputs_to_scalar_fn = [self.input_name(i) for i in range(schema.num_inputs())]
-        outputs_to_scalar_fn = [
-            self.output_name(i) for i in range(schema.num_output_tensors())
-        ]
-        inputs_to_scalar_fn = _cs(inputs_to_scalar_fn)
-        outputs_to_scalar_fn = _cs(outputs_to_scalar_fn)
+            # store
+            for i in range(schema.num_output_tensors()):
+                strides = _tuple_content(
+                    tuple(f"out{i}_stride{j}" for j in range(ndim))
+                )
+                order = _tuple_content(
+                    tuple(f"out{i}_stride_order{j}" for j in range(ndim))
+                )
 
-        code.writeline("# compute")
-        code.writeline(
-            f"{outputs_to_scalar_fn} = {self.fn_name}({inputs_to_scalar_fn})"
-        )
-        code.newline()
+                for j in range(ndim):
+                    code.writeline(f"if out{i}_zero_stride{j}:")
+                    with code.indent():
+                        code.writeline(f"out{i}_stride{j} = 0")
 
-        # stores
-        code.writeline(
-            "# stores, note that store to block pointer does not automatically cast the value to the pointer's dtype"
-        )
-        for i in range(schema.num_output_tensors()):
-            strides = _tuple_content(tuple(f"out{i}_stride{j}" for j in range(ndim)))
-            order = _tuple_content(
-                tuple(f"out{i}_stride_order{j}" for j in range(ndim))
-            )
-
-            for j in range(ndim):
-                code.writeline(f"if out{i}_zero_stride{j}:")
-                with code.indent():
-                    code.writeline(f"out{i}_stride{j} = 0")
-
-            code.writeline(
-                f"out{i}_bptr = tl.make_block_ptr("
-                f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
-            )
-
-            code.writeline(
-                f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
-            )
+                offsets = tuple(
+                    f"offsets{j}{_broadcast_vec(j, ndim)} * out{i}_stride{j}"
+                    for j in range(ndim)
+                )
+                offset_combine = " + ".join(offsets)
+                code.writeline(
+                    f"in{i} = tl.store(out{i}_ptr + {offset_combine}, out{i}, mask=mask)"
+                )
 
     def gen_body_gsl_with_bptr(self, code):
         code.writeline("num_ctas = tle.num_programs(0)")
@@ -1027,6 +1115,23 @@ class WrapperGenerator:
         check: str = " == ".join(params)
         code.writeline(f"assert {check}, 'operand shapes mismatch'")
 
+    def gen_fallback_bptr(self, code: IndentedBuffer):
+        code.writeline("def fallback_bptr(t):")
+        with code.indent():
+            code.writeline("ndim = t.dim()")
+            code.writeline("sizes = t.size()")
+            code.writeline("if t.numel() == 0:")
+            with code.indent():
+                code.writeline("return False")
+            code.writeline("for i in range(ndim):")
+            with code.indent():
+                code.writeline("if sizes[i] >= 2147483648:")
+                with code.indent():
+                    code.writeline("return True")
+            code.writeline("return False")
+            code.newline()
+            code.newline()
+
     def gen_task_partition(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
         ndim = self.ndim
@@ -1053,6 +1158,21 @@ class WrapperGenerator:
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
+            if self.config.prefer_block_pointer:
+                code.writeline("FALLBACK_BPTR = False")
+                inputs = ",".join(
+                    [f"in{i}" for i in range(self.fx.num_input_tensors())]
+                )
+                outputs = ",".join(
+                    [f"out{i}" for i in range(self.fx.num_output_tensors())]
+                )
+                code.writeline(f"all_tensors = [{inputs}, {outputs}]")
+                code.writeline("for t in all_tensors:")
+                with code.indent():
+                    code.writeline("if fallback_bptr(t):")
+                    with code.indent():
+                        code.writeline("FALLBACK_BPTR = True")
+                        code.writeline("break")
         if ndim > 0 and ndim <= 4:
             max_grid_size0 = self.config.max_grid_size[0]
             dynamic_num_tiles = " * ".join(
@@ -1088,6 +1208,21 @@ class WrapperGenerator:
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
+            if self.config.prefer_block_pointer:
+                code.writeline("FALLBACK_BPTR = False")
+                inputs = ",".join(
+                    [f"in{i}" for i in range(self.fx.num_input_tensors())]
+                )
+                outputs = ",".join(
+                    [f"out{i}" for i in range(self.fx.num_output_tensors())]
+                )
+                code.writeline(f"all_tensors = [{inputs}, {outputs}]")
+                code.writeline("for t in all_tensors:")
+                with code.indent():
+                    code.writeline("if fallback_bptr(t):")
+                    with code.indent():
+                        code.writeline("FALLBACK_BPTR = True")
+                        code.writeline("break")
         code.writeline("grid = (num_ctas, 1, 1)")
 
     def gen_kernel_launch(
@@ -1173,6 +1308,8 @@ class WrapperGenerator:
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
+                    if self.config.prefer_block_pointer:
+                        code.writeline("FALLBACK_BPTR=FALLBACK_BPTR,")
                     if ndim > 4:
                         code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     if ndim == 0 or ndim > 4:
@@ -1223,6 +1360,8 @@ class WrapperGenerator:
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
+                    if self.config.prefer_block_pointer:
+                        code.writeline("FALLBACK_BPTR=FALLBACK_BPTR,")
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     code.writeline("tile_size=tile_size,")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
@@ -1234,6 +1373,8 @@ class WrapperGenerator:
         code.writeline(f"return {return_exprs}")
 
     def codegen_nd_tile(self, code):
+        if self.config.prefer_block_pointer:
+            self.gen_fallback_bptr(code)
         self.gen_signature(code)
 
         with code.indent():
@@ -1246,6 +1387,8 @@ class WrapperGenerator:
         return code
 
     def codegen_1d_tile(self, code):
+        if self.config.prefer_block_pointer:
+            self.gen_fallback_bptr(code)
         self.gen_signature(code)
 
         with code.indent():
