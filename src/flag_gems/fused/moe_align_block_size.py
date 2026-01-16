@@ -5,12 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-
-# # shared_memory
-# aaa = tl.load(tokens_cnts_ptr + off_c)
-# tle.gpu.memory_space(aaa, "shared_memory")
-# tl.debug_barrier()
-
 logger = logging.getLogger(__name__)
 
 
