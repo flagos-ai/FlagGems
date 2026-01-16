@@ -182,8 +182,8 @@ def max_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # set offset
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
+    pid_m = tl.program_id(0).to(tl.int64)
+    pid_k = tl.program_id(1).to(tl.int64)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     result_value = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
     result_index = tl.zeros([BLOCK_M], dtype=tl.int64)

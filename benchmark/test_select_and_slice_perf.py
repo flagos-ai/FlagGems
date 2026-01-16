@@ -326,7 +326,7 @@ def test_perf_gather_backward():
         torch_op=torch.gather,
         input_fn=gather_input_fn,
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float32],
+        dtypes=[torch.float32, torch.float16],
         is_backward=True,
     )
     bench.run()

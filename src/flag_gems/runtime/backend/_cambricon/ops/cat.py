@@ -267,7 +267,10 @@ def cat(
 
     # Check shapes and zero element tensors.
     device = tensors[0].device
-    dtype = tensors[0].dtype
+    dtypes = [t.dtype for t in tensors]
+    dtype = dtypes[0]
+    for ty in dtypes[1:]:
+        dtype = torch.promote_types(dtype, ty)
     shape = tensors[0].shape
     valid_tensors = []
 
@@ -278,15 +281,13 @@ def cat(
         assert (
             tensor.device == device
         ), f"Requires same device of inputs, but got {device} and {tensor.device}"
-        assert (
-            tensor.dtype == dtype
-        ), f"Requires same dtype of inputs, but got {dtype} and {tensor.dtype}"
-        if tensor.numel() != 0:
-            valid_tensors.append(tensor.contiguous())
         for d_idx, (size, base_size) in enumerate(zip(tensor.shape, shape)):
             assert (
                 dim == d_idx or size == base_size
             ), f"Requires same dim sizes of dim {d_idx}, but got {size} and {base_size}"
+        if tensor.numel() != 0:
+            tensor = tensor.contiguous()
+            valid_tensors.append(tensor.to(dtype) if tensor.dtype != dtype else tensor)
 
     tensor_num = len(valid_tensors)
 
