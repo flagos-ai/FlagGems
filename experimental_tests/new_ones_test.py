@@ -85,7 +85,9 @@ def test_perf_aten_new_ones():
         inp1 = torch.randn(
             shape, dtype=torch.float32, device=flag_gems.device
         )  # self_tensor
-        yield inp1, shape  # yield inputs as required by the operator (size as position, dtype as keyword)
+        # yield inputs as required by the operator (size as position,
+        # dtype as keyword)
+        yield inp1, shape
 
     # Create a wrapper function to handle dtype as keyword argument
     def new_ones_wrapper(self_tensor, size):

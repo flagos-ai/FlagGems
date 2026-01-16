@@ -19,8 +19,13 @@ except ImportError:
     TO_CPU = False  # fallback
 
     def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
+        # Simple fallback comparison aligned with flag_gems.testing.assert_close
+        from flag_gems.testing import assert_close as fg_assert_close  # noqa: E402
+
+        kwargs = dict(kwargs)
+        reduce_dim = kwargs.pop("reduce_dim", 1)
+        equal_nan = kwargs.pop("equal_nan", False)
+        fg_assert_close(res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim)
 
 
 def to_reference(inp):
@@ -49,15 +54,19 @@ def test__safe_softmax_tensor(shape, in_dtype, dim, dtype_arg_sel):
 
     ref_x = to_reference(x)
 
-    ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=dtype_arg)
+    # Use higher-precision reference for low-precision outputs, then cast back
+    if dtype_arg in (torch.float16, torch.bfloat16):
+        ref_x = ref_x.float()
+        ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=torch.float32)
+        ref_out = ref_out.to(dtype_arg)
+    else:
+        ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=dtype_arg)
 
     with flag_gems.use_gems():
         act_out = gems__safe_softmax(x, dim, dtype=dtype_arg)
 
     expected_dtype = dtype_arg if dtype_arg is not None else in_dtype
-    # Match master tolerance: relax for float16 to cover rounding differences
-    atol = 5e-4 if expected_dtype == torch.float16 else 1e-4
-    gems_assert_close(act_out, ref_out, dtype=expected_dtype, atol=atol)
+    gems_assert_close(act_out, ref_out, dtype=expected_dtype)
 
 
 @pytest.mark.safe_softmax
