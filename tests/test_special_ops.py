@@ -1688,7 +1688,6 @@ def test_accuracy_moe_align_block_size(
     topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device=device)
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
     sorted_ids = torch.empty((max_num_tokens_padded,), dtype=dtype, device=device)
-    sorted_ids.fill_(topk_ids.numel())
     max_num_m_blocks = max_num_tokens_padded // block_size
     expert_ids = torch.empty((max_num_m_blocks,), dtype=dtype, device=device)
     num_tokens_post_pad = torch.empty(1, dtype=dtype, device=device)

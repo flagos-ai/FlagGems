@@ -39,10 +39,11 @@ def moe_align_block_size_stage1(
     pid = tl.program_id(0)
 
     offsets_sorted = pid * block_size_sorted + tl.arange(0, block_size_sorted)
-    offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
     mask_sorted = offsets_sorted < numel_sorted_token_ids
-    mask_expert = offsets_expert < numel_expert_ids
     tl.store(sorted_token_ids_ptr + offsets_sorted, numel, mask=mask_sorted)
+
+    offsets_expert = pid * block_size_expert + tl.arange(0, block_size_expert)
+    mask_expert = offsets_expert < numel_expert_ids
     tl.store(expert_ids_ptr + offsets_expert, 0, mask=mask_expert)
 
     start_idx = pid * tokens_per_thread
@@ -126,7 +127,7 @@ def moe_align_block_size_triton(
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
     numel = topk_ids.numel()
-    numel_sorted_token_ids = expert_ids.numel()
+    numel_sorted_token_ids = sorted_token_ids.numel()
     numel_expert_ids = expert_ids.numel()
     # The tensor needs to be padded before calculating IDs,
     # to prevent out-of-bounds address access.
@@ -138,7 +139,7 @@ def moe_align_block_size_triton(
     cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device=topk_ids.device)
     tokens_per_thread = ceil_div(numel, num_experts)
 
-    block_size_sorted = next_power_of_2(ceil_div(numel, num_experts))
+    block_size_sorted = next_power_of_2(ceil_div(numel_sorted_token_ids, num_experts))
     block_size_expert = next_power_of_2(ceil_div(numel_expert_ids, num_experts))
 
     moe_align_block_size_stage1[grid](
