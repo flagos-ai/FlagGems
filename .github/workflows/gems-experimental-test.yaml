@@ -38,4 +38,4 @@ jobs:
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
           conda activate flag_gems
           source tools/run_command.sh
-          bash tools/run_experimental_tests.sh
+          bash tools/experimental-op-test.sh
