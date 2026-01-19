@@ -24,7 +24,7 @@ on:
       - docs/**
       - src/flag_gems/ops/**
       - src/flag_gems/experimental_ops/**
-      - src/flag_gems/fused/**  
+      - src/flag_gems/fused/**
       - experimental_tests/**
       - tests/**
   workflow_dispatch:
