@@ -33,13 +33,6 @@ def heur_group_m(args):
     generate_configs="mm",
     key=["M", "N", "K"],
 )
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128}),
-    ],
-    generate_configs="mm",
-    key=["M", "N", "K"],
-)
 @triton.heuristics(
     {
         "SPLIT_K": heur_split_k,
