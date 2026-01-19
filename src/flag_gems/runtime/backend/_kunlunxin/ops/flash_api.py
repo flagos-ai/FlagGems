@@ -18,7 +18,7 @@ from .flash_kernel import (
     flash_varlen_fwd_kernel,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 _debug = False
 
 

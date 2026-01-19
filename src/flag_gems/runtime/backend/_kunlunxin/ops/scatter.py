@@ -13,7 +13,7 @@ from flag_gems.utils.shape_utils import (
     restride_dim,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:

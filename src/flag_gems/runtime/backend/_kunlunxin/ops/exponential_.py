@@ -12,7 +12,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 # def heur_block(args):
 #     if args["N"] <= 512:
 #         return 512

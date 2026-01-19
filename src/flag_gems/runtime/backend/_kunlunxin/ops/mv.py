@@ -12,7 +12,7 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .mm import mm
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def heur_block_n(args):
