@@ -7,16 +7,26 @@ on:
     branches:
       - master
     paths-ignore:
+      # we don't need smoke test for document change
+      # we don't need smoke test for specific operator
+      # so far test folder don't have unit test? just operator test
       - docs/**
       - src/flag_gems/ops/**
       - src/flag_gems/experimental_ops/**
+      - src/flag_gems/fused/**
+      - experimental_tests/**
+      - tests/**
   pull_request:
     branches:
       - master
     paths-ignore:
+      # keep same with push
       - docs/**
       - src/flag_gems/ops/**
       - src/flag_gems/experimental_ops/**
+      - src/flag_gems/fused/**  
+      - experimental_tests/**
+      - tests/**
   workflow_dispatch:
     inputs:
       push_images:
