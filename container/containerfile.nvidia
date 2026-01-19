@@ -9,5 +9,5 @@ COPY . /workspace/FlagGems
 WORKDIR /workspace/FlagGems
 
 # build
-RUN pip install -r flag_tree_requirements/requirements_nvidia.txt
-RUN pip install --no-build-isolation .
+RUN pip install -r flag_tree_requirements/requirements_nvidia.txt --break-system-packages
+RUN pip install --no-build-isolation . --break-system-packages
