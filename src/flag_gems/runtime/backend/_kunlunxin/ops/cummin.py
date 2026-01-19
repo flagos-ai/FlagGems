@@ -18,7 +18,7 @@ CumminResult = namedtuple("CumminResult", ["values", "indices"])
 
 Tensor = torch.Tensor
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @triton.jit
