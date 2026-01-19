@@ -164,9 +164,9 @@ UnaryReductionBenchmark:
 UnaryPointwiseBenchmark:
   shapes:
     # - [1073741824,]  # 1024 * 1024 * 1024
-    # - [64, 64]
+    - [64, 64]
     - [4096, 4096]
-    # - [64, 512, 512]
+    - [64, 512, 512]
     # - [1024, 1024, 1024]
   shape_desc: "(B), M, N"
 
