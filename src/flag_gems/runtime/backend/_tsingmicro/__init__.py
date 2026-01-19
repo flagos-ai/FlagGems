@@ -4,7 +4,7 @@ vendor_info = VendorInfoBase(
     vendor_name="tsingmicro", 
     device_name="txda", 
     device_query_cmd="tsm_smi", 
-    dispatch_key="PrivateUse1"
+    dispatch_key="PrivateUse1",
 )
 
 CUSTOMIZED_UNUSED_OPS = ()
