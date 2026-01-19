@@ -18,6 +18,8 @@ from .div import (
     true_divide,
     true_divide_,
 )
+from .exponential_ import exponential_
+from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .gelu import gelu, gelu_
 from .isclose import allclose, isclose
 from .isin import isin
@@ -46,6 +48,11 @@ __all__ = [
     "any_dims",
     "div_mode",
     "div_mode_",
+    "exponential_",
+    "fill_scalar",
+    "fill_scalar_",
+    "fill_tensor",
+    "fill_tensor_",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "floor_divide",
