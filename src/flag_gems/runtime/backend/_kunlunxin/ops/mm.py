@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def heur_split_k(args):
@@ -30,6 +30,13 @@ def heur_group_m(args):
 @libentry()
 @triton.autotune(
     configs=[],
+    generate_configs="mm",
+    key=["M", "N", "K"],
+)
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128}),
+    ],
     generate_configs="mm",
     key=["M", "N", "K"],
 )

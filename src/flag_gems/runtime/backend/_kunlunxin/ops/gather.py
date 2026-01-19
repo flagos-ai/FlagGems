@@ -11,7 +11,7 @@ from flag_gems.utils.shape_utils import restride_dim
 
 from .scatter import scatter_
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
