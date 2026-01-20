@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
@@ -9,8 +10,13 @@ TEST(blas_op_test, bmm) {
   torch::Tensor batch1 = torch::randn({B, M, K}, device);
   torch::Tensor batch2 = torch::randn({B, K, N}, device);
 
-  torch::Tensor out_torch = at::bmm(batch1, batch2);
+  torch::Tensor ref_batch1 = flag_gems::accuracy_utils::to_reference(batch1);
+  torch::Tensor ref_batch2 = flag_gems::accuracy_utils::to_reference(batch2);
+
+  torch::Tensor out_torch = at::bmm(ref_batch1, ref_batch2);
   torch::Tensor out_triton = flag_gems::bmm(batch1, batch2);
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton));
+  // EXPECT_TRUE(torch::allclose(out_torch, out_triton));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch, batch1.scalar_type());
+  EXPECT_TRUE(result.ok) << result.message;
 }
