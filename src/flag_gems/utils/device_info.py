@@ -1,8 +1,16 @@
+from dataclasses import dataclass
 from functools import lru_cache
 
 import torch
 
 from flag_gems.runtime import torch_device_fn
+
+
+@dataclass(frozen=True)
+class DeviceInfo:
+    device_id: int
+    l2_cache_size: int
+    sm_count: int
 
 
 @lru_cache(maxsize=1)
@@ -38,7 +46,7 @@ def get_device_capability() -> tuple[int, int]:
 
 
 @lru_cache(maxsize=1)
-def get_device_info() -> tuple[int, int, int]:
+def get_device_info() -> DeviceInfo:
     props = get_device_properties()
     l2_cache_size = None
     sm_count = None
@@ -55,12 +63,16 @@ def get_device_info() -> tuple[int, int, int]:
     if sm_count is None:
         # default sm_count to 108 for A100
         sm_count = 108
-    return get_device_id(), l2_cache_size, sm_count
+    return DeviceInfo(
+        device_id=get_device_id(),
+        l2_cache_size=l2_cache_size,
+        sm_count=sm_count,
+    )
 
 
 def get_l2_cache_size() -> int:
-    return get_device_info()[1]
+    return get_device_info().l2_cache_size
 
 
 def get_sm_count() -> int:
-    return get_device_info()[2]
+    return get_device_info().sm_count
