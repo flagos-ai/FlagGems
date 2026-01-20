@@ -44,8 +44,61 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
         self.qkv_contiguous = qkv_contiguous
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = [(128,), (512,)]
-        self.shape_desc = "(T,)"
+        # Test the full set of sequence lengths we saw from the runtime prints
+        self.shapes = [
+            (1,),
+            (2,),
+            (4,),
+            (8,),
+            (16,),
+            (24,),
+            (32,),
+            (40,),
+            (48,),
+            (56,),
+            (64,),
+            (72,),
+            (80,),
+            (88,),
+            (96,),
+            (104,),
+            (112,),
+            (120,),
+            (128,),
+            (136,),
+            (144,),
+            (152,),
+            (160,),
+            (168,),
+            (176,),
+            (184,),
+            (192,),
+            (200,),
+            (208,),
+            (216,),
+            (224,),
+            (232,),
+            (240,),
+            (248,),
+            (256,),
+            (272,),
+            (288,),
+            (304,),
+            (320,),
+            (336,),
+            (352,),
+            (368,),
+            (384,),
+            (400,),
+            (416,),
+            (432,),
+            (448,),
+            (464,),
+            (480,),
+            (496,),
+            (512,),
+        ]
+        self.shape_desc = "(T,) many lengths"
 
     def get_input_iter(self, cur_dtype):
         for (T,) in self.shapes:
@@ -63,15 +116,9 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
 
         mixed_qkv_dim = (2 * key_dim + value_dim) // tp_size
         total_tokens = B * T
-        if self.qkv_contiguous:
-            mixed_qkv = torch.randn(
-                (total_tokens, mixed_qkv_dim), device=device, dtype=dtype
-            )
-        else:
-            mixed_qkv_buffer = torch.randn(
-                (total_tokens, mixed_qkv_dim, 2), device=device, dtype=dtype
-            )
-            mixed_qkv = mixed_qkv_buffer[:, :, 0]  # non-contiguous slice
+        mixed_qkv = torch.randn(
+            (total_tokens, mixed_qkv_dim), device=device, dtype=dtype
+        )
 
         q, k, v = rearrange_mixed_qkv(
             mixed_qkv,
@@ -121,7 +168,7 @@ def _torch_op_wrapper(*args, **kwargs):
 @pytest.mark.parametrize("qkv_contiguous", [False])
 def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):
     bench = FusedRecurrentGatedDeltaRuleBenchmark(
-        op_name=f"fused_recurrent_gated_delta_rule_{'contig' if qkv_contiguous else 'noncontig'}",
+        op_name="fused_recurrent_gated_delta_rule",
         torch_op=_torch_op_wrapper,
         qkv_contiguous=qkv_contiguous,
     )

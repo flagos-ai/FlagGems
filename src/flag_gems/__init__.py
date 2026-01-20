@@ -98,6 +98,7 @@ _FULL_CONFIG = (
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
     ("clamp_min_", clamp_min_),
+    ("clone", clone),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
     ("conv1d", conv1d),
