@@ -1201,15 +1201,19 @@ def load_from_kvcache(
     k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
     v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
     if d == BLOCK_K:
-        bK = tl.load(k_ptr_base + k_offset)
-        bV = tl.load(v_ptr_base + v_offset)
+        bK_mask = virtual_index[None, :] < max_virtual_index[None, :]
+        bV_mask = virtual_index[:, None] < max_virtual_index[:, None]
+        bK = tl.load(k_ptr_base + k_offset, mask=bK_mask, other=0.0)
+        bV = tl.load(v_ptr_base + v_offset, mask=bV_mask, other=0.0)
     else:
-        bK = tl.load(
-            k_ptr_base + k_offset, mask=tl.arange(0, BLOCK_K)[:, None] < d, other=0.0
+        bK_mask = (tl.arange(0, BLOCK_K)[:, None] < d) & (
+            virtual_index[None, :] < max_virtual_index[None, :]
         )
-        bV = tl.load(
-            v_ptr_base + v_offset, mask=tl.arange(0, BLOCK_K)[None, :] < d, other=0.0
+        bV_mask = (tl.arange(0, BLOCK_K)[None, :] < d) & (
+            virtual_index[:, None] < max_virtual_index[:, None]
         )
+        bK = tl.load(k_ptr_base + k_offset, mask=bK_mask, other=0.0)
+        bV = tl.load(v_ptr_base + v_offset, mask=bV_mask, other=0.0)
     return bK, bV
 
 
