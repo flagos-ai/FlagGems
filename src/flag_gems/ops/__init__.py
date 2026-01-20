@@ -89,6 +89,7 @@ from flag_gems.ops.exp2 import exp2, exp2_
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
+from flag_gems.ops.fft_1d import fft_1d
 from flag_gems.ops.fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from flag_gems.ops.flip import flip
 from flag_gems.ops.full import full
@@ -335,6 +336,7 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "fft_1d",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
