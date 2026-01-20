@@ -2,6 +2,8 @@
 
 set -eo pipefail  # Exit on error or pipe failure
 
+source tools/run_command.sh
+
 # 1. Environment Check
 if [[ -z "$BASE_SHA" || -z "$HEAD_SHA" ]]; then
     echo "Error: BASE_SHA or HEAD_SHA is not set."
