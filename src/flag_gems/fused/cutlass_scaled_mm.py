@@ -3,6 +3,7 @@ from typing import Callable, Optional
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.runtime import torch_device_fn
 
 SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
