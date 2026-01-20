@@ -476,8 +476,9 @@ def test_perf_upsample_bicubic2d_aa():
 @pytest.mark.upsample_nearest1d
 def test_perf_upsample_nearest1d():
     def upsample_nearest1d_input_fn(shape, dtype, device):
-        batch, channel, length = shape
-        input = torch.randn(size=shape, device=device, dtype=dtype)
+        batch, channel, height, width = shape
+        length = height * width  # flatten spatial dims to 1D length
+        input = torch.randn((batch, channel, length), device=device, dtype=dtype)
         scale_factors = 2
         output_size = int(length * scale_factors)
         yield {
