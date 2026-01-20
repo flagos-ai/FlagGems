@@ -16,12 +16,14 @@ UNSUPPORT_FP64 = [
     vendors.MTHREADS,
     vendors.AIPU,
     vendors.ASCEND,
+    vendors.TSINGMICRO,
 ]
 UNSUPPORT_BF16 = [
     vendors.AIPU,
 ]
 UNSUPPORT_INT64 = [
     vendors.AIPU,
+    vendors.TSINGMICRO,
 ]
 
 
