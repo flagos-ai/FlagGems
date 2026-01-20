@@ -33,7 +33,7 @@ on:
       - '**.md'
 
 env:
-  CUDA_VISIBLE_DEVICES: 7
+  CUDA_VISIBLE_DEVICES: 6
   http_proxy: ${{ secrets.HTTP_PROXY }}
   https_proxy: ${{ secrets.HTTPS_PROXY }}
 
