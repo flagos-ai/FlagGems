@@ -2,6 +2,7 @@
 #include <cmath>
 #include <optional>
 #include <tuple>
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
@@ -121,11 +122,10 @@ TEST_P(RotaryEmbeddingTest, CompareWithReference) {
   auto [q_ref, k_ref] = torch_apply_rotary_pos_emb_cpp(q, k, cos, sin, position_ids, rotary_interleaved);
   auto [q_out, k_out] = flag_gems::rotary_embedding(q, k, cos, sin, position_ids, rotary_interleaved);
 
-  double atol = (dtype == torch::kFloat16) ? 1e-2 : 1e-5;
-  double rtol = (dtype == torch::kFloat16) ? 1e-2 : 1e-3;
-
-  ASSERT_TRUE(torch::allclose(q_out, q_ref.to(dtype), rtol, atol));
-  ASSERT_TRUE(torch::allclose(k_out, k_ref.to(dtype), rtol, atol));
+  auto q_result = flag_gems::accuracy_utils::gems_assert_close(q_out, q_ref);
+  EXPECT_TRUE(q_result.ok) << q_result.message;
+  auto k_result = flag_gems::accuracy_utils::gems_assert_close(k_out, k_ref);
+  EXPECT_TRUE(k_result.ok) << k_result.message;
 }
 
 INSTANTIATE_TEST_SUITE_P(RotaryEmbeddingTests,

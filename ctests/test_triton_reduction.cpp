@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "c10/util/Logging.h"
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
@@ -13,7 +14,8 @@ TEST(reduction_op_test, sum) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-5, 1e-8));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(reduction_op_test, sum_dim_to_sum) {
@@ -26,7 +28,8 @@ TEST(reduction_op_test, sum_dim_to_sum) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-3, 1e-3));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(reduction_op_test, sum_dim_inner) {
@@ -39,7 +42,8 @@ TEST(reduction_op_test, sum_dim_inner) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-3, 1e-3));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(reduction_op_test, sum_dim_non_inner) {
@@ -52,7 +56,8 @@ TEST(reduction_op_test, sum_dim_non_inner) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-3, 1e-3));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(reduction_op_test, sum_dim_multi) {
@@ -64,7 +69,8 @@ TEST(reduction_op_test, sum_dim_multi) {
   if (!torch::allclose(out_torch, out_triton, 1e-3, 1e-3)) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-3, 1e-3));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(reduction_op_test, nonzero) {
@@ -78,7 +84,8 @@ TEST(reduction_op_test, nonzero) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-5, 1e-8));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 struct MaxDimTestParam {
@@ -105,11 +112,13 @@ TEST_P(MaxDimTest, max_dim) {
   if (!torch::allclose(max_torch, max_triton, 1e-5, 1e-8)) {
     LOG(INFO) << "Max value difference (keepdim=" << param.keepdim << "):\n" << max_torch - max_triton;
   }
-  EXPECT_TRUE(torch::allclose(max_torch, max_triton, 1e-5, 1e-8));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(max_triton, max_torch);
+  EXPECT_TRUE(result.ok) << result.message;
   if (!torch::allclose(index_torch, index_triton, 1e-5, 1e-8)) {
     LOG(INFO) << "Index difference (keepdim=" << param.keepdim << "):\n" << index_torch - index_triton;
   }
-  EXPECT_TRUE(torch::allclose(index_torch, index_triton, 0, 0));
+  auto index_result = flag_gems::accuracy_utils::gems_assert_equal(index_triton, index_torch);
+  EXPECT_TRUE(index_result.ok) << index_result.message;
 }
 
 INSTANTIATE_TEST_SUITE_P(MaxDimTests,
@@ -136,7 +145,8 @@ TEST(MaxTest, max) {
   if (!torch::allclose(out_torch, out_triton, 1e-5, 1e-8)) {
     LOG(INFO) << "Max value differenc:\n" << out_torch - out_triton;
   }
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-5, 1e-8));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 class MaxDimMaxTest : public ::testing::TestWithParam<MaxDimTestParam> {};
@@ -157,11 +167,13 @@ TEST_P(MaxDimMaxTest, max_dim_max) {
   if (!torch::allclose(max_torch, max_triton, 1e-5, 1e-8)) {
     LOG(INFO) << "Max value difference (keepdim=" << param.keepdim << "):\n" << max_torch - max_triton;
   }
-  EXPECT_TRUE(torch::allclose(max_torch, max_triton, 1e-5, 1e-8));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(max_triton, max_torch);
+  EXPECT_TRUE(result.ok) << result.message;
   if (!torch::allclose(index_torch, index_triton, 1e-5, 1e-8)) {
     LOG(INFO) << "Index difference (keepdim=" << param.keepdim << "):\n" << index_torch - index_triton;
   }
-  EXPECT_TRUE(torch::allclose(index_torch, index_triton, 0, 0));
+  auto index_result = flag_gems::accuracy_utils::gems_assert_equal(index_triton, index_torch);
+  EXPECT_TRUE(index_result.ok) << index_result.message;
 }
 
 INSTANTIATE_TEST_SUITE_P(MaxDimMaxTests,

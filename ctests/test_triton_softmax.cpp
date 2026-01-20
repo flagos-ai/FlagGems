@@ -1,5 +1,6 @@
 #include <pybind11/gil.h>
 #include <pybind11/pybind11.h>
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
 #include "gtest/gtest.h"
 #include "torch/torch.h"
@@ -13,12 +14,14 @@ TEST(TritonSoftmaxTest, ForwardInnerDim) {
   auto out_gems = flag_gems::softmax(input, wrapped_dim, false);
   auto out_torch = torch::softmax(input.to(torch::kFloat32), wrapped_dim).to(torch::kFloat16);
 
-  EXPECT_TRUE(torch::allclose(out_gems, out_torch, 1e-2, 1e-3));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_gems, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 
   // Sum over each row (dim=1), the sums should all be 1
   auto row_sums = out_gems.sum(wrapped_dim);
   auto ones = torch::ones_like(row_sums);
-  EXPECT_TRUE(torch::allclose(row_sums, ones, 1e-2, 1e-3));
+  result = flag_gems::accuracy_utils::gems_assert_close(row_sums, ones);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(TritonSoftmaxTest, ForwardNonInnerDim) {
@@ -30,12 +33,13 @@ TEST(TritonSoftmaxTest, ForwardNonInnerDim) {
   auto out_gems = flag_gems::softmax(input, wrapped_dim, false);
   auto out_torch = torch::softmax(input.to(torch::kFloat32), wrapped_dim).to(torch::kFloat16);
 
-  EXPECT_TRUE(torch::allclose(out_gems, out_torch, 1e-2, 1e-3));
-
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_gems, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
   // Sum along dim=1 for verification
   auto sums = out_gems.sum(wrapped_dim);
   auto ones = torch::ones_like(sums);
-  EXPECT_TRUE(torch::allclose(sums, ones, 1e-2, 1e-3));
+  result = flag_gems::accuracy_utils::gems_assert_close(sums, ones);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(TritonSoftmaxTest, ForwardDim0) {
@@ -47,12 +51,14 @@ TEST(TritonSoftmaxTest, ForwardDim0) {
   auto out_gems = flag_gems::softmax(input, wrapped_dim, false);
   auto out_torch = torch::softmax(input.to(torch::kFloat32), wrapped_dim).to(torch::kFloat16);
 
-  EXPECT_TRUE(torch::allclose(out_gems, out_torch, 1e-2, 1e-3));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_gems, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 
   // Sum along dim=0 for verification
   auto col_sums = out_gems.sum(wrapped_dim);
   auto ones = torch::ones_like(col_sums);
-  EXPECT_TRUE(torch::allclose(col_sums, ones, 1e-2, 1e-3));
+  result = flag_gems::accuracy_utils::gems_assert_close(col_sums, ones);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(TritonSoftmaxTest, ForwardNegativeDim) {
@@ -64,7 +70,8 @@ TEST(TritonSoftmaxTest, ForwardNegativeDim) {
   auto out_gems = flag_gems::softmax(input, wrapped_dim, false);
   auto out_torch = torch::softmax(input.to(torch::kFloat32), wrapped_dim).to(torch::kFloat16);
 
-  EXPECT_TRUE(torch::allclose(out_gems, out_torch, 1e-2, 1e-3));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_gems, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(TritonSoftmaxTest, BackwardInnerDim) {
@@ -87,7 +94,8 @@ TEST(TritonSoftmaxTest, BackwardInnerDim) {
   auto grad_input_triton =
       flag_gems::softmax_backward(grad_output, output_triton, wrapped_dim, input.scalar_type());
 
-  EXPECT_TRUE(torch::allclose(grad_input_triton, grad_input_ref, 1e-2, 1e-2));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(grad_input_triton, grad_input_ref);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(TritonSoftmaxTest, BackwardNonInnerDim) {
@@ -110,7 +118,8 @@ TEST(TritonSoftmaxTest, BackwardNonInnerDim) {
   auto grad_input_triton =
       flag_gems::softmax_backward(grad_output, output_triton, wrapped_dim, input.scalar_type());
 
-  EXPECT_TRUE(torch::allclose(grad_input_triton, grad_input_ref, 1e-2, 1e-2));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(grad_input_triton, grad_input_ref);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 
 TEST(TritonSoftmaxTest, BackwardDim0) {
@@ -133,5 +142,6 @@ TEST(TritonSoftmaxTest, BackwardDim0) {
   auto grad_input_triton =
       flag_gems::softmax_backward(grad_output, output_triton, wrapped_dim, input.scalar_type());
 
-  EXPECT_TRUE(torch::allclose(grad_input_triton, grad_input_ref, 1e-2, 1e-2));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(grad_input_triton, grad_input_ref);
+  EXPECT_TRUE(result.ok) << result.message;
 }

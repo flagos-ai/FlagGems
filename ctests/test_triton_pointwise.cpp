@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
@@ -10,5 +11,6 @@ TEST(pointwise_op_test, add) {
   torch::Tensor out_torch = a + b;
   torch::Tensor out_triton = flag_gems::add_tensor(a, b);
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }

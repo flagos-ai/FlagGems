@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "c10/util/Logging.h"
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
@@ -21,8 +22,11 @@ TEST_P(topktest, CompareWithPyTorch) {
   auto [out_weight_torch, out_index_torch] = at::topk(x, topk, -1, largest, true);
   auto [out_weight_triton, out_index_triton] = flag_gems::topk(x, topk, -1, largest, true);
 
-  EXPECT_TRUE(torch::allclose(out_weight_torch, out_weight_triton));
-  EXPECT_TRUE(torch::equal(out_index_torch, out_index_triton));
+  auto weight_result = flag_gems::accuracy_utils::gems_assert_close(out_weight_triton, out_weight_torch);
+  auto index_result = flag_gems::accuracy_utils::gems_assert_equal(out_index_triton, out_index_torch);
+
+  EXPECT_TRUE(weight_result.ok) << weight_result.message;
+  EXPECT_TRUE(index_result.ok) << index_result.message;
 }
 
 INSTANTIATE_TEST_SUITE_P(special_op_test,
