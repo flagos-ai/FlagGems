@@ -1,5 +1,4 @@
 import logging
-from functools import lru_cache
 
 import torch
 import triton
@@ -10,35 +9,7 @@ from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
-
-
-@lru_cache(maxsize=1)
-def get_device_info():
-    try:
-        device_id = torch_device_fn.current_device()
-    except Exception:
-        device_id = 0
-
-    try:
-        props = torch_device_fn.get_device_properties(device_id)
-        return device_id, props.L2_cache_size, props.multi_processor_count
-    except Exception:
-        # fallback for A100 default attributes
-        # L2 cache size is 40MB and SM count is 108 for A100
-        return device_id, 40 * 1024 * 1024, 108
-
-
-def get_device_id():
-    return get_device_info()[0]
-
-
-def get_l2_cache_size():
-    return get_device_info()[1]
-
-
-def get_sm_count():
-    return get_device_info()[2]
-
+from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
 CACHE_USAGE_THRESHOLD = 0.8
 
@@ -189,7 +160,7 @@ def streamk_scenario(a, b, M, N, K):
     # TODO: this my change sometime according to the realbenchmark result
     # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
     # The optimal settings for other devices need to be determined through real testing.
-    capability = torch_device_fn.get_device_capability(get_device_info())
+    capability = get_device_capability()
     return (
         capability[0] == 8
         and a.dtype in [torch.float16, torch.bfloat16]
