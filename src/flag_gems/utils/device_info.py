@@ -51,9 +51,11 @@ def get_device_info() -> DeviceInfo:
     l2_cache_size = None
     sm_count = None
     if props is not None:
-        l2_cache_size = getattr(props, "L2_cache_size", None) or getattr(
-            props, "l2_cache_size", None
-        )
+        l2_cache_size = None
+        if hasattr(props, "L2_cache_size"):
+            l2_cache_size = props.L2_cache_size
+        elif hasattr(props, "l2_cache_size"):
+            l2_cache_size = props.l2_cache_size
         sm_count = getattr(props, "multi_processor_count", None) or getattr(
             props, "multiProcessorCount", None
         )
