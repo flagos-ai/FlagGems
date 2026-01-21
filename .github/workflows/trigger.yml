@@ -41,20 +41,39 @@ jobs:
       matrix:
         include:
           # due to disk space issue, we have to use self host instance for this job
-          - job_name: build-nvidia-image
+          - job_name: build-gems-nvidia-image
             push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
-            containerfile: 'containerfile.nvidia'
+            containerfile: 'containerfile'
             tag: 'flaggems-nvidia'
             label: 'latest'
             runson: 'h20'
+            build-args: |
+              BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-nvidia
+              BASE_IMAGE_VERSION=latest
+              VENDOR=requirements_nvidia.txt
+
+          # due to disk space issue, we have to use self host instance for this job
+          - job_name: build-gems-nvidia-image
+            push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
+            containerfile: 'containerfile'
+            tag: 'flaggems-nvidia'
+            label: 'latest'
+            runson: 'h20'
+            build-args: |
+              BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-nvidia
+              BASE_IMAGE_VERSION=py312torch2.8
+              VENDOR=requirements_nvidia.txt
+
     name: ${{ matrix.job_name }}
-    uses: ./.github/workflows/imagebuild.yml
+    uses: flagos-ai/build-infra/.github/workflows/imagebuild.yml@main
     with:
       push: ${{ matrix.push }}
       containerfile: ${{ matrix.containerfile }}
       tag: ${{ matrix.tag }}
       label: ${{ matrix.label }}
       runson: ${{ matrix.runson }}
+      build-args: ${{ matrix.build-args }}
+      image_prefix: 'flaggems'
     secrets:
       REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
       CONTAINER_REGISTRY: ${{ secrets.CONTAINER_REGISTRY }}
