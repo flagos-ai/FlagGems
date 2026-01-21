@@ -25,7 +25,7 @@ def setup_flaggems_logging(path=None, record=True, once=False):
     if once:
         handler.addFilter(LogOncePerLocationFilter())
 
-    formatter = logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
+    formatter = logging.Formatter("[%(levelname)s] %(name)s: %(funcName)s %(message)s")
     handler.setFormatter(formatter)
 
     logger = logging.getLogger("flag_gems")
