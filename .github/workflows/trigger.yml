@@ -57,7 +57,7 @@ jobs:
             push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
             containerfile: 'containerfile'
             tag: 'flaggems-nvidia'
-            label: 'latest'
+            label: 'py312torch2.8'
             runson: 'h20'
             build-args: |
               BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-nvidia
