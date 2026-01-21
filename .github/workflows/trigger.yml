@@ -53,7 +53,7 @@ jobs:
               VENDOR=requirements_nvidia.txt
 
           # due to disk space issue, we have to use self host instance for this job
-          - job_name: build-gems-nvidia-image
+          - job_name: build-gems-nvidia-image-py312torch2.8
             push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
             containerfile: 'containerfile'
             tag: 'flaggems-nvidia'
