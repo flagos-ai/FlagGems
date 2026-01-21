@@ -18,10 +18,7 @@ at::Tensor bmm(const at::Tensor& A, const at::Tensor& B) {
   at::IntArrayRef A_sizes = A.sizes();
   at::IntArrayRef B_sizes = B.sizes();
 
-  at::Tensor A_contig = A.contiguous();
-  at::Tensor B_contig = B.contiguous();
-
-  at::Tensor out = at::empty({A_sizes[0], A_sizes[1], B_sizes[2]}, A_contig.options());
+  at::Tensor out = at::empty({A_sizes[0], A_sizes[1], B_sizes[2]}, A.options());
 
   const TritonJITFunction& f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "bmm.py"),
@@ -49,12 +46,21 @@ at::Tensor bmm(const at::Tensor& A, const at::Tensor& B) {
     /* grid_z = */ A_sizes[0],
     /* num_warps = */ 4,
     /* num_stages = */ 1,
-    A_contig,
-    B_contig,
+    A,
+    B,
     out,
-    A_sizes[1],
-    B_sizes[2],
-    A_sizes[2],
+    M,
+    N,
+    K,
+    A.stride(0),
+    A.stride(1),
+    A.stride(2),
+    B.stride(0),
+    B.stride(1),
+    B.stride(2),
+    out.stride(0),
+    out.stride(1),
+    out.stride(2),
     TILE_M,
     TILE_N,
     TILE_K,

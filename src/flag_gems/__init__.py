@@ -89,6 +89,7 @@ _FULL_CONFIG = (
     ("bitwise_or_.Scalar", bitwise_or_scalar_),
     ("bitwise_or_.Tensor", bitwise_or_tensor_),
     ("bmm", bmm),
+    ("bmm.out", bmm_out),
     ("cat", cat),
     ("celu", celu),
     ("celu_", celu_),
