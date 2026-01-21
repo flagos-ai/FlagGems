@@ -47,7 +47,7 @@ def isin_by_comparation_impl(
         in1 = tl.load(in1_ravel_ptr + cols, mask, other=0)
         block = tl.where(
             mask,
-            tl.where(invert, block and (in0 != in1), block or (in0 == in1)),
+            tl.where(invert, block & (in0 != in1), block & (in0 == in1)),
             invert,
         )
     out = tl.reduce(block, axis=1, combine_fn=(reduce_all if invert else reduce_any))
