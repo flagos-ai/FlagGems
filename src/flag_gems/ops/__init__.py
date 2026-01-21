@@ -42,7 +42,7 @@ from flag_gems.ops.bitwise_or import (
     bitwise_or_tensor_,
 )
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
-from flag_gems.ops.bmm import bmm
+from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import (
@@ -287,6 +287,7 @@ __all__ = [
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
     "bmm",
+    "bmm_out",
     "cat",
     "celu",
     "celu_",

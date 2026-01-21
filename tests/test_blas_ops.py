@@ -123,6 +123,70 @@ def test_accuracy_bmm(M, N, K, dtype):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
+@pytest.mark.bmm
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_bmm_out(M, N, K, dtype):
+    if flag_gems.vendor_name == "mthreads":
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
+    batch = 4
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((batch, M, N), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
+
+    ref_out = torch.bmm(ref_mat1, ref_mat2)
+    with flag_gems.use_gems():
+        torch.bmm(mat1, mat2, out=out)
+
+    gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+    if flag_gems.vendor_name == "mthreads":
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
+
+@pytest.mark.bmm
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_bmm_non_contiguous(M, N, K, dtype):
+    if flag_gems.vendor_name == "mthreads":
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
+    batch = 4
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2_raw = torch.randn((batch, N, K), dtype=dtype, device=flag_gems.device)
+    # make mat2 non-contiguous
+    mat2 = mat2_raw.transpose(1, 2)
+
+    if N > 1 and K > 1:
+        assert not mat2.is_contiguous()
+    else:
+        pytest.skip("Skipping non-contiguous test for small N or K")
+
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
+    ref_out = torch.bmm(ref_mat1, ref_mat2)
+    with flag_gems.use_gems():
+        res_out = torch.bmm(mat1, mat2)
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    if flag_gems.vendor_name == "mthreads":
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
+
 @pytest.mark.baddbmm
 @pytest.mark.linear
 @pytest.mark.matmul
