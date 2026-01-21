@@ -12,6 +12,36 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
+def is_tma_compatible(a, b, N, K):
+    """
+    Check if tensors are compatible with TMA (Tensor Memory Accelerator).
+
+    TMA requires 128-bit (16-byte) alignment for memory access:
+    - For FP16/BF16 (2 bytes/element): N and K must be multiples of 8
+      (8 elements × 2 bytes = 16 bytes)
+    - For FP32 (4 bytes/element): N and K must be multiples of 4
+      (4 elements × 4 bytes = 16 bytes)
+
+    Args:
+        a, b: Input tensors
+        N, K: Matrix dimensions
+
+    Returns:
+        bool: True if compatible with TMA's 128-bit alignment requirement
+    """
+    return (
+        a.dtype in (torch.float16, torch.bfloat16)
+        and b.dtype in (torch.float16, torch.bfloat16)
+        and N % 8 == 0
+        and K % 8 == 0
+    ) or (
+        a.dtype in (torch.float32,)
+        and b.dtype in (torch.float32,)
+        and N % 4 == 0
+        and K % 4 == 0
+    )
+
+
 CACHE_USAGE_THRESHOLD = 0.8
 
 logger = logging.getLogger(__name__)
@@ -249,7 +279,10 @@ def mm_kernel_general_host_tma(
             b_t = b_desc.load([offset_bn, offset_ak])
             b = tl.trans(b_t)
 
-        accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+        if a_desc.dtype == tl.float16 or a_desc.dtype == tl.bfloat16:
+            accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+        else:
+            accumulator = tl.dot(a, b, acc=accumulator, input_precision="tf32x3")
 
     c = accumulator.to(c_desc.dtype)
     c_desc.store([offset_am, offset_bn], c)
@@ -285,13 +318,9 @@ def general_mm(a, b, c, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    if (
-        (a.dtype == torch.float16 or a.dtype == torch.bfloat16)
-        and (b.dtype == torch.float16 or b.dtype == torch.bfloat16)
-        and N % 8 == 0
-        and K % 8 == 0
-        and triton.__version__ >= "3.5"
-    ):
+    if hasattr(
+        triton.tools.tensor_descriptor, "TensorDescriptor"
+    ) and is_tma_compatible(a, b, N, K):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
