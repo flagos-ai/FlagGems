@@ -17,24 +17,10 @@ def copy_func(x):
     return x
 
 
-def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS_CAMBRICON REPEAT_INTERLEAVE_SELF_INT")
-    if dim is None:
-        inp = inp.flatten()
-        dim = 0
-    else:
-        if (dim < -inp.ndim) or (dim >= inp.ndim):
-            raise IndexError(
-                "Dimension out of range (expected to be in range of [{}, {}], but got {})".format(
-                    -inp.ndim, inp.ndim - 1, dim
-                )
-            )
+def repeat_interleave_self_int_forward(inp, repeats, dim=None, *, output_size=None):
     inp_shape = list(inp.shape)
     inp_stride = list(inp.stride())
     output_shape = list(inp.shape)
-
-    if dim < 0:
-        dim = dim + len(inp_shape)
 
     output_shape[dim] *= repeats
 
@@ -59,6 +45,57 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     ndim = len(out_view_shape)
     copy_func.instantiate(ndim)(in_view, out0=out_view)
     return output
+
+
+class RepeatInterleaveSelfIntFn(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, repeats, dim, output_size):
+        logger.debug("GEMS_CAMBRICON REPEAT_INTERLEAVE_SELF_INT FORWARD")
+        ctx.inp_shape = inp.shape
+        ctx.dim = dim
+        if dim is None:
+            inp = inp.flatten()
+            dim = 0
+        else:
+            if (dim < -inp.ndim) or (dim >= inp.ndim):
+                raise IndexError(
+                    "Dimension out of range (expected to be in range of [{}, {}], but got {})".format(
+                        -inp.ndim, inp.ndim - 1, dim
+                    )
+                )
+        inp_shape = list(inp.shape)
+        if dim < 0:
+            dim = dim + len(inp_shape)
+        ctx.repeats = repeats
+        ctx.output_size = output_size
+
+        out = repeat_interleave_self_int_forward(
+            inp, repeats, dim=dim, output_size=output_size
+        )
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        logger.debug("GEMS_CAMBRICON REPEAT_INTERLEAVE_SELF_INT BACKWARD")
+        dim = ctx.dim
+        k = ctx.repeats
+        shape = ctx.inp_shape
+        new_shape = list(shape)
+        if ctx.dim is None:
+            new_shape.insert(len(shape), k)
+            grad_view = grad_out.view(*new_shape)
+            grad_x = grad_view.sum(dim=len(shape))
+        else:
+            if dim < 0:
+                dim = dim + len(shape)
+            new_shape.insert(dim + 1, k)
+            grad_view = grad_out.view(*new_shape)
+            grad_x = grad_view.sum(dim=dim + 1)
+        return grad_x, None, None, None
+
+
+def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
+    return RepeatInterleaveSelfIntFn.apply(inp, repeats, dim, output_size)
 
 
 @triton.jit
