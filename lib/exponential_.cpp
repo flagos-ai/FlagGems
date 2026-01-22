@@ -118,28 +118,33 @@ at::Tensor &exponential_(at::Tensor &self, double lambd, c10::optional<at::Gener
   }
   constexpr int64_t BLOCK = 128;
   unsigned grid_x = (N + BLOCK * UNROLL - 1) / (BLOCK * UNROLL);
-
-  const TritonJITFunction &f = TritonJITFunction::get_instance(
-      std::string(utils::get_flag_gems_src_path() / "ops" / "exponential_.py"),
-      "fused_exponential_kernel");
+  const TritonJITFunction *f = nullptr;
+  if (is_double) {
+    f = &TritonJITFunction::get_instance(
+        std::string(utils::get_flag_gems_src_path() / "ops" / "exponential_.py"),
+        "fused_exponential_kernel_f64");
+  } else {
+    f = &TritonJITFunction::get_instance(
+        std::string(utils::get_flag_gems_src_path() / "ops" / "exponential_.py"),
+        "fused_exponential_kernel_f32");
+  }
 
   c10::DeviceGuard guard(x_.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  f(raw_stream,
-    grid_x,
-    /* grid_y = */ 1,
-    /* grid_z = */ 1,
-    /* num_warps = */ 8,
-    /* num_stages = */ 1,
-    x_,
-    N,
-    is_double,
-    lambd,
-    get_epsilon(dtype_to_floattype(dtype)),
-    static_cast<int64_t>(philox_seed),
-    static_cast<int64_t>(philox_offset),
-    128);
+  (*f)(raw_stream,
+       grid_x,
+       /* grid_y = */ 1,
+       /* grid_z = */ 1,
+       /* num_warps = */ 8,
+       /* num_stages = */ 1,
+       x_,
+       N,
+       lambd,
+       get_epsilon(dtype_to_floattype(dtype)),
+       static_cast<int64_t>(philox_seed),
+       static_cast<int64_t>(philox_offset),
+       128);
   if (!inplace) {
     self.copy_(x_);
     return self;
