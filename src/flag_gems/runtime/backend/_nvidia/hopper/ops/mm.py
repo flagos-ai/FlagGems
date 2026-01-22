@@ -12,6 +12,7 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
+
 def is_tma_compatible(a, b, N, K):
     """
     Check if tensors are compatible with TMA (Tensor Memory Accelerator).
