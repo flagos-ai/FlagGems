@@ -120,7 +120,7 @@ def triu(A, diagonal=0):
             # causing the compilation to fail. Therefore, a conservative upper limit of 8192
             # is currently set, but the actual maximum achievable value should be confirmed
             # based on real-world conditions.
-            elements_bytes = torch.finfo(A.dtype).bits // 8
+            elements_bytes = A.element_size()
             n_block = min(256 * 1024 // elements_bytes, N)
             need_loop = n_block < N
             triu_kernel[grid](

@@ -138,7 +138,7 @@ from .repeat_interleave import (
 )
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
-from .rms_norm import rms_norm
+from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
 from .select_scatter import select_scatter
@@ -295,6 +295,8 @@ __all__ = [
     "lt",
     "lt_scalar",
     "rms_norm",
+    "rms_norm_backward",
+    "rms_norm_forward",
     "mean",
     "mean_dim",
     "mm",
