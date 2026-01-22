@@ -44,9 +44,10 @@ jobs:
           - job_name: build-gems-nvidia-image
             push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
             containerfile: 'containerfile'
-            tag: 'flaggems-nvidia'
-            label: 'latest'
+            image_name: 'flaggems-nvidia'
+            tag: 'latest'
             runson: 'h20'
+            no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
             build-args: |
               BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-nvidia
               BASE_IMAGE_VERSION=latest
@@ -56,9 +57,10 @@ jobs:
           - job_name: build-gems-nvidia-image-py312torch2.8
             push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
             containerfile: 'containerfile'
-            tag: 'flaggems-nvidia'
-            label: 'py312torch2.8'
+            image_name: 'flaggems-nvidia'
+            tag: 'py312torch2.8'
             runson: 'h20'
+            no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
             build-args: |
               BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-nvidia
               BASE_IMAGE_VERSION=py312torch2.8
@@ -69,11 +71,12 @@ jobs:
     with:
       push: ${{ matrix.push }}
       containerfile: ${{ matrix.containerfile }}
+      image_name: ${{ matrix.image_name }}
       tag: ${{ matrix.tag }}
-      label: ${{ matrix.label }}
       runson: ${{ matrix.runson }}
       build-args: ${{ matrix.build-args }}
       image_prefix: 'flaggems'
+      no-cache: ${{ matrix.no-cache }}
     secrets:
       REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
       CONTAINER_REGISTRY: ${{ secrets.CONTAINER_REGISTRY }}
