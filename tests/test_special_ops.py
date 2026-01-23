@@ -1716,6 +1716,8 @@ def test_accuracy_moe_align_block_size(
     )
 
     torch.cuda.synchronize()
-    gems_assert_close(sorted_ids, sorted_ids_vllm, dtype=dtype)
-    gems_assert_close(expert_ids, expert_ids_vllm, dtype=dtype)
-    gems_assert_close(num_tokens_post_pad, num_tokens_post_pad_vllm, dtype=dtype)
+    gems_assert_close(sorted_ids, to_reference(sorted_ids_vllm), dtype=dtype)
+    gems_assert_close(expert_ids, to_reference(expert_ids_vllm), dtype=dtype)
+    gems_assert_close(
+        num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
+    )
