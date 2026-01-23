@@ -1,7 +1,9 @@
 import re
+from pathlib import Path
 
 import pytest
 import torch
+import yaml
 
 import flag_gems
 
@@ -92,3 +94,75 @@ def test_only_enable(include_op, tmp_path):
         assert (
             op in include_op
         ), f"Found unexpected op '{op}' in log file. Allowed op: {include_op}"
+
+
+@pytest.mark.only_enable
+def test_only_enable_with_yaml(tmp_path):
+    include_ops = ["sum", "mul"]
+    yaml_path = tmp_path / "only_enable.yaml"
+    yaml_path.write_text("include:\n  - sum\n  - mul\n")
+
+    log_content = run_ops_and_logs(
+        tmp_path,
+        "gems_only_enable_yaml.log",
+        include=str(yaml_path),
+    )
+
+    pattern = r"flag_gems\.ops\.\w+\.(\w+):"
+    found_ops = set(re.findall(pattern, log_content))
+
+    assert found_ops, "No ops were logged; expected YAML include to be applied"
+    assert "sum" in found_ops, "Expected 'sum' to be registered via YAML include"
+    assert "mul" in found_ops, "Expected 'mul' to be registered via YAML include"
+    unexpected = found_ops - set(include_ops)
+    assert not unexpected, f"Found unexpected ops via YAML include: {unexpected}"
+
+
+@pytest.mark.only_enable
+def test_only_enable_default(tmp_path, monkeypatch):
+    backend_dir = Path(flag_gems.__file__).resolve().parent / "runtime" / "backend"
+    default_files = list(backend_dir.glob("_*/enable_configs.yaml"))
+    if not default_files:
+        pytest.skip("no default enable_configs.yaml found")
+
+    yaml_path = default_files[0]
+    data = yaml.safe_load(yaml_path.read_text()) or {}
+    include_ops = data.get("include", [])
+    if not include_ops:
+        pytest.skip("default enable_configs.yaml has empty include list")
+
+    monkeypatch.setattr(
+        flag_gems.config,
+        "get_default_enable_config",
+        lambda vendor_name, arch_name: [yaml_path],
+    )
+
+    log_file = f"gems_only_enable_default_{yaml_path.parent.name}.log"
+    path_file = tmp_path / log_file
+
+    with flag_gems.use_gems(include="default", record=True, path=path_file):
+        a = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
+        b = torch.tensor([4.0, 5.0, 6.0], device=flag_gems.device)
+        # Run a couple of ops from the include list to ensure they log.
+        for op in include_ops[:2]:
+            if op == "softmax":
+                _ = torch.softmax(a, dim=0)
+            elif op == "cumsum":
+                _ = torch.cumsum(a, dim=0)
+            elif op == "sum":
+                _ = torch.sum(a)
+            elif op == "mul":
+                _ = a * b
+            else:
+                # Fallback: exercise a basic op to trigger logging.
+                _ = a + b
+
+    assert path_file.exists(), f"Log file {path_file} not found"
+    log_content = path_file.read_text()
+
+    pattern = r"flag_gems\.ops\.[^\.]+\.(\w+):"
+    found_ops = set(re.findall(pattern, log_content))
+    assert found_ops, "No ops were logged for default include"
+    assert found_ops.issubset(
+        set(include_ops)
+    ), f"Found unexpected ops via default include: {found_ops - set(include_ops)}"

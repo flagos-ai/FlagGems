@@ -5,7 +5,7 @@ from packaging import version
 
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
-from flag_gems.config import aten_patch_list
+from flag_gems.config import aten_patch_list, resolve_user_setting
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
@@ -359,10 +359,31 @@ def enable(
     once=False,
     path=None,
 ):
+    """Register all FlagGems ops except those explicitly excluded.
+
+    Args:
+        lib: torch.library.Library instance to register into. Defaults to the
+            global `aten_lib` (IMPL mode).
+        unused: Which ops to skip. Supported forms:
+            - list/tuple/set of function names (e.g., ["masked_fill", "mul"]).
+            - str path to a YAML file ending with .yml/.yaml containing an
+              `exclude:` list.
+            - "default" or None: auto-load vendor/arch-specific
+              runtime/backend/_<vendor>/[<arch>/]enable_configs.yaml if present.
+        registrar: Registrar class; defaults to `Register`.
+        record: Whether to enable FlagGems logging.
+        once: When True, log only once.
+        path: Optional log output path when recording.
+
+    Notes:
+        - If the exclude list/YAML resolves to empty, all ops are registered.
+    """
     global current_work_registrar
+    exclude_ops = resolve_user_setting(unused, "exclude")
     current_work_registrar = registrar(
         _FULL_CONFIG,
-        user_unused_ops_list=list(set(unused or [])),
+        user_include_ops_list=[],
+        user_exclude_ops_list=exclude_ops,
         cpp_patched_ops_list=list(set(aten_patch_list)),
         lib=lib,
     )
@@ -377,38 +398,46 @@ def only_enable(
     once=False,
     path=None,
 ):
-    if include is None:
-        warnings.warn("only_enable failed: No include parameter.")
-        return
+    """Register only the specified FlagGems ops and skip the rest.
 
-    include_ops = set(include)
+    Args:
+        lib: torch.library.Library instance to register into. Defaults to the
+            global `aten_lib` (IMPL mode).
+        include: Which ops to register. Supported forms:
+            - list/tuple/set of function names (e.g., ["rms_norm", "softmax"]).
+            - str path to a YAML file ending with .yml/.yaml (expects a list or
+              an `include:` key).
+            - "default" or None: auto-load vendor/arch-specific
+                runtime/backend/_<vendor>/[<arch>/]only_enable_configs.yaml if present.
+        registrar: Registrar class; defaults to `Register`.
+        record: Whether to enable FlagGems logging.
+        once: When True, log only once.
+        path: Optional log output path when recording.
 
-    global current_work_registrar
-    include_config = []
-    for config_item in _FULL_CONFIG:
-        op_name = config_item[0]
+    Classic usage:
+        - Only register a few ops:
+            only_enable(include=["rms_norm", "softmax"])
+        - Use vendor default YAML:
+            only_enable(include="default")  # or include=None
+        - Use a custom YAML:
+            only_enable(include="/path/to/only_enable.yaml")
 
-        func = config_item[1]
-        func_name = func.__name__ if hasattr(func, "__name__") else str(func)
-        if func_name not in include_ops:
-            continue
-
-        if len(config_item) > 2:
-            condition_func = config_item[2]
-            if not condition_func():
-                continue
-
-        include_config.append((op_name, config_item[1]))
-
-    if not include_config:
+    Notes:
+        - If the include list/YAML resolves to empty or none of the names match
+          known ops, the function warns and returns without registering.
+    """
+    include_ops = resolve_user_setting(include, "include")
+    if not include_ops:
         warnings.warn(
-            "only_enable failed: No op to register. Check if include is correct."
+            "only_enable failed: No include entries resolved from list or yaml."
         )
         return
 
+    global current_work_registrar
     current_work_registrar = registrar(
-        tuple(include_config),
-        user_unused_ops_list=[],
+        _FULL_CONFIG,
+        user_include_ops_list=include_ops,
+        user_exclude_ops_list=[],
         cpp_patched_ops_list=list(set(aten_patch_list)),
         lib=lib,
     )
@@ -423,8 +452,8 @@ class use_gems:
 
     def __init__(self, exclude=None, include=None, record=False, once=False, path=None):
         self.lib = torch.library.Library("aten", "IMPL")
-        self.exclude = exclude if isinstance(exclude, list) else []
-        self.include = include if isinstance(include, list) else []
+        self.exclude = exclude if isinstance(exclude, (list, tuple, set, str)) else []
+        self.include = include if isinstance(include, (list, tuple, set, str)) else []
         self.registrar = Register
         self.record = record
         self.once = once
@@ -473,8 +502,14 @@ def all_ops():
     return current_work_registrar.get_all_ops()
 
 
+def registered_ops():
+    return current_work_registrar.get_all_ops()
+
+
 __all__ = [
     "enable",
     "only_enable",
     "use_gems",
+    "all_ops",
+    "registered_ops",
 ]
