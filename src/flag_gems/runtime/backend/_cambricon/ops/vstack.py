@@ -7,7 +7,7 @@ from typing import Callable, Mapping
 import torch
 
 from flag_gems.utils.code_cache import cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 from ..utils import TOTAL_CORE_NUM
 
@@ -32,13 +32,18 @@ class VstackKernelCode(IndentedBuffer):
     def __init(self, tensors):
         """Initialize the vstack kernel."""
         self.device = tensors[0].device
-        self.dtype = tensors[0].dtype
-        for tensor in tensors:
+        dtypes = [t.dtype for t in tensors]
+        dtype = dtypes[0]
+        for ty in dtypes[1:]:
+            dtype = torch.promote_types(dtype, ty)
+        self.dtype = dtype
+        for i, tensor in enumerate(tensors):
             assert (
                 tensor.device == self.device
-                and tensor.dtype == self.dtype
                 and tensors[0].shape[1:] == tensor.shape[1:]
             )
+            if tensor.dtype != self.dtype:
+                tensors[i] = tensor.to(self.dtype)
         c_tensors = [t.contiguous() for t in tensors]
         self.inputs = []
         self.idxs = [0]
@@ -68,7 +73,7 @@ import torch
 import triton
 from triton import language as tl
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.runtime.backend import vendor_module
 TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM
 MAX_NRAM_SIZE = vendor_module.MAX_NRAM_SIZE
@@ -110,7 +115,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
         self.tpl(
             """
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
         triton.Config({{'BLOCK_SIZE' : 512}}, num_warps=1),
         triton.Config({{'BLOCK_SIZE' : 2048}}, num_warps=1),
@@ -181,9 +186,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                 )
                                 with self.indent():
                                     self.writeline("in_offset = offset + i + block")
-                                    self.writeline(
-                                        "dst_offset = pid * deal_num + i + block"
-                                    )
+                                    self.writeline("dst_offset = in_offset")
                                     self.writeline(
                                         "x = tl.load(input_0 + in_offset, mask=in_offset < idx_1 - idx_0)"
                                     )
@@ -212,7 +215,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                                     "in_offset = offset + i + block"
                                                 )
                                                 self.writeline(
-                                                    "dst_offset = pid * deal_num + deal_rem + i + block"
+                                                    f"dst_offset = idx_{i} + in_offset"
                                                 )
                                                 self.writeline(
                                                     f"x = tl.load(input_{i} + in_offset, mask=in_offset < need_num)"
@@ -231,7 +234,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                                     "in_offset = offset + i + block"
                                                 )
                                                 self.writeline(
-                                                    "dst_offset = pid * deal_num + i + block"
+                                                    f"dst_offset = idx_{i} + in_offset"
                                                 )
                                                 self.writeline(
                                                     f"x = tl.load(input_{i} + in_offset, \
@@ -322,11 +325,11 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
             # generate code and cache.
             self.__gen_code()
             file_name = f"vstack_{key}_pid_{self.pid}.py"
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(self.getvalue())
+            filepath = cache_dir() / file_name
+            write_atomic(filepath, self.getvalue())
             # load
             spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{key}_pid_{self.pid}", f.name
+                f"_gen_module_{key}_pid_{self.pid}", filepath
             )
             m = importlib.util.module_from_spec(spec)
             # do not expose it to sys.modules

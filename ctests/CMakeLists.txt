@@ -58,6 +58,14 @@ target_link_libraries(test_triton_argmax
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_argmax COMMAND test_triton_argmax)
 
+add_executable(test_triton_div test_triton_div.cpp)
+target_link_libraries(test_triton_div PRIVATE Torch::Torch operators gtest gtest_main)
+add_test(NAME test_triton_div COMMAND test_triton_div)
+add_executable(test_triton_sort test_triton_sort.cpp)
+target_link_libraries(test_triton_sort
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_sort COMMAND test_triton_sort)
+
 add_executable(test_triton_exponential_ test_triton_exponential_.cpp)
 target_link_libraries(test_triton_exponential_
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
@@ -77,6 +85,10 @@ target_link_libraries(test_triton_reshape_and_cache_flash
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_reshape_and_cache_flash COMMAND test_triton_reshape_and_cache_flash)
 
+add_executable(test_triton_flash_attn_varlen test_triton_flash_attn_varlen.cpp)
+target_link_libraries(test_triton_flash_attn_varlen
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_flash_attn_varlen COMMAND test_triton_flash_attn_varlen)
 add_executable(test_triton_rwkv_ka_fusion test_triton_rwkv_ka_fusion.cpp)
 target_link_libraries(test_triton_rwkv_ka_fusion
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
@@ -86,3 +98,8 @@ add_executable(test_triton_rwkv_mm_sparsity test_triton_rwkv_mm_sparsity.cpp)
 target_link_libraries(test_triton_rwkv_mm_sparsity
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_rwkv_mm_sparsity COMMAND test_triton_rwkv_mm_sparsity)
+
+add_executable(test_triton_copy test_triton_copy.cpp)
+target_link_libraries(test_triton_copy
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_copy COMMAND test_triton_copy)

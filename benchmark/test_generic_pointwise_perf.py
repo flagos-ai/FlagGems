@@ -6,6 +6,7 @@ from benchmark.conftest import BenchLevel, Config
 from benchmark.performance_utils import (
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
+    SkipVersion,
     generate_tensor_input,
     unary_input_fn,
     vendor_name,
@@ -48,6 +49,15 @@ def clamp_input_fn(shape, cur_dtype, device):
         yield inp1, None, 3.14
 
 
+def clamp_min_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = generate_tensor_input(shape, cur_dtype, device)
+    yield inp1, inp2
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # scalar situation
+        yield inp1, 3.14
+
+
 def threshold_input_fn(shape, cur_dtype, device):
     inp1 = generate_tensor_input(shape, cur_dtype, device)
     yield inp1, 3.14, 2.71
@@ -85,6 +95,13 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             marks=pytest.mark.clamp,
         ),
         pytest.param(
+            "clamp_min",
+            torch.clamp_min,
+            clamp_min_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.clamp_min,
+        ),
+        pytest.param(
             "flip",
             torch.flip,
             flip_input_fn,
@@ -118,11 +135,43 @@ def addcdiv_input_fn(shape, cur_dtype, device):
     ],
 )
 def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
-    if vendor_name == "kunlunxin":
+    if vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"):
         if op_name in ["threshold"]:
-            pytest.skip("TODOFIX")
+            pytest.skip(
+                "kunlunxin torch aten 2.0 supports threshold but not for float16"
+            )
     bench = GenericBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+    )
+    bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "clamp_",
+            torch.clamp_,
+            clamp_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.clamp_,
+        ),
+        pytest.param(
+            "clamp_min_",
+            torch.clamp_min_,
+            clamp_min_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.clamp_min_,
+        ),
+    ],
+)
+def test_generic_inplace_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
+    bench = GenericBenchmark(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        is_inplace=True,
     )
     bench.run()
 

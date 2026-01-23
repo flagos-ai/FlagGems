@@ -228,6 +228,7 @@ def softmax(self, dim, half_to_float=False):
                 M * K,
                 N,
                 buffer_size_limit=2048,
+                is_use_mask_zero=True,
             )
 
             # 将输出恢复到原始布局
@@ -247,6 +248,7 @@ def softmax(self, dim, half_to_float=False):
                 N,
                 buffer_size_limit=2048,
                 isCloseVectorization=True,
+                is_use_mask_zero=True,
             )
     return out
 

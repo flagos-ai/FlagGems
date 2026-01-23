@@ -5,6 +5,7 @@ import os
 import torch
 import triton
 import triton.language as tl
+from torch._prims_common import is_boolean_dtype, is_integer_dtype
 
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
@@ -221,7 +222,7 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
 
     if dtype is None:
         dtype = inp.dtype
-        if dtype is torch.bool:
+        if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
             dtype = torch.int64
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)

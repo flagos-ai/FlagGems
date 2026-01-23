@@ -1,6 +1,5 @@
 import gc
 import importlib
-import logging
 import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
@@ -26,7 +25,7 @@ from .attri_util import (
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config
+from .conftest import Config, recordLogger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -84,14 +83,16 @@ class Benchmark:
         torch_op,
         dtypes=None,
         is_backward=False,
+        is_inplace=False,
         **kwargs,
     ):
         self.op_name = op_name
-        if is_backward:
-            self.op_name += " backward"
+        if is_backward and self.op_name.find("_backward") == -1:
+            self.op_name += "_backward"
         self.torch_op = torch_op
         self.gems_op = None
         self.is_backward = is_backward
+        self.is_inplace = is_inplace
         self._input_iter = None
 
         # Theoretical supported dtypes, metrics for the operation.
@@ -208,6 +209,10 @@ class Benchmark:
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
+                if vendor_name == "kunlunxin":
+                    if self.op_name in ["cummax"]:
+                        additional_shapes = []
+
                 # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
@@ -369,7 +374,7 @@ class Benchmark:
                 shape_desc=self.shape_desc,
             )
             print(attri)
-            logging.info(attri.to_dict())
+            recordLogger.info(attri.to_dict())
             return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
@@ -487,6 +492,19 @@ class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
 
     def __init__(self, *args, **kwargs):
         super().__init__(exclude_dims=3, *args, **kwargs)
+
+
+class GenericBenchmark4DOnly(GenericBenchmarkFilterShapes):
+    """
+    4d shapes only
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=None, *args, **kwargs)
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [shape for shape in shapes if len(shape) == 4]
 
 
 class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):

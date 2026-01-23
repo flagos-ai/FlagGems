@@ -149,6 +149,8 @@ def custom_gems_flash_attention_impl_forward(
     attn_metadata,  #: FlashAttentionMetadata,
     output: Optional[torch.Tensor] = None,
     output_scale: Optional[torch.Tensor] = None,
+    output_block_scale: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> torch.Tensor:
     from flag_gems import flash_attn_varlen_func, reshape_and_cache_flash
 
@@ -192,8 +194,11 @@ def custom_gems_flash_attention_impl_forward(
         # query = query.reshape((num_tokens, num_heads, head_size))
 
     # Compute attention and update output up to `num_actual_tokens`.
-    use_local_attn = self.use_irope and attn_metadata.local_attn_metadata is not None
-
+    # use_local_attn = self.use_irope and attn_metadata.local_attn_metadata is not None
+    use_local_attn = (
+        getattr(self, "use_irope", False)
+        and getattr(attn_metadata, "local_attn_metadata", None) is not None
+    )
     if not attn_metadata.use_cascade or use_local_attn:
         if use_local_attn:
             assert attn_metadata.local_attn_metadata is not None
@@ -234,6 +239,11 @@ def custom_gems_flash_attention_impl_forward(
             q_descale=layer._q_scale.expand(descale_shape),
             k_descale=layer._k_scale.expand(descale_shape),
             v_descale=layer._v_scale.expand(descale_shape),
+            s_aux=None,
+            num_splits=0,
+            cp_world_size=1,
+            cp_rank=0,
+            cp_tot_seqused_k=None,
         )
         return output
 
@@ -265,14 +275,46 @@ def custom_moe_align_block_size(
     )
 
 
+def custom_moe_grouped_topk(
+    gating_output: torch.Tensor,
+    n_group: int,
+    topk_group: int,
+    topk: int,
+    renormalize: bool,
+    routed_scaling_factor: float,
+    bias: torch.Tensor,
+    scoring_func: int = 0,
+):
+    from flag_gems.fused import grouped_topk
+
+    return grouped_topk(
+        scores=gating_output,
+        n_group=n_group,
+        topk_group=topk_group,
+        topk=topk,
+        renormalize=renormalize,
+        routed_scaling_factor=routed_scaling_factor,
+        bias=bias,
+        scoring_func=scoring_func,
+    )
+
+
 def custom_topk_softmax(
-    topk_weights, topk_indices, token_expert_indices, gating_output
+    topk_weights, topk_indices, token_expert_indices, gating_output, renormalize=False
 ):
     flag_gems.topk_softmax(
-        topk_weights,
-        topk_indices,
-        token_expert_indices,
-        gating_output,
+        topk_weights, topk_indices, token_expert_indices, gating_output, renormalize
+    )
+
+
+def custom_apply_repetition_penalties(
+    logits: torch.Tensor,
+    prompt_mask: torch.Tensor,
+    output_mask: torch.Tensor,
+    repetition_penalties: torch.Tensor,
+):
+    return flag_gems.apply_repetition_penalties(
+        logits, prompt_mask, output_mask, repetition_penalties
     )
 
 
@@ -328,13 +370,125 @@ def custom_get_scheduler_metadata(
     )
 
 
+def custom_per_token_group_fp8_quant(
+    input: torch.Tensor,
+    output_q: torch.Tensor,
+    output_s: torch.Tensor,
+    group_size: int,
+    eps: float,
+    fp8_min: float,
+    fp8_max: float,
+    scale_ue8m0: bool = False,
+):
+    from flag_gems.ops import per_token_group_quant_fp8
+
+    column_major_scales = output_s.stride(0) < output_s.stride(1)
+
+    x_q, x_s = per_token_group_quant_fp8(
+        x=input,
+        group_size=group_size,
+        eps=eps,
+        column_major_scales=column_major_scales,
+        scale_ue8m0=scale_ue8m0,
+    )
+
+    output_q.copy_(x_q)
+    output_s.copy_(x_s)
+
+
+def custom_cutlass_scaled_mm(
+    output: torch.Tensor,
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    bias: torch.Tensor | None = None,
+):
+    return flag_gems.cutlass_scaled_mm(output, input, weight, scale_a, scale_b, bias)
+
+
+def custom_concat_and_cache_mla(
+    kv_c: torch.Tensor,
+    k_pe: torch.Tensor,
+    kv_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    kv_cache_dtype: str,
+    scale: torch.Tensor,
+) -> None:
+    return flag_gems.concat_and_cache_mla(
+        kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
+    )
+
+
+def custom_gems_flashattn_mla_forward_decode(
+    self,
+    q: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
+    kv_c_and_k_pe_cache: torch.Tensor,
+    attn_metadata,  # FlashAttnMLAMetadata
+    layer,  # AttentionLayer
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    from flag_gems import flash_attn_varlen_func
+
+    assert kv_c_and_k_pe_cache.numel() > 0
+    assert attn_metadata.decode is not None
+
+    if type(q) is tuple:
+        q_nope, q_pe = q
+    else:
+        q_nope, q_pe = torch.split(
+            q, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
+        )
+
+    if self.kv_cache_dtype.startswith("fp8"):
+        raise NotImplementedError("FP8 FlashAttention MLA not yet supported")
+
+    kv_c_cache = kv_c_and_k_pe_cache[..., : self.kv_lora_rank]
+    k_pe_cache = kv_c_and_k_pe_cache[..., self.kv_lora_rank :]
+
+    # NOTE(matt): During CUDA graph capture, max_query_len can be 0, but the
+    # kernel uses this to calculate grid dimensions. Ensure it's at least 1
+    # to prevent invalid grid configuration during graph capture.
+    max_seqlen_q = max(attn_metadata.decode.max_query_len, 1)
+
+    attn_out = flash_attn_varlen_func(
+        q=q_pe,
+        k=k_pe_cache.unsqueeze(-2),  # Add head dim of 1
+        v=kv_c_cache.unsqueeze(-2),  # Add head dim of 1
+        q_v=q_nope,
+        max_seqlen_q=max_seqlen_q,
+        cu_seqlens_q=attn_metadata.decode.query_start_loc,
+        max_seqlen_k=attn_metadata.decode.max_seq_len,
+        seqused_k=attn_metadata.decode.seq_lens,
+        block_table=attn_metadata.decode.block_table,
+        softmax_scale=self.scale,
+        causal=True,
+        return_softmax_lse=self.need_to_return_lse_for_decode,
+        fa_version=2,
+        scheduler_metadata=attn_metadata.decode.scheduler_metadata,
+        num_splits=0,
+        cp_world_size=self.dcp_world_size,
+        cp_rank=self.dcp_rank,
+        cp_tot_seqused_k=attn_metadata.decode.dcp_tot_seq_lens,
+    )
+
+    if self.need_to_return_lse_for_decode:
+        o, lse = attn_out
+        # FA returns LSE in shape [ H, B ] but DCP wants [ B, H ]
+        return o, lse.transpose(0, 1)  # [ H, B ] -> [ B, H ]
+    else:
+        o = attn_out
+        return o, None
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
+    import vllm._custom_ops as ops  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
     from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
     from vllm.v1.attention.backends.flash_attn import FlashAttentionImpl
+    from vllm.v1.attention.backends.mla.flashattn_mla import FlashAttnMLAImpl
     from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
 
     patch_module_method(RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda, verbose)
@@ -354,7 +508,14 @@ def apply_gems_patches_to_vllm(verbose=True):
     patch_module_method(
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward, verbose
     )
+    patch_module_method(
+        FlashAttnMLAImpl,
+        "_forward_decode",
+        custom_gems_flashattn_mla_forward_decode,
+        verbose,
+    )
     patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
+    patch_vllm_lib("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm, "CUDA", verbose)
     patch_vllm_lib(
         "_moe_C", "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
     )
@@ -363,6 +524,28 @@ def apply_gems_patches_to_vllm(verbose=True):
         "_vllm_fa3_C",
         "get_scheduler_metadata",
         custom_get_scheduler_metadata,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib("_moe_C", "grouped_topk", custom_moe_grouped_topk, "CUDA", verbose)
+    patch_vllm_lib(
+        "_C",
+        "per_token_group_fp8_quant",
+        custom_per_token_group_fp8_quant,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib(
+        "_C",
+        "apply_repetition_penalties_",
+        custom_apply_repetition_penalties,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib(
+        "_C_cache_ops",
+        "concat_and_cache_mla",
+        custom_concat_and_cache_mla,
         "CUDA",
         verbose,
     )

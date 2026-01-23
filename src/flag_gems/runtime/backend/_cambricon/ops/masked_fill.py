@@ -16,7 +16,6 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @libtuner(
     configs=runtime.get_tuned_config("masked_fill"),
     key=["N"],
-    strategy=["log"],
 )
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
@@ -34,17 +33,20 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 @libtuner(
     configs=runtime.get_tuned_config("masked_fill"),
     key=["N"],
-    strategy=["log"],
 )
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=1) * tl.num_programs(0) + tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < N
+    num_programs = tl.num_programs(0)
+    pid = tl.program_id(axis=0)
+    total_blocks = tl.cdiv(N, BLOCK_SIZE)
 
-    fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
-    cur_val = tl.full((BLOCK_SIZE,), value, dtype=inp.dtype.element_ty)
-    tl.store(inp + offsets, cur_val, fill_mask and mask)
+    for block_idx in range(pid, total_blocks, num_programs):
+        offsets = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < N
+
+        fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
+        cur_val = tl.full((BLOCK_SIZE,), value, dtype=inp.dtype.element_ty)
+        tl.store(inp + offsets, cur_val, fill_mask and mask)
 
 
 def masked_fill(inp, mask, value):
@@ -115,6 +117,6 @@ def masked_fill_(inp, mask, value):
     N = inp.numel()
     if N == 0:
         return inp
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (min(65535, triton.cdiv(N, meta["BLOCK_SIZE"])),)
     masked_fill_kernel_self[grid](inp, expand_mask.to(torch.int), value, N)
     return inp

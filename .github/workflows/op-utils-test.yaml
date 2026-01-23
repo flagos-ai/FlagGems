@@ -13,11 +13,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - uses: dorny/paths-filter@v3
+        id: experimental_ops
+        with:
+          filters: |
+            run_ci:
+              - '**'
+              - '!src/flag_gems/experimental_ops/**'
+              - '!experimental_tests/**'
+
       - name: Check GPU free
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: tools/gpu_check.sh
 
       - name: OP Utils Test
+        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           echo "current dir: $(pwd)"

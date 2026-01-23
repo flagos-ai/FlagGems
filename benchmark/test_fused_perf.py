@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 import pytest
@@ -48,7 +49,7 @@ def test_perf_silu_and_mul():
     bench.run()
 
 
-@pytest.mark.skip_layernorm
+@pytest.mark.skip_layer_norm
 def test_perf_skip_layernorm():
     def skip_layernorm_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -207,22 +208,24 @@ class TopKSoftmaxBenchmark(Benchmark):
         """
         num_tokens, num_experts, k = config
 
-        gating_output = torch.randn(
-            num_tokens, num_experts, device=device, dtype=torch.float32
-        )
+        gating_output = torch.randn(num_tokens, num_experts, device=device, dtype=dtype)
 
-        topk_weights = torch.empty(num_tokens, k, device=device, dtype=torch.float32)
-        topk_indices = torch.empty(num_tokens, k, device=device, dtype=torch.int32)
-        token_expert_indices = torch.empty(
-            num_tokens, k, device=device, dtype=torch.int32
-        )
+        for renormalize in (False, True):
+            topk_weights = torch.empty(
+                num_tokens, k, device=device, dtype=torch.float32
+            )
+            topk_indices = torch.empty(num_tokens, k, device=device, dtype=torch.int32)
+            token_expert_indices = torch.empty(
+                num_tokens, k, device=device, dtype=torch.int32
+            )
 
-        yield (
-            topk_weights,
-            topk_indices,
-            token_expert_indices,
-            gating_output,
-        )
+            yield (
+                topk_weights,
+                topk_indices,
+                token_expert_indices,
+                gating_output,
+                renormalize,
+            )
 
 
 @pytest.mark.skipif(
@@ -235,13 +238,13 @@ class TopKSoftmaxBenchmark(Benchmark):
 )
 @pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.topk_softmax
 def test_perf_topk_softmax():
     try:
+        os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
         from vllm._custom_ops import topk_softmax as vllm_topk_softmax
     except (ImportError, AttributeError) as e:
         pytest.skip(f"Skipped due to missing vLLM topk_softmax: {e}")
@@ -249,7 +252,7 @@ def test_perf_topk_softmax():
     bench = TopKSoftmaxBenchmark(
         op_name="topk_softmax",
         torch_op=vllm_topk_softmax,
-        dtypes=[torch.float32],
+        dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
 
     bench.set_gems(fused.topk_softmax)

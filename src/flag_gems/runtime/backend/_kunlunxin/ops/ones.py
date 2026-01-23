@@ -9,8 +9,8 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device_ = device
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()
@@ -34,8 +34,12 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
+
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
+    if N == 0:
+        return out
+
     grid_fn = (12, 1, 1)
     block_size = triton.next_power_of_2(triton.cdiv(N, 12))
     with torch_device_fn.device(device):

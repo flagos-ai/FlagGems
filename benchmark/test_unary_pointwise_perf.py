@@ -11,8 +11,9 @@ from benchmark.attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from benchmark.performance_utils import Benchmark, generate_tensor_input, vendor_name
+from benchmark.performance_utils import Benchmark, SkipVersion, generate_tensor_input
 
+vendor_name = flag_gems.vendor_name
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
@@ -55,9 +56,7 @@ forward_operations = [
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
     ("celu", torch.nn.functional.celu, FLOAT_DTYPES),
-    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
-    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
@@ -67,8 +66,10 @@ forward_operations = [
     # Trigonometric operations
     ("cos", torch.cos, FLOAT_DTYPES),
     ("sin", torch.sin, FLOAT_DTYPES),
+    ("tan", torch.tan, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
     ("atan", torch.atan, FLOAT_DTYPES),
+    ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
     # Numerical Checks
@@ -91,9 +92,64 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
-    if vendor_name == "mthreads" and op_name == "angle":
-        pytest.skip(" Unsupport complex dtype")
+    if vendor_name == "kunlunxin":
+        if op_name in ["celu"] and SkipVersion("torch", "<2.5"):
+            pytest.skip(
+                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
+            )
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+    bench.run()
+
+
+forward_inplace_operations = [
+    ("abs_", torch.abs_, FLOAT_DTYPES),
+    # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
+    ("erf_", torch.erf_, FLOAT_DTYPES),
+    ("exp_", torch.exp_, FLOAT_DTYPES),
+    ("exp2_", torch.exp2_, FLOAT_DTYPES),
+    ("neg_", torch.neg_, FLOAT_DTYPES),
+    ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
+    ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
+    ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
+    # Activation operations
+    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
+    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
+    ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
+    ("relu_", torch.relu_, FLOAT_DTYPES),
+    ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
+    ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
+    # Trigonometric operations
+    ("cos_", torch.cos_, FLOAT_DTYPES),
+    ("sin_", torch.sin_, FLOAT_DTYPES),
+    ("tan_", torch.tan_, FLOAT_DTYPES),
+    ("tanh_", torch.tanh_, FLOAT_DTYPES),
+    ("atan_", torch.atan_, FLOAT_DTYPES),
+    # Bitwise operations
+    ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name,
+            op,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, op, dtype in forward_inplace_operations
+    ],
+)
+def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["celu_"] and SkipVersion("torch", "<2.5"):
+            pytest.skip(
+                "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
+            )
+    bench = UnaryPointwiseBenchmark(
+        op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
     bench.run()
 
 
@@ -109,7 +165,7 @@ backward_operations = [
             name,
             op,
             dtype,
-            marks=getattr(pytest.mark, name + "_backward", None),
+            marks=getattr(pytest.mark, name, None),
         )
         for name, op, dtype in backward_operations
     ],
@@ -124,20 +180,43 @@ def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
-class ToDtypeBenchmark(UnaryPointwiseBenchmark):
+class ToCopyBenchmark(UnaryPointwiseBenchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp = torch.randn(shape, dtype=torch.float32, device=self.device)
-            yield inp, cur_dtype
+            yield inp, {"dtype": cur_dtype}
 
 
-@pytest.mark.to
-def test_to_dtype_perf():
-    bench = ToDtypeBenchmark(
-        op_name="to",
-        torch_op=torch.Tensor.to,
+@pytest.mark.to_copy
+def test_to_copy_perf():
+    bench = ToCopyBenchmark(
+        op_name="to_copy",
+        torch_op=torch.ops.aten._to_copy,
         dtypes=[torch.float16, torch.bfloat16]
         + ([torch.float64] if fp64_is_supported else []),
+    )
+    bench.run()
+
+
+class CopyInplaceBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            dst = generate_tensor_input(shape, cur_dtype, self.device)
+            src = generate_tensor_input(shape, cur_dtype, self.device)
+            yield dst, src
+
+
+@pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
+def test_copy_inplace_perf():
+    bench = CopyInplaceBenchmark(
+        op_name="copy_",
+        torch_op=torch.ops.aten.copy_,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+        is_inplace=True,
     )
     bench.run()
 
@@ -155,7 +234,7 @@ class EluBackwardBenchmark(UnaryPointwiseBenchmark):
             yield grad_out, alpha, scale, input_scale, is_result, inp
 
 
-@pytest.mark.elu_backward
+@pytest.mark.elu
 def test_elu_backward_perf():
     bench = EluBackwardBenchmark(
         op_name="elu_backward",
@@ -183,7 +262,7 @@ def test_glu_perf():
     bench.run()
 
 
-@pytest.mark.glu_backward
+@pytest.mark.glu
 def test_glu_backward_perf():
     bench = GluBenchmark(
         op_name="glu",
@@ -191,4 +270,101 @@ def test_glu_backward_perf():
         dtypes=FLOAT_DTYPES,
         is_backward=True,
     )
+    bench.run()
+
+
+class BinaryPointwiseBenchmark(Benchmark):
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return special_shapes_2d + sp_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = generate_tensor_input(shape, cur_dtype, self.device)
+            shift_amount = torch.randint(0, 8, shape, dtype=cur_dtype, device="cpu").to(
+                self.device
+            )
+            yield inp1, shift_amount
+
+
+@pytest.mark.bitwise_left_shift
+def test_bitwise_left_shift_perf():
+    bench = BinaryPointwiseBenchmark(
+        op_name="bitwise_left_shift",
+        torch_op=torch.bitwise_left_shift,
+        dtypes=INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.bitwise_right_shift
+def test_bitwise_right_shift_perf():
+    bench = BinaryPointwiseBenchmark(
+        op_name="bitwise_right_shift",
+        torch_op=torch.bitwise_right_shift,
+        dtypes=INT_DTYPES,
+    )
+    bench.run()
+
+
+class RepetitionPenaltyBenchmark(Benchmark):
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name, torch_op, dtypes)
+        self.gems_op = None
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (1, 1024),
+            (1, 4096),
+            (1, 8192),
+            (8, 4096),
+            (16, 4096),
+            (32, 1024),
+            (8, 8192),
+            (64, 32000),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            num_seqs, vocab_size = shape
+            yield (
+                torch.randn(shape, dtype=cur_dtype, device=self.device),
+                torch.randint(0, 2, shape, dtype=torch.bool, device=self.device),
+                torch.randint(0, 2, shape, dtype=torch.bool, device=self.device),
+                torch.empty(num_seqs, dtype=cur_dtype, device=self.device).uniform_(
+                    1.0, 2.0
+                ),
+            )
+
+    def set_gems(self, gems_op):
+        self.gems_op = gems_op
+
+
+UNSUPPORTED_VENDORS = {
+    "metax",
+    "kunlunxin",
+    "iluvatar",
+    "mthreads",
+    "hygon",
+    "cambricon",
+}
+
+
+@pytest.mark.skipif(SkipVersion("vllm", "<0.4"), reason="vLLM <0.4 not supported")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.skipif(
+    flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported"
+)
+@pytest.mark.apply_repetition_penalties
+@pytest.mark.performance
+def test_perf_repetition_penalty():
+    vllm_ops = pytest.importorskip("vllm._custom_ops")
+
+    bench = RepetitionPenaltyBenchmark(
+        op_name="apply_repetition_penalties",
+        torch_op=vllm_ops.apply_repetition_penalties,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.apply_repetition_penalties)
     bench.run()

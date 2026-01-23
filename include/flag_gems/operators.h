@@ -71,6 +71,26 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
                               bool scale_grad_by_freq = false,
                               bool sparse = false);
 at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim = std::nullopt, bool keepdim = false);
+at::Tensor true_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor true_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor div_mode(const at::Tensor &a,
+                    const at::Tensor &b,
+                    const c10::optional<std::string> &rounding_mode);
+at::Tensor div_mode_(at::Tensor &a, const at::Tensor &b, const c10::optional<std::string> &rounding_mode);
+at::Tensor remainder_tt(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
+at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
+at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
+std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor &self, int64_t dim = -1, bool descending = false);
+std::tuple<at::Tensor, at::Tensor> sort_stable(const at::Tensor &inp,
+                                               c10::optional<bool> stable,
+                                               int64_t dim = -1,
+                                               bool descending = false);
 
 at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
 
@@ -96,6 +116,107 @@ void reshape_and_cache_flash(const at::Tensor &key,
                              const std::optional<at::Tensor> &k_scale,
                              const std::optional<at::Tensor> &v_scale);
 
+std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(
+    const at::Tensor &q,
+    const at::Tensor &k,
+    const at::Tensor &v,
+    int64_t max_seqlen_q,
+    const at::Tensor &cu_seqlens_q,
+    int64_t max_seqlen_k,
+    const std::optional<at::Tensor> &cu_seqlens_k = std::nullopt,
+    const std::optional<at::Tensor> &seqused_k = std::nullopt,
+    const std::optional<at::Tensor> &q_v = std::nullopt,
+    double dropout_p = 0.0,
+    const std::optional<double> &softmax_scale = std::nullopt,
+    bool causal = false,
+    c10::optional<at::IntArrayRef> window_size = std::nullopt,
+    double softcap = 0.0,
+    const std::optional<at::Tensor> &alibi_slopes = std::nullopt,
+    bool deterministic = false,
+    bool return_attn_probs = false,
+    const std::optional<at::Tensor> &block_table = std::nullopt,
+    bool return_softmax_lse = false,
+    std::optional<at::Tensor> out = std::nullopt,
+    const std::optional<at::Tensor> &scheduler_metadata = std::nullopt,
+    const std::optional<at::Tensor> &q_descale = std::nullopt,
+    const std::optional<at::Tensor> &k_descale = std::nullopt,
+    const std::optional<at::Tensor> &v_descale = std::nullopt,
+    std::optional<at::Tensor> s_aux = std::nullopt,
+    int64_t num_splits = 0,
+    int64_t cp_world_size = 1,
+    int64_t cp_rank = 0,
+    std::optional<at::Tensor> cp_tot_seqused_k = std::nullopt,
+    int64_t fa_version = 2);
+
+struct FlashFwdParams {
+  // tensor pointers
+  at::Tensor q;
+  at::Tensor k;
+  at::Tensor v;
+  at::Tensor out;
+  at::Tensor p;
+  at::Tensor lse;
+  // strides
+  int64_t q_row_stride;
+  int64_t k_row_stride;
+  int64_t v_row_stride;
+  int64_t q_head_stride;
+  int64_t k_head_stride;
+  int64_t v_head_stride;
+  int64_t o_row_stride;
+  int64_t o_head_stride;
+  // batch strides
+  int64_t q_batch_stride;
+  int64_t k_batch_stride;
+  int64_t v_batch_stride;
+  int64_t o_batch_stride;
+  // cu_seqlens / seqused_k flags & tensors
+  bool is_cu_seqlens_q;
+  at::Tensor cu_seqlens_q;
+  bool is_cu_seqlens_k;
+  at::Tensor cu_seqlens_k;
+  bool is_seqused_k;
+  at::Tensor seqused_k;
+  // sizes
+  int64_t batch_size;
+  int64_t k_batch_size;
+  int64_t num_heads;
+  int64_t num_heads_k;
+  int64_t h_hk_ratio;
+  int64_t seqlen_q;
+  int64_t seqlen_k;
+  int64_t seqlen_q_rounded;
+  int64_t seqlen_k_rounded;
+  int64_t head_size;
+  int64_t head_size_rounded;
+  // scaling factors
+  bool is_softcap;
+  double softcap;
+  double scale_softmax;
+  double scale_softmax_log2e;
+  // dropout
+  bool is_dropout;
+  double p_dropout;
+  double rp_dropout;
+  int64_t p_dropout_in_uint8_t;
+  at::Tensor philox_args;
+  bool return_softmax;
+  // causal & sliding window attention
+  bool is_causal;
+  bool is_local;
+  int64_t window_size_left;
+  int64_t window_size_right;
+  bool seqlenq_ngroups_swapped;
+  // alibi
+  bool is_alibi;
+  at::Tensor alibi_slopes;
+  int64_t alibi_slopes_batch_stride;
+  // block table params
+  int64_t total_q;
+  at::Tensor page_table;
+  int64_t page_table_batch_stride;
+  int64_t block_size;
+};
 at::Tensor rwkv_mm_sparsity(const at::Tensor &k, const at::Tensor &v);
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &k,
@@ -104,5 +225,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &
                                                               const at::Tensor &ka,
                                                               int64_t H,
                                                               int64_t N);
+
+at::Tensor to_copy(const at::Tensor &self,
+                   c10::optional<at::ScalarType> dtype = c10::nullopt,
+                   c10::optional<at::Layout> layout = c10::nullopt,
+                   c10::optional<at::Device> device = c10::nullopt,
+                   c10::optional<bool> pin_memory = c10::nullopt,
+                   bool non_blocking = false,
+                   c10::optional<at::MemoryFormat> memory_format = c10::nullopt);
+
+at::Tensor &copy_(at::Tensor &dst, const at::Tensor &src, bool non_blocking = false);
 
 }  // namespace flag_gems

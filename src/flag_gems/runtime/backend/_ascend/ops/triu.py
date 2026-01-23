@@ -86,7 +86,7 @@ INT32_MAX = torch.iinfo(torch.int32).max
 
 
 def triu(A, diagonal=0):
-    logger.debug("GEMS TRIU")
+    logger.debug("GEMS_ASCEND TRIU")
     A = A.contiguous()
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"

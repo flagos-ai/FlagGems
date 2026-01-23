@@ -80,9 +80,9 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
     _, N = mat2.shape
 
     mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
+    # mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape).contiguous()
+    bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
@@ -125,8 +125,7 @@ def addmm_out(bias, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
         assert out.shape == (M, N), "Incompatible output shape"
 
     mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
-    bias = bias.broadcast_to(out.shape).contiguous()
+    bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),

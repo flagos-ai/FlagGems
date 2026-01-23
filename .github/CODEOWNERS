@@ -1,0 +1,16 @@
+# These owners will be the default owners for everything in
+# the repo. Unless a later match takes precedence,
+# @global-owner1 and @global-owner2 will be requested for
+# review when someone opens a pull request.
+
+/src/flag_gems/*      @kiddyjinjin   @0x45f   @zhangpeiyang1  @huangyiqun
+/src/flag_gems/runtime/backend/*
+
+/tests/*             @kiddyjinjin   @0x45f   @zhangpeiyang1  @huangyiqun
+/modules_tests/*     @kiddyjinjin   @0x45f   @zhangpeiyang1  @huangyiqun
+/benchmark/*         @kiddyjinjin   @0x45f   @zhangpeiyang1  @huangyiqun
+
+
+/lib/*                @kiddyjinjin   @0x45f   @zhangpeiyang1  @huangyiqun
+/ctests/*             @kiddyjinjin   @0x45f   @zhangpeiyang1  @huangyiqun
+/include/*            @kiddyjinjin   @0x45f   @zhangpeiyang1  @huangyiqun

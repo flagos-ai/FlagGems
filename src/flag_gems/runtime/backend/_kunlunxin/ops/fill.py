@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
 
@@ -10,9 +11,21 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseDtypeConvert=True,
+)
+
 
 @pointwise_dynamic(
-    is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")], num_outputs=1
+    is_tensor=[True, False],
+    promotion_methods=[(0, "DEFAULT")],
+    num_outputs=1,
+    config=config_,
 )
 @triton.jit
 def fill_scalar_func(inp, value_scalar):
@@ -20,7 +33,10 @@ def fill_scalar_func(inp, value_scalar):
 
 
 @pointwise_dynamic(
-    is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")], num_outputs=1
+    is_tensor=[True, True],
+    promotion_methods=[(0, "DEFAULT")],
+    num_outputs=1,
+    config=config_,
 )
 @triton.jit
 def fill_tensor_func(inp, value):
@@ -61,7 +77,7 @@ def fill_tensor_(self, value):
 
 
 def fill_scalar_(self, value):
-    logging.debug("GEMS FILL_SCALAR_")
+    logger.debug("GEMS FILL_SCALAR_")
     with torch_device_fn.device(self.device):
         fill_scalar_func(self, value, out0=self)
     return self

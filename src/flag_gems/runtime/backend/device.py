@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 import threading
 from queue import Queue
@@ -6,7 +7,7 @@ from queue import Queue
 import torch  # noqa: F401
 
 from .. import backend, error
-from ..commom_utils import vendors
+from ..common import vendors
 
 UNSUPPORT_FP64 = [
     vendors.CAMBRICON,
@@ -15,12 +16,14 @@ UNSUPPORT_FP64 = [
     vendors.MTHREADS,
     vendors.AIPU,
     vendors.ASCEND,
+    vendors.TSINGMICRO,
 ]
 UNSUPPORT_BF16 = [
     vendors.AIPU,
 ]
 UNSUPPORT_INT64 = [
     vendors.AIPU,
+    vendors.TSINGMICRO,
 ]
 
 
@@ -60,13 +63,13 @@ class DeviceDetector(object):
 
     def get_vendor(self, vendor_name=None) -> tuple:
         # Try to get the vendor name from a quick special command like 'torch.mlu'.
-        vendor_name = self._get_vendor_from_quick_cmd()
-        if vendor_name is not None:
-            return backend.get_vendor_info(vendor_name)
-        # Check whether the vendor name is set in the environment variable.
         vendor_from_env = self._get_vendor_from_env()
         if vendor_from_env is not None:
             return backend.get_vendor_info(vendor_from_env)
+
+        vendor_name = self._get_vendor_from_quick_cmd()
+        if vendor_name is not None:
+            return backend.get_vendor_info(vendor_name)
         try:
             # Obtaining a vendor_info from the methods provided by torch or triton, but is not currently implemented.
             return self._get_vendor_from_lib()
@@ -104,9 +107,8 @@ class DeviceDetector(object):
         def runcmd(single_info):
             device_query_cmd = single_info.device_query_cmd
             try:
-                result = subprocess.run(
-                    [device_query_cmd], capture_output=True, text=True
-                )
+                cmd_args = shlex.split(device_query_cmd)
+                result = subprocess.run(cmd_args, capture_output=True, text=True)
                 if result.returncode == 0:
                     result_single_info.put(single_info)
             except:  # noqa: E722

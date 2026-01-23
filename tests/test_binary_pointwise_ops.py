@@ -1,6 +1,5 @@
 import logging
 import math
-import os
 import random
 
 import numpy as np
@@ -17,6 +16,7 @@ from .accuracy_utils import (
     INT_DTYPES,
     POINTWISE_SHAPES,
     SCALARS,
+    SkipVersion,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -467,7 +467,7 @@ def test_accuracy_clamp_tensor_(shape, isnone, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.clamp
+@pytest.mark.clamp_min
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_clamp_min(shape, dtype):
@@ -484,7 +484,7 @@ def test_accuracy_clamp_min(shape, dtype):
 
 
 @pytest.mark.inplace
-@pytest.mark.clamp_
+@pytest.mark.clamp_min_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_clamp_min_(shape, dtype):
@@ -723,7 +723,6 @@ def test_accuracy_floor_divide_float_(shape, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="TODO")
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -768,12 +767,14 @@ def test_accuracy_floor_divide_int(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.inplace
 @pytest.mark.floor_divide_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_floor_divide_int_(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     inp1 = torch.randint(
         torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
     ).to(
@@ -825,7 +826,6 @@ def test_accuracy_floor_divide_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError TODOFIX")
 @pytest.mark.remainder
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -874,10 +874,6 @@ def test_accuracy_remainder(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_remainder_(shape, dtype):
-    if flag_gems.vendor_name == "mthreads":
-        # Compatible with older versions of LLVM
-        os.environ["DISABLE_LLVM_OPT"] = "1"
-
     inp1 = torch.randint(
         torch.iinfo(dtype).min, torch.iinfo(dtype).max, shape, dtype=dtype, device="cpu"
     ).to(flag_gems.device)
@@ -903,10 +899,6 @@ def test_accuracy_remainder_(shape, dtype):
         with flag_gems.use_gems():
             res_out = inp1.remainder_(d)
         gems_assert_equal(res_out, ref_out)
-
-    if flag_gems.vendor_name == "mthreads":
-        # Compatible with older versions of LLVM
-        del os.environ["DISABLE_LLVM_OPT"]
 
 
 @pytest.mark.eq
@@ -1236,7 +1228,7 @@ def test_accuracy_pow(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
         inp1 = inp1.uniform_(-1, 1)
         inp2 = inp2.uniform_(-1, 1)
 
@@ -1312,7 +1304,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
         inp2 = inp2.uniform_(-1, 1)
 
     ref_inp2 = to_reference(inp2, True)
@@ -1339,7 +1331,7 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
         if scalar == -0.999:
             inp1 = inp1.uniform_(-1, 1)
         elif scalar == -111.999 and dtype == torch.float16:
@@ -1524,7 +1516,6 @@ def test_accuracy_sub_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1894,12 +1885,13 @@ def test_accuracy_polar(shape, dtype):
 
 
 @pytest.mark.lerp
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
+    reason="The half dtype is only supported on torch >= 2.5.",
+)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_lerp(shape, dtype):
-    if flag_gems.vendor_name == "kunlunxin" and dtype is torch.half:
-        pytest.skip("wait lerp cpu half impl")
-
     torch.manual_seed(0)
 
     input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -1928,12 +1920,13 @@ def test_accuracy_lerp(shape, dtype):
 
 @pytest.mark.inplace
 @pytest.mark.lerp_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
+    reason="The half dtype is only supported on torch >= 2.5.",
+)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_lerp_(shape, dtype):
-    if flag_gems.vendor_name == "kunlunxin" and dtype is torch.half:
-        pytest.skip("wait lerp cpu half impl")
-
     torch.manual_seed(0)
 
     input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -1948,14 +1941,14 @@ def test_accuracy_lerp_(shape, dtype):
     ref_end = to_reference(end)
     ref_weight = to_reference(weight)
 
-    ref_out = torch.lerp(ref_input.clone(), ref_end, weight=5.0)
+    ref_out = ref_input.clone().lerp_(ref_end, weight=5.0)
     with flag_gems.use_gems():
-        res_out = torch.lerp(input.clone(), end, weight=5.0)
+        res_out = input.clone().lerp_(end, weight=5.0)
     gems_assert_close(res_out, ref_out, dtype)
 
-    ref_out = torch.lerp(ref_input.clone(), ref_end, weight=ref_weight)
+    ref_out = ref_input.clone().lerp_(ref_end, weight=ref_weight)
     with flag_gems.use_gems():
-        res_out = torch.lerp(input.clone(), end, weight=weight)
+        res_out = input.clone().lerp_(end, weight=weight)
 
     gems_assert_close(res_out, ref_out, dtype)
 

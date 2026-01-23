@@ -61,13 +61,15 @@ def mm_kernel(
     # do matrix multiplication
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(tl.int64)
+    rm = rm.to(tl.int64)
+    rn = rn.to(tl.int64)
     prev_multiple = prev_multiple_of(K, BLOCK_K)
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for start_k in range(0, prev_multiple, BLOCK_K):
-        rk = start_k + tl.arange(0, BLOCK_K)
+        rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
         a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
         b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
         if a.dtype != b.dtype:
@@ -76,7 +78,7 @@ def mm_kernel(
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # loop peeling
-    rk = prev_multiple + tl.arange(0, BLOCK_K)
+    rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
     mask_k = rk < K
     a = tl.load(
         A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :]
@@ -91,8 +93,8 @@ def mm_kernel(
 
     acc = acc.to(C.dtype.element_ty)
     # rematerialize rm and rn to save registers
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+    rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
     C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
     mask = (rm < M)[:, None] & (rn < N)[None, :]
     # handles write-back with reduction-splitting
@@ -204,6 +206,8 @@ def mm_sqmma_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     ab_dtype: tl.constexpr,
     c_dtype: tl.constexpr,
+    is_transpose_a: tl.constexpr = False,
+    is_transpose_b: tl.constexpr = False,
 ):
     pid = tle.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -228,12 +232,14 @@ def mm_sqmma_kernel(
             [offs_am, offs_k],
             [BLOCK_SIZE_M, BLOCK_SIZE_K],
             tme_load_ab_dtype,
+            is_transpose_a,
         )
         b = tl._experimental_descriptor_load(
             b_desc_ptr,
             [offs_k, offs_bn],
             [BLOCK_SIZE_K, BLOCK_SIZE_N],
             tme_load_ab_dtype,
+            is_transpose_b,
         )
         accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
         offs_k += BLOCK_SIZE_K
@@ -253,6 +259,19 @@ def get_triton_type(elem_type):
 def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages):
     logger.debug("GEMS_MTHREADS MM(SQMMA)")
     device = "musa"
+    # handle non-contiguous inputs if necessary
+    is_transpose_a = False
+    is_transpose_b = False
+    if not A.is_contiguous():
+        if A.stride(0) == 1 and A.stride(1) == A.shape[0]:
+            is_transpose_a = True
+        else:
+            A = A.contiguous()
+    if not B.is_contiguous():
+        if B.stride(0) == 1 and B.stride(1) == B.shape[0]:
+            is_transpose_b = True
+        else:
+            B = B.contiguous()
     a_type = A.dtype
     b_type = B.dtype
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
@@ -276,6 +295,8 @@ def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_s
         get_triton_type(c_dtype),
         num_warps=num_warps,
         num_stages=num_stages,
+        is_transpose_a=is_transpose_a,
+        is_transpose_b=is_transpose_b,
     )
     return C
 

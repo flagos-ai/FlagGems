@@ -128,7 +128,6 @@ bmm:
     pipeline: "cpasync"
   num_warps: 4
   num_stages: 4
-
 argmax:
 - META:
     BLOCK_M: 8
@@ -149,6 +148,28 @@ argmin:
 - META:
     BLOCK_M: 32
   num_warps: 8
+argmin_split_k:
+    - gen: true
+      param_map:
+        META:
+          BLOCK_M: block_m
+          BLOCK_N: block_n
+          BLOCK_K: block_k
+        num_warps: warps
+        num_stages: 4
+      block_m:
+        - 4
+        - 8
+      block_n:
+        - 64
+        - 512
+      block_k:
+        - 32
+        - 64
+      warps:
+        - 4
+        - 8
+        - 16
 log_softmax:
 - META:
     BLOCK_M: 1
@@ -688,7 +709,7 @@ weight_bias_backward:
 - gen: true
   param_map:
     META:
-      BLOCK_ROW_SIZE: 2048
+      BLOCK_ROW_SIZE: 512
       BLOCK_COL_SIZE: block_c
     num_warps: warps
   warps:

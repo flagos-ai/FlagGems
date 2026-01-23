@@ -389,6 +389,52 @@ def enable(
     setup_flaggems_logging(path=path, record=record, once=once)
 
 
+def only_enable(
+    lib=aten_lib,
+    include=None,
+    registrar=registrar,
+    record=False,
+    once=False,
+    path=None,
+):
+    if include is None:
+        warnings.warn("only_enable failed: No include parameter.")
+        return
+
+    include_ops = set(include)
+
+    global current_work_registrar
+    include_config = []
+    for config_item in _FULL_CONFIG:
+        op_name = config_item[0]
+
+        func = config_item[1]
+        func_name = func.__name__ if hasattr(func, "__name__") else str(func)
+        if func_name not in include_ops:
+            continue
+
+        if len(config_item) > 2:
+            condition_func = config_item[2]
+            if not condition_func():
+                continue
+
+        include_config.append((op_name, config_item[1]))
+
+    if not include_config:
+        warnings.warn(
+            "only_enable failed: No op to register. Check if include is correct."
+        )
+        return
+
+    current_work_registrar = registrar(
+        tuple(include_config),
+        user_unused_ops_list=[],
+        cpp_patched_ops_list=list(set(aten_patch_list)),
+        lib=lib,
+    )
+    setup_flaggems_logging(path=path, record=record, once=once)
+
+
 class use_gems:
     def __init__(self, unused=None, record=False, once=False, path=None):
         if framework_name == "torch":
@@ -403,27 +449,44 @@ class use_gems:
         self.path = path
 
     def __enter__(self):
-        enable(
-            lib=self.lib,
-            unused=self.unused,
-            registrar=self.registrar,
-            record=self.record,
-            once=self.once,
-            path=self.path,
-        )
+        if self.include:
+            only_enable(
+                lib=self.lib,
+                include=self.include,
+                registrar=self.registrar,
+                record=self.record,
+                once=self.once,
+                path=self.path,
+            )
+        else:
+            enable(
+                lib=self.lib,
+                unused=self.exclude,
+                registrar=self.registrar,
+                record=self.record,
+                once=self.once,
+                path=self.path,
+            )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
+        if torch.__version__ >= "2.5":
+            self.lib._destroy()
         del self.lib
-        del self.unused
+        del self.exclude
+        del self.include
         del self.registrar
         if framework_name == "paddle":
             current_work_registrar.restore_all()
         del current_work_registrar
         if self.record:
-            for handler in logging.root.handlers[:]:
-                logging.root.removeHandler(handler)
-            logging.basicConfig(level=logging.INFO)
+            teardown_flaggems_logging()
+
+    @property
+    def experimental_ops(self):
+        import flag_gems.experimental_ops
+
+        return flag_gems.experimental_ops
 
 
 def all_ops():
@@ -432,5 +495,6 @@ def all_ops():
 
 __all__ = [
     "enable",
+    "only_enable",
     "use_gems",
 ]

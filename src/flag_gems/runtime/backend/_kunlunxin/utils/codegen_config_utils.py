@@ -5,7 +5,7 @@ import triton
 
 from flag_gems.runtime import device
 from flag_gems.runtime.backend import vendor_module
-from flag_gems.runtime.commom_utils import vendors
+from flag_gems.runtime.common import vendors
 
 
 def default_heuristics_for_num_warps(tile_size):
@@ -43,6 +43,12 @@ class CodeGenConfig:
     is_scatter_slice: bool = False
     is_cat: bool = False
     isCloseVectorization: bool = False
+    isCloseDtypeConvert: bool = False
+    isCloseMemoryAsync: bool = True
+    isCloseInterleave: bool = False
+    kunlunAutoGrid: bool = False
+    buffer_size_limit: int = 0
+    unroll_num: int = 0
 
     def __post_init__(self):
         if self.prefer_1d_tile:

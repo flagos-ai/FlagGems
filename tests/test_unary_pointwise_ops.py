@@ -2,6 +2,14 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.copy import _can_use_triton
+
+try:
+    from transformer_engine.pytorch import cpp_extensions as tex
+
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
 
 from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
@@ -11,6 +19,8 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
+    SWIGLU_SPECIAL_SHAPES,
+    SkipVersion,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -48,6 +58,20 @@ def test_accuracy_abs_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.acos
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_acos(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.acos(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.acos(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, True)
+
+
 @pytest.mark.angle
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
@@ -83,6 +107,97 @@ def test_accuracy_angle(shape, dtype):
         res_out = torch.angle(inp)
     dtype_out = res_out.dtype
     gems_assert_close(res_out, ref_out, dtype_out)
+
+
+BITWISE_SHAPES = [
+    ((512, 1024), (512, 1024)),
+    ((256, 512), (1, 512)),
+    ((256, 512), (256, 1)),
+    ((1, 512), (256, 512)),
+    ((256, 1), (256, 512)),
+    ((1024,), ()),
+    ((), (1024,)),
+]
+
+
+@pytest.mark.bitwise_left_shift
+@pytest.mark.parametrize("shapes", BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_bitwise_left_shift(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.bitwise_left_shift(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_left_shift(res_a, res_b)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.bitwise_right_shift
+@pytest.mark.parametrize("shapes", BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_bitwise_right_shift(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = torch.bitwise_right_shift(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_right_shift(res_a, res_b)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+INPLACE_BITWISE_SHAPES = [
+    ((512, 1024), (512, 1024)),
+    ((256, 512), (1, 512)),
+    ((256, 512), (256, 1)),
+    ((1024,), ()),
+]
+
+
+@pytest.mark.bitwise_left_shift
+@pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_bitwise_left_shift_(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = to_reference(res_a.clone())
+    ref_b = to_reference(res_b)
+
+    ref_a.bitwise_left_shift_(ref_b)
+    with flag_gems.use_gems():
+        res_a.bitwise_left_shift_(res_b)
+    gems_assert_close(res_a, ref_a, dtype)
+
+
+@pytest.mark.bitwise_right_shift
+@pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_bitwise_right_shift_(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = to_reference(res_a.clone())
+    ref_b = to_reference(res_b)
+
+    ref_a.bitwise_right_shift_(ref_b)
+    with flag_gems.use_gems():
+        res_a.bitwise_right_shift_(res_b)
+    gems_assert_close(res_a, ref_a, dtype)
 
 
 @pytest.mark.bitwise_not
@@ -184,6 +299,22 @@ def test_accuracy_exp_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.exp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_exp_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.exp(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.empty_like(inp)
+        torch.exp(inp, out=res_out)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.exp2
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -191,10 +322,7 @@ def test_accuracy_exp2(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
-    if flag_gems.vendor_name == "kunlunxin":
-        ref_out = torch.exp2(ref_inp.cpu()).to(flag_gems.device)
-    else:
-        ref_out = torch.exp2(ref_inp)
+    ref_out = torch.exp2(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.exp2(inp)
 
@@ -209,13 +337,60 @@ def test_accuracy_exp2_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone(), True)
 
-    if flag_gems.vendor_name == "kunlunxin":
-        ref_out = torch.exp2_(ref_inp.cpu()).to(flag_gems.device)
-    else:
-        ref_out = torch.exp2_(ref_inp)
+    ref_out = torch.exp2_(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.exp2_(inp)
 
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.geglu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_geglu(shape, dtype):
+    if len(shape) == 0:
+        pytest.skip("GEGLU does not support 0-dim scalar tensors.")
+
+    if shape[-1] % 2 != 0:
+        shape = list(shape)
+        shape[-1] += 1
+        shape = tuple(shape)
+
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = tex.geglu(input_tensor, None)
+    ref_out = to_reference(ref_out)
+
+    with flag_gems.use_gems():
+        res_out = flag_gems.geglu(input_tensor)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.dgeglu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_dgeglu(shape, dtype):
+    if len(shape) == 0:
+        pytest.skip("dgeglu does not support 0-dim scalar tensors.")
+
+    if shape[-1] % 2 != 0:
+        shape = list(shape)
+        shape[-1] += 1
+        shape = tuple(shape)
+
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    grad_output_shape = list(shape)
+    grad_output_shape[-1] //= 2
+    grad_output = torch.randn(
+        tuple(grad_output_shape), dtype=dtype, device=flag_gems.device
+    )
+    ref_out = tex.dgeglu(grad_output, input_tensor, None)
+    ref_out = to_reference(ref_out)
+    with flag_gems.use_gems():
+        res_out = flag_gems.dgeglu(grad_output, input_tensor)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -310,6 +485,67 @@ def test_accuracy_glu_backward(shape, dtype):
             res_in_grad = torch.ops.aten.glu_backward(res_out, res_inp, dim=dim)
 
         gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+def generate_input(
+    shape: tuple[int, ...], dtype: torch.dtype, device: torch.device
+) -> torch.Tensor:
+    return torch.randn(shape, dtype=dtype, device=device).contiguous()
+
+
+def filter_valid_shapes(shapes: list[tuple[int, ...]]) -> list[tuple[int, ...]]:
+    valid_shapes = []
+    for shape in shapes:
+        if not shape:
+            continue
+        if shape[-1] % 2 == 0:
+            valid_shapes.append(shape)
+    return valid_shapes
+
+
+VALID_POINTWISE_SHAPES = filter_valid_shapes(SWIGLU_SPECIAL_SHAPES)
+
+
+@pytest.mark.swiglu
+@pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_swiglu_forward(shape: tuple[int, ...], dtype: torch.dtype):
+    torch.manual_seed(42)
+    device = flag_gems.device
+
+    input_tensor = generate_input(shape, dtype, device)
+
+    te_forward = tex.swiglu(input_tensor, quantizer=None).to(device)
+    te_forward = to_reference(te_forward)
+
+    with flag_gems.use_gems():
+        fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
+
+    gems_assert_close(fg_forward, te_forward, dtype)
+
+
+@pytest.mark.swiglu
+@pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_swiglu_backward(shape: tuple[int, ...], dtype: torch.dtype):
+    torch.manual_seed(42)
+    device = flag_gems.device
+
+    input_tensor = generate_input(shape, dtype, device)
+
+    grad_shape = list(shape)
+    grad_shape[-1] = grad_shape[-1] // 2
+    grad_output = generate_input(tuple(grad_shape), dtype, device)
+
+    te_grad_input = tex.dswiglu(grad_output, input_tensor, quantizer=None).to(device)
+    te_grad_input = to_reference(te_grad_input)
+
+    with flag_gems.use_gems():
+        fg_grad_input = flag_gems.dswiglu(grad_output, input_tensor, quantizer=None)
+
+    gems_assert_close(fg_grad_input, te_grad_input, dtype)
 
 
 @pytest.mark.isinf
@@ -716,6 +952,35 @@ def test_accuracy_sin_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.tan
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tan(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.tan(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.tan(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.tan_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tan_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.tan_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.tan_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.tanh
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -953,7 +1218,7 @@ def test_accuracy_log(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.to
+@pytest.mark.to_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
 def test_accuracy_to_dtype(shape, dtype):
@@ -963,6 +1228,170 @@ def test_accuracy_to_dtype(shape, dtype):
     with flag_gems.use_gems():
         out = x.to(dtype)
     gems_assert_equal(out, ref_out)
+
+
+@pytest.mark.to_copy
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("target_dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_to_copy_dtype_cast(shape, target_dtype):
+    src_dtype = torch.float32 if target_dtype != torch.float32 else torch.float16
+    x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+    ref_out = torch.ops.aten._to_copy(ref_x, dtype=target_dtype)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._to_copy(x, dtype=target_dtype)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.to_copy
+@pytest.mark.parametrize(
+    "memory_format",
+    [torch.preserve_format, torch.contiguous_format],
+)
+def test_accuracy_to_copy_preserve_strides(memory_format):
+    base = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
+    x = base.transpose(0, 1)[::2]
+    ref_x = to_reference(x)
+    ref_out = torch.ops.aten._to_copy(
+        ref_x,
+        dtype=ref_x.dtype,
+        memory_format=memory_format,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._to_copy(
+            x,
+            dtype=x.dtype,
+            memory_format=memory_format,
+        )
+    gems_assert_equal(res_out, ref_out)
+    if memory_format is torch.preserve_format:
+        assert res_out.stride() == ref_out.stride()
+    else:
+        assert res_out.is_contiguous()
+
+
+@pytest.mark.inplace
+@pytest.mark.copy_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize(
+    "dtype",
+    FLOAT_DTYPES + [torch.int32, torch.int64]
+    if flag_gems.vendor_name == "cambricon"
+    else FLOAT_DTYPES,
+)
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
+def test_copy_inplace_same_dtype(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        if dtype in FLOAT_DTYPES:
+            src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            src = torch.randint(
+                torch.iinfo(dtype).min,
+                torch.iinfo(dtype).max,
+                shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+    else:
+        src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_src = to_reference(src)
+    ref_dst = torch.zeros_like(ref_src)
+    res_dst = torch.zeros_like(src)
+
+    ref_dst.copy_(ref_src)
+    with flag_gems.use_gems():
+        res_dst.copy_(src)
+
+    gems_assert_equal(res_dst, ref_dst)
+
+
+@pytest.mark.inplace
+@pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
+def test_copy_inplace_broadcast():
+    dst_shape = (2, 3)
+    src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
+    ref_src = to_reference(src)
+    ref_dst = to_reference(
+        torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
+    )
+    res_dst = torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
+
+    ref_dst.copy_(ref_src)
+    with flag_gems.use_gems():
+        res_dst.copy_(src)
+
+    gems_assert_equal(res_dst, ref_dst)
+
+
+@pytest.mark.inplace
+@pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
+def test_copy_inplace_dtype_fallback():
+    src = torch.arange(0, 8, dtype=torch.int32, device=flag_gems.device)
+    ref_src = to_reference(src)
+    ref_dst = to_reference(
+        torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
+    )
+    res_dst = torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
+
+    ref_dst.copy_(ref_src)
+    with flag_gems.use_gems():
+        res_dst.copy_(src)
+
+    gems_assert_equal(res_dst, ref_dst)
+
+
+@pytest.mark.inplace
+@pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
+@pytest.mark.parametrize(
+    "src_dtype,dst_dtype",
+    [
+        (torch.float32, torch.int32),
+        (torch.int16, torch.float32),
+        (torch.bool, torch.float32),
+    ],
+)
+def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
+    device = flag_gems.device
+    numel = 8
+
+    if src_dtype is torch.bool:
+        base = torch.tensor([True, False, True, True, False, True, False, True])
+        src = base.to(device=device)
+    else:
+        if flag_gems.vendor_name == "mthreads":
+            src = torch.arange(numel, device="cpu", dtype=src_dtype).to(device)
+        else:
+            src = torch.arange(numel, device=device, dtype=src_dtype)
+
+    dst = torch.zeros(numel, dtype=dst_dtype, device=device)
+
+    assert _can_use_triton(dst, src)
+
+    ref_src = to_reference(src)
+    ref_dst = to_reference(dst.clone())
+    ref_dst.copy_(ref_src)
+
+    with flag_gems.use_gems():
+        res_dst = dst.clone()
+        res_dst.copy_(src)
+
+    gems_assert_equal(res_dst, ref_dst)
 
 
 @pytest.mark.sqrt
@@ -1022,3 +1451,171 @@ def test_accuracy_atan_(shape, dtype):
 
     ref_out = ref_out.to(res_out.dtype)
     gems_assert_close(res_out, ref_out, dtype)
+
+
+DREGU_SHAPES = [
+    (),
+    (1,),
+    (512, 512),
+    (1, 2048),
+    (2048, 1),
+    (1024, 1024),
+    (20, 320, 15),
+    (4096, 1024),
+    (2048, 2048),
+    (1024, 4096),
+    (512, 512, 512),
+    (512, 256, 512),
+]
+
+
+@pytest.mark.dreglu
+@pytest.mark.parametrize("shape", DREGU_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_dreglu(shape, dtype):
+    if len(shape) == 0:
+        pytest.skip("dreglu does not support 0-dim scalar tensors.")
+
+    if shape[-1] % 2 != 0:
+        shape = list(shape)
+        shape[-1] += 1
+        shape = tuple(shape)
+
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    grad_output_shape = list(shape)
+    grad_output_shape[-1] //= 2
+    grad_output = torch.randn(
+        tuple(grad_output_shape), dtype=dtype, device=flag_gems.device
+    )
+
+    ref_out = tex.dreglu(grad_output, input_tensor, None)
+    ref_out = to_reference(ref_out)
+    with flag_gems.use_gems():
+        res_out = flag_gems.dreglu(grad_output, input_tensor, None)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+REGLU_SHAPES = [
+    (),
+    (2,),
+    (512, 512),
+    (1, 2048),
+    (2048, 2),
+    (1024, 1024),
+    (20, 320, 16),
+    (4096, 1024),
+    (2048, 2048),
+    (1024, 4096),
+    (512, 512, 512),
+    (512, 256, 512),
+]
+
+
+@pytest.mark.reglu
+@pytest.mark.parametrize("shape", REGLU_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
+def test_accuracy_reglu(shape, dtype):
+    if len(shape) == 0:
+        pytest.skip("reglu does not support 0-dim scalar tensors.")
+
+    if shape[-1] % 2 != 0:
+        pytest.skip(
+            f"reglu requires the last dimension to be even, but got shape {shape}."
+        )
+
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = tex.reglu(input_tensor, None)
+    ref_out = to_reference(ref_out)
+    with flag_gems.use_gems():
+        res_out = flag_gems.reglu(input_tensor)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+def _init_vllm():
+    if not torch.cuda.is_available():
+        return None, False
+    try:
+        from vllm._custom_ops import apply_repetition_penalties as fn
+
+        t, m = torch.randn(2, 1024, device="cuda"), torch.zeros(
+            2, 1024, dtype=torch.bool, device="cuda"
+        )
+        fn(t, m, m, torch.full((2,), 1.2, device="cuda"))
+        return fn, True
+    except (ImportError, RuntimeError):
+
+        def fallback(logits, pm, om, pens):
+            for i in range(logits.shape[0]):
+                m = pm[i] | om[i]
+                logits[i][m] = torch.where(
+                    logits[i][m] > 0, logits[i][m] / pens[i], logits[i][m] * pens[i]
+                )
+
+        return fallback, True
+
+
+_vllm_fn, _VLLM_OK = _init_vllm()
+
+_REP_PENALTY_CFG = {
+    "shapes": [
+        (1, 1024),
+        (1, 4096),
+        (1, 8192),
+        (8, 4096),
+        (16, 4096),
+        (32, 1024),
+        (8, 8192),
+    ],
+    "penalties": [1.0, 1.2, 1.5],
+    "device": torch.device("cuda:0"),
+}
+
+
+@pytest.mark.apply_repetition_penalties
+@pytest.mark.skipif(
+    not _VLLM_OK or not torch.cuda.is_available(), reason="need VLLM+CUDA"
+)
+@pytest.mark.parametrize("shape", _REP_PENALTY_CFG["shapes"])
+@pytest.mark.parametrize("penalty", _REP_PENALTY_CFG["penalties"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("mask_mode", ["random", "empty"])
+def test_repetition_penalty(shape, penalty, dtype, mask_mode):
+    device = _REP_PENALTY_CFG["device"]
+
+    logits = torch.randn(shape, dtype=dtype, device=device).contiguous()
+    logits_ori = logits.clone()
+
+    if mask_mode == "random":
+        prompt_mask = torch.randint(0, 2, shape, dtype=torch.bool, device=device)
+        output_mask = torch.randint(0, 2, shape, dtype=torch.bool, device=device)
+    else:
+        prompt_mask = torch.zeros(shape, dtype=torch.bool, device=device)
+        output_mask = torch.zeros(shape, dtype=torch.bool, device=device)
+
+    penalties = torch.full((shape[0],), penalty, dtype=dtype, device=device)
+
+    logits_vllm = logits.clone()
+    _vllm_fn(logits_vllm, prompt_mask.clone(), output_mask.clone(), penalties.clone())
+    ref = to_reference(logits_vllm, True).to(dtype)
+
+    with flag_gems.use_gems():
+        flag_gems.apply_repetition_penalties(
+            logits, prompt_mask, output_mask, penalties
+        )
+    res = to_reference(logits, True).to(dtype)
+
+    gems_assert_close(res, ref, dtype)
+
+    has_mask = (prompt_mask | output_mask).any().item()
+    should_modify = has_mask and penalty != 1.0
+    if should_modify:
+        assert not torch.equal(
+            to_reference(logits, True), to_reference(logits_ori, True)
+        ), "In-place未生效"
+    elif mask_mode == "empty":
+        gems_assert_close(res, to_reference(logits_ori, True).to(dtype), dtype)

@@ -1,3 +1,5 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -5,6 +7,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.libentry import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -772,6 +776,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS SORT")
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(

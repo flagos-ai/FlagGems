@@ -8,13 +8,13 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
-    code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.runtime import torch_device_fn")
@@ -32,10 +32,9 @@ def generate_nonzero_kernel(
 ) -> IndentedBuffer:
     # the decorators
     code.writeline("@libentry()")
-    code.writeline("@triton.autotune(")
-    with code.indent():
-        code.writeline("configs=runtime.get_tuned_config('nonzero'),")
-        code.writeline("key=['n_elements',],)")
+    code.writeline(
+        "@triton.heuristics(runtime.get_heuristic_config('elementwise_generic'))"
+    )
     code.writeline("@triton.jit")
 
     # signature

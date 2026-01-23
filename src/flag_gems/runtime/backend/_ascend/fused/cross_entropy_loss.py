@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from torch.nn import _reduction as _Reduction
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -519,7 +520,7 @@ def sum_and_scale(
 class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index, label_smoothing):
-        logger.debug("GEMS CrossEntropyLoss")
+        logger.debug("GEMS_ASCEND CrossEntropyLoss")
 
         shape = list(inp.shape)
         dim = inp.ndim
@@ -607,7 +608,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS CrossEntropyLoss VJP")
+        logger.debug("GEMS_ASCEND CrossEntropyLoss VJP")
 
         inp, tgt, weight = ctx.saved_tensors
         N = ctx.N
@@ -651,8 +652,13 @@ class CrossEntropyLoss(torch.autograd.Function):
 
 
 def cross_entropy_loss(
-    inp, target, weight=None, reduction=1, ignore_index=-100, label_smoothing=0.0
+    inp, target, weight=None, reduction="mean", ignore_index=-100, label_smoothing=0.0
 ):
     return CrossEntropyLoss.apply(
-        inp, target, weight, reduction, ignore_index, label_smoothing
+        inp,
+        target,
+        weight,
+        _Reduction.get_enum(reduction),
+        ignore_index,
+        label_smoothing,
     )

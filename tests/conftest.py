@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 
 import pytest
+import torch
 
 import flag_gems
 
@@ -24,7 +25,9 @@ def pytest_addoption(parser):
     )
     parser.addoption(
         (
-            "--mode" if flag_gems.vendor_name != "kunlunxin" else "--fg_mode"
+            "--mode"
+            if not (flag_gems.vendor_name == "kunlunxin" and torch.__version__ < "2.5")
+            else "--fg_mode"
         ),  # TODO: fix pytest-* common --mode args,
         action="store",
         default="normal",
@@ -127,10 +130,30 @@ def pytest_runtest_protocol(item, nextitem):
     test_results[item.nodeid]["opname"] = operator_marks
 
 
+def get_skipped_reason(report):
+    if hasattr(report.longrepr, "reprcrash"):
+        return report.longrepr.reprcrash.message
+    elif isinstance(report.longrepr, tuple):
+        return report.longrepr[2]
+    else:
+        return str(report.longrepr)
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
-    if report.when == "call":
+    if report.when == "setup":
+        if report.outcome == "skipped":
+            reason = get_skipped_reason(report)
+            test_results[report.nodeid]["result"] = "skipped"
+            test_results[report.nodeid]["skipped_reason"] = reason
+
+    elif report.when == "call":
         test_results[report.nodeid]["result"] = report.outcome
+        if report.outcome == "skipped":
+            reason = get_skipped_reason(report)
+            test_results[report.nodeid]["skipped_reason"] = reason
+        else:
+            test_results[report.nodeid]["skipped_reason"] = None
 
 
 def pytest_terminal_summary(terminalreporter):

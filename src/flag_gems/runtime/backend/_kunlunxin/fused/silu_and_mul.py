@@ -6,7 +6,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -46,3 +46,8 @@ class SiluAndMul(torch.autograd.Function):
 
 def silu_and_mul(A, B):
     return SiluAndMul.apply(A, B)
+
+
+def silu_and_mul_out(A, B, out):
+    silu_and_mul_kernel(A, B, out0=out)
+    return out
