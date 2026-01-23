@@ -57,8 +57,8 @@ def pytest_addoption(parser):
         required=False,
         choices=["kernel", "operator", "wrapper"],
         help=(
-            "Specify how to measure latency, 'kernel' for device kernel, ",
-            "'operator' for end2end operator or 'wrapper' for runtime wrapper.",
+            "Specify how to measure latency, 'kernel' for device kernel, "
+            "'operator' for end2end operator or 'wrapper' for runtime wrapper."
         ),
     )
 
