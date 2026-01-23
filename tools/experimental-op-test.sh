@@ -62,6 +62,8 @@ if [[ -n "$unit_missing_tests" || -n "$performance_missing_tests" ]]; then
 fi
 
 # 5. Execution Helper
+source tools/run_command.sh
+
 run_pytest_group() {
     local label=$1
     local files=$2
