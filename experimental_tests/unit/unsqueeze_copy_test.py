@@ -1,0 +1,107 @@
+# UNSQUEEZE_COPY operator test
+
+import os
+import sys
+
+import pytest  # noqa: E402
+import torch  # noqa: E402
+import triton  # noqa: E402, F401
+
+import flag_gems  # noqa: E402
+from flag_gems.experimental_ops.unsqueeze_copy import (  # noqa: E402
+    unsqueeze_copy as gems_unsqueeze_copy,
+)
+from flag_gems.experimental_ops.unsqueeze_copy import (  # noqa: E402
+    unsqueeze_copy_out as gems_unsqueeze_copy_out,
+)
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+
+# Add parent directory to path to import flag_gems
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+try:
+    from tests.accuracy_utils import TO_CPU, gems_assert_close  # noqa: E402
+except ImportError:
+    # Fallback values when running outside pytest
+    TO_CPU = False  # fallback
+
+    def gems_assert_close(res, ref, dtype, **kwargs):
+        # Simple fallback comparison
+        torch.testing.assert_close(res, ref, **kwargs)
+
+
+def to_reference(inp, upcast=False):
+    if inp is None:
+        return None
+    if TO_CPU:
+        ref_inp = inp.to("cpu")
+    else:
+        ref_inp = inp.clone()
+    if upcast:
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
+
+@pytest.mark.unsqueeze_copy
+@pytest.mark.parametrize("shape", [(2, 3), (128, 64), (64, 32, 16), (512, 512)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("where", ["zero", "neg1", "end", "minneg"])
+def test_unsqueeze_copy_default(shape, dtype, where):
+    x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = to_reference(x)
+
+    n = len(shape)
+    if where == "zero":
+        dim = 0
+    elif where == "neg1":
+        dim = -1
+    elif where == "end":
+        dim = n
+    elif where == "minneg":
+        dim = -(n + 1)
+    else:
+        dim = 0
+
+    ref_out = torch.ops.aten.unsqueeze_copy(ref_x, dim)
+
+    with flag_gems.use_gems():
+        act_out = gems_unsqueeze_copy(x, dim)
+
+    gems_assert_close(act_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.unsqueeze_copy
+@pytest.mark.parametrize("shape", [(2, 3), (128, 64), (64, 32, 16), (512, 512)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("where", ["zero", "neg1", "end", "minneg"])
+def test_unsqueeze_copy_out(shape, dtype, where):
+    x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = to_reference(x)
+
+    n = len(shape)
+    if where == "zero":
+        dim = 0
+    elif where == "neg1":
+        dim = -1
+    elif where == "end":
+        dim = n
+    elif where == "minneg":
+        dim = -(n + 1)
+    else:
+        dim = 0
+
+    pos = dim + n + 1 if dim < 0 else dim
+    new_shape = shape[:pos] + (1,) + shape[pos:]
+
+    ref_out_buf = torch.empty(new_shape, device=ref_x.device, dtype=dtype)
+    act_out_buf = torch.empty(new_shape, device=flag_gems.device, dtype=dtype)
+
+    ref_out = torch.ops.aten.unsqueeze_copy(ref_x, dim, out=ref_out_buf)
+
+    with flag_gems.use_gems():
+        act_out = gems_unsqueeze_copy_out(x, dim, act_out_buf)
+
+    gems_assert_close(act_out, ref_out, dtype=dtype)
