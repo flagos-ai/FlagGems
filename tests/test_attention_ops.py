@@ -969,14 +969,18 @@ def test_flash_attn_varlen_func(
             num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
         )
         value_cache = torch.randn_like(key_cache)
-        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
-            dim=0, dtype=torch.int32
-        )
-        seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
+        cu_query_lens = torch.tensor(
+            [0] + query_lens, dtype=torch.int32, device=device
+        ).cumsum(dim=0, dtype=torch.int32)
+        seqused_k = torch.tensor(kv_lens, dtype=torch.int32, device=device)
 
         max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
         block_tables = torch.randint(
-            0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
+            0,
+            num_blocks,
+            (num_seqs, max_num_blocks_per_seq),
+            dtype=torch.int32,
+            device=device,
         )
 
         causal = True
@@ -1095,14 +1099,18 @@ def test_flash_attn_varlen_func_swap_qg(
             num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
         )
         value_cache = torch.randn_like(key_cache)
-        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
-            dim=0, dtype=torch.int32
-        )
-        seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
+        cu_query_lens = torch.tensor(
+            [0] + query_lens, dtype=torch.int32, device=device
+        ).cumsum(dim=0, dtype=torch.int32)
+        seqused_k = torch.tensor(kv_lens, dtype=torch.int32, device=device)
 
         max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
         block_tables = torch.randint(
-            0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
+            0,
+            num_blocks,
+            (num_seqs, max_num_blocks_per_seq),
+            dtype=torch.int32,
+            device=device,
         )
 
         if flag_gems.vendor_name == "cambricon":
@@ -1348,7 +1356,7 @@ def test_reshape_and_cache(
         # Create a random slot mapping.
         num_slots = block_size * num_blocks
         slot_mapping_lst = random.sample(range(num_slots), num_tokens)
-        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
 
         qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype)
         _, key, value = qkv.unbind(dim=1)
