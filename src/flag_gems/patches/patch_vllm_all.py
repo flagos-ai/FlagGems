@@ -407,6 +407,79 @@ def custom_cutlass_scaled_mm(
     return flag_gems.cutlass_scaled_mm(output, input, weight, scale_a, scale_b, bias)
 
 
+def custom_concat_and_cache_mla(
+    kv_c: torch.Tensor,
+    k_pe: torch.Tensor,
+    kv_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    kv_cache_dtype: str,
+    scale: torch.Tensor,
+) -> None:
+    return flag_gems.concat_and_cache_mla(
+        kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
+    )
+
+
+def custom_gems_flashattn_mla_forward_decode(
+    self,
+    q: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
+    kv_c_and_k_pe_cache: torch.Tensor,
+    attn_metadata,  # FlashAttnMLAMetadata
+    layer,  # AttentionLayer
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    from flag_gems import flash_attn_varlen_func
+
+    assert kv_c_and_k_pe_cache.numel() > 0
+    assert attn_metadata.decode is not None
+
+    if type(q) is tuple:
+        q_nope, q_pe = q
+    else:
+        q_nope, q_pe = torch.split(
+            q, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
+        )
+
+    if self.kv_cache_dtype.startswith("fp8"):
+        raise NotImplementedError("FP8 FlashAttention MLA not yet supported")
+
+    kv_c_cache = kv_c_and_k_pe_cache[..., : self.kv_lora_rank]
+    k_pe_cache = kv_c_and_k_pe_cache[..., self.kv_lora_rank :]
+
+    # NOTE(matt): During CUDA graph capture, max_query_len can be 0, but the
+    # kernel uses this to calculate grid dimensions. Ensure it's at least 1
+    # to prevent invalid grid configuration during graph capture.
+    max_seqlen_q = max(attn_metadata.decode.max_query_len, 1)
+
+    attn_out = flash_attn_varlen_func(
+        q=q_pe,
+        k=k_pe_cache.unsqueeze(-2),  # Add head dim of 1
+        v=kv_c_cache.unsqueeze(-2),  # Add head dim of 1
+        q_v=q_nope,
+        max_seqlen_q=max_seqlen_q,
+        cu_seqlens_q=attn_metadata.decode.query_start_loc,
+        max_seqlen_k=attn_metadata.decode.max_seq_len,
+        seqused_k=attn_metadata.decode.seq_lens,
+        block_table=attn_metadata.decode.block_table,
+        softmax_scale=self.scale,
+        causal=True,
+        return_softmax_lse=self.need_to_return_lse_for_decode,
+        fa_version=2,
+        scheduler_metadata=attn_metadata.decode.scheduler_metadata,
+        num_splits=0,
+        cp_world_size=self.dcp_world_size,
+        cp_rank=self.dcp_rank,
+        cp_tot_seqused_k=attn_metadata.decode.dcp_tot_seq_lens,
+    )
+
+    if self.need_to_return_lse_for_decode:
+        o, lse = attn_out
+        # FA returns LSE in shape [ H, B ] but DCP wants [ B, H ]
+        return o, lse.transpose(0, 1)  # [ H, B ] -> [ B, H ]
+    else:
+        o = attn_out
+        return o, None
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     import vllm._custom_ops as ops  # noqa: F401
@@ -415,6 +488,7 @@ def apply_gems_patches_to_vllm(verbose=True):
     from vllm.model_executor.layers.layernorm import RMSNorm
     from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
     from vllm.v1.attention.backends.flash_attn import FlashAttentionImpl
+    from vllm.v1.attention.backends.mla.flashattn_mla import FlashAttnMLAImpl
     from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
 
     patch_module_method(RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda, verbose)
@@ -433,6 +507,12 @@ def apply_gems_patches_to_vllm(verbose=True):
     )
     patch_module_method(
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward, verbose
+    )
+    patch_module_method(
+        FlashAttnMLAImpl,
+        "_forward_decode",
+        custom_gems_flashattn_mla_forward_decode,
+        verbose,
     )
     patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
     patch_vllm_lib("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm, "CUDA", verbose)
@@ -459,6 +539,13 @@ def apply_gems_patches_to_vllm(verbose=True):
         "_C",
         "apply_repetition_penalties_",
         custom_apply_repetition_penalties,
+        "CUDA",
+        verbose,
+    )
+    patch_vllm_lib(
+        "_C_cache_ops",
+        "concat_and_cache_mla",
+        custom_concat_and_cache_mla,
         "CUDA",
         verbose,
     )

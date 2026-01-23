@@ -3,11 +3,13 @@ import torch
 vllm_C_lib = torch.library.Library("_C", "IMPL")
 vllm_moe_C_lib = torch.library.Library("_moe_C", "IMPL")
 vllm_fa3_C_lib = torch.library.Library("_vllm_fa3_C", "IMPL")
+vllm_C_cache_ops_lib = torch.library.Library("_C_cache_ops", "IMPL")
 
 libs = {
     "_C": vllm_C_lib,
     "_moe_C": vllm_moe_C_lib,
     "_vllm_fa3_C": vllm_fa3_C_lib,
+    "_C_cache_ops": vllm_C_cache_ops_lib,
 }
 
 
