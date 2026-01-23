@@ -102,7 +102,8 @@ def paste_u64(hi: tl.uint32, lo: tl.uint32):
 def transform_exponential(u, lambd, eps):
     eps1 = -0.5 * eps
     is_min = u >= 1.0 + eps1
-    log = tl.where(is_min, eps1, log2(u))
+    trans_scale = 1.0 / 1.4426950408889634
+    log = tl.where(is_min, eps1, log2(u) * trans_scale)
     v = -1.0 / lambd * log
     return v
 
