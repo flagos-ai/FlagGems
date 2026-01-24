@@ -784,8 +784,8 @@ def test_perf_moe_align_block_size():
         )
 
     class MoeAlignBlockSizeBenchmark(GenericBenchmark2DOnly):
-        def set_shapes(self, shape_file_path=None):
-            self.shapes = [
+        def set_more_shapes(self):
+            return [
                 (16, 8),
                 (16, 16),
                 (16, 32),
@@ -796,9 +796,6 @@ def test_perf_moe_align_block_size():
                 (64, 16),
                 (128, 8),
             ]
-
-        def set_more_shapes(self):
-            return None
 
     gems_op = flag_gems.moe_align_block_size_triton
     bench = MoeAlignBlockSizeBenchmark(
