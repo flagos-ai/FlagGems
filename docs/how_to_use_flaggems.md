@@ -3,7 +3,7 @@
 ## Basic Usage
 
 To use the `FlagGems` operator library, import it and enable acceleration before running computations.
-You can enable it globally or temporarily.
+You can enable it globally, selectively, or temporarily.
 
 ### Option 1: Global Enablement
 
@@ -12,14 +12,27 @@ To apply `FlagGems` optimizations across your entire script or interactive sessi
 ```python
 import flag_gems
 
-# Enable flag_gems globally
+# Enable all FlagGems ops globally
 flag_gems.enable()
 ```
 
 Once enabled, all supported operators in your code will automatically be replaced
-with the optimized `FlagGems` implementations -— no further changes needed.
+with the optimized `FlagGems` implementations — no further changes needed.
 
-### Option 2: Scoped Enablement
+### Option 2: Selective Enablement
+
+To enable only specific operators and skip the rest:
+
+```python
+import flag_gems
+
+# Enable only selected ops
+flag_gems.only_enable(include=["rms_norm", "softmax"])
+```
+
+This is useful when you want to accelerate only a subset of operations.
+
+### Option 3: Scoped Enablement
 
 For finer control, you can enable `FlagGems` only within a specific code block
 using a context manager:
@@ -37,30 +50,43 @@ with flag_gems.use_gems():
 This scoped usage is helpful when you want to:
 
 - Benchmark performance differences
-
 - Compare correctness between implementations
-
 - Apply acceleration selectively in complex workflows
+
+You can also use selective enablement in the context manager:
+
+```python
+# Enable only specific ops in the scope
+with flag_gems.use_gems(include=["sum", "add"]):
+    # Only sum and add will be accelerated
+    ...
+
+# Or exclude specific ops
+with flag_gems.use_gems(exclude=["mul", "div"]):
+    # All except mul and div will be accelerated
+    ...
+```
+
+Note: The `include` parameter has higher priority than `exclude`. If both are provided, `exclude` is ignored.
 
 ## Advanced Usage
 
-The `flag_gems.enable(...)` function supports several optional parameters
+The `flag_gems.enable(...)` and `flag_gems.only_enable(...)` functions support several optional parameters
 which give you finer-grained control over how acceleration is applied.
 This allows for more flexible integration and easier debugging or profiling in complex workflows.
 
 ### Parameter Overview
 
-<!--TODO(Qiming): verify the list of parameters.-->
-
 | Parameter      | Type      | Description                                         |
 | -------------- | --------- | --------------------------------------------------- |
-| `unused`       | List[str] | Disable specific operators                          |
+| `unused`       | List[str] | Disable specific operators (for `enable`)           |
+| `include`      | List[str] | Enable only specific operators (for `only_enable`)  |
 | `record`       | bool      | Log operator calls for debugging or profiling       |
 | `path`         | str       | Log file path (only used when `record=True`)        |
 
 ### Example : Selectively Disable Specific Operators
 
-You can use the `unused` parameter to exclude certain operators from being accelerated by `FlagGems`.
+You can use the `unused` parameter in `enable()` to exclude certain operators from being accelerated by `FlagGems`.
 This is especially useful when a particular operator does not behave as expected in your workload,
 or if you're seeing suboptimal performance and want to temporarily fall back
 to the original implementation.
@@ -71,6 +97,16 @@ flag_gems.enable(unused=["sum", "add"])
 
 With this configuration, `sum` and `add` will continue to use the native PyTorch implementations,
 while all other supported operators will use `FlagGems` versions.
+
+### Example : Selectively Enable Specific Operators
+
+Use `only_enable()` with the `include` parameter to accelerate only a subset of operators:
+
+```python
+flag_gems.only_enable(include=["rms_norm", "softmax"])
+```
+
+This registers only the specified operators, skipping all others.
 
 ### Example : Enable Debug Logging
 
@@ -95,6 +131,26 @@ $ cat ./gems_debug.log
 [DEBUG] flag_gems.ops.mm: GEMS MM
 [DEBUG] flag_gems.fused.reshape_and_cache: GEMS RESHAPE_AND_CACHE
 ```
+
+### Example : Query Registered Operators
+
+After enabling `FlagGems`, you can query which operators have been registered:
+
+```python
+import flag_gems
+
+flag_gems.enable()
+
+# Get list of registered function names
+registered_funcs = flag_gems.all_registered_ops()
+print("Registered functions:", registered_funcs)
+
+# Get list of registered operator keys
+registered_keys = flag_gems.all_registered_keys()
+print("Registered keys:", registered_keys)
+```
+
+This is useful for debugging or verifying which operators are active.
 
 ## Running FlagGems on Non-NVIDIA Hardware
 
