@@ -10,8 +10,9 @@ SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
 
 
 def get_sm_version_num():
-    major, minor = torch_device_fn.get_device_capability()
-    return major * 10 + minor
+    if hasattr(torch_device_fn, get_device_capability):
+        major, minor = torch_device_fn.get_device_capability()
+        return major * 10 + minor
 
 
 SM_VERSION_NUM = get_sm_version_num()
