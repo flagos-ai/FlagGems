@@ -382,9 +382,9 @@ def enable(
     exclude_ops = resolve_user_setting(unused, "exclude")
     current_work_registrar = registrar(
         _FULL_CONFIG,
-        user_include_ops_list=[],
-        user_exclude_ops_list=exclude_ops,
-        cpp_patched_ops_list=list(set(aten_patch_list)),
+        user_include_ops=[],
+        user_exclude_ops=exclude_ops,
+        cpp_patched_ops=list(set(aten_patch_list)),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)
@@ -436,9 +436,9 @@ def only_enable(
     global current_work_registrar
     current_work_registrar = registrar(
         _FULL_CONFIG,
-        user_include_ops_list=include_ops,
-        user_exclude_ops_list=[],
-        cpp_patched_ops_list=list(set(aten_patch_list)),
+        user_include_ops=include_ops,
+        user_exclude_ops=[],
+        cpp_patched_ops=list(set(aten_patch_list)),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)
@@ -498,18 +498,18 @@ class use_gems:
         return flag_gems.experimental_ops
 
 
-def all_ops():
+def all_registered_ops():
     return current_work_registrar.get_all_ops()
 
 
-def registered_ops():
-    return current_work_registrar.get_all_ops()
+def all_registered_keys():
+    return current_work_registrar.get_all_keys()
 
 
 __all__ = [
     "enable",
     "only_enable",
     "use_gems",
-    "all_ops",
-    "registered_ops",
+    "all_registered_ops",
+    "all_registered_keys",
 ]

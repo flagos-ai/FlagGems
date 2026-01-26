@@ -108,13 +108,26 @@ def get_default_enable_config(vendor_name=None, arch_name=None):
 
 
 def resolve_user_setting(user_setting_info, user_setting_type="include"):
-    # when include is a list, use it directly
+    """
+    Resolve user setting for include/exclude operator lists.
+
+    Args:
+        user_setting_info: Can be a list/tuple/set of operators, "default", None, or a path to a YAML file.
+        user_setting_type: Either "include" or "exclude".
+
+    Returns:
+        List of operators based on the user setting.
+    """
+    # If user_setting_info is a list, tuple, or set, use it directly as the operator list (deduplicated)
     if isinstance(user_setting_info, (list, tuple, set)):
         return list(set(user_setting_info))
 
     yaml_candidates = []
-    # when include is "default" or None, load from default yaml
-    if user_setting_info == "default" or user_setting_info is None:
+    # If set to "default" or None (for include type),
+    # load from default YAML config files based on vendor and architecture
+    if user_setting_info == "default" or (
+        user_setting_type == "include" and user_setting_info is None
+    ):
         # Lazily infer vendor/arch if not provided.
         vendor_name = _runtime.device.vendor_name
         arch_event = _runtime.backend.BackendArchEvent()
@@ -122,10 +135,11 @@ def resolve_user_setting(user_setting_info, user_setting_type="include"):
             arch_name = getattr(arch_event, "arch", None)
         yaml_candidates = get_default_enable_config(vendor_name, arch_name)
 
-    # when include is a yaml path, load from it
+    # If user_setting_info is a string, treat it as a YAML file path
     elif isinstance(user_setting_info, str):
         yaml_candidates.append(user_setting_info)
 
+    # Iterate through candidate YAML paths and try to load the operator list
     for yaml_path in yaml_candidates:
         operator_list = load_enable_config_from_yaml(yaml_path, user_setting_type)
         if operator_list:
@@ -135,6 +149,7 @@ def resolve_user_setting(user_setting_info, user_setting_type="include"):
                 f"resolve_user_setting: {user_setting_type} yaml not found: {yaml_path}"
             )
 
+    # If no operators found in any YAML, warn and return empty list
     warnings.warn(
         f"resolve_user_setting: no {user_setting_type} ops found; returning empty list"
     )
