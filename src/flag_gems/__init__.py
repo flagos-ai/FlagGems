@@ -14,7 +14,7 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
-__version__ = "4.2.0"
+__version__ = "4.2.1.rc.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
