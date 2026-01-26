@@ -1,3 +1,4 @@
+import flag_gems
 import json
 import logging
 import os
@@ -6,7 +7,6 @@ from datetime import datetime
 import pytest
 import torch
 
-import flag_gems
 
 device = flag_gems.device
 

@@ -2,7 +2,7 @@ import logging
 import os
 def _get_framework():
     framework_env = os.environ.get("FLAGGEMS_FRAMEWORK", "paddle").lower()
-    
+    framework_env = "paddle"
     if framework_env == "paddle":
         try:
             import paddle
@@ -436,13 +436,15 @@ def only_enable(
 
 
 class use_gems:
-    def __init__(self, unused=None, record=False, once=False, path=None):
+    def __init__(self, unused=None, exclude=None, include=None, record=False, once=False, path=None):
         if framework_name == "torch":
             self.lib = dl_framework.library.Library("aten", "IMPL")
         else:
             self.lib = None  
         
         self.unused = [] if unused is None else unused
+        self.exclude = exclude if isinstance(exclude, list) else []
+        self.include = include if isinstance(include, list) else []
         self.registrar = registrar
         self.record = record
         self.once = once
@@ -470,15 +472,16 @@ class use_gems:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
-        if torch.__version__ >= "2.5":
-            self.lib._destroy()
+        if framework_name == "paddle":
+            current_work_registrar.restore_all()
+            del current_work_registrar
+        else:
+            if torch.__version__ >= "2.5":
+                self.lib._destroy()
         del self.lib
         del self.exclude
         del self.include
         del self.registrar
-        if framework_name == "paddle":
-            current_work_registrar.restore_all()
-        del current_work_registrar
         if self.record:
             teardown_flaggems_logging()
 

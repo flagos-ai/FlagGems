@@ -1,7 +1,7 @@
+import flag_gems
 import numpy as np
 import paddle
 import pytest
-import flag_gems
 import os
 import random
 import time
@@ -9,8 +9,6 @@ import time
 import numpy as np
 import pytest
 import torch
-
-import flag_gems
 
 from .accuracy_utils import (
     CONTIGUOUS_SHAPE_STRIDES_2D,

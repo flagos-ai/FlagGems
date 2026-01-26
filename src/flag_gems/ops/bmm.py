@@ -142,10 +142,6 @@ def bmm(A, B):
         triton.cdiv(meta["N"], meta["TILE_N"]),
         batch,
     )
-<<<<<<< HEAD
-    with torch_device_fn.device(A.place):
-        bmm_kernel[grid_fn](A, B, out, M, N, K)
-=======
     with torch_device_fn.device(A.device):
         bmm_kernel[grid_fn](
             A,
@@ -197,7 +193,6 @@ def bmm_out(A, B, out):
             out.stride(1),
             out.stride(2),
         )
->>>>>>> origin/master
     return out
 
 def bmm_paddle(x: 'Tensor', y: 'Tensor', name: 'str | None' = None, *, out: 'Tensor | None' = None) -> 'Tensor':

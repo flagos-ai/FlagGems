@@ -67,7 +67,7 @@ def _maybe_move_to_cpu(res, ref):
 
     free_mem = None
     try:
-        free_mem, _ = torch_device_fn.mem_get_info(res.device)
+        free_mem, _ = torch.get_device_module(res.device).mem_get_info(res.device)
     except RuntimeError:
         pass
 
