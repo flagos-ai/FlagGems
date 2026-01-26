@@ -13,6 +13,7 @@ from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.asinh import asinh
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -60,6 +61,7 @@ from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
+from flag_gems.ops.cosh import cosh
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -94,6 +96,7 @@ from flag_gems.ops.flip import flip
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
+from flag_gems.ops.gcd import gcd
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
@@ -113,9 +116,11 @@ from flag_gems.ops.isnan import isnan
 from flag_gems.ops.kron import kron
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
+from flag_gems.ops.leaky_relu import leaky_relu
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
+from flag_gems.ops.log10 import log10
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
 from flag_gems.ops.logical_and import logical_and
@@ -265,6 +270,7 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "asinh",
     "avg_pool2d",
     "avg_pool2d_backward",
     "atan",
@@ -306,6 +312,7 @@ __all__ = [
     "copy_",
     "cos",
     "cos_",
+    "cosh",
     "count_nonzero",
     "cummax",
     "cummin",
@@ -349,6 +356,7 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gcd",
     "ge",
     "ge_scalar",
     "gelu",
@@ -378,12 +386,14 @@ __all__ = [
     "layer_norm_backward",
     "le",
     "le_scalar",
+    "leaky_relu",
     "lerp_scalar",
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
     "linspace",
     "log",
+    "log10",
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",

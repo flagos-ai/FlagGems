@@ -40,30 +40,37 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 
 forward_operations = [
+    # Basic math
     ("abs", torch.abs, FLOAT_DTYPES),
-    ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
-    ("erf", torch.erf, FLOAT_DTYPES),
+    ("asinh", torch.asinh, FLOAT_DTYPES),
+    ("cosh", torch.cosh, FLOAT_DTYPES),
+    ("log", torch.log, FLOAT_DTYPES),
+    ("log10", torch.log10, FLOAT_DTYPES),
+    ("logaddexp", torch.logaddexp, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
     ("exp2", torch.exp2, FLOAT_DTYPES),
     ("neg", torch.neg, FLOAT_DTYPES),
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("sqrt", torch.sqrt, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
+    # Special / numeric
+    ("erf", torch.erf, FLOAT_DTYPES),
+    ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
+    # Logical
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
-    ("log", torch.log, FLOAT_DTYPES),
-    # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
     # Dropout
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
     ("celu", torch.nn.functional.celu, FLOAT_DTYPES),
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
+    ("leaky_relu", torch.nn.functional.leaky_relu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
-    # Trigonometric operations
+    # Trigonometric
     ("cos", torch.cos, FLOAT_DTYPES),
     ("sin", torch.sin, FLOAT_DTYPES),
     ("tan", torch.tan, FLOAT_DTYPES),
@@ -71,8 +78,9 @@ forward_operations = [
     ("atan", torch.atan, FLOAT_DTYPES),
     ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
+    # Bitwise
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
-    # Numerical Checks
+    # Numerical checks
     ("isinf", torch.isinf, FLOAT_DTYPES),
     ("isnan", torch.isnan, FLOAT_DTYPES),
     ("isfinite", torch.isfinite, FLOAT_DTYPES),
