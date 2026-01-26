@@ -1,0 +1,48 @@
+# Note this *workflow_run* workflow runs on the default branch.
+# - The GITHUB_TOKEN is more powerful than the one used in the "PR-from-fork" context
+# - It can access PAT tokens, thus more powerful than *triggered* workflow,
+#   although a PAT may not be required.
+
+# XXX: This workflow is a place-holder. It is not gonna be triggered now
+# because we don't have a workflow named 'unit-test'.
+
+name: coverage
+
+on:
+  workflow_run:
+    workflows:
+      - unit-test
+    types:
+      - completed
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    steps:
+      - id: prepare
+        run: |
+          echo "Installing coverage.py"
+
+      - id: download-data
+        run: |
+          echo "Downloading coverage artifacts"
+
+      - id: generate-html
+        run: |
+          echo "Combining coverage data"
+          echo "Generating HTML report for PR"
+
+      - id: checkout
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          # Use PAT if needed.
+          # token: ${{ secrets.MY_TOKEN }}
+
+      - id: update-pages
+        run: |
+          echo "Uploading coverage report to Pages"
+
+      - id: comment-pr
+        run: |
+          echo "Commenting PR with links to coverage report."
