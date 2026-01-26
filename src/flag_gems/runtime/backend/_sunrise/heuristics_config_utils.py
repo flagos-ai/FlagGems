@@ -1,4 +1,4 @@
-import torch
+import torch  # noqa: F401
 import triton
 
 
@@ -124,7 +124,7 @@ def softmax_heur_tile_k(args):
     # NUM_SMS = torch.cuda.get_device_properties(
     #     torch.cuda.current_device()
     # ).multi_processor_count
-    NUM_SMS = 32   # Not support now.
+    NUM_SMS = 32  # Not support now.
 
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
@@ -237,6 +237,7 @@ def vdot_heur_block_size(args):
     else:
         return 1024
 
+
 def sum_heur_num_warps_inner(args):
     tile_size = args["TILE_N"]
     if tile_size < 64:
@@ -248,6 +249,7 @@ def sum_heur_num_warps_inner(args):
     else:
         return 16
 
+
 def sum_heur_tile_n_inner(args):
     if args["N"] <= 32:
         return triton.next_power_of_2(args["N"])
@@ -256,15 +258,17 @@ def sum_heur_tile_n_inner(args):
     else:
         return 256
 
+
 def sum_heur_one_tile_per_cta(args):
     return args["TILE_N"] >= args["N"]
+
 
 def sum_heur_tile_k(args):
     MAX_TILE_K = 128
     # NUM_SMS = torch.cuda.get_device_properties(
     #     torch.cuda.current_device()
     # ).multi_processor_count
-    NUM_SMS = 32   # Not support now.
+    NUM_SMS = 32  # Not support now.
 
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
@@ -277,8 +281,10 @@ def sum_heur_tile_k(args):
             break
     return tile_k
 
+
 def sum_heur_tile_n_non_inner(args):
     return triton.cdiv(256, args["TILE_K"])
+
 
 HEURISTICS_CONFIGS = {
     "argmax": {

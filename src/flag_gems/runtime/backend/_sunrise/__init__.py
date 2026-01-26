@@ -1,10 +1,8 @@
-import torch
-import torch_ptpu
+import torch_ptpu  # noqa: F401
 from backend_utils import VendorInfoBase  # noqa: E402
-import os
+
 vendor_info = VendorInfoBase(
     vendor_name="sunrise",
-    # device_name="cuda",
     device_name="ptpu",
     device_query_cmd="pt_smi",
     triton_extra_name="tang",

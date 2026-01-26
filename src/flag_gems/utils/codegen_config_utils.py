@@ -38,6 +38,7 @@ def hygon_heuristics_for_num_warps(tile_size):
 def cambricon_heuristics_for_num_warps(tile_size):
     return 1
 
+
 def sunrise_heuristics_for_num_warps(tile_size):
     if tile_size < 1024:
         return 4
@@ -47,6 +48,7 @@ def sunrise_heuristics_for_num_warps(tile_size):
         return 16
     else:
         return 32
+
 
 @dataclass
 class CodeGenConfig:
