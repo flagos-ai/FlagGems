@@ -1,9 +1,7 @@
 import re
-from pathlib import Path
 
 import pytest
 import torch
-import yaml
 
 import flag_gems
 
@@ -120,16 +118,11 @@ def test_only_enable_with_yaml(tmp_path):
 
 @pytest.mark.only_enable
 def test_only_enable_default(tmp_path, monkeypatch):
-    backend_dir = Path(flag_gems.__file__).resolve().parent / "runtime" / "backend"
-    default_files = list(backend_dir.glob("_*/enable_configs.yaml"))
-    if not default_files:
-        pytest.skip("no default enable_configs.yaml found")
-
-    yaml_path = default_files[0]
-    data = yaml.safe_load(yaml_path.read_text()) or {}
-    include_ops = data.get("include", [])
-    if not include_ops:
-        pytest.skip("default enable_configs.yaml has empty include list")
+    # Create a mock YAML file with known include ops
+    include_ops = ["sum", "mul", "add"]
+    yaml_content = "include:\n" + "\n".join(f"  - {op}" for op in include_ops)
+    yaml_path = tmp_path / "mock_enable_configs.yaml"
+    yaml_path.write_text(yaml_content)
 
     monkeypatch.setattr(
         flag_gems.config,
@@ -137,22 +130,23 @@ def test_only_enable_default(tmp_path, monkeypatch):
         lambda vendor_name, arch_name: [yaml_path],
     )
 
-    log_file = f"gems_only_enable_default_{yaml_path.parent.name}.log"
+    log_file = "gems_only_enable_default_mock.log"
     path_file = tmp_path / log_file
+
+    # Map ops to torch functions for dynamic execution
+    op_map = {
+        "sum": lambda a, b: torch.sum(a),
+        "mul": lambda a, b: a * b,
+        "add": lambda a, b: a + b,
+    }
 
     with flag_gems.use_gems(include="default", record=True, path=path_file):
         a = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
         b = torch.tensor([4.0, 5.0, 6.0], device=flag_gems.device)
         # Run a couple of ops from the include list to ensure they log.
         for op in include_ops[:2]:
-            if op == "softmax":
-                _ = torch.softmax(a, dim=0)
-            elif op == "cumsum":
-                _ = torch.cumsum(a, dim=0)
-            elif op == "sum":
-                _ = torch.sum(a)
-            elif op == "mul":
-                _ = a * b
+            if op in op_map:
+                _ = op_map[op](a, b)
             else:
                 # Fallback: exercise a basic op to trigger logging.
                 _ = a + b
