@@ -41,6 +41,9 @@ class BinaryPointwiseBenchmark(Benchmark):
             marks=getattr(pytest.mark, name, None),
         )
         for name, op, dtype in [
+            #add easy ops
+            ("logaddexp", torch.logaddexp, FLOAT_DTYPES),
+            
             # Arithmetic operations
             ("add", torch.add, FLOAT_DTYPES),
             ("div", torch.div, FLOAT_DTYPES),

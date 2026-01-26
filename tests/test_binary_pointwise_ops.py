@@ -28,6 +28,53 @@ def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
 
+# --- logaddexp 测试代码开始 ---
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp(shape, dtype):
+    # 生成两个随机输入，logaddexp 通常用于处理 Log 域的概率，取值范围较广
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    # 计算原生 PyTorch 结果
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    
+    # 启用 FlagGems 计算结果
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    # 验证精度对齐
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_special_values(dtype):
+    # 覆盖边界用例：极值、零值、负数、Inf、NaN (赛题要求 4.1.1)
+    # logaddexp(x, y) = log(exp(x) + exp(y))
+    # 特殊组合测试：比如 logaddexp(-inf, x) 应该等于 x
+    vals1 = torch.tensor([1.0, 0.0, -1.0, float("inf"), float("-inf"), float("nan"), 1e10], 
+                         dtype=dtype, device=flag_gems.device)
+    vals2 = torch.tensor([0.0, 1.0, -1.0, float("-inf"), float("inf"), float("nan"), 1e10], 
+                         dtype=dtype, device=flag_gems.device)
+    
+    ref_inp1 = to_reference(vals1, True)
+    ref_inp2 = to_reference(vals2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(vals1, vals2)
+
+    # equal_nan=True 确保 NaN 能够正确匹配
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+# --- logaddexp 测试代码结束 ---
+
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
