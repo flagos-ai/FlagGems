@@ -293,3 +293,10 @@ FusedRecurrentGatedDeltaRuleBenchmark:
     - [256]
     - [512]
   shape_desc: "(T,) many lengths"
+MoeAlignBlockSizeBenchmark:
+  shapes:
+    - [16, 8]
+    - [4, 32]
+    - [32, 16]
+    - [8, 64]
+    - [128, 4]
