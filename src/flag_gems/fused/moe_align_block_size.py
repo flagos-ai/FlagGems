@@ -143,10 +143,11 @@ def moe_align_block_size_stage4(
     offset = tl.arange(0, tokens_per_thread) + start_idx
     mask = offset < numel
     expert_id = tl.load(topk_ids_ptr + offset, mask=mask)
-    token_cnt = tl.load(tokens_cnts_ptr + off_t + expert_id, mask=mask)
-    rank_post_pad = token_cnt + tl.load(cumsum_ptr + expert_id, mask=mask)
-    tl.store(sorted_token_ids_ptr + rank_post_pad, offset)
-    tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
+    token_idx_in_expert = tl.atomic_add(
+        tokens_cnts_ptr + off_t + expert_id, 1, mask=mask
+    )
+    rank_post_pad = token_idx_in_expert + tl.load(cumsum_ptr + expert_id, mask=mask)
+    tl.store(sorted_token_ids_ptr + rank_post_pad, offset, mask=mask)
 
 
 def moe_align_block_size_triton(

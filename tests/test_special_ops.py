@@ -1725,7 +1725,80 @@ def test_accuracy_moe_align_block_size(
         num_tokens_post_pad=num_tokens_post_pad_vllm,
     )
 
+    def _group_tokens_by_expert(
+        sorted_ids: torch.Tensor,
+        expert_ids: torch.Tensor,
+        block_size: int,
+        valid_length: int,
+        total_tokens: int,
+    ) -> dict:
+        num_blocks = valid_length // block_size
+        expert_tokens: dict[int, list[int]] = {}
+
+        for block_idx in range(num_blocks):
+            expert_id = expert_ids[block_idx].item()
+            block_start = block_idx * block_size
+            block_end = min(block_start + block_size, valid_length)
+
+            block_tokens = sorted_ids[block_start:block_end]
+            valid_tokens = block_tokens[block_tokens < total_tokens]
+
+            if expert_id not in expert_tokens:
+                expert_tokens[expert_id] = []
+            expert_tokens[expert_id].extend(valid_tokens.tolist())
+        return expert_tokens
+
+    def _verify_expert_level_sorting(
+        actual_sorted_ids: torch.Tensor,
+        golden_sorted_ids: torch.Tensor,
+        expert_ids: torch.Tensor,
+        block_size: int,
+        valid_length: int,
+        total_tokens: int,
+    ):
+        """
+        Verify that actual_sorted_ids follows the correct expert-level sorting.
+        The kerne limplementation may or may not preserve original token order
+        in topk_ids in the final sorted_ids however this does not impact quality.
+        """
+        # Group tokens by expert from the golden implementation
+        golden_expert_tokens = _group_tokens_by_expert(
+            golden_sorted_ids, expert_ids, block_size, valid_length, total_tokens
+        )
+
+        actual_expert_tokens = _group_tokens_by_expert(
+            actual_sorted_ids, expert_ids, block_size, valid_length, total_tokens
+        )
+
+        assert set(golden_expert_tokens.keys()) == set(actual_expert_tokens.keys()), (
+            f"Expert IDs mismatch: golden={set(golden_expert_tokens.keys())}, "
+            f"actual={set(actual_expert_tokens.keys())}"
+        )
+
+        for expert_id in golden_expert_tokens:
+            golden_tokens = torch.tensor(
+                golden_expert_tokens[expert_id], device=actual_sorted_ids.device
+            )
+            actual_tokens = torch.tensor(
+                actual_expert_tokens[expert_id], device=actual_sorted_ids.device
+            )
+            assert torch.equal(
+                torch.sort(golden_tokens)[0], torch.sort(actual_tokens)[0]
+            ), (
+                f"Expert {expert_id} token mismatch: "
+                f"golden={golden_expert_tokens[expert_id]}, "
+                f"actual={actual_expert_tokens[expert_id]}"
+            )
+
     torch.cuda.synchronize()
+    _verify_expert_level_sorting(
+        sorted_ids,
+        sorted_ids_vllm,
+        expert_ids_vllm,
+        block_size,
+        num_tokens_post_pad.item(),
+        topk_ids.numel(),
+    )
     gems_assert_close(expert_ids, to_reference(expert_ids_vllm), dtype=dtype)
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
