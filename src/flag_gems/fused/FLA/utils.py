@@ -13,6 +13,9 @@ from typing import Any
 import torch
 import triton
 
+from flag_gems import runtime
+from flag_gems.utils.device_info import get_device_capability
+
 # envrironments setting
 SUPPRESS_LEVEL = int(os.getenv("GDN_RECOMPUTE_SUPPRESS_LEVEL", "0"))
 FLA_GDN_FIX_BT = os.getenv("FLA_GDN_FIX_BT", "0") == "1"
@@ -20,9 +23,22 @@ FLA_GDN_FIX_BT = os.getenv("FLA_GDN_FIX_BT", "0") == "1"
 use_cuda_graph = os.environ.get("FLA_USE_CUDA_GRAPH", "0") == "1"
 
 
-is_nvidia_hopper = torch.cuda.get_device_capability()[0] >= 9  # TODO
+def _detect_nvidia_hopper() -> bool:
+    """Return True if current device is NVIDIA and SM major version >= 9.
 
-is_tma_supported = (is_nvidia_hopper) and (
+    We rely on `runtime.device.vendor_name` and `get_device_capability()` which
+    already handle errors and fallbacks elsewhere.
+    """
+    vendor_name = getattr(runtime.device, "vendor_name", "").lower()
+    if "nvidia" not in vendor_name:
+        return False
+    major, _ = get_device_capability()
+    return major >= 9
+
+
+is_nvidia_hopper = _detect_nvidia_hopper()
+
+is_tma_supported = is_nvidia_hopper and (
     hasattr(triton.language, "_experimental_make_tensor_descriptor")
     or hasattr(triton.language, "make_tensor_descriptor")
 )
