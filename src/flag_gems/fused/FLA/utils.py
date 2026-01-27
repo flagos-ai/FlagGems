@@ -65,7 +65,7 @@ def tensor_cache(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        nonlocal cache_entries, cache_size
+        nonlocal cache_entries
         for i, entry in enumerate(cache_entries):
             last_args, last_kwargs, last_result = entry
             if (
