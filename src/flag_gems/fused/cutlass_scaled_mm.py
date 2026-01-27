@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime.device_info import get_device_capability
+from flag_gems.utils.device_info import get_device_capability
 
 SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
 
