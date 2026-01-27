@@ -4,8 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
-if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (9, 0):
-    SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn
+if torch.cuda.is_available():
+    device = torch.cuda.current_device()
+    props = torch.cuda.get_device_properties(device)
+    vendor = props.vendor
+    if vendor == 0x10DE and torch.cuda.get_device_capability() >= (9, 0):  # NVIDIA
+        SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn
+    else:
+        SUPPORTED_FP8_DTYPE = torch.float32
 else:
     SUPPORTED_FP8_DTYPE = torch.float32
 
