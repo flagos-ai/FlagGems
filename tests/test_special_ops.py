@@ -1678,12 +1678,15 @@ except ImportError:
 @pytest.mark.moe_align_block_size
 @pytest.mark.parametrize("num_experts", [32, 256, 512])
 @pytest.mark.parametrize("block_size", [8, 16, 32])
-@pytest.mark.parametrize("topk_ids_shape", [
-    (1024, 10),
-    (6152, 10),
-    (11575, 10),
-    (16384, 10),
-    ])
+@pytest.mark.parametrize(
+    "topk_ids_shape",
+    [
+        (1024, 10),
+        (6152, 10),
+        (11575, 10),
+        (16384, 10),
+    ],
+)
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
 def test_accuracy_moe_align_block_size(
     num_experts,
