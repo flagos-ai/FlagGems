@@ -198,7 +198,7 @@ def set_torch_backend_device_fn(vendor_name=None):
     global device_name, torch_device_fn_device
     device_name = device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{device_name}"
-    if device_name in ("musa", "aipu", "npu", "txda"):
+    if device_name in ("musa", "aipu", "npu", "txda", "ptpu"):
         torch_device_fn_device = None
     else:
         torch_device_fn_device = importlib.import_module(module_str)
