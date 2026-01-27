@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra.cuda import libdevice
 
 
 @triton.jit
@@ -12,6 +13,7 @@ def topk_with_k2_triton(
     n_group,
     stride_scores_token,
     stride_group_scores_token,
+    scoring_func: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     INPUT_DTYPE: tl.constexpr,
 ):
@@ -37,6 +39,11 @@ def topk_with_k2_triton(
         mask=mask,
         other=0.0,
     )
+
+    if scoring_func == 1:
+        x_f32 = x.to(tl.float32)
+        x_f32 = 0.5 * libdevice.tanh(0.5 * x_f32) + 0.5
+        x = x_f32.to(INPUT_DTYPE)
 
     x = x + b
 
@@ -74,6 +81,7 @@ def group_idx_and_topk_triton(
     num_experts,
     num_experts_per_group,
     routed_scaling_factor,
+    scoring_func: tl.constexpr,
     stride_scores_token,
     stride_group_scores_token,
     stride_out_token,
@@ -153,7 +161,7 @@ def group_idx_and_topk_triton(
         tl.sum((expert_in_group & group_selected[None, :]).to(tl.int32), axis=1) > 0
     ) & valid_expert
 
-    scored = tl.load(
+    raw_scores = tl.load(
         scores_ptr + pid * stride_scores_token + expert_offsets,
         mask=expert_selected,
         other=neg_inf,
@@ -164,6 +172,13 @@ def group_idx_and_topk_triton(
         mask=valid_expert,
         other=0.0,
     )
+
+    if scoring_func == 1:
+        scored_f32 = raw_scores.to(tl.float32)
+        scored_f32 = 0.5 * libdevice.tanh(0.5 * scored_f32) + 0.5
+        scored = scored_f32.to(INPUT_DTYPE)
+    else:
+        scored = raw_scores
 
     selection_scores_native = scored + expert_bias
 
@@ -184,11 +199,16 @@ def group_idx_and_topk_triton(
         candidate_idx = tl.where(is_max, expert_offsets, num_experts + 1)
         selected_idx = tl.min(candidate_idx, axis=0)
 
-        selected_score = tl.load(
+        selected_raw = tl.load(
             scores_ptr + pid * stride_scores_token + selected_idx,
             mask=selected_idx < num_experts,
             other=neg_inf,
         ).to(tl.float32)
+
+        if scoring_func == 1:
+            selected_score = 0.5 * libdevice.tanh(0.5 * selected_raw) + 0.5
+        else:
+            selected_score = selected_raw
 
         topk_vals = tl.where(pos_range == i, selected_score, topk_vals)
         topk_idx = tl.where(pos_range == i, selected_idx.to(tl.int32), topk_idx)
@@ -266,13 +286,6 @@ def grouped_topk(
     else:
         raise ValueError(f"Unsupported dtype: {scores.dtype}")
 
-    if scoring_func == 1:
-        from flag_gems.ops.tanh import tanh as gems_tanh
-
-        scores_processed = 0.5 * gems_tanh(0.5 * scores) + 0.5
-    else:
-        scores_processed = scores
-
     group_scores = torch.empty(
         (num_tokens, n_group),
         device=scores.device,
@@ -295,13 +308,14 @@ def grouped_topk(
     grid1 = (num_tokens * n_group,)
 
     topk_with_k2_triton[grid1](
-        scores_processed,
+        scores,
         bias,
         group_scores,
         num_experts_per_group,
         n_group,
-        scores_processed.stride(0),
+        scores.stride(0),
         group_scores.stride(0),
+        scoring_func,
         BLOCK_SIZE=BLOCK1,
         INPUT_DTYPE=INPUT_DTYPE,
     )
@@ -311,7 +325,7 @@ def grouped_topk(
     grid2 = (num_tokens,)
 
     group_idx_and_topk_triton[grid2](
-        scores_processed,
+        scores,
         group_scores,
         topk_values,
         topk_indices,
@@ -323,7 +337,8 @@ def grouped_topk(
         num_experts,
         num_experts_per_group,
         routed_scaling_factor,
-        scores_processed.stride(0),
+        scoring_func,
+        scores.stride(0),
         group_scores.stride(0),
         topk_values.stride(0),
         N_GROUP=n_group,

@@ -13,6 +13,7 @@ class vendors(Enum):
     AIPU = 8
     ASCEND = 9
     TSINGMICRO = 10
+    SUNRISE = 11
 
     @classmethod
     def get_all_vendors(cls) -> dict:

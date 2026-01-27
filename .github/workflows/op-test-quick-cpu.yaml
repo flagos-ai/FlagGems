@@ -9,6 +9,7 @@ on:
 jobs:
   container-unit-test:
     runs-on: jiuding
+    if: "! contains(github.event.pull_request.labels.*.name, 'competition')"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
