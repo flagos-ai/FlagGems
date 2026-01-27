@@ -106,7 +106,7 @@ def moe_align_block_size_stage3(
     cumsum_ptr,
     num_experts: tl.constexpr,
     block_size: tl.constexpr,
-):# Vectorized implementation using tl.cumsum
+):  # Vectorized implementation using tl.cumsum
     off_cnt = num_experts * num_experts
 
     # Load all expert token counts at once
@@ -157,7 +157,6 @@ def moe_align_block_size_stage4(
     rank_post_pad = token_cnt + tl.load(cumsum_ptr + expert_id, mask=mask)
     tl.store(sorted_token_ids_ptr + rank_post_pad, offset)
     tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
-    
 
     # for i in range(start_idx, tl.minimum(start_idx + tokens_per_thread, numel)):
     #     expert_id = tl.load(topk_ids_ptr + i)
