@@ -63,7 +63,7 @@ class SQLPersistantModel(PersistantModel):
         engine: sqlalchemy.engine.Engine,
     ) -> Optional[Type[Base]]:
         AutoBase: sqlalchemy.ext.automap.AutomapBase = (
-            sqlalchemy.ext.automap.automap_base(Base)
+            sqlalchemy.ext.automap.automap_base()
         )
         AutoBase.prepare(engine)
         ModelCls: Optional[Type[Base]] = AutoBase.classes.get(name)
