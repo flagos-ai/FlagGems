@@ -32,12 +32,24 @@ def avg_pool3d_output_size(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_D": 4, "BLOCK_H": 8, "BLOCK_W": 8}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_D": 8, "BLOCK_H": 8, "BLOCK_W": 8}, num_stages=2, num_warps=4),
-        triton.Config({"BLOCK_D": 4, "BLOCK_H": 16, "BLOCK_W": 16}, num_stages=2, num_warps=4),
-        triton.Config({"BLOCK_D": 8, "BLOCK_H": 16, "BLOCK_W": 16}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_D": 4, "BLOCK_H": 32, "BLOCK_W": 8}, num_stages=2, num_warps=4),
-        triton.Config({"BLOCK_D": 4, "BLOCK_H": 8, "BLOCK_W": 32}, num_stages=2, num_warps=4),
+        triton.Config(
+            {"BLOCK_D": 4, "BLOCK_H": 8, "BLOCK_W": 8}, num_stages=3, num_warps=4
+        ),
+        triton.Config(
+            {"BLOCK_D": 8, "BLOCK_H": 8, "BLOCK_W": 8}, num_stages=2, num_warps=4
+        ),
+        triton.Config(
+            {"BLOCK_D": 4, "BLOCK_H": 16, "BLOCK_W": 16}, num_stages=2, num_warps=4
+        ),
+        triton.Config(
+            {"BLOCK_D": 8, "BLOCK_H": 16, "BLOCK_W": 16}, num_stages=2, num_warps=8
+        ),
+        triton.Config(
+            {"BLOCK_D": 4, "BLOCK_H": 32, "BLOCK_W": 8}, num_stages=2, num_warps=4
+        ),
+        triton.Config(
+            {"BLOCK_D": 4, "BLOCK_H": 8, "BLOCK_W": 32}, num_stages=2, num_warps=4
+        ),
     ],
     key=["out_d", "out_h", "out_w", "kernel_d", "kernel_h", "kernel_w"],
 )
@@ -80,15 +92,15 @@ def avg_pool3d_forward_kernel(
     """Forward kernel for 3D average pooling."""
     pid_nc = tl.program_id(0)
     pid_dhw = tl.program_id(1)
-    
+
     # Calculate block indices
     num_w_blocks = tl.cdiv(out_w, BLOCK_W)
     num_h_blocks = tl.cdiv(out_h, BLOCK_H)
-    
+
     w_block_idx = pid_dhw % num_w_blocks
     h_block_idx = (pid_dhw // num_w_blocks) % num_h_blocks
     d_block_idx = pid_dhw // (num_w_blocks * num_h_blocks)
-    
+
     n_idx = pid_nc // in_c
     c_idx = pid_nc % in_c
 
@@ -109,9 +121,18 @@ def avg_pool3d_forward_kernel(
                 d_in = d_out_offsets[:, None, None] * stride_d - padding_d + kd
                 h_in = h_out_offsets[None, :, None] * stride_h - padding_h + kh
                 w_in = w_out_offsets[None, None, :] * stride_w - padding_w + kw
-                
-                in_mask = (d_in >= 0) & (d_in < in_d) & (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-                input_offset = d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
+
+                in_mask = (
+                    (d_in >= 0)
+                    & (d_in < in_d)
+                    & (h_in >= 0)
+                    & (h_in < in_h)
+                    & (w_in >= 0)
+                    & (w_in < in_w)
+                )
+                input_offset = (
+                    d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
+                )
                 current_val = tl.load(
                     input_base_ptr + input_offset, mask=in_mask, other=0.0
                 )
@@ -121,9 +142,15 @@ def avg_pool3d_forward_kernel(
 
     # Calculate divisor
     if divisor_override != 0:
-        divisor = tl.full((BLOCK_D, BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32)
+        divisor = tl.full(
+            (BLOCK_D, BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
+        )
     elif COUNT_INCLUDE_PAD:
-        divisor = tl.full((BLOCK_D, BLOCK_H, BLOCK_W), kernel_d * kernel_h * kernel_w, dtype=tl.float32)
+        divisor = tl.full(
+            (BLOCK_D, BLOCK_H, BLOCK_W),
+            kernel_d * kernel_h * kernel_w,
+            dtype=tl.float32,
+        )
     else:
         divisor = count_acc.to(tl.float32)
 
@@ -136,16 +163,22 @@ def avg_pool3d_forward_kernel(
     d_out_offs = d_block_idx * BLOCK_D + tl.arange(0, BLOCK_D)
     h_out_offs = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
     w_out_offs = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    
+
     output_block_ptr = (
-        out_base_ptr 
-        + d_out_offs[:, None, None] * out_h * out_w 
-        + h_out_offs[None, :, None] * out_w 
+        out_base_ptr
+        + d_out_offs[:, None, None] * out_h * out_w
+        + h_out_offs[None, :, None] * out_w
         + w_out_offs[None, None, :]
     )
 
-    out_mask = (d_out_offs[:, None, None] < out_d) & (h_out_offs[None, :, None] < out_h) & (w_out_offs[None, None, :] < out_w)
-    tl.store(output_block_ptr, output_vals.to(output_ptr.type.element_ty), mask=out_mask)
+    out_mask = (
+        (d_out_offs[:, None, None] < out_d)
+        & (h_out_offs[None, :, None] < out_h)
+        & (w_out_offs[None, None, :] < out_w)
+    )
+    tl.store(
+        output_block_ptr, output_vals.to(output_ptr.type.element_ty), mask=out_mask
+    )
 
 
 @libentry()
@@ -205,7 +238,7 @@ def avg_pool3d_backward_kernel(
 
     num_w_blocks = tl.cdiv(in_w, BLOCK_W)
     num_h_blocks = tl.cdiv(in_h, BLOCK_H)
-    
+
     w_block_idx = pid_dhw % num_w_blocks
     h_block_idx = (pid_dhw // num_w_blocks) % num_h_blocks
     d_block_idx = pid_dhw // (num_w_blocks * num_h_blocks)
@@ -244,9 +277,15 @@ def avg_pool3d_backward_kernel(
 
                 # Calculate divisor for this output position
                 if divisor_override != 0:
-                    divisor = tl.full((BLOCK_D, BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32)
+                    divisor = tl.full(
+                        (BLOCK_D, BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
+                    )
                 elif COUNT_INCLUDE_PAD:
-                    divisor = tl.full((BLOCK_D, BLOCK_H, BLOCK_W), kernel_d * kernel_h * kernel_w, dtype=tl.float32)
+                    divisor = tl.full(
+                        (BLOCK_D, BLOCK_H, BLOCK_W),
+                        kernel_d * kernel_h * kernel_w,
+                        dtype=tl.float32,
+                    )
                 else:
                     # Count valid input elements for this output position
                     d_start = d_out * stride_d - padding_d
@@ -260,9 +299,12 @@ def avg_pool3d_backward_kernel(
                                 h_in_for_count = h_start + kh_count
                                 w_in_for_count = w_start + kw_count
                                 is_valid = (
-                                    (d_in_for_count >= 0) & (d_in_for_count < in_d)
-                                    & (h_in_for_count >= 0) & (h_in_for_count < in_h)
-                                    & (w_in_for_count >= 0) & (w_in_for_count < in_w)
+                                    (d_in_for_count >= 0)
+                                    & (d_in_for_count < in_d)
+                                    & (h_in_for_count >= 0)
+                                    & (h_in_for_count < in_h)
+                                    & (w_in_for_count >= 0)
+                                    & (w_in_for_count < in_w)
                                 )
                                 count += is_valid.to(tl.int32)
                     divisor = count.to(tl.float32)
@@ -270,9 +312,9 @@ def avg_pool3d_backward_kernel(
                 divisor = tl.where(divisor == 0, 1.0, divisor)
 
                 grad_out_ptr = (
-                    grad_output_base_ptr 
-                    + d_out * out_stride_d 
-                    + h_out * out_stride_h 
+                    grad_output_base_ptr
+                    + d_out * out_stride_d
+                    + h_out * out_stride_h
                     + w_out * out_stride_w
                 )
                 grad_out_val = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
@@ -285,8 +327,8 @@ def avg_pool3d_backward_kernel(
         + w_in_offsets[None, None, :] * in_stride_w
     )
     in_write_mask = (
-        (d_in_offsets[:, None, None] < in_d) 
-        & (h_in_offsets[None, :, None] < in_h) 
+        (d_in_offsets[:, None, None] < in_d)
+        & (h_in_offsets[None, :, None] < in_h)
         & (w_in_offsets[None, None, :] < in_w)
     )
     tl.store(
@@ -298,6 +340,7 @@ def avg_pool3d_backward_kernel(
 
 def _parse_pool_params(kernel_size, stride, padding):
     """Parse pooling parameters to handle different input formats."""
+
     def _parse_param(param, name, default=None):
         if param is None:
             return default
@@ -311,7 +354,9 @@ def _parse_pool_params(kernel_size, stride, padding):
     stride_d, stride_h, stride_w = _parse_param(
         stride, "stride", default=(kernel_d, kernel_h, kernel_w)
     )
-    padding_d, padding_h, padding_w = _parse_param(padding, "padding", default=(0, 0, 0))
+    padding_d, padding_h, padding_w = _parse_param(
+        padding, "padding", default=(0, 0, 0)
+    )
 
     if stride_d <= 0 or stride_h <= 0 or stride_w <= 0:
         raise ValueError(
@@ -346,7 +391,7 @@ def avg_pool3d(
 ):
     """
     3D average pooling operation.
-    
+
     Args:
         input: Input tensor of shape (N, C, D, H, W)
         kernel_size: Size of the pooling window
@@ -355,12 +400,12 @@ def avg_pool3d(
         ceil_mode: When True, use ceil instead of floor to compute output shape
         count_include_pad: When True, include padding in the averaging calculation
         divisor_override: If specified, use this value as divisor instead of pool size
-    
+
     Returns:
         output: Output tensor
     """
     logger.debug("GEMS AVG_POOL3D FORWARD")
-    
+
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
 
@@ -393,8 +438,8 @@ def avg_pool3d(
 
     grid = lambda meta: (
         in_n * in_c,
-        triton.cdiv(out_d, meta["BLOCK_D"]) 
-        * triton.cdiv(out_h, meta["BLOCK_H"]) 
+        triton.cdiv(out_d, meta["BLOCK_D"])
+        * triton.cdiv(out_h, meta["BLOCK_H"])
         * triton.cdiv(out_w, meta["BLOCK_W"]),
     )
 
@@ -441,7 +486,7 @@ def avg_pool3d_backward(
 ):
     """
     Backward pass for 3D average pooling.
-    
+
     Args:
         grad_output: Gradient of the output
         input: Original input tensor
@@ -451,12 +496,12 @@ def avg_pool3d_backward(
         ceil_mode: When True, use ceil instead of floor to compute output shape
         count_include_pad: When True, include padding in the averaging calculation
         divisor_override: If specified, use this value as divisor instead of pool size
-    
+
     Returns:
         grad_input: Gradient with respect to input
     """
     logger.debug("GEMS AVG_POOL3D BACKWARD")
-    
+
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
 
@@ -476,7 +521,11 @@ def avg_pool3d_backward(
     ) = params
 
     in_n, in_c, in_d, in_h, in_w = input.shape
-    out_d, out_h, out_w = grad_output.shape[2], grad_output.shape[3], grad_output.shape[4]
+    out_d, out_h, out_w = (
+        grad_output.shape[2],
+        grad_output.shape[3],
+        grad_output.shape[4],
+    )
 
     grad_input = torch.zeros_like(input, dtype=torch.float32)
 
@@ -485,8 +534,8 @@ def avg_pool3d_backward(
 
     grid = lambda meta: (
         in_n * in_c,
-        triton.cdiv(in_d, meta["BLOCK_D"]) 
-        * triton.cdiv(in_h, meta["BLOCK_H"]) 
+        triton.cdiv(in_d, meta["BLOCK_D"])
+        * triton.cdiv(in_h, meta["BLOCK_H"])
         * triton.cdiv(in_w, meta["BLOCK_W"]),
     )
 
