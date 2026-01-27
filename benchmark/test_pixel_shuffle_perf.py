@@ -13,10 +13,10 @@ def pixel_shuffle_input_fn(shape, dtype, device):
     # shape is (batch, channels, height, width)
     # We'll test with different upscale factors
     inp = torch.randn(shape, dtype=dtype, device=device)
-    
+
     # Configuration 1: upscale_factor=2
     yield inp, {"upscale_factor": 2}
-    
+
     if Config.bench_level == BenchLevel.COMPREHENSIVE:
         # Configuration 2: upscale_factor=3
         # Adjust channels to be divisible by 9
@@ -24,7 +24,7 @@ def pixel_shuffle_input_fn(shape, dtype, device):
         c_adjusted = ((c // 9) + 1) * 9 if c % 9 != 0 else c
         inp_r3 = torch.randn((batch, c_adjusted, h, w), dtype=dtype, device=device)
         yield inp_r3, {"upscale_factor": 3}
-        
+
         # Configuration 3: upscale_factor=4
         # Adjust channels to be divisible by 16
         c_adjusted = ((c // 16) + 1) * 16 if c % 16 != 0 else c
@@ -34,24 +34,22 @@ def pixel_shuffle_input_fn(shape, dtype, device):
 
 class PixelShuffleBenchmark(GenericBenchmark):
     """Benchmark class for pixel_shuffle operations."""
-    
+
     def get_input_iter(self, cur_dtype):
         # 按照赛题要求：小尺寸、常规尺寸、大尺寸
         # For pixel_shuffle, we need channels divisible by r^2
         # Using r=2, so channels must be divisible by 4
         shapes = [
             # 小尺寸 (Small) - channels must be divisible by 4
-            (1, 4, 8, 8),         # Minimal
-            (1, 16, 16, 16),      # Small
-            
+            (1, 4, 8, 8),  # Minimal
+            (1, 16, 16, 16),  # Small
             # 常规尺寸 (Medium)
-            (1, 64, 64, 64),      # Medium
-            (4, 64, 128, 128),    # Medium with batch
-            (1, 256, 256, 256),   # Large channels
-            
+            (1, 64, 64, 64),  # Medium
+            (4, 64, 128, 128),  # Medium with batch
+            (1, 256, 256, 256),  # Large channels
             # 大尺寸 (Large)
-            (1, 64, 512, 512),    # Large spatial
-            (1, 256, 1024, 1024), # Very large
+            (1, 64, 512, 512),  # Large spatial
+            (1, 256, 1024, 1024),  # Very large
         ]
 
         for shape in shapes:

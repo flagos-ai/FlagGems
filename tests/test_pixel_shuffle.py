@@ -7,8 +7,8 @@ import flag_gems
 from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
-    gems_assert_equal,
     gems_assert_close,
+    gems_assert_equal,
     to_reference,
 )
 from .conftest import QUICK_MODE
@@ -17,29 +17,24 @@ from .conftest import QUICK_MODE
 # Format: (input_shape, upscale_factor)
 PIXEL_SHUFFLE_CONFIGS = [
     # ===== Small sizes =====
-    ((1, 4, 2, 2), 2),      # Minimal: 1x4x2x2 -> 1x1x4x4
-    ((1, 9, 4, 4), 3),      # Small: 1x9x4x4 -> 1x1x12x12
-    ((2, 16, 8, 8), 2),     # Small batch: 2x16x8x8 -> 2x4x16x16
-    
+    ((1, 4, 2, 2), 2),  # Minimal: 1x4x2x2 -> 1x1x4x4
+    ((1, 9, 4, 4), 3),  # Small: 1x9x4x4 -> 1x1x12x12
+    ((2, 16, 8, 8), 2),  # Small batch: 2x16x8x8 -> 2x4x16x16
     # ===== Medium sizes =====
-    ((1, 64, 16, 16), 2),   # Medium: 1x64x16x16 -> 1x16x32x32
-    ((4, 36, 32, 32), 2),   # Medium batch: 4x36x32x32 -> 4x9x64x64
+    ((1, 64, 16, 16), 2),  # Medium: 1x64x16x16 -> 1x16x32x32
+    ((4, 36, 32, 32), 2),  # Medium batch: 4x36x32x32 -> 4x9x64x64
     ((2, 144, 64, 64), 3),  # Medium with r=3: 2x144x64x64 -> 2x16x192x192
-    
     # ===== Large sizes =====
     ((1, 256, 128, 128), 2),  # Large: 1x256x128x128 -> 1x64x256x256
-    ((1, 64, 256, 256), 2),   # Large spatial: 1x64x256x256 -> 1x16x512x512
-    
+    ((1, 64, 256, 256), 2),  # Large spatial: 1x64x256x256 -> 1x16x512x512
     # ===== Different upscale factors =====
-    ((1, 16, 16, 16), 4),   # r=4: 1x16x16x16 -> 1x1x64x64
-    ((1, 25, 8, 8), 5),     # r=5: 1x25x8x8 -> 1x1x40x40
-    
+    ((1, 16, 16, 16), 4),  # r=4: 1x16x16x16 -> 1x1x64x64
+    ((1, 25, 8, 8), 5),  # r=5: 1x25x8x8 -> 1x1x40x40
     # ===== Different channel counts =====
-    ((1, 12, 16, 16), 2),   # C=3: 1x12x16x16 -> 1x3x32x32
+    ((1, 12, 16, 16), 2),  # C=3: 1x12x16x16 -> 1x3x32x32
     ((1, 108, 16, 16), 3),  # C=12: 1x108x16x16 -> 1x12x48x48
-    
     # ===== Batch dimensions =====
-    ((8, 36, 16, 16), 2),   # Larger batch: 8x36x16x16 -> 8x9x32x32
+    ((8, 36, 16, 16), 2),  # Larger batch: 8x36x16x16 -> 8x9x32x32
 ]
 
 # Quick mode: use fewer test cases
@@ -59,7 +54,7 @@ else:
 def test_accuracy_pixel_shuffle(shape, upscale_factor, dtype):
     """Test pixel_shuffle accuracy."""
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    
+
     ref_inp = to_reference(inp, False)
 
     # PyTorch reference
@@ -143,7 +138,7 @@ def test_accuracy_pixel_shuffle_different_batch_sizes(dtype):
 def test_accuracy_pixel_shuffle_different_spatial_sizes(dtype):
     """Test pixel_shuffle with different spatial dimensions."""
     spatial_sizes = [(4, 4), (8, 8), (16, 16), (32, 32), (64, 64), (128, 128)]
-    
+
     for h, w in spatial_sizes:
         inp = torch.randn((1, 16, h, w), dtype=dtype, device=flag_gems.device)
         ref_inp = to_reference(inp, False)
@@ -173,22 +168,22 @@ def test_pixel_shuffle_error_handling():
     """Test error handling for invalid inputs."""
     # Test with invalid upscale_factor
     inp = torch.randn((1, 16, 8, 8), device=flag_gems.device)
-    
+
     with pytest.raises(ValueError, match="upscale_factor must be positive"):
         flag_gems.pixel_shuffle(inp, 0)
-    
+
     with pytest.raises(ValueError, match="upscale_factor must be positive"):
         flag_gems.pixel_shuffle(inp, -1)
-    
+
     # Test with channels not divisible by r^2
     inp = torch.randn((1, 15, 8, 8), device=flag_gems.device)
-    
+
     with pytest.raises(ValueError, match="divisible by"):
         flag_gems.pixel_shuffle(inp, 2)  # 15 is not divisible by 4
-    
+
     # Test with insufficient dimensions
     inp = torch.randn((16, 8), device=flag_gems.device)
-    
+
     with pytest.raises(ValueError, match="at least 3 dimensions"):
         flag_gems.pixel_shuffle(inp, 2)
 
@@ -197,9 +192,7 @@ def test_pixel_shuffle_error_handling():
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_pixel_shuffle_integer_types(dtype):
     """Test pixel_shuffle with integer data types."""
-    inp = torch.randint(
-        0, 100, (1, 16, 8, 8), dtype=dtype, device=flag_gems.device
-    )
+    inp = torch.randint(0, 100, (1, 16, 8, 8), dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, False)
 
     ref_out = torch.nn.functional.pixel_shuffle(ref_inp, 2)
