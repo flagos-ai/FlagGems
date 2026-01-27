@@ -284,3 +284,11 @@ RWKVBenchmark:
 RWKVSparsityBenchmark:
   shapes:
     - [1]
+
+MoeAlignBlockSizeBenchmark:
+  shapes:
+    - [16, 8]
+    - [4, 32]
+    - [32, 16]
+    - [8, 64]
+    - [128, 4]

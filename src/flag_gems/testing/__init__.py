@@ -1,6 +1,7 @@
 import torch
 
 from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
 
 if runtime.device.vendor_name == "kunlunxin":
     RESOLUTION = {
@@ -46,7 +47,7 @@ def _maybe_move_to_cpu(res, ref):
 
     free_mem = None
     try:
-        free_mem, _ = torch.cuda.mem_get_info(res.device)
+        free_mem, _ = torch_device_fn.mem_get_info(res.device)
     except RuntimeError:
         pass
 

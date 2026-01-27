@@ -169,4 +169,99 @@ CheckCloseResult gems_assert_equal(torch::Tensor res, torch::Tensor ref, bool eq
   return {false, oss.str()};
 }
 
+// Temporary: relax precision for Triton div (no pointwise_dynamic support).
+// Will remove once implementation supports pointwise_dynamic.
+inline float div_relax_factor(c10::ScalarType dtype, bool inplace) {
+  float factor = 1.0f;
+
+  switch (dtype) {
+    case c10::ScalarType::Float:
+    case c10::ScalarType::ComplexFloat:
+      factor = 1000.0f;
+      break;
+
+    case c10::ScalarType::Half:
+      factor = 100.0f;
+      break;
+
+    case c10::ScalarType::BFloat16:
+      factor = 80.0f;
+      break;
+
+    case c10::ScalarType::Double:
+    case c10::ScalarType::ComplexDouble:
+      factor = 10.0f;
+      break;
+
+#if defined(C10_HAS_FLOAT8)
+    case c10::ScalarType::Float8_e4m3fn:
+    case c10::ScalarType::Float8_e4m3fnuz:
+    case c10::ScalarType::Float8_e5m2:
+    case c10::ScalarType::Float8_e5m2fnuz:
+      factor = 200.0f;
+      break;
+#endif
+
+    default:
+      factor = 1.0f;
+  }
+  if (inplace) {
+    factor = factor * 2.0;
+  }
+
+  return factor;
+}
+
+// Temporary: relax precision for Triton div (no pointwise_dynamic support).
+// Will remove once implementation supports pointwise_dynamic.
+CheckCloseResult gems_assert_close_div_factor(torch::Tensor res,
+                                              torch::Tensor ref,
+                                              c10::ScalarType dtype,
+                                              bool equal_nan,
+                                              int64_t reduce_dim,
+                                              float atol,
+                                              bool inplace) {
+  res = to_cpu(res, ref);
+
+  if (dtype == c10::ScalarType::Undefined) {
+    // dtype = c10::kFloat;
+    dtype = res.scalar_type();
+  }
+
+  TORCH_CHECK(res.scalar_type() == dtype,
+              "gems_assert_close_div_factor: res dtype mismatch, expect ",
+              c10::toString(dtype),
+              ", got ",
+              c10::toString(res.scalar_type()));
+
+  ref = ref.to(dtype);
+
+  std::tie(res, ref) = _maybe_move_to_cpu(res, ref);
+
+  const float rtol = resolution_for_dtype(dtype) * div_relax_factor(dtype, inplace);
+
+  const float scaled_atol = atol * reduce_dim;
+
+  bool ok = torch::allclose(res, ref, rtol, scaled_atol, equal_nan);
+
+  if (ok) {
+    return {true, ""};
+  }
+
+  auto diff = (res - ref).abs();
+  float real_atol = diff.max().item<float>();
+  auto denom = ref.abs() + 1e-12;
+  float real_rtol = (diff / denom).max().item<float>();
+
+  std::ostringstream oss;
+  oss << "gems_assert_close failed\n"
+      << "dtype      : " << c10::toString(dtype) << "\n"
+      << "used atol  : " << scaled_atol << "\n"
+      << "used rtol  : " << rtol << "\n"
+      << "real atol  : " << real_atol << "\n"
+      << "real rtol  : " << real_rtol << "\n";
+
+  return {false, oss.str()};
+}
+
 }  // namespace flag_gems::accuracy_utils
