@@ -149,7 +149,7 @@ class BaddbmmFunction(torch.autograd.Function):
         B = B.contiguous()
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
-        bbias = torch.broadcast_to(bias, (batch, M, N))
+        bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
         bias_batch_stride = bbias.stride(0)
         bias_M_stride = bbias.stride(1)
         bias_N_stride = bbias.stride(-1)
@@ -235,4 +235,10 @@ def compute_B_grad(A, d_output, alpha):
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
-    return BaddbmmFunction.apply(bias, A.contiguous(), B.contiguous(), beta, alpha)
+    return BaddbmmFunction.apply(
+        bias.contiguous(),
+        A.contiguous(),
+        B.contiguous(),
+        beta,
+        alpha,
+    )
