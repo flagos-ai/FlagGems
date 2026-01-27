@@ -4,7 +4,6 @@ from typing import Dict, List
 import pytest
 import torch
 import torch.nn.functional as F
-from einops import rearrange
 
 import flag_gems
 
@@ -41,11 +40,9 @@ def rearrange_mixed_qkv(
         ],
         dim=-1,
     )
-    query, key = map(
-        lambda x: rearrange(x, "l (h d) -> 1 l h d", d=head_k_dim),
-        (query, key),
-    )
-    value = rearrange(value, "l (h d) -> 1 l h d", d=head_v_dim)
+    query = query.view(1, query.shape[0], -1, head_k_dim)
+    key = key.view(1, key.shape[0], -1, head_k_dim)
+    value = value.view(1, value.shape[0], -1, head_v_dim)
     if contiguous:
         return query.contiguous(), key.contiguous(), value.contiguous()
     else:
