@@ -42,17 +42,17 @@ def fused_recurrent_gated_delta_rule_fwd_sp_for_qwen3_next_kernel(
     scale,
     N: tl.int64,
     T: tl.int64,
-    stride_q_b: tl.int64,
-    stride_k_b: tl.int64,
-    stride_v_b: tl.int64,
+    # stride_q_b: tl.int64,
     stride_q_t: tl.int64,
-    stride_k_t: tl.int64,
-    stride_v_t: tl.int64,
     stride_q_h: tl.int64,
-    stride_k_h: tl.int64,
-    stride_v_hv: tl.int64,
     stride_q_k: tl.int64,
+    # stride_k_b: tl.int64,
+    stride_k_t: tl.int64,
+    stride_k_h: tl.int64,
     stride_k_k: tl.int64,
+    # stride_v_b: tl.int64,
+    stride_v_t: tl.int64,
+    stride_v_hv: tl.int64,
     stride_v_v: tl.int64,
     B: tl.constexpr,
     H: tl.constexpr,
@@ -135,9 +135,9 @@ def fused_recurrent_gated_delta_rule_fwd_sp_for_qwen3_next_kernel(
         b_v = tl.load(p_v, mask=mask_v, other=0).to(tl.float32)
 
         if USE_QK_L2NORM_IN_KERNEL:
-            b_q = b_q / tl.sqrt(tl.sum(b_q * b_q) + 1e-6)
-            b_k = b_k / tl.sqrt(tl.sum(b_k * b_k) + 1e-6)
-        b_q = b_q * scale
+            b_q *= tl.rsqrt(tl.sum(b_q * b_q) + 1e-6)
+            b_k *= tl.rsqrt(tl.sum(b_k * b_k) + 1e-6)
+        b_q *= scale
         # [BK, BV]
         b_g = tl.load(p_g).to(tl.float32)
         b_h *= exp(b_g)
@@ -419,7 +419,7 @@ def fused_recurrent_gated_delta_rule_fwd(
             "[k.shape]: %s, [k.stride]: %s, "
             "[v.shape]: %s, [v.stride]: %s, "
             "[g.shape]: %s, [beta.shape]: %s, [initial_state.shape]: %s, "
-            "cu_seqlens: %s, N: %s, T: %s, B: %s, H: %s, HV: %s, K: %s, V: %s",
+            "[cu_seqlens.shape]: %s, N: %s, T: %s, B: %s, H: %s, HV: %s, K: %s, V: %s",
             q.shape,
             q.stride(),
             k.shape,
@@ -429,7 +429,7 @@ def fused_recurrent_gated_delta_rule_fwd(
             g.shape,
             beta.shape,
             initial_state.shape,
-            cu_seqlens,
+            cu_seqlens.shape,
             N,
             T,
             B,
@@ -464,15 +464,15 @@ def fused_recurrent_gated_delta_rule_fwd(
             stride_final_state_token=stride_final_state_token,
             stride_indices_seq=stride_indices_seq,
             stride_indices_tok=stride_indices_tok,
-            stride_q_b=q.stride(0),
+            # stride_q_b=q.stride(0),
             stride_q_t=q.stride(1),
             stride_q_h=q.stride(2),
             stride_q_k=q.stride(3),
-            stride_k_b=k.stride(0),
+            # stride_k_b=k.stride(0),
             stride_k_t=k.stride(1),
             stride_k_h=k.stride(2),
             stride_k_k=k.stride(3),
-            stride_v_b=v.stride(0),
+            # stride_v_b=v.stride(0),
             stride_v_t=v.stride(1),
             stride_v_hv=v.stride(2),
             stride_v_v=v.stride(3),

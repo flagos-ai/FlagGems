@@ -43,9 +43,9 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
         super().__init__(*args, **kwargs)
         self.qkv_contiguous = qkv_contiguous
 
-    def set_shapes(self, shape_file_path=None):
+    def set_more_shapes(self):
         # Test the full set of sequence lengths we saw from the runtime prints
-        self.shapes = [
+        return [
             (1,),
             (2,),
             (4,),
@@ -56,7 +56,6 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
             (40,),
             (48,),
             (56,),
-            (64,),
             (72,),
             (80,),
             (88,),
@@ -71,7 +70,6 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
             (160,),
             (168,),
             (176,),
-            (184,),
             (192,),
             (200,),
             (208,),
@@ -80,7 +78,6 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
             (232,),
             (240,),
             (248,),
-            (256,),
             (272,),
             (288,),
             (304,),
@@ -96,9 +93,7 @@ class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
             (464,),
             (480,),
             (496,),
-            (512,),
         ]
-        self.shape_desc = "(T,) many lengths"
 
     def get_input_iter(self, cur_dtype):
         for (T,) in self.shapes:
@@ -170,7 +165,7 @@ def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):
     bench = FusedRecurrentGatedDeltaRuleBenchmark(
         qkv_contiguous,
         op_name="fused_recurrent_gated_delta_rule",
-        torch_op=_torch_op_wrapper
+        torch_op=_torch_op_wrapper,
     )
     bench.set_gems(flag_gems.fused_recurrent_gated_delta_rule_fwd)
     bench.run()
