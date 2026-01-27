@@ -430,7 +430,7 @@ class Benchmark:
                 mode=Config.mode.value,
                 result=metrics,
             )
-            # print(result)
+            print(result)
             logging.info(result.to_json())
 
 
