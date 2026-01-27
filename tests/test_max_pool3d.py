@@ -241,7 +241,7 @@ def test_accuracy_max_pool3d_different_paddings(dtype):
         )
 
         gems_assert_close(res_out, ref_out, dtype)
-    
+
     # Test with larger kernel_size to allow larger padding
     kernel_size = 5
     for padding in [0, 1, 2]:
