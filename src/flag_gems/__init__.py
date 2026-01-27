@@ -350,6 +350,15 @@ _FULL_CONFIG = (
     ("zeros_like", zeros_like),
 )
 
+# Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
+FULL_CONFIG_BY_FUNC = {}
+for _item in _FULL_CONFIG:
+    if not _item or len(_item) < 2:
+        continue
+    fn = _item[1]
+    func_name = fn.__name__ if hasattr(fn, "__name__") else str(fn)
+    FULL_CONFIG_BY_FUNC.setdefault(func_name, []).append(_item)
+
 
 def enable(
     lib=aten_lib,
@@ -439,6 +448,7 @@ def only_enable(
         user_include_ops=include_ops,
         user_exclude_ops=[],
         cpp_patched_ops=list(set(aten_patch_list)),
+        full_config_by_func=FULL_CONFIG_BY_FUNC,
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)

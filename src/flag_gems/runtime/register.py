@@ -12,6 +12,7 @@ class Register:
         user_exclude_ops=None,
         cpp_patched_ops=None,
         lib=None,
+        full_config_by_func=None,
     ):
         self.device = DeviceDetector()
 
@@ -23,6 +24,9 @@ class Register:
         self.reg_key = self.device.dispatch_key
         self.all_ops = []
         self.all_keys = []
+
+        # optional mapping func_name -> list of config entries
+        self.full_config_by_func = full_config_by_func
 
         if user_include_ops:
             self.include_ops = list(user_include_ops or [])
@@ -43,21 +47,35 @@ class Register:
             self.for_each()
 
     def extract_include_config(self):
+        # Simple fast path: if we have a full_config_by_func mapping, iterate
+        # over the requested function names and collect matching config items.
         self.include_config = []
-        for config_item in self.config:
-            op_name = config_item[0]
 
-            func = config_item[1]
-            func_name = func.__name__ if hasattr(func, "__name__") else str(func)
-            if func_name not in self.include_ops:
-                continue
-
-            if len(config_item) > 2:
-                condition_func = config_item[2]
-                if not condition_func():
+        if self.full_config_by_func:
+            for name in self.include_ops:
+                for config_item in self.full_config_by_func.get(name, []):
+                    op_name, func = config_item[0], config_item[1]
+                    # respect optional condition functions
+                    if len(config_item) > 2:
+                        condition_func = config_item[2]
+                        if not condition_func():
+                            continue
+                    self.include_config.append((op_name, func))
+        else:
+            # fallback: scan provided config and match by func name or op name
+            for config_item in self.config:
+                op_name, func = config_item[0], config_item[1]
+                func_name = func.__name__ if hasattr(func, "__name__") else str(func)
+                if (
+                    func_name not in self.include_ops
+                    and op_name not in self.include_ops
+                ):
                     continue
-
-            self.include_config.append((op_name, config_item[1]))
+                if len(config_item) > 2:
+                    condition_func = config_item[2]
+                    if not condition_func():
+                        continue
+                self.include_config.append((op_name, func))
 
         if not self.include_config:
             warnings.warn(
