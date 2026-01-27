@@ -1,30 +1,31 @@
 """Performance benchmarks for scatter_reduce operator."""
-import torch
 from typing import Generator
+
+import torch
 
 import flag_gems
 
-from .performance_utils import GenericBenchmark, FLOAT_DTYPES
+from .performance_utils import FLOAT_DTYPES, GenericBenchmark
 
 
 def scatter_reduce_input_fn(shape, dtype, device, reduce="sum"):
     """Generate inputs for scatter_reduce benchmark.
-    
+
     Yields: inp, dim, index, src, {"reduce": reduce, "include_self": True}
-    
+
     This matches the signature:
     scatter_reduce(input, dim, index, src, reduce, *, include_self=True)
-    
+
     Note: 'reduce' is passed as a kwarg because it's a string parameter.
     """
     dim = 0
     index_shape = list(shape)
     index_shape[dim] = max(1, shape[dim] // 4)
-    
+
     inp = torch.randn(shape, dtype=dtype, device=device)
     index = torch.randint(0, shape[dim], index_shape, dtype=torch.long, device=device)
     src = torch.randn(index_shape, dtype=dtype, device=device)
-    
+
     # Yield: tensor args, then kwargs dict
     # Args: (input, dim, index, src)
     # Kwargs: {"reduce": reduce, "include_self": True}
@@ -62,7 +63,7 @@ class ScatterReduceBenchmark(GenericBenchmark):
             (32, 32, 32),
             (64, 64, 64),
         ]
-        
+
         for shape in shapes:
             yield from self.input_fn(shape, cur_dtype, self.device)
 
