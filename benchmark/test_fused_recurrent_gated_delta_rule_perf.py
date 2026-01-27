@@ -39,7 +39,7 @@ def rearrange_mixed_qkv(
 class FusedRecurrentGatedDeltaRuleBenchmark(Benchmark):
     DEFAULT_DTYPES = [torch.bfloat16]
 
-    def __init__(self, *args, qkv_contiguous: bool, **kwargs):
+    def __init__(self, qkv_contiguous: bool, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.qkv_contiguous = qkv_contiguous
 
@@ -168,9 +168,9 @@ def _torch_op_wrapper(*args, **kwargs):
 @pytest.mark.parametrize("qkv_contiguous", [False])
 def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):
     bench = FusedRecurrentGatedDeltaRuleBenchmark(
+        qkv_contiguous,
         op_name="fused_recurrent_gated_delta_rule",
-        torch_op=_torch_op_wrapper,
-        qkv_contiguous=qkv_contiguous,
+        torch_op=_torch_op_wrapper
     )
     bench.set_gems(flag_gems.fused_recurrent_gated_delta_rule_fwd)
     bench.run()
