@@ -59,14 +59,10 @@ def embedding_input_fn(shape, dtype, device):
 
 def embedding_backward_input_fn(shape, dtype, device):
     for forward_args in embedding_input_fn(shape, dtype, device):
-        # print(f'forward_args = {forward_args}')
+
         input = forward_args[0]["input"]
         weight = forward_args[0]["weight"]
-        # print(f'weight = {weight}')
         weight.stop_gradient = False
-        # import pudb; pudb.set_trace()
-        # output = torch.nn.functional.embedding(input, weight)
-        # grad_output = torch.randn_like(output)
         yield input, weight
 
 

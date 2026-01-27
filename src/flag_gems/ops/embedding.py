@@ -200,11 +200,12 @@ class Embedding(PyLayer):
     @staticmethod
     def forward(
         ctx, indices, weight, padding_idx, scale_grad_by_freq=False, sparse=False
-    ):
-        ctx.save_for_backward(indices, weight)
-        ctx.padding_idx = padding_idx
-        ctx.scale_grad_by_freq = scale_grad_by_freq
-        ctx.sparse = sparse
+    ):  
+        if weight.requires_grad:
+            ctx.save_for_backward(indices, weight)
+            ctx.padding_idx = padding_idx
+            ctx.scale_grad_by_freq = scale_grad_by_freq
+            ctx.sparse = sparse
 
         return embedding(indices, weight, padding_idx, scale_grad_by_freq, sparse)
 

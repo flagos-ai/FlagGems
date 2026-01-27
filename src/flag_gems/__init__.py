@@ -2,7 +2,6 @@ import logging
 import os
 def _get_framework():
     framework_env = os.environ.get("FLAGGEMS_FRAMEWORK", "paddle").lower()
-    framework_env = "paddle"
     if framework_env == "paddle":
         try:
             import paddle
