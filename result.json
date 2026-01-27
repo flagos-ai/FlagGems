@@ -1,16 +1,16 @@
 {
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape0]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype0-shape0]": {
         "params": {
             "dtype": "torch.float16",
             "shape": []
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape1]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype0-shape1]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
@@ -19,11 +19,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape2]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype0-shape2]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
@@ -33,11 +33,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape3]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype0-shape3]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
@@ -48,11 +48,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape4]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype0-shape4]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
@@ -64,11 +64,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape5]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype0-shape5]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
@@ -81,22 +81,22 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape0]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype1-shape0]": {
         "params": {
             "dtype": "torch.float32",
             "shape": []
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape1]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype1-shape1]": {
         "params": {
             "dtype": "torch.float32",
             "shape": [
@@ -105,11 +105,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape2]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype1-shape2]": {
         "params": {
             "dtype": "torch.float32",
             "shape": [
@@ -119,11 +119,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape3]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype1-shape3]": {
         "params": {
             "dtype": "torch.float32",
             "shape": [
@@ -134,11 +134,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape4]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype1-shape4]": {
         "params": {
             "dtype": "torch.float32",
             "shape": [
@@ -150,11 +150,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape5]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype1-shape5]": {
         "params": {
             "dtype": "torch.float32",
             "shape": [
@@ -167,22 +167,22 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape0]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype2-shape0]": {
         "params": {
             "dtype": "torch.bfloat16",
             "shape": []
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape1]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype2-shape1]": {
         "params": {
             "dtype": "torch.bfloat16",
             "shape": [
@@ -191,11 +191,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape2]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype2-shape2]": {
         "params": {
             "dtype": "torch.bfloat16",
             "shape": [
@@ -205,11 +205,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape3]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype2-shape3]": {
         "params": {
             "dtype": "torch.bfloat16",
             "shape": [
@@ -220,11 +220,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape4]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype2-shape4]": {
         "params": {
             "dtype": "torch.bfloat16",
             "shape": [
@@ -236,11 +236,11 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape5]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh[dtype2-shape5]": {
         "params": {
             "dtype": "torch.bfloat16",
             "shape": [
@@ -253,37 +253,295 @@
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp_special_values[dtype0]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype0-shape0]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": []
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype0-shape1]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype0-shape2]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1024,
+                1024
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype0-shape3]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                20,
+                320,
+                15
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype0-shape4]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                16,
+                128,
+                64,
+                60
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype0-shape5]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                16,
+                7,
+                57,
+                32,
+                29
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype1-shape0]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": []
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype1-shape1]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype1-shape2]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1024,
+                1024
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype1-shape3]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                20,
+                320,
+                15
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype1-shape4]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                16,
+                128,
+                64,
+                60
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype1-shape5]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                16,
+                7,
+                57,
+                32,
+                29
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype2-shape0]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": []
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype2-shape1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype2-shape2]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1024,
+                1024
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype2-shape3]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                20,
+                320,
+                15
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype2-shape4]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                128,
+                64,
+                60
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_[dtype2-shape5]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                16,
+                7,
+                57,
+                32,
+                29
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "asinh_"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_special_values[dtype0]": {
         "params": {
             "dtype": "torch.float16"
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp_special_values[dtype1]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_special_values[dtype1]": {
         "params": {
             "dtype": "torch.float32"
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp_special_values[dtype2]": {
+    "tests/test_unary_pointwise_ops.py::test_accuracy_asinh_special_values[dtype2]": {
         "params": {
             "dtype": "torch.bfloat16"
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "asinh"
         ],
         "skipped_reason": null
     }

@@ -1486,6 +1486,59 @@ def test_accuracy_atan_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+
+# --- asinh 测试开始 ---
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(res_inp)
+    
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.asinh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp.clone(), True)
+
+    ref_out = torch.asinh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh_(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_special_values(dtype):
+    # 包含 0, 1, -1, 10, -10, inf, nan 等特殊值
+    res_inp = torch.tensor(
+        [0.0, 1.0, -1.0, 10.0, -10.0, float("inf"), float("-inf"), float("nan")],
+        device=flag_gems.device,
+        dtype=dtype,
+    )
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+# --- asinh 测试结束 ---
+
 DREGU_SHAPES = [
     (),
     (1,),
