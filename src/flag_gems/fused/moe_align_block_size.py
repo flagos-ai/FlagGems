@@ -54,7 +54,6 @@ def moe_align_block_size_stage1(
     UNROLL: tl.constexpr = 4
     num_full_iters = tokens_per_thread // UNROLL
 
-    # Process full iterations with unrolling
     for iter_idx in range(num_full_iters):
         base_i = iter_idx * UNROLL
         for unroll_i in range(UNROLL):
@@ -64,7 +63,6 @@ def moe_align_block_size_stage1(
                 token_cnt = tl.load(tokens_cnts_ptr + off_c + idx)
                 tl.store(tokens_cnts_ptr + off_c + idx, token_cnt + 1)
 
-    # Handle remaining iterations
     for i in range(num_full_iters * UNROLL, tokens_per_thread):
         if start_idx + i < numel:
             idx = tl.load(topk_ids_ptr + start_idx + i)
@@ -106,24 +104,16 @@ def moe_align_block_size_stage3(
     cumsum_ptr,
     num_experts: tl.constexpr,
     block_size: tl.constexpr,
-):  # Vectorized implementation using tl.cumsum
+):
     off_cnt = num_experts * num_experts
 
-    # Load all expert token counts at once
     expert_offsets = tl.arange(0, num_experts)
     token_cnts = tl.load(tokens_cnts_ptr + off_cnt + expert_offsets)
-
-    # Align each count to block_size boundary (vectorized)
     aligned_cnts = tl.cdiv(token_cnts, block_size) * block_size
 
-    # Compute cumulative sum (exclusive prefix sum, then shift)
     cumsum_values = tl.cumsum(aligned_cnts, axis=0)
-
-    # Store cumsum[1:num_experts+1] = cumulative sums
-    # cumsum[0] is already 0 (initialized outside)
     tl.store(cumsum_ptr + 1 + expert_offsets, cumsum_values)
 
-    # Store total tokens post pad (last element of cumsum)
     total_tokens = tl.sum(aligned_cnts, axis=0)
     tl.store(total_tokens_post_pad_ptr, total_tokens)
 
@@ -157,13 +147,6 @@ def moe_align_block_size_stage4(
     rank_post_pad = token_cnt + tl.load(cumsum_ptr + expert_id, mask=mask)
     tl.store(sorted_token_ids_ptr + rank_post_pad, offset)
     tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
-
-    # for i in range(start_idx, tl.minimum(start_idx + tokens_per_thread, numel)):
-    #     expert_id = tl.load(topk_ids_ptr + i)
-    #     token_cnt = tl.load(tokens_cnts_ptr + off_t + expert_id)
-    #     rank_post_pad = token_cnt + tl.load(cumsum_ptr + expert_id)
-    #     tl.store(sorted_token_ids_ptr + rank_post_pad, i)
-    #     tl.store(tokens_cnts_ptr + off_t + expert_id, token_cnt + 1)
 
 
 def moe_align_block_size_triton(
