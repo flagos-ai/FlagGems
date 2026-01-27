@@ -981,6 +981,78 @@ def test_accuracy_tan_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+# --- cosh 测试开始 ---
+
+@pytest.mark.cosh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cosh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp.clone(), True)
+
+    # 原生 torch 原位操作
+    ref_out = torch.cosh_(ref_inp)
+    with flag_gems.use_gems():
+        # Gems 原位操作
+        res_out = torch.cosh_(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    # 验证结果精度
+    gems_assert_close(res_out, ref_out, dtype)
+    # 额外验证：原位操作是否真的修改了输入 res_inp
+    gems_assert_close(res_inp, res_out, dtype)
+
+
+@pytest.mark.cosh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_special_values(dtype):
+    # 覆盖 0, 1, -1, 10, -10, inf, nan 等边界
+    res_inp = torch.tensor(
+        [0.0, 1.0, -1.0, 10.0, -10.0, float("inf"), float("-inf"), float("nan")],
+        device=flag_gems.device,
+        dtype=dtype,
+    )
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    # 务必加上 equal_nan=True，否则特殊值对比会失败
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.cosh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_empty(dtype):
+    res_inp = torch.empty((0,), device=flag_gems.device, dtype=dtype)
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+# --- cosh测试结束 ---
+
 @pytest.mark.tanh
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
