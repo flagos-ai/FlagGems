@@ -109,8 +109,8 @@ def get_optimal_block_mn(
     varlen_and_split=False,
     append_kv=False,
 ):
-    arch_cap = get_device_capability()
-    arch = arch_cap[0] * 10 + arch_cap[1]
+    major, minor = get_device_capability()
+    arch = major * 10 + minor
     sm86_or_89 = arch == 86 or arch == 89
 
     kBlockM, kBlockN, kNWarps, kStages, Q_in_regs = tile_size_fwd_sm8x(
@@ -484,8 +484,8 @@ def get_scheduler_metadata(
         effective_window_left >= 0 or effective_window_right >= 0
     ) and not final_is_causal
 
-    arch_cap = get_device_capability()
-    arch = arch_cap[0] * 10 + arch_cap[1]
+    major, minor = get_device_capability()
+    arch = major * 10 + minor
     num_sm = get_device_info().sm_count - sm_margin
 
     softcap = 1.0 if has_softcap else 0.0

@@ -6,7 +6,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.device_info import get_device_capability
+from flag_gems.utils.device_info import get_device_capability, get_device_info
 
 logger = logging.getLogger(__name__)
 
@@ -157,8 +157,8 @@ def get_optimal_block_mn(
     varlen_and_split=False,
     append_kv=False,
 ):
-    arch_cap = get_device_capability()
-    arch = arch_cap[0] * 10 + arch_cap[1]
+    major, minor = get_device_capability()
+    arch = major * 10 + minor
 
     if arch >= 90:
         paged_kv_non_TMA = bool(paged_kv and (not pagedkv_tma))
@@ -629,10 +629,8 @@ def get_scheduler_metadata(
         effective_window_left >= 0 or effective_window_right >= 0
     ) and not final_is_causal
 
-    arch_cap = get_device_capability()
-    arch = arch_cap[0] * 10 + arch_cap[1]
-    from flag_gems.utils.device_info import get_device_info
-
+    major, minor = get_device_capability()
+    arch = major * 10 + minor
     num_sm = get_device_info().sm_count - sm_margin
 
     softcap = 1.0 if has_softcap else 0.0
