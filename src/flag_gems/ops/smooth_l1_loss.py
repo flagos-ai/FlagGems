@@ -31,7 +31,7 @@ def smooth_l1_loss_forward_kernel(
 ):
     """
     Compute smooth L1 loss (Huber loss).
-    
+
     For each element:
     - If |input - target| < beta: loss = 0.5 * (input - target)^2 / beta
     - Otherwise: loss = |input - target| - 0.5 * beta
@@ -52,11 +52,7 @@ def smooth_l1_loss_forward_kernel(
     # Smooth L1 loss formula
     # if |diff| < beta: 0.5 * diff^2 / beta
     # else: |diff| - 0.5 * beta
-    loss = tl.where(
-        abs_diff < beta,
-        0.5 * diff * diff / beta,
-        abs_diff - 0.5 * beta
-    )
+    loss = tl.where(abs_diff < beta, 0.5 * diff * diff / beta, abs_diff - 0.5 * beta)
 
     # Store result
     tl.store(output_ptr + offsets, loss, mask=mask)
@@ -84,7 +80,7 @@ def smooth_l1_loss_backward_kernel(
 ):
     """
     Compute gradient of smooth L1 loss.
-    
+
     For each element:
     - If |input - target| < beta: grad = (input - target) / beta
     - Otherwise: grad = sign(input - target)
@@ -106,11 +102,7 @@ def smooth_l1_loss_backward_kernel(
     # Gradient formula
     # if |diff| < beta: grad = diff / beta
     # else: grad = sign(diff)
-    grad = tl.where(
-        abs_diff < beta,
-        diff / beta,
-        tl.where(diff > 0, 1.0, -1.0)
-    )
+    grad = tl.where(abs_diff < beta, diff / beta, tl.where(diff > 0, 1.0, -1.0))
 
     # Apply chain rule with grad_output
     grad_input = grad * grad_out
@@ -127,7 +119,7 @@ def smooth_l1_loss(
 ) -> torch.Tensor:
     """
     Compute smooth L1 loss (Huber loss).
-    
+
     Args:
         input: Input tensor of any shape
         target: Target tensor of same shape as input
@@ -137,52 +129,52 @@ def smooth_l1_loss(
             'sum': the output will be summed
         beta: Specifies the threshold at which to change between L1 and L2 loss.
               Default: 1.0
-    
+
     Returns:
         Loss tensor. If reduction is 'none', same shape as input.
         Otherwise, scalar tensor.
-    
+
     Formula:
         loss(x, y) = 0.5 * (x - y)^2 / beta,  if |x - y| < beta
                      |x - y| - 0.5 * beta,     otherwise
     """
     logger.debug("GEMS SMOOTH_L1_LOSS FORWARD")
-    
+
     # Validate inputs
     if input.shape != target.shape:
         raise ValueError(
             f"Input and target must have the same shape. "
             f"Got input: {input.shape}, target: {target.shape}"
         )
-    
+
     if reduction not in ["none", "mean", "sum"]:
         raise ValueError(
             f"reduction must be 'none', 'mean', or 'sum'. Got: {reduction}"
         )
-    
+
     if beta <= 0:
         raise ValueError(f"beta must be positive. Got: {beta}")
-    
+
     # Ensure contiguous
     input = input.contiguous()
     target = target.contiguous()
-    
+
     # Allocate output
     output = torch.empty_like(input)
-    
+
     # Get total number of elements
     n_elements = input.numel()
-    
+
     if n_elements == 0:
         # Handle empty tensor
         if reduction == "none":
             return output
         else:
             return torch.tensor(0.0, device=input.device, dtype=input.dtype)
-    
+
     # Launch kernel
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    
+
     smooth_l1_loss_forward_kernel[grid](
         input,
         target,
@@ -190,7 +182,7 @@ def smooth_l1_loss(
         n_elements,
         beta,
     )
-    
+
     # Apply reduction
     if reduction == "mean":
         return output.mean()
@@ -209,43 +201,43 @@ def smooth_l1_loss_backward(
 ) -> torch.Tensor:
     """
     Compute gradient of smooth L1 loss with respect to input.
-    
+
     Args:
         grad_output: Gradient of loss with respect to output
         input: Input tensor
         target: Target tensor
         reduction: Reduction mode used in forward pass
         beta: Beta parameter used in forward pass
-    
+
     Returns:
         Gradient with respect to input
     """
     logger.debug("GEMS SMOOTH_L1_LOSS BACKWARD")
-    
+
     # Validate inputs
     if input.shape != target.shape:
         raise ValueError(
             f"Input and target must have the same shape. "
             f"Got input: {input.shape}, target: {target.shape}"
         )
-    
+
     # Ensure contiguous
     input = input.contiguous()
     target = target.contiguous()
-    
+
     # Allocate gradient
     grad_input = torch.empty_like(input)
-    
+
     n_elements = input.numel()
-    
+
     if n_elements == 0:
         return grad_input
-    
+
     # Expand grad_output if needed (for mean/sum reduction)
     if grad_output.numel() == 1:
         # Scalar gradient from reduction
         grad_output_expanded = grad_output.expand_as(input).contiguous()
-        
+
         # Adjust for reduction type
         if reduction == "mean":
             # For mean reduction, gradient is divided by number of elements
@@ -253,10 +245,10 @@ def smooth_l1_loss_backward(
     else:
         # No reduction or already expanded
         grad_output_expanded = grad_output.contiguous()
-    
+
     # Launch kernel
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    
+
     smooth_l1_loss_backward_kernel[grid](
         grad_output_expanded,
         input,
@@ -265,13 +257,13 @@ def smooth_l1_loss_backward(
         n_elements,
         beta,
     )
-    
+
     return grad_input
 
 
 class SmoothL1Loss(torch.autograd.Function):
     """Autograd function for smooth L1 loss."""
-    
+
     @staticmethod
     def forward(ctx, input, target, reduction, beta):
         """Forward pass."""
@@ -279,7 +271,7 @@ class SmoothL1Loss(torch.autograd.Function):
         ctx.reduction = reduction
         ctx.beta = beta
         return smooth_l1_loss(input, target, reduction, beta)
-    
+
     @staticmethod
     def backward(ctx, grad_output):
         """Backward pass."""

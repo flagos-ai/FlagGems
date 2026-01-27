@@ -4,11 +4,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (
-    FLOAT_DTYPES,
-    gems_assert_close,
-    to_reference,
-)
+from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
 # Test configurations for smooth_l1_loss
@@ -18,21 +14,17 @@ SMOOTH_L1_LOSS_CONFIGS = [
     ((8,), (8,), "none", 1.0),
     ((8,), (8,), "mean", 1.0),
     ((8,), (8,), "sum", 1.0),
-    
     # ===== Medium sizes =====
     ((64, 64), (64, 64), "none", 1.0),
     ((64, 64), (64, 64), "mean", 1.0),
     ((64, 64), (64, 64), "sum", 1.0),
     ((256, 256), (256, 256), "mean", 1.0),
-    
     # ===== Large sizes =====
     ((1024, 1024), (1024, 1024), "mean", 1.0),
-    
     # ===== Different beta values =====
     ((64, 64), (64, 64), "mean", 0.5),
     ((64, 64), (64, 64), "mean", 2.0),
     ((64, 64), (64, 64), "mean", 0.1),
-    
     # ===== Multi-dimensional =====
     ((16, 32, 32), (16, 32, 32), "mean", 1.0),
     ((8, 16, 16, 16), (8, 16, 16, 16), "mean", 1.0),
@@ -61,7 +53,7 @@ def test_accuracy_smooth_l1_loss_forward(
     """Test forward pass of smooth_l1_loss."""
     inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
-    
+
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
 
@@ -93,9 +85,11 @@ def test_accuracy_smooth_l1_loss_backward(
     input_shape, target_shape, reduction, beta, dtype
 ):
     """Test backward pass of smooth_l1_loss."""
-    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
     target = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
-    
+
     ref_inp = to_reference(inp, upcast=True)
     ref_target = to_reference(target, upcast=True)
 
@@ -199,9 +193,7 @@ def test_accuracy_smooth_l1_loss_different_reductions(dtype):
         ref_out = torch.nn.functional.smooth_l1_loss(
             ref_inp, ref_target, reduction=reduction
         )
-        res_out = flag_gems.smooth_l1_loss(
-            inp, target, reduction=reduction
-        )
+        res_out = flag_gems.smooth_l1_loss(inp, target, reduction=reduction)
 
         gems_assert_close(res_out, ref_out, dtype)
 
@@ -221,9 +213,7 @@ def test_accuracy_smooth_l1_loss_different_betas(dtype):
         ref_out = torch.nn.functional.smooth_l1_loss(
             ref_inp, ref_target, reduction="mean", beta=beta
         )
-        res_out = flag_gems.smooth_l1_loss(
-            inp, target, reduction="mean", beta=beta
-        )
+        res_out = flag_gems.smooth_l1_loss(inp, target, reduction="mean", beta=beta)
 
         gems_assert_close(res_out, ref_out, dtype)
 
@@ -233,26 +223,24 @@ def test_accuracy_smooth_l1_loss_different_betas(dtype):
 def test_accuracy_smooth_l1_loss_different_shapes(dtype):
     """Test smooth_l1_loss with different input shapes."""
     shapes = [
-        (8,),           # 1D
-        (8, 8),         # 2D
-        (8, 8, 8),      # 3D
-        (4, 8, 8, 8),   # 4D
+        (8,),  # 1D
+        (8, 8),  # 2D
+        (8, 8, 8),  # 3D
+        (4, 8, 8, 8),  # 4D
         (2, 4, 8, 8, 8),  # 5D
     ]
 
     for shape in shapes:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        
+
         ref_inp = to_reference(inp, True)
         ref_target = to_reference(target, True)
 
         ref_out = torch.nn.functional.smooth_l1_loss(
             ref_inp, ref_target, reduction="mean"
         )
-        res_out = flag_gems.smooth_l1_loss(
-            inp, target, reduction="mean"
-        )
+        res_out = flag_gems.smooth_l1_loss(inp, target, reduction="mean")
 
         gems_assert_close(res_out, ref_out, dtype)
 
@@ -265,15 +253,11 @@ def test_accuracy_smooth_l1_loss_large_input(dtype):
     shape = (4096, 4096)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    
+
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
 
-    ref_out = torch.nn.functional.smooth_l1_loss(
-        ref_inp, ref_target, reduction="mean"
-    )
-    res_out = flag_gems.smooth_l1_loss(
-        inp, target, reduction="mean"
-    )
+    ref_out = torch.nn.functional.smooth_l1_loss(ref_inp, ref_target, reduction="mean")
+    res_out = flag_gems.smooth_l1_loss(inp, target, reduction="mean")
 
     gems_assert_close(res_out, ref_out, dtype)
