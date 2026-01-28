@@ -285,6 +285,14 @@ RWKVSparsityBenchmark:
   shapes:
     - [1]
 
+FusedRecurrentGatedDeltaRuleBenchmark:
+  shapes:
+    - [1]
+    - [64]
+    - [184]
+    - [256]
+    - [512]
+  shape_desc: "(T,) many lengths"
 MoeAlignBlockSizeBenchmark:
   shapes:
     - [16, 8]
