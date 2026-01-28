@@ -209,7 +209,7 @@ def to_reference(inp, upcast=False):
         return None
     ref_inp = inp
     if TO_CPU:
-        ref_inp = ref_inp.to("cpu")
+        ref_inp = ref_inp.to("cpu", non_blocking=True).pin_memory()
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -220,7 +220,7 @@ def to_reference(inp, upcast=False):
 
 def to_cpu(res, ref):
     if TO_CPU:
-        res = res.to("cpu")
+        res = res.to("cpu", non_blocking=True).pin_memory()
         assert ref.device == torch.device("cpu")
     return res
 
