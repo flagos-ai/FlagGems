@@ -80,6 +80,59 @@ def mean(inp, *, dtype=None):
 
 
 @libentry()
+@triton.jit
+def mean_dim_kernel_non_inner_vec(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    BLOCK_SIZE_K: tl.constexpr,  # number of threads per block along K
+    VEC_SIZE: tl.constexpr,  # elements per thread (1 for FP32, 8 for FP16/BF16)
+):
+    # Determine accumulation and load behavior
+    input_dtype = input_ptr.dtype.element_ty
+    if tl.constexpr(input_dtype == tl.float16) or tl.constexpr(
+        input_dtype == tl.bfloat16
+    ):
+        ACC_DTYPE = tl.float32
+        # VEC_SIZE should be 4 or 8 for vectorization
+    else:
+        ACC_DTYPE = input_dtype
+        # VEC_SIZE = 1 for FP32
+
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
+
+    # Each thread handles VEC_SIZE consecutive elements
+    k_base = pid_k * BLOCK_SIZE_K * VEC_SIZE
+    k_offsets = (
+        k_base
+        + tl.arange(0, BLOCK_SIZE_K)[:, None] * VEC_SIZE
+        + tl.arange(0, VEC_SIZE)[None, :]
+    )
+    # Shape: [BLOCK_SIZE_K, VEC_SIZE]
+    k_mask = k_offsets < K
+
+    # Accumulator: [BLOCK_SIZE_K, VEC_SIZE]
+    acc = tl.zeros((BLOCK_SIZE_K, VEC_SIZE), dtype=ACC_DTYPE)
+
+    base = pid_m * N * K
+
+    for n in range(N):
+        offsets = base + n * K + k_offsets
+        # This will trigger vectorized load if VEC_SIZE >= 4 and aligned
+        val = tl.load(input_ptr + offsets, mask=k_mask, other=0.0)
+        acc += val.to(ACC_DTYPE)
+
+    mean_val = acc / N
+
+    # Store back
+    out_offsets = pid_m * K + k_offsets
+    tl.store(output_ptr + out_offsets, mean_val, mask=k_mask)
+
+
+@libentry()
 @triton.heuristics(runtime.get_heuristic_config("mean_non_inner"))
 @triton.jit
 def mean_dim_kernel_non_inner(
@@ -267,7 +320,26 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         with torch_device_fn.device(inp.device):
-            if K > 1:
+            if K >= 1024:
+                input_dtype = inp.dtype
+                if input_dtype in (torch.float16, torch.bfloat16):
+                    VEC_SIZE = 8
+                    BLOCK_SIZE_K = 128
+                else:
+                    VEC_SIZE = 1
+                    BLOCK_SIZE_K = min(triton.next_power_of_2(K), 512)
+                grid = (M, triton.cdiv(K, BLOCK_SIZE_K * VEC_SIZE))
+                mean_dim_kernel_non_inner_vec[grid](
+                    out,
+                    inp,
+                    M,
+                    N,
+                    K,
+                    BLOCK_SIZE_K=BLOCK_SIZE_K,
+                    VEC_SIZE=VEC_SIZE,
+                    num_warps=8 if BLOCK_SIZE_K <= 128 else 16,
+                )
+            elif K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 mean_dim_kernel_non_inner[grid](
                     out,
