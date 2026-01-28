@@ -1254,8 +1254,9 @@ class PointwiseDynamicFunction:
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
         # the inputs & ouputs actually fits the manually instantiated overload
-        if ndim in self.overloads:
-            return self.overloads[ndim]
+        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        if key in self.overloads:
+            return self.overloads[key]
 
         code = IndentedBuffer()
 
@@ -1310,7 +1311,7 @@ class PointwiseDynamicFunction:
         m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
 
         overload = getattr(m, wrapper_name)
-        self.overloads[ndim] = overload
+        self.overloads[key] = overload
         return overload
 
 
