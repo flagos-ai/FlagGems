@@ -16,12 +16,6 @@ def round_up(x: int, y: int) -> int:
     return ((x + y - 1) // y) * y
 
 
-def next_power_of_2(x: int) -> int:
-    if x <= 0:
-        return 1
-    return 1 << (x - 1).bit_length()
-
-
 @triton.jit(do_not_specialize=["numel", "tokens_per_thread"])
 def moe_align_block_size_stage1(
     topk_ids_ptr,
@@ -169,10 +163,12 @@ def moe_align_block_size_triton(
         (num_experts + 1, num_experts), dtype=torch.int32, device=topk_ids.device
     )
     cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device=topk_ids.device)
-    tokens_per_thread = next_power_of_2(ceil_div(numel, num_experts))
+    tokens_per_thread = triton.next_power_of_2(ceil_div(numel, num_experts))
 
-    block_size_sorted = next_power_of_2(ceil_div(numel_sorted_token_ids, num_experts))
-    block_size_expert = next_power_of_2(ceil_div(numel_expert_ids, num_experts))
+    block_size_sorted = triton.next_power_of_2(
+        ceil_div(numel_sorted_token_ids, num_experts)
+    )
+    block_size_expert = triton.next_power_of_2(ceil_div(numel_expert_ids, num_experts))
 
     moe_align_block_size_stage1[grid](
         topk_ids,
@@ -187,7 +183,7 @@ def moe_align_block_size_triton(
         block_size_sorted,
         block_size_expert,
     )
-    if num_experts == next_power_of_2(num_experts):
+    if num_experts == triton.next_power_of_2(num_experts):
         moe_align_block_size_stage2_vec[grid](
             tokens_cnts,
             num_experts,

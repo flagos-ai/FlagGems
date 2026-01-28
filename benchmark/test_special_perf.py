@@ -759,18 +759,13 @@ except ImportError:
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
 def test_perf_moe_align_block_size():
     def moe_align_block_size_input_fn(shape, dtype, device):
-        # ------------ parameters ------------
         num_experts = shape[0]
         block_size = shape[1]
-        # print(f"num_experts:{num_experts}")
-        # print(f"block_size:{block_size}")
         dtype = torch.int32
         topk_ids = torch.randint(
             0, num_experts, (shape[2], shape[3]), dtype=dtype, device=device
         )
-        # print(f"topk_ids shape:{topk_ids.shape}")
         max_num_tokens_padded = ((num_experts + WARP_SIZE - 1) // WARP_SIZE) * WARP_SIZE
-        # print(f"max_num_tokens_padded:{max_num_tokens_padded}")
 
         # padded_num_experts in vllm._custom_ops.moe_align_block_size
         # must be less than 1024
