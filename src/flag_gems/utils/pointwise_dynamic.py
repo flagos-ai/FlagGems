@@ -1099,7 +1099,7 @@ class PointwiseDynamicFunction:
         self.config: CodeGenConfig = config or get_codegen_config()
 
         # instantiated & cached overloads
-        self.overloads: Mapping[int, Callable] = {}
+        self.overloads: Mapping[str, Callable] = {}
 
     def __call__(self, *args, **kwargs):
         # inputs must be passed by position, outputs must be passed by keyword
