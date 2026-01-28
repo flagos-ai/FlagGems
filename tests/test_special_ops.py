@@ -1002,9 +1002,9 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
 
 
 @pytest.mark.fill
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("value", [0, 1, 9, 3.14])
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.float64])
 def test_fill(value, shape, dtype):
     # Test fill.Scalar
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
@@ -1013,7 +1013,6 @@ def test_fill(value, shape, dtype):
     ref_out = torch.fill(ref_x, value)
     with flag_gems.use_gems():
         res_out = torch.fill(x, value)
-
     gems_assert_equal(res_out, ref_out)
 
     # Test fill.Tensor

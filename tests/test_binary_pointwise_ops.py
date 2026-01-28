@@ -2010,9 +2010,9 @@ def test_accuracy_masked_fill_(shape, dtype, threshold, value):
 
 
 @pytest.mark.fill_
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("value", [0, 1, 9, 3.14])
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.float64])
 def test_accuracy_fill_(value, shape, dtype):
     # Test fill_.Scalar
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
