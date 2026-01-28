@@ -1,3 +1,31 @@
+# # abs(A) computes the absolute value of each element in the input tensor A using the abs_func function.
+# 
+# # Args:
+# #     A (Tensor): The input tensor.
+# 
+# # Keyword arguments:
+# #     None
+# 
+# # Examples:
+# #     >>> A = torch.tensor([-1, 2, -3, 4])
+# #     >>> abs(A)
+# #     tensor([1, 2, 3, 4])
+
+# Comments:
+# 
+# abs(A) computes the absolute value of each element in the input tensor A using the abs_func function.
+# 
+# Args:
+#     A (Tensor): The input tensor.
+# 
+# Keyword arguments:
+#     None
+# 
+# Examples:
+#     >>> A = torch.tensor([-1, 2, -3, 4])
+#     >>> abs(A)
+#     tensor([1, 2, 3, 4])
+
 import logging
 
 import triton
