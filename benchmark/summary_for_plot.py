@@ -107,7 +107,7 @@ def parse_log(log_file_path: str) -> List[BenchmarkResult]:
 
     benchmark_results = []
     for line in log_lines:
-        if line.startswith("[INFO]"):
+        if line.startswith("[INFO] {"):
             json_str = line[len("[INFO] ") :]
             data = json.loads(json_str)
             benchmark_result = BenchmarkResult(
@@ -145,13 +145,13 @@ def parse_log_to_dict(log_file_path: str) -> Dict[int, Any]:
         log_lines = [
             line
             for line in file.read().strip().split("\n")
-            if line.startswith("[INFO]")
+            if line.startswith("[INFO] {")
         ]
 
     # dict(op_name, dict(dtype, dict(shape, latency))
     benchmark_results = dict()
     for line in log_lines:
-        if line.startswith("[INFO]"):
+        if line.startswith("[INFO] {"):
             json_str = line[len("[INFO] ") :]
             data = json.loads(json_str)
             op_name = (data["op_name"],)

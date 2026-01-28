@@ -1290,6 +1290,7 @@ def test_accuracy_log(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+#-------------log10 test begin -----------------#
 @pytest.mark.log10
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1322,6 +1323,32 @@ def test_accuracy_log10_special_values(dtype):
 
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
+@pytest.mark.log10_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_(shape, dtype):
+    # 同样需要保证输入大于 0，避免产生 NaN 影响常规形状测试
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.01
+    
+    # 关键步骤：克隆一份用于 PyTorch 原生参考计算
+    ref_inp = to_reference(inp.clone(), True)
+
+    # PyTorch 原生原位操作
+    ref_out = torch.log10_(ref_inp)
+    
+    with flag_gems.use_gems():
+        # FlagGems Triton 原位操作
+        res_out = torch.log10_(inp)
+
+    # 验证计算结果精度
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+    
+    # 验证原位特性：检查 inp 内存中的值是否确实被修改为了结果值
+    gems_assert_close(inp, res_out, dtype)
+
+
+#-------------log10 test end -----------------#
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)

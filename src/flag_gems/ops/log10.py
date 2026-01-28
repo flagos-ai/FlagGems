@@ -20,3 +20,7 @@ def log10(A):
     return log10_func(A)
 
 # TODO: Add log10_ kernel
+def log10_(A):
+    logger.debug("GEMS LOG10_")
+    log10_func(A, out0=A)
+    return A
