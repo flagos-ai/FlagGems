@@ -30,28 +30,8 @@ except ImportError:
         return x.to("cpu")
 
 
-def rmsnorm(
-    input_tensor: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6
-) -> torch.Tensor:
-    orig_dtype = input_tensor.dtype
-    # Use float32 for computation when possible for numerical stability
-    compute_dtype = (
-        torch.float32
-        if input_tensor.dtype in (torch.float16, torch.bfloat16)
-        else input_tensor.dtype
-    )
-
-    x = input_tensor.to(compute_dtype)
-    w = weight.to(compute_dtype)
-
-    # Compute inverse RMS over the last dimension
-    inv_rms = torch.rsqrt(torch.mean(x * x, dim=-1, keepdim=True) + eps)
-    y = x * inv_rms
-
-    # Apply learnable scaling
-    y = y * w
-
-    return y.to(orig_dtype)
+# Use PyTorch native rms_norm as reference
+# torch.nn.functional.rms_norm(input, normalized_shape, weight, eps)
 
 
 # Test shapes for normalization operations
@@ -69,11 +49,12 @@ NMSNORM_SHAPES = [
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_nmsnorm_performace(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp, True)
+    # Keep reference on GPU for fair performance comparison
+    ref_inp = inp.clone()
 
     # Test with weight
     weight = torch.randn(shape[-1:], dtype=dtype, device=flag_gems.device)
-    ref_weight = to_reference(weight, True)
+    ref_weight = weight.clone()
 
     # Warmup
     for _ in range(10):
@@ -90,10 +71,12 @@ def test_nmsnorm_performace(shape, dtype):
 
     gems_time = (end_time - start_time) / 100
 
-    # PyTorch baseline
+    # PyTorch baseline using native rms_norm
     start_time = time.time()
     for _ in range(100):
-        _ = rmsnorm(ref_inp, ref_weight)
+        _ = torch.nn.functional.rms_norm(
+            ref_inp, normalized_shape=[shape[-1]], weight=ref_weight
+        )
     torch.cuda.synchronize()
     end_time = time.time()
 
