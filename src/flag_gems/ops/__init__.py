@@ -23,6 +23,8 @@ from flag_gems.ops.attention import (
     scaled_dot_product_attention_forward,
 )
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
+
+# from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bitwise_and import (
@@ -132,6 +134,12 @@ from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
 )
+
+# from flag_gems.ops.max_pool3d import (
+#     max_pool3d,
+#     max_pool3d_backward,
+#     max_pool3d_with_indices,
+# )
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
@@ -193,11 +201,15 @@ from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
+from flag_gems.ops.scatter_reduce import scatter_reduce, scatter_reduce_
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
+
+# from flag_gems.ops.smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_backward
+# from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.softmax import softmax, softmax_backward
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
@@ -267,6 +279,8 @@ __all__ = [
     "argmin",
     "avg_pool2d",
     "avg_pool2d_backward",
+    # "avg_pool3d",
+    # "avg_pool3d_backward",
     "atan",
     "atan_",
     "baddbmm",
@@ -404,6 +418,9 @@ __all__ = [
     "maximum",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
+    # "max_pool3d",
+    # "max_pool3d_backward",
+    # "max_pool3d_with_indices",
     "mean",
     "mean_dim",
     "min",
@@ -475,6 +492,8 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "scatter_reduce",
+    "scatter_reduce_",
     "select_scatter",
     "sigmoid",
     "sigmoid_",
@@ -485,6 +504,9 @@ __all__ = [
     "sin",
     "sin_",
     "slice_scatter",
+    # "smooth_l1_loss",
+    # "smooth_l1_loss_backward",
+    # "pixel_shuffle",
     "softmax",
     "softmax_backward",
     "softplus",
