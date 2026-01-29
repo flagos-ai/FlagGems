@@ -48,6 +48,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 
     code.writeline("def heur_block_m(args):")
     with code.indent():
+        code.writeline('if args["M"] == 0:')
+        with code.indent():
+            code.writeline("return 2")
         code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
 
     code.newline()
