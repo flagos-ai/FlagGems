@@ -5,7 +5,10 @@ import triton
 
 from flag_gems.runtime import device
 from flag_gems.runtime.backend import vendor_module
-from flag_gems.runtime.common import vendors
+from flag_gems.runtime.commom_utils import vendors
+
+import os
+ENFLAME_GCU300_4SIPS = int(os.getenv("ENFLAME_GCU300_4SIPS", "0"))
 
 
 def default_heuristics_for_num_warps(tile_size):
@@ -26,31 +29,15 @@ def metax_heuristics_for_num_warps(tile_size):
         return 16
 
 
-def hygon_heuristics_for_num_warps(tile_size):
-    if tile_size <= 1024:
-        return 4
-    elif tile_size <= 2048:
-        return 8
-    else:
-        return 16
-
-
 def cambricon_heuristics_for_num_warps(tile_size):
     return 1
 
 
-def sunrise_heuristics_for_num_warps(tile_size):
-    if tile_size < 1024:
-        return 4
-    elif tile_size < 2048:
-        return 8
-    elif tile_size < 4096:
-        return 16
-    else:
-        return 32
-
 def enflame_heuristics_for_num_warps(tile_size):
-    return 4
+    if ENFLAME_GCU300_4SIPS == 1:
+        return 4
+    else:
+        return 2
 
 
 @dataclass
@@ -82,7 +69,7 @@ CODEGEN_COFIGS = {
             8192,
             tuple([vendor_module.TOTAL_CORE_NUM, 1, 1]),
             32,
-            True,
+            False,
             prefer_1d_tile=int(triton.__version__[0]) < 3,
         )
         if vendor_module.vendor_info.vendor_name == "cambricon"
@@ -109,32 +96,18 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=True,
     ),
+    vendors.ENFLAME: CodeGenConfig(
+        32 * 1024  if ENFLAME_GCU300_4SIPS != 1 else 64 * 1024, # base for bpe8, which means base*2 for bpe4, base*4 for bpe2
+        (12, 1, 1) if ENFLAME_GCU300_4SIPS != 1 else (1, 1, 1),
+        2          if ENFLAME_GCU300_4SIPS != 1 else 4,
+        True,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
     vendors.ASCEND: CodeGenConfig(
-        512,
+        4096,
         tuple([48, 1, 1]),
         32,
         False,
-        prefer_1d_tile=int(triton.__version__[0]) < 3,
-    ),
-    vendors.HYGON: CodeGenConfig(
-        2048,
-        (65536, 65536, 65536),
-        16,
-        True,
-        prefer_1d_tile=int(triton.__version__[0]) < 3,
-    ),
-    vendors.SUNRISE: CodeGenConfig(
-        512,
-        (65536, 65536, 65536),
-        32,
-        True,
-        prefer_1d_tile=False,
-    ),
-    vendors.ENFLAME: CodeGenConfig(
-        512 * 8,
-        (12, 1, 1),
-        4,
-        True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
 }
@@ -143,8 +116,6 @@ HEURISTICS_CONFIG = {
     vendors.NVIDIA: default_heuristics_for_num_warps,
     vendors.METAX: metax_heuristics_for_num_warps,
     vendors.CAMBRICON: cambricon_heuristics_for_num_warps,
-    vendors.HYGON: hygon_heuristics_for_num_warps,
-    vendors.SUNRISE: sunrise_heuristics_for_num_warps,
     vendors.ENFLAME: enflame_heuristics_for_num_warps,
 }
 
