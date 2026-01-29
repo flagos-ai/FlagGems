@@ -2,8 +2,6 @@ import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 
-import torch
-
 from flag_gems.runtime import torch_device_fn
 
 
@@ -41,18 +39,20 @@ def get_device_properties():
 def get_device_capability() -> tuple[int, int]:
     device_id = get_device_id()
     try:
-        return torch_device_fn.get_device_capability(device_id)
+        result = torch_device_fn.get_device_capability(device_id)
+        if result is None:
+            warnings.warn(
+                f"[device_info] torch_device_fn.get_device_capability returned None "
+                f"for device_id={device_id}, fallback to (0, 0)."
+            )
+            return (0, 0)
+        return result
     except Exception:
-        pass
-    try:
-        if torch.cuda.is_available():
-            return torch.cuda.get_device_capability(device_id)
-    except Exception:
-        pass
-    warnings.warn(
-        f"[device_info] Failed to get device capability for device_id={device_id}, fallback to (0, 0)."
-    )
-    return (0, 0)
+        warnings.warn(
+            f"[device_info] Failed to get device capability for device_id={device_id} "
+            f"using torch_device_fn, fallback to (0, 0)."
+        )
+        return (0, 0)
 
 
 @lru_cache(maxsize=1)
