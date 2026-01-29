@@ -5,13 +5,20 @@ import torch
 import triton
 import triton.language as tl
 
-# from flag_gems import runtime
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+torch_dtype_to_tl_dtype_and_min_value = {
+    torch.int16: (tl.int16, torch.iinfo(torch.int16).min),
+    torch.int32: (tl.int32, torch.iinfo(torch.int32).min),
+    torch.float16: (tl.float16, torch.finfo(torch.float16).min),
+    torch.float32: (tl.float32, torch.finfo(torch.float32).min),
+    torch.bfloat16: (tl.float32, torch.finfo(torch.float32).min),
+}
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -110,6 +117,42 @@ def argmax_kernel(
     tl.store(out_index_ptrs, argmax_values, mask=mask1)
 
 
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("argmax"))
+@triton.jit
+def argmax_kernel_small_n(
+    inp,
+    out_index,
+    M,
+    N,
+    K,
+    tl_dtype: tl.constexpr,
+    dtype_min_value: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    # set offset
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+
+    if tl_dtype is tl.int16:
+        tl_dtype = tl.int32
+    n_offset = tl.arange(0, BLOCK_N)
+    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    offset_index = m_offset * K + pid_k
+    # set mask
+    mask1 = m_offset < M
+    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    inp_ptrs = inp + offset
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=dtype_min_value)
+    _, result_index = tl.max(inp_vals, axis=1, return_indices=True)
+
+    out_index_ptrs = out_index + offset_index
+
+    tl.store(out_index_ptrs, result_index, mask=mask1)
+
+
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS ARGMAX")
     if dim is None:
@@ -166,6 +209,21 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
+
+        if N == 1:
+            tl_dtype, dtype_min_value = torch_dtype_to_tl_dtype_and_min_value[inp.dtype]
+            with torch_device_fn.device(inp.device):
+                argmax_kernel_small_n[grid](
+                    inp,
+                    out_index,
+                    M,
+                    N,
+                    K,
+                    tl_dtype,
+                    dtype_min_value,
+                )
+            return out_index
+
         with torch_device_fn.device(inp.device):
             argmax_kernel[grid](
                 inp,
