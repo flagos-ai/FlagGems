@@ -1,21 +1,33 @@
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
+# - id: upload_pages
+#   uses: peaceiris/actions-gh-pages@v4
+#   with:
+#     github_token: ${{ secrets.GITHUB_TOKEN }}
+#     publish_dir: htmlcov
+#     destination_dir: 1484
+#     publish_branch: gh-pages
+#     user_name: 'github-actions[bot]'
+#     user_email: '41898282+github-actions[bot]@users.noreply.github.com'
 name: op-test-quick-cpu
 
 on:
   workflow_call:
+    secrets:
+      PAT_TOKEN:
+        required: true
 
 jobs:
   container-unit-test:
     runs-on: jiuding
     if: "! contains(github.event.pull_request.labels.*.name, 'competition')"
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - id: checkout_code
+        uses: actions/checkout@v6
 
-      - uses: dorny/paths-filter@v3
-        id: experimental_ops
+      - id: filter
+        uses: dorny/paths-filter@v3
         with:
           filters: |
             run_ci:
@@ -23,16 +35,27 @@ jobs:
               - '!src/flag_gems/experimental_ops/**'
               - '!experimental_tests/**'
 
-      - name: Check GPU free
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+      - id: check_gpu
+        if: steps.filter.outputs.run_ci == 'true'
         shell: bash
         run: tools/gpu_check.sh
 
-      - name: OP Test Quick CPU
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+      - id: test
+        if: steps.filter.outputs.run_ci == 'true'
         shell: bash
         run: |
-          echo "current dir: $(pwd)"
+          TESTCASES=(
+          #   "tests/test_blas_ops.py"
+          #   "tests/test_reduction_ops.py"
+          #   "tests/test_general_reduction_ops.py"
+          #   "tests/test_norm_ops.py"
+          #   "tests/test_unary_pointwise_ops.py"
+          #   "tests/test_binary_pointwise_ops.py"
+          # "tests/test_special_ops.py"
+          #  "tests/test_pointwise_type_promotion.py"
+            "tests/test_tensor_constructor_ops.py"
+          #  "tests/test_attention_ops.py"
+          )
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
@@ -42,4 +65,39 @@ jobs:
             echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
-          bash tools/op-test-quick-cpu.sh ${PR_ID}
+          echo "PR_ID=$PR_ID" >> $GITHUB_ENV
+          rm -f .coverage
+          bash tools/op-test-quick-cpu.sh ${PR_ID} "${TESTCASES[@]}"
+
+          coverage combine coverage-*
+          # TODO(Qiming): Add pattern for filtering
+          coverage html
+          rm -fr /root/htmlcov
+          mv htmlcov /root
+
+      # An attempt to use PAT for checkout and push.
+      # This didn't work because:
+      # 1) this callee workflows cannot access secrets directly;
+      # 2) the caller workflow is triggered from a forked repo.
+      #
+      # - id: checkout-gh-pages
+      #   if: steps.filter.outputs.run_ci == 'true'
+      #   uses: actions/checkout@v6
+      #   with:
+      #     repository: flagos-ai/FlagGems
+      #     ref: 'gh-pages'
+      #     token: ${{ secrets.PAT_TOKEN }}
+
+      - id: commit-changes
+        shell: bash
+        if: steps.filter.outputs.run_ci == 'true'
+        run: |
+          rm -fr docs/coverage/${PR_ID}
+          mkdir -p docs/coverage/${PR_ID}
+          mv /root/htmlcov/* docs/coverage/${PR_ID}
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://github-actions:${{ secrets.ACTIONS_TOKEN }}@github.com/flagos-ai/FlagGems.git
+          git add docs
+          git commit -m "coverage-${PR_ID}"
+          git push origin gh-pages
