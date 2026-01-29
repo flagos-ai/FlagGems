@@ -317,6 +317,13 @@ mm:
     SPLIT_K: 1
   num_stages: 1
   num_warps: 1
+- META:
+    BLOCK_M: 512
+    BLOCK_N: 512
+    BLOCK_K: 128
+    SPLIT_K: 1
+  num_stages: 4
+  num_warps: 4
 #######################################
 softmax:
 - META:
