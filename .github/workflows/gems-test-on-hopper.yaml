@@ -50,14 +50,16 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: experimental_ops
         with:
+          list-files: shell
           filters: |
-            run_ci:
+            all:
               - '**'
-              - '!src/flag_gems/experimental_ops/**'
-              - '!experimental_tests/**'
+            experimental:
+              - 'src/flag_gems/experimental_ops/**'
+              - 'experimental_tests/**'
 
       - name: FlagGems reduction ops on hopper
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
@@ -68,7 +70,7 @@ jobs:
           run_command pytest -s tests/test_norm_ops.py
 
       - name: FlagGems pointwise ops on hopper
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
@@ -81,7 +83,7 @@ jobs:
           run_command pytest -s tests/test_tensor_constructor_ops.py
 
       - name: FlagGems blas ops on hopper
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
@@ -92,7 +94,7 @@ jobs:
           run_command pytest -s tests/test_blas_ops.py
 
       - name: FlagGems special ops on hopper
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
@@ -102,7 +104,7 @@ jobs:
           run_command pytest -s tests/test_distribution_ops.py
 
       - name: FlagGems convolution ops on hopper
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
@@ -111,7 +113,7 @@ jobs:
           run_command pytest -s tests/test_convolution_ops.py
 
       - name: FlagGems utils on hopper
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
@@ -122,7 +124,7 @@ jobs:
           run_command pytest -s tests/test_tensor_wrapper.py
 
       - name: FlagGems examples on hopper
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"

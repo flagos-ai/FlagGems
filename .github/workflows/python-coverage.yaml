@@ -15,6 +15,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
+      - '**.md'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -29,6 +30,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
+      - '**.md'
 
 jobs:
   blas-op-test:
@@ -86,14 +88,16 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: experimental_ops
         with:
+          list-files: shell
           filters: |
-            run_ci:
+            all:
               - '**'
-              - '!src/flag_gems/experimental_ops/**'
-              - '!experimental_tests/**'
+            experimental:
+              - 'src/flag_gems/experimental_ops/**'
+              - 'experimental_tests/**'
 
       - name: Get python coverage
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           echo "current dir: $(pwd)"
@@ -109,7 +113,7 @@ jobs:
           bash tools/code_coverage/coverage.sh ${PR_ID}
 
       - name: Report python coverage
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           git config --global --add safe.directory ../FlagGems

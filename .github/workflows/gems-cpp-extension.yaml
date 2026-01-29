@@ -38,19 +38,22 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: experimental_ops
         with:
+          list-files: shell
           filters: |
-            run_ci:
-              - '!src/flag_gems/experimental_ops/**'
-              - '!tests/experimental_ops/**'
+            all:
+              - '**'
+            experimental:
+              - 'src/flag_gems/experimental_ops/**'
+              - 'experimental_tests/**'
 
       - name: Build FlagGems with C-extension
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
 
       - name: Run FlagGems CTests
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           cd build/cpython-311/ctests

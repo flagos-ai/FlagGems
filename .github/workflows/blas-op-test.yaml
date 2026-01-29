@@ -16,19 +16,21 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: experimental_ops
         with:
+          list-files: shell
           filters: |
-            run_ci:
+            all:
               - '**'
-              - '!src/flag_gems/experimental_ops/**'
-              - '!experimental_tests/**'
+            experimental:
+              - 'src/flag_gems/experimental_ops/**'
+              - 'experimental_tests/**'
 
       - name: Check GPU free
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: tools/gpu_check.sh
 
       - name: BLAS OP
-        if: steps.experimental_ops.outputs.run_ci == 'true'
+        if: steps.experimental_ops.outputs.all_count != steps.experimental_ops.outputs.experimental_count
         shell: bash
         run: |
           echo "current dir: $(pwd)"
