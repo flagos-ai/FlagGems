@@ -360,7 +360,6 @@ def fused_recurrent_gated_delta_rule_fwd(
         and (k.stride(0) == k.stride(1) + k.stride(2))
         and (v.stride(0) == v.stride(1) + v.stride(2))
     )
-
     o = q.new_empty(NK, *v.shape)
     if inplace_final_state:
         final_state = initial_state
@@ -486,6 +485,5 @@ def fused_recurrent_gated_delta_rule_fwd(
             num_warps=num_warps,
             num_stages=num_stages,
         )
-
     o = o.squeeze(0)
     return o, final_state
