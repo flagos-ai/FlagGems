@@ -66,6 +66,18 @@ jobs:
               BASE_IMAGE_VERSION=py312torch2.8
               VENDOR=requirements_nvidia.txt
 
+          - job_name: build-gems-ascend-image
+            push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
+            containerfile: 'containerfile'
+            image_name: 'flaggems-ascend'
+            tag: 'latest'
+            runson: 'h20'
+            no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
+            build-args: |
+              BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-ascend
+              BASE_IMAGE_VERSION=py311torch2.6
+              VENDOR=requirements_ascend.txt
+
     name: ${{ matrix.job_name }}
     uses: flagos-ai/build-infra/.github/workflows/imagebuild.yml@main
     with:
