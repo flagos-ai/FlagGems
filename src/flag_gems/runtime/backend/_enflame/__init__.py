@@ -14,7 +14,7 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
-    
+
 )
 
 __all__ = ["*"]

@@ -36,7 +36,7 @@ if device == "musa":
 elif device == "npu":
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-else:
+elif device != "gcu":
     torch_backend_device.matmul.allow_tf32 = False
 
 
