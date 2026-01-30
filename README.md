@@ -1,4 +1,6 @@
-[中文版](./README_cn.md)
+[<img width="2182" height="602" alt="github+banner-20260130" src=".github/assets/banner-20260130.png" />](https://flagos.io/)
+
+[[中文版](./README_cn.md)|English]
 
 ## About
 
