@@ -27,30 +27,22 @@ on:
       - '**/*.cmake'
       - '**/*.mk'
       - 'Makefile'
+      - '!src/flag_gems/experimental_ops/**'
+      - '!experimental_tests/**'
 
 jobs:
   build-C-extension:
     runs-on: cpp
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: dorny/paths-filter@v3
-        id: experimental_ops
-        with:
-          filters: |
-            run_ci:
-              - '!src/flag_gems/experimental_ops/**'
-              - '!tests/experimental_ops/**'
+      - uses: actions/checkout@v6
 
       - name: Build FlagGems with C-extension
-        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
 
       - name: Run FlagGems CTests
-        if: steps.experimental_ops.outputs.run_ci == 'true'
         shell: bash
         run: |
           cd build/cpython-311/ctests
