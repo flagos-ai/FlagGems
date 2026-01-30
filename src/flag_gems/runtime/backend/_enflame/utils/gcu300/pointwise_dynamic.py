@@ -1093,7 +1093,6 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             code.writeline("factor = (8 // max(in0.element_size(), out0.element_size()))")
-            code.writeline("print(f'in0.element_size={in0.element_size()}, out0.element_size={out0.element_size()}, factor={factor}')")
             
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
