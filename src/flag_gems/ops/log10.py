@@ -32,7 +32,15 @@ from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-@pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
+# 定义访存对齐的配置
+# 对于 float16，128-bit 向量化需要一次处理 8 个数，所以 BLOCK_SIZE 必须是 8 的倍数
+# 设置为 1024 或 2048 是为了让每个 Warp (32线程) 都能跑满对齐事务
+LOG10_CONFIG = {"BLOCK_SIZE": 1024} 
+
+@pointwise_dynamic(
+    promotion_methods=[(0, "COMPLEX_TO_FLOAT")],
+    config=LOG10_CONFIG  # 关键：在这里强制注入对齐的配置
+)
 @triton.jit
 def log10_func(x):
     # 1. 处理特殊边界
@@ -76,7 +84,7 @@ def log10_func(x):
     
     return tl.where(mask, float("nan"), res)
 
-
+    
 def log10(A):
     logger.debug("GEMS LOG10")
     return log10_func(A)
