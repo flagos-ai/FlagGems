@@ -26,7 +26,8 @@ from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_pro
 
 # ------------------ Operation Description ---------------------------
 def _type_name(type) -> str:
-    "Render typename as string, work for both (bool, int, float, str) and torch.dtype object"
+    "Render typename as string, mapping Python primitives to Triton types (e.g. float -> tl.float64)"
+    "or handling torch.dtype via str()"
     type_map = {float: "tl.float64", int: "tl.int32", bool: "tl.int1", str: "str"}
     return type_map.get(type, str(type))
 
