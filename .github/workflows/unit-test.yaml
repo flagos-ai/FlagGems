@@ -36,6 +36,23 @@ on:
       - '!experimental_tests/**'
 
 jobs:
+  triage:
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+      ops_stable: ${{ steps.filter.outputs.stable_ops }}
+      ops_experimental: ${{ steps.filter.outputs.ops_experimental }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3.0.2
+        with:
+          filters: |
+            docs:
+              - '**.md'
+            stable_ops:
+              - 'src/**/*.py'
+          predicate-quantifier: every
+
   blas-op-test:
     concurrency:
       group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
