@@ -24,6 +24,17 @@ def _to_copy_func(x):
     return x
 
 
+@pointwise_dynamic(
+    is_tensor=[
+        True,
+    ],
+    promotion_methods=[(0, "DEFAULT")],
+)
+@triton.jit
+def to_dtype_func(x):
+    return x
+
+
 def _resolve_dtype(x: torch.Tensor, dtype: Optional[torch.dtype]) -> torch.dtype:
     if dtype is None:
         return x.dtype
@@ -52,6 +63,14 @@ def _allocate_preserve_format(x: torch.Tensor, empty_kwargs: dict) -> torch.Tens
         return torch.empty_strided(x.size(), x.stride(), **empty_kwargs)
     # Fall back to PyTorch's best-effort layout suggestion when stride replication is unsafe.
     return torch.empty_like(x, memory_format=torch.preserve_format, **empty_kwargs)
+
+
+def to_dtype(x, dtype, non_blocking=False, copy=False, memory_format=None):
+    logger.debug("GEMS TO.DTYPE")
+    if not copy and x.dtype == dtype:
+        return x
+    out = torch.empty_like(x, dtype=dtype, memory_format=memory_format)
+    return to_dtype_func(x, out0=out)
 
 
 # func: _to_copy(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None,
