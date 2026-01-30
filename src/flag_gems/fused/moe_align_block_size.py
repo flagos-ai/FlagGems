@@ -16,13 +16,13 @@ def round_up(x: int, y: int) -> int:
     return ((x + y - 1) // y) * y
 
 
-@triton.jit(do_not_specialize=["numel", "tokens_per_thread"])
+@triton.jit(do_not_specialize=["numel"])
 def moe_align_block_size_stage1(
     topk_ids_ptr,
     tokens_cnts_ptr,
     num_experts: tl.constexpr,
     numel,
-    tokens_per_thread,
+    tokens_per_thread: tl.constexpr,
     sorted_token_ids_ptr,
     expert_ids_ptr,
     numel_sorted_token_ids: tl.constexpr,
@@ -44,24 +44,10 @@ def moe_align_block_size_stage1(
 
     off_c = (pid + 1) * num_experts
 
-    # Unroll loop by 4 for better instruction-level parallelism
-    UNROLL: tl.constexpr = 4
-    num_full_iters = tokens_per_thread // UNROLL
-
-    for iter_idx in range(num_full_iters):
-        base_i = iter_idx * UNROLL
-        for unroll_i in range(UNROLL):
-            i = base_i + unroll_i
-            if start_idx + i < numel:
-                idx = tl.load(topk_ids_ptr + start_idx + i)
-                token_cnt = tl.load(tokens_cnts_ptr + off_c + idx)
-                tl.store(tokens_cnts_ptr + off_c + idx, token_cnt + 1)
-
-    for i in range(num_full_iters * UNROLL, tokens_per_thread):
-        if start_idx + i < numel:
-            idx = tl.load(topk_ids_ptr + start_idx + i)
-            token_cnt = tl.load(tokens_cnts_ptr + off_c + idx)
-            tl.store(tokens_cnts_ptr + off_c + idx, token_cnt + 1)
+    offsets = start_idx + tl.arange(0, tokens_per_thread)
+    mask = offsets < numel
+    expert_id = tl.load(topk_ids_ptr + offsets, mask=mask, other=0)
+    tl.atomic_add(tokens_cnts_ptr + off_c + expert_id, 1, mask=mask)
 
 
 @triton.jit
