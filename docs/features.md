@@ -56,7 +56,8 @@ The currently supported platforms are:
 | MetaX      | ✅              | ✅      | ✅      | ✅       |
 | Mthreads   | ✅              | ✅      | ✅      | ✅       |
 | NVIDIA     | ✅              | ✅      | ✅      | ✅       |
-| TsingMicro | 🚧              |         |         |          |
+| TsingMicro | 🚧              |         |        |          |
+| Sunrise | ✅ （Partial ）    | ✅       | ✅      | ✅       |
 
 
 ### Backend Supports
