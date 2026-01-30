@@ -17,7 +17,6 @@ on:
       - '**.yaml'
       - '!src/flag_gems/experimental_ops/**'
       - '!experimental_tests/**'
-
   pull_request:
     branches: [ "master" ]
     paths:
@@ -40,82 +39,106 @@ jobs:
     outputs:
       docs: ${{ steps.filter.outputs.docs }}
       ops_stable: ${{ steps.filter.outputs.stable_ops }}
-      ops_experimental: ${{ steps.filter.outputs.ops_experimental }}
+      ops_experimental: ${{ steps.filter.outputs.experimental_ops }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3.0.2
-        with:
-          filters: |
-            docs:
-              - '**.md'
-            stable_ops:
-              - 'src/**/*.py'
-          predicate-quantifier: every
+      - id: changed-files
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62
+      - id: filter
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          echo ${CHANGED_FILES[@]}
+
+  build-doc:
+    needs: triage
+    if: ${{ needs.triage.outputs.docs == 'true' }}
+    uses: ./.github/workflows/mkdocs.yaml
 
   blas-op-test:
+    needs: triage
+    if: ${{ needs.triage.outputs.stable_ops == 'true' || needs.triage.outputs.stable_test == 'true' }}
     concurrency:
       group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/blas-op-test.yaml
 
   model-test:
+    needs: triage
+    if: ${{ needs.triage.outputs.stable_ops == 'true' || needs.triage.outputs.stable_test == 'true' }}
     concurrency:
       group: model-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/model-test.yaml
 
-  op-test-quick-cpu:
+  quick-cpu-op-test:
+    needs: triage
+    if: ${{ needs.triage.outputs.stable_ops == 'true' || needs.triage.outputs.stable_test == 'true' }}
     concurrency:
       group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/op-test-quick-cpu.yaml
 
-  op-utils-test:
-    concurrency:
-      group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    uses: ./.github/workflows/op-utils-test.yaml
-
   pointwise-op-test:
+    if: ${{ needs.triage.outputs.stable_ops == 'true' || needs.triage.outputs.stable_test == 'true' }}
     concurrency:
       group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/pointwise-op-test.yaml
 
   reduction-op-test:
+    needs: triage
+    if: ${{ needs.triage.outputs.stable_ops == 'true' || needs.triage.outputs.stable_test == 'true' }}
     concurrency:
       group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/reduction-op-test.yaml
 
   special-op-test:
+    needs: triage
+    if: ${{ needs.triage.outputs.stable_ops == 'true' || needs.triage.outputs.stable_test == 'true' }}
     concurrency:
       group: special-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     uses: ./.github/workflows/special-op-test.yaml
 
-  coverage-test:
+  utils-test:
+    needs: triage
+    if: ${{ needs.triage.outputs.stable_ops == 'true' || needs.triage.outputs.stable_test == 'true' }}
+    concurrency:
+      group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-utils-test.yaml
+
+  coverage:
+    needs:
+      - triage
+      - blas-op-test
+      - model-test
+      - quick-cpu-op-test
+      - utils-test
+      - pointwise-op-test
+      - reduction-op-test
+      - special-op-test
+    if: ${{ needs.triage.outputs.ops_stable == 'true' }}
     concurrency:
       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     runs-on: cpu
-    needs: [blas-op-test, model-test, op-test-quick-cpu, op-utils-test, pointwise-op-test, reduction-op-test, special-op-test]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Get python coverage
         shell: bash
         run: |
-          echo "current dir: $(pwd)"
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
             PR_ID=${{ github.event.pull_request.number }}
           elif [ "${{ github.event_name }}" == "push" ]; then
             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-            echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
           bash tools/code_coverage/coverage.sh ${PR_ID}
@@ -125,11 +148,9 @@ jobs:
         run: |
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
             PR_ID=${{ github.event.pull_request.number }}
           elif [ "${{ github.event_name }}" == "push" ]; then
             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-            echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
           bash tools/code_coverage/report_coverage.sh ${PR_ID}
