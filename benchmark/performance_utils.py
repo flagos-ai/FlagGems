@@ -255,6 +255,11 @@ class Benchmark:
                 os.path.dirname(__file__),
                 "../src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml",
             )  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        elif vendor_name == "enflame":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_enflame/core_shapes.yaml",
+            )
         self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):
