@@ -4,9 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-
-if torch_device_fn.is_available() and torch_device_fn.get_device_capability() >= (9, 0):
+if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (9, 0):
     SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn
 else:
     SUPPORTED_FP8_DTYPE = torch.float32

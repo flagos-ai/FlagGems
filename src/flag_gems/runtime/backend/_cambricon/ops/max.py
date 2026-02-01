@@ -180,10 +180,15 @@ def max_kernel(
     K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    UPCAST: tl.constexpr = False,
 ):
     # set offset
-    pid_m = tl.program_id(0).to(tl.int64)
-    pid_k = tl.program_id(1).to(tl.int64)
+    if UPCAST:
+        pid_m = tl.program_id(0).to(tl.int64)
+        pid_k = tl.program_id(1).to(tl.int64)
+    else:
+        pid_m = tl.program_id(0)
+        pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     result_value = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
     result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
@@ -259,13 +264,14 @@ def max_dim(inp, dim=None, keepdim=False):
     if not keepdim:
         out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
+    UPCAST = inp.shape[0] * inp.stride(0) >= 1 << 31
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
     with torch_device_fn.device(inp.device):
-        max_kernel[grid](inp, out_value, out_index, M, N, K)
+        max_kernel[grid](inp, out_value, out_index, M, N, K, UPCAST=UPCAST)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)
     return out
