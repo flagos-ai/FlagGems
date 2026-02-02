@@ -5,6 +5,7 @@ vendor_info = VendorInfoBase(
     device_name="npu",
     device_query_cmd="npu-smi info",
     dispatch_key="PrivateUse1",
+    triton_extra_name="ascend",
 )
 
 CUSTOMIZED_UNUSED_OPS = (
