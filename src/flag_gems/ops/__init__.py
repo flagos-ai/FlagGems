@@ -120,7 +120,7 @@ from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
 from flag_gems.ops.logical_and import logical_and
 from flag_gems.ops.logical_not import logical_not
-from flag_gems.ops.logical_or import logical_or
+from flag_gems.ops.logical_or import logical_or, logical_or_
 from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.lt import lt, lt_scalar
@@ -390,6 +390,7 @@ __all__ = [
     "logical_and",
     "logical_not",
     "logical_or",
+    "logical_or_",
     "logical_xor",
     "logspace",
     "lt",
