@@ -482,12 +482,54 @@ def custom_gems_flashattn_mla_forward_decode(
         return o, None
 
 
+# use gems flash attention in vit attention
 def patch_vllm_vit_to_attn(vitw):
     _orig_vit = vitw.vit_xformers_attn_wrapper
 
     def _seqlens_to_cu_seqlens(seqlens: torch.Tensor) -> torch.Tensor:
         cu_seqlens = torch.cumsum(seqlens, dim=0, dtype=torch.int32)
         return F.pad(cu_seqlens, (1, 0))
+
+    def _torch_sdpa_wrapper_gems(
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+    ):
+        import flag_gems.ops.attention as gems_attn
+
+        outputs = []
+        for i in range(1, int(cu_seqlens.numel())):
+            start = int(cu_seqlens[i - 1].item())
+            end = int(cu_seqlens[i].item())
+            q_i = q[:, start:end]
+            k_i = k[:, start:end]
+            v_i = v[:, start:end]
+
+            out_i, *_ = gems_attn.flash_attention_forward(
+                q_i,
+                k_i,
+                v_i,
+                None,
+                None,
+                int(q_i.shape[1]),
+                int(k_i.shape[1]),
+                0.0,
+                False,
+                False,
+                scale=None,
+                softcap=0.0,
+                window_size_left=None,
+                window_size_right=None,
+                seqused_k=None,
+                alibi_slopes=None,
+                disable_splitkv=True,
+            )
+            outputs.append(out_i)
+
+        context_layer = torch.cat(outputs, dim=1)
+        x = context_layer.transpose(0, 1).contiguous()
+        return x.view(x.shape[0], x.shape[1], -1)
 
     def _wrapped_vit_xformers_attn_wrapper(
         q: torch.Tensor,
@@ -499,22 +541,7 @@ def patch_vllm_vit_to_attn(vitw):
             return _orig_vit(q, k, v, seqlens)
 
         cu_seqlens = _seqlens_to_cu_seqlens(seqlens)
-
-        try:
-            from torch.nn.attention import SDPBackend, sdpa_kernel
-
-            ctx = sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION])
-        except Exception:
-            from torch.backends.cuda import sdp_kernel
-
-            ctx = sdp_kernel(
-                enable_flash=True,
-                enable_math=False,
-                enable_mem_efficient=False,
-            )
-
-        with ctx:
-            return torch.ops.vllm.torch_sdpa_wrapper(q, k, v, cu_seqlens)
+        return _torch_sdpa_wrapper_gems(q, k, v, cu_seqlens)
 
     vitw.vit_xformers_attn_wrapper = _wrapped_vit_xformers_attn_wrapper
 
@@ -522,7 +549,11 @@ def patch_vllm_vit_to_attn(vitw):
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     import vllm._custom_ops as ops  # noqa: F401
-    from vllm.attention.ops import vit_attn_wrappers as vitw
+
+    try:
+        from vllm.attention.ops import vit_attn_wrappers as vitw
+    except (ModuleNotFoundError, ImportError):
+        vitw = None
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
@@ -590,4 +621,5 @@ def apply_gems_patches_to_vllm(verbose=True):
         "CUDA",
         verbose,
     )
-    patch_vllm_vit_to_attn(vitw)
+    if vitw is not None:
+        patch_vllm_vit_to_attn(vitw)
