@@ -183,6 +183,7 @@ res = {tensor}.{attr_name}
 
 def set_tl_extra_backend_module(vendor_name=None):
     global device_name, tl_extra_backend_module
+    #TODO: enflame locally
     if importlib.util.find_spec("triton.backends.enflame") is None:
         tl_extra_backend_module = importlib.import_module("triton_gcu.triton.libdevice")
     else:

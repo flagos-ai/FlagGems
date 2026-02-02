@@ -5,7 +5,7 @@ import triton
 
 from flag_gems.runtime import device
 from flag_gems.runtime.backend import vendor_module
-from flag_gems.runtime.commom_utils import vendors
+from flag_gems.runtime.common import vendors
 
 import os
 ENFLAME_GCU300_4SIPS = int(os.getenv("ENFLAME_GCU300_4SIPS", "0"))
