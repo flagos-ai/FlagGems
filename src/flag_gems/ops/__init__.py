@@ -82,7 +82,7 @@ from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
-from flag_gems.ops.eq import eq, eq_scalar
+from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
@@ -233,7 +233,7 @@ from flag_gems.ops.where import (
     where_self,
     where_self_out,
 )
-from flag_gems.ops.zeros import zeros
+from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
@@ -326,6 +326,7 @@ __all__ = [
     "embedding_backward",
     "eq",
     "eq_scalar",
+    "equal",
     "erf",
     "erf_",
     "exp",
@@ -529,5 +530,6 @@ __all__ = [
     "where_self",
     "where_self_out",
     "zeros",
+    "zero_",
     "zeros_like",
 ]

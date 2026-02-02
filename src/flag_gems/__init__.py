@@ -146,6 +146,7 @@ _FULL_CONFIG = (
     ("embedding_backward", embedding_backward),
     ("eq.Scalar", eq_scalar),
     ("eq.Tensor", eq),
+    ("equal", equal),
     ("erf", erf),
     ("erf_", erf_),
     ("exp", exp),
@@ -346,6 +347,7 @@ _FULL_CONFIG = (
     ("where.self", where_self),
     ("where.self_out", where_self_out),
     ("zeros", zeros),
+    ("zero_", zero_),
     ("zeros_like", zeros_like),
 )
 
