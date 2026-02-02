@@ -471,8 +471,10 @@ class LibTuner(triton.runtime.Autotuner):
                 f"Triton autotuning for function {self.base_fn.__name__} finished after "
                 f"{self.bench_time:.2f}s; key info: {key}, best config selected: {self.best_config};"
             )
-        if config.pre_hook is not None:
-            full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+        full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+        if hasattr(self, "shared_config_pre_hook") and self.shared_config_pre_hook is not None:
+            self.shared_config_pre_hook(full_nargs)
+        elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
         ret = self.fn.run(
             *args,
