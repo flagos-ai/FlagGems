@@ -1619,3 +1619,32 @@ def test_repetition_penalty(shape, penalty, dtype, mask_mode):
         ), "In-place未生效"
     elif mask_mode == "empty":
         gems_assert_close(res, to_reference(logits_ori, True).to(dtype), dtype)
+
+
+@pytest.mark.ceil
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_ceil(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.ceil(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ceil(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.inplace
+@pytest.mark.ceil_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_ceil_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone())
+
+    ref_out = ref_inp.ceil_()
+    with flag_gems.use_gems():
+        res_out = inp.ceil_()
+
+    gems_assert_equal(res_out, ref_out)
