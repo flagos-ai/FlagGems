@@ -78,41 +78,26 @@ def moe_align_block_size_stage2(
 
 
 @triton.jit
-def moe_align_block_size_stage3_vec(
-    total_tokens_post_pad_ptr,
-    tokens_cnts_ptr,
-    cumsum_ptr,
-    num_experts: tl.constexpr,
-    block_size: tl.constexpr,
-):
-    off_cnt = num_experts * num_experts
-
-    expert_offsets = tl.arange(0, num_experts)
-    token_cnts = tl.load(tokens_cnts_ptr + off_cnt + expert_offsets)
-    aligned_cnts = tl.cdiv(token_cnts, block_size) * block_size
-
-    cumsum_values = tl.cumsum(aligned_cnts, axis=0)
-    tl.store(cumsum_ptr + 1 + expert_offsets, cumsum_values)
-
-    total_tokens = tl.sum(aligned_cnts, axis=0)
-    tl.store(total_tokens_post_pad_ptr, total_tokens)
-
-
-@triton.jit
 def moe_align_block_size_stage3(
     total_tokens_post_pad_ptr,
     tokens_cnts_ptr,
     cumsum_ptr,
     num_experts: tl.constexpr,
+    num_experts_next_power_of_2: tl.constexpr,
     block_size: tl.constexpr,
 ):
-    last_cumsum = 0
     off_cnt = num_experts * num_experts
-    for i in range(1, num_experts + 1):
-        token_cnt = tl.load(tokens_cnts_ptr + off_cnt + i - 1)
-        last_cumsum = last_cumsum + tl.cdiv(token_cnt, block_size) * block_size
-        tl.store(cumsum_ptr + i, last_cumsum)
-    tl.store(total_tokens_post_pad_ptr, last_cumsum)
+
+    expert_offsets = tl.arange(0, num_experts_next_power_of_2)
+    mask = expert_offsets < num_experts
+    token_cnts = tl.load(tokens_cnts_ptr + off_cnt + expert_offsets, mask=mask)
+    aligned_cnts = tl.cdiv(token_cnts, block_size) * block_size
+
+    cumsum_values = tl.cumsum(aligned_cnts, axis=0)
+    tl.store(cumsum_ptr + 1 + expert_offsets, cumsum_values, mask=mask)
+
+    total_tokens = tl.sum(aligned_cnts, axis=0)
+    tl.store(total_tokens_post_pad_ptr, total_tokens)
 
 
 @triton.jit(do_not_specialize=["numel"])
@@ -172,6 +157,7 @@ def moe_align_block_size_triton(
         ceil_div(numel_sorted_token_ids, num_experts)
     )
     block_size_expert = triton.next_power_of_2(ceil_div(numel_expert_ids, num_experts))
+    num_experts_next_power_of_2 = triton.next_power_of_2(num_experts)
 
     moe_align_block_size_stage1[grid](
         topk_ids,
@@ -191,25 +177,19 @@ def moe_align_block_size_triton(
             tokens_cnts,
             num_experts,
         )
-        moe_align_block_size_stage3_vec[(1,)](
-            num_tokens_post_pad,
-            tokens_cnts,
-            cumsum,
-            num_experts,
-            block_size,
-        )
     else:
         moe_align_block_size_stage2[grid](
             tokens_cnts,
             num_experts,
         )
-        moe_align_block_size_stage3[(1,)](
-            num_tokens_post_pad,
-            tokens_cnts,
-            cumsum,
-            num_experts,
-            block_size,
-        )
+    moe_align_block_size_stage3[(1,)](
+        num_tokens_post_pad,
+        tokens_cnts,
+        cumsum,
+        num_experts,
+        num_experts_next_power_of_2,
+        block_size,
+    )
     moe_align_block_size_stage4[grid](
         topk_ids,
         sorted_token_ids,
