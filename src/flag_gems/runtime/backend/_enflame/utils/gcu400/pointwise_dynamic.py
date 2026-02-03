@@ -6,6 +6,7 @@ import torch
 import triton
 from triton.runtime.jit import JITFunction
 
+from flag_gems.utils.device_info import get_device_capability
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from _enflame.utils.gcu400.codegen_config_utils import CodeGenConfig, get_codegen_config
@@ -320,11 +321,11 @@ class KernelGenerator:
                         )
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
@@ -825,16 +826,22 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-            code.writeline(
-                f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
-            )
+            major, _ = get_device_capability()
+            if self.name.find("fill_scalar") != -1 and major >= 9:
+                code.writeline("tile_sizes = tuple([64])")
+            else:
+                code.writeline(
+                    f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
+                )
             code.writeline("tile_size = math.prod(tile_sizes)")
             code.writeline(
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
             )
-            max_grid_size0 = self.config.max_grid_size[0]
-            code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
-
+            if self.name.find("fill_scalar") != -1 and major >= 9:
+                code.writeline("num_ctas = num_tiles")
+            else:
+                max_grid_size0 = self.config.max_grid_size[0]
+                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
@@ -853,14 +860,21 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-            code.writeline(
-                f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
-            )
+            major, _ = get_device_capability()
+            if self.name.find("fill_scalar") != -1 and major >= 9:
+                code.writeline("tile_sizes = tuple([64])")
+            else:
+                code.writeline(
+                    f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
+                )
+
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
-            max_grid_size0 = self.config.max_grid_size[0]
-            code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
-
+            if self.name.find("fill_scalar") != -1 and major >= 9:
+                code.writeline("num_ctas = num_tiles")
+            else:
+                max_grid_size0 = self.config.max_grid_size[0]
+                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
@@ -1152,6 +1166,9 @@ class PointwiseDynamicFunction:
             outputs_dtypes_for_allocation.append(dtype)
 
         tensors = out_tensors + in_tensors
+        INT32_MAX = torch.iinfo(torch.int32).max
+        if tensors[0].numel() > INT32_MAX:
+            self.config.prefer_block_pointer = False
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
                 torch.empty_like(tensors[0], dtype=dtype)
