@@ -206,6 +206,7 @@ _FULL_CONFIG = (
     ("logical_and", logical_and),
     ("logical_not", logical_not),
     ("logical_or", logical_or),
+    ("logical_or_", logical_or_),
     ("logical_xor", logical_xor),
     ("logspace", logspace),
     ("lt.Scalar", lt_scalar),
