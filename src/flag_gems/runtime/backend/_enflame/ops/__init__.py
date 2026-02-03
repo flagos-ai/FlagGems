@@ -398,6 +398,7 @@ elif arch_version >= 400:
     from .gcu400.index_add import index_add
     from .gcu400.bmm import bmm
     from .gcu400.diag_embed import diag_embed
+    from .gcu400.diagonal import diagonal_backward
     __all__ = [
         "mean_dim",
         "zeros",
@@ -510,4 +511,5 @@ elif arch_version >= 400:
         "index_add",
         "bmm",
         "diag_embed",
+        "diagonal_backward",
     ]

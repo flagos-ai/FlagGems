@@ -332,6 +332,7 @@ class KernelGenerator:
                 tile_sizes = _cs(f"tile_size{i}: tl.constexpr" for i in range(ndim))
                 code.writeline(f"{tile_sizes},")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
+            code.writeline("ENABLE_STRIDE_GATHER: tl.constexpr,")
         code.writeline("):")
 
     def gen_signature_1d_tile(self, code):
@@ -390,136 +391,9 @@ class KernelGenerator:
                 code.writeline("tiles_per_cta: int,")
                 code.writeline("tile_size: tl.constexpr,")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
+            code.writeline("ENABLE_STRIDE_GATHER: tl.constexpr,")
         code.writeline("):")
 
-    def gen_signature_stride_constexpr(self, code, with_block_pointer=False):
-        code.writeline(f"def {self.name}_stride_constexpr(")
-        with code.indent():
-            input_tensor_index = 0
-            non_tensor_index = 0
-            output_tensor_index = 0
-
-            schema = self.fx
-            # signature: inputs ptrs & non tensor inputs
-            for i in range(schema.num_inputs()):
-                if schema.is_tensor(i):
-                    code.writeline(
-                        f"in{input_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
-                    )
-                    input_tensor_index += 1
-                else:
-                    if schema.input_type(i) is not None:
-                        code.writeline(
-                            f"val{non_tensor_index}: {_type_name(schema.input_type(i))},"
-                        )
-                    else:
-                        code.writeline(f"val{non_tensor_index},")
-                    non_tensor_index += 1
-
-            # signature: output ptrs
-            for i in range(schema.num_outputs()):
-                code.writeline(
-                    f"out{output_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
-                )
-                output_tensor_index += 1
-
-            # signature: strides, for each tensor arguments
-            ndim = self.ndim
-            if ndim > 0:
-                # strides for inputs
-                for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}: tl.constexpr" for j in range(ndim))
-                    code.writeline(f"{stride_args}, # strides for in{i}")
-                    if with_block_pointer:
-                        stride_order_args = _cs(
-                            f"in{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
-                        )
-                        code.writeline(f"{stride_order_args}, # stride order for in{i}")
-
-                # strides for outputs
-                for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}" for j in range(ndim))
-                    code.writeline(f"{stride_args}, # strides for out{i}")
-                    if with_block_pointer:
-                        stride_order_args = _cs(
-                            f"out{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
-                        )
-                        code.writeline(
-                            f"{stride_order_args}, # stride order for out{i}"
-                        )
-
-                # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
-                code.writeline(f"{task_space_args}, # task_space")
-
-                # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
-
-            # tile size & tiles_per_cta, gsl style
-            if ndim > 0:
-                code.writeline("tiles_per_cta: int,")
-                tile_sizes = _cs(f"tile_size{i}: tl.constexpr" for i in range(ndim))
-                code.writeline(f"{tile_sizes},")
-                code.writeline("one_tile_per_cta: tl.constexpr,")
-        code.writeline("):")
-
-    def gen_signature_1d_tile_stride_constexpr(self, code):
-        code.writeline(f"def {self.name}_stride_constexpr(")
-        with code.indent():
-            input_tensor_index = 0
-            non_tensor_index = 0
-            output_tensor_index = 0
-
-            schema = self.fx
-            # signature: inputs ptrs & non tensor inputs
-            for i in range(schema.num_inputs()):
-                if schema.is_tensor(i):
-                    code.writeline(
-                        f"in{input_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
-                    )
-                    input_tensor_index += 1
-                else:
-                    if schema.input_type(i) is not None:
-                        code.writeline(
-                            f"val{non_tensor_index}: {_type_name(schema.input_type(i))},"
-                        )
-                    else:
-                        code.writeline(f"val{non_tensor_index},")
-                    non_tensor_index += 1
-
-            # signature: output ptrs
-            for i in range(schema.num_outputs()):
-                code.writeline(
-                    f"out{output_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
-                )
-                output_tensor_index += 1
-
-            # signature: strides, for each tensor arguments
-            ndim = self.ndim
-            if ndim > 0:
-                # strides for inputs
-                for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}: tl.constexpr" for j in range(ndim))
-                    code.writeline(f"{stride_args}, # strides for in{i}")
-
-                # strides for outputs
-                for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}" for j in range(ndim))
-                    code.writeline(f"{stride_args}, # strides for out{i}")
-
-                # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
-                code.writeline(f"{task_space_args}, # task_space")
-
-                # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
-
-            # tile size & tiles_per_cta, gsl style
-            if ndim > 0:
-                code.writeline("tiles_per_cta: int,")
-                code.writeline("tile_size: tl.constexpr,")
-                code.writeline("one_tile_per_cta: tl.constexpr,")
-        code.writeline("):")
 
     def gen_num_tiles(self, code):
         # tile-grid size
@@ -744,58 +618,12 @@ class KernelGenerator:
             with code.indent():
                 self.gen_body_gsl_with_bptr(code)
         code.newline()
-
-        self.gen_decorators(code)
-        self.gen_signature_stride_constexpr(code, with_block_pointer=True)
-
-        # function body for rank-0
-        if self.ndim == 0:
-            with code.indent():
-                self.gen_body_for_0d(code)
-            return code
-
-        with code.indent():
-            code.writeline("pid = tle.program_id(0)")
-            self.gen_num_tiles(code)
-            # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
-            code.writeline("if one_tile_per_cta: # monolitic kernel style")
-            with code.indent():
-                code.writeline("tile_id = pid")
-                self.gen_body_one_tile_per_cta_with_bptr(code)
-            # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-            code.writeline("else: # grid-stride-loop style kernel")
-            with code.indent():
-                self.gen_body_gsl_with_bptr(code)
-        code.newline()
         return code
 
     def codegen_nd_tile_without_bptr(self, code):
         self.gen_import_function(code)
         self.gen_decorators(code)
         self.gen_signature(code, with_block_pointer=False)
-
-        # function body for rank-0
-        if self.ndim == 0:
-            with code.indent():
-                self.gen_body_for_0d(code)
-            return code
-
-        with code.indent():
-            code.writeline("pid = tle.program_id(0)")
-            self.gen_num_tiles(code)
-            # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
-            code.writeline("if one_tile_per_cta: # monolitic kernel style")
-            with code.indent():
-                code.writeline("tile_id = pid")
-                self.gen_body_one_tile_per_cta_without_bptr(code)
-            # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-            code.writeline("else: # grid-stride-loop style kernel")
-            with code.indent():
-                self.gen_body_gsl_without_bptr(code)
-        code.newline()
-
-        self.gen_decorators(code)
-        self.gen_signature_stride_constexpr(code, with_block_pointer=False)
 
         # function body for rank-0
         if self.ndim == 0:
@@ -889,29 +717,6 @@ class KernelGenerator:
         self.gen_import_function(code)
         self.gen_decorators(code)
         self.gen_signature_1d_tile(code)
-
-        # function body for rank-0
-        if self.ndim == 0:
-            with code.indent():
-                self.gen_body_for_0d(code)
-            return code
-
-        with code.indent():
-            code.writeline("pid = tle.program_id(0)")
-            # code.writeline("num_ctas = te.num_programs(0)")
-            # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
-            code.writeline("if one_tile_per_cta: # monolitic kernel style")
-            with code.indent():
-                code.writeline("tile_id = pid")
-                self.gen_body_one_tile_per_cta_1d_tile(code)
-            # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-            code.writeline("else: # grid-stride-loop style kernel")
-            with code.indent():
-                self.gen_body_gsl_1d_tile(code)
-        code.newline()
-
-        self.gen_decorators(code)
-        self.gen_signature_1d_tile_stride_constexpr(code)
 
         # function body for rank-0
         if self.ndim == 0:
@@ -1070,11 +875,12 @@ class WrapperGenerator:
 
         with_block_pointer = self.config.prefer_block_pointer
 
-        code.writeline("FlagOfStrideZero = False")
+        code.writeline("FlagOfNotUseDMA = False")
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
-            code.writeline(f"FlagOfStrideZero |= torch.any(torch.tensor(in{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= torch.any(torch.tensor(in{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
             if not with_block_pointer:
                 continue
             if ndim >= 2:  # where ndim is 1, we don't need to compute stride order
@@ -1083,6 +889,8 @@ class WrapperGenerator:
                 code.writeline(f"in{i}_stride_order = (0,)")
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
+            code.writeline(f"FlagOfNotUseDMA |= torch.any(torch.tensor(out{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
             if not with_block_pointer:
                 continue
             if ndim >= 2:
@@ -1092,98 +900,52 @@ class WrapperGenerator:
 
         code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
-            code.writeline(f"if FlagOfStrideZero: ")
+            code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
-                code.writeline(f"{self.jit_fn_name}_stride_constexpr[grid](")
-                with code.indent():
-                    params = []
-                    # NOTE: WRAP
-                    for i in range(schema.num_inputs()):
-                        if schema.is_tensor(i):
-                            params.append(f"{self.input_name(i)}")
-                        else:
-                            params.append(self.input_name(i))
+                params = []
+                # NOTE: WRAP
+                for i in range(schema.num_inputs()):
+                    if schema.is_tensor(i):
+                        params.append(f"{self.input_name(i)}")
+                    else:
+                        params.append(self.input_name(i))
+                for i in range(schema.num_output_tensors()):
+                    params.append(f"{self.output_name(i)}")
+
+                code.writeline(f"{_cs(params)},")
+
+                if ndim > 0:
+                    for i in range(schema.num_input_tensors()):
+                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
+                        code.writeline(f"{s}, # stride for in{i}")
+                        if not with_block_pointer:
+                            continue
+                        order = ", ".join(
+                            f"in{i}_stride_order[{j}]" for j in range(ndim)
+                        )
+                        code.writeline(f"{order}, # stride order for in{i}")
+
                     for i in range(schema.num_output_tensors()):
-                        params.append(f"{self.output_name(i)}")
+                        s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
+                        code.writeline(f"{s}, # stride for out{i}")
+                        if not with_block_pointer:
+                            continue
+                        order = ", ".join(
+                            f"out{i}_stride_order[{j}]" for j in range(ndim)
+                        )
+                        code.writeline(f"{order}, # stride orderfor out{i}")
 
-                    code.writeline(f"{_cs(params)},")
+                    shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
+                    code.writeline(f"{shape_args}, # task indexing space")
+                    code.writeline("num_tasks, # num tasks")
+                    code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
+                    for i in range(ndim):
+                        code.writeline(f"tile_size{i}=tile_sizes[{i}],")
+                    code.writeline("one_tile_per_cta=one_tile_per_cta,")
+                code.writeline("ENABLE_STRIDE_GATHER=FlagOfNotUseDMA,")
+                code.writeline("num_warps=num_warps,")
+            code.writeline(")")
 
-                    if ndim > 0:
-                        for i in range(schema.num_input_tensors()):
-                            s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
-                            code.writeline(f"{s}, # stride for in{i}")
-                            if not with_block_pointer:
-                                continue
-                            order = ", ".join(
-                                f"in{i}_stride_order[{j}]" for j in range(ndim)
-                            )
-                            code.writeline(f"{order}, # stride order for in{i}")
-
-                        for i in range(schema.num_output_tensors()):
-                            s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
-                            code.writeline(f"{s}, # stride for out{i}")
-                            if not with_block_pointer:
-                                continue
-                            order = ", ".join(
-                                f"out{i}_stride_order[{j}]" for j in range(ndim)
-                            )
-                            code.writeline(f"{order}, # stride orderfor out{i}")
-
-                        shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
-                        code.writeline(f"{shape_args}, # task indexing space")
-                        code.writeline("num_tasks, # num tasks")
-                        code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                        for i in range(ndim):
-                            code.writeline(f"tile_size{i}=tile_sizes[{i}],")
-                        code.writeline("one_tile_per_cta=one_tile_per_cta,")
-                    code.writeline("num_warps=num_warps,")
-                code.writeline(")")
-            code.writeline("else: ")
-            with code.indent():
-                code.writeline(f"{self.jit_fn_name}[grid](")
-                with code.indent():
-                    params = []
-                    # NOTE: WRAP
-                    for i in range(schema.num_inputs()):
-                        if schema.is_tensor(i):
-                            params.append(f"{self.input_name(i)}")
-                        else:
-                            params.append(self.input_name(i))
-                    for i in range(schema.num_output_tensors()):
-                        params.append(f"{self.output_name(i)}")
-
-                    code.writeline(f"{_cs(params)},")
-
-                    if ndim > 0:
-                        for i in range(schema.num_input_tensors()):
-                            s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
-                            code.writeline(f"{s}, # stride for in{i}")
-                            if not with_block_pointer:
-                                continue
-                            order = ", ".join(
-                                f"in{i}_stride_order[{j}]" for j in range(ndim)
-                            )
-                            code.writeline(f"{order}, # stride order for in{i}")
-
-                        for i in range(schema.num_output_tensors()):
-                            s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
-                            code.writeline(f"{s}, # stride for out{i}")
-                            if not with_block_pointer:
-                                continue
-                            order = ", ".join(
-                                f"out{i}_stride_order[{j}]" for j in range(ndim)
-                            )
-                            code.writeline(f"{order}, # stride orderfor out{i}")
-
-                        shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
-                        code.writeline(f"{shape_args}, # task indexing space")
-                        code.writeline("num_tasks, # num tasks")
-                        code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                        for i in range(ndim):
-                            code.writeline(f"tile_size{i}=tile_sizes[{i}],")
-                        code.writeline("one_tile_per_cta=one_tile_per_cta,")
-                    code.writeline("num_warps=num_warps,")
-                code.writeline(")")
 
     def gen_kernel_launch_1d(
         self,
@@ -1192,80 +954,50 @@ class WrapperGenerator:
         schema = self.fx
         ndim = self.ndim
 
-        code.writeline("FlagOfStrideZero = False")
+        code.writeline("FlagOfNotUseDMA = False")
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
-            code.writeline(f"FlagOfStrideZero |= torch.any(torch.tensor(in{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= torch.any(torch.tensor(in{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
+            code.writeline(f"FlagOfNotUseDMA |= torch.any(torch.tensor(out{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
 
         code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
-            code.writeline(f"if FlagOfStrideZero:")
+            code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
-                code.writeline(f"{self.jit_fn_name}_stride_constexpr[grid](")
-                with code.indent():
-                    params = []
-                    # NOTE: WRAP
-                    for i in range(schema.num_inputs()):
-                        if schema.is_tensor(i):
-                            params.append(f"{self.input_name(i)}")
-                        else:
-                            params.append(self.input_name(i))
+                params = []
+                # NOTE: WRAP
+                for i in range(schema.num_inputs()):
+                    if schema.is_tensor(i):
+                        params.append(f"{self.input_name(i)}")
+                    else:
+                        params.append(self.input_name(i))
+                for i in range(schema.num_output_tensors()):
+                    params.append(f"{self.output_name(i)}")
+
+                code.writeline(f"{_cs(params)},")
+
+                if ndim > 0:
+                    for i in range(schema.num_input_tensors()):
+                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
+                        code.writeline(f"{s}, # stride for in{i}")
                     for i in range(schema.num_output_tensors()):
-                        params.append(f"{self.output_name(i)}")
+                        s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
+                        code.writeline(f"{s}, # stride for out{i}")
 
-                    code.writeline(f"{_cs(params)},")
-
-                    if ndim > 0:
-                        for i in range(schema.num_input_tensors()):
-                            s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
-                            code.writeline(f"{s}, # stride for in{i}")
-                        for i in range(schema.num_output_tensors()):
-                            s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
-                            code.writeline(f"{s}, # stride for out{i}")
-
-                        shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
-                        code.writeline(f"{shape_args}, # task indexing space")
-                        code.writeline("num_tasks, # num tasks")
-                        code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                        code.writeline("tile_size=tile_size,")
-                        code.writeline("one_tile_per_cta=one_tile_per_cta,")
-                    code.writeline("num_warps=num_warps,")
-                code.writeline(")")
-            code.writeline("else: ")
-            with code.indent():
-                code.writeline(f"{self.jit_fn_name}[grid](")
-                with code.indent():
-                    params = []
-                    # NOTE: WRAP
-                    for i in range(schema.num_inputs()):
-                        if schema.is_tensor(i):
-                            params.append(f"{self.input_name(i)}")
-                        else:
-                            params.append(self.input_name(i))
-                    for i in range(schema.num_output_tensors()):
-                        params.append(f"{self.output_name(i)}")
-
-                    code.writeline(f"{_cs(params)},")
-
-                    if ndim > 0:
-                        for i in range(schema.num_input_tensors()):
-                            s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
-                            code.writeline(f"{s}, # stride for in{i}")
-                        for i in range(schema.num_output_tensors()):
-                            s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
-                            code.writeline(f"{s}, # stride for out{i}")
-
-                        shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
-                        code.writeline(f"{shape_args}, # task indexing space")
-                        code.writeline("num_tasks, # num tasks")
-                        code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                        code.writeline("tile_size=tile_size,")
-                        code.writeline("one_tile_per_cta=one_tile_per_cta,")
-                    code.writeline("num_warps=num_warps,")
-                code.writeline(")")
+                    shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
+                    code.writeline(f"{shape_args}, # task indexing space")
+                    code.writeline("num_tasks, # num tasks")
+                    code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
+                    code.writeline("tile_size=tile_size,")
+                    code.writeline("one_tile_per_cta=one_tile_per_cta,")
+                code.writeline("ENABLE_STRIDE_GATHER=FlagOfNotUseDMA,")
+                code.writeline("num_warps=num_warps,")
+            code.writeline(")")
 
     def gen_return(self, code: IndentedBuffer):
         return_exprs = _cs(f"out{i}" for i in range(self.fx.num_output_tensors()))
