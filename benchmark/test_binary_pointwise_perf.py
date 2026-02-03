@@ -55,6 +55,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
             # Comparison operations
             ("eq", torch.eq, FLOAT_DTYPES),
+            ("equal", torch.equal, FLOAT_DTYPES),
             ("ge", torch.ge, FLOAT_DTYPES),
             ("gt", torch.gt, FLOAT_DTYPES),
             ("le", torch.le, FLOAT_DTYPES),

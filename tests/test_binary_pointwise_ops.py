@@ -932,6 +932,28 @@ def test_accuracy_eq_scalar(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.equal
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_equal(shape, dtype):
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = inp1.clone()
+
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.equal(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.equal(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+    ref_out = torch.equal(ref_inp1 + 1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.equal(inp1 + 1, inp2)
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.ge
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

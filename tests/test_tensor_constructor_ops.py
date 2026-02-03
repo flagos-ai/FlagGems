@@ -90,6 +90,18 @@ def test_accuracy_zeros(shape, dtype):
     )
 
 
+@pytest.mark.zero_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BOOL_TYPES + ALL_INT_DTYPES + ALL_FLOAT_DTYPES)
+def test_accuracy_zero_(shape, dtype):
+    out = torch.ones(shape, dtype=dtype, device=flag_gems.device)
+    ref_out = to_reference(out)
+    ref_out.zero_()
+    with flag_gems.use_gems():
+        out.zero_()
+    gems_assert_equal(out, ref_out)
+
+
 @pytest.mark.ones
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", BOOL_TYPES + ALL_INT_DTYPES + ALL_FLOAT_DTYPES)

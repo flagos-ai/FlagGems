@@ -42,6 +42,11 @@ def fill_input_fn(shape, dtype, device):
     yield input, 3.14159,
 
 
+def zero__input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    yield input,
+
+
 def arange_input_fn(shape, dtype, device):
     yield {
         "end": math.prod(shape),
@@ -121,6 +126,7 @@ tensor_constructor_operations = [
     ("randn", torch.randn, generic_constructor_input_fn),
     ("ones", torch.ones, generic_constructor_input_fn),
     ("zeros", torch.zeros, generic_constructor_input_fn),
+    ("zero_", torch.zero_, zero__input_fn),
     # generic tensor-like constructor
     ("rand_like", torch.rand_like, unary_input_fn),
     ("randn_like", torch.randn_like, unary_input_fn),
