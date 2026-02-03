@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -17,22 +16,18 @@ def ceil_func(x):
 
 def ceil(A):
     logger.debug("GEMS CEIL")
-    if not isinstance(A, torch.Tensor):
-        return torch.ceil(torch.tensor(A))
     return ceil_func(A)
 
 
 def ceil_out(A, *, out=None):
     logger.debug("GEMS CEIL_OUT")
-    if not isinstance(A, torch.Tensor):
-        return torch.ceil(torch.tensor(A), out=out)
+    if out is None:
+        return ceil_func(A)
     ceil_func(A, out0=out)
     return out
 
 
 def ceil_(A):
     logger.debug("GEMS CEIL_")
-    if not isinstance(A, torch.Tensor):
-        raise ValueError("ceil_ can only be applied to a Tensor.")
     ceil_func(A, out0=A)
     return A
