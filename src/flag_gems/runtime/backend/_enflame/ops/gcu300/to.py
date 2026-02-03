@@ -1,12 +1,16 @@
 import logging
+from typing import Optional
 
 import torch
 import triton
-import triton.language as tl
 
 from ...utils.gcu300.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 
 @pointwise_dynamic(
@@ -16,46 +20,91 @@ logger = logging.getLogger(__name__)
     promotion_methods=[(0, "DEFAULT")],
 )
 @triton.jit
-def to_dtype_func(x):
+def _to_copy_func(x):
     return x
-        
-@triton.jit
-def i64_i32_to_dtype_func(in_ptr, out_ptr, num_elem_per_grid, num_elem):
-    grid_id = tl.program_id(0)
 
-    start = grid_id * num_elem_per_grid
-    end = tl.minimum(start + num_elem_per_grid, num_elem)
 
-    for offset in range(num_elem_per_grid):
-        current_offset = start + offset
-        
-        if current_offset < end:
-            current_out_ptr = out_ptr + current_offset
-            current_in_ptr = in_ptr + current_offset
-            x = tl.load(current_in_ptr).to(out_ptr.type.element_ty)
-            tl.store(current_out_ptr, x)
+def _resolve_dtype(x: torch.Tensor, dtype: Optional[torch.dtype]) -> torch.dtype:
+    if dtype is None:
+        return x.dtype
+    if isinstance(dtype, torch.dtype):
+        return dtype
+    raise TypeError(f"Unsupported dtype argument type: {type(dtype)!r}")
 
-def to_dtype(x, dtype, non_blocking=False, copy=False, memory_format=None):
-    logger.debug("GEMS TO.DTYPE")
-    if not copy and x.dtype == dtype:
-        return x
-    out = torch.empty_like(x, dtype=dtype, memory_format=memory_format)
 
-    cond1 = x.dtype == torch.int64 and dtype == torch.int32
-    cond2 = x.dtype == torch.int32 and dtype == torch.int64
-    if cond1 or cond2 :
-        num_elem = x.numel()
-        max_grid_size = 65532
-        if num_elem <= max_grid_size:
-            grid_size = num_elem
-            num_elem_per_grid = 1
-        else:
-            grid_size = max_grid_size
-            num_elem_per_grid = (num_elem + max_grid_size - 1) // max_grid_size
-        
-        grid = (grid_size,)
-        i64_i32_to_dtype_func[grid](x, out, num_elem_per_grid, num_elem,
-                                    num_warps=1)
-        return out
-    
-    return to_dtype_func(x, out0=out)
+def _resolve_device(x: torch.Tensor, device: Optional[torch.device]) -> torch.device:
+    if device is None:
+        return x.device
+    return torch.device(device)
+
+
+def _normalize_memory_format(
+    memory_format: Optional[torch.memory_format],
+) -> torch.memory_format:
+    if memory_format is None:
+        return torch.preserve_format
+    return memory_format
+
+
+def _allocate_preserve_format(x: torch.Tensor, empty_kwargs: dict) -> torch.Tensor:
+    """Recreate tensor storage while honoring preserve_format semantics."""
+    if torch.ops.aten.is_non_overlapping_and_dense(x):
+        return torch.empty_strided(x.size(), x.stride(), **empty_kwargs)
+    # Fall back to PyTorch's best-effort layout suggestion when stride replication is unsafe.
+    return torch.empty_like(x, memory_format=torch.preserve_format, **empty_kwargs)
+
+
+# func: _to_copy(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None,
+#   bool? pin_memory=None, bool non_blocking=False, MemoryFormat? memory_format=None) -> Tensor
+def to_copy(
+    x,
+    *,
+    dtype=None,
+    layout=None,
+    device=None,
+    pin_memory=None,
+    non_blocking=False,
+    memory_format=None,
+):
+    # We only implement the dense strided kernel today; all other layouts fall back to PyTorch.
+    if (layout is not None and layout != torch.strided) or x.layout != torch.strided:
+        raise NotImplementedError(
+            "FlagGems to_copy currently supports strided tensors only."
+        )
+    if pin_memory is not None:
+        raise NotImplementedError(
+            "FlagGems to_copy does not yet support pin_memory=True."
+        )
+    if x.is_quantized:
+        raise NotImplementedError(
+            "Quantized tensors are not supported in FlagGems to_copy yet."
+        )
+
+    target_dtype = _resolve_dtype(x, dtype)
+    target_device = _resolve_device(x, device)
+    target_memory_format = _normalize_memory_format(memory_format)
+
+    if target_device != x.device or (
+        x.device.type == "cpu" and target_device.type == "cpu"
+    ):
+        # Device transfer (d2h/h2d etc.) relies on PyTorch's implementation.
+        return torch.ops.aten._to_copy.default.redispatch(
+            _FALLBACK_KEYSET,
+            x,
+            dtype=target_dtype,
+            layout=layout,
+            device=target_device,
+            pin_memory=pin_memory,
+            non_blocking=non_blocking,
+            memory_format=target_memory_format,
+        )
+
+    logger.debug("GEMS _TO_COPY")
+    empty_kwargs = {"dtype": target_dtype, "device": target_device}
+
+    if target_memory_format is torch.preserve_format:
+        out = _allocate_preserve_format(x, empty_kwargs)
+    else:
+        out = torch.empty_like(x, memory_format=target_memory_format, **empty_kwargs)
+
+    return _to_copy_func(x, out0=out)

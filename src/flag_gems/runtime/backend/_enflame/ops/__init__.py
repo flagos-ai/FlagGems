@@ -39,6 +39,7 @@ if arch_version == 300:
     from .gcu300.bitwise_xor import bitwise_xor_scalar, bitwise_xor_scalar_, bitwise_xor_scalar_tensor, bitwise_xor_tensor, bitwise_xor_tensor_
     from .gcu300.clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
     from .gcu300.copy import copy
+    from .gcu300.copy import copy_
     from .gcu300.cos import cos
     from .gcu300.count_nonzero import count_nonzero
     from .gcu300.diag_embed import diag_embed
@@ -85,7 +86,6 @@ if arch_version == 300:
     from .gcu300.tanh import tanh_backward, tanh, tanh_
     from .gcu300.threshold import threshold_backward, threshold
     from .gcu300.tile import tile
-    from .gcu300.to import to_dtype
     from .gcu300.upsample_nearest2d import upsample_nearest2d
     from .gcu300.where import where_self_out, where_self, where_scalar_self, where_scalar_other
     from .gcu300.contiguous import contiguous
@@ -126,6 +126,7 @@ if arch_version == 300:
     from .gcu300.amax import amax
     from .gcu300.groupnorm import group_norm, group_norm_backward
     from .gcu300.layernorm import layer_norm, layer_norm_backward
+    from .gcu300.to import to_copy
     __all__ = [
         "mean_dim",
         "mean",
@@ -190,6 +191,7 @@ if arch_version == 300:
         "clamp_tensor",
         "clamp_tensor_",
         "copy",
+        "copy_",
         "cos",
         "cos_",
         "count_nonzero",
@@ -280,7 +282,6 @@ if arch_version == 300:
         "threshold_backward",
         "threshold",
         "tile",
-        "to_dtype",
         "upsample_nearest2d",
         "where_self_out",
         "where_self",
@@ -337,6 +338,7 @@ if arch_version == 300:
         "group_norm_backward",
         "layer_norm",
         "layer_norm_backward",
+        "to_copy",
         ]
 elif arch_version >= 400:
     from .gcu400.mean import mean_dim
@@ -391,10 +393,11 @@ elif arch_version >= 400:
     from .gcu400.index_select import index_select
     from .gcu400.vector_norm import vector_norm
     from .gcu400.cummax import cummax
-    from .gcu400.copy import copy
+    from .gcu400.copy import copy, copy_
     from .gcu400.contiguous import contiguous
     from .gcu400.index_add import index_add
     from .gcu400.bmm import bmm
+    from .gcu400.diag_embed import diag_embed
     __all__ = [
         "mean_dim",
         "zeros",
@@ -500,9 +503,11 @@ elif arch_version >= 400:
         "index_select",
         "vector_norm",
         "cummax",
-        "copy",
+        "copy", 
+        "copy_",
         "contiguous",
         "eye_m",
         "index_add",
         "bmm",
+        "diag_embed",
     ]

@@ -7,3 +7,8 @@ from ...utils.gcu300.pointwise_dynamic import pointwise_dynamic
 @triton.jit
 def copy(src):
     return src
+
+@pointwise_dynamic(is_tensor=(True,), promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def copy_(src):
+    return src

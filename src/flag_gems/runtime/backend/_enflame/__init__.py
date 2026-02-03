@@ -13,8 +13,10 @@ vendor_info = VendorInfoBase(
     dispatch_key="PrivateUse1",
 )
 
+# i64 to/copy is not supported in gcu300
 CUSTOMIZED_UNUSED_OPS = (
-
+    "to_copy",
+    "copy_",
 )
 
 __all__ = ["*"]
