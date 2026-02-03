@@ -186,6 +186,15 @@ log_softmax:
 mm:
 - META:
     BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 16
+    SPLIT_K: 1
+    pipeline: "cpasync"
+    scenario: "unroll"
+  num_stages: 8
+  num_warps: 4
+- META:
+    BLOCK_M: 128
     BLOCK_N: 256
     BLOCK_K: 32
     SPLIT_K: 1
