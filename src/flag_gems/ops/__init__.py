@@ -44,7 +44,7 @@ from flag_gems.ops.bitwise_or import (
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat
-from flag_gems.ops.ceil import ceil, ceil_
+from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import (
     clamp,
@@ -292,6 +292,7 @@ __all__ = [
     "cat",
     "ceil",
     "ceil_",
+    "ceil_out",
     "celu",
     "celu_",
     "clamp",

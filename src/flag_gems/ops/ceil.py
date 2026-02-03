@@ -15,14 +15,19 @@ def ceil_func(x):
     return tl.ceil(x.to(tl.float32)).to(x.dtype)
 
 
-def ceil(A, *, out=None):
+def ceil(A):
     logger.debug("GEMS CEIL")
     if not isinstance(A, torch.Tensor):
         return torch.ceil(torch.tensor(A))
-    if out is not None:
-        ceil_func(A, out0=out)
-        return out
     return ceil_func(A)
+
+
+def ceil_out(A, *, out=None):
+    logger.debug("GEMS CEIL_OUT")
+    if not isinstance(A, torch.Tensor):
+        return torch.ceil(torch.tensor(A), out=out)
+    ceil_func(A, out0=out)
+    return out
 
 
 def ceil_(A):

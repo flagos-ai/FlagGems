@@ -1648,3 +1648,19 @@ def test_accuracy_ceil_(shape, dtype):
         res_out = inp.ceil_()
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.ceil_out
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_ceil_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(inp)
+    ref_inp = to_reference(inp)
+    ref_out = torch.empty_like(ref_inp)
+
+    torch.ceil(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        torch.ceil(inp, out=out)
+
+    gems_assert_equal(out, ref_out)

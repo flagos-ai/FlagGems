@@ -94,6 +94,7 @@ _FULL_CONFIG = (
     ("celu_", celu_),
     ("ceil", ceil),
     ("ceil_", ceil_),
+    ("ceil.out", ceil_out),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_min", clamp_min),
