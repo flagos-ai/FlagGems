@@ -893,7 +893,7 @@ class WrapperGenerator:
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
-            code.writeline(f"FlagOfNotUseDMA |= torch.any(torch.tensor(in{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
             code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
             if not with_block_pointer:
                 continue
@@ -903,7 +903,7 @@ class WrapperGenerator:
                 code.writeline(f"in{i}_stride_order = (0,)")
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
-            code.writeline(f"FlagOfNotUseDMA |= torch.any(torch.tensor(out{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
             code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
             if not with_block_pointer:
                 continue
@@ -972,11 +972,11 @@ class WrapperGenerator:
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
-            code.writeline(f"FlagOfNotUseDMA |= torch.any(torch.tensor(in{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
             code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
-            code.writeline(f"FlagOfNotUseDMA |= torch.any(torch.tensor(out{i}_strides) == 0 )")
+            code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
             code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
 
         code.writeline("with torch_device_fn.device(in0.device.index):")
