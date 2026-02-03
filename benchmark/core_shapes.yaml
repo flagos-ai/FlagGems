@@ -110,6 +110,38 @@ ConcatBenchmark:
     - [512, 2048]
   shape_desc: "((B), M, N) * 3"
 
+concat_and_cache_mla:
+  shapes:
+    - [512, 64, 64, 64, 16]
+    - [2048, 128, 64, 64, 64]
+    - [4096, 256, 128, 128, 64]
+    - [8192, 256, 128, 128, 128]
+  shape_desc: "T, R, P, B, NB"
+
+reshape_and_cache:
+  shapes:
+    - [42, 8, 64, 16, 1024]
+    - [42, 8, 80, 16, 1024]
+    - [42, 8, 120, 32, 10000]
+    - [42, 8, 256, 32, 10000]
+  shape_desc: "T, H, D, B, NB"
+
+reshape_and_cache_flash:
+  shapes:
+    - [42, 8, 64, 16, 1024]
+    - [42, 8, 80, 16, 1024]
+    - [42, 8, 120, 32, 10000]
+    - [42, 8, 256, 32, 10000]
+  shape_desc: "T, H, D, B, NB"
+
+per_token_group_quant_fp8:
+  shapes:
+    - [7, 512, 512, false]
+    - [83, 4096, 128, true]
+    - [2048, 5120, 256, false]
+    - [2048, 13824, 512, true]
+  shape_desc: "T, D, G, UE8"
+
 TensorRepeatBenchmark:
   shapes:
     - [64, 64]
