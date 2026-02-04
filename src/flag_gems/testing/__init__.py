@@ -40,7 +40,7 @@ else:
 
 
 def _maybe_move_to_cpu(res, ref):
-    if not (res.is_cuda and ref.is_cuda):
+    if res.device.type == "cpu" or ref.device.type == "cpu":
         return res, ref
 
     required = res.numel() * res.element_size()

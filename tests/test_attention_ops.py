@@ -889,7 +889,7 @@ def ref_paged_attn(
             v = torch.repeat_interleave(v, q.shape[1] // v.shape[1], dim=1)
 
         attn = torch.einsum("qhd,khd->hqk", q, k)
-        empty_mask = torch.ones(query_len, kv_len)
+        empty_mask = torch.ones(query_len, kv_len, device=q.device)
         mask = torch.triu(empty_mask, diagonal=kv_len - query_len + 1).bool()
         if sliding_window is not None:
             sliding_window_mask = (
