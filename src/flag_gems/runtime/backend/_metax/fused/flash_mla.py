@@ -7,6 +7,7 @@ import triton.language as tl
 
 from flag_gems.runtime import device, error, torch_device_fn
 from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils.device_info import get_device_capability
 
 vendor_name = device.vendor_name
 device = device.name
@@ -173,7 +174,7 @@ def flash_mla(
 
     o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=device)
 
-    major, _ = torch_device_fn.get_device_capability(device)
+    major, _ = get_device_capability()
     if major == 9:
         BLOCK_H = 64
         num_stages = 3
