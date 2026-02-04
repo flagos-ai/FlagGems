@@ -5,8 +5,6 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-import triton
-import triton.language as tl
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -420,7 +418,7 @@ def scatter_reduce(
     if dim < -input.ndim or dim >= input.ndim:
         raise IndexError(
             f"Dimension out of range (expected to be in range of "
-            f"[{-input.ndim}, {input.ndim-1}], but got {dim})"
+            f"[{-input.ndim}, {input.ndim - 1}], but got {dim})"
         )
 
     dim = dim % input.ndim

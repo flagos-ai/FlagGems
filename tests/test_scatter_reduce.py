@@ -5,12 +5,7 @@ import torch
 import flag_gems
 import flag_gems.testing
 
-from .accuracy_utils import (
-    INT_DTYPES,
-    PRIMARY_FLOAT_DTYPES,
-    gems_assert_equal,
-    to_reference,
-)
+from .accuracy_utils import PRIMARY_FLOAT_DTYPES, to_reference
 
 # Use only float32 and float16 for scatter_reduce tests
 # to avoid bfloat16 precision issues with atomic operations
