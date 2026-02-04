@@ -8,12 +8,7 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
-
-if runtime.device.vendor_name == "iluvatar":
-    from flag_gems.runtime.backend._iluvatar.ops.bmm import bmm
-else:
-    from .bmm import bmm
-
+from .bmm import bmm
 from .mul import mul
 
 logger = logging.getLogger(__name__)
