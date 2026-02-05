@@ -163,6 +163,7 @@ from flag_gems.ops.normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.pad import constant_pad_nd, pad
@@ -457,6 +458,7 @@ __all__ = [
     "normed_cumsum",
     "ones",
     "ones_like",
+    "one_hot",
     "pad",
     "per_token_group_quant_fp8",
     "polar",
