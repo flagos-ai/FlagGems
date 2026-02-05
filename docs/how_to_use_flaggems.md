@@ -2,22 +2,22 @@
 
 ## Basic Usage
 
-To use the `FlagGems` operator library, import it and enable acceleration before running computations.
-You can enable it globally, selectively, or temporarily.
+To use the *FlagGems* operator library, import `flag_gems` and enable acceleration
+before running your program. You can enable it globally, selectively, or temporarily.
 
 ### Option 1: Global Enablement
 
-To apply `FlagGems` optimizations across your entire script or interactive session:
+To apply *FlagGems* optimizations across your entire script or your interactive session:
 
 ```python
 import flag_gems
 
-# Enable all FlagGems ops globally
+# Enable all FlagGems operators globally
 flag_gems.enable()
 ```
 
-Once enabled, all supported operators in your code will automatically be replaced
-with the optimized `FlagGems` implementations — no further changes needed.
+Once enabled, all supported operators in your code will be replaced automatically
+by the optimized *FlagGems* implementations — no further changes needed.
 
 ### Option 2: Selective Enablement
 
@@ -30,11 +30,11 @@ import flag_gems
 flag_gems.only_enable(include=["rms_norm", "softmax"])
 ```
 
-This is useful when you want to accelerate only a subset of operations.
+This is useful when you want to accelerate only a subset of operators.
 
 ### Option 3: Scoped Enablement
 
-For finer control, you can enable `FlagGems` only within a specific code block
+For finer controls, you can enable *FlagGems* only within a specific code block
 using a context manager:
 
 ```python
@@ -42,18 +42,17 @@ import flag_gems
 
 # Enable flag_gems temporarily
 with flag_gems.use_gems():
-    # Code inside this block will use Gems-accelerated operators
+    # Code inside this block will use FlagGems-accelerated operators
     ...
-
 ```
 
-This scoped usage is helpful when you want to:
+This scoped usage is useful when you want to:
 
-- Benchmark performance differences
-- Compare correctness between implementations
-- Apply acceleration selectively in complex workflows
+- perform performance benchmarks, or
+- compare correctness between implementations, or
+- apply acceleration selectively in complex workflows.
 
-You can also use selective enablement in the context manager:
+You can also use selective enablement in a context manager:
 
 ```python
 # Enable only specific ops in the scope
@@ -63,19 +62,20 @@ with flag_gems.use_gems(include=["sum", "add"]):
 
 # Or exclude specific ops
 with flag_gems.use_gems(exclude=["mul", "div"]):
-    # All except mul and div will be accelerated
+    # All operators except mul and div will be accelerated
     ...
 ```
 
-Note: The `include` parameter has higher priority than `exclude`. If both are provided, `exclude` is ignored.
+Note: The `include` parameter has higher priority than `exclude`.
+If both are provided, `exclude` is ignored.
 
 ## Advanced Usage
 
 The `flag_gems.enable(...)` and `flag_gems.only_enable(...)` functions support several optional parameters
 which give you finer-grained control over how acceleration is applied.
-This allows for more flexible integration and easier debugging or profiling in complex workflows.
+This allows for more flexible integration and easier debugging or profiling when working with complex workflows.
 
-### Parameter Overview
+### Parameters
 
 | Parameter      | Type      | Description                                         |
 | -------------- | --------- | --------------------------------------------------- |
@@ -88,29 +88,29 @@ This allows for more flexible integration and easier debugging or profiling in c
 
 You can use the `unused` parameter in `enable()` to exclude certain operators from being accelerated by `FlagGems`.
 This is especially useful when a particular operator does not behave as expected in your workload,
-or if you're seeing suboptimal performance and want to temporarily fall back
-to the original implementation.
+or if you're seeing suboptimal performance and want to use the original implementation.
 
 ```python
 flag_gems.enable(unused=["sum", "add"])
 ```
 
 With this configuration, `sum` and `add` will continue to use the native PyTorch implementations,
-while all other supported operators will use `FlagGems` versions.
+while all other supported operators will use the *FlagGems* version.
 
 ### Example : Selectively Enable Specific Operators
 
-Use `only_enable()` with the `include` parameter to accelerate only a subset of operators:
+You can use `only_enable()` with the `include` parameter to accelerate only a subset of operators:
 
 ```python
 flag_gems.only_enable(include=["rms_norm", "softmax"])
 ```
 
-This registers only the specified operators, skipping all others.
+This registers only the specified operators, skipping all the others.
 
 ### Example : Enable Debug Logging
 
-Enable `record=True` to log operator usage during runtime, and specify the output path with `path`.
+If you want to log the operator usage during runtime, you can
+set `record=True` along with `path` set to  the path of the log file.
 
 ```python
 flag_gems.enable(
@@ -119,7 +119,7 @@ flag_gems.enable(
 )
 ```
 
-After running your script, inspect the log file (e.g., `gems_debug.log`) to check
+After running your script, inspect the log file (e.g., `./gems_debug.log`) to check
 the list of operators that have been invoked through `flag_gems`.
 
 Sample log content:
@@ -134,7 +134,7 @@ $ cat ./gems_debug.log
 
 ### Example : Query Registered Operators
 
-After enabling `FlagGems`, you can query which operators have been registered:
+After enabling *FlagGems*, you can check the operators registered:
 
 ```python
 import flag_gems
@@ -166,27 +166,26 @@ Regardless of the underlying hardware, the usage of `flag_gems` remains exactly 
 There is no need to modify application code when switching from NVIDIA to non-NVIDIA platforms.
 
 Once you call `import flag_gems` and enable acceleration via `flag_gems.enable()`,
-operator dispatch will automatically route to the correct backend.
-This provides a consistent developer experience across heterogeneous environments.
+operator dispatch will be automatically routed to the correct backend.
+This provides a consistent developer experience across different environments.
 
 ### Backend Requirements
 
-Although the usage pattern is unchanged, running on non-NVIDIA hardware requires that
-the underlying dependencies -— **PyTorch** and the **Triton compiler** -— are available
-and properly configured for the target platform.
+Although the usage pattern is unchanged, there are some prerequisites when running *FlagGems* on non-NVIDIA platforms.
+The **PyTorch** and the **Triton compiler** have to be installed and properly configured on the target platform.
 
 There are two common ways to obtain compatible builds:
 
-1. **Request from Hardware Vendor**
+1. **Consult your hardware vendor**
 
    Hardware vendors typically maintain custom builds of PyTorch and Triton tailored to their chips.
    Contact the vendor to request the appropriate versions.
 
-2. **Explore the FlagTree Project**
+2. **Explore the FlagTree project**
 
    The [FlagTree](https://github.com/flagos-ai/flagtree) project offers a unified Triton compiler
    that supports a range of AI chips, including NVIDIA and non-NVIDIA platforms.
-   It consolidates vendor-specific patches and enhancements into a shared open-source backend,
+   It consolidates vendor-specific patches and enhancements into a shared, open-source backend,
    simplifying compiler maintenance and enabling multi-platform compatibility.
 
    > [!Note]
@@ -197,11 +196,11 @@ There are two common ways to obtain compatible builds:
 
 ### Backend Auto-Detection and Manual Setting
 
-By default, `flag_gems` automatically detects the current hardware backend at runtime
+By default, *FlagGems* automatically detects the current hardware backend at runtime
 and selects the corresponding implementation.
 In most cases, no manual configuration is required, and everything works out of the box.
 
-However, if auto-detection fails or is incompatible with your environment,
+However, if auto-detection fails or there are compatibility issues in your environment,
 you can manually set the target backend to ensure correct runtime behavior.
 To do this, set the following environment variable before running your code:
 
@@ -221,7 +220,7 @@ print(flag_gems.vendor_name)
 
 ## Integration with Popular Frameworks
 
-To help integrate `flag_gems` into real-world scenarios, we provide examples
+To help integrate *FlagGems* into real-world scenarios, we provide examples
 with widely-used deep learning frameworks.
 These integrations require minimal code changes and preserve the original workflow structure.
 
@@ -231,7 +230,7 @@ directory in the source code repository.
 ### Example 1: Hugging Face Transformers
 
 Integration with Hugging Face's `transformers` library is straightforward.
-You can simply follow the basic usage patterns introduced in previous sections.
+You can follow the basic usage patterns introduced in previous sections.
 
 During inference, you can activate acceleration without modifying the model
 or tokenizer logic. Here's a minimal example:
@@ -266,27 +265,26 @@ You can find more examples in the following files:
 designed for serving large language models efficiently.
 It supports features like paged attention, continuous batching, and optimized memory management.
 
-`flag_gems` can be integrated into vLLM to replace both standard PyTorch (`aten`) ops
+*FlagGems* can be integrated into vLLM to replace both standard PyTorch (`aten`) operators
 and vLLM's internal custom kernels.
 
 #### Replacing Standard PyTorch Operators in vLLM
 
-To accelerate standard PyTorch ops (e.g., `add`, `masked_fill`) in vLLM,
-you can simply use the same approach as in other frameworks:
-
-- Call `flag_gems.enable()` before any model initialization or inference.
-- This overrides all compatible PyTorch `aten` ops, including those indirectly used in vLLM.
+To accelerate standard PyTorch operators (e.g., `add`, `masked_fill`) in vLLM,
+you can use the same approach as you do in other frameworks.
+By invoking `flag_gems.enable()` before model initialization or inference.
+you override all compatible PyTorch `aten` operators, including those indirectly used in vLLM.
 
 #### Replacing vLLM-Specific Custom Operators
 
-To further optimize vLLM’s internal kernels, `flag_gems` provides an additional API:
+To further optimize vLLM’s internal kernels, *FlagGems* provides an additional API:
 
 ```python
 flag_gems.apply_gems_patches_to_vllm(verbose=True)
 ```
 
-This function patches certain vLLM-specific C++ or Triton operators with `flag_gems` implementations.
-When `verbose=True`, it will log which functions were replaced:
+This API patches certain vLLM-specific C++ or Triton operators with FlagGems implementations.
+When `verbose` is set to `True`, the invocation records functions that were replaced:
 
 ```none
 Patched RMSNorm.forward_cuda with FLAGGEMS custom_gems_rms_forward_cuda
@@ -321,15 +319,15 @@ print(output)
 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) is a highly optimized framework
 for large-scale language model pretraining and fine-tuning.
 Due to its tight integration with custom training loops and internal utilities,
-integrating `flag_gems` into Megatron requires a slightly more targeted approach.
+integrating *FlagGems* into Megatron requires a slightly more targeted approach.
 
-Since Megatron’s training loop tightly couples distributed data loading,
-gradient accumulation, and pipeline parallelism, we recommend applying `flag_gems`
-only around the forward and backward computation stages.
+Since the training loop in Megatron is tightly bound to distributed data loading,
+gradient accumulation, and pipeline parallelism, we recommend applying *FlagGems*
+accelerations only for the forward and backward computation stages.
 
 #### Recommended Integration Point
 
-The most reliable way to use `flag_gems` in Megatron is by modifying the `train_step` function
+The most reliable way to use FlagGems in Megatron is by modifying the `train_step` function
 in [`megatron/training/training.py`](https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/training/training.py#L1360).
 Specifically, wrap the block where `forward_backward_func` is invoked as shown below:
 
@@ -367,7 +365,7 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
     # Other post-step operations omitted
 ```
 
-This ensures that only the forward and backward computation logic runs with `flag_gems` acceleration,
+This ensures that only the forward and backward computation logic runs with *FlagGems* acceleration,
 while other components such as data loading and optimizer steps remain unchanged.
 
 #### Scope and Limitations
@@ -376,43 +374,44 @@ While `flag_gems.enable()` is sufficient in most frameworks, we observed that
 applying it early in Megatron’s pipeline can sometimes cause unexpected behavior,
 especially during the data loading phase.
 For better stability, we recommend using `flag_gems.use_gems()` as a context manager
-limited to the computation stage.
+to be applied to the computation stage.
 
 If you wish to accelerate a broader range of components (e.g., optimizer, preprocessing),
 you may try enabling `flag_gems` globally with `flag_gems.enable()`.
-However, this approach is less tested and may require additional validation
+However, this approach is not thoroughly tested and may require additional validation
 based on your Megatron version.
 
-We encourage community contributions — please open an `issue` or submit a PR
+We encourage community contributions — please open an issue or submit a PR
 to help improve broader Megatron integration.
 
 ## Multi-GPU Deployment
 
 In real-world LLM deployment scenarios, multi-GPU or multi-node setups are often required
 to support large model sizes and high-throughput inference.
-`flag_gems` supports these scenarios by accelerating operator execution across multiple GPUs.
+*FlagGems* supports these scenarios by accelerating operator execution across multiple GPUs.
 
 ### Single-Node vs Multi-Node Usage
 
-For **single-node deployments**, integration is straightforward. You can import
-and call `flag_gems.enable()` at the beginning of your script.
+For **single-node deployments**, the integration is straightforward. You can import `flag_gems`
+and invoke `flag_gems.enable()` at the beginning of your script.
 This enables acceleration without requiring any additional changes.
 
 In **multi-node deployments**, however, this approach is insufficient.
 Distributed inference frameworks (like vLLM) spawn multiple worker processes across nodes,
-and each process must individually initialize `flag_gems`.
-If the activation occurs only in the launch script, worker processes on remote nodes
-will fall back to the default implementation and miss out on acceleration.
+where every process must initialize `flag_gems` individually.
+If the activation occurs only in the launch script on one node, worker processes
+on other nodes will fall back to the default implementation which is not accelerated.
 
 ### Integration Example: vLLM + DeepSeek
 
-Here’s how to enable `flag_gems` in a distributed vLLM + DeepSeek deployment:
+To enable *FlagGems* in a distributed vLLM + DeepSeek deployment:
 
 1. **Baseline Verification**
 
-   Before integrating `flag_gems`, verify that the model can load and serve correctly without it.
+   Before integrating *FlagGems*, verify that the model can load and serve correctly without it.
    For example, loading a model like `Deepseek-R1` typically requires **at least two H100 GPUs**
-   and can take **up to 20 minutes** to initialize, depending on checkpoint size and system I/O.
+   and it can take **up to 20 minutes** to initialize, depending on the checkpoint size and
+   the system I/O performance.
 
 1. **Inject `flag_gems` into vLLM Worker Code**
 
@@ -446,7 +445,7 @@ Here’s how to enable `flag_gems` in a distributed vLLM + DeepSeek deployment:
    export USE_FLAGGEMS=1
    ```
 
-1. **Start Distributed Inference and Confirm Acceleration**
+1. **Start Distributed Inference and Verify**
 
    Launch the service and check the startup logs on each node for messages
    indicating that operators have been overridden.
@@ -461,26 +460,24 @@ Here’s how to enable `flag_gems` in a distributed vLLM + DeepSeek deployment:
    self.m.impl(
    ```
 
-   This confirms that `flag_gems` has been successfully enabled across all GPUs.
+   This confirms that `flag_gems` has been successfully enabled across all nodes.
 
 ## Building Custom Models Using Gems Operators
 
 In some scenarios, users may wish to build their own models from scratch
-or modify existing ones to better suit specific requirements.
-To support this, `flag_gems` provides a growing collection of high-performance modules
+or to adapt existing ones to better suit their specific use cases.
+To support this, *FlagGems* provides a growing collection of high-performance modules
 commonly used in large language models (LLMs).
 
-These components are implemented using `flag_gems`-accelerated operators
-and can be used like any standard `torch.nn.Module`.
-You can seamlessly integrate them into your architecture to benefit from kernel-level acceleration,
+These components are implemented using *FlagGems*-accelerated operators
+and can be used in the way you use any standard `torch.nn.Module`.
+You can seamlessly integrate them into your architecture to benefit from kernel-level acceleration
 without writing custom CUDA or Triton code.
 
-Available modules are located in:
-[flag_gems/modules](https://github.com/flagos-ai/FlagGems/tree/master/src/flag_gems/modules)
+Modules can be found in
+[flag_gems/modules](https://github.com/flagos-ai/FlagGems/tree/master/src/flag_gems/modules).
 
-### Available Modules
-
-<!--TODO(Qiming): Double check the list of modules. -->
+### Modules Available
 
 | Module                 | Description                                           | Supported Features                         |
 | ---------------------- | ----------------------------------------------------- | ------------------------------------------ |
@@ -494,7 +491,7 @@ More components such as fused attention, MoE layers, and transformer blocks are 
 
 ## Achieving Optimal Performance with Gems
 
-While `flag_gems` kernels are designed for high performance, achieving optimal end-to-end speed
+While *FlagGems* kernels are designed for high performance, achieving optimal end-to-end speed
 in full model deployments requires careful integration and consideration of runtime behavior.
 In particular, two common performance bottlenecks are:
 
@@ -503,58 +500,62 @@ In particular, two common performance bottlenecks are:
 
 These issues can occasionally offset the benefits of highly optimized kernels.
 To address them, we provide two complementary optimization paths designed to ensure that
-`flag_gems` operates at peak efficiency in real inference scenarios.
+*FlagGems* operates at peak efficiency in real inference scenarios.
 
 ### Pre-tuning Model Shapes for Inference Scenarios
 
-`flag_gems` integrates with [`LibTuner`](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/utils/libentry.py#L139),
+*FlagGems* provides [`LibTuner`](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/utils/libentry.py#L139),
 a lightweight enhancement to Triton’s autotuning system.
-`libtuner` introduces a **persistent, per-device tuning cache** that
-helps mitigate runtime overhead from Triton’s default autotuning process.
+`LibTuner` introduces a **persistent, per-device tuning cache** that
+helps mitigate runtime overhead in the Triton’s default autotuning process.
 
 #### Why Pre-tuning?
 
 Triton typically performs autotuning during the first few executions of a new input shape,
 which may cause latency spikes—especially in latency-sensitive inference systems.
-`libtune` addresses this with:
+`LibTuner` addresses this with:
 
-- Persistent caching: Best autotune configs are saved across runs.
-- Cross-process sharing: Cache is shared across processes on the same device.
-- Reduced runtime overhead: Once tuned, operators skip tuning in future runs.
+- _Persistent caching_: Best autotune configs are saved across runs.
+- _Cross-process sharing_: Cache is shared across processes on the same device.
+- _Reduced runtime overhead_: Once tuned, operators skip tuning in future runs.
 
 This is particularly useful for operators like `mm` and `addmm`,
-which often trigger Triton autotune logic.
+which often trigger the autotune logic in Triton.
 
 #### How to Use Pre-tuning
 
-To proactively warm up your system and populate the cache:
+To proactively warm up your system and to populate the cache:
 
 1. Identify key input shapes used in your production workload.
-1. Run the pre-tuning script to benchmark and cache best configs:`python examples/pretune.py`
-1. Deploy normally, and `flag_gems` will automatically pick the optimal config
+1. Run the pre-tuning script to benchmark and cache best configs.
+   You can run `python examples/pretune.py` as an example.
+1. Deploy normally, and *FlagGems* will automatically pick the optimal config
    from cache during inference.
 
-> ✅ `pretune.py` accepts example shapes and workloads to simulate your model's actual use cases.
-> You can customize it for batch sizes, sequence lengths, etc.
+> ![Tip]
+> - The `pretune.py` script accepts example shapes and workloads
+>   which can be used to simulate your model's actual use cases.
+>   You can customize it for batch sizes, sequence lengths, etc.
+> - In frameworks like **vLLM** (`v0.8.5+`), enabling `--compile-mode`
+>   automatically performs a warmup step.
+>   If *FlagGems*  is enabled, this also triggers `LibTuner`-based
+>   pre-tuning implicitly.
 
-> 💡 In frameworks like **vLLM** (`v0.8.5+`), enabling `--compile-mode` automatically performs a warmup step.
-> If `flag_gems` is integrated, this also triggers `libtuner`-based pre-tuning implicitly.
-
-For more details or to customize your tuning cache path and settings, refer to the
-[`examples/pretune.py`](https://github.com/flagos-ai/FlagGems/blob/master/examples/pretune.py)
+For more details (e.g. customizing your tuning cache path and settings),
+refer to the [`examples/pretune.py`](https://github.com/flagos-ai/FlagGems/blob/master/examples/pretune.py)
 as an example.
 
 ### Using C++-Based Operator Wrappers for Further Performance Gains
 
-Another advanced optimization path in `flag_gems` is the use of **C++ wrappers** for selected operators.
+Another advanced optimization path with *FlagGems* is the use of **C++ wrappers** for selected operators.
 While Triton kernels offer reasonably good compute performance, Triton itself is a Python-embedded DSL.
-This means that both operator definition and runtime dispatch rely on Python,
+This means that both the operator definitions and the runtime dispatches are in Python,
 which can introduce **non-trivial overhead** in latency-sensitive or high-throughput scenarios.
 
-To address this, we provide a C++ runtime solution that encapsulates the operator’s wrapper logic,
+To address this, *FlagGems* provides a C++ runtime solution that encapsulates the operator’s wrapper logic,
 registration mechanism, and runtime management entirely in C++,
 while still reusing the underlying Triton kernels for the actual computation.
-This approach maintains Triton's kernel-level efficiency while significantly reducing Python-related overhead,
+This approach preseves Triton's kernel-level efficiency while significantly reducing Python-related overhead,
 enabling tighter integration with low-level CUDA workflows and improving overall inference performance.
 
 #### Installation & Setup
@@ -564,7 +565,7 @@ To use the C++ operator wrappers:
 1. Follow the [installation guide](./installation.md) to compile
    and install the C++ version of `flag_gems`.
 
-2. Verify successful installation with the following snippet:
+1. Verify that the installation is successful using the following snippet:
 
    ```python
    try:
@@ -577,17 +578,18 @@ To use the C++ operator wrappers:
 
    If `has_c_extension` is `True`, then the C++ runtime path is available.
 
-1. When installed successfully, C++ wrappers will automatically be preferred **in patch mode**
-   and when explicitly building models using `flag_gems`-defined modules.
+1. When installed successfully, C++ wrappers will be preferred **in patch mode**
+   and when explicitly building models using *FlagGems*-defined modules.
 
    For example, `gems_rms_forward` will by default use the C++ wrapper version of `rms_norm`.
-   You can refer to the actual usage in [`normalization.py`](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/modules/normalization.py#L46)
+   You can refer to the actual usage in the
+   [`normalization.py`](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/modules/normalization.py#L46)
    to better understand how C++ operator wrappers are integrated and invoked.
 
 #### Explicitly Using C++ Operators
 
-If you want to *directly call C++-wrapped operators*, bypassing any patch logic or fallback,
-use the `torch.ops.flag_gems` namespace like this:
+If you want to *invoke the C++-wrapped operators directly*, bypassing any patch logics
+or fall back paths, you can use the `torch.ops.flag_gems` namespace as shown below:
 
 ```python
 output = torch.ops.flag_gems.fused_add_rms_norm(...)
@@ -597,8 +599,6 @@ This gives you *precise control* over operator dispatch, which can be beneficial
 in performance-sensitive contexts.
 
 #### Currently Supported C++-Wrapped Operators
-
-<!--TODO(Qiming): Move this list elsewhere. -->
 
 | Operator Name        | Description                              |
 | -------------------- | ---------------------------------------- |
