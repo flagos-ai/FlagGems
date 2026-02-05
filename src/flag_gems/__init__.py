@@ -337,6 +337,7 @@ _FULL_CONFIG = (
     ("topk", topk),
     ("trace", trace),
     ("triu", triu),
+    ("triu_", triu_),
     ("true_divide.Scalar", true_divide),
     ("true_divide.Tensor", true_divide),
     ("true_divide_.Scalar", true_divide_),
