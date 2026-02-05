@@ -61,7 +61,7 @@ def _normalize_dims(dims, ndim):
             raise ValueError(f"dimension out of range: {d}")
         norm.append(d)
     if sorted(norm) != list(range(ndim)):
-        raise ValueError(f"dims must be a permutation of [0..{ndim-1}], got {norm}")
+        raise ValueError(f"dims must be a permutation of [0..{ndim - 1}], got {norm}")
     return norm
 
 

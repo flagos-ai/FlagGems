@@ -65,7 +65,7 @@ def _normalize_dim(dim: int, ndim: int) -> int:
         actual_dim = dim - ndim if dim >= ndim else dim
         raise IndexError(
             f"Dimension out of range (expected to be in range of "
-            f"[{-ndim}, {ndim-1}], but got {actual_dim})"
+            f"[{-ndim}, {ndim - 1}], but got {actual_dim})"
         )
     return dim
 
