@@ -21,10 +21,16 @@ logger = logging.getLogger(__name__)
 def reduce_all(a, b):
     return a and b
 
+def keep(conf):
+    BLOCK_M = conf.kwargs["BLOCK_M"]
+    # grid limit
+    if BLOCK_M < 64:
+        return False
+    return True
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("naive_reduction"),
+    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
     key=["M", "N"],
 )
 @triton.jit

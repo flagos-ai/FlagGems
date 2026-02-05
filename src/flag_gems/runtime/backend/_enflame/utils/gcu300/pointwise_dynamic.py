@@ -1057,7 +1057,7 @@ class WrapperGenerator:
             max_tile_size = self.config.max_tile_size
             code.writeline("if FlagOfNotUseDMA:")
             with code.indent():
-                code.writeline("factor = factor // 2")
+                code.writeline("factor = max(1, factor // 2)")
                 code.writeline(
                 f"tile_sizes = heuristics_for_tile_size_with_mmu_constraint({max_tile_size} * factor, out0.element_size(), out0_strides, *shape)"
             )

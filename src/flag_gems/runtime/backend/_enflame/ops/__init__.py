@@ -127,6 +127,7 @@ if arch_version == 300:
     from .gcu300.groupnorm import group_norm, group_norm_backward
     from .gcu300.layernorm import layer_norm, layer_norm_backward
     from .gcu300.to import to_copy
+    from .gcu300.any import any, any_dim, any_dims
     __all__ = [
         "mean_dim",
         "mean",
@@ -339,6 +340,9 @@ if arch_version == 300:
         "layer_norm",
         "layer_norm_backward",
         "to_copy",
+        "any",
+        "any_dim",
+        "any_dims",
         ]
 elif arch_version >= 400:
     from .gcu400.mean import mean_dim
