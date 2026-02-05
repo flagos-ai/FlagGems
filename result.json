@@ -1,289 +1,1981 @@
 {
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape0]": {
-        "params": {
-            "dtype": "torch.float16",
-            "shape": []
-        },
-        "result": "passed",
-        "opname": [
-            "logaddexp"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape1]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape0-3-2-1-1-False]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
-                1
-            ]
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape2]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape1-kernel_size1-stride1-1-1-False]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
-                1024,
-                1024
-            ]
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape3]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape2-3-2-1-1-True]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
-                20,
-                320,
+                2,
+                4,
+                15,
+                15,
                 15
-            ]
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape4]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape3-2-1-0-2-False]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
-                16,
-                128,
-                64,
-                60
-            ]
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype0-shape5]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape4-3-2-1-1-False]": {
         "params": {
             "dtype": "torch.float16",
             "shape": [
-                16,
-                7,
-                57,
+                1,
                 32,
-                29
-            ]
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape0]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape5-2-2-0-1-False]": {
         "params": {
-            "dtype": "torch.float32",
-            "shape": []
-        },
-        "result": "passed",
-        "opname": [
-            "logaddexp"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape1]": {
-        "params": {
-            "dtype": "torch.float32",
+            "dtype": "torch.float16",
             "shape": [
-                1
-            ]
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape2]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape6-2-2-padding6-1-False]": {
         "params": {
-            "dtype": "torch.float32",
+            "dtype": "torch.float16",
             "shape": [
-                1024,
-                1024
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "logaddexp"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape3]": {
-        "params": {
-            "dtype": "torch.float32",
-            "shape": [
+                2,
+                8,
+                16,
                 20,
-                320,
-                15
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "logaddexp"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape4]": {
-        "params": {
-            "dtype": "torch.float32",
-            "shape": [
-                16,
-                128,
-                64,
-                60
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "logaddexp"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype1-shape5]": {
-        "params": {
-            "dtype": "torch.float32",
-            "shape": [
-                16,
-                7,
-                57,
-                32,
-                29
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "logaddexp"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape0]": {
-        "params": {
-            "dtype": "torch.bfloat16",
-            "shape": []
-        },
-        "result": "passed",
-        "opname": [
-            "logaddexp"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape1]": {
-        "params": {
-            "dtype": "torch.bfloat16",
-            "shape": [
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
                 1
-            ]
+            ],
+            "dilation": 1,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape2]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape7-2-1-0-1-False]": {
         "params": {
-            "dtype": "torch.bfloat16",
+            "dtype": "torch.float16",
             "shape": [
-                1024,
-                1024
-            ]
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape3]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype0-shape8-1-1-0-1-False]": {
         "params": {
-            "dtype": "torch.bfloat16",
+            "dtype": "torch.float16",
             "shape": [
-                20,
-                320,
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape0-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape1-kernel_size1-stride1-1-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape2-3-2-1-1-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                4,
+                15,
+                15,
                 15
-            ]
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape4]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape3-2-1-0-2-False]": {
         "params": {
-            "dtype": "torch.bfloat16",
+            "dtype": "torch.float32",
             "shape": [
-                16,
-                128,
-                64,
-                60
-            ]
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp[dtype2-shape5]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape4-3-2-1-1-False]": {
         "params": {
-            "dtype": "torch.bfloat16",
+            "dtype": "torch.float32",
             "shape": [
-                16,
-                7,
-                57,
+                1,
                 32,
-                29
-            ]
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp_special_values[dtype0]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape5-2-2-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape6-2-2-padding6-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                8,
+                16,
+                20,
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
+                1
+            ],
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape7-2-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype1-shape8-1-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape0-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape1-kernel_size1-stride1-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape2-3-2-1-1-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                4,
+                15,
+                15,
+                15
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape3-2-1-0-2-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape4-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                32,
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape5-2-2-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape6-2-2-padding6-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                8,
+                16,
+                20,
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
+                1
+            ],
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape7-2-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_forward[dtype2-shape8-1-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape0-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape1-kernel_size1-stride1-1-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape2-3-2-1-1-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                4,
+                15,
+                15,
+                15
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape3-2-1-0-2-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape4-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                32,
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape5-2-2-0-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape6-2-2-padding6-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                8,
+                16,
+                20,
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
+                1
+            ],
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape7-2-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype0-shape8-1-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape0-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape1-kernel_size1-stride1-1-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape2-3-2-1-1-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                4,
+                15,
+                15,
+                15
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape3-2-1-0-2-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape4-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                32,
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape5-2-2-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape6-2-2-padding6-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                8,
+                16,
+                20,
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
+                1
+            ],
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape7-2-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype1-shape8-1-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape0-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape1-kernel_size1-stride1-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape2-3-2-1-1-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                4,
+                15,
+                15,
+                15
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape3-2-1-0-2-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape4-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                32,
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape5-2-2-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape6-2-2-padding6-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                8,
+                16,
+                20,
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
+                1
+            ],
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape7-2-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_with_indices[dtype2-shape8-1-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape0-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape1-kernel_size1-stride1-1-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape2-3-2-1-1-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                4,
+                15,
+                15,
+                15
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape3-2-1-0-2-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape4-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                32,
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape5-2-2-0-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape6-2-2-padding6-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                8,
+                16,
+                20,
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
+                1
+            ],
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape7-2-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape8-1-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape0-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape1-kernel_size1-stride1-1-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape2-3-2-1-1-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                4,
+                15,
+                15,
+                15
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape3-2-1-0-2-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape4-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                32,
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape5-2-2-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape6-2-2-padding6-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                8,
+                16,
+                20,
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
+                1
+            ],
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape7-2-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape8-1-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape0-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape1-kernel_size1-stride1-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                8,
+                8,
+                16,
+                16
+            ],
+            "kernel_size": [
+                2,
+                3,
+                3
+            ],
+            "stride": [
+                1,
+                2,
+                2
+            ],
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape2-3-2-1-1-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                4,
+                15,
+                15,
+                15
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": true
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape3-2-1-0-2-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                10,
+                10,
+                10
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 2,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape4-3-2-1-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                32,
+                28,
+                28,
+                28
+            ],
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape5-2-2-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                8,
+                16,
+                16,
+                16
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape6-2-2-padding6-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                8,
+                16,
+                20,
+                24
+            ],
+            "kernel_size": 2,
+            "stride": 2,
+            "padding": [
+                1,
+                0,
+                1
+            ],
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape7-2-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4,
+                4
+            ],
+            "kernel_size": 2,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape8-1-1-0-1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                4,
+                8,
+                8,
+                8
+            ],
+            "kernel_size": 1,
+            "stride": 1,
+            "padding": 0,
+            "dilation": 1,
+            "ceil_mode": false
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_edge_cases[dtype0]": {
         "params": {
             "dtype": "torch.float16"
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp_special_values[dtype1]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_edge_cases[dtype1]": {
         "params": {
             "dtype": "torch.float32"
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
         ],
         "skipped_reason": null
     },
-    "tests/test_binary_pointwise_ops.py::test_accuracy_logaddexp_special_values[dtype2]": {
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_edge_cases[dtype2]": {
         "params": {
             "dtype": "torch.bfloat16"
         },
         "result": "passed",
         "opname": [
-            "logaddexp"
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_different_strides[dtype0]": {
+        "params": {
+            "dtype": "torch.float16"
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_different_strides[dtype1]": {
+        "params": {
+            "dtype": "torch.float32"
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_different_strides[dtype2]": {
+        "params": {
+            "dtype": "torch.bfloat16"
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_different_paddings[dtype0]": {
+        "params": {
+            "dtype": "torch.float16"
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_different_paddings[dtype1]": {
+        "params": {
+            "dtype": "torch.float32"
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_max_pool3d_ops.py::test_accuracy_max_pool3d_different_paddings[dtype2]": {
+        "params": {
+            "dtype": "torch.bfloat16"
+        },
+        "result": "passed",
+        "opname": [
+            "max_pool3d"
         ],
         "skipped_reason": null
     }

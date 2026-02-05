@@ -120,7 +120,8 @@ from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tens
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log10 import log10
-# from flag_gems.ops.logaddexp import logaddexp
+from flag_gems.ops.logaddexp import logaddexp
+from flag_gems.ops.leaky_relu import leaky_relu
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
 from flag_gems.ops.logical_and import logical_and
@@ -136,6 +137,11 @@ from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
+)
+from flag_gems.ops.max_pool3d import (
+    max_pool3d,
+    max_pool3d_backward,
+    max_pool3d_with_indices,
 )
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
@@ -411,6 +417,9 @@ __all__ = [
     "maximum",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
+    "max_pool3d",
+    "max_pool3d_backward",
+    "max_pool3d_with_indices",
     "mean",
     "mean_dim",
     "min",

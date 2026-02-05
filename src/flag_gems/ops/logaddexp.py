@@ -1,9 +1,10 @@
+import triton
 import triton.language as tl
 
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
 @triton.jit
 def logaddexp_func_opt(a, b):
     # 1. 统一转为 fp32 计算
@@ -18,7 +19,7 @@ def logaddexp_func_opt(a, b):
     # 对于 diff 很大的情况，exp(-diff) 趋近于 0，log(1) 趋近于 0
     # 可以通过 tl.where 进一步优化极端情况，但 log1p(exp(-diff)) 通常已经足够快
     # 这里的 tl.math.exp 和 tl.math.log1p 比通用的 log 更快
-    res = m + tl.math.log1p(tl.math.exp(-diff))
+    res = m + tl.log(1.0 + tl.exp(-diff))
 
     return res.to(a.dtype)
 

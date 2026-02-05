@@ -767,6 +767,47 @@ def test_accuracy_relu_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+# 1. 基础准确性测试 (Out-of-place)
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("negative_slope", [0.01, 0.1, 0.2])
+def test_accuracy_leaky_relu(shape, dtype, negative_slope):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+
+    # 计算参考结果
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope)
+    
+    # 计算 GEMS 结果
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(res_inp, negative_slope=negative_slope)
+
+    # 使用项目统一的断言工具，它内部处理了不同 dtypes 的 tol (阈值)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+# 2. 原位操作测试 (In-place)
+@pytest.mark.inplace
+@pytest.mark.leaky_relu_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("negative_slope", [0.01, 0.1, 0.2])
+def test_accuracy_leaky_relu_(shape, dtype, negative_slope):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp.clone(), True)
+
+    # 计算参考结果 (In-place)
+    ref_out = torch.nn.functional.leaky_relu_(ref_inp, negative_slope=negative_slope)
+    
+    # 计算 GEMS 结果 (In-place)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu_(res_inp, negative_slope=negative_slope)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+
 @pytest.mark.softplus
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
