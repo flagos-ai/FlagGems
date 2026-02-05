@@ -1,3 +1,4 @@
+import itertools
 import json
 import logging
 import os
@@ -6,8 +7,15 @@ from datetime import datetime
 import pytest
 import torch
 
+from _pytest.python import Metafunc
+
+
 import flag_gems
 
+import itertools
+# from .skipped_nodeid import UNSELECT_NODEIDS
+# from .skipped_nodeid import UNSELECT_FUNCTION_NAMES
+from _pytest.python import Metafunc
 device = flag_gems.device
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -43,6 +51,25 @@ def pytest_addoption(parser):
         choices=["none", "log"],
         help="tests function param recorded in log files or not",
     )
+    parser.addoption(
+        "--limit-cases",
+        type=int,
+        default=None,
+    )
+    parser.addoption(
+        "--compiler-choice",
+        action="store",
+        default="none",
+        required=False,
+        choices=["none", "flagtree"],
+        help="compiler to run  tests with",
+    )
+    parser.addoption(
+    "--skipped-spectest",
+    action="store_true",
+    default=False,
+    help="Whether to use the unselected nodeids list.", 
+    )
 
 
 def pytest_configure(config):
@@ -51,6 +78,16 @@ def pytest_configure(config):
 
     global QUICK_MODE
     QUICK_MODE = config.getoption("--mode") == "quick"
+
+    global LIMIT
+    LIMIT = config.getoption("--limit-cases")
+
+    global COMPILER_CHOICE
+    COMPILER_CHOICE = config.getoption("--compiler-choice") == "flagtree"
+
+    global SKIP_SPECTEST
+    SKIP_SPECTEST = config.getoption("--skipped-spectest")
+
 
     global RECORD_LOG
     RECORD_LOG = config.getoption("--record") == "log"
@@ -112,6 +149,82 @@ def pytest_sessionfinish(session, exitstatus):
 
 test_results = {}
 
+CUSTOM_TEST_PARAMS = {
+    "test_accuracy_dropout": {
+        "shape": [(2, 19, 7)],
+        "p": [0.1],
+        "dtype": [torch.float16],
+    },
+}
+
+CUSTOM_PARAM_MARK = pytest.mark.custom_params
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_generate_tests(metafunc: Metafunc) -> None:
+    test_name = metafunc.function.__name__
+
+    if test_name not in CUSTOM_TEST_PARAMS:
+        return
+
+    cfg = CUSTOM_TEST_PARAMS[test_name]
+
+    argnames = list(cfg.keys())
+    value_lists = [cfg[name] for name in argnames]
+    combos = list(itertools.product(*value_lists))
+
+    params = [pytest.param(*vals, marks=CUSTOM_PARAM_MARK) for vals in combos]
+
+    metafunc._calls = []
+
+    metafunc.parametrize(argnames, params)
+    nodes = [
+        metafunc.definition,
+        getattr(metafunc, "cls", None),
+        getattr(metafunc, "module", None),
+    ]
+    for node in nodes:
+        if node is None:
+            continue
+        if hasattr(node, "own_markers"):
+            node.own_markers = [m for m in node.own_markers if m.name != "parametrize"]
+
+    return
+
+
+@pytest.hookimpl
+def pytest_collection_modifyitems(config, items):
+    selected = []
+    deselected = []
+    counter = {}
+    if not COMPILER_CHOICE and not LIMIT:
+        return
+
+    for item in items:
+        if COMPILER_CHOICE:
+            if item.get_closest_marker("custom_params"):
+                selected.append(item)
+            else:
+                deselected.append(item)
+        func_name = item.function.__name__
+        if SKIP_SPECTEST:
+            if item.nodeid in UNSELECT_NODEIDS or func_name in UNSELECT_FUNCTION_NAMES:
+                deselected.append(item)
+                continue
+            
+        if LIMIT:
+            counter.setdefault(func_name, 0)
+
+            if counter[func_name] < LIMIT:
+                selected.append(item)
+                counter[func_name] += 1
+            else:
+                deselected.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = selected
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item, nextitem):
@@ -122,9 +235,9 @@ def pytest_runtest_protocol(item, nextitem):
         param_values = request.node.callspec.params
 
     test_results[item.nodeid]["params"] = param_values
-    # get all mark
+
     all_marks = [mark.name for mark in item.iter_markers()]
-    # exclude marks，such as parametrize、skipif and so on
+
     exclude_marks = {"parametrize", "skip", "skipif", "xfail", "usefixtures", "inplace"}
     operator_marks = [mark for mark in all_marks if mark not in exclude_marks]
     test_results[item.nodeid]["opname"] = operator_marks
