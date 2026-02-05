@@ -44,6 +44,7 @@ from flag_gems.ops.bitwise_or import (
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat
+from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import (
     clamp,
@@ -82,7 +83,7 @@ from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
-from flag_gems.ops.eq import eq, eq_scalar
+from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
@@ -118,9 +119,9 @@ from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
-from flag_gems.ops.logical_and import logical_and
+from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not
-from flag_gems.ops.logical_or import logical_or
+from flag_gems.ops.logical_or import logical_or, logical_or_
 from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.lt import lt, lt_scalar
@@ -156,6 +157,7 @@ from flag_gems.ops.normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.pad import constant_pad_nd, pad
@@ -213,7 +215,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
-from flag_gems.ops.triu import triu
+from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -233,7 +235,7 @@ from flag_gems.ops.where import (
     where_self,
     where_self_out,
 )
-from flag_gems.ops.zeros import zeros
+from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
@@ -289,6 +291,9 @@ __all__ = [
     "bmm",
     "bmm_out",
     "cat",
+    "ceil",
+    "ceil_",
+    "ceil_out",
     "celu",
     "celu_",
     "clamp",
@@ -326,6 +331,7 @@ __all__ = [
     "embedding_backward",
     "eq",
     "eq_scalar",
+    "equal",
     "erf",
     "erf_",
     "exp",
@@ -388,8 +394,10 @@ __all__ = [
     "log_softmax",
     "log_softmax_backward",
     "logical_and",
+    "logical_and_",
     "logical_not",
     "logical_or",
+    "logical_or_",
     "logical_xor",
     "logspace",
     "lt",
@@ -432,6 +440,7 @@ __all__ = [
     "normed_cumsum",
     "ones",
     "ones_like",
+    "one_hot",
     "pad",
     "per_token_group_quant_fp8",
     "polar",
@@ -512,6 +521,7 @@ __all__ = [
     "topk",
     "trace",
     "triu",
+    "triu_",
     "true_divide",
     "true_divide_out",
     "true_divide_",
@@ -529,5 +539,6 @@ __all__ = [
     "where_self",
     "where_self_out",
     "zeros",
+    "zero_",
     "zeros_like",
 ]
