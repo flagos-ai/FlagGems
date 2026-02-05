@@ -4,6 +4,7 @@ import random
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 from benchmark.attri_util import BenchLevel
@@ -209,3 +210,35 @@ def test_perf_randperm():
 
     if flag_gems.vendor_name == "mthreads":
         del os.environ["DISABLE_LLVM_OPT"]
+
+
+def one_hot_input_fn(shape, dtype, device):
+    if not isinstance(shape, tuple):
+        return
+    numel = math.prod(shape)
+    if numel == 0:
+        return
+
+    num_classes_list = (
+        [16, 64] if Config.bench_level != BenchLevel.COMPREHENSIVE else [16, 64, 256]
+    )
+    max_output_elems = 100_000_000
+
+    for num_classes in num_classes_list:
+        if numel * num_classes > max_output_elems:
+            continue
+        inp = torch.randint(0, num_classes, shape, device=device, dtype=torch.int64)
+        inp.view(-1)[0] = num_classes - 1
+        yield inp, num_classes
+        yield inp, -1
+
+
+@pytest.mark.one_hot
+def test_perf_one_hot():
+    bench = GenericBenchmark(
+        input_fn=one_hot_input_fn,
+        op_name="one_hot",
+        torch_op=F.one_hot,
+        dtypes=[torch.int64],
+    )
+    bench.run()
