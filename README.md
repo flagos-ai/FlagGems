@@ -4,11 +4,11 @@
 
 ## About
 
-FlagGems is part of [FlagOS](https://flagos.io/), a unified, open-source AI system software stack that
-aims to foster an open technology ecosystem by seamlessly integrating various models, systems and chips.
-By "develop once, migrate across various chips", FlagOS aims to unlock the full computational potential
-of hardware, break down the barriers between different chip software stacks, and effectively reduce
-migration costs.
+FlagGems is part of [FlagOS](https://flagos.io/), a fully open-source system software stack
+designed to unify the model–system–chip layers and foster an open and collaborative ecosystem.
+It enables a "develop once, run anywhere" workflow across diverse AI accelerators,
+unlocking hardware performance, eliminating fragmentation among AI chipset-specific software stacks,
+and substantially lowering the cost of porting and maintaining AI workloads.
 
 FlagGems is a high-performance, generic operator library implemented in [Triton](https://github.com/openai/triton) language.
 It is built on a collection of backend-neutral kernels that aims to accelerate LLM (Large-Language Models) training
