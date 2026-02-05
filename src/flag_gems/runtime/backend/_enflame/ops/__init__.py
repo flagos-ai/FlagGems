@@ -380,7 +380,7 @@ elif arch_version >= 400:
     from .gcu400.pad import pad
     from .gcu400.eye import eye
     from .gcu400.eye_m import eye_m
-    from .gcu400.cumsum import normed_cumsum
+    from .gcu400.cumsum import normed_cumsum, cumsum, cumsum_out
     from .gcu400.multinomial import multinomial
     from .gcu400.isfinite import isfinite
     from .gcu400.isin import isin
@@ -483,6 +483,8 @@ elif arch_version >= 400:
         "pad",
         "eye",
         "normed_cumsum",
+        "cumsum",
+        "cumsum_out",
         "multinomial",
         "isfinite",
         "bitwise_xor_scalar",

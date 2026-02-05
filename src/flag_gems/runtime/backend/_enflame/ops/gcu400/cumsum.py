@@ -5,9 +5,12 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
+
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import get_device_properties, libentry
+from flag_gems.utils import get_device_properties
 from flag_gems.utils import triton_lang_extension as tle
+from ...utils.config_utils import MAX_GRID_DIM
 
 device = device.name
 logger = logging.getLogger(__name__)
@@ -23,7 +26,7 @@ def scan_part_sum_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -58,7 +61,7 @@ def add_base_sum_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -79,44 +82,49 @@ def scan_part_sum_abc_kernel(
     inp,
     out,
     partial_sum,
+    A,
     B,
     C,
+    grid_a,
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tle.program_id(0)
-    pid_b = tle.program_id(1)
-    pid_c = tle.program_id(2)
+    pid_a = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    pid_c = tl.program_id(2)
 
     a_idx = pid_a
-    b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    c_idx = pid_c
+    while a_idx < A:
+        b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        c_idx = pid_c
 
-    offset = a_idx * B * C + b_idx * C + c_idx
-    base_part_offset = a_idx * part_num * C + c_idx
-    part_offset = base_part_offset + pid_b * C
+        offset = a_idx * B * C + b_idx * C + c_idx
+        base_part_offset = a_idx * part_num * C + c_idx
+        part_offset = base_part_offset + pid_b * C
 
-    mask = b_idx < B
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
-        inp_vals = inp_vals
-    elif tl.constexpr(inp_vals.dtype.is_int()):
-        inp_vals = inp_vals.to(tl.int32)
-    else:
-        inp_vals = inp_vals.to(tl.float32)
-    result = tl.cumsum(inp_vals, axis=0)
+        mask = b_idx < B
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask)
+        if (
+            tl.constexpr(inp_vals.dtype.is_int64())
+            or tl.constexpr(inp_vals.dtype.is_uint64())
+        ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+            inp_vals = inp_vals
+        elif tl.constexpr(inp_vals.dtype.is_int()):
+            inp_vals = inp_vals.to(tl.int32)
+        else:
+            inp_vals = inp_vals.to(tl.float32)
+        result = tl.cumsum(inp_vals, axis=0)
 
-    part_sum_via_sum = tl.sum(inp_vals)
+        part_sum_via_sum = tl.sum(inp_vals)
 
-    out_ptrs = out + offset
-    tl.store(out_ptrs, result, mask=mask)
+        out_ptrs = out + offset
+        tl.store(out_ptrs, result, mask=mask)
 
-    partial_sum_ptrs = partial_sum + part_offset
-    tl.store(partial_sum_ptrs, part_sum_via_sum)
+        partial_sum_ptrs = partial_sum + part_offset
+        tl.store(partial_sum_ptrs, part_sum_via_sum)
+
+        a_idx += grid_a
 
 
 @libentry()
@@ -124,39 +132,44 @@ def scan_part_sum_abc_kernel(
 def add_base_sum_abc_kernel(
     out,
     partial_sum,
+    A,
     B,
     C,
+    grid_a,
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tle.program_id(0)
-    pid_b = tle.program_id(1)
-    pid_c = tle.program_id(2)
+    pid_a = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    pid_c = tl.program_id(2)
 
     a_idx = pid_a
-    b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    c_idx = pid_c
+    while a_idx < A:
+        b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        c_idx = pid_c
 
-    base_offset = a_idx * B * C + c_idx
-    offset = base_offset + b_idx * C
-    base_part_offset = a_idx * part_num * C + c_idx
-    last_part_offset = base_part_offset + (pid_b - 1) * C
+        base_offset = a_idx * B * C + c_idx
+        offset = base_offset + b_idx * C
+        base_part_offset = a_idx * part_num * C + c_idx
+        last_part_offset = base_part_offset + (pid_b - 1) * C
 
-    mask = b_idx < B
-    out_ptrs = out + offset
-    out_vals = tl.load(out_ptrs, mask=mask)
+        mask = b_idx < B
+        out_ptrs = out + offset
+        out_vals = tl.load(out_ptrs, mask=mask)
 
-    if pid_b > 0:
-        partial_sum_ptrs = partial_sum + last_part_offset
-        last_part_sum_via_sum = tl.load(partial_sum_ptrs)
+        if pid_b > 0:
+            partial_sum_ptrs = partial_sum + last_part_offset
+            last_part_sum_via_sum = tl.load(partial_sum_ptrs)
 
-        final_vals = out_vals + last_part_sum_via_sum
-        tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
+            final_vals = out_vals + last_part_sum_via_sum
+            tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
+
+        a_idx += grid_a
 
 
 def scan_then_fan_col(inp, out, n_ele, dtype):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 16384
     if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
@@ -180,20 +193,26 @@ def scan_then_fan(inp, out, A, B, C, dtype):
     part_num = math.ceil(B / BLOCK_SIZE)
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
-    grid = (A, part_num, C)
+    grid_a = min(A, MAX_GRID_DIM)
+    grid = (grid_a, part_num, C)
     with torch_device_fn.device(inp.device):
         scan_part_sum_abc_kernel[grid](
-            inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
+            inp, out, partial_sum, A, B, C, grid_a, part_num, BLOCK_SIZE
         )
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
         with torch_device_fn.device(inp.device):
-            add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
+            add_base_sum_abc_kernel[grid](out, partial_sum, A, B, C, grid_a, part_num, BLOCK_SIZE)
 
 
 def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if inp.dtype == torch.int64:
+        inp = inp.to(torch.int32)
+    if dtype == torch.int64:
+        dtype = torch.int32
+
     shape = inp.shape
     dim = dim % inp.ndim
     M = 1
@@ -206,7 +225,7 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
-            dtype = torch.int64
+            dtype = torch.int32
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
 
@@ -234,7 +253,7 @@ def cumsum_out(inp, dim=1, *, dtype=None, out):
 @libentry()
 @triton.jit(do_not_specialize=["K"])
 def normed_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
-    row_start = tle.program_id(0) * K
+    row_start = tl.program_id(0) * K
     row_off = tl.arange(0, BLOCK)
     x = tl.load(inp + row_start + row_off, mask=row_off < K, other=0)
     if x.dtype.is_fp16():
@@ -276,10 +295,17 @@ def block_cumsum_kernel(
     # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
-    gridx = tle.program_id(0).to(tl.int64)
-    gridy = tle.program_id(1).to(tl.int64)
-    n_chunks = tle.num_programs(0)
+    gridx = tl.program_id(0)
+    gridy = tl.program_id(1)
+    n_chunks = tl.num_programs(0)
 
+    # gcu300: don't support int64
+    # gridx = tl.program_id(0).to(tl.int64)
+    # gridy = tl.program_id(1).to(tl.int64)
+    gridx = tl.program_id(0)
+    gridy = tl.program_id(1)
+    n_chunks = tl.num_programs(0)
+    
     for row in range(gridy * r, min((gridy + 1) * r, R)):
         curr_cumsum = tl.zeros((1,), tl.float32)
         row_offset = row * r_stride
@@ -345,9 +371,9 @@ def block_update_kernel(
     # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
-    gridx = tle.program_id(0).to(tl.int64)
-    gridy = tle.program_id(1).to(tl.int64)
-    n_gridx = tle.num_programs(1)
+    gridx = tl.program_id(0)
+    gridy = tl.program_id(1)
+    n_gridx = tl.num_programs(1)
 
     base += gridy * n_gridx + gridx
     rscale_ptr += gridy * rscale_stride
