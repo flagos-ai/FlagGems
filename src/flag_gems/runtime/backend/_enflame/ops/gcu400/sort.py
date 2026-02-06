@@ -1,10 +1,8 @@
 import logging
-import math
 
 import torch
 import triton
 import triton.language as tl
-from triton.language.core import _unwrap_if_constexpr
 
 from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val, argsort
 from flag_gems.runtime import torch_device_fn
@@ -13,22 +11,27 @@ from ...utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
+
+def unwrap_if_constexpr(o):
+    return o.value if isinstance(o, tl.constexpr) else o
+
+
 @tl.constexpr
 def get_int_t(num_bits: tl.constexpr, signed: tl.constexpr) -> tl.dtype:
-    num_bits = _unwrap_if_constexpr(num_bits)
-    signed = _unwrap_if_constexpr(signed)
+    num_bits = unwrap_if_constexpr(num_bits)
+    signed = unwrap_if_constexpr(signed)
     return tl.core.get_int_dtype(num_bits, signed)
 
 
 @tl.constexpr
 def one_zeros(num_bits: tl.constexpr) -> int:
-    num_bits = _unwrap_if_constexpr(num_bits)
+    num_bits = unwrap_if_constexpr(num_bits)
     return 1 << (num_bits - 1)
 
 
 @tl.constexpr
 def zero_ones(num_bits: tl.constexpr) -> int:
-    num_bits = _unwrap_if_constexpr(num_bits)
+    num_bits = unwrap_if_constexpr(num_bits)
     return (1 << (num_bits - 1)) - 1
 
 
@@ -46,11 +49,13 @@ def int_to_uint(x, descending: tl.constexpr = False):
     if descending:
         # 0111111....1
         bit_mask: tl.constexpr = zero_ones(num_bits)
-        out = ux ^ bit_mask
+        bit_mask_tensor = tl.full((), value=bit_mask, dtype=udtype)
+        out = ux ^ bit_mask_tensor
     else:
         # 1000000...0
         sign_bit_mask: tl.constexpr = one_zeros(num_bits)
-        out = ux ^ sign_bit_mask
+        sign_bit_mask_tensor = tl.full((), value=sign_bit_mask, dtype=udtype)
+        out = ux ^ sign_bit_mask_tensor
     return out
 
 
@@ -62,9 +67,13 @@ def floating_to_uint(x, descending: tl.constexpr = False):
     sx = x.to(sdtype, bitcast=True)
     ux = x.to(udtype, bitcast=True)
 
-    sign_bit_mask: tl.constexpr = one_zeros(num_bits)
+    sign_bit_mask_v: tl.constexpr = one_zeros(num_bits)
+    sign_bit_mask = tl.full((), value=sign_bit_mask_v, dtype=udtype)
     # mind the dtype, right_shift for signed is arithmetic right shift
-    mask = sign_bit_mask | (sx >> (num_bits - 1)).to(udtype, bitcast=True)
+    # Fix for triton 3.1 or else `sx >> rshift_bits` is promoted to int32
+    rshift_bits = tl.full((), value=num_bits - 1, dtype=sdtype)
+    mask = sign_bit_mask | (sx >> rshift_bits).to(udtype, bitcast=True)
+    tl.static_assert(mask.dtype == udtype, "type mismatch")
     # 1000000000...0 for positive
     # 1111111111...1 for negative
     if descending:
@@ -86,37 +95,7 @@ def convert_to_uint_preverse_order(x: tl.tensor, descending: tl.constexpr = Fals
 
 
 @triton.jit
-def add_global_hist_kernel(
-    arr_ptr,
-    out_ptr,
-    grid_n,
-    m,
-    num_passes : tl.constexpr,
-    num_bins : tl.constexpr,
-):
-    pid = tl.program_id(0)
-    
-    index = tl.arange(0, num_passes) * num_bins
-    passes_index = index[:, None]
-
-    index = tl.arange(0, num_bins)
-    bins_index = index[None, :]
-
-    acc = tl.zeros((num_passes, num_bins), dtype=tl.int32)
-
-    start = pid * (num_passes * num_bins)
-    for p in range(0, grid_n):
-        p_start = p * (m * num_passes * num_bins) + start
-        p_offset = p_start + passes_index + bins_index
-
-        arr = tl.load(arr_ptr + p_offset)
-        acc += arr
-
-    tl.store(out_ptr + start + passes_index + bins_index, acc)
-
-
-@triton.jit
-def compute_global_hist_kernel_all_cta(
+def compute_global_hist_kernel(
     arr_ptr,
     out_ptr,
     num_passes,
@@ -129,39 +108,16 @@ def compute_global_hist_kernel_all_cta(
     num_bits_per_pass: tl.constexpr,
     descending: tl.constexpr,
 ):
+    # arr_ptr: (m, n)
+    # out_ptr: (m, n_passes, r), where r = 2 ** k_bits is the number of bins
     pid = tl.program_id(0)
-<<<<<<< HEAD
-    pid_n = pid // m
-    pid_m = pid % m
-    
-=======
     num_ctas = tl.num_programs(0)
     total_work = m * grid_n
 
->>>>>>> 639b8dbf (fix sort in gcu400)
     r: tl.constexpr = 2**num_bits_per_pass
     bfe_mask: tl.constexpr = (1 << num_bits_per_pass) - 1  # a.k.a. 2 ** k_bits - 1
-
     CTA_TILE_N: tl.constexpr = TILE_N * tiles_n_per_cta
 
-<<<<<<< HEAD
-    for p in range(0, num_passes):  # parallel
-        bit_offset = p * num_bits_per_pass
-        for r_start in range(0, r, TILE_R):  # parallel
-            bin_indices = r_start + tl.arange(0, TILE_R)
-            acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int32)
-            for n_start in range(cta_n_start, cta_n_end, TILE_N):  # sequantial
-                n_offsets = n_start + tl.arange(0, TILE_N)  # (TILE_N, )
-                mask = n_offsets < cta_n_end
-                arr = tl.load(arr_ptr + pid_m * n + n_offsets, mask=mask)
-                arr = convert_to_uint_preverse_order(arr, descending)
-                key = (arr >> bit_offset) & bfe_mask  # (TILE_N, )
-                matches = tl.where(
-                    mask, (bin_indices[:, None] == key), False
-                )  # (TILE_R, TILE_N)
-                acc += matches
-            local_sum = tl.sum(acc, axis=1)
-=======
     # Each CTA loops over multiple work units when grid is limited
     for work_id in range(pid, total_work, num_ctas):
         pid_n = work_id // m
@@ -191,13 +147,7 @@ def compute_global_hist_kernel_all_cta(
                     local_sum,
                     sem="relaxed",
                 )
->>>>>>> 639b8dbf (fix sort in gcu400)
 
-            tl.store(out_ptr +
-                     pid_n * (m * num_passes * r) + 
-                     pid_m * (num_passes * r) +
-                     (p * r) + bin_indices,
-                     local_sum)
 
 @triton.jit
 def sweep(
@@ -310,39 +260,28 @@ def radix_sort(arr, k_bits=8, descending=False):
     n = arr.shape[-1]
     m = arr.numel() // n
     assert n < (1 << 30), "we have not implemented 2**30 per launch"
-
     dtype = arr.dtype
-
     num_bits = 1 if dtype == torch.bool else (arr.itemsize * 8)
 
     TILE_N = 1024
     tiles_n_per_cta = 8
-
     CTA_TILE_N = tiles_n_per_cta * TILE_N
 
     num_bins = 2**k_bits
-
     n_passes = triton.cdiv(num_bits, k_bits)
-
     TILE_R = 16
 
     grid_n = triton.cdiv(n, CTA_TILE_N)
-<<<<<<< HEAD
-
-    grid_for_global_hist_all_cta = (m * grid_n, 1, 1)
-=======
     grid_m = min(m * grid_n, MAX_GRID_DIM)
     grid_for_global_hist = (grid_m, 1, 1)
->>>>>>> 639b8dbf (fix sort in gcu400)
 
     with torch_device_fn.device(arr.device):
-        global_hist_all_cta = torch.zeros(
-            (m * grid_n, n_passes, num_bins),
-            device=arr.device, dtype=torch.int32
+        global_hist = torch.zeros(
+            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
         )
-        compute_global_hist_kernel_all_cta[grid_for_global_hist_all_cta](
+        compute_global_hist_kernel[grid_for_global_hist](
             arr,
-            global_hist_all_cta,
+            global_hist,
             n_passes,
             m,
             n,
@@ -353,27 +292,13 @@ def radix_sort(arr, k_bits=8, descending=False):
             k_bits,
             descending,
         )
-
-        grid_for_global_hist = (m, 1, 1)
-        global_hist = torch.zeros(
-            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
-        )
-        add_global_hist_kernel[grid_for_global_hist](
-            global_hist_all_cta,
-            global_hist,
-            grid_n,
-            m,
-            n_passes,
-            num_bins,
-        )
-
         ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
         ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
         # sort
         arr_in = torch.clone(arr)
         indices_in = (
-            torch.arange(0, n, dtype=torch.int32, device=arr_in.device)
+            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
             .broadcast_to(arr.shape)
             .contiguous()
         )
@@ -456,11 +381,18 @@ def sort_kernel(
 
 
 def sort(inp, dim=-1, descending=False):
+    # We only implement stable radix sort here
     logger.debug("GEMS SORT")
+    return sort_stable(inp, stable=False, dim=dim, descending=descending)
 
+
+def sort_stable(inp, *, stable, dim=-1, descending=False):
+    logger.debug("GEMS SORT.STABLE")
+    # We only implement stable radix sort here
+    _ = stable
     sort_elem_cnt = inp.shape[dim]
     if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int32)
+        return inp, torch.zeros_like(inp, dtype=torch.int64)
 
     if dim < 0:
         dim = dim + inp.ndim
@@ -470,7 +402,6 @@ def sort(inp, dim=-1, descending=False):
         inp = inp.contiguous()
 
     dtype = inp.dtype
-
     num_bits_per_pass = 1 if dtype == torch.bool else 4
     out, out_index = radix_sort(inp, num_bits_per_pass, descending)
 

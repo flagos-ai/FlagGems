@@ -90,8 +90,8 @@ CODEGEN_COFIGS = {
         prefer_1d_tile=True,
     ),
     vendors.ENFLAME: CodeGenConfig(
-        512*8,
-        (8, 1, 1),
+        65536,
+        (48, 1, 1),
         4,
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
