@@ -816,9 +816,12 @@ class WrapperGenerator:
     def gen_task_partition(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
         ndim = self.ndim
+        schema = self.fx
+        with_block_pointer = self.config.prefer_block_pointer
         if ndim == 0:
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
+            code.writeline("FlagOfNotUseDMA = False")
         else:
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = out0.numel()")
@@ -827,10 +830,38 @@ class WrapperGenerator:
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
             major, _ = get_device_capability()
+            code.writeline("FlagOfNotUseDMA = False")
+            for i in range(schema.num_input_tensors()):
+                code.writeline(f"in{i}_strides = in{i}.stride()")
+                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
+                if not with_block_pointer:
+                    continue
+                if ndim >= 2:
+                    code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
+                else:
+                    code.writeline(f"in{i}_stride_order = (0,)")
+            for i in range(schema.num_output_tensors()):
+                code.writeline(f"out{i}_strides = out{i}.stride()")
+                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
+                if not with_block_pointer:
+                    continue
+                if ndim >= 2:
+                    code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
+                else:
+                    code.writeline(f"out{i}_stride_order = (0,)")
             if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("tile_sizes = tuple([64])")
             else:
-                code.writeline(
+                code.writeline("if FlagOfNotUseDMA:")
+                with code.indent():
+                    code.writeline(
+                    f"tile_sizes = heuristics_for_tile_size({max_tile_size // 4}, *shape)"
+                )
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(
                     f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
                 )
             code.writeline("tile_size = math.prod(tile_sizes)")
@@ -850,9 +881,11 @@ class WrapperGenerator:
     def gen_task_partition_1d(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
         ndim = self.ndim
+        schema = self.fx
         if ndim == 0:
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
+            code.writeline("FlagOfNotUseDMA = False")
         else:
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = out0.numel()")
@@ -861,10 +894,26 @@ class WrapperGenerator:
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
             major, _ = get_device_capability()
+            code.writeline("FlagOfNotUseDMA = False")
+            for i in range(schema.num_input_tensors()):
+                code.writeline(f"in{i}_strides = in{i}.stride()")
+                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
+            for i in range(schema.num_output_tensors()):
+                code.writeline(f"out{i}_strides = out{i}.stride()")
+                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
+                code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
             if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("tile_sizes = tuple([64])")
             else:
-                code.writeline(
+                code.writeline("if FlagOfNotUseDMA:")
+                with code.indent():
+                    code.writeline(
+                    f"tile_sizes = heuristics_for_tile_size({max_tile_size // 4}, num_tasks)"
+                )
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(
                     f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
                 )
 
@@ -889,29 +938,7 @@ class WrapperGenerator:
 
         with_block_pointer = self.config.prefer_block_pointer
 
-        code.writeline("FlagOfNotUseDMA = False")
         code.writeline("# kernel launch")
-        for i in range(schema.num_input_tensors()):
-            code.writeline(f"in{i}_strides = in{i}.stride()")
-            code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
-            code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
-            if not with_block_pointer:
-                continue
-            if ndim >= 2:  # where ndim is 1, we don't need to compute stride order
-                code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
-            else:
-                code.writeline(f"in{i}_stride_order = (0,)")
-        for i in range(schema.num_output_tensors()):
-            code.writeline(f"out{i}_strides = out{i}.stride()")
-            code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
-            code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
-            if not with_block_pointer:
-                continue
-            if ndim >= 2:
-                code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
-            else:
-                code.writeline(f"out{i}_stride_order = (0,)")
-
         code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
@@ -968,17 +995,7 @@ class WrapperGenerator:
         schema = self.fx
         ndim = self.ndim
 
-        code.writeline("FlagOfNotUseDMA = False")
         code.writeline("# kernel launch")
-        for i in range(schema.num_input_tensors()):
-            code.writeline(f"in{i}_strides = in{i}.stride()")
-            code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
-            code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
-        for i in range(schema.num_output_tensors()):
-            code.writeline(f"out{i}_strides = out{i}.stride()")
-            code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
-            code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
-
         code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
