@@ -117,9 +117,11 @@ def dswiglu_kernel(
 
 def swiglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
     if input_tensor.shape[-1] % 2 != 0:
-        raise ValueError(f"SwiGLU 输入最后一维必须为偶数，实际为 {input_tensor.shape[-1]}")
+        raise ValueError(
+            f"The last dimension of must be even number, got {input_tensor.shape[-1]}"
+        )
     if not input_tensor.is_cuda:
-        raise ValueError("SwiGLU 仅支持 CUDA 张量")
+        raise ValueError("Only CUDA tensor is supported by SwiGLU")
 
     shape = input_tensor.shape
     H = shape[-1] // 2
@@ -154,7 +156,9 @@ def dswiglu(
     quantizer: Optional[Any] = None,
 ) -> torch.Tensor:
     shape = input_tensor.shape
-    assert shape[-1] % 2 == 0, f"dswiglu: input_tensor 最后一维需为偶数，实际为 {shape[-1]}"
+    assert (
+        shape[-1] % 2 == 0
+    ), f"The last dimension of input_tensor must be an even number, got {shape[-1]}"
     H = shape[-1] // 2
     M = input_tensor.numel() // (2 * H)
     grad_out_2d = grad_output.contiguous().view(M, H)
