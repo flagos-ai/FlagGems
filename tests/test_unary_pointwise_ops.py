@@ -1272,7 +1272,7 @@ def test_accuracy_tile(shape, dims, dtype):
 REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
 
 
-@pytest.mark.repeat
+@pytest.mark.tensor_repeat
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("sizes", REPEAT_SIZES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
