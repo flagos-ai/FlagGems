@@ -11,7 +11,7 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 
 
 config_ = CodeGenConfig(
-    512,
+    384,
     tuple([48, 1, 1]),
     32,
     False,

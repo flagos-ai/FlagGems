@@ -28,6 +28,7 @@ from .index_add import index_add
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
+from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
@@ -58,6 +59,7 @@ from .stack import stack
 from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
+from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
@@ -128,6 +130,8 @@ __all__ = [
     "sort",
     "stack",
     "linspace",
+    "log_softmax",
+    "log_softmax_backward",
     "zeros",
     "vector_norm",
     "outer",
@@ -147,5 +151,6 @@ __all__ = [
     "multinomial",
     "index_add",
     "_unique2",
+    "upsample_nearest2d",
     "randperm",
 ]
