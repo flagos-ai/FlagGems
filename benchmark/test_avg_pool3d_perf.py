@@ -86,16 +86,16 @@ class AvgPool3dBenchmark(GenericBenchmark):
     """Benchmark class for avg_pool3d operations."""
 
     def get_input_iter(self, cur_dtype) -> Generator:
-        # 按照赛题要求：小尺寸、常规尺寸、大尺寸
+        # Test shapes: small, medium, and large sizes
         shapes_5d = [
-            # 小尺寸 (Small)
+            # Small sizes
             (1, 1, 4, 4, 4),  # Minimal 3D input
             (2, 3, 8, 8, 8),  # Small 3D input
-            # 常规尺寸 (Medium)
+            # Medium sizes
             (2, 8, 16, 16, 16),  # Regular 3D input
             (4, 16, 32, 32, 32),  # Medium 3D input
             (2, 32, 28, 28, 28),  # Typical 3D CNN layer
-            # 大尺寸 (Large)
+            # Large sizes
             (1, 64, 14, 14, 14),  # Deeper 3D CNN layer
             (1, 128, 8, 8, 8),  # Late 3D CNN layer
             (1, 32, 64, 64, 64),  # Large 3D volume

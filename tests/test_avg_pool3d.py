@@ -10,12 +10,12 @@ from .conftest import QUICK_MODE
 # Test configurations for avg_pool3d
 # Format: (shape, kernel_size, stride, padding, ceil_mode, count_include_pad)
 AVGPOOL3D_CONFIGS = [
-    # ===== 小尺寸输入 (Small Size) =====
+    # ===== (Small Size) =====
     # Minimal 3D input
     ((1, 1, 4, 4, 4), 2, 1, 0, False, True),
     # Small 3D input with padding
     ((2, 3, 8, 8, 8), 3, 2, 1, False, True),
-    # ===== 常规尺寸输入 (Medium Size) =====
+    # ===== (Medium Size) =====
     # Regular 3D input - basic pooling
     ((2, 3, 16, 16, 16), 3, 2, 1, False, True),
     # Non-cubic kernel
@@ -24,14 +24,14 @@ AVGPOOL3D_CONFIGS = [
     ((2, 8, 16, 16, 16), 2, 2, 0, False, True),
     # Non-uniform padding
     ((2, 8, 16, 20, 24), 2, 2, (1, 0, 1), False, True),
-    # ===== 大尺寸输入 (Large Size) =====
+    # ===== (Large Size) =====
     # Test ceil_mode
     ((2, 4, 15, 15, 15), 3, 2, 1, True, True),
     # Typical 3D CNN layer
     ((1, 32, 28, 28, 28), 3, 2, 1, False, True),
     # Large 3D volume
     ((1, 16, 32, 32, 32), 3, 2, 1, False, True),
-    # ===== 特殊参数测试 =====
+    # ===== (Special Parameter Tests) =====
     # Single element kernel
     ((2, 4, 8, 8, 8), 1, 1, 0, False, True),
     # Test count_include_pad=False
