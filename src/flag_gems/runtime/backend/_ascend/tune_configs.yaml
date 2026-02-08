@@ -533,20 +533,6 @@ triu_batch:
       BATCH_BLOCK_SIZE: 16
       MN_BLOCK_SIZE: 512
 
-tril:
-- gen: true
-  param_map:
-    META:
-      M_BLOCK_SIZE: 2
-      N_BLOCK_SIZE: 2048
-
-tril_batch:
-- gen: true
-  param_map:
-    META:
-      BATCH_BLOCK_SIZE: 16
-      MN_BLOCK_SIZE: 512
-
 weight_norm_kernel_last:
 - gen: true
   param_map:
