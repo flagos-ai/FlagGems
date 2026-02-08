@@ -10,6 +10,7 @@ from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
+    GenericBenchmark4DOnly,
     GenericBenchmarkExcluse1D,
     GenericBenchmarkExcluse3D,
     SkipVersion,
@@ -475,8 +476,9 @@ def test_perf_upsample_bicubic2d_aa():
 @pytest.mark.upsample_nearest1d
 def test_perf_upsample_nearest1d():
     def upsample_nearest1d_input_fn(shape, dtype, device):
-        batch, channel, length = shape
-        input = torch.randn(size=shape, device=device, dtype=dtype)
+        batch, channel, height, width = shape
+        length = height * width  # flatten spatial dims to 1D length
+        input = torch.randn((batch, channel, length), device=device, dtype=dtype)
         scale_factors = 2
         output_size = int(length * scale_factors)
         yield {
@@ -748,6 +750,7 @@ try:
     import vllm._custom_ops as vllm_ops
 
     HAS_VLLM = True
+    WARP_SIZE = 32
 except ImportError:
     HAS_VLLM = False
 
@@ -756,12 +759,13 @@ except ImportError:
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
 def test_perf_moe_align_block_size():
     def moe_align_block_size_input_fn(shape, dtype, device):
-        # ------------ parameters ------------
         num_experts = shape[0]
         block_size = shape[1]
         dtype = torch.int32
-        topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device=device)
-        max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+        topk_ids = torch.randint(
+            0, num_experts, (shape[2], shape[3]), dtype=dtype, device=device
+        )
+        max_num_tokens_padded = ((num_experts + WARP_SIZE - 1) // WARP_SIZE) * WARP_SIZE
 
         # padded_num_experts in vllm._custom_ops.moe_align_block_size
         # must be less than 1024
@@ -782,19 +786,28 @@ def test_perf_moe_align_block_size():
             num_tokens_post_pad,
         )
 
-    class MoeAlignBlockSizeBenchmark(GenericBenchmark2DOnly):
-        def set_more_shapes(self):
-            return [
-                (16, 8),
-                (16, 16),
-                (16, 32),
-                (32, 8),
-                (32, 16),
-                (32, 32),
-                (64, 8),
-                (64, 16),
-                (128, 8),
+    class MoeAlignBlockSizeBenchmark(GenericBenchmark4DOnly):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def set_shapes(self, shape_file_path: None):
+            moe_align_block_size_shape = [
+                (512, 64, 16384, 10),
+                (512, 64, 6152, 10),
+                (512, 64, 4727, 10),
+                (512, 64, 1905, 10),
+                (512, 64, 11575, 10),
+                (512, 64, 1032, 10),
+                (512, 64, 4201, 10),
+                (512, 64, 2056, 10),
+                (512, 64, 7561, 10),
+                (512, 64, 4104, 10),
+                (512, 64, 14281, 10),
             ]
+            self.shapes = moe_align_block_size_shape
+
+        def set_more_shapes(self):
+            return None
 
     gems_op = flag_gems.moe_align_block_size_triton
     bench = MoeAlignBlockSizeBenchmark(

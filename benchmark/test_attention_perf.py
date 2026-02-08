@@ -389,7 +389,7 @@ class FlashAttnVarlenBenchmark(Benchmark):
         )
 
 
-def flash_attn_varlen_legacy(*args):
+def flash_attn_varlen_legacy(*args, **kwargs):
     """
     Compatibility wrapper for running old flash_attn_varlen_func.
     """
