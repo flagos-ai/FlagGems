@@ -336,9 +336,9 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
     assert self.ndim == 4, "Invalid input ndim"
 
     shape = list(target.shape)
-    N, C, _, D = self.shape
-    assert shape == [N, 1, D], "Invalid target size"
-
+    N, C, D1, D2 = self.shape
+    assert shape == [N, D1, D2], "Invalid target size"
+    D = D1 * D2
     self = self.contiguous()
     target = target.contiguous()
     weight = None if weight is None else weight.contiguous()
@@ -387,8 +387,8 @@ def nll_loss2d_backward(
     total_weight=None,
 ):
     logger.debug("GEMS NLL Loss2d BWD")
-    N, C, _, D = self.shape
-
+    N, C, D1, D2 = self.shape
+    D = D1 * D2
     grad_output = grad_output.contiguous()
     target = target.contiguous()
     weight = None if weight is None else weight.contiguous()

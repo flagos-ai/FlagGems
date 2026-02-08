@@ -1357,3 +1357,24 @@ kron:
       - 4
       - 8
       - 16
+argmin_split_k:
+    - gen: true
+      param_map:
+        META:
+          BLOCK_M: block_m
+          BLOCK_N: block_n
+          BLOCK_K: block_k
+        num_warps: warps
+        num_stages: 2
+      block_m:
+        - 4
+        - 8
+      block_n:
+        - 32
+        - 64
+      block_k:
+        - 32
+      warps:
+        - 4
+        - 8
+        - 16
