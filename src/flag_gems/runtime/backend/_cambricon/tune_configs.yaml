@@ -1137,7 +1137,7 @@ triu_batch:
     num_warps: warps
   warps:
   - 1
-#######################################
+  #######################################
 weight_norm_kernel_last:
 - gen: true
   param_map:
