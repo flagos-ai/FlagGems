@@ -116,6 +116,8 @@ _FULL_CONFIG = (
     ),
     ("cos", cos),
     ("cos_", cos_),
+    ("cosh", cosh),
+    ("cosh_", cosh_),
     ("count_nonzero", count_nonzero),
     ("cummax", cummax),
     ("cummin", cummin),
