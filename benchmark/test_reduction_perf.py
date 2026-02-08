@@ -226,7 +226,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
 def test_nll_loss2d_benchmark():
     bench = GenericBenchmark4DOnly(
         input_fn=nll_loss_input_fn,
-        op_name="nll_loss",
+        op_name="nll_loss2d",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=FLOAT_DTYPES,
     )
@@ -516,10 +516,7 @@ class ScaledSoftmaxBenchmark(GenericBenchmark):
 @pytest.mark.scaled_softmax
 def test_perf_scaled_softmax_forward():
     try:
-        from transformer_engine.common import _load_library
-
-        _load_library()
-        import transformer_engine_torch as tex  # type: ignore
+        from transformer_engine.pytorch import cpp_extensions as tex
     except ImportError:
         pytest.skip("TransformerEngine is not available, skipping performance test")
 
@@ -541,10 +538,7 @@ def test_perf_scaled_softmax_forward():
 @pytest.mark.scaled_softmax
 def test_perf_scaled_softmax_backward():
     try:
-        from transformer_engine.common import _load_library
-
-        _load_library()
-        import transformer_engine_torch as tex  # type: ignore
+        from transformer_engine.pytorch import cpp_extensions as tex
     except ImportError:
         pytest.skip("TransformerEngine is not available, skipping performance test")
 

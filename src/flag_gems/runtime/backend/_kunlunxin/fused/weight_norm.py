@@ -11,7 +11,7 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from ..ops import weight_norm_interface, weight_norm_interface_backward
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def heur_row_weight_norm_except_dim_kernel(args):
