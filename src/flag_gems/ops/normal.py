@@ -89,4 +89,5 @@ def normal_(self, mean=0, std=1, *, generator=None):
     shape = self.shape
     device = self.device
     self = normal_distribution(shape, device, generator=None, out=self)
-    return transform_func_float_float(self, std, mean)
+    transform_func_float_float(self, std, mean, out0=self)
+    return self
