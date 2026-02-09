@@ -4,11 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils.device_info import get_device_capability
+
 SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
 
 
 def get_sm_version_num():
-    major, minor = torch.cuda.get_device_capability()
+    major, minor = get_device_capability()
     return major * 10 + minor
 
 
