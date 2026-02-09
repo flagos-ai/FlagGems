@@ -70,7 +70,7 @@ def generate_functional_roll_wrapper(
         code.writeline("in0_rank = in0.dim()")
         code.writeline("in0_shape = list(in0.shape)")
         code.newline()
-        
+
         code.writeline("# Normalize dims and shifts to lists")
         code.writeline("if dims is None:")
         with code.indent():
@@ -96,20 +96,24 @@ def generate_functional_roll_wrapper(
             with code.indent():
                 code.writeline("shifts = [shifts]")
         code.newline()
-        
+
         code.writeline("# Normalize negative dimensions")
         code.writeline("dims = [(d if d >= 0 else d + in0_rank) for d in dims]")
         code.newline()
-        
+
         code.writeline("# Validate")
         code.writeline("assert len(shifts) == len(dims), \\")
-        code.writeline("    f'shifts and dimensions must align, got {len(shifts)} shifts and {len(dims)} dims'")
+        code.writeline(
+            "    f'shifts and dimensions must align, got {len(shifts)} shifts and {len(dims)} dims'"
+        )
         code.writeline("for d in dims:")
         with code.indent():
             code.writeline("assert 0 <= d < in0_rank, \\")
-            code.writeline("    f'Dimension out of range (expected to be in range of [0, {in0_rank-1}], but got {d})'")
+            code.writeline(
+                "    f'Dimension out of range (expected to be in range of [0, {in0_rank-1}], but got {d})'"
+            )
         code.newline()
-        
+
         code.writeline("# Normalize shifts to be within [0, size) for each dimension")
         code.writeline("normalized_shifts = [0] * in0_rank")
         code.writeline("for shift, dim in zip(shifts, dims):")
@@ -120,7 +124,7 @@ def generate_functional_roll_wrapper(
                 code.writeline("# Python modulo handles negative shifts correctly")
                 code.writeline("normalized_shifts[dim] = shift % size")
         code.newline()
-        
+
         code.writeline("# Check if any rolling is needed")
         code.writeline("if all(s == 0 for s in normalized_shifts):")
         with code.indent():
@@ -131,10 +135,10 @@ def generate_functional_roll_wrapper(
                 code.writeline("out0 = out0.reshape(original_shape)")
             code.writeline("return out0")
         code.newline()
-        
+
         code.writeline("out0 = torch.empty_like(in0)")
         code.newline()
-        
+
         output_names: str = output_ref_for_wrapper()
         call_str = (
             f"{output_names} = {destination_passing_func_name}"
@@ -142,11 +146,11 @@ def generate_functional_roll_wrapper(
         )
         code.writeline(call_str)
         code.newline()
-        
+
         code.writeline("if original_shape is not None:")
         with code.indent():
             code.writeline("out0 = out0.reshape(original_shape)")
-        
+
         return_str = "return out0"
         code.writeline(return_str)
         code.newline()
@@ -168,7 +172,7 @@ def generate_destination_passing_roll_wrapper(
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = volume(shape)")
             code.newline()
-            
+
             code.writeline("# Handle empty tensors")
             code.writeline("if num_tasks == 0:")
             with code.indent():
@@ -179,7 +183,9 @@ def generate_destination_passing_roll_wrapper(
             code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
             code.writeline("num_warps = 4")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
-            code.writeline("tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)")
+            code.writeline(
+                "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
+            )
         else:
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
@@ -211,10 +217,12 @@ def generate_destination_passing_roll_wrapper(
 
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
                     code.writeline(f"{shape_args}, # task indexing space")
-                    
-                    shifts_args: str = ", ".join(f"normalized_shifts[{i}]" for i in range(rank))
+
+                    shifts_args: str = ", ".join(
+                        f"normalized_shifts[{i}]" for i in range(rank)
+                    )
                     code.writeline(f"{shifts_args}, # shifts for each dimension")
-                    
+
                     code.writeline("num_tasks, # num tasks")
                     code.writeline("tiles_per_cta=tiles_per_cta,")
                     code.writeline("tile_size=tile_size,")
@@ -294,7 +302,9 @@ def generate_roll_kernel(
             code.newline()
 
             code.writeline("# loads")
-            ptrs_expr: str = " + ".join(f"src_i{j} * in0_stride{j}" for j in range(rank))
+            ptrs_expr: str = " + ".join(
+                f"src_i{j} * in0_stride{j}" for j in range(rank)
+            )
             ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
             code.writeline(f"in0 = tl.load({ptrs_expr}, mask=mask)")
             code.newline()
@@ -331,7 +341,9 @@ def generate_roll_kernel(
                 code.newline()
 
                 code.writeline("# loads")
-                ptrs_expr: str = " + ".join(f"src_i{j} * in0_stride{j}" for j in range(rank))
+                ptrs_expr: str = " + ".join(
+                    f"src_i{j} * in0_stride{j}" for j in range(rank)
+                )
                 ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
                 code.writeline(f"in0 = tl.load({ptrs_expr}, mask=mask)")
                 code.newline()
@@ -341,7 +353,9 @@ def generate_roll_kernel(
                 code.newline()
 
                 code.writeline("# stores")
-                ptrs_expr: str = " + ".join(f"i{j} * out0_stride{j}" for j in range(rank))
+                ptrs_expr: str = " + ".join(
+                    f"i{j} * out0_stride{j}" for j in range(rank)
+                )
                 ptrs_expr: str = f"out0_ptr + {ptrs_expr}"
                 code.writeline(f"tl.store({ptrs_expr}, out0, mask=mask)")
                 code.newline()
@@ -356,8 +370,12 @@ def generate_code(
     code: IndentedBuffer,
 ) -> IndentedBuffer:
     code = generate_imports(code)
-    code = generate_functional_roll_wrapper(wrapper_name, destination_passing_func_name, code)
-    code = generate_destination_passing_roll_wrapper(rank, destination_passing_func_name, kernel_name, code)
+    code = generate_functional_roll_wrapper(
+        wrapper_name, destination_passing_func_name, code
+    )
+    code = generate_destination_passing_roll_wrapper(
+        rank, destination_passing_func_name, kernel_name, code
+    )
     code = generate_roll_kernel(rank, kernel_name, code)
     return code
 
@@ -408,7 +426,11 @@ class RollFunction:
 _roll_func = RollFunction()
 
 
-def roll(inp: torch.Tensor, shifts: Union[int, Tuple[int, ...]], dims: Union[None, int, Tuple[int, ...]] = None) -> torch.Tensor:
+def roll(
+    inp: torch.Tensor,
+    shifts: Union[int, Tuple[int, ...]],
+    dims: Union[None, int, Tuple[int, ...]] = None,
+) -> torch.Tensor:
     logger.debug("GEMS ROLL")
     out = _roll_func(inp, shifts, dims)
     return out

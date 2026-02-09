@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-import flag_gems
+import flag_gems  # noqa: F401
 from benchmark.attri_util import DEFAULT_METRICS, FLOAT_DTYPES
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 
