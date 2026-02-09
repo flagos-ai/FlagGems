@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -48,6 +48,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 
     code.writeline("def heur_block_m(args):")
     with code.indent():
+        code.writeline('if args["M"] == 0:')
+        with code.indent():
+            code.writeline("return 2")
         code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
 
     code.newline()

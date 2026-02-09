@@ -2,6 +2,10 @@ from flag_gems.fused.apply_repetition_penalties import apply_repetition_penaltie
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
+from flag_gems.fused.FLA import (
+    chunk_gated_delta_rule_fwd,
+    fused_recurrent_gated_delta_rule_fwd,
+)
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
 from flag_gems.fused.geglu import dgeglu, geglu
@@ -29,31 +33,33 @@ from flag_gems.fused.weight_norm import weight_norm
 __all__ = [
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
-    "skip_layer_norm",
-    "fused_add_rms_norm",
-    "silu_and_mul",
-    "silu_and_mul_out",
-    "swiglu",
-    "dswiglu",
-    "geglu",
+    "chunk_gated_delta_rule_fwd",
+    "concat_and_cache_mla",
+    "cutlass_scaled_mm",
+    "cross_entropy_loss",
     "dgeglu",
+    "dreglu",
+    "dswiglu",
+    "flash_mla",
+    "fused_add_rms_norm",
+    "fused_recurrent_gated_delta_rule_fwd",
+    "geglu",
     "gelu_and_mul",
     "grouped_topk",
-    "cross_entropy_loss",
-    "outer",
     "instance_norm",
-    "weight_norm",
-    "concat_and_cache_mla",
-    "reshape_and_cache",
     "moe_sum",
     "moe_align_block_size",
     "moe_align_block_size_triton",
+    "outer",
+    "reglu",
+    "reshape_and_cache",
     "reshape_and_cache_flash",
-    "flash_mla",
-    "topk_softmax",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
-    "dreglu",
-    "reglu",
-    "cutlass_scaled_mm",
+    "silu_and_mul",
+    "silu_and_mul_out",
+    "skip_layer_norm",
+    "swiglu",
+    "topk_softmax",
+    "weight_norm",
 ]

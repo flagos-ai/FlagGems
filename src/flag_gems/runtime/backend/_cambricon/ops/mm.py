@@ -14,8 +14,16 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    key=["M", "N", "K", "stride_am", "stride_bk", "stride_ak", "stride_bn"],
+    strategy=[
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
 )
 @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.jit
@@ -39,10 +47,15 @@ def mm_kernel(
     GROUP_M: tl.constexpr,
     SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
+    UPCAST: tl.constexpr,
 ):
     # matrix multiplication
-    pid = tl.program_id(0)
-    pid_z = tl.program_id(1)
+    if UPCAST:
+        pid = tl.program_id(0).to(tl.int64)
+        pid_z = tl.program_id(1).to(tl.int64)
+    else:
+        pid = tl.program_id(0)
+        pid_z = tl.program_id(1)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance
@@ -124,6 +137,11 @@ def mm(a, b):
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     dot_out_dtype = tl.float32
+    UPCAST = (
+        M * max(a.stride(0), c.stride(0)) >= 1 << 31
+        or N * max(b.stride(1), c.stride(1)) >= 1 << 31
+        or K * max(a.stride(1), b.stride(0)) >= 1 << 31
+    )
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -145,6 +163,7 @@ def mm(a, b):
             c.stride(1),
             dot_out_dtype=dot_out_dtype,
             GROUP_M=8,
+            UPCAST=UPCAST,
         )
     return c
 
@@ -163,6 +182,11 @@ def mm_out(a, b, *, out):
     # allocates output
     c = out
     dot_out_dtype = tl.float32
+    UPCAST = (
+        M * max(a.stride(0), c.stride(0)) >= 1 << 31
+        or N * max(b.stride(1), c.stride(1)) >= 1 << 31
+        or K * max(a.stride(1), b.stride(0)) >= 1 << 31
+    )
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -184,5 +208,6 @@ def mm_out(a, b, *, out):
             c.stride(1),
             dot_out_dtype=dot_out_dtype,
             GROUP_M=8,
+            UPCAST=UPCAST,
         )
     return c
