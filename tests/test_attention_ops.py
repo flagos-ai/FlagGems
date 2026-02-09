@@ -363,9 +363,26 @@ def test_sdpa_legacy(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
 
-    gems_result = flag_gems.ops.scaled_dot_product_attention(
-        q, k, v, attn_mask=None, scale=scale, is_causal=is_causal, enable_gqa=enable_gqa
-    )
+    if flag_gems.vendor_name == "cambricon":
+        gems_result = flag_gems.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
+    else:
+        gems_result = flag_gems.ops.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
 
     gems_assert_close(gems_result, torch_result, dtype)
     if flag_gems.vendor_name == "hygon":
@@ -446,9 +463,26 @@ def test_sdpa_legacy_backward(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
     )
 
-    gems_result = flag_gems.ops.scaled_dot_product_attention(
-        q, k, v, attn_mask=None, scale=scale, is_causal=is_causal, enable_gqa=enable_gqa
-    )
+    if flag_gems.vendor_name == "cambricon":
+        gems_result = flag_gems.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
+    else:
+        gems_result = flag_gems.ops.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
 
     gems_assert_close(gems_result, torch_result, dtype)
 
@@ -855,7 +889,7 @@ def ref_paged_attn(
             v = torch.repeat_interleave(v, q.shape[1] // v.shape[1], dim=1)
 
         attn = torch.einsum("qhd,khd->hqk", q, k)
-        empty_mask = torch.ones(query_len, kv_len)
+        empty_mask = torch.ones(query_len, kv_len, device=q.device)
         mask = torch.triu(empty_mask, diagonal=kv_len - query_len + 1).bool()
         if sliding_window is not None:
             sliding_window_mask = (
@@ -935,14 +969,18 @@ def test_flash_attn_varlen_func(
             num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
         )
         value_cache = torch.randn_like(key_cache)
-        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
-            dim=0, dtype=torch.int32
-        )
-        seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
+        cu_query_lens = torch.tensor(
+            [0] + query_lens, dtype=torch.int32, device=device
+        ).cumsum(dim=0, dtype=torch.int32)
+        seqused_k = torch.tensor(kv_lens, dtype=torch.int32, device=device)
 
         max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
         block_tables = torch.randint(
-            0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
+            0,
+            num_blocks,
+            (num_seqs, max_num_blocks_per_seq),
+            dtype=torch.int32,
+            device=device,
         )
 
         causal = True
@@ -961,22 +999,40 @@ def test_flash_attn_varlen_func(
         else:
             alibi_slopes, attn_bias = None, None
 
-        output = flag_gems.ops.flash_attn_varlen_func(
-            q=query,
-            k=key_cache,
-            v=value_cache,
-            cu_seqlens_q=cu_query_lens,
-            seqused_k=seqused_k,
-            max_seqlen_q=max_query_len,
-            max_seqlen_k=max_kv_len,
-            softmax_scale=scale,
-            causal=causal,
-            window_size=window_size,
-            block_table=block_tables,
-            softcap=soft_cap if soft_cap is not None else 0,
-            alibi_slopes=alibi_slopes,
-            fa_version=2,
-        )
+        if flag_gems.vendor_name == "cambricon":
+            output = flag_gems.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=max_query_len,
+                max_seqlen_k=max_kv_len,
+                softmax_scale=scale,
+                causal=causal,
+                window_size=window_size,
+                block_table=block_tables,
+                softcap=soft_cap if soft_cap is not None else 0,
+                alibi_slopes=alibi_slopes,
+                fa_version=2,
+            )
+        else:
+            output = flag_gems.ops.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=max_query_len,
+                max_seqlen_k=max_kv_len,
+                softmax_scale=scale,
+                causal=causal,
+                window_size=window_size,
+                block_table=block_tables,
+                softcap=soft_cap if soft_cap is not None else 0,
+                alibi_slopes=alibi_slopes,
+                fa_version=2,
+            )
 
         ref_output = ref_paged_attn(
             query=query,
@@ -1043,31 +1099,52 @@ def test_flash_attn_varlen_func_swap_qg(
             num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
         )
         value_cache = torch.randn_like(key_cache)
-        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
-            dim=0, dtype=torch.int32
-        )
-        seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
+        cu_query_lens = torch.tensor(
+            [0] + query_lens, dtype=torch.int32, device=device
+        ).cumsum(dim=0, dtype=torch.int32)
+        seqused_k = torch.tensor(kv_lens, dtype=torch.int32, device=device)
 
         max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
         block_tables = torch.randint(
-            0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
+            0,
+            num_blocks,
+            (num_seqs, max_num_blocks_per_seq),
+            dtype=torch.int32,
+            device=device,
         )
 
-        output = flag_gems.ops.flash_attn_varlen_func(
-            q=query,
-            k=key_cache,
-            v=value_cache,
-            cu_seqlens_q=cu_query_lens,
-            seqused_k=seqused_k,
-            max_seqlen_q=max_query_len,
-            max_seqlen_k=max_kv_len,
-            softmax_scale=scale,
-            causal=True,
-            window_size=window_size,
-            block_table=block_tables,
-            softcap=soft_cap if soft_cap is not None else 0,
-            fa_version=2,
-        )
+        if flag_gems.vendor_name == "cambricon":
+            output = flag_gems.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=max_query_len,
+                max_seqlen_k=max_kv_len,
+                softmax_scale=scale,
+                causal=True,
+                window_size=window_size,
+                block_table=block_tables,
+                softcap=soft_cap if soft_cap is not None else 0,
+                fa_version=2,
+            )
+        else:
+            output = flag_gems.ops.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=max_query_len,
+                max_seqlen_k=max_kv_len,
+                softmax_scale=scale,
+                causal=True,
+                window_size=window_size,
+                block_table=block_tables,
+                softcap=soft_cap if soft_cap is not None else 0,
+                fa_version=2,
+            )
 
         ref_output = ref_paged_attn(
             query=query,
@@ -1279,7 +1356,7 @@ def test_reshape_and_cache(
         # Create a random slot mapping.
         num_slots = block_size * num_blocks
         slot_mapping_lst = random.sample(range(num_slots), num_tokens)
-        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
 
         qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype)
         _, key, value = qkv.unbind(dim=1)

@@ -219,7 +219,7 @@ def to_reference(inp, upcast=False):
 
 
 def to_cpu(res, ref):
-    if TO_CPU:
+    if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")
         assert ref.device == torch.device("cpu")
     return res

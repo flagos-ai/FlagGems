@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 import threading
 from queue import Queue
@@ -15,12 +16,17 @@ UNSUPPORT_FP64 = [
     vendors.MTHREADS,
     vendors.AIPU,
     vendors.ASCEND,
+    vendors.TSINGMICRO,
+    vendors.SUNRISE,
 ]
 UNSUPPORT_BF16 = [
     vendors.AIPU,
+    vendors.SUNRISE,
 ]
 UNSUPPORT_INT64 = [
     vendors.AIPU,
+    vendors.TSINGMICRO,
+    vendors.SUNRISE,
 ]
 
 
@@ -79,6 +85,7 @@ class DeviceDetector(object):
             "mthreads": "musa",
             "iluvatar": "corex",
             "ascend": "npu",
+            "sunrise": "ptpu",
         }
         for vendor_name, flag in cmd.items():
             if hasattr(torch, flag):
@@ -104,9 +111,8 @@ class DeviceDetector(object):
         def runcmd(single_info):
             device_query_cmd = single_info.device_query_cmd
             try:
-                result = subprocess.run(
-                    [device_query_cmd], capture_output=True, text=True
-                )
+                cmd_args = shlex.split(device_query_cmd)
+                result = subprocess.run(cmd_args, capture_output=True, text=True)
                 if result.returncode == 0:
                     result_single_info.put(single_info)
             except:  # noqa: E722

@@ -25,7 +25,7 @@ from .attri_util import (
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config, recordLogger
+from .conftest import Config, emit_record_logger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -371,7 +371,7 @@ class Benchmark:
                 shape_desc=self.shape_desc,
             )
             print(attri)
-            recordLogger.info(attri.to_dict())
+            emit_record_logger(attri.to_dict())
             return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
@@ -424,7 +424,7 @@ class Benchmark:
                 result=metrics,
             )
             print(result)
-            recordLogger.info(result.to_json())
+            emit_record_logger(result.to_json())
 
 
 class GenericBenchmark(Benchmark):
@@ -485,6 +485,19 @@ class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
 
     def __init__(self, *args, **kwargs):
         super().__init__(exclude_dims=3, *args, **kwargs)
+
+
+class GenericBenchmark4DOnly(GenericBenchmarkFilterShapes):
+    """
+    4d shapes only
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=None, *args, **kwargs)
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [shape for shape in shapes if len(shape) == 4]
 
 
 class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):

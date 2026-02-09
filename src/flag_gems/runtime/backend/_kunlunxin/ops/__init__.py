@@ -1,4 +1,5 @@
 from .abs import abs, abs_
+from .acos import acos
 from .add import add, add_
 from .addcdiv import addcdiv
 from .addcmul import addcmul
@@ -19,7 +20,10 @@ from .attention import (
     flash_attn_varlen_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
+    scaled_dot_product_attention_forward,
 )
+from .avg_pool2d import avg_pool2d, avg_pool2d_backward
+from .baddbmm import baddbmm
 from .batch_norm import batch_norm, batch_norm_backward
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -38,7 +42,7 @@ from .bitwise_or import (
     bitwise_or_tensor_,
 )
 from .bitwise_right_shift import bitwise_right_shift
-from .bmm import bmm
+from .bmm import bmm, bmm_out
 from .cat import cat
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
@@ -65,6 +69,7 @@ from .div import (
     remainder_,
     true_divide,
     true_divide_,
+    true_divide_out,
 )
 from .dot import dot
 from .dropout import dropout, dropout_backward
@@ -72,7 +77,7 @@ from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar
 from .erf import erf, erf_
-from .exp import exp, exp_
+from .exp import exp, exp_, exp_out
 from .exp2 import exp2, exp2_
 from .exponential_ import exponential_
 from .eye import eye
@@ -113,6 +118,7 @@ from .logical_xor import logical_xor
 from .logspace import logspace
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
+from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
 from .max import max, max_dim
 from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
@@ -139,6 +145,7 @@ from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tens
 from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
+from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .polar import polar
 from .pow import (
     pow_scalar,
@@ -167,7 +174,9 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub
+from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
+from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
@@ -192,6 +201,7 @@ from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vdot import vdot
@@ -208,13 +218,16 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "abs",
     "abs_",
+    "acos",
     "add",
     "add_",
     "addcdiv",
+    "addcmul",
     "addmm",
     "addmm_out",
     "addmv",
     "addmv_out",
+    "addr",
     "all",
     "all_dim",
     "all_dims",
@@ -228,8 +241,11 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "avg_pool2d",
+    "avg_pool2d_backward",
     "atan",
     "atan_",
+    "baddbmm",
     "batch_norm",
     "batch_norm_backward",
     "bitwise_and_scalar",
@@ -247,6 +263,7 @@ __all__ = [
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
     "bmm",
+    "bmm_out",
     "cat",
     "celu",
     "celu_",
@@ -289,6 +306,7 @@ __all__ = [
     "erf_",
     "exp",
     "exp_",
+    "exp_out",
     "exp2",
     "exp2_",
     "exponential_",
@@ -312,6 +330,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "get_scheduler_metadata",
     "glu",
     "glu_backward",
     "group_norm",
@@ -353,6 +372,8 @@ __all__ = [
     "lt_scalar",
     "masked_fill",
     "masked_fill_",
+    "masked_scatter",
+    "masked_scatter_",
     "masked_select",
     "max",
     "max_dim",
@@ -389,6 +410,7 @@ __all__ = [
     "ones",
     "ones_like",
     "pad",
+    "per_token_group_quant_fp8",
     "polar",
     "pow_scalar",
     "pow_tensor_scalar",
@@ -407,8 +429,6 @@ __all__ = [
     "reciprocal_",
     "relu",
     "relu_",
-    "addcmul",
-    "softplus",
     "remainder",
     "remainder_",
     "repeat",
@@ -427,9 +447,12 @@ __all__ = [
     "rsub",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
-    "ScaleDotProductAttention",
+    "scaled_dot_product_attention_forward",
+    "scaled_softmax_backward",
+    "scaled_softmax_forward",
     "scatter",
     "scatter_",
+    "scatter_add_",
     "select_scatter",
     "sigmoid",
     "sigmoid_",
@@ -442,6 +465,7 @@ __all__ = [
     "slice_scatter",
     "softmax",
     "softmax_backward",
+    "softplus",
     "sort",
     "sort_stable",
     "stack",
@@ -452,11 +476,13 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "ScaleDotProductAttention",
+    "SUPPORTED_FP8_DTYPE",
+    "tan",
+    "tan_",
     "tanh",
     "tanh_",
     "tanh_backward",
-    "tan",
-    "tan_",
     "threshold",
     "threshold_backward",
     "tile",
@@ -465,12 +491,13 @@ __all__ = [
     "trace",
     "triu",
     "true_divide",
+    "true_divide_out",
     "true_divide_",
     "uniform_",
+    "upsample_nearest1d",
     "upsample_nearest2d",
     "var_mean",
     "vdot",
-    "addr",
     "vector_norm",
     "vstack",
     "weight_norm_interface",
@@ -481,5 +508,4 @@ __all__ = [
     "where_self_out",
     "zeros",
     "zeros_like",
-    "get_scheduler_metadata",
 ]
