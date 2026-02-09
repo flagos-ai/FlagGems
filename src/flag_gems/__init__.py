@@ -261,6 +261,7 @@ _FULL_CONFIG = (
     ("normal.float_Tensor", normal_float_tensor),
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
+    ("normal_", normal_),
     ("ones", ones),
     ("ones_like", ones_like),
     ("one_hot", one_hot),

@@ -44,6 +44,29 @@ def test_accuracy_normal(float, shape, dtype):
     assert torch.abs(std - 10.0) < 0.1
 
 
+@pytest.mark.inplace
+@pytest.mark.normal_
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_normal_(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+    if flag_gems.vendor_name in ["metax", "iluvatar"]:
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
+    loc = 3.0
+    scale = 10.0
+    res_out = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out.normal_(loc, scale)
+    ref_out = to_reference(res_out)
+    mean = torch.mean(ref_out)
+    std = torch.std(ref_out)
+    assert torch.abs(mean - 3.0) < 0.1
+    assert torch.abs(std - 10.0) < 0.1
+
+
 @pytest.mark.uniform_
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

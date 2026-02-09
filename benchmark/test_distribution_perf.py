@@ -11,6 +11,13 @@ def normal_input_fn(shape, cur_dtype, device):
     yield loc, scale
 
 
+def normal__input_fn(shape, cur_dtype, device):
+    self = torch.randn(shape, dtype=cur_dtype, device=device)
+    loc = 3.0
+    scale = 10.0
+    yield self, loc, scale
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
@@ -19,6 +26,12 @@ def normal_input_fn(shape, cur_dtype, device):
             torch.normal,
             normal_input_fn,
             marks=pytest.mark.normal,
+        ),
+        pytest.param(
+            "normal_",
+            torch.Tensor.normal_,
+            normal__input_fn,
+            marks=pytest.mark.normal_,
         ),
         pytest.param(
             "uniform_",

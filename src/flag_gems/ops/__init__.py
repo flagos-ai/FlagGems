@@ -153,6 +153,7 @@ from flag_gems.ops.nllloss import (
 )
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.normal import (
+    normal_,
     normal_float_tensor,
     normal_tensor_float,
     normal_tensor_tensor,
@@ -437,6 +438,7 @@ __all__ = [
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
+    "normal_",
     "normed_cumsum",
     "ones",
     "ones_like",
