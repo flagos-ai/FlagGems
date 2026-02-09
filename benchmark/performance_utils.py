@@ -65,6 +65,23 @@ def SkipVersion(module_name, skip_pattern):
     else:
         return (major, minor) > (M, N)
 
+def histogram_mode(times, bin_width=1e-4):
+    """
+    bin_width: 桶宽（单位同 times，比如 ms）
+    """
+    from collections import defaultdict
+
+    buckets = defaultdict(list)
+
+    for t in times:
+        key = round(t / bin_width)
+        buckets[key].append(t)
+
+    # 找样本最多的桶
+    mode_bucket = max(buckets.values(), key=len)
+
+    # 返回该桶的平均值（比中点更稳）
+    return sum(mode_bucket) / len(mode_bucket)
 
 class Benchmark:
     device: str = device
@@ -288,13 +305,14 @@ class Benchmark:
                 if device == "musa"
                 else triton.testing.do_bench
             )
-            latency = do_bench(
+            latency = histogram_mode(do_bench(
                 fn,
                 warmup=Config.warm_up,
                 rep=Config.repetition,
                 return_mode="median",
                 grad_to_none=xs if self.is_backward else None,
-            )
+                return_mode = True,
+            ))
         elif Config.mode == BenchMode.WRAPPER:
             for i in range(Config.warm_up):
                 fn()
