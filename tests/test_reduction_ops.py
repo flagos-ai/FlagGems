@@ -1816,6 +1816,61 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
 
 
 @pytest.mark.index
+@pytest.mark.parametrize(
+    "input_shape, indices_idx",
+    # 0 in indices_idx means None
+    # 1 in indices_idx means a Tensor
+    [
+        ((1024, 1024), (0, 1)),
+        ((16, 16, 16), (1, 0, 0)),
+        ((16, 16, 16), (0, 1, 0)),
+        ((32, 32, 32), (0, 0, 1)),
+        ((32, 32, 32), (1, 1, 0)),
+        ((64, 64, 64), (1, 0, 1)),
+        ((64, 64, 64), (0, 1, 1)),
+        ((12, 12, 12, 12), (1, 0, 0, 0)),
+        ((12, 12, 12, 12), (0, 1, 0, 0)),
+        ((10, 10, 10, 10), (0, 0, 1, 0)),
+        ((10, 10, 10, 10), (0, 0, 0, 1)),
+        ((10, 10, 10, 10), (1, 1, 0, 0)),
+        ((10, 10, 10, 10), (1, 0, 1, 0)),
+        ((16, 16, 16, 16), (1, 0, 0, 1)),
+        ((16, 16, 16, 16), (0, 1, 1, 0)),
+        ((32, 32, 32, 32), (0, 1, 0, 1)),
+        ((32, 32, 32, 32), (0, 0, 1, 1)),
+        ((8, 8, 8, 8), (0, 1, 1, 1)),
+        ((8, 8, 8, 8), (1, 0, 1, 1)),
+        ((8, 8, 8, 8), (1, 1, 0, 1)),
+        ((8, 8, 8, 8), (1, 1, 1, 0)),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.int64])
+def test_index_with_none_and_tensor(input_shape, indices_idx, dtype):
+    inp = torch.randint(0, 10000, input_shape, dtype=dtype, device=flag_gems.device)
+    indices = []
+    random_idx_list_len = random.randint(0, min(input_shape) - 1)
+    for i, idx_pos in enumerate(indices_idx):
+        if idx_pos:
+            indices.append(None)
+        else:
+            dim_len = input_shape[i]
+            random_idx = random.randint(0, dim_len - 1)
+            indices.append(
+                torch.tensor(
+                    [random_idx for _ in range(random_idx_list_len)],
+                    device=flag_gems.device,
+                    dtype=dtype,
+                )
+            )
+
+    ref_inp = to_reference(inp)
+    ref_indices = [to_reference(x) for x in indices]
+    result_ref_ = torch.ops.aten.index(ref_inp, ref_indices)
+    result_gems_ = flag_gems.index(inp, indices)
+    gems_assert_close(result_gems_, result_ref_, dtype)
+
+
+@pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_index_boolean_mask(dtype):
     """Test boolean mask indexing"""

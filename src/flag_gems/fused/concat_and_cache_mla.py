@@ -158,7 +158,7 @@ class ConcatAndCacheMla(torch.autograd.Function):
                 kv_dtype=kv_dtype,
                 BLOCK_SIZE=BLOCK_SIZE,
             )
-        return kv_cache
+        return None
 
 
 def concat_and_cache_mla(

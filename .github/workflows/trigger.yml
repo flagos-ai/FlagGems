@@ -1,0 +1,82 @@
+name: image-builder
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  push:
+    branches:
+      - master
+    paths-ignore:
+      # we don't need smoke test for document change
+      # we don't need smoke test for specific operator
+      # so far test folder don't have unit test? just operator test
+      - docs/**
+      - src/flag_gems/ops/**
+      - src/flag_gems/experimental_ops/**
+      - src/flag_gems/fused/**
+      - experimental_tests/**
+      - tests/**
+  pull_request:
+    branches:
+      - master
+    paths-ignore:
+      # keep same with push
+      - docs/**
+      - src/flag_gems/ops/**
+      - src/flag_gems/experimental_ops/**
+      - src/flag_gems/fused/**
+      - experimental_tests/**
+      - tests/**
+  workflow_dispatch:
+    inputs:
+      push_images:
+        description: 'push image or not'
+        type: boolean
+        default: false
+
+jobs:
+  build-matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # due to disk space issue, we have to use self host instance for this job
+          - job_name: build-gems-nvidia-image
+            push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
+            containerfile: 'containerfile'
+            image_name: 'flaggems-nvidia'
+            tag: 'latest'
+            runson: 'h20'
+            no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
+            build-args: |
+              BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-nvidia
+              BASE_IMAGE_VERSION=latest
+              VENDOR=requirements_nvidia.txt
+
+          # due to disk space issue, we have to use self host instance for this job
+          - job_name: build-gems-nvidia-image-py312torch2.8
+            push: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
+            containerfile: 'containerfile'
+            image_name: 'flaggems-nvidia'
+            tag: 'py312torch2.8'
+            runson: 'h20'
+            no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' && inputs.push_images }}
+            build-args: |
+              BASE_IMAGE=harbor.baai.ac.cn/flagbase/flagbase-nvidia
+              BASE_IMAGE_VERSION=py312torch2.8
+              VENDOR=requirements_nvidia.txt
+
+    name: ${{ matrix.job_name }}
+    uses: flagos-ai/build-infra/.github/workflows/imagebuild.yml@main
+    with:
+      push: ${{ matrix.push }}
+      containerfile: ${{ matrix.containerfile }}
+      image_name: ${{ matrix.image_name }}
+      tag: ${{ matrix.tag }}
+      runson: ${{ matrix.runson }}
+      build-args: ${{ matrix.build-args }}
+      image_prefix: 'flaggems'
+      no-cache: ${{ matrix.no-cache }}
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      CONTAINER_REGISTRY: ${{ secrets.CONTAINER_REGISTRY }}
