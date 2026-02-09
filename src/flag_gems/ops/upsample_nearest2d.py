@@ -1,110 +1,118 @@
-import logging
-from typing import Optional, Tuple
+# Copyright 2024 FlagGems Authors. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0.
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.runtime import device, torch_device_fn
-
-device = device.name
-logger = logging.getLogger(__name__)
-
-
 @triton.autotune(
-    configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
+    configs=[
+        triton.Config({'BLOCK_SIZE': 1024}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 2048}, num_warps=8),
+    ],
+    key=['num_elements'],
 )
-@triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d"))
 @triton.jit
 def upsample_nearest2d_kernel(
-    ptr_o,
-    ptr_i,
-    N,
-    C,
-    OH,
-    OW,
-    IH,
-    IW,
-    reciprocal_scale_h,
-    reciprocal_scale_w,
+    inp_ptr, out_ptr,
+    num_elements,
+    B, C, H_in, W_in, H_out, W_out,
+    scale_h, scale_w,
+    s_b_in, s_c_in, s_h_in, s_w_in,
+    s_b_out, s_c_out, s_h_out, s_w_out,
     BLOCK_SIZE: tl.constexpr,
-    SAME_H: tl.constexpr,
-    SAME_W: tl.constexpr,
-    USE_INT32_IDX: tl.constexpr,
 ):
-    if USE_INT32_IDX:
-        pid = tl.program_id(axis=0)
+    pid = tl.program_id(0)
+    idx = pid.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = idx < num_elements
+    is_nhwc = (s_c_out == 1)
+    
+    if is_nhwc:
+        tmp_idx = idx
+        curr_c = tmp_idx % C
+        tmp_idx //= C
+        curr_w_out = tmp_idx % W_out
+        tmp_idx //= W_out
+        curr_h_out = tmp_idx % H_out
+        curr_b = tmp_idx // H_out
     else:
-        pid = tl.program_id(axis=0).to(tl.int64)
-    nc_stride = tl.num_programs(axis=1)
-    NC = N * C
-    nc_iter = tl.program_id(axis=1)
-    pid = tl.program_id(axis=0)
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    ow = idx % OW
-    oh = idx // OW % OH
-    if SAME_H:
-        ih = oh
-    else:
-        # tl.floor() cannot be found in 2.3.1, using int trunc
-        ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
-    if SAME_W:
-        iw = ow
-    else:
-        iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
+        tmp_idx = idx
+        curr_w_out = tmp_idx % W_out
+        tmp_idx //= W_out
+        curr_h_out = tmp_idx % H_out
+        tmp_idx //= H_out
+        curr_c = tmp_idx % C
+        curr_b = tmp_idx // C
 
-    offset_o = (nc_iter * OH + oh) * OW + ow
-    offset_i = (nc_iter * IH + ih) * IW + iw
-    src_index_stride = nc_stride * IH * IW
-    dst_index_stride = nc_stride * OH * OW
-    while nc_iter < NC:
-        data = tl.load(ptr_i + offset_i)
-        tl.store(ptr_o + offset_o, data)
-        ptr_i += src_index_stride
-        ptr_o += dst_index_stride
-        nc_iter += nc_stride
+    curr_h_in = (curr_h_out.to(tl.float32) / scale_h).to(tl.int32)
+    curr_w_in = (curr_w_out.to(tl.float32) / scale_w).to(tl.int32)
+    curr_h_in = tl.where(curr_h_in < H_in, curr_h_in, H_in - 1)
+    curr_w_in = tl.where(curr_w_in < W_in, curr_w_in, W_in - 1)
 
+    inp_offset = (curr_b * s_b_in + curr_c * s_c_in + 
+                  curr_h_in * s_h_in + curr_w_in * s_w_in)
+    tl.store(out_ptr + idx, tl.load(inp_ptr + inp_offset, mask=mask), mask=mask)
 
-def upsample_nearest2d(
-    input: torch.Tensor,
-    output_size: Tuple[int],
-    scales_h: Optional[float] = None,
-    scales_w: Optional[float] = None,
-) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE NEAREST2D")
-    assert input.device.type == device
-    assert input.ndim == 4, "The ndim of input must be 4"
-    assert len(output_size) == 2, "The len of output_size must be 2"
-    OH, OW = output_size
-    N, C, IH, IW = input.shape
-    if scales_h is not None:
-        reciprocal_scale_h = 1 / scales_h
-    else:
-        reciprocal_scale_h = IH / OH
-    if scales_w is not None:
-        reciprocal_scale_w = 1 / scales_w
-    else:
-        reciprocal_scale_w = IW / OW
-    # allocate output
-    output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    total_threads = OH * OW
-    grid = lambda META: (
-        triton.cdiv(total_threads, META["BLOCK_SIZE"]),
-        triton.cdiv(N * C, 4),
-    )
+@triton.jit
+def upsample_nearest2d_backward_kernel(
+    grad_out_ptr, grad_in_ptr,
+    num_elements, 
+    B, C, H_in, W_in, H_out, W_out,
+    scale_h, scale_w,
+    s_b_out, s_c_out, s_h_out, s_w_out,
+    s_b_in, s_c_in, s_h_in, s_w_in,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    idx = pid.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = idx < num_elements
 
-    with torch_device_fn.device(input.device):
-        upsample_nearest2d_kernel[grid](
-            output,
-            input,
-            N,
-            C,
-            OH,
-            OW,
-            IH,
-            IW,
-            reciprocal_scale_h,
-            reciprocal_scale_w,
-        )
-    return output
+    tmp_idx = idx
+    curr_w_out = tmp_idx % W_out
+    tmp_idx //= W_out
+    curr_h_out = tmp_idx % H_out
+    tmp_idx //= H_out
+    curr_c = tmp_idx % C
+    curr_b = tmp_idx // C
+
+    curr_h_in = (curr_h_out.to(tl.float32) / scale_h).to(tl.int32)
+    curr_w_in = (curr_w_out.to(tl.float32) / scale_w).to(tl.int32)
+    curr_h_in = tl.where(curr_h_in < H_in, curr_h_in, H_in - 1)
+    curr_w_in = tl.where(curr_w_in < W_in, curr_w_in, W_in - 1)
+
+    out_offset = (curr_b * s_b_out + curr_c * s_c_out + 
+                  curr_h_out * s_h_out + curr_w_out * s_w_out)
+    grad_in_offset = (curr_b * s_b_in + curr_c * s_c_in + 
+                      curr_h_in * s_h_in + curr_w_in * s_w_in)
+    
+    val = tl.load(grad_out_ptr + out_offset, mask=mask)
+    tl.atomic_add(grad_in_ptr + grad_in_offset, val, mask=mask)
+
+class TritonUpsampleNearest2d(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, output_size):
+        B, C, H_in, W_in = input.shape
+        H_out, W_out = output_size
+        scale_h, scale_w = H_out / H_in, W_out / W_in
+        ctx.output_size, ctx.input_shape, ctx.scales = output_size, input.shape, (scale_h, scale_w)
+        mem_fmt = torch.channels_last if input.is_contiguous(memory_format=torch.channels_last) else torch.contiguous_format
+        out = torch.empty((B, C, H_out, W_out), device=input.device, dtype=input.dtype, memory_format=mem_fmt)
+        num_el = out.numel()
+        grid = lambda META: (triton.cdiv(num_el, META['BLOCK_SIZE']),)
+        upsample_nearest2d_kernel[grid](input, out, num_el, B, C, H_in, W_in, H_out, W_out, scale_h, scale_w, *input.stride(), *out.stride())
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        B, C, H_in, W_in = ctx.input_shape
+        H_out, W_out = ctx.output_size
+        scale_h, scale_w = ctx.scales
+        grad_input = torch.zeros(ctx.input_shape, device=grad_output.device, dtype=grad_output.dtype)
+        num_el = grad_output.numel()
+        grid = (triton.cdiv(num_el, 1024),)
+        upsample_nearest2d_backward_kernel[grid](grad_output, grad_input, num_el, B, C, H_in, W_in, H_out, W_out, scale_h, scale_w, *grad_output.stride(), *grad_input.stride(), BLOCK_SIZE=1024)
+        return grad_input, None
+
+def upsample_nearest2d(input, size):
+    if isinstance(size, int): size = (size, size)
+    return TritonUpsampleNearest2d.apply(input, size)

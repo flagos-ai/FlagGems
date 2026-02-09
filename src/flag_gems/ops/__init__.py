@@ -59,6 +59,7 @@ from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
+from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -99,6 +100,7 @@ from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hstack import hstack
@@ -192,6 +194,7 @@ from flag_gems.ops.repeat_interleave import (
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from flag_gems.ops.roll import roll
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
@@ -201,6 +204,7 @@ from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.smooth_l1_loss import smooth_l1_loss
 from flag_gems.ops.softmax import softmax, softmax_backward
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
@@ -216,6 +220,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.tril import tril
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -308,6 +313,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_transpose2d",
     "copy",
     "copy_",
     "cos",
@@ -364,6 +370,7 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "grid_sample",
     "group_norm",
     "group_norm_backward",
     "gt",
@@ -474,6 +481,7 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "roll",
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
@@ -494,6 +502,7 @@ __all__ = [
     "sin",
     "sin_",
     "slice_scatter",
+    "smooth_l1_loss",
     "softmax",
     "softmax_backward",
     "softplus",
@@ -522,6 +531,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
     "triu",
     "triu_",
     "true_divide",
