@@ -138,7 +138,7 @@ core:
           - 'src/flag_gems/runtime/*'
           - 'src/flag_gems/testing/**'
           - 'src/flag_gems/utils/**'
-          - 'src/flag_gems/**'
+          - 'src/flag_gems/*'
 
 # TODO(Qiming): Split tests into subdirectories so that we can decide
 # which tests are to be executed on which backend
