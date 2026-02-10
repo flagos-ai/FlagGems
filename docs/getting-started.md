@@ -14,7 +14,8 @@ for different AI chipsets, and OpenAI Triton compiler (for NVIDIA and AMD).
 
 FlagGems can be installed either as a pure python package or a package with C-extensions
 for better runtime performance.
-By default, it does not build the C extensions, See [installation](./installation.md) for how to use C++ runtime.
+By default, it does not build the C extensions, See [installation](./installation.md) for
+guidance on using the C++ runtime.
 
 ### Install Build Dependencies
 
