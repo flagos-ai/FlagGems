@@ -14,7 +14,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()
-@triton.jit(do_not_specialize=["eps"])
+@triton.jit
 def rms_norm_kernel(
     Y,  # pointer to the output
     INV_RMS,  # pointer to inverse rms
@@ -24,17 +24,19 @@ def rms_norm_kernel(
     y_stride_c,
     x_stride_r,  # how much to increase the pointer when moving by 1 row
     x_stride_c,  # how much to increase the pointer when moving by 1 col
-    N,  # number of columns in X
-    eps,  # epsilon to avoid division by zero
+    M: tl.constexpr,  # number of rows in X
+    N: tl.constexpr,  # number of columns in X
+    eps: tl.constexpr,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
     Y += pid * y_stride_r
     X += pid * x_stride_r
 
+    colMask = tl.arange(0, BLOCK_SIZE) < M
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+    x = tl.load(X + cols * x_stride_c, mask & colMask, other=0.0).to(tl.float32)
 
     var = tl.sum(x * x, axis=0) / N
     rrms = 1 / tl.sqrt(var + eps)
@@ -46,7 +48,7 @@ def rms_norm_kernel(
 
 
 @libentry()
-@triton.jit(do_not_specialize=["eps"])
+@triton.jit
 def rms_norm_kerne_tile(
     Y,  # pointer to the output
     INV_RMS,  # pointer to inverse rms
@@ -56,8 +58,9 @@ def rms_norm_kerne_tile(
     y_stride_c,
     x_stride_r,  # how much to increase the pointer when moving by 1 row
     x_stride_c,  # how much to increase the pointer when moving by 1 col
-    N,  # number of columns in X
-    eps,  # epsilon to avoid division by zero
+    M: tl.constexpr,  # number of rows in X
+    N: tl.constexpr,  # number of columns in X
+    eps: tl.constexpr,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -71,11 +74,13 @@ def rms_norm_kerne_tile(
     # var = tl.sum(x * x, axis=0) / N
     # rrms = 1 / tl.sqrt(var + eps)
 
+    colMask = tl.arange(0, BLOCK_SIZE) < M
+
     _var_base = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
         mask = cols < N
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        x = tl.load(X + cols, mask & colMask, other=0.0).to(tl.float32)
         _var_base += x * x / N
     var = tl.sum(_var_base)
     rrms = 1 / tl.sqrt(var + eps)
@@ -276,10 +281,12 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     with torch_device_fn.device(x.device):
         if N > 64 * 128:
             rms_norm_kerne_tile[M,](
-                y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+                y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE
             )
         else:
-            rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
+            rms_norm_kernel[M,](
+                y, inv_rms, x, weight, N, 1, N, 1, M, N, eps, BLOCK_SIZE
+            )
 
     return y, inv_rms
 
