@@ -2,6 +2,9 @@ import json
 import logging
 import os
 from datetime import datetime
+import sys
+flag_gems_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.append(flag_gems_DIR)
 
 import pytest
 import torch
