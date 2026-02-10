@@ -343,6 +343,7 @@ if arch_version == 300:
         "any",
         "any_dim",
         "any_dims",
+        "amax",
         ]
 elif arch_version >= 400:
     from .gcu400.mean import mean_dim

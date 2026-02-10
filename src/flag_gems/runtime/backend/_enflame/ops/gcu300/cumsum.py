@@ -5,8 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
-
+from flag_gems.utils import libentry, libtuner
+from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import get_device_properties
 from flag_gems.utils import triton_lang_extension as tle
@@ -126,6 +126,185 @@ def scan_part_sum_abc_kernel(
 
         a_idx += grid_a
 
+def keep(conf):
+    BLOCK_M = conf.kwargs["BLOCK_M"]
+    BLOCK_N = conf.kwargs["BLOCK_N"]
+    if BLOCK_M * BLOCK_N < 2048:
+        return False
+    if BLOCK_M * BLOCK_N > 128 * 1024:
+        return False
+    return True
+
+@libentry()
+@libtuner(
+    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
+    key=["M", "N"],
+)
+@triton.jit
+def cumsum_kernel_dim_low(inp, out, M, N, BLOCK_M: tl.constexpr=128, BLOCK_N : tl.constexpr=128, num_stages: tl.constexpr=1):
+    # Map the program id to the row of X it should compute.
+    step = tl.num_programs(0)
+    pid_m = tl.program_id(0)
+    num_tile = (M + BLOCK_M - 1) // BLOCK_M
+    for tile_id in tl.range(pid_m, num_tile, step):
+        m_offset = tile_id * BLOCK_M + tl.arange(0, BLOCK_M)
+        n_offset_0 = tl.arange(0, BLOCK_N)
+        offset_0 = m_offset[:, None] * N + n_offset_0[None, :]
+        # set mask
+        mask_0 = m_offset[:, None] < M and n_offset_0[None, :] < N
+        inp_ptrs_0 = inp + offset_0
+        inp_vals_0 = tl.load(inp_ptrs_0, mask_0, other=0.0)
+        if (
+            tl.constexpr(inp_vals_0.dtype.is_int64())
+            or tl.constexpr(inp_vals_0.dtype.is_uint64())
+        ) or tl.constexpr(inp_vals_0.dtype.is_fp64()):
+            inp_vals_0 = inp_vals_0
+        elif tl.constexpr(inp_vals_0.dtype.is_int()):
+            inp_vals_0 = inp_vals_0.to(tl.int32)
+        else:
+            inp_vals_0 = inp_vals_0.to(tl.float32)
+        result0 = tl.cumsum(inp_vals_0, axis=1)
+        out_ptrs_0 = out + offset_0
+        tl.store(out_ptrs_0, result0, mask_0)
+        if N > BLOCK_N:
+            part_sum =  tl.sum(inp_vals_0, axis=1)
+            for i in tl.range(BLOCK_N, N, BLOCK_N, num_stages=num_stages):
+                n_offset = i + tl.arange(0, BLOCK_N)
+                offset = m_offset[:, None] * N + n_offset[None, :]
+                # set mask
+                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                inp_ptrs = inp + offset
+                inp_vals = tl.load(inp_ptrs, mask, other=0.0)
+                if (
+                    tl.constexpr(inp_vals.dtype.is_int64())
+                    or tl.constexpr(inp_vals.dtype.is_uint64())
+                ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+                    inp_vals = inp_vals
+                elif tl.constexpr(inp_vals.dtype.is_int()):
+                    inp_vals = inp_vals.to(tl.int32)
+                else:
+                    inp_vals = inp_vals.to(tl.float32)
+                result = tl.cumsum(inp_vals, axis=1) + part_sum[:, None]
+                part_sum = tl.sum(inp_vals, axis=1) + part_sum
+                out_ptrs = out + offset
+                tl.store(out_ptrs, result, mask)
+
+@libentry()
+@libtuner(
+    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
+    key=["M", "N"],
+)
+@triton.jit
+def cumsum_kernel_dim_high(inp, out, M, N, BLOCK_M: tl.constexpr=128, BLOCK_N : tl.constexpr =128, num_stages: tl.constexpr=1):
+    # Map the program id to the row of X it should compute.
+    pid_n = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_tile = (N + BLOCK_N - 1) // BLOCK_N
+    for tile_id_n in tl.range(pid_n, num_tile, step):
+        n_offset = tile_id_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        m_offset_0 = tl.arange(0, BLOCK_M)
+        offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
+        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        inp_ptrs_0 = inp + offset_0
+        inp_vals_0 = tl.load(inp_ptrs_0, mask_0, other=0.0)
+        if (
+            tl.constexpr(inp_vals_0.dtype.is_int64())
+            or tl.constexpr(inp_vals_0.dtype.is_uint64())
+        ) or tl.constexpr(inp_vals_0.dtype.is_fp64()):
+            inp_vals_0 = inp_vals_0
+        elif tl.constexpr(inp_vals_0.dtype.is_int()):
+            inp_vals_0 = inp_vals_0.to(tl.int32)
+        else:
+            inp_vals_0 = inp_vals_0.to(tl.float32)
+        result0 = tl.cumsum(inp_vals_0, axis=0)
+        out_ptrs_0 = out + offset_0
+        tl.store(out_ptrs_0, result0, mask_0)
+        if M > BLOCK_M:
+            part_sum =  tl.sum(inp_vals_0, axis=0)
+            for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
+                m_offset = i + tl.arange(0, BLOCK_M)
+                offset = m_offset[:, None] * N + n_offset[None, :]
+                # set mask
+                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                inp_ptrs = inp + offset
+                inp_vals = tl.load(inp_ptrs, mask, other=0.0)
+                if (
+                    tl.constexpr(inp_vals.dtype.is_int64())
+                    or tl.constexpr(inp_vals.dtype.is_uint64())
+                ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+                    inp_vals = inp_vals
+                elif tl.constexpr(inp_vals.dtype.is_int()):
+                    inp_vals = inp_vals.to(tl.int32)
+                else:
+                    inp_vals = inp_vals.to(tl.float32)
+                result = tl.cumsum(inp_vals, axis=0) + part_sum[None, :]
+                part_sum =  tl.sum(inp_vals, axis=0) + part_sum
+                out_ptrs = out + offset
+                tl.store(out_ptrs, result, mask)
+@libentry()
+@libtuner(
+    configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
+    key=["M", "N"],
+)
+@triton.jit
+def cumsum_kernel_dim_mid(
+    inpIn,
+    outIn,
+    B,
+    M,
+    N,
+    BLOCK_M: tl.constexpr = 2048,
+    BLOCK_N: tl.constexpr = 4,
+    num_stages: tl.constexpr = 3,
+):
+    pid_b = tl.program_id(1)
+    pid_n = tl.program_id(0)
+    step = tl.num_programs(1)
+    for tile_id_b in tl.range(pid_b, B, step):
+        b_offset = tile_id_b * M * N
+        inp = inpIn + b_offset
+        out = outIn + b_offset
+        n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        m_offset_0 = tl.arange(0, BLOCK_M)
+        offset_0 = m_offset_0[:, None] *N  + n_offset[None, :]
+        # set mask
+        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        inp_ptrs_0 = inp + offset_0
+        inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=0.0)
+        if (
+            tl.constexpr(inp_vals_0.dtype.is_int64())
+            or tl.constexpr(inp_vals_0.dtype.is_uint64())
+        ) or tl.constexpr(inp_vals_0.dtype.is_fp64()):
+            inp_vals_0 = inp_vals_0
+        elif tl.constexpr(inp_vals_0.dtype.is_int()):
+            inp_vals_0 = inp_vals_0.to(tl.int32)
+        else:
+            inp_vals_0 = inp_vals_0.to(tl.float32)
+        result0 = tl.cumsum(inp_vals_0, axis=0)
+        out_ptrs_0 = out + offset_0
+        tl.store(out_ptrs_0, result0, mask_0)
+        if M > BLOCK_M:
+            part_sum =  tl.sum(inp_vals_0, axis=0)
+            for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
+                m_offset = i + tl.arange(0, BLOCK_M)
+                offset = m_offset[:, None] * N + n_offset[None, :]
+                # set mask
+                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                inp_ptrs = inp + offset
+                inp_vals = tl.load(inp_ptrs, mask, other=0.0)
+                if (
+                    tl.constexpr(inp_vals.dtype.is_int64())
+                    or tl.constexpr(inp_vals.dtype.is_uint64())
+                ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+                    inp_vals = inp_vals
+                elif tl.constexpr(inp_vals.dtype.is_int()):
+                    inp_vals = inp_vals.to(tl.int32)
+                else:
+                    inp_vals = inp_vals.to(tl.float32)
+                result = tl.cumsum(inp_vals, axis=0) + part_sum[None, :]
+                part_sum =  tl.sum(inp_vals, axis=0) + part_sum
+                out_ptrs = out + offset
+                tl.store(out_ptrs, result, mask)
 
 @libentry()
 @triton.jit(do_not_specialize=["part_num"])
@@ -187,8 +366,9 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
 
 def scan_then_fan(inp, out, A, B, C, dtype):
     # TODO(all): tune on target board
+    print("hi xingixng A", A)
     BLOCK_SIZE = 1024
-    if B <= 1024 * 4:
+    if B <= 1024 * 64:
         BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
@@ -212,33 +392,68 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
         inp = inp.to(torch.int32)
     if dtype == torch.int64:
         dtype = torch.int32
-
+    # print("cumsum_wrapper dim:", dim)
     shape = inp.shape
     dim = dim % inp.ndim
-    M = 1
-    N = shape[dim]
-    for i in range(dim):
-        M *= shape[i]
-    inp = inp.contiguous()
-    K = inp.numel() // M // N
+    # print("cumsum_wrapper2 dim:", dim)
+    # M = 1
+    # N = shape[dim]
+    # for i in range(dim):
+    #     M *= shape[i]
+    # inp = inp.contiguous()
+    # K = inp.numel() // M // N
 
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int32
+    # if dtype is None:
+    #     dtype = inp.dtype
+    #     if dtype is torch.bool:
+    #         dtype = torch.int32
+    # if out is None:
+    #     out = torch.empty_like(inp, dtype=dtype)
+
+    # compute_dtype = out.dtype
+    # if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
+    #     compute_dtype = torch.float32
+
+    # if M == 1 and K == 1:
+    #     scan_then_fan_col(inp, out, N, compute_dtype)
+    # else:
+    #     scan_then_fan(inp, out, M, N, K, compute_dtype)
+    # return out
+    if shape[dim] == 1:
+        return inp
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
-
-    compute_dtype = out.dtype
-    if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
-        compute_dtype = torch.float32
-
-    if M == 1 and K == 1:
-        scan_then_fan_col(inp, out, N, compute_dtype)
+    if dim == 0:
+        M = inp.shape[0]
+        N = inp.numel() // M
+        grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]),24),)
+        with torch_device_fn.device(inp.device):
+            cumsum_kernel_dim_high[grid](inp, out, M, N)
+    elif dim == inp.ndim-1:
+        N = inp.shape[inp.ndim-1]
+        M = inp.numel() // N
+        grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]),24),)
+        with torch_device_fn.device(inp.device):
+            cumsum_kernel_dim_low[grid](inp, out, M, N)
     else:
-        scan_then_fan(inp, out, M, N, K, compute_dtype)
+        B = 1
+        for i in range(0, dim):
+            B *= inp.shape[i]
+        M  = inp.shape[dim]
+        N = 1
+        for i in range(dim+1, inp.ndim):
+            N *= inp.shape[i]
+        if N==1:
+            N=M
+            M=B
+            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]),24),)
+            with torch_device_fn.device(inp.device):
+                cumsum_kernel_dim_low[grid](inp, out, M, N)
+            return out
+        grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, 24), 1)
+        with torch_device_fn.device(inp.device):
+            cumsum_kernel_dim_mid[grid](inp, out, B, M, N)
     return out
-
 
 def cumsum(inp, dim=1, *, dtype=None):
     logger.debug("GEMS CUMSUM")
