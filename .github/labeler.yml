@@ -1,0 +1,154 @@
+benchmark:
+  - changed-files:
+      # TODO(Qiming): cleanse this directory
+      - any-glob-to-any-file: 'benchmark/**'
+
+ops/cpp:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.clang-format'
+          - 'CMakeLists.txt'
+          - 'build/**'
+          - 'cmake/**'
+          - 'ctests/**'
+          - 'include/**'
+          - 'lib/**'
+          - 'src/flag_gems/csrc/**'
+          - 'triton_src/**'
+
+ci/cd:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - 'container/**'
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'LICENSE'
+          - '*.md'
+          - 'docs/**'
+
+# TODO(Qiming): treat examples as kind of documentation?
+examples:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'examples/**'
+
+tests/alpha:
+  - changed-files:
+      - any-glob-to-any-file:
+          # TODO(Qiming): move the directory to tests/alpha
+          - 'experimental_tests/**'
+
+ops/alpha:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/experimental_ops/**'
+
+ops/fused:
+  - changed-files:
+      - any-glob-to-any-file:
+          # NOTE: This path includes DSA and FLA
+          - 'src/flag_gems/fused/**'
+
+vllm:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/modules/**'
+          - 'src/flag_gems/patches/**'
+          # TODO(Qiming): move this to tests/modules
+          - 'modules_tests/**'
+
+ops/aten:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/ops/**'
+
+vendor/AIPU:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_aipu/**'
+
+vendor/AMD:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_amd/**'
+
+vendor/ARM:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_arm/**'
+
+vendor/Ascend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_ascend/**'
+
+vendor/Cambricon:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_cambricon/**'
+
+vendor/Hygon:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_hygon/**'
+
+vendor/Iluvatar:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_iluvatar/**'
+
+vendor/Kunlunxin:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_kunlunxin/**'
+
+vendor/MetaX:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_metax/**'
+
+vendor/MooreThreads:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_mthreads/**'
+
+vendor/NVIDIA:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_nvidia/**'
+
+vendor/Sunrise:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_sunrise/**'
+
+vendor/TsingMicro:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/flag_gems/runtime/backend/_tsingmicro/**'
+
+core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'pyproject.toml'
+          - 'src/flag_gems/runtime/backend/*'
+          - 'src/flag_gems/runtime/*'
+          - 'src/flag_gems/testing/**'
+          - 'src/flag_gems/utils/**'
+          - 'src/flag_gems/*'
+
+# TODO(Qiming): Split tests into subdirectories so that we can decide
+# which tests are to be executed on which backend
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.coverage.rc'
+          - '.pre-commit-config.yaml'
+          - 'pytest.ini'
+          # NOTE: This directory also contains DSA, FLA operator tests
+          - 'tests/**'
+          # TODO: Move test scripts to tests/scripts
+          - 'tools/**'

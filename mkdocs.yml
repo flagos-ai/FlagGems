@@ -8,6 +8,7 @@ theme:
   language: en
   features:
     - content.code.copy
+    - navigation.sections
 
 markdown_extensions:
   - codehilite:
@@ -22,10 +23,18 @@ nav:
   - Features: features.md
   - Getting Started: getting-started.md
   - Installation: installation.md
+  - Using FlagGems:
+    - A Quick Introduction: usage.md
+    - How to use FlagGems: how_to_use_flaggems.md
   - Pointwise Dynamic: pointwise_dynamic.md
-  - Python Tests: pytest_in_flaggems.md
-  - C++ Tests: ctest_in_flaggems.md
-  - Operator List: operators.md
+  - Testing:
+    - Python Tests: pytest_in_flaggems.md
+    - C++ Tests: ctest_in_flaggems.md
   - Performance: performance_and_benchmark.md
-  - Countributing: contribution.md
   - Add A C++ wrapper: add_a_cpp_wrapper.md
+  - References:
+    - Changelog: CHANGELOG.md
+    - Operator List: operators.md
+    - Experimental Operators: experimental_ops.md
+    - The LibCache DB backend: libcache_db_backend.md
+    - Countributing: contribution.md

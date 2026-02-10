@@ -1,5 +1,4 @@
 import logging
-from functools import lru_cache
 from typing import Optional
 
 import torch
@@ -11,34 +10,37 @@ from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
 
-@lru_cache(maxsize=1)
-def get_device_info():
-    try:
-        device_id = torch_device_fn.current_device()
-    except Exception:
-        device_id = 0
+def is_tma_compatible(a, b, N, K):
+    """
+    Check if tensors are compatible with TMA (Tensor Memory Accelerator).
 
-    try:
-        props = torch_device_fn.get_device_properties(device_id)
-        return device_id, props.L2_cache_size, props.multi_processor_count
-    except Exception:
-        # fallback for A100 default attributes
-        # L2 cache size is 40MB and SM count is 108 for A100
-        return device_id, 40 * 1024 * 1024, 108
+    TMA requires 128-bit (16-byte) alignment for memory access:
+    - For FP16/BF16 (2 bytes/element): N and K must be multiples of 8
+      (8 elements × 2 bytes = 16 bytes)
+    - For FP32 (4 bytes/element): N and K must be multiples of 4
+      (4 elements × 4 bytes = 16 bytes)
 
+    Args:
+        a, b: Input tensors
+        N, K: Matrix dimensions
 
-def get_device_id():
-    return get_device_info()[0]
-
-
-def get_l2_cache_size():
-    return get_device_info()[1]
-
-
-def get_sm_count():
-    return get_device_info()[2]
+    Returns:
+        bool: True if compatible with TMA's 128-bit alignment requirement
+    """
+    return (
+        a.dtype in (torch.float16, torch.bfloat16)
+        and b.dtype in (torch.float16, torch.bfloat16)
+        and N % 8 == 0
+        and K % 8 == 0
+    ) or (
+        a.dtype in (torch.float32,)
+        and b.dtype in (torch.float32,)
+        and N % 4 == 0
+        and K % 4 == 0
+    )
 
 
 CACHE_USAGE_THRESHOLD = 0.8
@@ -278,7 +280,10 @@ def mm_kernel_general_host_tma(
             b_t = b_desc.load([offset_bn, offset_ak])
             b = tl.trans(b_t)
 
-        accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+        if a_desc.dtype == tl.float16 or a_desc.dtype == tl.bfloat16:
+            accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+        else:
+            accumulator = tl.dot(a, b, acc=accumulator, input_precision="tf32x3")
 
     c = accumulator.to(c_desc.dtype)
     c_desc.store([offset_am, offset_bn], c)
@@ -314,13 +319,9 @@ def general_mm(a, b, c, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    if (
-        (a.dtype == torch.float16 or a.dtype == torch.bfloat16)
-        and (b.dtype == torch.float16 or b.dtype == torch.bfloat16)
-        and N % 8 == 0
-        and K % 8 == 0
-        and triton.__version__ >= "3.5"
-    ):
+    if hasattr(
+        triton.tools.tensor_descriptor, "TensorDescriptor"
+    ) and is_tma_compatible(a, b, N, K):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -385,11 +386,86 @@ def general_mm(a, b, c, M, N, K):
     return c
 
 
+@libentry()
+@triton.jit
+def gemv_kernel(
+    A,
+    B,
+    C,
+    M,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Optimized kernel for matrix-vector multiplication (N=1 case)"""
+    pid = tl.program_id(0)
+
+    # Each program handles BLOCK_M rows
+    row_start = pid * BLOCK_M
+    row_offset = row_start + tl.arange(0, BLOCK_M)
+    row_mask = row_offset < M
+
+    # Accumulator for this block of rows
+    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+
+    # Iterate over K dimension
+    for k_start in range(0, K, BLOCK_K):
+        k_offset = k_start + tl.arange(0, BLOCK_K)
+        k_mask = k_offset < K
+
+        # Load block from matrix A: [BLOCK_M, BLOCK_K]
+        a_ptrs = A + row_offset[:, None] * stride_am + k_offset[None, :] * stride_ak
+        a = tl.load(a_ptrs, mask=row_mask[:, None] & k_mask[None, :], other=0.0)
+
+        # Load block from vector B: [BLOCK_K]
+        b_ptrs = B + k_offset * stride_bk
+        b = tl.load(b_ptrs, mask=k_mask, other=0.0)
+
+        # Accumulate: sum over K dimension
+        acc += tl.sum(a * b[None, :], axis=1)
+
+    # Store result
+    c_ptrs = C + row_offset
+    acc = acc.to(C.dtype.element_ty)
+    tl.store(c_ptrs, acc, mask=row_mask)
+
+
+def gemv_mm(a, b, c, M, K):
+    """Optimized matrix-vector multiplication for N=1 case"""
+    logger.debug(
+        "GEMS MM-hopper, [mm scenario]: gemv (N=1), [shape info]: [%s, %s, 1](M, K, N)",
+        M,
+        K,
+    )
+
+    BLOCK_M = 32
+    BLOCK_K = 256
+    grid = lambda META: (triton.cdiv(M, BLOCK_M),)
+
+    with torch_device_fn.device(a.device):
+        gemv_kernel[grid](
+            a,
+            b,
+            c,
+            M,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            BLOCK_M=BLOCK_M,
+            BLOCK_K=BLOCK_K,
+        )
+    return c
+
+
 def streamk_scenario(a, b, M, N, K):
     # TODO: this my change sometime according to the realbenchmark result
     # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
     # The optimal settings for other devices need to be determined through real testing.
-    capability = torch_device_fn.get_device_capability(get_device_info())
+    capability = get_device_capability()
     return (
         capability[0] == 8
         and a.dtype in [torch.float16, torch.bfloat16]
@@ -415,6 +491,10 @@ def mm(a, b):
     # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
+
+    # Optimize for N=1 case (matrix-vector multiplication)
+    if N == 1:
+        return gemv_mm(a, b, c, M, K)
     # l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
     if streamk_scenario(a, b, M, N, K):
@@ -433,6 +513,10 @@ def mm_out(a, b, *, out):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
+
+    # Optimize for N=1 case (matrix-vector multiplication)
+    if N == 1:
+        return gemv_mm(a, b, out, M, K)
     # l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
     if streamk_scenario(a, b, M, N, K):

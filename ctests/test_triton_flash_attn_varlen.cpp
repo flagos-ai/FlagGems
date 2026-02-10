@@ -9,6 +9,7 @@
 #include <optional>
 #include <tuple>
 #include <vector>
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
@@ -370,7 +371,6 @@ TEST_P(FlashAttnVarlenSwapQGParamTest, MatchesReference) {
                                              /*attn_bias*/ std::nullopt,
                                              /*sliding_window*/ std::nullopt,
                                              soft_cap_opt);
-
   EXPECT_TRUE(torch::allclose(op_output, ref_output, /*rtol=*/1e-2, /*atol=*/2e-2));
 }
 

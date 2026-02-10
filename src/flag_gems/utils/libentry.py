@@ -23,6 +23,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    overload,
 )
 
 import triton
@@ -157,7 +158,10 @@ class LibCache(object):
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
         if db_url is None:
-            device_name: str = torch_device_fn.get_device_name().replace(" ", "_")
+            try:
+                device_name: str = torch_device_fn.get_device_name().replace(" ", "_")
+            except AttributeError:
+                device_name: str = vendor_module.vendor_info.device_name
             cache_file_name: str = (
                 f"TunedConfig_{device_name}_triton_{major_version}_{minor_version}.db"
                 if vendor_module.vendor_info.vendor_name == "nvidia"
@@ -172,6 +176,14 @@ class LibCache(object):
             Tuple[str, Tuple[Union[int, float, str], ...]], BenchmarkCache
         ] = {}
         self.model: PersistantModel = SQLPersistantModel(self.db_url)
+
+    @overload
+    def __getitem__(self, key: str) -> ConfigCache:
+        ...
+
+    @overload
+    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache:
+        ...
 
     def __getitem__(
         self, key: Union[str, Tuple[Union[int, float, str], ...]]
@@ -675,7 +687,7 @@ class LibEntry(triton.KernelInterface):
                 k_args[param_names[i]] = arg
                 dns_args.append(hashable_arg)
             else:
-                if major_version == 3 and 3 <= minor_version <= 5:
+                if major_version == 3 and 3 <= minor_version <= 6:
                     k_args[param_names[i]] = arg
                 const_args.append(hashable_arg)
         for p in self.jit_function.params[len(args) :]:
@@ -688,7 +700,7 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
-                if major_version == 3 and 3 <= minor_version <= 5:
+                if major_version == 3 and 3 <= minor_version <= 6:
                     k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
@@ -760,7 +772,7 @@ class LibEntry(triton.KernelInterface):
             grid = grid(meta)
         grid = grid + (1, 1)
 
-        if major_version == 3 and 3 <= minor_version <= 5:
+        if major_version == 3 and 3 <= minor_version <= 6:
             all_args = []
             missing_keys = []
             for key in list(self.signature.parameters.keys()):
