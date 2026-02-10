@@ -208,6 +208,7 @@ _FULL_CONFIG = (
     ("log", log),
     ("log10", log10),
     ("log10_", log10_),
+    ("log10.out", log10_out),
     ("log_sigmoid", log_sigmoid),
     ("logical_and", logical_and),
     ("logical_and_", logical_and_),

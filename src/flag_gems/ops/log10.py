@@ -22,5 +22,9 @@ def log10(x):
 
 def log10_(x):
     logger.debug("GEMS LOG10_")
-    log10_func(x, out0=x)
-    return x
+    return log10_func(x, out0=x)
+
+
+def log10_out(x, out):
+    logger.debug("GEMS LOG10_OUT")
+    return log10_func(x, out0=out)
