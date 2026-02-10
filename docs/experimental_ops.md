@@ -4,7 +4,7 @@ This document lists all experimental operators in FlagGems that have achieved an
 
 ## Performance Overview
 
-- **Total Operators**: 141
+- **Total Operators**: 142
 - **Average Speedup Range**: 0.81x - 7.23x
 - **Test Environment**: Hopper GPU
 - **Filtering Criteria**: Average speedup ≥ 0.8x
@@ -154,6 +154,7 @@ This document lists all experimental operators in FlagGems that have achieved an
 | 139 | `erfinv_`                     | **0.82x** ⚡  | Math       |
 | 140 | `_log_softmax_backward_data`  | **0.82x** ⚡  | Internal   |
 | 141 | `log10_`                      | **0.81x** ⚡  | Math       |
+| 142 | `rmsnorm`                     | **special** ⚡ | Normalization |
 
 ## Legend
 
