@@ -544,10 +544,14 @@ class Conv2d(torch.autograd.Function):
         else:
             revert_weight = revert_weight.transpose(0, 1).contiguous()
 
-        new_out_height = out_grad.shape[2] + (stride_height - 1) * (
-            out_grad.shape[2] - 1
+        # Calculate new_out dimensions for transposed convolution
+        # Must account for output_padding when (input + 2*padding - dilation*(kernel-1) - 1) % stride != 0
+        new_out_height = (
+            input_height + 2 * padding_height - dilation_height * (weight_height - 1)
         )
-        new_out_width = out_grad.shape[3] + (stride_width - 1) * (out_grad.shape[3] - 1)
+        new_out_width = (
+            input_width + 2 * padding_width - dilation_width * (weight_width - 1)
+        )
 
         new_out = torch.zeros(
             out_grad.shape[0],
