@@ -147,8 +147,7 @@ def test_concat_and_cache_mla(
                 expected_temp, ref_kv_cache, scale.item(), kv_dtype=kv_cache_dtype
             )
             dtype = torch.float8_e4m3fn
-            if flag_gems.vendor_name == "mthreads":
-                result_temp = to_reference(result_temp)
+            result_temp = to_reference(result_temp)
             # TODO: RuntimeError: Comparing
             # maybe a bug in torch.testing.assert_close
             # gems_assert_close(kv_cache.view(dtype), ref_kv_cache.view(dtype), dtype)
