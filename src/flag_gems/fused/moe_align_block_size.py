@@ -16,13 +16,13 @@ def round_up(x: int, y: int) -> int:
     return ((x + y - 1) // y) * y
 
 
-@triton.jit(do_not_specialize=["numel", "tokens_per_thread"])
+@triton.jit(do_not_specialize=["numel"])
 def moe_align_block_size_stage1(
     topk_ids_ptr,
     tokens_cnts_ptr,
     num_experts: tl.constexpr,
     numel,
-    tokens_per_thread,
+    tokens_per_thread: tl.constexpr,
     sorted_token_ids_ptr,
     expert_ids_ptr,
     numel_sorted_token_ids: tl.constexpr,
@@ -44,24 +44,10 @@ def moe_align_block_size_stage1(
 
     off_c = (pid + 1) * num_experts
 
-    # Unroll loop by 4 for better instruction-level parallelism
-    UNROLL: tl.constexpr = 4
-    num_full_iters = tokens_per_thread // UNROLL
-
-    for iter_idx in range(num_full_iters):
-        base_i = iter_idx * UNROLL
-        for unroll_i in range(UNROLL):
-            i = base_i + unroll_i
-            if start_idx + i < numel:
-                idx = tl.load(topk_ids_ptr + start_idx + i)
-                token_cnt = tl.load(tokens_cnts_ptr + off_c + idx)
-                tl.store(tokens_cnts_ptr + off_c + idx, token_cnt + 1)
-
-    for i in range(num_full_iters * UNROLL, tokens_per_thread):
-        if start_idx + i < numel:
-            idx = tl.load(topk_ids_ptr + start_idx + i)
-            token_cnt = tl.load(tokens_cnts_ptr + off_c + idx)
-            tl.store(tokens_cnts_ptr + off_c + idx, token_cnt + 1)
+    offsets = start_idx + tl.arange(0, tokens_per_thread)
+    mask = offsets < numel
+    expert_id = tl.load(topk_ids_ptr + offsets, mask=mask, other=0)
+    tl.atomic_add(tokens_cnts_ptr + off_c + expert_id, 1, mask=mask)
 
 
 @triton.jit
@@ -97,16 +83,18 @@ def moe_align_block_size_stage3(
     tokens_cnts_ptr,
     cumsum_ptr,
     num_experts: tl.constexpr,
+    num_experts_next_power_of_2: tl.constexpr,
     block_size: tl.constexpr,
 ):
     off_cnt = num_experts * num_experts
 
-    expert_offsets = tl.arange(0, num_experts)
-    token_cnts = tl.load(tokens_cnts_ptr + off_cnt + expert_offsets)
+    expert_offsets = tl.arange(0, num_experts_next_power_of_2)
+    mask = expert_offsets < num_experts
+    token_cnts = tl.load(tokens_cnts_ptr + off_cnt + expert_offsets, mask=mask)
     aligned_cnts = tl.cdiv(token_cnts, block_size) * block_size
 
     cumsum_values = tl.cumsum(aligned_cnts, axis=0)
-    tl.store(cumsum_ptr + 1 + expert_offsets, cumsum_values)
+    tl.store(cumsum_ptr + 1 + expert_offsets, cumsum_values, mask=mask)
 
     total_tokens = tl.sum(aligned_cnts, axis=0)
     tl.store(total_tokens_post_pad_ptr, total_tokens)
@@ -169,6 +157,7 @@ def moe_align_block_size_triton(
         ceil_div(numel_sorted_token_ids, num_experts)
     )
     block_size_expert = triton.next_power_of_2(ceil_div(numel_expert_ids, num_experts))
+    num_experts_next_power_of_2 = triton.next_power_of_2(num_experts)
 
     moe_align_block_size_stage1[grid](
         topk_ids,
@@ -198,6 +187,7 @@ def moe_align_block_size_triton(
         tokens_cnts,
         cumsum,
         num_experts,
+        num_experts_next_power_of_2,
         block_size,
     )
     moe_align_block_size_stage4[grid](
