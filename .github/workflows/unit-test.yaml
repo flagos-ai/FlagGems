@@ -73,6 +73,7 @@ jobs:
     uses: ./.github/workflows/op-test-quick-cpu.yaml
 
   pointwise-op-test:
+    needs: triage
     if: "contains(github.event.pull_request.labels.*.name, 'tests')"
     concurrency:
       group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
