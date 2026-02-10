@@ -55,7 +55,10 @@ def test_perf_conv1d():
         input_fn=conv1d_input_fn,
         op_name="conv1d",
         torch_op=torch.nn.functional.conv1d,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[
+            torch.float16,
+            torch.float32,
+        ],  # Exclude bfloat16 due to cuDNN limitations
     )
     bench.set_gems(flag_gems.conv1d)
     bench.run()
