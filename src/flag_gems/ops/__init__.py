@@ -544,3 +544,4 @@ __all__ = [
     "zero_",
     "zeros_like",
 ]
+from .log10 import log10
