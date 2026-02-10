@@ -22,7 +22,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .sort import sort, sort_stable
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -37,6 +37,7 @@ __all__ = [
     "randn",
     "randn_like",
     "zeros",
+    "zero_",
     "zeros_like",
     "log",
     "sort",
