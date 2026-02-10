@@ -309,9 +309,8 @@ class Benchmark:
                 fn,
                 warmup=Config.warm_up,
                 rep=Config.repetition,
-                return_mode="median",
+                return_mode="all",
                 grad_to_none=xs if self.is_backward else None,
-                return_mode = True,
             ))
         elif Config.mode == BenchMode.WRAPPER:
             for i in range(Config.warm_up):
