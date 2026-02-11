@@ -23,18 +23,18 @@ while true; do
     for ((i=0; i<$gpu_count; i++)); do
         # Query GPU memory information using mthreads-gmi
         memory_output=$(mthreads-gmi -q -d MEMORY -i $i 2>/dev/null)
-        
+
         # Parse memory values from "FB Memory Usage" section
         # Format: "Total                                     :  81920MiB"
         memory_total=$(echo "$memory_output" | grep -A 3 "FB Memory Usage" | grep "Total" | grep -oP '\d+' | head -1)
         memory_used=$(echo "$memory_output" | grep -A 3 "FB Memory Usage" | grep "Used" | grep -oP '\d+' | head -1)
-        
+
         # Check if we got valid memory values
         if [ -z "$memory_used" ] || [ -z "$memory_total" ]; then
             echo "Warning: Failed to query GPU $i memory information."
             continue
         fi
-        
+
         memory_remin=$((memory_total - memory_used))
 
         if [ $memory_remin -lt $memory_usage_max ]; then
@@ -52,4 +52,3 @@ while true; do
     echo "GPU memory is insufficient, waiting for $sleep_time seconds before retrying..."
     sleep $sleep_time
 done
-# CI test trigger
