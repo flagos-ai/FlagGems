@@ -47,8 +47,9 @@ def transform_func_float_float(val, std, mean):
     return val * std + mean
 
 
-def normal_distribution(shape, device, *, generator=None):
-    out = torch.empty(shape, device=device, dtype=torch.float32)
+def normal_distribution(shape, device, *, generator=None, out=None):
+    if out is None:
+        out = torch.empty(shape, device=device, dtype=torch.float32)
     N = volume(shape)
     grid_fn = lambda meta: (
         min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
@@ -85,3 +86,12 @@ def normal_float_tensor(mean, std, *, generator=None):
     device = std.device
     out = normal_distribution(shape, device)
     return transform_func_float_tensor(out, std, mean)
+
+
+def normal_(self, mean=0, std=1, *, generator=None):
+    logger.debug("GEMS_CAMBRICON NORMAL_")
+    shape = self.shape
+    device = self.device
+    self = normal_distribution(shape, device, generator=None, out=self)
+    transform_func_float_float(self, std, mean, out0=self)
+    return self

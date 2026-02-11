@@ -123,7 +123,7 @@ def prod_kernel(
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
 
         # set mask
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
         acc *= inp_vals

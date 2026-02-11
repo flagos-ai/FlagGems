@@ -35,6 +35,8 @@ def add_func_scalar_tensor(x, y, alpha, inplace):
 def add(A, B, *, alpha=1):
     logger.debug("GEMS_CAMBRICON ADD")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        if B.device != A.device:
+            B = B.to(A.device)
         return add_func(A, B, alpha, False)
     elif isinstance(A, torch.Tensor):
         return add_func_tensor_scalar(A, B, alpha, False)
@@ -47,6 +49,8 @@ def add(A, B, *, alpha=1):
 def add_(A, B, *, alpha=1):
     logger.debug("GEMS_CAMBRICON ADD_")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        if B.device != A.device:
+            B = B.to(A.device)
         return add_func(A, B, alpha, True, out0=A)
     elif isinstance(A, torch.Tensor):
         return add_func_tensor_scalar(A, B, alpha, True, out0=A)
