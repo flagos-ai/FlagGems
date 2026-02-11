@@ -52,3 +52,4 @@ while true; do
     echo "GPU memory is insufficient, waiting for $sleep_time seconds before retrying..."
     sleep $sleep_time
 done
+# CI test trigger
