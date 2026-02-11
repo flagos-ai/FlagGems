@@ -44,7 +44,7 @@ jobs:
           workflow: .github/workflows/triage.yaml
       - shell: bash
         run: |
-           echo "${{ github.event.pull_request.labels[@].name }}"
+           echo "${{ github.event.pull_request.labels[*].name }}"
 
   build-doc:
     needs: triage
