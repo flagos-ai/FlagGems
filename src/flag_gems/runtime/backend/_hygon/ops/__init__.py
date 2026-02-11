@@ -35,6 +35,7 @@ from .randperm import randperm
 from .silu import silu, silu_, silu_backward
 from .sort import sort, sort_stable
 from .unique import _unique2
+from .upsample_nearest2d import upsample_nearest2d
 
 __all__ = [
     "_unique2",
@@ -80,4 +81,5 @@ __all__ = [
     "sort_stable",
     "true_divide",
     "true_divide_",
+    "upsample_nearest2d",
 ]
