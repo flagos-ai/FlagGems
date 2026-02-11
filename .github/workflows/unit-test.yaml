@@ -18,6 +18,7 @@ on:
       - '!src/flag_gems/experimental_ops/**'
       - '!experimental_tests/**'
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [ "master" ]
     paths:
       - '**.py'
@@ -42,18 +43,15 @@ jobs:
         uses: ArcticLampyrid/action-wait-for-workflow@v1
         with:
           workflow: .github/workflows/triage.yaml
-      - shell: bash
-        run: |
-           echo "${{ github.event.pull_request.labels[*].name }}"
 
   build-doc:
     needs: triage
-    if: "contains(github.event.pull_request.labels.*.name, 'documentation')"
+    if: contains(github.event.pull_request.labels.*.name, 'documentation')
     uses: ./.github/workflows/mkdocs.yaml
 
   blas-op-test:
     needs: triage
-    if: "contains(github.event.pull_request.labels.*.name, 'tests')"
+    if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -61,7 +59,7 @@ jobs:
 
   model-test:
     needs: triage
-    if: "contains(github.event.pull_request.labels.*.name, 'tests')"
+    if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: model-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -69,7 +67,7 @@ jobs:
 
   quick-cpu-op-test:
     needs: triage
-    if: "contains(github.event.pull_request.labels.*.name, 'tests')"
+    if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -77,7 +75,7 @@ jobs:
 
   pointwise-op-test:
     needs: triage
-    if: "contains(github.event.pull_request.labels.*.name, 'tests')"
+    if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -85,7 +83,7 @@ jobs:
 
   reduction-op-test:
     needs: triage
-    if: "contains(github.event.pull_request.labels.*.name, 'tests')"
+    if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -93,7 +91,7 @@ jobs:
 
   special-op-test:
     needs: triage
-    if: "contains(github.event.pull_request.labels.*.name, 'tests')"
+    if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: special-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
