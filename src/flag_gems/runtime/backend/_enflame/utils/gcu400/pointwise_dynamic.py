@@ -857,7 +857,7 @@ class WrapperGenerator:
                 code.writeline("if FlagOfNotUseDMA:")
                 with code.indent():
                     code.writeline(
-                    f"tile_sizes = heuristics_for_tile_size({max_tile_size // 4}, *shape)"
+                    f"tile_sizes = heuristics_for_tile_size({max_tile_size // 8}, *shape)"
                 )
                 code.writeline("else:")
                 with code.indent():
@@ -909,7 +909,7 @@ class WrapperGenerator:
                 code.writeline("if FlagOfNotUseDMA:")
                 with code.indent():
                     code.writeline(
-                    f"tile_sizes = heuristics_for_tile_size({max_tile_size // 4}, num_tasks)"
+                    f"tile_sizes = heuristics_for_tile_size({max_tile_size // 8}, num_tasks)"
                 )
                 code.writeline("else:")
                 with code.indent():
