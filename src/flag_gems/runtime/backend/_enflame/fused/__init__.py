@@ -26,6 +26,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.flash_mla import flash_mla
     from .gcu400.outer import outer
     from .gcu400.fused_add_rms_norm import fused_add_rms_norm
+    from .gcu400.skip_layernorm import skip_layer_norm
     __all__ = [
         "gelu_and_mul",
         "silu_and_mul",
@@ -33,4 +34,5 @@ elif arch_version == 400 or arch_version == 410:
         "flash_mla",
         "outer",
         "fused_add_rms_norm",
+        "skip_layer_norm",
     ]
