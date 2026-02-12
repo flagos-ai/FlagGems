@@ -1400,6 +1400,21 @@ MAXPOOL2D_CONFIGS = [
     ((2, 8, 16, 20), 2, 2, (1, 0), 1, False),
 ]
 
+MAXPOOL3D_CONFIGS = (
+    [((1, 1, 4, 4, 4), 2, 2, 0, 1, False)]
+    if QUICK_MODE
+    else [
+        # Classic case: 3x3x3 kernel, stride 2, padding 1
+        ((2, 3, 8, 8, 8), 3, 2, 1, 1, False),
+        # Non-cubic kernel and stride
+        ((1, 4, 6, 7, 8), (2, 3, 3), (2, 1, 2), 1, 1, False),
+        # Test ceil_mode
+        ((1, 2, 7, 8, 9), 3, 2, 1, 1, True),
+        # Test dilation
+        ((1, 1, 5, 5, 5), 2, 1, 0, 2, False),
+    ]
+)
+
 
 @pytest.mark.max_pool2d
 @pytest.mark.parametrize(
@@ -1473,6 +1488,80 @@ def test_accuracy_max_pool2d_backward(
         ceil_mode=ceil_mode,
     )
 
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.max_pool3d
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool3d(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+
+    ref_out, _ = torch.nn.functional.max_pool3d_with_indices(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+
+    res_out, _ = flag_gems.max_pool3d_with_indices(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.max_pool3d_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool3d_backward(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, upcast=True)
+    ref_out, _ = torch.nn.functional.max_pool3d_with_indices(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+    res_out, res_indices = flag_gems.max_pool3d_with_indices(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+    out_grad = torch.randn_like(res_out, device=flag_gems.device)
+    ref_grad = to_reference(out_grad, upcast=True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    res_in_grad = flag_gems.max_pool3d_backward(
+        out_grad,
+        inp,
+        res_indices,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
