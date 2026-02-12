@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def cosh_func(x):
     x = x.to(tl.float32)
-    return (exp(x) + exp(-x)) * 0.5
+    ax = tl.abs(x)
+    t = exp(ax)
+    return (t + 1.0 / t) * 0.5
 
 
 def cosh(A):
