@@ -270,6 +270,35 @@ def test_accuracy_cos_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.cosh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.cosh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.cosh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.exp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
