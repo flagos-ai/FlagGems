@@ -1,4 +1,4 @@
-name: unittest-hopper
+name: unit-test-hopper
 
 on:
   push:
