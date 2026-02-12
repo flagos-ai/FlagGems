@@ -404,6 +404,38 @@ elif arch_version >= 400:
     from .gcu400.bmm import bmm
     from .gcu400.diag_embed import diag_embed
     from .gcu400.diagonal import diagonal_backward
+    from .gcu400.flip import flip
+    from .gcu400.abs import abs, abs_
+    from .gcu400.angle import angle
+    from .gcu400.bitwise_not import bitwise_not, bitwise_not_
+    from .gcu400.cos import cos, cos_
+    from .gcu400.diag_embed import diag_embed
+    from .gcu400.elu import elu
+    from .gcu400.erf import erf, erf_
+    from .gcu400.exp import exp, exp_
+    from .gcu400.full import full
+    from .gcu400.gelu import gelu, gelu_, gelu_backward
+    from .gcu400.glu import glu
+    from .gcu400.isinf import isinf
+    from .gcu400.isnan import isnan
+    from .gcu400.log import log
+    from .gcu400.log_sigmoid import log_sigmoid
+    from .gcu400.logical_not import logical_not
+    from .gcu400.mse_loss import mse_loss
+    from .gcu400.nan_to_num import nan_to_num
+    from .gcu400.neg import neg, neg_
+    from .gcu400.normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
+    from .gcu400.reciprocal import reciprocal, reciprocal_
+    from .gcu400.relu import relu, relu_
+    from .gcu400.repeat_interleave import repeat_interleave_self_int, repeat_interleave_self_tensor, repeat_interleave_tensor
+    from .gcu400.rsqrt import rsqrt, rsqrt_
+    from .gcu400.sigmoid import sigmoid, sigmoid_, sigmoid_backward
+    from .gcu400.silu import silu, silu_, silu_backward
+    from .gcu400.sin import sin, sin_
+    from .gcu400.tanh import tanh, tanh_, tanh_backward
+    from .gcu400.to import to_dtype
+    from .gcu400.full_like import full_like
+    from .gcu400.resolve_neg import resolve_neg
     __all__ = [
         "mean_dim",
         "zeros",
@@ -519,4 +551,58 @@ elif arch_version >= 400:
         "bmm",
         "diag_embed",
         "diagonal_backward",
+        "flip",
+        "abs",
+        "abs_",
+        "angle",
+        "bitwise_not",
+        "bitwise_not_",
+        "cos",
+        "cos_",
+        "diag_embed",
+        "elu",
+        "erf",
+        "erf_",
+        "exp",
+        "exp_",
+        "full",
+        "gelu",
+        "gelu_",
+        "gelu_backward",
+        "glu",
+        "isinf",
+        "isnan",
+        "log",
+        "log_sigmoid",
+        "logical_not",
+        "mse_loss",
+        "nan_to_num",
+        "neg",
+        "neg_",
+        "normal_float_tensor",
+        "normal_tensor_float",
+        "normal_tensor_tensor",
+        "reciprocal",
+        "reciprocal_",
+        "relu",
+        "relu_",
+        "repeat_interleave_self_int",
+        "repeat_interleave_self_tensor",
+        "repeat_interleave_tensor",
+        "rsqrt",
+        "rsqrt_",
+        "sigmoid",
+        "sigmoid_",
+        "sigmoid_backward",
+        "silu",
+        "silu_",
+        "silu_backward",
+        "sin",
+        "sin_",
+        "tanh",
+        "tanh_",
+        "tanh_backward",
+        "to_dtype",
+        "full_like",
+        "resolve_neg",
     ]
