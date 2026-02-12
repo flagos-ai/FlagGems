@@ -415,7 +415,6 @@ elif arch_version >= 400:
     from .gcu400.exp import exp, exp_
     from .gcu400.full import full
     from .gcu400.gelu import gelu, gelu_, gelu_backward
-    from .gcu400.glu import glu
     from .gcu400.isinf import isinf
     from .gcu400.isnan import isnan
     from .gcu400.log import log
@@ -569,7 +568,6 @@ elif arch_version >= 400:
         "gelu",
         "gelu_",
         "gelu_backward",
-        "glu",
         "isinf",
         "isnan",
         "log",
