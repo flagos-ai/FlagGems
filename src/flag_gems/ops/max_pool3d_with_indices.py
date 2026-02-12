@@ -356,6 +356,9 @@ def max_pool3d_backward(
     dilation,
     ceil_mode,
 ):
+    logger.debug("GEMS MAX_POOL3D BACKWARD")
+    grad_output = grad_output.contiguous()
+    indices = indices.contiguous()
     grad_output, squeeze_n = _ensure_5d(grad_output)
     input, _ = _ensure_5d(input)
     indices, _ = _ensure_5d(indices)
@@ -376,16 +379,30 @@ def max_pool3d_backward(
         dilation_w,
     ) = params
 
-    grad_input = torch.ops.aten.max_pool3d_with_indices_backward(
-        grad_output,
-        input,
-        (kernel_d, kernel_h, kernel_w),
-        (stride_d, stride_h, stride_w),
-        (padding_d, padding_h, padding_w),
-        (dilation_d, dilation_h, dilation_w),
-        ceil_mode,
-        indices,
-    )
+    if grad_output.dtype in (torch.float16, torch.bfloat16):
+        grad_output_fp32 = grad_output.float()
+        input_fp32 = input.float()
+        grad_input = torch.ops.aten.max_pool3d_with_indices_backward(
+            grad_output_fp32,
+            input_fp32,
+            (kernel_d, kernel_h, kernel_w),
+            (stride_d, stride_h, stride_w),
+            (padding_d, padding_h, padding_w),
+            (dilation_d, dilation_h, dilation_w),
+            ceil_mode,
+            indices,
+        ).to(grad_output.dtype)
+    else:
+        grad_input = torch.ops.aten.max_pool3d_with_indices_backward(
+            grad_output,
+            input,
+            (kernel_d, kernel_h, kernel_w),
+            (stride_d, stride_h, stride_w),
+            (padding_d, padding_h, padding_w),
+            (dilation_d, dilation_h, dilation_w),
+            ceil_mode,
+            indices,
+        )
     if squeeze_n:
         return grad_input.squeeze(0)
     return grad_input
