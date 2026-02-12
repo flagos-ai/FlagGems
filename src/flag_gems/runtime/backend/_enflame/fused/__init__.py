@@ -24,9 +24,11 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.silu_and_mul import silu_and_mul
     from .gcu400.cross_entropy_loss import cross_entropy_loss
     from .gcu400.flash_mla import flash_mla
+    from .gcu400.outer import outer
     __all__ = [
         "gelu_and_mul",
         "silu_and_mul",
         "cross_entropy_loss",
         "flash_mla",
+        "outer",
     ]
