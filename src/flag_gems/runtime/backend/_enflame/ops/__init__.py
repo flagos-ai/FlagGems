@@ -435,6 +435,7 @@ elif arch_version >= 400:
     from .gcu400.to import to_dtype
     from .gcu400.full_like import full_like
     from .gcu400.resolve_neg import resolve_neg
+    from .gcu400.linspace import linspace
     __all__ = [
         "mean_dim",
         "zeros",
@@ -603,4 +604,5 @@ elif arch_version >= 400:
         "to_dtype",
         "full_like",
         "resolve_neg",
+        "linspace",
     ]
