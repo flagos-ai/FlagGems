@@ -141,6 +141,9 @@ def generate_destination_passing_padding_wrapper(
     with code.indent():
         # docstring
         code.writeline("BLOCK_SIZE = 1024")
+        code.writeline("if out0.numel() // BLOCK_SIZE > 65535:")
+        with code.indent():
+            code.writeline("BLOCK_SIZE = 32768")
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
 
