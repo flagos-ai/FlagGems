@@ -1,10 +1,10 @@
-name: model-test
+name: examples
 
 on:
   workflow_call:
 
 jobs:
-  model-test:
+  test-examples:
     runs-on: jiuding
     steps:
       - name: Checkout code
@@ -14,17 +14,14 @@ jobs:
         shell: bash
         run: tools/gpu_check.sh
 
-      - name: FlagGems examples
+      - name: Testing
         shell: bash
         run: |
-          echo "current dir: $(pwd)"
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
             PR_ID=${{ github.event.pull_request.number }}
           elif [ "${{ github.event_name }}" == "push" ]; then
             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-            echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
-          bash tools/model-test.sh ${PR_ID}
+          bash tools/examples-test.sh ${PR_ID}

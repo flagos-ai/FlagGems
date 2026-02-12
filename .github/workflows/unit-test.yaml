@@ -57,13 +57,13 @@ jobs:
       cancel-in-progress: true
     uses: ./.github/workflows/blas-op-test.yaml
 
-  model-test:
+  examples-test:
     needs: triage
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
-      group: model-test-${{ github.event.pull_request.number || github.ref }}
+      group: examples-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/model-test.yaml
+    uses: ./.github/workflows/examples-test.yaml
 
   quick-cpu-op-test:
     needs: triage
@@ -109,7 +109,7 @@ jobs:
     needs:
       - triage
       - blas-op-test
-      - model-test
+      - examples-test
       - quick-cpu-op-test
       - utils-test
       - pointwise-op-test

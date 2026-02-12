@@ -1,4 +1,4 @@
-name: gems-experimental-test
+name: experimental-ops
 
 on:
   push:
