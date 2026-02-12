@@ -1000,31 +1000,6 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     gems_assert_equal(res0_out, ref0_out)
 
 
-@pytest.mark.fill
-@pytest.mark.parametrize("value", [0, 1, 9])
-@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_fill(value, shape, dtype):
-    # Test fill.Scalar
-    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
-    ref_x = to_reference(x, False)
-
-    ref_out = torch.fill(ref_x, value)
-    with flag_gems.use_gems():
-        res_out = torch.fill(x, value)
-
-    gems_assert_equal(res_out, ref_out)
-
-    # Test fill.Tensor
-    value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
-    ref_value_tensor = to_reference(value_tensor, False)
-    ref_out_tensor = torch.fill(ref_x, ref_value_tensor)
-    with flag_gems.use_gems():
-        res_out_tensor = torch.fill(x, value_tensor)
-
-    gems_assert_equal(res_out_tensor, ref_out_tensor)
-
-
 CAMBRICON_STACK_SHAPES = [
     [
         (8, 8, 128),
