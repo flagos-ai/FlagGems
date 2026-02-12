@@ -79,7 +79,8 @@ class Register:
 
         if not self.include_config:
             warnings.warn(
-                "only_enable failed: No op to register. Check if include is correct."
+                "Registration failed for empty operator list. "
+                "Check if the 'include' is specified correctly."
             )
             return
 

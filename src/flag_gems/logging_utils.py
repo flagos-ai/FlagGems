@@ -2,12 +2,12 @@
 
 Notes
 -----
-1) When you enter through the public APIs `enable`, `only_enable`, or the
-    context manager `use_gems`, the `record` flag controls whether op-level
-    logging is enabled and where it is written.
+1) When you enter through the public APIs `enable` or the context manager
+   `use_gems`, the `record` flag controls whether op-level logging is enabled
+   and where it is written.
 2) If you import `flag_gems` and call operators directly (e.g., `flag_gems.mm`)
-    without those helpers, call `setup_flaggems_logging()` yourself to initialize
-    the logging mode and file handler.
+   without those helpers, call `setup_flaggems_logging()` yourself to initialize
+   the logging mode and file handler.
 """
 
 import logging
