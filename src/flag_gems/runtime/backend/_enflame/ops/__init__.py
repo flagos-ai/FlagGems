@@ -436,6 +436,7 @@ elif arch_version >= 400:
     from .gcu400.full_like import full_like
     from .gcu400.resolve_neg import resolve_neg
     from .gcu400.linspace import linspace
+    from .gcu400.arange import arange, arange_start
     __all__ = [
         "mean_dim",
         "zeros",
@@ -605,4 +606,6 @@ elif arch_version >= 400:
         "full_like",
         "resolve_neg",
         "linspace",
+        "arange",
+        "arange_start",
     ]
