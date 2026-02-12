@@ -5,7 +5,6 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
-from flag_gems.ops.gather import gather
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -53,7 +52,14 @@ def generate_index_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
     code.writeline("@libentry()")
-    code.writeline("@triton.heuristics(runtime.get_heuristic_config('index'))")
+    code.writeline("@libtuner(")
+    with code.indent():
+        code.writeline('configs=runtime.get_tuned_config("index"),')
+        code.writeline('key=["M", "N"],')
+        code.writeline('strategy=["align32", "align32"],')
+        code.writeline("warmup=5,")
+        code.writeline("rep=10,")
+    code.writeline(")")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
@@ -257,10 +263,18 @@ _index_func = IndexFunction()
 
 def index(inp, indices):
     logger.debug("GEMS INDEX")
+    original_indices = list(indices)  # Save original indices for later checks
     indices = list(indices)
 
     if not indices:
         raise ValueError("at least one index must be provided")
+
+    indices = [
+        index.to(inp.device)
+        if index is not None and index.device != inp.device
+        else index
+        for index in indices
+    ]
 
     # Step 1: Process indices (convert bool/int8 to long, handle None)
     # Following PyTorch meta implementation
@@ -303,6 +317,10 @@ def index(inp, indices):
             f"too many indices for tensor of dimension {inp.ndim} (got {len(indices)})"
         )
 
+    # Save for later use
+    has_any_tensor = any(idx is not None for idx in indices)
+    starts_with_none = indices[0] is None if indices else False
+
     # Step 2: Broadcast indices (only tensor indices, not None)
     tensor_indices = [idx for idx in indices if idx is not None]
     if tensor_indices:
@@ -337,9 +355,10 @@ def index(inp, indices):
     else:
         has_contiguous_subspace = True
 
-    # Step 5: Transpose to front if needed
-    # If not contiguous, transpose input so all non-None indices come first
-    if not has_contiguous_subspace:
+    # Transpose if not contiguous OR starts with None (and has tensor indices)
+    need_post_process = False
+    first_tensor_dim = None
+    if not has_contiguous_subspace or (starts_with_none and has_any_tensor):
         dims = []
         transposed_indices = []
         # First add all non-None index positions
@@ -356,7 +375,17 @@ def index(inp, indices):
         inp = inp.permute(dims)
         indices = transposed_indices
 
-    # Step 6: Now indices have contiguous subspace
+        # Check if we need post-processing
+        # (only when originally started with None and was contiguous)
+        if starts_with_none and has_any_tensor and has_contiguous_subspace:
+            need_post_process = True
+            # Find first tensor dimension in original indices
+            for i, idx in enumerate(original_indices):
+                if idx is not None:
+                    first_tensor_dim = i
+                    break
+
+    # Step 5: Now indices have contiguous subspace (after potential transpose)
     # Calculate output shape: before_shape + replacement_shape + after_shape
     before_shape = []
     after_shape = []
@@ -375,27 +404,32 @@ def index(inp, indices):
             if not replacement_shape:
                 replacement_shape = list(index.shape)
 
-    # Step 7: Build output shape and create output tensor
+    # Step 6: Build output shape and create output tensor
     out_shape = before_shape + replacement_shape + after_shape
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
-    # Step 8: Handle empty tensor case
+    # Step 7: Handle empty tensor case
     if inp.numel() == 0:
         return out
 
-    # Step 9: Extract only tensor indices for kernel
+    # Step 8: Extract only tensor indices for kernel
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         # All None, just reshape
         return inp.view(*out_shape)
 
-    # Step 10: Call kernel with tensor indices
-    # Note: kernel needs to handle the fact that input was potentially permuted
-    # and output shape includes None dimensions
-    if inp.ndim == 1 and len(tensor_indices) == 1:
-        return gather(inp, 0, tensor_indices[0])
-
-    # For mixed indexing, we need to adjust the kernel call
-    # The kernel should work with the permuted input and handle output shape correctly
+    # Step 9: Call kernel with tensor indices
     _index_func(inp, tensor_indices, out)
+
+    # Step 10: Post-process if needed (for originally contiguous tensor indices starting with None)
+    if need_post_process:
+        # Calculate index_rank from the first tensor index
+        index_rank = tensor_indices[0].ndim
+        # Create permutation order to move broadcast dimensions to correct position
+        pre_dims = list(range(index_rank, index_rank + first_tensor_dim))
+        broadcast_dims = list(range(index_rank))
+        post_dims = list(range(index_rank + first_tensor_dim, out.ndim))
+        new_order = pre_dims + broadcast_dims + post_dims
+        out = out.permute(new_order)
+
     return out
