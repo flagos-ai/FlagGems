@@ -1218,6 +1218,68 @@ def test_accuracy_log(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.log10
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1e-6
+
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.log10(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.log10(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.log10_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1e-6
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = ref_inp.log10_()
+    with flag_gems.use_gems():
+        res_out = inp.log10_()
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.log10
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_out(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1e-6
+    ref_inp = to_reference(inp, True)
+
+    out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    torch.log10(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        torch.log10(inp, out=out)
+
+    gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.log10
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_special_values(dtype):
+    # Test special values: 0, inf, negative, NaN
+    special_vals = torch.tensor(
+        [0.0, 1.0, 10.0, 100.0, 1e-7, float("inf"), float("nan"), -1.0],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_inp = to_reference(special_vals, True)
+    ref_out = torch.log10(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.log10(special_vals)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
