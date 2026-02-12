@@ -34,6 +34,29 @@ def _ctc_loss_raw(
     if isinstance(input_lengths, torch.Tensor) and isinstance(
         target_lengths, torch.Tensor
     ):
+        if (
+            input_lengths.device == log_probs.device
+            and target_lengths.device == log_probs.device
+        ):
+            return torch.ops.aten._ctc_loss.Tensor(
+                log_probs,
+                targets,
+                input_lengths,
+                target_lengths,
+                blank,
+                zero_infinity,
+            )
+        if input_lengths.device.type == "cpu" and target_lengths.device.type == "cpu":
+            input_lengths = _to_int_list(input_lengths)
+            target_lengths = _to_int_list(target_lengths)
+            return torch.ops.aten._ctc_loss.default(
+                log_probs,
+                targets,
+                input_lengths,
+                target_lengths,
+                blank,
+                zero_infinity,
+            )
         # Move lengths to the same device as log_probs
         device = log_probs.device
         if input_lengths.device != device:
