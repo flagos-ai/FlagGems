@@ -1,5 +1,5 @@
 from flag_gems.ops.abs import abs, abs_
-from flag_gems.ops.acos import acos
+from flag_gems.ops.acos import acos, acos_
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
@@ -246,6 +246,7 @@ __all__ = [
     "abs",
     "abs_",
     "acos",
+    "acos_",
     "add",
     "add_",
     "addcdiv",
