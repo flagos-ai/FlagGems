@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+# TODO: enflame locally
 import sys
 flag_gems_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
 sys.path.append(flag_gems_DIR)
