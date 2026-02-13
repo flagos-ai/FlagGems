@@ -1384,6 +1384,8 @@ def test_accuracy_avg_pool2d_backward(
 
 
 AVGPOOL3D_CONFIGS = [
+    # Small (4D input)
+    ((1, 4, 4, 4), 2, 2, 0, False, True, None),
     # 3x3x3 kernel, stride 2, padding 1
     ((2, 3, 8, 16, 16), 3, 2, 1, False, True, None),
     # Test count_include_pad=False
@@ -1396,6 +1398,8 @@ AVGPOOL3D_CONFIGS = [
     ((1, 1, 5, 5, 5), 2, 1, 0, False, True, 1),
     # Larger case
     ((1, 8, 10, 20, 20), 3, 2, 1, False, True, None),
+    # Large
+    ((1, 4, 32, 32, 32), 3, 2, 1, False, True, None),
     # No padding, count_include_pad=False
     ((2, 4, 8, 8, 8), 2, 2, 0, False, False, None),
     # Non-cubic padding
