@@ -3,34 +3,35 @@ name: unit-test
 on:
   push:
     branches: [ "master" ]
-    paths:
-      - '**.py'
-      - '**.cpp'
-      - '**.cu'
-      - '**.h'
-      - '**.hpp'
-      - '**.cc'
-      - 'CMakeLists.txt'
-      - '**/*.cmake'
-      - '**/*.mk'
-      - 'Makefile'
-      - '**.yaml'
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # paths:
+    #   - '**.py'
+    #   - '**.cpp'
+    #   - '**.cu'
+    #   - '**.h'
+    #   - '**.hpp'
+    #   - '**.cc'
+    #   - 'CMakeLists.txt'
+    #   - '**/*.cmake'
+    #   - '**/*.mk'
+    #   - 'Makefile'
+    #   - '**.yaml'
 
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [ "master" ]
-    paths:
-      - '**.py'
-      - '**.cpp'
-      - '**.cu'
-      - '**.h'
-      - '**.hpp'
-      - '**.cc'
-      - 'CMakeLists.txt'
-      - '**/*.cmake'
-      - '**/*.mk'
-      - 'Makefile'
-      - '**.yaml'
+    # paths:
+    #   - '**.py'
+    #   - '**.cpp'
+    #   - '**.cu'
+    #   - '**.h'
+    #   - '**.hpp'
+    #   - '**.cc'
+    #   - 'CMakeLists.txt'
+    #   - '**/*.cmake'
+    #   - '**/*.mk'
+    #   - 'Makefile'
+    #   - '**.yaml'
 
 jobs:
   triage:
