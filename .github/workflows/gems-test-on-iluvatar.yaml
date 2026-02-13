@@ -1,11 +1,11 @@
 ---
-name: unittest-moore
+name: unittest-iluvatar
 
 'on':
   push:
     branches: ["master"]
     paths:
-      - 'src/flag_gems/runtime/backend/_mthreads/**'
+      - 'src/flag_gems/runtime/backend/_iluvatar/**'
       - 'src/flag_gems/ops/**'
       - 'src/flag_gems/fused/**'
       - 'src/flag_gems/utils/**'
@@ -21,16 +21,16 @@ name: unittest-moore
       - 'tests/**'
       - 'CMakeLists.txt'
       - '**/*.cmake'
-      - 'tools/gpu_check_moore.sh'
+      - 'tools/gpu_check_iluvatar.sh'
       - 'tools/run_backend_tests.sh'
       - 'tools/run_command.sh'
-      - '.github/workflows/gems-test-on-moore.yaml'
+      - '.github/workflows/gems-test-on-iluvatar.yaml'
       - '.github/workflows/backend-test.yaml'
 
   pull_request:
     branches: ["master"]
     paths:
-      - 'src/flag_gems/runtime/backend/_mthreads/**'
+      - 'src/flag_gems/runtime/backend/_iluvatar/**'
       - 'src/flag_gems/ops/**'
       - 'src/flag_gems/fused/**'
       - 'src/flag_gems/utils/**'
@@ -46,17 +46,17 @@ name: unittest-moore
       - 'tests/**'
       - 'CMakeLists.txt'
       - '**/*.cmake'
-      - 'tools/gpu_check_moore.sh'
+      - 'tools/gpu_check_iluvatar.sh'
       - 'tools/run_backend_tests.sh'
       - 'tools/run_command.sh'
-      - '.github/workflows/gems-test-on-moore.yaml'
+      - '.github/workflows/gems-test-on-iluvatar.yaml'
       - '.github/workflows/backend-test.yaml'
 
 jobs:
-  test-on-moore:
+  test-on-iluvatar:
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: moore
-      runner_label: mthreadsCI
-      gpu_check_script: tools/gpu_check_moore.sh
+      vendor: iluvatar
+      runner_label: iluvatar_CI
+      gpu_check_script: tools/gpu_check_iluvatar.sh
       test_script: tools/run_backend_tests.sh
