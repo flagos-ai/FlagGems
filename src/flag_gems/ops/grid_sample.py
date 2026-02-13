@@ -78,17 +78,24 @@ def _grid_sampler_impl(input, grid, interpolation_mode, padding_mode, align_corn
     if input.dim() == 4:
         return torch.ops.aten.grid_sampler_2d.default.redispatch(
             _FALLBACK_KEYSET,
-            input, grid, interpolation_mode, padding_mode, align_corners
+            input,
+            grid,
+            interpolation_mode,
+            padding_mode,
+            align_corners,
         )
-    elif input.dim() == 5:
+    if input.dim() == 5:
         return torch.ops.aten.grid_sampler_3d.default.redispatch(
             _FALLBACK_KEYSET,
-            input, grid, interpolation_mode, padding_mode, align_corners
+            input,
+            grid,
+            interpolation_mode,
+            padding_mode,
+            align_corners,
         )
-    else:
-        raise ValueError(
-            f"grid_sampler(): expected 4D or 5D input, but got {input.dim()}D input"
-        )
+    raise ValueError(
+        f"grid_sampler(): expected 4D or 5D input, but got {input.dim()}D input"
+    )
 
 
 def grid_sampler(input, grid, interpolation_mode, padding_mode, align_corners):
