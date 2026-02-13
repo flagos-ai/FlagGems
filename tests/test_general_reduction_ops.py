@@ -447,6 +447,63 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 
+def _inject_nans_(t: torch.Tensor, ratio: float = 0.2) -> torch.Tensor:
+    if not t.is_floating_point():
+        return t
+    if t.numel() == 0:
+        return t
+    mask = torch.rand_like(t) < ratio
+    t[mask] = float("nan")
+    return t
+
+
+@pytest.mark.nansum
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_nansum_without_dim(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    _inject_nans_(inp)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nansum(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nansum(inp)
+
+    non_nan = (~torch.isnan(ref_inp)).sum().item()
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=max(1, int(non_nan)))
+
+
+@pytest.mark.nansum
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM + [(False, []), (True, [])])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_nansum_dim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    _inject_nans_(inp)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nansum(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.nansum(inp, dim=dim, keepdim=keepdim)
+
+    mask = ~torch.isnan(ref_inp)
+    if isinstance(dim, int):
+        dims = (dim,)
+    elif dim == []:
+        dims = None
+    else:
+        dims = tuple(dim)
+
+    if dims is None:
+        reduce_dim = int(mask.sum().item())
+    else:
+        dims = tuple(d % inp.ndim for d in dims)
+        cnt = mask.sum(dim=dims, keepdim=keepdim)
+        reduce_dim = int(cnt.max().item()) if cnt.numel() else 0
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=max(1, reduce_dim))
+
+
 QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]
 QUANTILE_FLOAT_DTYPES = [torch.float32]
 QUANTILE_Q = (
