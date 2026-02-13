@@ -53,6 +53,10 @@ RENORMALIZE_LIST = [True, False] if not QUICK_MODE else [True]
 SCORING_FUNC_LIST = [0, 1] if not QUICK_MODE else [0]
 DTYPE_LIST = [torch.bfloat16, torch.float32] if not QUICK_MODE else [torch.float32]
 LARGE_SCALE_DTYPE_LIST = [torch.float32, torch.bfloat16]
+SVD_DTYPES = [torch.float32] + (
+    [torch.float64] if flag_gems.runtime.device.support_fp64 else []
+)
+SVD_SHAPES = [(4, 3)] if QUICK_MODE else [(4, 3), (3, 4), (2, 4, 3)]
 
 
 def check_valid_config(n_expert, n_group, topk):
@@ -845,6 +849,24 @@ def test_upsample_nearest2d(dtype, shape, scale):
     with flag_gems.use_gems():
         res_out = torch._C._nn.upsample_nearest2d(input, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", SVD_SHAPES)
+@pytest.mark.parametrize("some", [True, False])
+@pytest.mark.parametrize("compute_uv", [True, False])
+@pytest.mark.parametrize("dtype", SVD_DTYPES)
+def test_svd(shape, some, compute_uv, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, upcast=True)
+
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=some, compute_uv=compute_uv)
+    with flag_gems.use_gems():
+        res_u, res_s, res_v = torch.svd(inp, some=some, compute_uv=compute_uv)
+
+    gems_assert_close(res_s, ref_s, dtype)
+    gems_assert_close(res_u, ref_u, dtype)
+    gems_assert_close(res_v, ref_v, dtype)
 
 
 @pytest.mark.arange
