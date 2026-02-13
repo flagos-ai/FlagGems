@@ -3,6 +3,7 @@ name: unit-test
 on:
   push:
     branches: [ "master" ]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - '**.py'
       - '**.cpp'
@@ -17,8 +18,8 @@ on:
       - '**.yaml'
 
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [ "master" ]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - '**.py'
       - '**.cpp'
@@ -36,10 +37,12 @@ jobs:
   triage:
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for PR triage
-        uses: ArcticLampyrid/action-wait-for-workflow@v1
-        with:
-          workflow: .github/workflows/triage.yaml
+      - run: |
+          echo "done"
+      # - name: Wait for PR triage
+      #   uses: ArcticLampyrid/action-wait-for-workflow@v1
+      #   with:
+      #     workflow: .github/workflows/triage.yaml
 
   build-doc:
     needs: triage
