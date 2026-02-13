@@ -69,7 +69,19 @@ THRESHOLD_SHAPE = (
     else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
 )
 CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
-CTC_LOSS_SHAPES = [(5, 2, 4, 3)] if QUICK_MODE else [(5, 2, 4, 3)]
+CTC_LOSS_SHAPES = (
+    [(5, 2, 4, 3)]
+    if QUICK_MODE
+    else [
+        # small
+        (2, 1, 3, 1),
+        # regular
+        (10, 4, 20, 6),
+        # large
+        (64, 8, 50, 20),
+    ]
+)
+CTC_LOSS_DTYPES = [torch.float32] if QUICK_MODE else [torch.float16, torch.float32]
 CTC_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
 
 
@@ -330,9 +342,9 @@ def test_accuracy_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
 @pytest.mark.parametrize("reduction", CTC_LOSS_REDUCTION)
 @pytest.mark.parametrize("use_tensor_lengths", [True, False])
 @pytest.mark.parametrize("shape", CTC_LOSS_SHAPES)
-def test_accuracy_ctc_loss(shape, reduction, use_tensor_lengths):
+@pytest.mark.parametrize("dtype", CTC_LOSS_DTYPES)
+def test_accuracy_ctc_loss(shape, reduction, use_tensor_lengths, dtype):
     T, N, C, S = shape
-    dtype = torch.float32
 
     log_probs = torch.randn(T, N, C, dtype=dtype, device=flag_gems.device)
     log_probs = torch.nn.functional.log_softmax(log_probs, dim=2)
@@ -387,9 +399,9 @@ def test_accuracy_ctc_loss(shape, reduction, use_tensor_lengths):
 
 @pytest.mark.ctc_loss
 @pytest.mark.parametrize("shape", CTC_LOSS_SHAPES)
-def test_accuracy_ctc_loss_zero_infinity(shape):
+@pytest.mark.parametrize("dtype", CTC_LOSS_DTYPES)
+def test_accuracy_ctc_loss_zero_infinity(shape, dtype):
     T, N, C, S = shape
-    dtype = torch.float32
 
     log_probs = torch.randn(T, N, C, dtype=dtype, device=flag_gems.device)
     log_probs = torch.nn.functional.log_softmax(log_probs, dim=2)
