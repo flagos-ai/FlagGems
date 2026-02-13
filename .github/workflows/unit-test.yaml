@@ -1,6 +1,8 @@
 name: unit-test
 
 on:
+  workflow_dispatch:
+    
   push:
     branches: [ "master" ]
     types: [opened, synchronize, reopened, labeled, unlabeled]
