@@ -15,8 +15,7 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
-      - '!src/flag_gems/experimental_ops/**'
-      - '!experimental_tests/**'
+
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [ "master" ]
@@ -32,8 +31,6 @@ on:
       - '**/*.mk'
       - 'Makefile'
       - '**.yaml'
-      - '!src/flag_gems/experimental_ops/**'
-      - '!experimental_tests/**'
 
 jobs:
   triage:
@@ -105,46 +102,44 @@ jobs:
       cancel-in-progress: true
     uses: ./.github/workflows/op-utils-test.yaml
 
-  coverage:
-    needs:
-      - triage
-      - blas-op-test
-      - examples-test
-      - quick-cpu-op-test
-      - utils-test
-      - pointwise-op-test
-      - reduction-op-test
-      - special-op-test
-    if: "contains(github.event.pull_request.labels.*.name, 'tests')"
-    concurrency:
-      group: coverage-test-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    runs-on: cpu
-    continue-on-error: true
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Get python coverage
-        shell: bash
-        run: |
-          git config --global --add safe.directory ../FlagGems
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            PR_ID=${{ github.event.pull_request.number }}
-          elif [ "${{ github.event_name }}" == "push" ]; then
-            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-            PR_ID=${PR_NUMBER}
-          fi
-          bash tools/code_coverage/coverage.sh ${PR_ID}
-
-      - name: Report python coverage
-        shell: bash
-        run: |
-          git config --global --add safe.directory ../FlagGems
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            PR_ID=${{ github.event.pull_request.number }}
-          elif [ "${{ github.event_name }}" == "push" ]; then
-            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-            PR_ID=${PR_NUMBER}
-          fi
-          bash tools/code_coverage/report_coverage.sh ${PR_ID}
+#   coverage:
+#     needs:
+#       - triage
+#       - blas-op-test
+#       - examples-test
+#       - quick-cpu-op-test
+#       - utils-test
+#       - pointwise-op-test
+#       - reduction-op-test
+#       - special-op-test
+#     if: contains(github.event.pull_request.labels.*.name, 'tests')
+#     concurrency:
+#       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
+#       cancel-in-progress: true
+#     runs-on: cpu
+#     continue-on-error: true
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v6
+#       - name: Get python coverage
+#         shell: bash
+#         run: |
+#           git config --global --add safe.directory ../FlagGems
+#           if [ "${{ github.event_name }}" == "pull_request" ]; then
+#             PR_ID=${{ github.event.pull_request.number }}
+#           elif [ "${{ github.event_name }}" == "push" ]; then
+#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+#             PR_ID=${PR_NUMBER}
+#           fi
+#           bash tools/code_coverage/coverage.sh ${PR_ID}
+#       - name: Report python coverage
+#         shell: bash
+#         run: |
+#           git config --global --add safe.directory ../FlagGems
+#           if [ "${{ github.event_name }}" == "pull_request" ]; then
+#             PR_ID=${{ github.event.pull_request.number }}
+#           elif [ "${{ github.event_name }}" == "push" ]; then
+#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+#             PR_ID=${PR_NUMBER}
+#           fi
+#           bash tools/code_coverage/report_coverage.sh ${PR_ID}
