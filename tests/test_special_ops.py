@@ -61,6 +61,8 @@ GRID_SAMPLE_2D_CONFIGS = (
         ((1, 3, 8, 8), (1, 6, 6, 2), "bilinear", "zeros", False),
         ((2, 1, 7, 5), (2, 5, 4, 2), "nearest", "border", True),
         ((1, 2, 6, 6), (1, 5, 5, 2), "bicubic", "reflection", False),
+        # Large
+        ((1, 4, 32, 32), (1, 16, 16, 2), "bilinear", "zeros", False),
     ]
 )
 
@@ -71,6 +73,8 @@ GRID_SAMPLE_3D_CONFIGS = (
         ((1, 2, 4, 5, 6), (1, 3, 4, 5, 3), "bilinear", "zeros", True),
         ((2, 1, 5, 4, 3), (2, 4, 3, 2, 3), "nearest", "border", False),
         ((1, 1, 4, 4, 4), (1, 3, 3, 3, 3), "bilinear", "reflection", False),
+        # Large
+        ((1, 2, 16, 16, 16), (1, 8, 8, 8, 3), "bilinear", "zeros", False),
     ]
 )
 
