@@ -3,8 +3,6 @@ import warnings
 
 import torch
 
-from flag_gems import runtime
-
 logger = logging.getLogger(__name__)
 
 _ALIGN_CORNERS_WARNING = (
@@ -14,29 +12,11 @@ _ALIGN_CORNERS_WARNING = (
     "See the documentation of grid_sample for details."
 )
 
-try:
-    _DISPATCH_KEY = torch._C._dispatch_key_parse(runtime.device.dispatch_key)
-except Exception:
-    _DISPATCH_KEY = None
-
-
-class _DispatchKeyGuard:
-    def __init__(self, key):
-        self.key = key
-        self.prev = None
-
-    def __enter__(self):
-        if self.key is None:
-            return self
-        self.prev = torch._C._dispatch_tls_is_dispatch_key_excluded(self.key)
-        torch._C._dispatch_tls_set_dispatch_key_excluded(self.key, True)
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.key is None:
-            return False
-        torch._C._dispatch_tls_set_dispatch_key_excluded(self.key, self.prev)
-        return False
+# Use a keyset that includes CUDA to avoid recursive calls
+_FALLBACK_KEYSET = (
+    torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)
+    | torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
+)
 
 
 def _normalize_mode(mode):
@@ -94,9 +74,20 @@ def _normalize_align_corners(align_corners):
 def _grid_sampler_impl(input, grid, interpolation_mode, padding_mode, align_corners):
     if interpolation_mode == 2 and input.dim() != 4:
         raise ValueError("grid_sampler(): bicubic mode is only supported for 4D input")
-    with _DispatchKeyGuard(_DISPATCH_KEY):
-        return torch.grid_sampler(
+    # Use redispatch to avoid recursive calls to our own implementation
+    if input.dim() == 4:
+        return torch.ops.aten.grid_sampler_2d.default.redispatch(
+            _FALLBACK_KEYSET,
             input, grid, interpolation_mode, padding_mode, align_corners
+        )
+    elif input.dim() == 5:
+        return torch.ops.aten.grid_sampler_3d.default.redispatch(
+            _FALLBACK_KEYSET,
+            input, grid, interpolation_mode, padding_mode, align_corners
+        )
+    else:
+        raise ValueError(
+            f"grid_sampler(): expected 4D or 5D input, but got {input.dim()}D input"
         )
 
 
