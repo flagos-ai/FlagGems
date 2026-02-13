@@ -54,6 +54,26 @@ SCORING_FUNC_LIST = [0, 1] if not QUICK_MODE else [0]
 DTYPE_LIST = [torch.bfloat16, torch.float32] if not QUICK_MODE else [torch.float32]
 LARGE_SCALE_DTYPE_LIST = [torch.float32, torch.bfloat16]
 
+GRID_SAMPLE_2D_CONFIGS = (
+    [((1, 1, 4, 4), (1, 3, 3, 2), "bilinear", "zeros", False)]
+    if QUICK_MODE
+    else [
+        ((1, 3, 8, 8), (1, 6, 6, 2), "bilinear", "zeros", False),
+        ((2, 1, 7, 5), (2, 5, 4, 2), "nearest", "border", True),
+        ((1, 2, 6, 6), (1, 5, 5, 2), "bicubic", "reflection", False),
+    ]
+)
+
+GRID_SAMPLE_3D_CONFIGS = (
+    [((1, 1, 3, 4, 5), (1, 2, 3, 4, 3), "bilinear", "zeros", False)]
+    if QUICK_MODE
+    else [
+        ((1, 2, 4, 5, 6), (1, 3, 4, 5, 3), "bilinear", "zeros", True),
+        ((2, 1, 5, 4, 3), (2, 4, 3, 2, 3), "nearest", "border", False),
+        ((1, 1, 4, 4, 4), (1, 3, 3, 3, 3), "bilinear", "reflection", False),
+    ]
+)
+
 
 def check_valid_config(n_expert, n_group, topk):
     if n_expert % n_group != 0:
@@ -844,6 +864,78 @@ def test_upsample_nearest2d(dtype, shape, scale):
     ref_out = torch._C._nn.upsample_nearest2d(ref_i, output_size=output_size).to(dtype)
     with flag_gems.use_gems():
         res_out = torch._C._nn.upsample_nearest2d(input, output_size=output_size)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.grid_sample
+@pytest.mark.parametrize(
+    "input_shape, grid_shape, mode, padding_mode, align_corners",
+    GRID_SAMPLE_2D_CONFIGS,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_grid_sample_2d(
+    input_shape, grid_shape, mode, padding_mode, align_corners, dtype
+):
+    input = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
+    grid = torch.empty(grid_shape, dtype=dtype, device=flag_gems.device).uniform_(
+        -1.2, 1.2
+    )
+
+    ref_input = to_reference(input, upcast=True)
+    ref_grid = to_reference(grid, upcast=True)
+    ref_out = torch.nn.functional.grid_sample(
+        ref_input,
+        ref_grid,
+        mode=mode,
+        padding_mode=padding_mode,
+        align_corners=align_corners,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.grid_sample(
+            input,
+            grid,
+            mode=mode,
+            padding_mode=padding_mode,
+            align_corners=align_corners,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.grid_sample
+@pytest.mark.parametrize(
+    "input_shape, grid_shape, mode, padding_mode, align_corners",
+    GRID_SAMPLE_3D_CONFIGS,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_grid_sample_3d(
+    input_shape, grid_shape, mode, padding_mode, align_corners, dtype
+):
+    input = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
+    grid = torch.empty(grid_shape, dtype=dtype, device=flag_gems.device).uniform_(
+        -1.2, 1.2
+    )
+
+    ref_input = to_reference(input, upcast=True)
+    ref_grid = to_reference(grid, upcast=True)
+    ref_out = torch.nn.functional.grid_sample(
+        ref_input,
+        ref_grid,
+        mode=mode,
+        padding_mode=padding_mode,
+        align_corners=align_corners,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.grid_sample(
+            input,
+            grid,
+            mode=mode,
+            padding_mode=padding_mode,
+            align_corners=align_corners,
+        )
+
     gems_assert_close(res_out, ref_out, dtype)
 
 
