@@ -1,5 +1,5 @@
 ---
-name: unittest-metax
+name: unit-test-metax
 
 'on':
   push:

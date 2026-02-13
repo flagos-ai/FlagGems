@@ -18,7 +18,7 @@ fast_tanh = tl_extra_shim.fast_tanh
 def gelu_none(x, inplace):
     scale: tl.constexpr = 0.7071067811
     x_f32 = x.to(tl.float32)
-    output = 0.5 * x_f32 * (1 + fast_erf(x_f32 * scale))
+    output = 0.5 * x_f32 + 0.5 * x_f32 * fast_erf(x_f32 * scale)
     return output
 
 
@@ -26,10 +26,8 @@ def gelu_none(x, inplace):
 @triton.jit
 def gelu_tanh(x, inplace):
     x_f32 = x.to(tl.float32)
-    output = (
-        0.5
-        * x_f32
-        * (1 + fast_tanh(x_f32 * 0.79788456 * (1 + 0.044715 * x_f32 * x_f32)))
+    output = 0.5 * x_f32 + 0.5 * x_f32 * fast_tanh(
+        x_f32 * 0.79788456 + x_f32 * 0.79788456 * 0.044715 * x_f32 * x_f32
     )
     return output
 
@@ -53,12 +51,13 @@ def gelu_backward_tanh(x, dy):
     c1 = 0.79788456  # math.sqrt(2 / math.pi)
     c2 = 0.044715
     # z = c1 * (x + c2 * x**3)
-    tanh_out = fast_tanh(c1 * x_fp32 * (1 + c2 * x_fp32 * x_fp32))
+    tanh_out = fast_tanh(c1 * x_fp32 + c1 * x_fp32 * c2 * x_fp32 * x_fp32)
     # dz_dx = c1 * (1 + 3 * c2 * x * x)
     # 0.1070322243 = c1 * 3 *c2
-    dydx = 0.5 * (
-        x * ((1 - tanh_out * tanh_out) * (c1 + 0.1070322243 * x_fp32 * x_fp32))
-        + (1 + tanh_out)
+    dydx = (
+        0.5 * ((x - x * tanh_out * tanh_out) * (c1 + 0.1070322243 * x_fp32 * x_fp32))
+        + 0.5
+        + 0.5 * tanh_out
     )
     dx = dydx * dy
     return dx

@@ -476,7 +476,7 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}" for j in range(ndim))
+                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for in{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -492,7 +492,7 @@ class KernelGenerator:
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}" for j in range(ndim))
+                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for out{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -571,11 +571,11 @@ class KernelGenerator:
                     code.writeline(f"{stride_args}, # strides for out{i}")
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks,")
 
                 if self.config.prefer_block_pointer:
                     code.writeline("FALLBACK_BPTR: tl.constexpr,")
@@ -1469,7 +1469,7 @@ class PointwiseDynamicFunction:
         self.config: CodeGenConfig = config or get_codegen_config()
 
         # instantiated & cached overloads
-        self.overloads: Mapping[int, Callable] = {}
+        self.overloads: Mapping[str, Callable] = {}
 
     def __call__(self, *args, **kwargs):
         # inputs must be passed by position, outputs must be passed by keyword
@@ -1621,8 +1621,9 @@ class PointwiseDynamicFunction:
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
         # the inputs & ouputs actually fits the manually instantiated overload
-        if ndim in self.overloads:
-            return self.overloads[ndim]
+        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        if key in self.overloads:
+            return self.overloads[key]
 
         code = IndentedBuffer()
 
@@ -1677,7 +1678,7 @@ class PointwiseDynamicFunction:
         m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
 
         overload = getattr(m, wrapper_name)
-        self.overloads[ndim] = overload
+        self.overloads[key] = overload
         return overload
 
 

@@ -21,6 +21,7 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
@@ -65,6 +66,7 @@ __all__ = [
     "gather_backward",
     "index_put",
     "index_put_",
+    "resolve_conj",
 ]
 
 if get_device_capability(current_device())[0] >= 3:

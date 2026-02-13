@@ -393,7 +393,10 @@ def l1_norm_kernel_2(
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     logger.debug("GEMS_CAMBRICON VECTOR NORM")
     if dtype is not None:
-        dtype = torch.dtype(dtype)
+        if isinstance(dtype, str):
+            dtype = getattr(torch, dtype)
+        elif not isinstance(dtype, torch.dtype):
+            dtype = torch.float32
     else:
         dtype = x.dtype
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:

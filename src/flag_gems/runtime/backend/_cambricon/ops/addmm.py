@@ -14,8 +14,8 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("addmm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=10,
 )

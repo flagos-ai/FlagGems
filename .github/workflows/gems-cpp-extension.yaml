@@ -1,4 +1,4 @@
-name: gems-cpp-extension
+name: cpp-extension
 
 on:
   push:
