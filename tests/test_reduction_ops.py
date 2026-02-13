@@ -1404,6 +1404,8 @@ MAXPOOL3D_CONFIGS = (
     [((1, 1, 4, 4, 4), 2, 2, 0, 1, False)]
     if QUICK_MODE
     else [
+        # Small (4D input)
+        ((1, 4, 4, 4), 2, 2, 0, 1, False),
         # Classic case: 3x3x3 kernel, stride 2, padding 1
         ((2, 3, 8, 8, 8), 3, 2, 1, 1, False),
         # Non-cubic kernel and stride
@@ -1412,6 +1414,8 @@ MAXPOOL3D_CONFIGS = (
         ((1, 2, 7, 8, 9), 3, 2, 1, 1, True),
         # Test dilation
         ((1, 1, 5, 5, 5), 2, 1, 0, 2, False),
+        # Large
+        ((1, 4, 32, 32, 32), 3, 2, 1, 1, False),
     ]
 )
 
