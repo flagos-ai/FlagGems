@@ -300,3 +300,8 @@ MoeAlignBlockSizeBenchmark:
     - [32, 16]
     - [8, 64]
     - [128, 4]
+
+ConcatAndCacheMLABenchmark:
+  shapes:
+    - [512, 64, 42, 16, 8]
+    - [1024, 64, 84, 16, 8]
