@@ -4,34 +4,34 @@ on:
   push:
     branches: [ "master" ]
     types: [opened, synchronize, reopened, labeled, unlabeled]
-    paths:
-      - '**.py'
-      - '**.cpp'
-      - '**.cu'
-      - '**.h'
-      - '**.hpp'
-      - '**.cc'
-      - 'CMakeLists.txt'
-      - '**/*.cmake'
-      - '**/*.mk'
-      - 'Makefile'
-      - '**.yaml'
+    # paths:
+    #   - '**.py'
+    #   - '**.cpp'
+    #   - '**.cu'
+    #   - '**.h'
+    #   - '**.hpp'
+    #   - '**.cc'
+    #   - 'CMakeLists.txt'
+    #   - '**/*.cmake'
+    #   - '**/*.mk'
+    #   - 'Makefile'
+    #   - '**.yaml'
 
   pull_request:
     branches: [ "master" ]
     types: [opened, synchronize, reopened, labeled, unlabeled]
-    paths:
-      - '**.py'
-      - '**.cpp'
-      - '**.cu'
-      - '**.h'
-      - '**.hpp'
-      - '**.cc'
-      - 'CMakeLists.txt'
-      - '**/*.cmake'
-      - '**/*.mk'
-      - 'Makefile'
-      - '**.yaml'
+    # paths:
+    #   - '**.py'
+    #   - '**.cpp'
+    #   - '**.cu'
+    #   - '**.h'
+    #   - '**.hpp'
+    #   - '**.cc'
+    #   - 'CMakeLists.txt'
+    #   - '**/*.cmake'
+    #   - '**/*.mk'
+    #   - 'Makefile'
+    #   - '**.yaml'
 
 jobs:
   triage:
