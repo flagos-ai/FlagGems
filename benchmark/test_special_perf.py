@@ -459,7 +459,7 @@ def test_perf_upsample_bicubic2d_aa():
 
     if vendor_name == "cambricon":
         dtypes = [torch.float32]
-    elif vendor_name == "kunlunxin":
+    elif vendor_name == "kunlunxin" or vendor_name == "enflame":
         dtypes = [torch.float32, torch.float16]
     else:
         dtypes = FLOAT_DTYPES
