@@ -924,6 +924,9 @@ def test_dynamic_function_with_multithread(use_block_pointer):
 
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_multiprocess(use_block_pointer):
+    if flag_gems.vendor_name == "metax":
+        pytest.skip("Skipped on CI: requires ~50GB memory but only 16GB is available.")
+
     shape = [128]
     alpha = 2.0
     ctx = multiprocessing.get_context("spawn")
