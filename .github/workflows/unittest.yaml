@@ -2,7 +2,7 @@ name: unit-test
 
 on:
   workflow_dispatch:
-    
+
   push:
     branches: [ "master" ]
     types: [opened, synchronize, reopened, labeled, unlabeled]
@@ -36,7 +36,7 @@ on:
     #   - '**.yaml'
 
 jobs:
-  triage:
+  wait-triage:
     runs-on: ubuntu-latest
     steps:
       - run: |
@@ -47,12 +47,12 @@ jobs:
       #     workflow: .github/workflows/triage.yaml
 
   build-doc:
-    needs: triage
+    needs: wait-triage
     if: contains(github.event.pull_request.labels.*.name, 'documentation')
     uses: ./.github/workflows/mkdocs.yaml
 
   blas-op-test:
-    needs: triage
+    needs: wait-triage
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
@@ -60,7 +60,7 @@ jobs:
     uses: ./.github/workflows/blas-op-test.yaml
 
   examples-test:
-    needs: triage
+    needs: wait-triage
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: examples-test-${{ github.event.pull_request.number || github.ref }}
@@ -68,7 +68,7 @@ jobs:
     uses: ./.github/workflows/examples-test.yaml
 
   quick-cpu-op-test:
-    needs: triage
+    needs: wait-triage
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
@@ -76,7 +76,7 @@ jobs:
     uses: ./.github/workflows/op-test-quick-cpu.yaml
 
   pointwise-op-test:
-    needs: triage
+    needs: wait-triage
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
@@ -84,7 +84,7 @@ jobs:
     uses: ./.github/workflows/pointwise-op-test.yaml
 
   reduction-op-test:
-    needs: triage
+    needs: wait-triage
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
@@ -92,7 +92,7 @@ jobs:
     uses: ./.github/workflows/reduction-op-test.yaml
 
   special-op-test:
-    needs: triage
+    needs: wait-triage
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: special-op-test-${{ github.event.pull_request.number || github.ref }}
@@ -100,7 +100,7 @@ jobs:
     uses: ./.github/workflows/special-op-test.yaml
 
   utils-test:
-    needs: triage
+    needs: wait-triage
     if: "contains(github.event.pull_request.labels.*.name, 'tests')"
     concurrency:
       group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
@@ -109,7 +109,7 @@ jobs:
 
 #   coverage:
 #     needs:
-#       - triage
+#       - wait-triage
 #       - blas-op-test
 #       - examples-test
 #       - quick-cpu-op-test
