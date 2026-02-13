@@ -55,8 +55,21 @@ DTYPE_LIST = [torch.bfloat16, torch.float32] if not QUICK_MODE else [torch.float
 LARGE_SCALE_DTYPE_LIST = [torch.float32, torch.bfloat16]
 
 CHUNK_GATED_DELTA_RULE_SHAPES = (
-    [(1, 2, 64, 8, 8)] if QUICK_MODE else [(1, 2, 64, 16, 8)]
+    [(1, 2, 64, 8, 8)]
+    if QUICK_MODE
+    else [
+        # small (non-multiple of chunk size to exercise padding)
+        (1, 2, 48, 8, 8),
+        # regular
+        (1, 4, 128, 16, 16),
+        # large (non-multiple of chunk size)
+        (2, 4, 192, 32, 32),
+    ]
 )
+CHUNK_GATED_DELTA_RULE_DTYPES = [torch.float32] if QUICK_MODE else [
+    torch.float16,
+    torch.float32,
+]
 
 
 def _chunk_gated_delta_rule_ref(q, k, v, beta, g, chunk_size):
@@ -923,7 +936,7 @@ def test_upsample_nearest2d(dtype, shape, scale):
 @pytest.mark.skipif(
     flag_gems.vendor_name != "nvidia", reason="Requires NVIDIA CUDA backend"
 )
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", CHUNK_GATED_DELTA_RULE_DTYPES)
 @pytest.mark.parametrize("shape", CHUNK_GATED_DELTA_RULE_SHAPES)
 def test_chunk_gated_delta_rule(dtype, shape):
     b, h, l, d_k, d_v = shape
