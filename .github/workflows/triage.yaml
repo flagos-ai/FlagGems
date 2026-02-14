@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   triage:
-    name: PR triage
     runs-on: ubuntu-latest
     steps:
       - id: labeler
