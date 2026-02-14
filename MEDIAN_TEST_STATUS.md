@@ -23,12 +23,13 @@ the float32 path stable.
 ```python
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     dim = dim % self.dim()
-    k = (self.size(dim) + 1) // 2 - 1
     if self.dtype in (torch.float16, torch.bfloat16):
+        k = (self.size(dim) + 1) // 2
         values = torch.kthvalue(self, k, dim=dim, keepdim=True).values
         indices = first_occurrence_indices(self, values, dim)
         values = torch.take_along_dim(self, indices, dim=dim)
     else:
+        k = (self.size(dim) + 1) // 2 - 1
         sorted_idx = torch.argsort(self, dim=dim, stable=True)
         sorted_vals = torch.take_along_dim(self, sorted_idx, dim=dim)
         gather_index = torch.full(index_shape, k, device=..., dtype=sorted_idx.dtype)
