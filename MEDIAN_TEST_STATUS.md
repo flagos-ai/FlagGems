@@ -7,29 +7,23 @@ into the registered FlagGems implementation, causing infinite recursion.
 
 ## Fix Applied (current)
 
-Hybrid strategy to match PyTorch indices while avoiding recursion:
+Use **stable argsort** to match PyTorch’s median index selection deterministically:
 
-- **float16 / bfloat16**: use `torch.kthvalue` (lower median) to avoid index
-  drift from low-precision sorting
-- **other dtypes**: use **PyTorch stable sort via redispatch**
-  (`torch.ops.aten.sort.stable.redispatch`) and gather at `k`
+- `sorted_idx = torch.argsort(self, dim=dim, stable=True)`
+- gather `k = (size + 1) // 2 - 1` along `dim` for both values and indices
 
-This keeps correct values and improves index matching for low-precision dtypes
-where stable sort still showed mismatches in large shapes.
+This avoids dispatcher recursion and removes reliance on redispatch or `kthvalue`
+tie-breaking for low-precision dtypes.
 
 ## Current Implementation (after fix)
 
 ```python
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     dim = dim % self.dim()
-    k = (self.size(dim) + 1) // 2
-    if self.dtype in (torch.float16, torch.bfloat16):
-        return torch.kthvalue(self, k, dim=dim, keepdim=keepdim)
-    k = k - 1
-    sorted_vals, sorted_idx = torch.ops.aten.sort.stable.redispatch(
-        keyset, self, stable=True, dim=dim, descending=False
-    )
-    gather_index = torch.full(index_shape, k, device=..., dtype=torch.long)
+    k = (self.size(dim) + 1) // 2 - 1
+    sorted_idx = torch.argsort(self, dim=dim, stable=True)
+    sorted_vals = torch.take_along_dim(self, sorted_idx, dim=dim)
+    gather_index = torch.full(index_shape, k, device=..., dtype=sorted_idx.dtype)
     values = torch.take_along_dim(sorted_vals, gather_index, dim=dim)
     indices = torch.take_along_dim(sorted_idx, gather_index, dim=dim)
     if not keepdim:
@@ -40,10 +34,10 @@ def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
 
 ## Test Status
 
-- **Accuracy tests**: pending re-run after hybrid fix
+- **Accuracy tests**: pending re-run after argsort-stable fix
 - **Performance tests**: pending (no benchmark case yet)
 
 ---
 
 **Last updated**: 2026-02-14
-**Status**: recursion fixed; hybrid index selection implemented; awaiting re-test results
+**Status**: recursion fixed; argsort-stable index selection implemented; awaiting re-test results
