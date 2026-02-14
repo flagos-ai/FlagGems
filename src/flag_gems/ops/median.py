@@ -11,9 +11,11 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     logger.debug("GEMS MEDIAN DIM")
-    return torch.ops.aten.median.dim.default.redispatch(
-        _FALLBACK_KEYSET, self, dim, keepdim
-    )
+    # Use _DisableTorchDispatch to avoid recursion when calling redispatch
+    with torch._C._DisableTorchDispatch():
+        return torch.ops.aten.median.dim.redispatch(
+            _FALLBACK_KEYSET, self, dim, keepdim
+        )
 
 
 def median_dim_values(
@@ -25,9 +27,11 @@ def median_dim_values(
     indices: torch.Tensor,
 ):
     logger.debug("GEMS MEDIAN DIM VALUES")
-    out = torch.ops.aten.median.dim.default.redispatch(
-        _FALLBACK_KEYSET, self, dim, keepdim
-    )
+    # Use _DisableTorchDispatch to avoid recursion when calling redispatch
+    with torch._C._DisableTorchDispatch():
+        out = torch.ops.aten.median.dim.redispatch(
+            _FALLBACK_KEYSET, self, dim, keepdim
+        )
     values.copy_(out.values)
     indices.copy_(out.indices)
     return values, indices
