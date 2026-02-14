@@ -67,13 +67,15 @@ def _prepare_tensors(x, y, dtype=None):
         return None, None, None, None
 
     bshape = torch.broadcast_shapes(tuple(x.shape), tuple(y.shape))
-    xb = x.to(dtype).expand(bshape).contiguous()
-    yb = y.to(dtype).expand(bshape).contiguous()
-    out_buf = torch.empty(bshape, device=x.device, dtype=dtype)
-    return xb, yb, out_buf, bshape
+    # Use float32 for intermediate calculations for float16/bfloat16 to reduce accumulation error
+    compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    xb = x.to(compute_dtype).expand(bshape).contiguous()
+    yb = y.to(compute_dtype).expand(bshape).contiguous()
+    out_buf = torch.empty(bshape, device=x.device, dtype=compute_dtype)
+    return xb, yb, out_buf, bshape, dtype
 
 
-def _launch_kernel(xb, yb, out_buf, beta):
+def _launch_kernel(xb, yb, out_buf, beta, original_dtype=None):
     n_elements = out_buf.numel()
     if n_elements == 0:
         return
@@ -93,15 +95,15 @@ def smooth_l1_loss(self: torch.Tensor, target: torch.Tensor, reduction=1, beta=1
             self, target, reduction=reduction, beta=beta
         )
 
-    xb, yb, tmp, _ = prep
-    _launch_kernel(xb, yb, tmp, float(beta))
+    xb, yb, tmp, _, original_dtype = prep
+    _launch_kernel(xb, yb, tmp, float(beta), original_dtype)
 
     if reduction == 0:
-        return tmp
+        return tmp.to(original_dtype) if original_dtype != tmp.dtype else tmp
     if reduction == 1:
-        return tmp.mean()
+        return tmp.mean().to(original_dtype) if original_dtype != tmp.dtype else tmp.mean()
     if reduction == 2:
-        return tmp.sum()
+        return tmp.sum().to(original_dtype) if original_dtype != tmp.dtype else tmp.sum()
     raise ValueError(f"Invalid reduction code: {reduction}")
 
 
@@ -123,7 +125,7 @@ def smooth_l1_loss_out(
         out.copy_(res)
         return out
 
-    xb, yb, tmp, bshape = _prepare_tensors(self, target)
+    xb, yb, tmp, bshape, original_dtype = _prepare_tensors(self, target)
     if xb is None:
         res = torch.ops.aten.smooth_l1_loss(
             self, target, reduction=reduction, beta=beta
@@ -131,17 +133,19 @@ def smooth_l1_loss_out(
         out.copy_(res)
         return out
 
-    _launch_kernel(xb, yb, tmp, float(beta))
+    _launch_kernel(xb, yb, tmp, float(beta), original_dtype)
 
     if reduction == 0:
-        if out.device != tmp.device or out.dtype != tmp.dtype:
-            raise ValueError("out tensor device/dtype mismatch")
+        if out.device != tmp.device:
+            raise ValueError("out tensor device mismatch")
         if tuple(out.shape) != tuple(bshape):
             raise ValueError("out tensor shape mismatch for reduction='none'")
+        # Convert to original dtype before copying
+        tmp_out = tmp.to(original_dtype) if original_dtype != tmp.dtype else tmp
         if out.is_contiguous():
-            out.copy_(tmp)
+            out.copy_(tmp_out)
         else:
-            out.reshape(-1).copy_(tmp.reshape(-1))
+            out.reshape(-1).copy_(tmp_out.reshape(-1))
         return out
 
     if reduction == 1:
@@ -153,5 +157,7 @@ def smooth_l1_loss_out(
 
     if out.numel() != 1:
         raise ValueError("out tensor must have one element for reduced output")
+    # Convert to original dtype before copying
+    res = res.to(original_dtype) if original_dtype != tmp.dtype else res
     out.copy_(res)
     return out
