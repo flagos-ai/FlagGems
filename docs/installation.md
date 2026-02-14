@@ -9,23 +9,26 @@ Since FlagGems has not yet been released on PyPI, it can only be installed from 
 ### Clone the source
 
 ```shell
-git clone https://github.com/FlagOpen/FlagGems
+git clone https://github.com/flagos-ai/FlagGems
 cd FlagGems/
 ```
 
 ### Install FlagTree
 
 [FlagTree](https://github.com/flagos-ai/flagtree/) is an open source, unified compiler for multiple AI chips project.
-If you want to use the native Triton instead of FlagTree, please skip this step.
 
 For details on environment requirements for other backends, please check the
 [build](https://github.com/flagos-ai/FlagTree/blob/main/documents/build.md)
 documentation in the FlagTree project.
 
 ```shell
-# Other backends: replace with requirements_backendxxx.txt
-pip install -r flag_tree_requirements/requirements_nvidia.txt
+uv pip install .[flagtree_nvidia]
 ```
+
+> [!Tip]
+> - If you want to use the native Triton instead of FlagTree, you can skip this step.
+> - The currently supported variants are `flagtree_ascend`, `flagtree_enflame`, `flagtree_hcu`,
+>   `flagtree_iluvatar`, `flagtree_nvidia`, `flagtree_xpu`.
 
 ### Build system
 
@@ -55,7 +58,7 @@ install the required packages.
 Example command:
 
 ```shell
-pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
+pip install -U scikit-build-core>=0.11 pybind11>3.0.1 ninja>=1.13.0 cmake>=4.2.1
 ```
 
 FlagGems can be installed as either a pure python package or a package with C extensions.
@@ -123,10 +126,10 @@ Commonly used pip options are:
 
 Example recipes are provided for easy copy-and-paste.
 
-Editable installation with external TritonJIT
+Editable installation with external TritonJIT:
 
 ```shell
-pip install -U scikit-build-core ninja cmake pybind11
+pip install -U scikit-build-core>=0.11 pybind11>3.0.1 ninja>=1.13.0 cmake>=4.2.1
 
 CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_USE_EXTERNAL_TRITON_JIT=ON -DTritonJIT_ROOT=<install path of triton-jit>" \
 pip install --no-build-isolation -v -e .
