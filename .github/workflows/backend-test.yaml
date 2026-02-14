@@ -1,0 +1,46 @@
+---
+name: Backend Test
+
+'on':
+  workflow_call:
+    inputs:
+      vendor:
+        description: 'GEMS_VENDOR value (e.g. iluvatar, ascend, moore)'
+        required: true
+        type: string
+      runner_label:
+        description: 'GitHub Actions runner label'
+        required: true
+        type: string
+      gpu_check_script:
+        description: 'Path to GPU check script (leave empty to skip)'
+        required: false
+        type: string
+        default: ''
+      test_script:
+        description: 'Path to test script under tools/'
+        required: true
+        type: string
+
+jobs:
+  op-test:
+    runs-on: ${{ inputs.runner_label }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.vendor }}-
+        ${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash
+        run: |
+          bash ${{ inputs.gpu_check_script }}
+
+      - name: Run backend tests
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.vendor }}

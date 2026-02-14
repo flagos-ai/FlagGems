@@ -200,6 +200,10 @@ def test_accuracy_randperm(n, dtype):
     if n > torch.iinfo(torch.int16).max and dtype == torch.int16:
         return
 
+    # Skip int16 for Moore Threads backend due to runtime crash
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.int16:
+        pytest.skip("Moore Threads int16 randperm causes runtime crash")
+
     ref_out = torch.randperm(n, dtype=dtype, device="cpu" if TO_CPU else device)
     with flag_gems.use_gems():
         res_out = torch.randperm(n, dtype=dtype, device=flag_gems.device)
