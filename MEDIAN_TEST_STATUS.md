@@ -7,9 +7,10 @@ into the registered FlagGems implementation, causing infinite recursion.
 
 ## Fix Applied
 
-Replace `redispatch` with a direct computation using **stable sort**:
+Replace `median` redispatch with **PyTorch stable sort via redispatch**:
 
-- Use `torch.sort(..., stable=True)` along the target dim
+- Use `torch.ops.aten.sort.stable.redispatch` to bypass FlagGems `sort`
+- Stable order ensures deterministic index selection for duplicate values
 - Select the lower median index `k = (size + 1) // 2 - 1`
 - Gather both values and indices at that position
 
@@ -22,7 +23,9 @@ duplicate median values exist.
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     dim = dim % self.dim()
     k = (self.size(dim) + 1) // 2 - 1
-    sorted_vals, sorted_idx = torch.sort(self, dim=dim, stable=True)
+    sorted_vals, sorted_idx = torch.ops.aten.sort.stable.redispatch(
+        keyset, self, stable=True, dim=dim, descending=False
+    )
     gather_index = torch.full(index_shape, k, device=..., dtype=torch.long)
     values = torch.take_along_dim(sorted_vals, gather_index, dim=dim)
     indices = torch.take_along_dim(sorted_idx, gather_index, dim=dim)

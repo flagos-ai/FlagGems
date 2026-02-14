@@ -4,6 +4,10 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
 
 def _median_k(size: int) -> int:
     # median uses lower middle for even sizes
@@ -14,7 +18,9 @@ def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     logger.debug("GEMS MEDIAN DIM")
     dim = dim % self.dim()
     k = _median_k(self.size(dim)) - 1
-    sorted_vals, sorted_idx = torch.sort(self, dim=dim, stable=True)
+    sorted_vals, sorted_idx = torch.ops.aten.sort.stable.redispatch(
+        _FALLBACK_KEYSET, self, stable=True, dim=dim, descending=False
+    )
     index_shape = list(sorted_vals.shape)
     index_shape[dim] = 1
     gather_index = torch.full(
