@@ -221,7 +221,10 @@ from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
-from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
+from flag_gems.ops.upsample_nearest2d import (
+    upsample_nearest2d,
+    upsample_nearest2d_backward,
+)
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
@@ -530,6 +533,7 @@ __all__ = [
     "uniform_",
     "upsample_nearest1d",
     "upsample_nearest2d",
+    "upsample_nearest2d_backward",
     "var_mean",
     "vdot",
     "vector_norm",
