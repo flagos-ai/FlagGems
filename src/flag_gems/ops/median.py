@@ -9,45 +9,38 @@ def _median_k(size: int) -> int:
     return (size + 1) // 2
 
 
-def _ordered_key_fp16(x: torch.Tensor) -> torch.Tensor:
-    bits = x.view(torch.uint16)
-    zero_mask = x == 0
-    if zero_mask.any():
-        bits = torch.where(zero_mask, torch.zeros_like(bits), bits)
-    sign = bits >> 15
-    mask = torch.where(
-        sign == 1,
-        torch.full_like(bits, 0xFFFF),
-        torch.full_like(bits, 0x8000),
-    )
-    ordered = bits ^ mask
-    return ordered.to(torch.int64)
-
-
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     logger.debug("GEMS MEDIAN DIM")
     dim = dim % self.dim()
-    k = _median_k(self.size(dim)) - 1
     if self.dtype in (torch.float16, torch.bfloat16):
-        ordered = _ordered_key_fp16(self)
+        k = _median_k(self.size(dim))
+        values = torch.kthvalue(self, k, dim=dim, keepdim=True).values
         size = self.size(dim)
         index_shape = [1] * self.dim()
         index_shape[dim] = size
         base_index = torch.arange(
-            size, device=self.device, dtype=torch.int64
+            size, device=self.device, dtype=torch.long
         ).view(index_shape)
-        key = ordered * size + base_index
-        sorted_idx = torch.argsort(key, dim=dim)
+        base_index = base_index.expand_as(self)
+        if self.dtype.is_floating_point:
+            mask = (self == values) | (torch.isnan(self) & torch.isnan(values))
+        else:
+            mask = self == values
+        sentinel = torch.full_like(base_index, size)
+        masked_index = torch.where(mask, base_index, sentinel)
+        indices = torch.min(masked_index, dim=dim, keepdim=True).values
+        values = torch.take_along_dim(self, indices, dim=dim)
     else:
+        k = _median_k(self.size(dim)) - 1
         sorted_idx = torch.argsort(self, dim=dim, stable=True)
-    sorted_vals = torch.take_along_dim(self, sorted_idx, dim=dim)
-    index_shape = list(sorted_idx.shape)
-    index_shape[dim] = 1
-    gather_index = torch.full(
-        index_shape, k, device=sorted_idx.device, dtype=sorted_idx.dtype
-    )
-    values = torch.take_along_dim(sorted_vals, gather_index, dim=dim)
-    indices = torch.take_along_dim(sorted_idx, gather_index, dim=dim)
+        sorted_vals = torch.take_along_dim(self, sorted_idx, dim=dim)
+        index_shape = list(sorted_idx.shape)
+        index_shape[dim] = 1
+        gather_index = torch.full(
+            index_shape, k, device=sorted_idx.device, dtype=sorted_idx.dtype
+        )
+        values = torch.take_along_dim(sorted_vals, gather_index, dim=dim)
+        indices = torch.take_along_dim(sorted_idx, gather_index, dim=dim)
     if not keepdim:
         values = values.squeeze(dim)
         indices = indices.squeeze(dim)
