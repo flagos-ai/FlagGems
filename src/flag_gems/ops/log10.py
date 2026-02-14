@@ -7,6 +7,7 @@ from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+
 @pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
 @triton.jit
 def log10_func(x):
