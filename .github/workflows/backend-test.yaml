@@ -22,6 +22,14 @@ name: Backend Test
         required: true
         type: string
 
+# NOTE: The following environment variables are for CI runners to
+# mitigate the network connection problems. However, this may not work
+# if the PR is triggered from a forked repository because in that case
+# GitHub doesn't allow the workflow to access any secrets.
+env:
+  http_proxy: ${{ secrets.HTTP_PROXY }}
+  https_proxy: ${{ secrets.HTTPS_PROXY }}
+
 jobs:
   op-test:
     runs-on: ${{ inputs.runner_label }}

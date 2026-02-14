@@ -81,6 +81,16 @@ jobs:
       cancel-in-progress: true
     uses: ./.github/workflows/op-utils-test.yaml
 
+  test-on-nvidia:
+    needs: wait-triage
+    if: "contains(github.event.pull_request.labels.*.name, 'vendor/NVIDIA')"
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: nvidia
+      runner_label: hopper
+      gpu_check_script: tools/gpu_check.sh
+      test_script: tools/run_backend_tests_nvidia.sh
+
   test-on-ascend:
     needs: wait-triage
     if: "contains(github.event.pull_request.labels.*.name, 'vendor/Ascend')"
@@ -97,7 +107,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: iluvatar
-      runner_label: iluvatar_CI
+      runner_label: iluvatar
       gpu_check_script: tools/gpu_check_iluvatar.sh
       test_script: tools/run_backend_tests.sh
 
