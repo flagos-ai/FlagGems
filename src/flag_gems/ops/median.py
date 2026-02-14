@@ -17,7 +17,12 @@ def _median_k(size: int) -> int:
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     logger.debug("GEMS MEDIAN DIM")
     dim = dim % self.dim()
-    k = _median_k(self.size(dim)) - 1
+    k = _median_k(self.size(dim))
+
+    if self.dtype in (torch.float16, torch.bfloat16):
+        return torch.kthvalue(self, k, dim=dim, keepdim=keepdim)
+
+    k = k - 1
     sorted_vals, sorted_idx = torch.ops.aten.sort.stable.redispatch(
         _FALLBACK_KEYSET, self, stable=True, dim=dim, descending=False
     )

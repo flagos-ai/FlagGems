@@ -5,39 +5,45 @@
 `median.dim` was implemented via `redispatch`, but `redispatch` still called back
 into the registered FlagGems implementation, causing infinite recursion.
 
-## Fix Applied
+## Fix Applied (current)
 
-Replace `median` redispatch with **PyTorch stable sort via redispatch**:
+Hybrid strategy to match PyTorch indices while avoiding recursion:
 
-- Use `torch.ops.aten.sort.stable.redispatch` to bypass FlagGems `sort`
-- Stable order ensures deterministic index selection for duplicate values
-- Select the lower median index `k = (size + 1) // 2 - 1`
-- Gather both values and indices at that position
+- **float16 / bfloat16**: use `torch.kthvalue` (lower median) to avoid index
+  drift from low-precision sorting
+- **other dtypes**: use **PyTorch stable sort via redispatch**
+  (`torch.ops.aten.sort.stable.redispatch`) and gather at `k`
 
-This avoids dispatcher recursion and matches PyTorch's index selection when
-duplicate median values exist.
+This keeps correct values and improves index matching for low-precision dtypes
+where stable sort still showed mismatches in large shapes.
 
 ## Current Implementation (after fix)
 
 ```python
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     dim = dim % self.dim()
-    k = (self.size(dim) + 1) // 2 - 1
+    k = (self.size(dim) + 1) // 2
+    if self.dtype in (torch.float16, torch.bfloat16):
+        return torch.kthvalue(self, k, dim=dim, keepdim=keepdim)
+    k = k - 1
     sorted_vals, sorted_idx = torch.ops.aten.sort.stable.redispatch(
         keyset, self, stable=True, dim=dim, descending=False
     )
     gather_index = torch.full(index_shape, k, device=..., dtype=torch.long)
     values = torch.take_along_dim(sorted_vals, gather_index, dim=dim)
     indices = torch.take_along_dim(sorted_idx, gather_index, dim=dim)
+    if not keepdim:
+        values = values.squeeze(dim)
+        indices = indices.squeeze(dim)
     return values, indices
 ```
 
 ## Test Status
 
-- **Accuracy tests**: pending re-run after stable-sort fix
+- **Accuracy tests**: pending re-run after hybrid fix
 - **Performance tests**: pending (no benchmark case yet)
 
 ---
 
 **Last updated**: 2026-02-14
-**Status**: recursion fixed; index matching should align with PyTorch; awaiting re-test results
+**Status**: recursion fixed; hybrid index selection implemented; awaiting re-test results
