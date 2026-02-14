@@ -61,8 +61,11 @@ argmin:
 
 log_softmax:
 - META:
-    BLOCK_M: 64
+    BLOCK_M: 32
     BLOCK_N: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 4
 
 mm:
 - META:
@@ -601,9 +604,13 @@ var_mean:
       BLOCK_M: block_m
       BLOCK_N: block_n
   block_m:
-  - 18
+  - 8
+  - 16
+  - 32
   block_n:
+  - 128
   - 256
+  - 512
 
 conv2d_forward:
 - META:
