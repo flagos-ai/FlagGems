@@ -69,6 +69,22 @@ THRESHOLD_SHAPE = (
     else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
 )
 CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
+SMOOTH_L1_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
+SMOOTH_L1_BETAS = [1.0] if QUICK_MODE else [1.0, 0.5, 0.0]
+SMOOTH_L1_SHAPES = (
+    [((1, 1), (1, 1))]
+    if QUICK_MODE
+    else [
+        # small
+        ((1, 1), (1, 1)),
+        # regular
+        ((64, 64), (64, 64)),
+        # large
+        ((1024, 1024), (1024, 1024)),
+        # broadcast
+        ((8, 3, 16, 16), (1, 3, 1, 1)),
+    ]
+)
 
 
 @pytest.mark.amax
@@ -272,6 +288,38 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
     with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("shape_pair", SMOOTH_L1_SHAPES)
+@pytest.mark.parametrize("reduction", SMOOTH_L1_LOSS_REDUCTION)
+@pytest.mark.parametrize("beta", SMOOTH_L1_BETAS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss(shape_pair, reduction, beta, dtype):
+    shape, target_shape = shape_pair
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction=reduction, beta=beta
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(
+            inp, target, reduction=reduction, beta=beta
+        )
+
+    reduce_dim = 1 if reduction == "none" else inp.numel()
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+    if reduction != "none":
+        out_grad = torch.randn_like(res_out)
+        ref_grad = to_reference(out_grad, True)
+        (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+        gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=inp.numel())
 
 
 NLLLOSS2D_SHAPES = (
