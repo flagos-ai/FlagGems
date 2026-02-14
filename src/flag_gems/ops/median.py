@@ -4,18 +4,17 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
+
+def _median_k(size: int) -> int:
+    # kthvalue is 1-indexed, median uses lower middle for even sizes
+    return (size + 1) // 2
 
 
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     logger.debug("GEMS MEDIAN DIM")
-    # Use _DisableTorchDispatch to avoid recursion when calling redispatch
-    with torch._C._DisableTorchDispatch():
-        return torch.ops.aten.median.dim.redispatch(
-            _FALLBACK_KEYSET, self, dim, keepdim
-        )
+    dim = dim % self.dim()
+    k = _median_k(self.size(dim))
+    return torch.kthvalue(self, k, dim=dim, keepdim=keepdim)
 
 
 def median_dim_values(
@@ -27,11 +26,7 @@ def median_dim_values(
     indices: torch.Tensor,
 ):
     logger.debug("GEMS MEDIAN DIM VALUES")
-    # Use _DisableTorchDispatch to avoid recursion when calling redispatch
-    with torch._C._DisableTorchDispatch():
-        out = torch.ops.aten.median.dim.redispatch(
-            _FALLBACK_KEYSET, self, dim, keepdim
-        )
+    out = median_dim(self, dim, keepdim)
     values.copy_(out.values)
     indices.copy_(out.indices)
     return values, indices
