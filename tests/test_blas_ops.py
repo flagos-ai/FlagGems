@@ -20,6 +20,7 @@ MN_SHAPES = [(1, 32)] if QUICK_MODE else [(1, 32), (160, 1024), (5333, 497)]
 MNK_SHAPES = (
     [(1, 1, 32)] if QUICK_MODE else [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
 )
+GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 
@@ -267,6 +268,42 @@ def test_accuracy_mm(M, N, K, dtype, b_column_major):
     ref_out = torch.mm(ref_mat1, ref_mat2)
     with flag_gems.use_gems():
         res_out = torch.mm(mat1, mat2)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.parametrize("groups, N, K", GNK_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
+def test_accuracy_groupmm(groups, N, K, dtype):
+    assert dtype == torch.bfloat16
+    group_A_list = []
+    group_B_list = []
+    M_list = []
+    A_offs = 0
+    B_offs = 0
+    for i in range(groups):
+        M_g = random.randint(1, 16384)
+        N_g = N
+        K_g = K
+        A_g = torch.rand([M_g, K_g], device="cuda", dtype=dtype)
+        B_g = torch.rand([K_g, N_g], device="cuda", dtype=dtype)
+        group_A_list.append(A_g)
+        group_B_list.append(B_g)
+        M_list.append(M_g)
+        A_offs += M_g
+        B_offs += K_g
+
+    mat_a = torch.cat([x for x in group_A_list], dim=0)
+    mat_b = torch.stack([x for x in group_B_list], dim=0)
+    offs = torch.tensor(
+        [sum(M_list[: i + 1]) for i in range(groups)],
+        dtype=torch.int32,
+        device="cuda",
+    )
+
+    ref_out = torch._grouped_mm(mat_a, mat_b, offs)
+    with flag_gems.use_gems():
+        res_out = flag_gems.group_mm(mat_a, mat_b, offs)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
