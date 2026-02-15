@@ -275,6 +275,16 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     assert dim == x.ndim - 1, "Currently only support topk in last dimension"
     # assert sorted, "Currently only support sorted == True"
 
+    # Early return for k=0 to avoid Triton kernel compilation error.
+    # Triton's tl.arange(0, BLOCK_SIZE) requires BLOCK_SIZE > 0.
+    # When k=0, stage2_elem_cnt becomes 0, leading to BLOCK_SIZE=0.
+    if k <= 0:
+        out_shape = list(x.shape[:-1]) + [0]
+        return (
+            torch.empty(out_shape, device=x.device, dtype=x.dtype),
+            torch.empty(out_shape, device=x.device, dtype=torch.int64),
+        )
+
     descending = True
     if not largest:
         descending = False
