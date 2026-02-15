@@ -69,6 +69,20 @@ THRESHOLD_SHAPE = (
     else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
 )
 CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
+CTC_LOSS_SHAPES = (
+    [(5, 2, 4, 3)]
+    if QUICK_MODE
+    else [
+        # small
+        (2, 1, 3, 1),
+        # regular
+        (10, 4, 20, 6),
+        # large
+        (64, 8, 50, 20),
+    ]
+)
+CTC_LOSS_DTYPES = [torch.float32] if QUICK_MODE else [torch.float16, torch.float32]
+CTC_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
 
 
 @pytest.mark.amax
@@ -322,6 +336,101 @@ def test_accuracy_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
     with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.ctc_loss
+@pytest.mark.parametrize("reduction", CTC_LOSS_REDUCTION)
+@pytest.mark.parametrize("use_tensor_lengths", [True, False])
+@pytest.mark.parametrize("shape", CTC_LOSS_SHAPES)
+@pytest.mark.parametrize("dtype", CTC_LOSS_DTYPES)
+def test_accuracy_ctc_loss(shape, reduction, use_tensor_lengths, dtype):
+    T, N, C, S = shape
+
+    log_probs = torch.randn(T, N, C, dtype=dtype, device=flag_gems.device)
+    log_probs = torch.nn.functional.log_softmax(log_probs, dim=2)
+    log_probs = log_probs.detach().requires_grad_(True)
+
+    targets = torch.randint(1, C, (N, S), dtype=torch.long, device=flag_gems.device)
+    input_lengths_list = [T, max(1, T - 1)]
+    target_lengths_list = [S, max(1, S - 1)]
+
+    if use_tensor_lengths:
+        input_lengths = torch.tensor(input_lengths_list, dtype=torch.long)
+        target_lengths = torch.tensor(target_lengths_list, dtype=torch.long)
+    else:
+        input_lengths = input_lengths_list
+        target_lengths = target_lengths_list
+
+    ref_log_probs = to_reference(log_probs).detach().requires_grad_(True)
+    ref_targets = to_reference(targets)
+    if use_tensor_lengths:
+        ref_input_lengths = to_reference(input_lengths)
+        ref_target_lengths = to_reference(target_lengths)
+    else:
+        ref_input_lengths = input_lengths
+        ref_target_lengths = target_lengths
+
+    ref_out = torch.nn.functional.ctc_loss(
+        ref_log_probs,
+        ref_targets,
+        ref_input_lengths,
+        ref_target_lengths,
+        reduction=reduction,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.ctc_loss(
+            log_probs,
+            targets,
+            input_lengths,
+            target_lengths,
+            reduction=reduction,
+        )
+
+    reduce_dim = N if reduction == "none" else 1
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim, equal_nan=True)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_log_probs, ref_grad)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, log_probs, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.ctc_loss
+@pytest.mark.parametrize("shape", CTC_LOSS_SHAPES)
+@pytest.mark.parametrize("dtype", CTC_LOSS_DTYPES)
+def test_accuracy_ctc_loss_zero_infinity(shape, dtype):
+    T, N, C, S = shape
+
+    log_probs = torch.randn(T, N, C, dtype=dtype, device=flag_gems.device)
+    log_probs = torch.nn.functional.log_softmax(log_probs, dim=2)
+
+    targets = torch.randint(1, C, (N, S), dtype=torch.long, device=flag_gems.device)
+    input_lengths = [T, max(1, T - 1)]
+    target_lengths = [S, max(1, S - 1)]
+
+    ref_log_probs = to_reference(log_probs)
+    ref_targets = to_reference(targets)
+
+    ref_out = torch.nn.functional.ctc_loss(
+        ref_log_probs,
+        ref_targets,
+        input_lengths,
+        target_lengths,
+        reduction="mean",
+        zero_infinity=True,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.ctc_loss(
+            log_probs,
+            targets,
+            input_lengths,
+            target_lengths,
+            reduction="mean",
+            zero_infinity=True,
+        )
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=1, equal_nan=True)
 
 
 CUMSUM_SHAPES = (
