@@ -206,6 +206,8 @@ _FULL_CONFIG = (
     ("linalg_vector_norm", vector_norm),
     ("linspace", linspace),
     ("log", log),
+    ("logaddexp", logaddexp),
+    ("logaddexp.out", logaddexp_out),
     ("log_sigmoid", log_sigmoid),
     ("logical_and", logical_and),
     ("logical_and_", logical_and_),
