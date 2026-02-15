@@ -138,6 +138,11 @@ from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out
+from flag_gems.ops.max_pool3d_with_indices import (
+    max_pool3d,
+    max_pool3d_backward,
+    max_pool3d_with_indices,
+)
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
@@ -412,6 +417,9 @@ __all__ = [
     "max_dim",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
+    "max_pool3d",
+    "max_pool3d_with_indices",
+    "max_pool3d_backward",
     "maximum",
     "mean",
     "mean_dim",
