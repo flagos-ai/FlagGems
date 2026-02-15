@@ -14,11 +14,16 @@ on:
 jobs:
   wait-triage:
     runs-on: ubuntu-latest
+    outputs:
+      changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
     steps:
       - name: Wait for PR triage
         uses: ArcticLampyrid/action-wait-for-workflow@v1
         with:
           workflow: .github/workflows/triage.yaml
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
 
   build-doc:
     needs: wait-triage
@@ -129,6 +134,17 @@ jobs:
       runner_label: mthreadsCI
       gpu_check_script: tools/gpu_check_moore.sh
       test_script: tools/run_backend_tests.sh
+
+  test-alpha-ops:
+    needs: wait-triage
+    if: "contains(github.event.pull_request.labels.*.name, 'ops/alpha')"
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: nvidia
+      runner_label: hopper
+      gpu_check_script: tools/gpu_check.sh
+      test_script: tools/experimental-op-test.sh
+      changed_files: ${{ needs.wait-triage.outputs.changed_files }}
 
 #   coverage:
 #     needs:
