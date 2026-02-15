@@ -209,6 +209,7 @@ from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
+from flag_gems.ops.svd import svd
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.threshold import threshold, threshold_backward
@@ -509,6 +510,7 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "svd",
     "ScaleDotProductAttention",
     "SUPPORTED_FP8_DTYPE",
     "tan",
