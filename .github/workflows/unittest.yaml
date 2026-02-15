@@ -30,6 +30,11 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'documentation')
     uses: ./.github/workflows/mkdocs.yaml
 
+  cpp-op-test:
+    needs: wait-triage
+    if: contains(github.event.pull_request.labels.*.name, 'ops/cpp')
+    uses: ./.github/workflows/cpp-op-test.yaml
+
   blas-op-test:
     needs: wait-triage
     if: contains(github.event.pull_request.labels.*.name, 'tests')

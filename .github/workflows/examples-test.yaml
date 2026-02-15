@@ -4,16 +4,13 @@ on:
   workflow_call:
 
 jobs:
-  test-examples:
+  test:
     runs-on: jiuding
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
+      - uses: actions/checkout@v6
       - name: Check GPU free
         shell: bash
         run: tools/gpu_check.sh
-
       - name: Testing
         shell: bash
         run: |
