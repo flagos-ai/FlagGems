@@ -169,6 +169,8 @@ def streamk_scenario(a, b, M, N, K):
         and b.is_contiguous()
         and K > M * 5
         and K > N * 5
+        and M >= 32  # Minimum M dimension for StreamK benefit
+        and N >= 32  # Minimum N dimension for StreamK benefit
     )
 
 
