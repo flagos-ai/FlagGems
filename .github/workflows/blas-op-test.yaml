@@ -4,18 +4,13 @@ on:
   workflow_call:
 
 jobs:
-  container-unit-test:
+  test:
     runs-on: jiuding
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Check GPU free
-        shell: bash
+      - uses: actions/checkout@v6
+      - shell: bash
         run: tools/gpu_check.sh
-
-      - name: BLAS OP
-        shell: bash
+      - shell: bash
         run: |
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then

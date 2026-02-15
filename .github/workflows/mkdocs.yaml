@@ -11,15 +11,11 @@ jobs:
     runs-on: docs
     steps:
       - uses: actions/checkout@v6
-
-      - name: Build Documentation
-        shell: bash
+      - shell: bash
         run: |
           mkdocs build
           echo "Website: http://120.92.44.177/gems_docs/"
-
-      - name: Deploy to Website
-        if: github.event_name == 'schedule'
+      - if: github.event_name == 'schedule'
         shell: bash
         run: |
           mkdocs build --config-file mkdocs.yml --site-dir /html/gems_docs
