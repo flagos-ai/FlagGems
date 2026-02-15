@@ -35,16 +35,12 @@ examples:
       - any-glob-to-any-file:
           - 'examples/**'
 
-tests/alpha:
-  - changed-files:
-      - any-glob-to-any-file:
-          # TODO(Qiming): move the directory to tests/alpha
-          - 'experimental_tests/**'
-
 ops/alpha:
   - changed-files:
       - any-glob-to-any-file:
           - 'src/flag_gems/experimental_ops/**'
+          # TODO(Qiming): move the directory to tests/alpha
+          - 'experimental_tests/**'
 
 ops/fused:
   - changed-files:

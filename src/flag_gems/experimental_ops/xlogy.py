@@ -99,8 +99,6 @@ def _launch_xlogy(self, other, out=None):
 
 
 # Wrappers corresponding to ATen operator interfaces
-
-
 def xlogy_Tensor(self: torch.Tensor, other: torch.Tensor):
     return _launch_xlogy(self, other, out=None)
 

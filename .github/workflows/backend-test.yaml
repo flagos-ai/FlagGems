@@ -21,6 +21,11 @@ name: Backend Test
         description: 'Path to test script under tools/'
         required: true
         type: string
+      changed_files:
+        description: 'List of changed files in a PR'
+        required: false
+        type: string
+        default: ''
 
 # NOTE: The following environment variables are for CI runners to
 # mitigate the network connection problems. However, this may not work
@@ -49,6 +54,8 @@ jobs:
           bash ${{ inputs.gpu_check_script }}
 
       - name: Run backend tests
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
         shell: bash
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.vendor }}
