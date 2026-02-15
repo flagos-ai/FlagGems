@@ -13,6 +13,7 @@ from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.asinh import asinh, asinh_
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -61,6 +62,7 @@ from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
+from flag_gems.ops.cosh import cosh, cosh_
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -95,6 +97,7 @@ from flag_gems.ops.flip import flip
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
+from flag_gems.ops.gcd import gcd
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
@@ -114,11 +117,14 @@ from flag_gems.ops.isnan import isnan
 from flag_gems.ops.kron import kron
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
+from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
+from flag_gems.ops.log10 import log10, log10_
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
+from flag_gems.ops.logaddexp import logaddexp
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not
 from flag_gems.ops.logical_or import logical_or, logical_or_
@@ -192,6 +198,7 @@ from flag_gems.ops.repeat_interleave import (
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from flag_gems.ops.roll import roll
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
@@ -216,6 +223,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.tril import tril
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -268,6 +276,10 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "avg_pool2d",
+    "avg_pool2d_backward",
+    "asinh",
+    "asinh_",
     "atan",
     "atan_",
     "avg_pool2d",
@@ -312,6 +324,8 @@ __all__ = [
     "copy_",
     "cos",
     "cos_",
+    "cosh",
+    "cosh_",
     "count_nonzero",
     "cummax",
     "cummin",
@@ -356,6 +370,7 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gcd",
     "ge",
     "ge_scalar",
     "gelu",
@@ -385,15 +400,20 @@ __all__ = [
     "layer_norm_backward",
     "le",
     "le_scalar",
+    "leaky_relu",
+    "leaky_relu_",
     "lerp_scalar",
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
     "linspace",
     "log",
+    "log10",
+    "log10_",
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
+    "logaddexp",
     "logical_and",
     "logical_and_",
     "logical_not",
@@ -473,6 +493,9 @@ __all__ = [
     "resolve_neg",
     "rms_norm",
     "rms_norm_backward",
+    "roll",
+    "sqrt",
+    "sqrt_",
     "rms_norm_forward",
     "rsqrt",
     "rsqrt_",
@@ -522,6 +545,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
     "triu",
     "triu_",
     "true_divide",
