@@ -61,6 +61,7 @@ from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
+from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -312,6 +313,9 @@ __all__ = [
     "copy_",
     "cos",
     "cos_",
+    "cosh",
+    "cosh_",
+    "cosh_out",
     "count_nonzero",
     "cummax",
     "cummin",
