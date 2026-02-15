@@ -17,9 +17,7 @@ from flag_gems.runtime.register import Register
 __version__ = "4.2.1.rc.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
-aten_lib = torch.library.Library("aten", "IMPL")
-registrar = Register
-current_work_registrar = None
+current_registry = None
 runtime.replace_customized_ops(globals())
 
 
@@ -361,173 +359,121 @@ _FULL_CONFIG = (
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
 FULL_CONFIG_BY_FUNC = {}
-for _item in _FULL_CONFIG:
-    if not _item or len(_item) < 2:
+for item in _FULL_CONFIG:
+    if not item or len(item) < 2:
         continue
-    fn = _item[1]
+    fn = item[1]
     func_name = fn.__name__ if hasattr(fn, "__name__") else str(fn)
-    FULL_CONFIG_BY_FUNC.setdefault(func_name, []).append(_item)
+    FULL_CONFIG_BY_FUNC.setdefault(func_name, []).append(item)
 
 
-def enable(
-    lib=aten_lib,
-    unused=None,
-    registrar=registrar,
-    record=False,
-    once=False,
-    path=None,
-):
-    """Register all FlagGems ops except those explicitly excluded.
+def enable(lib, include=None, exclude=None):
+    """Register FlagGems operators with filters.
 
     Args:
         lib: torch.library.Library instance to register into. Defaults to the
             global `aten_lib` (IMPL mode).
-        unused: Which ops to skip. Supported forms:
+
+        include: The ops to register. Supported forms:
+            - list/tuple/set of function names (e.g., ["rms_norm", "softmax"]).
+            - str path to a YAML file ending with .yml/.yaml (expects a list or
+              an `include:` key).
+            - "default" or None: auto-load vendor/arch-specific
+                runtime/backend/_<vendor>/[<arch>/]enable_configs.yaml if present.
+
+        exclude: The ops to skip. Supported forms:
             - list/tuple/set of function names (e.g., ["masked_fill", "mul"]).
             - str path to a YAML file ending with .yml/.yaml containing an
               `exclude:` list.
             - "default" or None: auto-load vendor/arch-specific
               runtime/backend/_<vendor>/[<arch>/]enable_configs.yaml if present.
-        registrar: Registrar class; defaults to `Register`.
+
         record: Whether to enable FlagGems logging.
         once: When True, log only once.
         path: Optional log output path when recording.
 
-    Notes:
-        - If the exclude list/YAML resolves to empty, all ops are registered.
-    """
-    global current_work_registrar
-    exclude_ops = resolve_user_setting(unused, "exclude")
-    current_work_registrar = registrar(
-        _FULL_CONFIG,
-        user_include_ops=[],
-        user_exclude_ops=exclude_ops,
-        cpp_patched_ops=list(set(aten_patch_list)),
-        lib=lib,
-    )
-    setup_flaggems_logging(path=path, record=record, once=once)
-
-
-def only_enable(
-    lib=aten_lib,
-    include=None,
-    registrar=registrar,
-    record=False,
-    once=False,
-    path=None,
-):
-    """Register only the specified FlagGems ops and skip the rest.
-
-    Args:
-        lib: torch.library.Library instance to register into. Defaults to the
-            global `aten_lib` (IMPL mode).
-        include: Which ops to register. Supported forms:
-            - list/tuple/set of function names (e.g., ["rms_norm", "softmax"]).
-            - str path to a YAML file ending with .yml/.yaml (expects a list or
-              an `include:` key).
-            - "default" or None: auto-load vendor/arch-specific
-                runtime/backend/_<vendor>/[<arch>/]only_enable_configs.yaml if present.
-        registrar: Registrar class; defaults to `Register`.
-        record: Whether to enable FlagGems logging.
-        once: When True, log only once.
-        path: Optional log output path when recording.
-
-    Classic usage:
+    Typical usage:
         - Only register a few ops:
-            only_enable(include=["rms_norm", "softmax"])
+            enable(include=["rms_norm", "softmax"])
+        - Explicitly exclude some ops:
+            enable(exclude=["softmax"])
         - Use vendor default YAML:
-            only_enable(include="default")  # or include=None
+            enable(include="default")  # or include=None
         - Use a custom YAML:
-            only_enable(include="/path/to/only_enable.yaml")
+            enable(include="/path/to/settings.yaml")
 
     Notes:
         - If the include list/YAML resolves to empty or none of the names match
           known ops, the function warns and returns without registering.
+        - If the exclude list/YAML resolves to empty, all ops are registered.
     """
+    global current_registry
     include_ops = resolve_user_setting(include, "include")
-    if not include_ops:
+    exclude_ops = resolve_user_setting(exclude, "exclude")
+    if len(include_ops) > 0 and len(exclude_ops) > 0:
+        exclude_ops = []
         warnings.warn(
-            "only_enable failed: No include entries resolved from list or yaml."
+            "invalid config detected:  both include and exclude operators"
+            " are specified, the list for exclude is ignored"
         )
-        return
 
-    global current_work_registrar
-    current_work_registrar = registrar(
+    current_registry = Register(
         _FULL_CONFIG,
         user_include_ops=include_ops,
-        user_exclude_ops=[],
+        user_exclude_ops=exclude_ops,
         cpp_patched_ops=list(set(aten_patch_list)),
-        full_config_by_func=FULL_CONFIG_BY_FUNC,
         lib=lib,
+        full_config_by_func=FULL_CONFIG_BY_FUNC,
     )
-    setup_flaggems_logging(path=path, record=record, once=once)
 
 
 class use_gems:
-    """
-    The 'include' parameter has higher priority than 'exclude'.
-    When 'include' is not None, use_gems will not process 'exclude'.
-    """
-
     def __init__(self, exclude=None, include=None, record=False, once=False, path=None):
-        self.lib = torch.library.Library("aten", "IMPL")
+        """
+        The 'include' parameter has higher priority than 'exclude'.
+        When 'include' is not None, use_gems will not process 'exclude'.
+        """
+
         self.exclude = exclude if isinstance(exclude, (list, tuple, set, str)) else []
         self.include = include if isinstance(include, (list, tuple, set, str)) else []
-        self.registrar = Register
         self.record = record
         self.once = once
         self.path = path
+        self.lib = torch.library.Library("aten", "IMPL")
 
     def __enter__(self):
-        if self.include:
-            only_enable(
-                lib=self.lib,
-                include=self.include,
-                registrar=self.registrar,
-                record=self.record,
-                once=self.once,
-                path=self.path,
-            )
-        else:
-            enable(
-                lib=self.lib,
-                unused=self.exclude,
-                registrar=self.registrar,
-                record=self.record,
-                once=self.once,
-                path=self.path,
-            )
+        enable(self.lib, self.include, self.exclude)
+
+        setup_flaggems_logging(path=self.path, record=self.record, once=self.once)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        global current_work_registrar
+        global current_registry
         if torch.__version__ >= "2.5":
             self.lib._destroy()
         del self.lib
         del self.exclude
         del self.include
-        del self.registrar
-        del current_work_registrar
+        del current_registry
         if self.record:
             teardown_flaggems_logging()
 
     @property
     def experimental_ops(self):
-        import flag_gems.experimental_ops
+        from flag_gems import experimental_ops
 
-        return flag_gems.experimental_ops
+        return experimental_ops
 
 
 def all_registered_ops():
-    return current_work_registrar.get_all_ops()
+    return current_registry.get_all_ops()
 
 
 def all_registered_keys():
-    return current_work_registrar.get_all_keys()
+    return current_registry.get_all_keys()
 
 
 __all__ = [
     "enable",
-    "only_enable",
     "use_gems",
     "all_registered_ops",
     "all_registered_keys",
