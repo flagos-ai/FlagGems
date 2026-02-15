@@ -54,6 +54,90 @@ SCORING_FUNC_LIST = [0, 1] if not QUICK_MODE else [0]
 DTYPE_LIST = [torch.bfloat16, torch.float32] if not QUICK_MODE else [torch.float32]
 LARGE_SCALE_DTYPE_LIST = [torch.float32, torch.bfloat16]
 
+CHUNK_GATED_DELTA_RULE_SHAPES = (
+    [(1, 2, 64, 8, 8)]
+    if QUICK_MODE
+    else [
+        # small (non-multiple of chunk size to exercise padding)
+        (1, 2, 48, 8, 8),
+        # regular
+        (1, 4, 128, 16, 16),
+        # large (non-multiple of chunk size)
+        (2, 4, 192, 32, 32),
+    ]
+)
+CHUNK_GATED_DELTA_RULE_DTYPES = [torch.float32] if QUICK_MODE else [
+    torch.float16,
+    torch.float32,
+]
+
+
+def _chunk_gated_delta_rule_ref(q, k, v, beta, g, chunk_size):
+    q, k, v, beta, g = map(
+        lambda x: x.to(torch.float32), [q, k, v, beta, g]
+    )
+    decay = g
+    b, h, l, d_k = q.shape
+    d_v = v.shape[-1]
+    q = q * (d_k ** -0.5)
+    v = v * beta[..., None]
+    k_beta = k * beta[..., None]
+    if l % chunk_size != 0:
+        raise ValueError("Sequence length must be a multiple of chunk_size")
+    n = l // chunk_size
+
+    q = q.view(b, h, n, chunk_size, d_k)
+    k = k.view(b, h, n, chunk_size, d_k)
+    v = v.view(b, h, n, chunk_size, d_v)
+    k_beta = k_beta.view(b, h, n, chunk_size, d_k)
+    decay = decay.view(b, h, n, chunk_size).cumsum(-1)
+
+    l_mask = (decay.unsqueeze(-1) - decay.unsqueeze(-2)).exp()
+    diag_mask = torch.triu(
+        torch.ones(chunk_size, chunk_size, dtype=torch.bool, device=q.device),
+        diagonal=0,
+    )
+    attn = -((k_beta @ k.transpose(-1, -2)) * l_mask).masked_fill(diag_mask, 0)
+    for i in range(1, chunk_size):
+        attn[..., i, :i] = attn[..., i, :i] + (
+            attn[..., i, :i, None] * attn[..., :i, :i]
+        ).sum(-2)
+    attn = attn + torch.eye(chunk_size, dtype=torch.float32, device=q.device)
+    k_cumsum = attn @ v
+
+    attn = -((k_beta @ k.transpose(-1, -2))).masked_fill(diag_mask, 0)
+    for i in range(1, chunk_size):
+        attn[..., i, :i] = attn[..., i, :i] + (
+            attn[..., i, :i, None] * attn[..., :i, :i]
+        ).sum(-2)
+    attn = attn + torch.eye(chunk_size, dtype=torch.float32, device=q.device)
+    k_cumdecay = attn @ k_beta
+    v_cumsum = k_cumsum
+
+    state = k.new_zeros(b, h, d_k, d_v)
+    o = torch.zeros_like(v)
+    upper_mask = torch.triu(
+        torch.ones(chunk_size, chunk_size, dtype=torch.bool, device=q.device),
+        diagonal=1,
+    )
+    for i in range(n):
+        q_i = q[:, :, i]
+        k_i = k[:, :, i]
+        v_i = v_cumsum[:, :, i]
+        attn_i = (q_i @ k_i.transpose(-1, -2) * l_mask[:, :, i]).masked_fill(
+            upper_mask, 0
+        )
+        v_prime = (k_cumdecay[:, :, i] * decay[:, :, i, :, None].exp()) @ state
+        v_new = v_i - v_prime
+        o_inter = (q_i * decay[:, :, i, :, None].exp()) @ state
+        o[:, :, i] = o_inter + attn_i @ v_new
+        state = state * decay[:, :, i, -1].exp()[..., None, None] + (
+            k_i
+            * (decay[:, :, i, -1, None] - decay[:, :, i]).exp()[..., None]
+        ).transpose(-1, -2) @ v_new
+
+    return o.view(b, h, l, d_v)
+
 
 def check_valid_config(n_expert, n_group, topk):
     if n_expert % n_group != 0:
@@ -845,6 +929,30 @@ def test_upsample_nearest2d(dtype, shape, scale):
     with flag_gems.use_gems():
         res_out = torch._C._nn.upsample_nearest2d(input, output_size=output_size)
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.chunk_gated_delta_rule
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia", reason="Requires NVIDIA CUDA backend"
+)
+@pytest.mark.parametrize("dtype", CHUNK_GATED_DELTA_RULE_DTYPES)
+@pytest.mark.parametrize("shape", CHUNK_GATED_DELTA_RULE_SHAPES)
+def test_chunk_gated_delta_rule(dtype, shape):
+    b, h, l, d_k, d_v = shape
+    q = torch.randn((b, h, l, d_k), dtype=dtype, device=flag_gems.device)
+    k = torch.randn((b, h, l, d_k), dtype=dtype, device=flag_gems.device)
+    v = torch.randn((b, h, l, d_v), dtype=dtype, device=flag_gems.device)
+    beta = torch.sigmoid(
+        torch.randn((b, h, l), dtype=dtype, device=flag_gems.device)
+    )
+    g = torch.randn((b, h, l), dtype=dtype, device=flag_gems.device) * 0.1
+
+    ref_out = _chunk_gated_delta_rule_ref(q, k, v, beta, g, chunk_size=64)
+    with flag_gems.use_gems():
+        res_out, _ = flag_gems.chunk_gated_delta_rule(q, k, v, beta, g, BT=64)
+
+    torch.testing.assert_close(res_out, ref_out, atol=5e-3, rtol=5e-3)
 
 
 @pytest.mark.arange
