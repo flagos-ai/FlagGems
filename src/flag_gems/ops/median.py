@@ -26,9 +26,9 @@ def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
             mask = (self == values) | (torch.isnan(self) & torch.isnan(values))
         else:
             mask = self == values
-        sentinel = torch.full_like(base_index, size)
+        sentinel = torch.full_like(base_index, -1)
         masked_index = torch.where(mask, base_index, sentinel)
-        indices = torch.min(masked_index, dim=dim, keepdim=True).values
+        indices = torch.max(masked_index, dim=dim, keepdim=True).values
         values = torch.take_along_dim(self, indices, dim=dim)
     else:
         k = _median_k(self.size(dim)) - 1

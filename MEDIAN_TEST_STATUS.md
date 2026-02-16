@@ -11,11 +11,11 @@ Use **first-occurrence index** for float16/bfloat16 and stable argsort for other
 
 - **float16 / bfloat16**:
   - compute median value via `torch.kthvalue` (lower median)
-  - pick the **first occurrence** of that value along `dim`
-    using a masked `min` over indices
+  - pick the **last occurrence** of that value along `dim`
+    using a masked `max` over indices
 - **other dtypes**: `torch.argsort(self, stable=True)` and gather at `k`
 
-This matches PyTorch CUDA median’s tie-breaking (first occurrence) while keeping
+This matches PyTorch CUDA median’s tie-breaking (last occurrence) while keeping
 the float32 path stable.
 
 ## Current Implementation (after fix)
@@ -26,7 +26,7 @@ def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     if self.dtype in (torch.float16, torch.bfloat16):
         k = (self.size(dim) + 1) // 2
         values = torch.kthvalue(self, k, dim=dim, keepdim=True).values
-        indices = first_occurrence_indices(self, values, dim)
+        indices = last_occurrence_indices(self, values, dim)
         values = torch.take_along_dim(self, indices, dim=dim)
     else:
         k = (self.size(dim) + 1) // 2 - 1
@@ -49,4 +49,4 @@ def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
 ---
 
 **Last updated**: 2026-02-14
-**Status**: recursion fixed; fp16/bf16 first-occurrence + stable argsort implemented; awaiting re-test results
+**Status**: recursion fixed; fp16/bf16 last-occurrence + stable argsort implemented; awaiting re-test results
