@@ -69,6 +69,23 @@ THRESHOLD_SHAPE = (
     else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
 )
 CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
+MEDIAN_DIM_CONFIGS = (
+    [((4, 4), 1)]
+    if QUICK_MODE
+    else [
+        # small 1D
+        ((1,), 0),
+        # small odd
+        ((7, 5), 1),
+        # regular
+        ((64, 64), 0),
+        ((64, 64), 1),
+        # large
+        ((1024, 1024), 1),
+        # 3D with negative dim
+        ((2, 4, 8), -1),
+    ]
+)
 
 
 @pytest.mark.amax
@@ -322,6 +339,22 @@ def test_accuracy_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
     with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("shape, dim", MEDIAN_DIM_CONFIGS)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_median_dim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_vals, ref_idx = torch.median(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_vals, res_idx = torch.median(inp, dim=dim, keepdim=keepdim)
+
+    gems_assert_close(res_vals, ref_vals, dtype)
+    gems_assert_equal(res_idx, ref_idx)
 
 
 CUMSUM_SHAPES = (
