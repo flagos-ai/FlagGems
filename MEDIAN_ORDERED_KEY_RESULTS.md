@@ -1,3 +1,9 @@
+# Median Ordered-Key Results (Historical)
+
+**Note**: This file captures results from the ordered-key strategy.  
+The **current implementation** uses **float64 upcast + kthvalue** for
+float16/bfloat16 (see `MEDIAN_TEST_STATUS.md` for latest results).
+
 # median 有序 key + 索引打散平局测试结果
 
 ## 测试日期

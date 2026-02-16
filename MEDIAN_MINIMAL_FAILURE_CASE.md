@@ -1,18 +1,18 @@
 # Median Minimal Failure Case (bfloat16)
 
 ## Summary
-PyTorch CUDA `median` chooses the **last** occurrence index when the median value
-appears multiple times. The previous FlagGems implementation chose the **first**
-occurrence, which caused index mismatches while values were correct.
+Index mismatches are tied to **tie-break behavior** when the median value occurs
+multiple times. The current implementation uses **float64 upcast + kthvalue**
+for fp16/bf16 and still sees rare mismatches in large bfloat16 cases.
 
 ## Test Results Summary
 
-### Test Statistics
+### Test Statistics (latest)
 - **Total tests**: 36
-- **Passed**: 31 (86.1%) ✅
-- **Failed**: 5 (13.9%)
+- **Passed**: 33 best / 31 typical
+- **Failed**: 3–5 (seed-dependent)
 - **Value accuracy**: 100% ✅
-- **Index accuracy**: 86.1%
+- **Index accuracy**: 86–92%
 
 **Note**: Failure count may vary with random seed (3-5 failures)
 
@@ -24,7 +24,7 @@ occurrence, which caused index mismatches while values were correct.
 
 ## Minimal Repro
 
-### Example 1: Simple Repeated Values
+### Example 1: Simple Repeated Values (tie-break sensitive)
 
 ```python
 import torch
@@ -38,12 +38,10 @@ data = torch.tensor(
 
 # PyTorch reference (CPU)
 ref_vals, ref_idx = torch.median(data.cpu(), dim=0, keepdim=False)
-# ref_idx == 4 (last occurrence)
 
 # FlagGems
 with flag_gems.use_gems():
     res_vals, res_idx = torch.median(data, dim=0, keepdim=False)
-# previous res_idx == 0 (first occurrence)
 ```
 
 ## Key Details
@@ -54,9 +52,8 @@ with flag_gems.use_gems():
 - **data**: `[-0.05126953125, 0.1, -0.05126953125, 0.2, -0.05126953125]`
 - **median value**: `-0.05126953125`
 - **value positions**: `[0, 2, 4]`
-- **PyTorch CUDA index**: `4` (last occurrence)
-- **Previous FlagGems index**: `0` (first occurrence)
-- **Failure reason**: PyTorch CUDA selects last occurrence, previous implementation selected first
+- **Tie-break note**: CPU and CUDA can select different indices among duplicates;
+  this is the source of remaining mismatches.
 
 ### Example 2: Extracted from Actual Failure Case
 
@@ -117,5 +114,5 @@ Change `torch.min(masked_index, dim=dim)` to select the last matching position, 
 
 ---
 
-**Last updated**: 2026-02-13
-**Status**: Issue identified - PyTorch selects last occurrence, previous implementation selected first
+**Last updated**: 2026-02-16
+**Status**: Remaining failures are tie-break differences for duplicate values in bfloat16

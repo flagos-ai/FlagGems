@@ -7,16 +7,16 @@ into the registered FlagGems implementation, causing infinite recursion.
 
 ## Fix Applied (current)
 
-Use **first-occurrence index** for float16/bfloat16 and stable argsort for others:
+Use **float64 upcast + kthvalue** for low-precision dtypes, and stable argsort
+for higher precision:
 
 - **float16 / bfloat16**:
-  - compute median value via `torch.kthvalue` (lower median)
-  - pick the **last occurrence** of that value along `dim`
-    using a masked `max` over indices
+  - upcast to `float64`
+  - compute median via `torch.kthvalue` (lower median)
+  - return the CUDA index from `kthvalue`
 - **other dtypes**: `torch.argsort(self, stable=True)` and gather at `k`
 
-This matches PyTorch CUDA median’s tie-breaking (last occurrence) while keeping
-the float32 path stable.
+This gives the best observed index agreement while keeping values correct.
 
 ## Current Implementation (after fix)
 
@@ -24,10 +24,12 @@ the float32 path stable.
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     dim = dim % self.dim()
     if self.dtype in (torch.float16, torch.bfloat16):
+        original_dtype = self.dtype
+        self_upcast = self.to(torch.float64)
         k = (self.size(dim) + 1) // 2
-        values = torch.kthvalue(self, k, dim=dim, keepdim=True).values
-        indices = last_occurrence_indices(self, values, dim)
-        values = torch.take_along_dim(self, indices, dim=dim)
+        kth = torch.kthvalue(self_upcast, k, dim=dim, keepdim=keepdim)
+        values = kth.values.to(original_dtype)
+        indices = kth.indices
     else:
         k = (self.size(dim) + 1) // 2 - 1
         sorted_idx = torch.argsort(self, dim=dim, stable=True)
@@ -43,10 +45,12 @@ def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
 
 ## Test Status
 
-- **Accuracy tests**: pending re-run after first-occurrence fix
+- **Accuracy tests**: 33/36 pass (best case), 31/36 typical; value accuracy 100%
+- **Remaining failures**: index mismatches in bfloat16 large shapes, likely due to
+  tie-break differences across PyTorch CPU/CUDA paths when duplicate values occur
 - **Performance tests**: pending (no benchmark case yet)
 
 ---
 
-**Last updated**: 2026-02-14
-**Status**: recursion fixed; fp16/bf16 last-occurrence + stable argsort implemented; awaiting re-test results
+**Last updated**: 2026-02-16
+**Status**: recursion fixed; fp16/bf16 float64+kthvalue implemented; awaiting final re-test confirmation
