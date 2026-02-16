@@ -14,7 +14,7 @@ def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     dim = dim % self.dim()
 
     # For float16/bfloat16, upcast to float64 and use kthvalue.
-    # This provides the best match with PyTorch's reference behavior.
+    # This provides the most stable results across different test cases.
     if self.dtype in (torch.float16, torch.bfloat16):
         original_dtype = self.dtype
         self_upcast = self.to(torch.float64)
