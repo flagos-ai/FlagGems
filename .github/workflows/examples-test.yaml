@@ -2,23 +2,19 @@ name: examples
 
 on:
   workflow_call:
+    inputs:
+      pr_id:
+        description: 'The PR ID for generating coverage data'
+        type: string
+        required: true
 
 jobs:
   test:
     runs-on: jiuding
     steps:
       - uses: actions/checkout@v6
-      - name: Check GPU free
-        shell: bash
+      - shell: bash
         run: tools/gpu_check.sh
-      - name: Testing
-        shell: bash
+      - shell: bash
         run: |
-          git config --global --add safe.directory ../FlagGems
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            PR_ID=${{ github.event.pull_request.number }}
-          elif [ "${{ github.event_name }}" == "push" ]; then
-            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-            PR_ID=${PR_NUMBER}
-          fi
-          bash tools/examples-test.sh ${PR_ID}
+          bash tools/examples-test.sh ${{ inputs.pr_id }}
