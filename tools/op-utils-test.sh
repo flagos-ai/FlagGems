@@ -7,7 +7,7 @@ echo ID_SHA $ID_SHA
 
 echo $PWD
 source tools/run_command.sh
-COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
+COVERAGE_ARGS="--data-file=${ID_SHA}-utils"
 run_command coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_libentry.py && \
 run_command coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_shape_utils.py && \
 run_command coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_wrapper.py
