@@ -12,25 +12,18 @@ def _median_k(size: int) -> int:
 def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
     logger.debug("GEMS MEDIAN DIM")
     dim = dim % self.dim()
+
+    # For float16/bfloat16, upcast to float64 and use kthvalue.
+    # This provides the best match with PyTorch's reference behavior.
     if self.dtype in (torch.float16, torch.bfloat16):
-        k = _median_k(self.size(dim))
-        values = torch.kthvalue(self, k, dim=dim, keepdim=True).values
-        size = self.size(dim)
-        index_shape = [1] * self.dim()
-        index_shape[dim] = size
-        base_index = torch.arange(
-            size, device=self.device, dtype=torch.long
-        ).view(index_shape)
-        base_index = base_index.expand_as(self)
-        if self.dtype.is_floating_point:
-            mask = (self == values) | (torch.isnan(self) & torch.isnan(values))
-        else:
-            mask = self == values
-        sentinel = torch.full_like(base_index, -1)
-        masked_index = torch.where(mask, base_index, sentinel)
-        indices = torch.max(masked_index, dim=dim, keepdim=True).values
-        values = torch.take_along_dim(self, indices, dim=dim)
+        original_dtype = self.dtype
+        self_upcast = self.to(torch.float64)
+        k = _median_k(self_upcast.size(dim))
+        kth_result = torch.kthvalue(self_upcast, k, dim=dim, keepdim=keepdim)
+        values = kth_result.values.to(original_dtype)
+        indices = kth_result.indices
     else:
+        # For float32 and higher precision, use stable sort
         k = _median_k(self.size(dim)) - 1
         sorted_idx = torch.argsort(self, dim=dim, stable=True)
         sorted_vals = torch.take_along_dim(self, sorted_idx, dim=dim)
@@ -41,9 +34,10 @@ def median_dim(self: torch.Tensor, dim: int, keepdim: bool = False):
         )
         values = torch.take_along_dim(sorted_vals, gather_index, dim=dim)
         indices = torch.take_along_dim(sorted_idx, gather_index, dim=dim)
-    if not keepdim:
-        values = values.squeeze(dim)
-        indices = indices.squeeze(dim)
+        if not keepdim:
+            values = values.squeeze(dim)
+            indices = indices.squeeze(dim)
+
     return values, indices
 
 
