@@ -2,6 +2,11 @@ name: special-ops
 
 on:
   workflow_call:
+    inputs:
+      pr_id:
+        description: 'The PR ID for generating coverage data'
+        type: string
+        required: true
 
 jobs:
   test:
@@ -12,11 +17,4 @@ jobs:
         run: tools/gpu_check.sh
       - shell: bash
         run: |
-          git config --global --add safe.directory ../FlagGems
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            PR_ID=${{ github.event.pull_request.number }}
-          elif [ "${{ github.event_name }}" == "push" ]; then
-            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-            PR_ID=${PR_NUMBER}
-          fi
-          bash tools/special-op-test.sh ${PR_ID}
+          bash tools/special-op-test.sh ${{ inputs.pr_id }}

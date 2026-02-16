@@ -1,7 +1,7 @@
 ---
 name: Backend Test
 
-'on':
+on:
   workflow_call:
     inputs:
       vendor:

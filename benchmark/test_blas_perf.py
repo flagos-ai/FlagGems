@@ -13,7 +13,7 @@ from benchmark.attri_util import (
     model_shapes,
 )
 from benchmark.conftest import Config
-from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly, vendor_name
+from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly
 
 
 class BlasBenchmark(Benchmark):
