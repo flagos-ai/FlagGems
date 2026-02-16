@@ -1,5 +1,0 @@
-[run]
-omit = [
-    "*/.flaggems/*",
-    "*/usr/lib/*",
-]
