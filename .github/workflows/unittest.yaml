@@ -12,7 +12,7 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
-  wait-triage:
+  preprocess:
     runs-on: ubuntu-latest
     outputs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
@@ -37,87 +37,97 @@ jobs:
           workflow: .github/workflows/triage.yaml
 
   build-doc:
-    needs: wait-triage
+    needs: preprocess
     if: contains(github.event.pull_request.labels.*.name, 'documentation')
     uses: ./.github/workflows/mkdocs.yaml
 
-  cpp-op-test:
-    needs: wait-triage
+  cpp-op:
+    needs: preprocess
     if: contains(github.event.pull_request.labels.*.name, 'ops/cpp')
     uses: ./.github/workflows/cpp-op-test.yaml
 
-  blas-op-test:
-    needs: wait-triage
+  blas-op:
+    needs: preprocess
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/blas-op-test.yaml
+    uses: ./.github/workflows/op-test.yaml
     with:
-      pr_id: ${{ needs.wait-triage.outputs.pr_id }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: blas-op-test.sh
 
-  examples-test:
-    needs: wait-triage
-    if: contains(github.event.pull_request.labels.*.name, 'tests')
-    concurrency:
-      group: examples-test-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    uses: ./.github/workflows/examples-test.yaml
-    with:
-      pr_id: ${{ needs.wait-triage.outputs.pr_id }}
-
-  quick-cpu-op-test:
-    needs: wait-triage
-    if: contains(github.event.pull_request.labels.*.name, 'tests')
+  quick-cpu-op:
+    needs: preprocess
+    # NOTE: This contains a temporary hack to skip this job for PRs from FODC contest.
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'tests') &&
+      ! contains(github.event.pull_request.labels.*.name, 'competition')
     concurrency:
       group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/op-test-quick-cpu.yaml
+    uses: ./.github/workflows/op-test.yaml
     with:
-      pr_id: ${{ needs.wait-triage.outputs.pr_id }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: op-test-quick-cpu.sh
 
-  pointwise-op-test:
-    needs: wait-triage
+  pointwise-op:
+    needs: preprocess
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/pointwise-op-test.yaml
+    uses: ./.github/workflows/op-test.yaml
     with:
-      pr_id: ${{ needs.wait-triage.outputs.pr_id }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: pointwise-op-test.sh
 
-  reduction-op-test:
-    needs: wait-triage
+  reduction-op:
+    needs: preprocess
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/reduction-op-test.yaml
+    uses: ./.github/workflows/op-test.yaml
     with:
-      pr_id: ${{ needs.wait-triage.outputs.pr_id }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: reduction-op-test.sh
 
-  special-op-test:
-    needs: wait-triage
+  special-op:
+    needs: preprocess
     if: contains(github.event.pull_request.labels.*.name, 'tests')
     concurrency:
       group: special-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/special-op-test.yaml
+    uses: ./.github/workflows/op-test.yaml
     with:
-      pr_id: ${{ needs.wait-triage.outputs.pr_id }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: special-op-test.sh
 
-  utils-test:
-    needs: wait-triage
+  utils:
+    needs: preprocess
     if: "contains(github.event.pull_request.labels.*.name, 'tests')"
     concurrency:
       group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/op-utils-test.yaml
+    uses: ./.github/workflows/op-test.yaml
     with:
-      pr_id: ${{ needs.wait-triage.outputs.pr_id }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: op-utils-test.sh
 
-  test-on-nvidia:
-    needs: wait-triage
+  examples:
+    needs: preprocess
+    if: contains(github.event.pull_request.labels.*.name, 'tests')
+    concurrency:
+      group: examples-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test.yaml
+    with:
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: examples-test.sh
+
+  backend-nvidia:
+    needs: preprocess
     if: "contains(github.event.pull_request.labels.*.name, 'vendor/NVIDIA')"
     uses: ./.github/workflows/backend-test.yaml
     with:
@@ -126,8 +136,8 @@ jobs:
       gpu_check_script: tools/gpu_check.sh
       test_script: tools/run_backend_tests_nvidia.sh
 
-  test-on-ascend:
-    needs: wait-triage
+  backend-ascend:
+    needs: preprocess
     if: "contains(github.event.pull_request.labels.*.name, 'vendor/Ascend')"
     uses: ./.github/workflows/backend-test.yaml
     with:
@@ -136,8 +146,8 @@ jobs:
       gpu_check_script: tools/gpu_check_ascend.sh
       test_script: tools/run_backend_tests.sh
 
-  test-on-iluvatar:
-    needs: wait-triage
+  backend-iluvatar:
+    needs: preprocess
     if: "contains(github.event.pull_request.labels.*.name, 'vendor/Iluvatar')"
     uses: ./.github/workflows/backend-test.yaml
     with:
@@ -146,8 +156,8 @@ jobs:
       gpu_check_script: tools/gpu_check_iluvatar.sh
       test_script: tools/run_backend_tests.sh
 
-  test-on-metax:
-    needs: wait-triage
+  backend-metax:
+    needs: preprocess
     if: "contains(github.event.pull_request.labels.*.name, 'vendor/MetaX')"
     uses: ./.github/workflows/backend-test.yaml
     with:
@@ -155,8 +165,8 @@ jobs:
       runner_label: metax
       test_script: tools/run_backend_tests_metax.sh
 
-  test-on-moore:
-    needs: wait-triage
+  backend-moore:
+    needs: preprocess
     if: "contains(github.event.pull_request.labels.*.name, 'vendor/MooreThreads')"
     uses: ./.github/workflows/backend-test.yaml
     with:
@@ -165,8 +175,8 @@ jobs:
       gpu_check_script: tools/gpu_check_moore.sh
       test_script: tools/run_backend_tests.sh
 
-  test-alpha-ops:
-    needs: wait-triage
+  alpha-ops:
+    needs: preprocess
     if: "contains(github.event.pull_request.labels.*.name, 'ops/alpha')"
     uses: ./.github/workflows/backend-test.yaml
     with:
@@ -174,11 +184,11 @@ jobs:
       runner_label: hopper
       gpu_check_script: tools/gpu_check.sh
       test_script: tools/experimental-op-test.sh
-      changed_files: ${{ needs.wait-triage.outputs.changed_files }}
+      changed_files: ${{ needs.preprocess.outputs.changed_files }}
 
 #   coverage:
 #     needs:
-#       - wait-triage
+#       - preprocess
 #       - blas-op-test
 #       - examples-test
 #       - quick-cpu-op-test
