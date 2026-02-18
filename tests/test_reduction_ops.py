@@ -1593,7 +1593,10 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, 
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        K = indices[0].sum().item()
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -1637,7 +1640,10 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, d
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        K = indices[0].sum().item()
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -1668,7 +1674,10 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        K = indices[0].sum().item()
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -1714,7 +1723,10 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        K = indices[0].sum().item()
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
