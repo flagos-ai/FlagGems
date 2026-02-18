@@ -1769,3 +1769,65 @@ def test_accuracy_ceil_out(shape, dtype):
         torch.ceil(inp, out=out)
 
     gems_assert_equal(out, ref_out)
+# ═══════════════════════════════════════════════════════
+# leaky_relu tests — FlagGems Operator Development Competition
+# ═══════════════════════════════════════════════════════
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("negative_slope", [0.01, 0.1, 0.5])
+def test_accuracy_leaky_relu(shape, dtype, negative_slope):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=negative_slope)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_default_slope(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_zero_slope(dtype):
+    """negative_slope=0 should be equivalent to ReLU."""
+    inp = torch.randn([1024, 1024], dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=0.0)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=0.0)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_(shape, dtype):
+    """Test inplace variant."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.nn.functional.leaky_relu_(ref_inp, negative_slope=0.01)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu_(inp, negative_slope=0.01)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
