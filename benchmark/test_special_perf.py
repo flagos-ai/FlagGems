@@ -522,6 +522,34 @@ def test_perf_upsample_nearest2d():
     bench.run()
 
 
+@pytest.mark.pixel_shuffle
+def test_perf_pixel_shuffle():
+    def pixel_shuffle_input_fn(shape, dtype, device):
+        # shape is (N, C_in, H, W) with C_in = C_out * r^2, r=2
+        r = 2
+        N, C_out, H, W = shape
+        C_in = C_out * r * r
+        input = torch.randn(N, C_in, H, W, dtype=dtype, device=device)
+        yield input, {"upscale_factor": r},
+
+    pixel_shuffle_shapes = [
+        (1, 3, 512, 512),
+        (8, 16, 128, 128),
+        (2, 3, 1024, 1024),
+        (16, 16, 512, 512),
+        (16, 16, 1024, 1024),
+    ]
+
+    bench = GenericBenchmark4DOnly(
+        input_fn=pixel_shuffle_input_fn,
+        op_name="pixel_shuffle",
+        torch_op=torch.pixel_shuffle,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.shapes = pixel_shuffle_shapes
+    bench.run()
+
+
 @pytest.mark.diag
 def test_perf_diag():
     def diag_input_fn(shape, dtype, device):
