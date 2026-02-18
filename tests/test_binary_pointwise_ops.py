@@ -2166,3 +2166,66 @@ def test_accuracy_addcdiv(shape, dtype):
         res_out = torch.addcdiv(res_inp, t1, t2, value=v)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd(shape, dtype):
+    inp1 = torch.randint(
+        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    inp2 = torch.randint(
+        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.inplace
+@pytest.mark.gcd_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_(shape, dtype):
+    inp1 = torch.randint(
+        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    inp2 = torch.randint(
+        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    ref_inp1 = to_reference(inp1.clone())
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = ref_inp1.gcd_(ref_inp2)
+    with flag_gems.use_gems():
+        res_out = inp1.gcd_(inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_out(shape, dtype):
+    inp1 = torch.randint(
+        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    inp2 = torch.randint(
+        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
+    ).to(flag_gems.device)
+    out = torch.empty_like(inp1)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2, out=out)
+
+    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(out, ref_out)
