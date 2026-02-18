@@ -247,8 +247,8 @@ def upsample_nearest2d_backward(
 
     SAME_H = OH == IH
     SAME_W = OW == IW
-    MAX_REGION_H = 1 if SAME_H else math.ceil(scale_h_val)
-    MAX_REGION_W = 1 if SAME_W else math.ceil(scale_w_val)
+    MAX_REGION_H = 1 if SAME_H else math.ceil(scale_h_val) + 1
+    MAX_REGION_W = 1 if SAME_W else math.ceil(scale_w_val) + 1
 
     grad_input = torch.empty(
         (N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype
