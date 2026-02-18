@@ -50,6 +50,8 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("polar", torch.polar, [torch.float32]),
             ("floor_divide", torch.floor_divide, INT_DTYPES),
             ("remainder", torch.remainder, INT_DTYPES),
+            ("logaddexp", torch.logaddexp, FLOAT_DTYPES),
+            ("logaddexp2", torch.logaddexp2, FLOAT_DTYPES),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
             ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
             ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
@@ -96,6 +98,8 @@ def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
             ("pow_", lambda a, b: a.pow_(b), FLOAT_DTYPES),
             ("floor_divide_", lambda a, b: a.floor_divide_(b), INT_DTYPES),
             ("remainder_", lambda a, b: a.remainder_(b), INT_DTYPES),
+            ("logaddexp_", lambda a, b: a.logaddexp_(b), FLOAT_DTYPES),
+            ("logaddexp2_", lambda a, b: a.logaddexp2_(b), FLOAT_DTYPES),
             ("logical_or_", lambda a, b: a.logical_or_(b), INT_DTYPES + BOOL_DTYPES),
             ("logical_and_", lambda a, b: a.logical_and_(b), INT_DTYPES + BOOL_DTYPES),
             # Bitwise operations
