@@ -1769,3 +1769,59 @@ def test_accuracy_ceil_out(shape, dtype):
         torch.ceil(inp, out=out)
 
     gems_assert_equal(out, ref_out)
+
+
+# ---------------------------------------------------------------------------
+# leaky_relu
+# ---------------------------------------------------------------------------
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("negative_slope", [0.01, 0.1, 0.5])
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu(shape, dtype, negative_slope):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=negative_slope)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("negative_slope", [0.01, 0.1, 0.5])
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_backward(shape, dtype, negative_slope):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad = torch.randn_like(inp)
+
+    ref_inp = to_reference(inp, True)
+    ref_grad = to_reference(grad, True)
+
+    ref_in_grad = torch.ops.aten.leaky_relu_backward(
+        ref_grad, ref_inp, negative_slope, False
+    )
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.leaky_relu_backward(
+            grad, inp, negative_slope, False
+        )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.leaky_relu_
+@pytest.mark.parametrize("negative_slope", [0.01, 0.1])
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_(shape, dtype, negative_slope):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope, inplace=True)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=negative_slope, inplace=True)
+
+    gems_assert_close(res_out, ref_out, dtype)
