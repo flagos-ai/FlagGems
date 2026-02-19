@@ -48,7 +48,9 @@ def _scatter_reduce_impl(
 
     work_dtype = inp.dtype
     cast_back = False
-    if inp.dtype == torch.bfloat16:
+    # For bfloat16 and float16, upcast to float32 for atomic operations
+    # (atomic_max/atomic_min don't support fp16 in Triton)
+    if inp.dtype in (torch.bfloat16, torch.float16):
         work_dtype = torch.float32
         cast_back = True
 
