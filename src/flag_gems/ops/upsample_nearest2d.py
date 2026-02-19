@@ -169,7 +169,7 @@ def upsample_nearest2d_backward(
             torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)
             | torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
         )
-        grad_input = torch.ops.aten.to.dtype.default.redispatch(
+        grad_input = torch.ops.aten.to.dtype.redispatch(
             _FALLBACK_KEYSET, grad_input, grad_output.dtype, non_blocking=False, copy=False
         )
     return grad_input
