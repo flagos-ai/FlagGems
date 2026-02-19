@@ -41,23 +41,11 @@ The backward test in `tests/test_special_ops.py:859` covers:
 ## Results (user-run)
 ### Overall
 - **Total tests**: 54
-- **Passed**: 6 (11.1%)
-- **Failed**: 48 (88.9%)
-
-### Passed cases
-All `shape0` cases `(1, 1, 4, 4)` passed (6 total):
-- `dtype0-shape0-scale0-False/True` (float16, scale `(2.0, 2.0)`)
-- `dtype0-shape0-scale1-False/True` (float16, scale `(1.5, 0.75)`)
-- `dtype0-shape0-scale2-False/True` (float16, scale `(0.5, 0.5)`)
-
-### Failed cases
-- All `shape1` `(2, 3, 32, 32)` cases: 18 failures
-- All `shape2` `(1, 4, 128, 128)` cases: 18 failures
-- All `dtype1` (float32) cases: 18 failures
-- All `dtype2` (bfloat16) cases: 18 failures
+- **Passed**: 54 (100%)
+- **Failed**: 0
 
 ## Root Cause
-Type conversion via `redispatch` still hits FlagGems `to_copy`, triggering:
+FlagGems intercepts multiple ops (`to_copy`, `scatter_add_`) causing:
 ```
 RuntimeError: Triton Error [CUDA]: an illegal memory access was encountered
 ```
@@ -68,8 +56,12 @@ Switched dtype conversion to call PyTorch’s `_to_copy` via redispatch with a
 ```
 torch.ops.aten._to_copy.default.redispatch(_FALLBACK_KEYSET, ...)
 ```
+Also switched scatter accumulation to PyTorch’s `scatter_add_` via redispatch:
+```
+torch.ops.aten.scatter_add_.default.redispatch(
+    _FALLBACK_KEYSET, grad_input_flat, 2, index, grad_output_flat
+)
+```
 
 ## Current State
-- Small-size tests pass, confirming the core backward logic.
-- Large-size failures persist due to type conversion triggering FlagGems dispatch.
-- Next step: fully bypass FlagGems dispatch for dtype conversion.
+- All tests pass after bypassing FlagGems for both `_to_copy` and `scatter_add_`.
