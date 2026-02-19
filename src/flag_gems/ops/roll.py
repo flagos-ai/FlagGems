@@ -8,7 +8,9 @@ logger = logging.getLogger(__name__)
 def _normalize_shifts_dims(shifts, dims, ndim):
     if dims is None:
         if isinstance(shifts, (list, tuple)):
-            raise RuntimeError("shifts and dimensions must align for roll.")
+            if len(shifts) != 1:
+                raise RuntimeError("shifts and dimensions must align for roll.")
+            shifts = shifts[0]
         return (int(shifts),), (0,)
 
     if isinstance(dims, int):
