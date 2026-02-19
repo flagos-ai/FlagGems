@@ -3,7 +3,7 @@
 ## Summary
 - **Operator**: `upsample_nearest2d_backward`
 - **Branch**: `codex/upsample_nearest2d`
-- **Status**: Tests **not executed** in this environment.
+- **Status**: Tests **not executed** (missing `pytest`).
 
 ## Implementation Overview
 - **Forward/Backward shared scale**: `_get_reciprocal_scale` (see `src/flag_gems/ops/upsample_nearest2d.py:15`).
@@ -13,11 +13,23 @@
   - `src/flag_gems/ops/__init__.py:224`
 
 ## Environment
-- **Python**: not available in this container (`python` command missing).
+- **Python**: `python3` available
+- **PyTest**: not installed (`No module named pytest`)
 - **CUDA / Triton**: not verified (GPU runtime required).
 
 ## Test Commands
-Run on a CUDA-enabled environment:
+Attempted locally:
+
+```bash
+python3 -m pytest tests/test_special_ops.py::test_upsample_nearest2d_backward -v
+```
+
+Result:
+```
+No module named pytest
+```
+
+Run on a CUDA-enabled environment (with pytest installed):
 
 ```bash
 python -m pytest tests/test_special_ops.py::test_upsample_nearest2d_backward -v
