@@ -12,6 +12,19 @@ device = device.name
 logger = logging.getLogger(__name__)
 
 
+def _get_reciprocal_scale(
+    input_size: int, output_size: int, scale: Optional[float]
+) -> float:
+    if scale is not None:
+        return float(torch.tensor(1.0 / scale, dtype=torch.float32).item())
+    return float(
+        (
+            torch.tensor(input_size, dtype=torch.float32)
+            / torch.tensor(output_size, dtype=torch.float32)
+        ).item()
+    )
+
+
 @triton.autotune(
     configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
 )
@@ -78,14 +91,8 @@ def upsample_nearest2d(
     assert len(output_size) == 2, "The len of output_size must be 2"
     OH, OW = output_size
     N, C, IH, IW = input.shape
-    if scales_h is not None:
-        reciprocal_scale_h = 1 / scales_h
-    else:
-        reciprocal_scale_h = IH / OH
-    if scales_w is not None:
-        reciprocal_scale_w = 1 / scales_w
-    else:
-        reciprocal_scale_w = IW / OW
+    reciprocal_scale_h = _get_reciprocal_scale(IH, OH, scales_h)
+    reciprocal_scale_w = _get_reciprocal_scale(IW, OW, scales_w)
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
     total_threads = OH * OW
@@ -108,3 +115,53 @@ def upsample_nearest2d(
             reciprocal_scale_w,
         )
     return output
+
+
+def upsample_nearest2d_backward(
+    grad_output: torch.Tensor,
+    output_size: Tuple[int],
+    input_size: Tuple[int],
+    scales_h: Optional[float] = None,
+    scales_w: Optional[float] = None,
+) -> torch.Tensor:
+    logger.debug("GEMS UPSAMPLE NEAREST2D BACKWARD")
+    assert grad_output.device.type == device
+    assert grad_output.ndim == 4, "The ndim of grad_output must be 4"
+    assert len(output_size) == 2, "The len of output_size must be 2"
+    assert len(input_size) == 4, "The len of input_size must be 4"
+
+    OH, OW = int(output_size[0]), int(output_size[1])
+    N, C, IH, IW = [int(dim) for dim in input_size]
+    reciprocal_scale_h = _get_reciprocal_scale(IH, OH, scales_h)
+    reciprocal_scale_w = _get_reciprocal_scale(IW, OW, scales_w)
+
+    if scales_h is None and OH == IH:
+        ih = torch.arange(OH, device=grad_output.device, dtype=torch.int64)
+    else:
+        oh = torch.arange(OH, device=grad_output.device, dtype=torch.float32)
+        ih = torch.clamp((oh * reciprocal_scale_h).to(torch.int64), max=IH - 1)
+
+    if scales_w is None and OW == IW:
+        iw = torch.arange(OW, device=grad_output.device, dtype=torch.int64)
+    else:
+        ow = torch.arange(OW, device=grad_output.device, dtype=torch.float32)
+        iw = torch.clamp((ow * reciprocal_scale_w).to(torch.int64), max=IW - 1)
+
+    index = (ih[:, None] * IW + iw[None, :]).reshape(1, 1, -1)
+    index = index.expand(N, C, -1)
+
+    accum_dtype = (
+        torch.float32
+        if grad_output.dtype in (torch.float16, torch.bfloat16)
+        else grad_output.dtype
+    )
+    grad_output_accum = grad_output.to(accum_dtype)
+    grad_output_flat = grad_output_accum.reshape(N, C, -1)
+    grad_input_flat = torch.zeros(
+        (N, C, IH * IW), device=grad_output.device, dtype=accum_dtype
+    )
+    grad_input_flat.scatter_add_(2, index, grad_output_flat)
+    grad_input = grad_input_flat.reshape(N, C, IH, IW)
+    if grad_input.dtype != grad_output.dtype:
+        grad_input = grad_input.to(grad_output.dtype)
+    return grad_input
