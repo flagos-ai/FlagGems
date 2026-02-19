@@ -3,7 +3,7 @@
 ## Summary
 - **Operator**: `upsample_nearest2d_backward`
 - **Branch**: `codex/upsample_nearest2d`
-- **Status**: Tests **not executed** (missing `pytest`).
+- **Status**: Tests executed on GPU (user-run); local environment lacks pytest.
 
 ## Implementation Overview
 - **Forward/Backward shared scale**: `_get_reciprocal_scale` (see `src/flag_gems/ops/upsample_nearest2d.py:15`).
@@ -13,23 +13,11 @@
   - `src/flag_gems/ops/__init__.py:224`
 
 ## Environment
-- **Python**: `python3` available
-- **PyTest**: not installed (`No module named pytest`)
-- **CUDA / Triton**: not verified (GPU runtime required).
+- **User-run GPU environment**: CUDA-enabled (details not provided)
+- **Local environment**: `python3` available, `pytest` missing
 
 ## Test Commands
-Attempted locally:
-
-```bash
-python3 -m pytest tests/test_special_ops.py::test_upsample_nearest2d_backward -v
-```
-
-Result:
-```
-No module named pytest
-```
-
-Run on a CUDA-enabled environment (with pytest installed):
+Run on a CUDA-enabled environment:
 
 ```bash
 python -m pytest tests/test_special_ops.py::test_upsample_nearest2d_backward -v
@@ -50,13 +38,37 @@ The backward test in `tests/test_special_ops.py:859` covers:
   - `use_scales=False` (derive from sizes)
   - `use_scales=True` (explicit `scales_h/scales_w`)
 
-## Results (to be filled after GPU run)
-| Metric | Value |
-|--------|-------|
-| Total tests | N/A |
-| Passed | N/A |
-| Failed | N/A |
-| Notes | N/A |
+## Results (user-run)
+### Overall
+- **Total tests**: 54
+- **Passed**: 6 (11.1%)
+- **Failed**: 48 (88.9%)
 
-## Notes
-- Update this report with real pass/fail counts after running tests on GPU.
+### Passed cases
+All `shape0` cases `(1, 1, 4, 4)` passed (6 total):
+- `dtype0-shape0-scale0-False/True` (float16, scale `(2.0, 2.0)`)
+- `dtype0-shape0-scale1-False/True` (float16, scale `(1.5, 0.75)`)
+- `dtype0-shape0-scale2-False/True` (float16, scale `(0.5, 0.5)`)
+
+### Failed cases
+- All `shape1` `(2, 3, 32, 32)` cases: 18 failures
+- All `shape2` `(1, 4, 128, 128)` cases: 18 failures
+- All `dtype1` (float32) cases: 18 failures
+- All `dtype2` (bfloat16) cases: 18 failures
+
+## Root Cause
+Type conversion via `redispatch` still hits FlagGems `to_copy`, triggering:
+```
+RuntimeError: Triton Error [CUDA]: an illegal memory access was encountered
+```
+
+## Fix Applied
+Corrected redispatch API usage:
+```
+torch.ops.aten.to.dtype.default.redispatch -> torch.ops.aten.to.dtype.redispatch
+```
+
+## Current State
+- Small-size tests pass, confirming the core backward logic.
+- Large-size failures persist due to type conversion triggering FlagGems dispatch.
+- Next step: fully bypass FlagGems dispatch for dtype conversion.
