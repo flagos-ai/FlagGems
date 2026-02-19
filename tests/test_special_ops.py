@@ -75,11 +75,18 @@ def _roll_is_valid(shape, shifts, dims):
     if dims is None:
         return not isinstance(shifts, (tuple, list))
     if isinstance(dims, int):
-        return -ndim <= dims < ndim
+        if not (-ndim <= dims < ndim):
+            return False
+        if isinstance(shifts, (tuple, list)) and len(shifts) != 1:
+            return False
+        return True
     dims_tuple = tuple(dims)
     if any(d < -ndim or d >= ndim for d in dims_tuple):
         return False
-    if isinstance(shifts, (tuple, list)) and len(shifts) != len(dims_tuple):
+    if isinstance(shifts, (tuple, list)):
+        if len(shifts) != len(dims_tuple):
+            return False
+    else:
         return False
     return True
 

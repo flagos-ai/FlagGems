@@ -8,27 +8,24 @@ logger = logging.getLogger(__name__)
 def _normalize_shifts_dims(shifts, dims, ndim):
     if dims is None:
         if isinstance(shifts, (list, tuple)):
-            if len(shifts) != 1:
-                raise RuntimeError("shifts and dimensions must align for roll.")
-            shifts = shifts[0]
+            raise RuntimeError("shifts and dimensions must align for roll.")
         return (int(shifts),), (0,)
 
     if isinstance(dims, int):
-        dims_tuple = (dims,)
+        dims_tuple = (int(dims),)
     else:
         dims_tuple = tuple(int(d) for d in dims)
 
-    if isinstance(shifts, int):
-        shifts_tuple = (int(shifts),) * len(dims_tuple)
-    else:
+    if isinstance(shifts, (list, tuple)):
         shifts_tuple = tuple(int(s) for s in shifts)
-
-    if len(shifts_tuple) != len(dims_tuple):
-        raise RuntimeError("shifts and dimensions must align for roll.")
+        if len(shifts_tuple) != len(dims_tuple):
+            raise RuntimeError("shifts and dimensions must align for roll.")
+    else:
+        if len(dims_tuple) != 1:
+            raise RuntimeError("shifts and dimensions must align for roll.")
+        shifts_tuple = (int(shifts),)
 
     dims_tuple = tuple(d % ndim for d in dims_tuple)
-    # PyTorch applies shifts sequentially even if dims normalize to the same value
-    # So we keep all shifts and dims as-is, without deduplication
     return shifts_tuple, dims_tuple
 
 
