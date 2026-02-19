@@ -27,9 +27,8 @@ def _normalize_shifts_dims(shifts, dims, ndim):
         raise RuntimeError("shifts and dimensions must align for roll.")
 
     dims_tuple = tuple(d % ndim for d in dims_tuple)
-    if len(set(dims_tuple)) != len(dims_tuple):
-        raise RuntimeError("dims cannot contain duplicate values.")
-
+    # PyTorch applies shifts sequentially even if dims normalize to the same value
+    # So we keep all shifts and dims as-is, without deduplication
     return shifts_tuple, dims_tuple
 
 
