@@ -179,6 +179,9 @@ def upsample_nearest2d_backward(
     grad_input_flat = torch.zeros(
         (N, C, IH * IW), device=grad_output.device, dtype=accum_dtype
     )
-    grad_input_flat.scatter_add_(2, index, grad_output_flat)
+    # Use redispatch to bypass FlagGems scatter_add_ to avoid Triton errors
+    torch.ops.aten.scatter_add_.default.redispatch(
+        _FALLBACK_KEYSET, grad_input_flat, 2, index, grad_output_flat
+    )
     grad_input = grad_input_flat.reshape(N, C, IH, IW)
     return _to_copy_fallback(grad_input, grad_output.dtype)
