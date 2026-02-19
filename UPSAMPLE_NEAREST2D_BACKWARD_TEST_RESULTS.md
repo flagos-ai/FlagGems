@@ -63,9 +63,10 @@ RuntimeError: Triton Error [CUDA]: an illegal memory access was encountered
 ```
 
 ## Fix Applied
-Corrected redispatch API usage:
+Switched dtype conversion to call PyTorch’s `_to_copy` via redispatch with a
+`CompositeExplicitAutograd` keyset (bypasses FlagGems `to_copy`):
 ```
-torch.ops.aten.to.dtype.default.redispatch -> torch.ops.aten.to.dtype.redispatch
+torch.ops.aten._to_copy.default.redispatch(_FALLBACK_KEYSET, ...)
 ```
 
 ## Current State

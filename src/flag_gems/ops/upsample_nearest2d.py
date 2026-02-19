@@ -11,6 +11,25 @@ from flag_gems.runtime import device, torch_device_fn
 device = device.name
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
+
+def _to_copy_fallback(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+    if x.dtype == dtype:
+        return x
+    return torch.ops.aten._to_copy.default.redispatch(
+        _FALLBACK_KEYSET,
+        x,
+        dtype=dtype,
+        layout=None,
+        device=x.device,
+        pin_memory=None,
+        non_blocking=False,
+        memory_format=torch.preserve_format,
+    )
+
 
 def _get_reciprocal_scale(
     input_size: int, output_size: int, scale: Optional[float]
@@ -155,21 +174,11 @@ def upsample_nearest2d_backward(
         if grad_output.dtype in (torch.float16, torch.bfloat16)
         else grad_output.dtype
     )
-    grad_output_accum = grad_output.to(accum_dtype)
+    grad_output_accum = _to_copy_fallback(grad_output, accum_dtype)
     grad_output_flat = grad_output_accum.reshape(N, C, -1)
     grad_input_flat = torch.zeros(
         (N, C, IH * IW), device=grad_output.device, dtype=accum_dtype
     )
     grad_input_flat.scatter_add_(2, index, grad_output_flat)
     grad_input = grad_input_flat.reshape(N, C, IH, IW)
-    if grad_input.dtype != grad_output.dtype:
-        # Use PyTorch's native operation to avoid FlagGems to_copy issues
-        # Call the underlying ATen operator with redispatch to bypass FlagGems
-        _FALLBACK_KEYSET = (
-            torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)
-            | torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
-        )
-        grad_input = torch.ops.aten.to.dtype.redispatch(
-            _FALLBACK_KEYSET, grad_input, grad_output.dtype, non_blocking=False, copy=False
-        )
-    return grad_input
+    return _to_copy_fallback(grad_input, grad_output.dtype)
