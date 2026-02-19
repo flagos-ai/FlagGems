@@ -163,5 +163,13 @@ def upsample_nearest2d_backward(
     grad_input_flat.scatter_add_(2, index, grad_output_flat)
     grad_input = grad_input_flat.reshape(N, C, IH, IW)
     if grad_input.dtype != grad_output.dtype:
-        grad_input = grad_input.to(grad_output.dtype)
+        # Use PyTorch's native operation to avoid FlagGems to_copy issues
+        # Call the underlying ATen operator with redispatch to bypass FlagGems
+        _FALLBACK_KEYSET = (
+            torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)
+            | torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
+        )
+        grad_input = torch.ops.aten.to.dtype.default.redispatch(
+            _FALLBACK_KEYSET, grad_input, grad_output.dtype, non_blocking=False, copy=False
+        )
     return grad_input

@@ -1,0 +1,357 @@
+=== FlagGems 扩展测试结果汇总 ===
+生成时间: Fri Feb 13 08:09:51 PM CST 2026
+
+=========================================
+测试分支: codex/cosh
+=========================================
+============================= test session starts ==============================
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/miniconda3/envs/KM-12.8/bin/python3.10
+cachedir: .pytest_cache
+metadata: {'Python': '3.10.19', 'Platform': 'Linux-5.15.0-113-generic-x86_64-with-glibc2.35', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'anyio': '4.12.1', 'asyncio': '1.3.0', 'cov': '7.0.0', 'html': '4.2.0', 'metadata': '3.1.1'}}
+rootdir: /home/qinhaiyan/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0, html-4.2.0, metadata-3.1.1
+asyncio: mode=strict, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 2351 items / 2315 deselected / 36 selected
+
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype0-shape0] PASSED [  2%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype0-shape1] PASSED [  5%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype0-shape2] PASSED [  8%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype0-shape3] PASSED [ 11%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype0-shape4] PASSED [ 13%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype0-shape5] PASSED [ 16%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype1-shape0] PASSED [ 19%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype1-shape1] PASSED [ 22%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype1-shape2] PASSED [ 25%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype1-shape3] PASSED [ 27%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype1-shape4] PASSED [ 30%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype1-shape5] PASSED [ 33%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype2-shape0] PASSED [ 36%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype2-shape1] PASSED [ 38%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype2-shape2] PASSED [ 41%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype2-shape3] PASSED [ 44%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype2-shape4] PASSED [ 47%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype2-shape5] PASSED [ 50%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype0-shape0] PASSED [ 52%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype0-shape1] PASSED [ 55%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype0-shape2] PASSED [ 58%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype0-shape3] PASSED [ 61%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype0-shape4] PASSED [ 63%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype0-shape5] PASSED [ 66%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype1-shape0] PASSED [ 69%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype1-shape1] PASSED [ 72%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype1-shape2] PASSED [ 75%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype1-shape3] PASSED [ 77%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype1-shape4] PASSED [ 80%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype1-shape5] PASSED [ 83%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype2-shape0] PASSED [ 86%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype2-shape1] PASSED [ 88%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype2-shape2] PASSED [ 91%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype2-shape3] PASSED [ 94%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype2-shape4] PASSED [ 97%]
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh_[dtype2-shape5] PASSED [100%]
+
+=============================== warnings summary ===============================
+../../../usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: 26 warnings
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: DeprecationWarning: warmup, rep, and use_cuda_graph parameters are deprecated. See https://github.com/triton-lang/triton/pull/4496 for details.
+    warnings.warn(("warmup, rep, and use_cuda_graph parameters are deprecated. See "
+
+tests/test_unary_pointwise_ops.py::test_accuracy_cosh[dtype0-shape0]
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/torch/library.py:357: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+    Overriding a previously registered kernel for the same operator and the same dispatch key
+    operator: aten::_flash_attention_forward(Tensor query, Tensor key, Tensor value, Tensor? cum_seq_q, Tensor? cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, bool return_debug_mask, *, float? scale=None, SymInt? window_size_left=None, SymInt? window_size_right=None, Tensor? seqused_k=None, Tensor? alibi_slopes=None) -> (Tensor output, Tensor softmax_logsumexp, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)
+      registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+    dispatch key: CUDA
+    previous kernel: registered at /pytorch/torch/csrc/autograd/generated/VariableType_0.cpp:18396
+         new kernel: registered at /home/qinhaiyan/FlagGems/src/flag_gems/__init__.py:475 (Triggered internally at /pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:208.)
+    self.m.impl(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 36 passed, 2315 deselected, 27 warnings in 1.34s ===============
+
+
+=========================================
+测试分支: codex/max_pool3d
+=========================================
+============================= test session starts ==============================
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/miniconda3/envs/KM-12.8/bin/python3.10
+cachedir: .pytest_cache
+metadata: {'Python': '3.10.19', 'Platform': 'Linux-5.15.0-113-generic-x86_64-with-glibc2.35', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'anyio': '4.12.1', 'asyncio': '1.3.0', 'cov': '7.0.0', 'html': '4.2.0', 'metadata': '3.1.1'}}
+rootdir: /home/qinhaiyan/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0, html-4.2.0, metadata-3.1.1
+asyncio: mode=strict, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 2164 items / 2140 deselected / 24 selected
+
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype0-shape0-3-2-1-1-False] PASSED [  4%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype0-shape1-kernel_size1-stride1-1-1-False] PASSED [  8%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype0-shape2-3-2-1-1-True] PASSED [ 12%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype0-shape3-2-1-0-2-False] PASSED [ 16%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype1-shape0-3-2-1-1-False] PASSED [ 20%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype1-shape1-kernel_size1-stride1-1-1-False] PASSED [ 25%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype1-shape2-3-2-1-1-True] PASSED [ 29%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype1-shape3-2-1-0-2-False] PASSED [ 33%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype2-shape0-3-2-1-1-False] PASSED [ 37%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype2-shape1-kernel_size1-stride1-1-1-False] PASSED [ 41%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype2-shape2-3-2-1-1-True] PASSED [ 45%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d[dtype2-shape3-2-1-0-2-False] PASSED [ 50%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape0-3-2-1-1-False] PASSED [ 54%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape1-kernel_size1-stride1-1-1-False] PASSED [ 58%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape2-3-2-1-1-True] PASSED [ 62%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype0-shape3-2-1-0-2-False] PASSED [ 66%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape0-3-2-1-1-False] PASSED [ 70%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape1-kernel_size1-stride1-1-1-False] PASSED [ 75%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape2-3-2-1-1-True] PASSED [ 79%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype1-shape3-2-1-0-2-False] PASSED [ 83%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape0-3-2-1-1-False] PASSED [ 87%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape1-kernel_size1-stride1-1-1-False] PASSED [ 91%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape2-3-2-1-1-True] PASSED [ 95%]
+tests/test_reduction_ops.py::test_accuracy_max_pool3d_backward[dtype2-shape3-2-1-0-2-False] PASSED [100%]
+
+=============================== warnings summary ===============================
+../../../usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: 26 warnings
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: DeprecationWarning: warmup, rep, and use_cuda_graph parameters are deprecated. See https://github.com/triton-lang/triton/pull/4496 for details.
+    warnings.warn(("warmup, rep, and use_cuda_graph parameters are deprecated. See "
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 24 passed, 2140 deselected, 26 warnings in 6.34s ===============
+
+
+=========================================
+测试分支: codex/avg_pool3d
+=========================================
+============================= test session starts ==============================
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/miniconda3/envs/KM-12.8/bin/python3.10
+cachedir: .pytest_cache
+metadata: {'Python': '3.10.19', 'Platform': 'Linux-5.15.0-113-generic-x86_64-with-glibc2.35', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'anyio': '4.12.1', 'asyncio': '1.3.0', 'cov': '7.0.0', 'html': '4.2.0', 'metadata': '3.1.1'}}
+rootdir: /home/qinhaiyan/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0, html-4.2.0, metadata-3.1.1
+asyncio: mode=strict, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 2188 items / 2140 deselected / 48 selected
+
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype0-shape0-3-2-1-False-True-None] PASSED [  2%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype0-shape1-3-2-1-False-False-None] PASSED [  4%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype0-shape2-kernel_size2-stride2-1-False-True-None] PASSED [  6%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype0-shape3-3-2-1-True-True-None] PASSED [  8%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype0-shape4-2-1-0-False-True-1] PASSED [ 10%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype0-shape5-3-2-1-False-True-None] PASSED [ 12%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype0-shape6-2-2-0-False-False-None] PASSED [ 14%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype0-shape7-2-2-padding7-False-True-None] PASSED [ 16%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype1-shape0-3-2-1-False-True-None] PASSED [ 18%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype1-shape1-3-2-1-False-False-None] PASSED [ 20%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype1-shape2-kernel_size2-stride2-1-False-True-None] PASSED [ 22%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype1-shape3-3-2-1-True-True-None] PASSED [ 25%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype1-shape4-2-1-0-False-True-1] PASSED [ 27%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype1-shape5-3-2-1-False-True-None] PASSED [ 29%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype1-shape6-2-2-0-False-False-None] PASSED [ 31%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype1-shape7-2-2-padding7-False-True-None] PASSED [ 33%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype2-shape0-3-2-1-False-True-None] PASSED [ 35%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype2-shape1-3-2-1-False-False-None] PASSED [ 37%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype2-shape2-kernel_size2-stride2-1-False-True-None] PASSED [ 39%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype2-shape3-3-2-1-True-True-None] PASSED [ 41%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype2-shape4-2-1-0-False-True-1] PASSED [ 43%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype2-shape5-3-2-1-False-True-None] PASSED [ 45%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype2-shape6-2-2-0-False-False-None] PASSED [ 47%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_forward[dtype2-shape7-2-2-padding7-False-True-None] PASSED [ 50%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape0-3-2-1-False-True-None] PASSED [ 52%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape1-3-2-1-False-False-None] PASSED [ 54%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape2-kernel_size2-stride2-1-False-True-None] PASSED [ 56%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape3-3-2-1-True-True-None] PASSED [ 58%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape4-2-1-0-False-True-1] PASSED [ 60%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape5-3-2-1-False-True-None] PASSED [ 62%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape6-2-2-0-False-False-None] PASSED [ 64%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape7-2-2-padding7-False-True-None] PASSED [ 66%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype1-shape0-3-2-1-False-True-None] PASSED [ 68%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype1-shape1-3-2-1-False-False-None] PASSED [ 70%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype1-shape2-kernel_size2-stride2-1-False-True-None] PASSED [ 72%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype1-shape3-3-2-1-True-True-None] PASSED [ 75%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype1-shape4-2-1-0-False-True-1] PASSED [ 77%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype1-shape5-3-2-1-False-True-None] PASSED [ 79%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype1-shape6-2-2-0-False-False-None] PASSED [ 81%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype1-shape7-2-2-padding7-False-True-None] PASSED [ 83%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype2-shape0-3-2-1-False-True-None] PASSED [ 85%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype2-shape1-3-2-1-False-False-None] PASSED [ 87%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype2-shape2-kernel_size2-stride2-1-False-True-None] PASSED [ 89%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype2-shape3-3-2-1-True-True-None] PASSED [ 91%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype2-shape4-2-1-0-False-True-1] PASSED [ 93%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype2-shape5-3-2-1-False-True-None] PASSED [ 95%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype2-shape6-2-2-0-False-False-None] PASSED [ 97%]
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype2-shape7-2-2-padding7-False-True-None] PASSED [100%]
+
+=============================== warnings summary ===============================
+../../../usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: 26 warnings
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: DeprecationWarning: warmup, rep, and use_cuda_graph parameters are deprecated. See https://github.com/triton-lang/triton/pull/4496 for details.
+    warnings.warn(("warmup, rep, and use_cuda_graph parameters are deprecated. See "
+
+tests/test_reduction_ops.py::test_accuracy_avg_pool3d_backward[dtype0-shape0-3-2-1-False-True-None]
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/torch/library.py:357: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+    Overriding a previously registered kernel for the same operator and the same dispatch key
+    operator: aten::_flash_attention_forward(Tensor query, Tensor key, Tensor value, Tensor? cum_seq_q, Tensor? cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, bool return_debug_mask, *, float? scale=None, SymInt? window_size_left=None, SymInt? window_size_right=None, Tensor? seqused_k=None, Tensor? alibi_slopes=None) -> (Tensor output, Tensor softmax_logsumexp, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)
+      registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+    dispatch key: CUDA
+    previous kernel: registered at /pytorch/torch/csrc/autograd/generated/VariableType_0.cpp:18396
+         new kernel: registered at /home/qinhaiyan/FlagGems/src/flag_gems/__init__.py:475 (Triggered internally at /pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:208.)
+    self.m.impl(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============== 48 passed, 2140 deselected, 27 warnings in 18.91s ===============
+
+
+=========================================
+测试分支: codex/grid_sample
+=========================================
+============================= test session starts ==============================
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/miniconda3/envs/KM-12.8/bin/python3.10
+cachedir: .pytest_cache
+metadata: {'Python': '3.10.19', 'Platform': 'Linux-5.15.0-113-generic-x86_64-with-glibc2.35', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'anyio': '4.12.1', 'asyncio': '1.3.0', 'cov': '7.0.0', 'html': '4.2.0', 'metadata': '3.1.1'}}
+rootdir: /home/qinhaiyan/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0, html-4.2.0, metadata-3.1.1
+asyncio: mode=strict, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 5639 items / 5621 deselected / 18 selected
+
+tests/test_special_ops.py::test_grid_sample_2d[dtype0-input_shape0-grid_shape0-bilinear-zeros-False] PASSED [  5%]
+tests/test_special_ops.py::test_grid_sample_2d[dtype0-input_shape1-grid_shape1-nearest-border-True] PASSED [ 11%]
+tests/test_special_ops.py::test_grid_sample_2d[dtype0-input_shape2-grid_shape2-bicubic-reflection-False] PASSED [ 16%]
+tests/test_special_ops.py::test_grid_sample_2d[dtype1-input_shape0-grid_shape0-bilinear-zeros-False] PASSED [ 22%]
+tests/test_special_ops.py::test_grid_sample_2d[dtype1-input_shape1-grid_shape1-nearest-border-True] PASSED [ 27%]
+tests/test_special_ops.py::test_grid_sample_2d[dtype1-input_shape2-grid_shape2-bicubic-reflection-False] PASSED [ 33%]
+tests/test_special_ops.py::test_grid_sample_2d[dtype2-input_shape0-grid_shape0-bilinear-zeros-False] PASSED [ 38%]
+tests/test_special_ops.py::test_grid_sample_2d[dtype2-input_shape1-grid_shape1-nearest-border-True] PASSED [ 44%]
+tests/test_special_ops.py::test_grid_sample_2d[dtype2-input_shape2-grid_shape2-bicubic-reflection-False] PASSED [ 50%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype0-input_shape0-grid_shape0-bilinear-zeros-True] PASSED [ 55%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype0-input_shape1-grid_shape1-nearest-border-False] PASSED [ 61%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype0-input_shape2-grid_shape2-bilinear-reflection-False] PASSED [ 66%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype1-input_shape0-grid_shape0-bilinear-zeros-True] PASSED [ 72%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype1-input_shape1-grid_shape1-nearest-border-False] PASSED [ 77%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype1-input_shape2-grid_shape2-bilinear-reflection-False] PASSED [ 83%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype2-input_shape0-grid_shape0-bilinear-zeros-True] PASSED [ 88%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype2-input_shape1-grid_shape1-nearest-border-False] PASSED [ 94%]
+tests/test_special_ops.py::test_grid_sample_3d[dtype2-input_shape2-grid_shape2-bilinear-reflection-False] PASSED [100%]
+
+=============================== warnings summary ===============================
+../../../usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: 26 warnings
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: DeprecationWarning: warmup, rep, and use_cuda_graph parameters are deprecated. See https://github.com/triton-lang/triton/pull/4496 for details.
+    warnings.warn(("warmup, rep, and use_cuda_graph parameters are deprecated. See "
+
+tests/test_special_ops.py::test_grid_sample_2d[dtype0-input_shape0-grid_shape0-bilinear-zeros-False]
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/torch/library.py:357: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+    Overriding a previously registered kernel for the same operator and the same dispatch key
+    operator: aten::_flash_attention_forward(Tensor query, Tensor key, Tensor value, Tensor? cum_seq_q, Tensor? cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, bool return_debug_mask, *, float? scale=None, SymInt? window_size_left=None, SymInt? window_size_right=None, Tensor? seqused_k=None, Tensor? alibi_slopes=None) -> (Tensor output, Tensor softmax_logsumexp, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)
+      registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+    dispatch key: CUDA
+    previous kernel: registered at /pytorch/torch/csrc/autograd/generated/VariableType_0.cpp:18396
+         new kernel: registered at /home/qinhaiyan/FlagGems/src/flag_gems/__init__.py:474 (Triggered internally at /pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:208.)
+    self.m.impl(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 18 passed, 5621 deselected, 27 warnings in 0.81s ===============
+
+
+=========================================
+测试分支: codex/svd
+=========================================
+============================= test session starts ==============================
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/miniconda3/envs/KM-12.8/bin/python3.10
+cachedir: .pytest_cache
+metadata: {'Python': '3.10.19', 'Platform': 'Linux-5.15.0-113-generic-x86_64-with-glibc2.35', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'anyio': '4.12.1', 'asyncio': '1.3.0', 'cov': '7.0.0', 'html': '4.2.0', 'metadata': '3.1.1'}}
+rootdir: /home/qinhaiyan/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0, html-4.2.0, metadata-3.1.1
+asyncio: mode=strict, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 5645 items / 5621 deselected / 24 selected
+
+tests/test_special_ops.py::test_svd[dtype0-True-True-shape0] PASSED      [  4%]
+tests/test_special_ops.py::test_svd[dtype0-True-True-shape1] PASSED      [  8%]
+tests/test_special_ops.py::test_svd[dtype0-True-True-shape2] PASSED      [ 12%]
+tests/test_special_ops.py::test_svd[dtype0-True-False-shape0] PASSED     [ 16%]
+tests/test_special_ops.py::test_svd[dtype0-True-False-shape1] PASSED     [ 20%]
+tests/test_special_ops.py::test_svd[dtype0-True-False-shape2] PASSED     [ 25%]
+tests/test_special_ops.py::test_svd[dtype0-False-True-shape0] PASSED     [ 29%]
+tests/test_special_ops.py::test_svd[dtype0-False-True-shape1] PASSED     [ 33%]
+tests/test_special_ops.py::test_svd[dtype0-False-True-shape2] PASSED     [ 37%]
+tests/test_special_ops.py::test_svd[dtype0-False-False-shape0] PASSED    [ 41%]
+tests/test_special_ops.py::test_svd[dtype0-False-False-shape1] PASSED    [ 45%]
+tests/test_special_ops.py::test_svd[dtype0-False-False-shape2] PASSED    [ 50%]
+tests/test_special_ops.py::test_svd[dtype1-True-True-shape0] PASSED      [ 54%]
+tests/test_special_ops.py::test_svd[dtype1-True-True-shape1] PASSED      [ 58%]
+tests/test_special_ops.py::test_svd[dtype1-True-True-shape2] PASSED      [ 62%]
+tests/test_special_ops.py::test_svd[dtype1-True-False-shape0] PASSED     [ 66%]
+tests/test_special_ops.py::test_svd[dtype1-True-False-shape1] PASSED     [ 70%]
+tests/test_special_ops.py::test_svd[dtype1-True-False-shape2] PASSED     [ 75%]
+tests/test_special_ops.py::test_svd[dtype1-False-True-shape0] PASSED     [ 79%]
+tests/test_special_ops.py::test_svd[dtype1-False-True-shape1] PASSED     [ 83%]
+tests/test_special_ops.py::test_svd[dtype1-False-True-shape2] PASSED     [ 87%]
+tests/test_special_ops.py::test_svd[dtype1-False-False-shape0] PASSED    [ 91%]
+tests/test_special_ops.py::test_svd[dtype1-False-False-shape1] PASSED    [ 95%]
+tests/test_special_ops.py::test_svd[dtype1-False-False-shape2] PASSED    [100%]
+
+=============================== warnings summary ===============================
+../../../usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: 26 warnings
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: DeprecationWarning: warmup, rep, and use_cuda_graph parameters are deprecated. See https://github.com/triton-lang/triton/pull/4496 for details.
+    warnings.warn(("warmup, rep, and use_cuda_graph parameters are deprecated. See "
+
+tests/test_special_ops.py::test_svd[dtype0-True-True-shape0]
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/torch/library.py:357: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+    Overriding a previously registered kernel for the same operator and the same dispatch key
+    operator: aten::_flash_attention_forward(Tensor query, Tensor key, Tensor value, Tensor? cum_seq_q, Tensor? cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, bool return_debug_mask, *, float? scale=None, SymInt? window_size_left=None, SymInt? window_size_right=None, Tensor? seqused_k=None, Tensor? alibi_slopes=None) -> (Tensor output, Tensor softmax_logsumexp, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)
+      registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+    dispatch key: CUDA
+    previous kernel: registered at /pytorch/torch/csrc/autograd/generated/VariableType_0.cpp:18396
+         new kernel: registered at /home/qinhaiyan/FlagGems/src/flag_gems/__init__.py:474 (Triggered internally at /pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:208.)
+    self.m.impl(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 24 passed, 5621 deselected, 27 warnings in 1.69s ===============
+
+
+=========================================
+测试分支: codex/ctc_loss
+=========================================
+============================= test session starts ==============================
+platform linux -- Python 3.10.19, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/miniconda3/envs/KM-12.8/bin/python3.10
+cachedir: .pytest_cache
+metadata: {'Python': '3.10.19', 'Platform': 'Linux-5.15.0-113-generic-x86_64-with-glibc2.35', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'anyio': '4.12.1', 'asyncio': '1.3.0', 'cov': '7.0.0', 'html': '4.2.0', 'metadata': '3.1.1'}}
+rootdir: /home/qinhaiyan/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0, html-4.2.0, metadata-3.1.1
+asyncio: mode=strict, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 2147 items / 2140 deselected / 7 selected
+
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-True-mean] PASSED [ 14%]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-True-none] PASSED [ 28%]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-True-sum] PASSED [ 42%]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-False-mean] PASSED [ 57%]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-False-none] PASSED [ 71%]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-False-sum] PASSED [ 85%]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss_zero_infinity[shape0] PASSED [100%]
+
+=============================== warnings summary ===============================
+../../../usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: 26 warnings
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/triton/runtime/autotuner.py:101: DeprecationWarning: warmup, rep, and use_cuda_graph parameters are deprecated. See https://github.com/triton-lang/triton/pull/4496 for details.
+    warnings.warn(("warmup, rep, and use_cuda_graph parameters are deprecated. See "
+
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-True-mean]
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/torch/library.py:357: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+    Overriding a previously registered kernel for the same operator and the same dispatch key
+    operator: aten::_flash_attention_forward(Tensor query, Tensor key, Tensor value, Tensor? cum_seq_q, Tensor? cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, bool return_debug_mask, *, float? scale=None, SymInt? window_size_left=None, SymInt? window_size_right=None, Tensor? seqused_k=None, Tensor? alibi_slopes=None) -> (Tensor output, Tensor softmax_logsumexp, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)
+      registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+    dispatch key: CUDA
+    previous kernel: registered at /pytorch/torch/csrc/autograd/generated/VariableType_0.cpp:18396
+         new kernel: registered at /home/qinhaiyan/FlagGems/src/flag_gems/__init__.py:475 (Triggered internally at /pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:208.)
+    self.m.impl(
+
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-True-mean]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-True-none]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-True-sum]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-False-mean]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-False-none]
+tests/test_reduction_ops.py::test_accuracy_ctc_loss[shape0-False-sum]
+  /usr/local/miniconda3/envs/KM-12.8/lib/python3.10/site-packages/torch/autograd/graph.py:865: UserWarning: aten::ctc_loss: an autograd kernel was not registered to the Autograd key(s) but we are trying to backprop through it. This may lead to silently incorrect behavior. This behavior is deprecated and will be removed in a future version of PyTorch. If your operator is differentiable, please ensure you have registered an autograd kernel to the correct Autograd key (e.g. DispatchKey::Autograd, DispatchKey::CompositeImplicitAutograd). If your operator is not differentiable, or to squash this warning and use the previous behavior, please register torch::CppFunction::makeFallthrough() to DispatchKey::Autograd. (Triggered internally at /pytorch/torch/csrc/autograd/autograd_not_implemented_fallback.cpp:76.)
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 7 passed, 2140 deselected, 33 warnings in 1.38s ================
+
+

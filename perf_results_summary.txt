@@ -1,0 +1,46 @@
+================================================================================
+FlagGems Performance Benchmark Results
+================================================================================
+
+cosh:
+Shape                          Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-------------------------------------------------------------------------------------
+torch.Size([1024, 1024])       torch.float16   0.0077          3.2311          0.002     
+torch.Size([1024, 1024])       torch.float32   0.0074          3.2517          0.002     
+torch.Size([4096, 4096])       torch.float16   0.0772          3.2564          0.024     
+torch.Size([4096, 4096])       torch.float32   0.1507          3.1856          0.047     
+Average Speedup: 0.019
+
+max_pool3d: No results
+
+avg_pool3d:
+Shape                          Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-------------------------------------------------------------------------------------
+torch.Size([2, 4, 8, 8, 8])    torch.float16   0.0322          3.5644          0.009     
+torch.Size([2, 4, 8, 8, 8])    torch.float32   0.0100          3.6967          0.003     
+torch.Size([1, 3, 16, 16, 16   torch.float16   0.0099          3.4005          0.003     
+torch.Size([1, 3, 16, 16, 16   torch.float32   0.0095          3.4158          0.003     
+Average Speedup: 0.004
+
+grid_sample:
+Shape                          Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-------------------------------------------------------------------------------------
+torch.Size([1, 3, 8, 8])       torch.float16   0.0092          3.1895          0.003     
+torch.Size([1, 3, 8, 8])       torch.float32   0.0093          3.1742          0.003     
+torch.Size([2, 4, 16, 16])     torch.float16   0.0092          3.2362          0.003     
+torch.Size([2, 4, 16, 16])     torch.float32   0.0092          3.3426          0.003     
+Average Speedup: 0.003
+
+svd:
+Shape                          Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-------------------------------------------------------------------------------------
+torch.Size([4, 3])             torch.float32   0.1394          6.4006          0.022     
+torch.Size([8, 8])             torch.float32   0.1740          4.3773          0.040     
+Average Speedup: 0.031
+
+ctc_loss:
+Shape                          Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-------------------------------------------------------------------------------------
+torch.Size([50, 2, 20])        float32         0.1133          4.5363          0.025     
+Average Speedup: 0.025
+
