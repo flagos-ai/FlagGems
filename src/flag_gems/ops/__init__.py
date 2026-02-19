@@ -193,6 +193,7 @@ from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
+from flag_gems.ops.roll import roll
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
@@ -476,6 +477,7 @@ __all__ = [
     "rms_norm_forward",
     "rsqrt",
     "rsqrt_",
+    "roll",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
