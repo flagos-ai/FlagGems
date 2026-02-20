@@ -10,15 +10,16 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # logaddexp: log(exp(x) + exp(y))
-# Numerically stable form: max(x,y) + log(exp(x-max) + exp(y-max))
+# Numerically stable: m + log(1 + exp(-|x - y|)), where m = max(x, y)
 # ---------------------------------------------------------------------------
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def logaddexp_func(x, y):
     x = x.to(tl.float32)
     y = y.to(tl.float32)
-    mx = tl.maximum(x, y)
-    return mx + tl.log(tl.exp(x - mx) + tl.exp(y - mx))
+    m = tl.maximum(x, y)
+    delta = x - y
+    return m + tl.log(1.0 + tl.exp(-tl.abs(delta)))
 
 
 def logaddexp(A, B):
@@ -26,23 +27,24 @@ def logaddexp(A, B):
     return logaddexp_func(A, B)
 
 
-def logaddexp_(A, B):
-    logger.debug("GEMS LOGADDEXP_")
-    logaddexp_func(A, B, out0=A)
-    return A
+def logaddexp_out(A, B, *, out):
+    logger.debug("GEMS LOGADDEXP_OUT")
+    logaddexp_func(A, B, out0=out)
+    return out
 
 
 # ---------------------------------------------------------------------------
 # logaddexp2: log2(2^x + 2^y)
-# Numerically stable form: max(x,y) + log2(exp2(x-max) + exp2(y-max))
+# Numerically stable: m + log2(1 + exp2(-(x - y) * sign)), where m = max(x, y)
 # ---------------------------------------------------------------------------
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def logaddexp2_func(x, y):
     x = x.to(tl.float32)
     y = y.to(tl.float32)
-    mx = tl.maximum(x, y)
-    return mx + tl.log2(tl.exp2(x - mx) + tl.exp2(y - mx))
+    m = tl.maximum(x, y)
+    delta = x - y
+    return m + tl.log2(1.0 + tl.exp2(-tl.abs(delta)))
 
 
 def logaddexp2(A, B):
@@ -50,7 +52,7 @@ def logaddexp2(A, B):
     return logaddexp2_func(A, B)
 
 
-def logaddexp2_(A, B):
-    logger.debug("GEMS LOGADDEXP2_")
-    logaddexp2_func(A, B, out0=A)
-    return A
+def logaddexp2_out(A, B, *, out):
+    logger.debug("GEMS LOGADDEXP2_OUT")
+    logaddexp2_func(A, B, out0=out)
+    return out
