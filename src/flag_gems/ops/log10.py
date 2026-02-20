@@ -7,7 +7,7 @@ from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-_INV_LN10 = 0.4342944819032518
+_INV_LN10 = tl.constexpr(0.4342944819032518)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
