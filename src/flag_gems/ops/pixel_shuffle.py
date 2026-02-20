@@ -92,7 +92,9 @@ def pixel_shuffle(input: torch.Tensor, upscale_factor: int) -> torch.Tensor:
             f"pixel_shuffle expects input with at least 3 dimensions, got {input.ndim}"
         )
     if upscale_factor <= 0:
-        raise ValueError(f"upscale_factor must be a positive integer, got {upscale_factor}")
+        raise ValueError(
+            f"upscale_factor must be a positive integer, got {upscale_factor}"
+        )
 
     r = upscale_factor
     r2 = r * r
@@ -113,7 +115,9 @@ def pixel_shuffle(input: torch.Tensor, upscale_factor: int) -> torch.Tensor:
 
     # Kernel requires contiguous input
     inp = input.contiguous()
-    out = torch.empty((*batch, C_out, H_out, W_out), dtype=input.dtype, device=input.device)
+    out = torch.empty(
+        (*batch, C_out, H_out, W_out), dtype=input.dtype, device=input.device
+    )
 
     total = N * C_out * H_out * W_out
     USE_INT32_IDX = total <= (2**31 - 1)
@@ -121,9 +125,15 @@ def pixel_shuffle(input: torch.Tensor, upscale_factor: int) -> torch.Tensor:
     grid = lambda meta: (triton.cdiv(total, meta["BLOCK_SIZE"]),)  # noqa: E731
     with torch_device_fn.device(input.device):
         pixel_shuffle_kernel[grid](
-            inp, out,
-            N, C_in, H_in, W_in,
-            C_out, H_out, W_out,
+            inp,
+            out,
+            N,
+            C_in,
+            H_in,
+            W_in,
+            C_out,
+            H_out,
+            W_out,
             r,
             USE_INT32_IDX=USE_INT32_IDX,
         )

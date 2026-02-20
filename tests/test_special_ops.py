@@ -1931,11 +1931,11 @@ def test_accuracy_tril_(shape, dtype, diagonal):
 # ---------------------------------------------------------------------------
 PIXEL_SHUFFLE_SHAPES = [
     # (N, C_in, H, W) where C_in = C_out * r^2
-    (1, 4, 4, 4),      # r=2, C_out=1
-    (2, 16, 8, 8),     # r=2, C_out=4
-    (1, 9, 4, 4),      # r=3, C_out=1
-    (4, 36, 16, 16),   # r=3, C_out=4
-    (8, 64, 32, 32),   # r=2, C_out=16
+    (1, 4, 4, 4),  # r=2, C_out=1
+    (2, 16, 8, 8),  # r=2, C_out=4
+    (1, 9, 4, 4),  # r=3, C_out=1
+    (4, 36, 16, 16),  # r=3, C_out=4
+    (8, 64, 32, 32),  # r=2, C_out=16
     (2, 144, 64, 64),  # r=3, C_out=16
 ]
 PIXEL_SHUFFLE_FACTORS = [2, 3]
@@ -1948,8 +1948,10 @@ PIXEL_SHUFFLE_FACTORS = [2, 3]
 def test_accuracy_pixel_shuffle(shape, dtype, upscale_factor):
     N, C_in, H, W = shape
     # Only test shapes compatible with this upscale_factor
-    if C_in % (upscale_factor ** 2) != 0:
-        pytest.skip(f"C_in={C_in} not divisible by upscale_factor^2={upscale_factor**2}")
+    if C_in % (upscale_factor**2) != 0:
+        pytest.skip(
+            f"C_in={C_in} not divisible by upscale_factor^2={upscale_factor**2}"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
