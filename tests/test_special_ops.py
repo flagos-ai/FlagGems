@@ -1919,8 +1919,8 @@ def test_accuracy_tril_(shape, dtype, diagonal):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
-    ref_out = torch.tril_(ref_inp.clone(), diagonal)
+    ref_out = ref_inp.clone().tril_(diagonal)
     with flag_gems.use_gems():
-        res_out = torch.tril_(inp.clone(), diagonal)
+        res_out = inp.clone().tril_(diagonal)
 
     gems_assert_close(res_out, ref_out, dtype)
