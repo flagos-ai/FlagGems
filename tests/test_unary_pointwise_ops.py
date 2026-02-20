@@ -1820,8 +1820,12 @@ def test_accuracy_leaky_relu_(shape, dtype, negative_slope):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone(), True)
 
-    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope, inplace=True)
+    ref_out = torch.nn.functional.leaky_relu(
+        ref_inp, negative_slope=negative_slope, inplace=True
+    )
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=negative_slope, inplace=True)
+        res_out = torch.nn.functional.leaky_relu(
+            inp, negative_slope=negative_slope, inplace=True
+        )
 
     gems_assert_close(res_out, ref_out, dtype)
