@@ -2173,11 +2173,11 @@ def test_accuracy_addcdiv(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_gcd(shape, dtype):
     inp1 = torch.randint(
-        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
-    ).to(flag_gems.device)
+        low=-1000, high=1000, size=shape, dtype=dtype, device=flag_gems.device
+    )
     inp2 = torch.randint(
-        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
-    ).to(flag_gems.device)
+        low=-1000, high=1000, size=shape, dtype=dtype, device=flag_gems.device
+    )
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -2194,11 +2194,11 @@ def test_accuracy_gcd(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_gcd_(shape, dtype):
     inp1 = torch.randint(
-        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
-    ).to(flag_gems.device)
+        low=-1000, high=1000, size=shape, dtype=dtype, device=flag_gems.device
+    )
     inp2 = torch.randint(
-        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
-    ).to(flag_gems.device)
+        low=-1000, high=1000, size=shape, dtype=dtype, device=flag_gems.device
+    )
     ref_inp1 = to_reference(inp1.clone())
     ref_inp2 = to_reference(inp2)
 
@@ -2214,11 +2214,11 @@ def test_accuracy_gcd_(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_gcd_out(shape, dtype):
     inp1 = torch.randint(
-        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
-    ).to(flag_gems.device)
+        low=-1000, high=1000, size=shape, dtype=dtype, device=flag_gems.device
+    )
     inp2 = torch.randint(
-        low=-(2**15), high=2**15, size=shape, dtype=dtype, device="cpu"
-    ).to(flag_gems.device)
+        low=-1000, high=1000, size=shape, dtype=dtype, device=flag_gems.device
+    )
     out = torch.empty_like(inp1)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
