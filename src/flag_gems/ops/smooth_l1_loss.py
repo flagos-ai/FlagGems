@@ -28,7 +28,6 @@ class Reduction(Enum):
 )
 @triton.jit
 def smooth_l1_none_kernel(x, y, beta):
-    """Huber / smooth-L1 element-wise, no reduction."""
     diff = x - y
     abs_diff = tl.abs(diff)
     return tl.where(abs_diff < beta, 0.5 * diff * diff / beta, abs_diff - 0.5 * beta)
@@ -86,7 +85,6 @@ def smooth_l1_reduce_kernel(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 )
 @triton.jit
 def smooth_l1_bwd_kernel(grad_out, x, y, beta, scale):
-    """Gradient of smooth-L1 w.r.t. x, multiplied by grad_out and scale."""
     diff = x - y
     abs_diff = tl.abs(diff)
     sign_diff = tl.where(diff > 0, 1.0, tl.where(diff < 0, -1.0, 0.0))
