@@ -17,7 +17,7 @@ def leaky_relu_forward(x, negative_slope):
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def leaky_relu_bwd_kernel(grad_out, x, negative_slope):
-    return tl.where(x >= 0, grad_out, grad_out * negative_slope)
+    return tl.where(x > 0, grad_out, grad_out * negative_slope)
 
 
 def leaky_relu(self, negative_slope=0.01):
