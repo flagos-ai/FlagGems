@@ -119,7 +119,7 @@ from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
-from flag_gems.ops.logaddexp import logaddexp, logaddexp_out, logaddexp2, logaddexp2_out
+from flag_gems.ops.logaddexp import logaddexp, logaddexp2, logaddexp2_out, logaddexp_out
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not
 from flag_gems.ops.logical_or import logical_or, logical_or_
