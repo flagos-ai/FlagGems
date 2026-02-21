@@ -192,6 +192,7 @@ def attention_ref(
     else:
         attention_drop = attention
     output = torch.einsum("bhts,bshd->bthd", attention_drop, v * dropout_scaling)
+    output = output.contiguous()
     if query_padding_mask is not None:
         output.masked_fill_((~query_padding_mask)[:, :, None, None], 0.0)
     return output.to(dtype=dtype_og), attention.to(dtype=dtype_og)
@@ -697,7 +698,7 @@ def test_flash_fwd_gqa_alibi_softcap(
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
-    [(1, 4, 1, 1, 1024), (4, 4, 4, 1, 519)],
+    [(1, 4, 1, 1, 1024), (4, 4, 4, 1, 519), (1, 4, 1, 2, 16)],
 )
 @pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize("is_causal", [False, True])
