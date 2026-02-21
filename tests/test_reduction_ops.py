@@ -1998,7 +1998,7 @@ def test_accuracy_smooth_l1_loss_backward(shape, dtype, reduction, beta):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = to_reference(inp, True)
+    ref_inp = to_reference(inp, True).detach().requires_grad_(True)
     ref_target = to_reference(target, True)
 
     ref_out = torch.nn.functional.smooth_l1_loss(
