@@ -135,6 +135,7 @@ from flag_gems.ops.max_pool2d_with_indices import (
 )
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
+from flag_gems.ops.median import median, median_dim_values, median_out, median_scalar
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out
@@ -416,6 +417,10 @@ __all__ = [
     "maximum",
     "mean",
     "mean_dim",
+    "median",
+    "median_dim_values",
+    "median_out",
+    "median_scalar",
     "min",
     "min_dim",
     "minimum",

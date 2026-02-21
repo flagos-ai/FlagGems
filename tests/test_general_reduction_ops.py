@@ -447,6 +447,36 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 
+@pytest.mark.median
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_median_scalar(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.median(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_median_dim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.median(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp, dim=dim, keepdim=keepdim)
+
+    gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
+    gems_assert_equal(res_out.indices, ref_out.indices)
+
+
 QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]
 QUANTILE_FLOAT_DTYPES = [torch.float32]
 QUANTILE_Q = (
