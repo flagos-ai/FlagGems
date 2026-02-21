@@ -68,6 +68,7 @@ from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
+from flag_gems.ops.diff import diff
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -321,6 +322,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "div_mode",
     "div_mode_",
     "dot",
