@@ -1924,3 +1924,34 @@ def test_accuracy_tril_(shape, dtype, diagonal):
         res_out = torch.tril_(inp.clone(), diagonal)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+CHANNEL_SHUFFLE_CASES = (
+    [(2, 4, 8, 8), 2],
+    [(2, 4, 8, 8), 4],
+    [(1, 6, 16, 16), 2],
+    [(1, 6, 16, 16), 3],
+    [(4, 12, 7, 7), 3],
+    [(4, 12, 7, 7), 4],
+) if not QUICK_MODE else [
+    [(2, 4, 8, 8), 2],
+]
+
+
+@pytest.mark.channel_shuffle
+@pytest.mark.parametrize("shape, groups", CHANNEL_SHUFFLE_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_channel_shuffle(shape, groups, dtype):
+    if dtype in INT_DTYPES:
+        inp = torch.randint(
+            low=0, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.channel_shuffle(ref_inp, groups)
+    with flag_gems.use_gems():
+        res_out = torch.channel_shuffle(inp, groups)
+
+    gems_assert_equal(res_out, ref_out)

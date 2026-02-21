@@ -90,6 +90,8 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("cat", cat),
+    ("channel_shuffle", channel_shuffle),
+    ("channel_shuffle.out", channel_shuffle_out),
     ("celu", celu),
     ("celu_", celu_),
     ("ceil", ceil),
