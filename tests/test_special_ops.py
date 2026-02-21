@@ -1467,6 +1467,28 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
     gems_assert_equal(res_index, ref_index)
 
 
+@pytest.mark.msort
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("hiddensize", [1, 256, 2048, 9333, 65536])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_msort(batch_size, hiddensize, dtype):
+    if dtype in ALL_INT_DTYPES:
+        min_v, max_v = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+        y = torch.randint(
+            min_v, max_v, (batch_size, hiddensize), dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
+    else:
+        y = torch.randn((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
+
+    ref_y = to_reference(y)
+    ref_out = torch.msort(ref_y)
+
+    with flag_gems.use_gems():
+        res_out = torch.msort(y)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.kron
 @pytest.mark.parametrize("shape", KRON_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)

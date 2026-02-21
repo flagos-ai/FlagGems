@@ -139,6 +139,7 @@ from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out
 from flag_gems.ops.mse_loss import mse_loss
+from flag_gems.ops.msort import msort
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
@@ -422,6 +423,7 @@ __all__ = [
     "mm",
     "mm_out",
     "mse_loss",
+    "msort",
     "mul",
     "mul_",
     "multinomial",
