@@ -27,6 +27,7 @@ from .accuracy_utils import (
     unsqueeze_tensor,
     unsqueeze_tuple,
 )
+from .conftest import QUICK_MODE
 
 
 @pytest.mark.abs
@@ -875,6 +876,57 @@ def test_accuracy_log_sigmoid(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.logsigmoid(inp)
     gems_assert_close(res_out, ref_out, dtype)
+
+
+LOGIT_EPS = [None, 1e-6, 1e-3] if not QUICK_MODE else [None]
+
+
+@pytest.mark.logit
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("eps", LOGIT_EPS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logit(shape, dtype, eps):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.logit(ref_inp, eps=eps)
+    with flag_gems.use_gems():
+        res_out = torch.logit(inp, eps=eps)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.logit_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("eps", LOGIT_EPS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logit_(shape, dtype, eps):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_inp.logit_(eps)
+    with flag_gems.use_gems():
+        inp.logit_(eps)
+
+    gems_assert_close(inp, ref_inp.to(dtype), dtype)
+
+
+@pytest.mark.logit_out
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("eps", LOGIT_EPS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logit_out(shape, dtype, eps):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(inp)
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.empty_like(ref_inp)
+
+    torch.logit(ref_inp, eps=eps, out=ref_out)
+    with flag_gems.use_gems():
+        torch.logit(inp, eps=eps, out=out)
+
+    gems_assert_close(out, ref_out.to(dtype), dtype)
 
 
 @pytest.mark.silu
