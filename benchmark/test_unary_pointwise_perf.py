@@ -69,6 +69,7 @@ forward_operations = [
     ("sin", torch.sin, FLOAT_DTYPES),
     ("tan", torch.tan, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
+    ("asinh", torch.asinh, FLOAT_DTYPES),
     ("atan", torch.atan, FLOAT_DTYPES),
     ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
@@ -125,6 +126,7 @@ forward_inplace_operations = [
     ("sin_", torch.sin_, FLOAT_DTYPES),
     ("tan_", torch.tan_, FLOAT_DTYPES),
     ("tanh_", torch.tanh_, FLOAT_DTYPES),
+    ("asinh_", torch.asinh_, FLOAT_DTYPES),
     ("atan_", torch.atan_, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
