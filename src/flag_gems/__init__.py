@@ -186,6 +186,8 @@ _FULL_CONFIG = (
     ("index.Tensor", index),
     ("index_add", index_add),
     ("index_add_", index_add_),
+    ("index_fill.int_Scalar", index_fill),
+    ("index_fill_.int_Scalar", index_fill_),
     ("index_put", index_put),
     ("index_put_", index_put_),
     ("index_select", index_select),
