@@ -6,6 +6,7 @@ from typing import Any, List, Optional
 import pytest
 import torch
 import triton
+import vllm
 
 import flag_gems
 from benchmark.attri_util import FLOAT_DTYPES
@@ -297,6 +298,7 @@ class FlashAttnVarlenBenchmark(Benchmark):
             alibi,
             soft_cap,
         ) = config
+        from packaging.version import parse as parse_version
 
         if alibi is True and soft_cap is not None:
             return
@@ -354,6 +356,16 @@ class FlashAttnVarlenBenchmark(Benchmark):
                 )
             else:
                 alibi_slopes = None
+        extra_kwargs = {
+            "num_splits": 0,
+            "fa_version": 2,
+        }
+
+        if parse_version(vllm.__version__) >= parse_version("0.11.0"):
+            extra_kwargs["s_aux"] = None
+            extra_kwargs["cp_world_size"] = 1
+            extra_kwargs["cp_rank"] = 0
+            extra_kwargs["cp_tot_seqused_k"] = None
 
         return (
             query,
@@ -380,14 +392,7 @@ class FlashAttnVarlenBenchmark(Benchmark):
             None,
             None,
             None,
-            {
-                "s_aux": None,
-                "num_splits": 0,
-                "cp_world_size": 1,
-                "cp_rank": 0,
-                "cp_tot_seqused_k": None,
-                "fa_version": 2,
-            },
+            extra_kwargs,
         )
 
 
