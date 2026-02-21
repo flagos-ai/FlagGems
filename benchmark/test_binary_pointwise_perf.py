@@ -64,6 +64,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Minimum and maximum operations
             ("maximum", torch.maximum, FLOAT_DTYPES),
             ("minimum", torch.minimum, FLOAT_DTYPES),
+            ("logaddexp", torch.logaddexp, FLOAT_DTYPES),
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
