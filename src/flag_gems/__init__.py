@@ -70,6 +70,8 @@ _FULL_CONFIG = (
     ("argmin", argmin),
     ("atan", atan),
     ("atan_", atan_),
+    ("atanh", atanh),
+    ("atanh_", atanh_),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("baddbmm", baddbmm),

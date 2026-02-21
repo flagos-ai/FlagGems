@@ -1558,6 +1558,40 @@ def test_accuracy_atan_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.atanh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_atanh(shape, dtype):
+    res_inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(
+        -0.99, 0.99
+    )
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.atanh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.atanh(res_inp)
+    ref_out = ref_out.to(res_out.dtype)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.atanh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_atanh_(shape, dtype):
+    res_inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(
+        -0.99, 0.99
+    )
+    ref_inp = to_reference(res_inp.clone(), True)
+
+    ref_out = torch.atanh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.atanh_(res_inp)
+
+    ref_out = ref_out.to(res_out.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 DREGU_SHAPES = [
     (),
     (1,),
