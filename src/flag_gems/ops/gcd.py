@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Worst-case Euclidean steps for int32: 46 (consecutive Fibonacci numbers).
 # 48 covers this with margin.
-_GCD_ITERS = 48
+_GCD_ITERS = tl.constexpr(48)
 
 _BLOCK_SIZE = 1024
 
