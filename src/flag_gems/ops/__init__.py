@@ -201,6 +201,7 @@ from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_backward
 from flag_gems.ops.softmax import softmax, softmax_backward
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
@@ -494,6 +495,8 @@ __all__ = [
     "sin",
     "sin_",
     "slice_scatter",
+    "smooth_l1_loss",
+    "smooth_l1_loss_backward",
     "softmax",
     "softmax_backward",
     "softplus",
