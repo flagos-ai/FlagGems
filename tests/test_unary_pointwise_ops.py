@@ -1030,6 +1030,168 @@ def test_accuracy_tanh_(shape, dtype):
 SHAPE_DIAGONAL = list(zip(POINTWISE_SHAPES, [-2, -2, -1, 0, 1, 3]))
 
 
+@pytest.mark.tril
+@pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tril(shape, diagonal, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = unsqueeze_tensor(inp, 2)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.tril(ref_inp, diagonal)
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp, diagonal)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("shape", [(64, 64), (128, 256), (256, 128)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tril_diagonal_boundary(shape, dtype):
+    """Test diagonal boundary values: ±(M-1), ±M, ±100"""
+    M, N = shape
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    diagonals = [N - 1, -(M - 1), N, -M, 100, -100]
+
+    for diagonal in diagonals:
+        ref_out = torch.tril(ref_inp, diagonal)
+        with flag_gems.use_gems():
+            res_out = torch.tril(inp, diagonal)
+        gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("shape", [(10, 1000), (1000, 10)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tril_extreme_rectangular(shape, dtype):
+    """Test extreme aspect ratios"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.tril(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES)
+def test_accuracy_tril_dtypes(dtype):
+    """Test all data types"""
+    shape = (64, 64)
+
+    if dtype in BOOL_TYPES:
+        inp = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
+    elif dtype in ALL_INT_DTYPES:
+        inp = torch.randint(-100, 100, shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.tril(ref_inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tril_non_contiguous(dtype):
+    """Test transposed, strided, and permuted inputs"""
+    inp_t = torch.randn((128, 64), dtype=dtype, device=flag_gems.device).t()
+    ref_t = to_reference(inp_t)
+    ref_out = torch.tril(ref_t)
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp_t)
+    gems_assert_equal(res_out, ref_out)
+
+    large = torch.randn((256, 256), dtype=dtype, device=flag_gems.device)
+    inp_s = large[::2, ::2]
+    ref_s = to_reference(inp_s)
+    ref_out = torch.tril(ref_s)
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp_s)
+    gems_assert_equal(res_out, ref_out)
+
+    inp_p = torch.randn((2, 3, 64, 64), dtype=dtype, device=flag_gems.device).permute(
+        1, 0, 2, 3
+    )
+    ref_p = to_reference(inp_p)
+    ref_out = torch.tril(ref_p)
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp_p)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tril_special_values(dtype):
+    """Test inf, -inf, nan, zeros, ones"""
+    inp = torch.randn((32, 32), dtype=dtype, device=flag_gems.device)
+    inp[0, 0] = float("inf")
+    inp[1, 1] = float("-inf")
+    inp[2, 2] = float("nan")
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.tril(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+    for special_inp in [
+        torch.zeros((32, 32), dtype=dtype, device=flag_gems.device),
+        torch.ones((32, 32), dtype=dtype, device=flag_gems.device),
+    ]:
+        ref_special = to_reference(special_inp)
+        ref_out = torch.tril(ref_special)
+        with flag_gems.use_gems():
+            res_out = torch.tril(special_inp)
+        gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.inplace
+@pytest.mark.tril_
+@pytest.mark.parametrize("shape", [(64, 64), (128, 256)])
+@pytest.mark.parametrize("diagonal", [0, 1, -1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tril_(shape, diagonal, dtype):
+    """Test in-place tril"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone())
+
+    ref_out = ref_inp.tril_(diagonal)
+    with flag_gems.use_gems():
+        res_out = inp.tril_(diagonal)
+
+    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("shape", [(64, 64), (128, 256)])
+@pytest.mark.parametrize("diagonal", [0, 1, -1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tril_out(shape, diagonal, dtype):
+    """Test tril with out parameter"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.tril(ref_inp, diagonal, out=ref_out)
+
+    with flag_gems.use_gems():
+        res_out = torch.empty_like(inp)
+        torch.tril(inp, diagonal, out=res_out)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.triu
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
