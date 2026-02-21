@@ -8,7 +8,7 @@ name = "flag_gems"
 version = "4.2.1.rc.0"
 description = "FlagGems is a function library written in Triton."
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.8.0"
+requires-python = ">=3.10.0"
 license = { text = "Apache Software License" }
 authors = [
     { name = "Zhixin Li", email = "strongspoon@outlook.com" },

@@ -1,0 +1,65 @@
+name: Python Dependency Security and Lockfile Check
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  sbom-and-lockfile-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取所有历史记录以便比较lock文件
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies and tools
+      run: |
+        python -m pip install --upgrade pip
+        # 根据您的包管理器选择安装（假设使用 poetry）
+        #pip install poetry
+        # 安装 SBOM 生成工具
+        pip install cyclonedx-bom
+        
+        # 或者如果使用 pip-tools
+        # pip install pip-tools
+        # 或者如果使用 pdm
+        # pip install pdm
+        
+        # 安装依赖
+        #poetry update
+        pip install .
+        pip install triton
+        pip freeze > requirements.txt
+    
+    - name: Generate SBOM from pyproject.toml
+      run: |
+        # 使用 cyclonedx-py 生成 SBOM
+        #poetry lock
+        #cyclonedx-py poetry --output-file bom.xml
+        cat ./requirements.txt
+        cyclonedx-py requirements ./requirements.txt --output-file sbom.json
+        
+        # 或者使用其他工具（根据您的需求选择）
+        # pip install sbom-tool
+        # sbom-tool generate -i pyproject.toml -o bom.json
+        
+        echo "SBOM 生成完成"
+    
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-artifact
+        path: |
+          sbom.json
+          # bom.json (如果使用其他格式)
+        retention-days: 1
+    
