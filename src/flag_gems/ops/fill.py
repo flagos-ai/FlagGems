@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
-    is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")], num_outputs=1
+    is_tensor=[True, False],
+    dtypes=[None, float],
+    promotion_methods=[(0, "DEFAULT")],
+    num_outputs=1,
 )
 @triton.jit
 def fill_scalar_func(inp, value_scalar):

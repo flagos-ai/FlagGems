@@ -26,12 +26,10 @@ from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_pro
 
 # ------------------ Operation Description ---------------------------
 def _type_name(type) -> str:
-    "Render typename as string, work for both (bool, int, float, str) and torch.dtype object"
-    if type in (bool, int, float, str):
-        return type.__name__
-    if isinstance(type, torch.dtype):
-        return str(type)
-    return str(type)
+    "Render typename as string, mapping Python primitives to Triton types (e.g. float -> tl.float64)"
+    "or handling torch.dtype via str()"
+    type_map = {float: "tl.float64", int: "tl.int32", bool: "tl.int1", str: "str"}
+    return type_map.get(type, str(type))
 
 
 def _check_typed_list(container, type):
@@ -825,7 +823,7 @@ class WrapperGenerator:
             max_tile_size = self.config.max_tile_size
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("tile_sizes = tuple([64])")
+                code.writeline(f"tile_sizes = tuple([64] * {self.ndim})")
             else:
                 code.writeline(
                     f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
