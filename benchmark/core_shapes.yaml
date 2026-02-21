@@ -54,6 +54,13 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+groupmm:
+  shapes:
+    - [16, 512, 2048]
+    - [16, 2560, 2048]
+    - [64, 2048, 128]
+  shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
+
 MvAndOuterBenchmark:
   shapes:
     - [384, 384]
