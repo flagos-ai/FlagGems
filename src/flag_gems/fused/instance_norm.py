@@ -347,6 +347,7 @@ def instance_norm_backward_kernel(
     else:
         w = 1
 
+    inv_N = 1.0 / N
     dx_part2 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     dx_part3 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
 
@@ -359,8 +360,8 @@ def instance_norm_backward_kernel(
         x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
         dx_hat = dy * w
-        dx_part2 += dx_hat
-        dx_part3 += dx_hat * x_hat
+        dx_part2 += dx_hat * inv_N
+        dx_part3 += (dx_hat * x_hat) * inv_N
 
     dx_2 = tl.sum(dx_part2, axis=1)[:, None]
     dx_3 = tl.sum(dx_part3, axis=1)[:, None]
@@ -374,7 +375,7 @@ def instance_norm_backward_kernel(
         x = tl.where(mask, x - mean, 0.0)
         x_hat = x * rstd
         dx_hat = dy * w
-        dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / N)
+        dx = rstd * (dx_hat - dx_2 - x_hat * dx_3)
         tl.store(dX + cols, dx, mask=mask)
 
 
