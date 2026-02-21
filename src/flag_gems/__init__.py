@@ -241,6 +241,8 @@ _FULL_CONFIG = (
     ("multinomial", multinomial),
     ("mv", mv),
     ("nan_to_num", nan_to_num),
+    ("nansum", nansum),
+    ("nansum.out", nansum_out),
     ("native_batch_norm", batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_dropout", dropout),
