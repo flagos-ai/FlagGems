@@ -1251,6 +1251,51 @@ def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.frac
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_frac(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.frac(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.frac(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.inplace
+@pytest.mark.frac_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_frac_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone())
+
+    ref_out = ref_inp.frac_()
+    with flag_gems.use_gems():
+        res_out = inp.frac_()
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.frac_out
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_frac_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(inp)
+    ref_inp = to_reference(inp)
+    ref_out = torch.empty_like(ref_inp)
+
+    torch.frac(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        torch.frac(inp, out=out)
+
+    gems_assert_equal(out, ref_out)
+
+
 TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
 
 
