@@ -743,6 +743,34 @@ vstack:
       - 1024
       - 2048
       - 4096
+tril:
+  - gen: true
+    param_map:
+      META:
+        M_BLOCK_SIZE: 1
+        N_BLOCK_SIZE: 2048
+      num_warps: warps
+    warps:
+      - 1
+      - 2
+      - 4
+      - 8
+      - 16
+      - 32
+tril_batch:
+  - gen: true
+    param_map:
+      META:
+        BATCH_BLOCK_SIZE: 1
+        MN_BLOCK_SIZE: 512
+      num_warps: warps
+    warps:
+      - 1
+      - 2
+      - 4
+      - 8
+      - 16
+      - 32
 triu:
   - gen: true
     param_map:
@@ -1197,3 +1225,179 @@ gated_activation:
       - 8
     block_n:
       - 1024
+
+roll_1d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+      num_warps: warps
+    block_size:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
+    warps:
+      - 4
+      - 8
+      - 16
+      - 32
+
+roll_2d_cols:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_ROWS: block_rows
+        BLOCK_COLS: block_cols
+        USE_BITWISE: use_bitwise
+      num_warps: warps
+    block_rows:
+      - 1
+      - 2
+      - 4
+      - 8
+    block_cols:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
+    use_bitwise:
+      - true
+      - false
+    warps:
+      - 4
+      - 8
+      - 16
+      - 32
+
+roll_2d_rows:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_COLS: block_cols
+        BLOCK_ROWS: block_rows
+        USE_BITWISE: use_bitwise
+      num_warps: warps
+    block_cols:
+      - 1
+      - 2
+      - 4
+      - 8
+    block_rows:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
+    use_bitwise:
+      - true
+      - false
+    warps:
+      - 4
+      - 8
+      - 16
+      - 32
+
+roll_2d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+        USE_BITWISE: use_bitwise
+      num_warps: warps
+    block_size:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
+      - 32768
+    use_bitwise:
+      - false
+    warps:
+      - 4
+      - 8
+      - 16
+      - 32
+
+roll_3d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+        USE_BITWISE: use_bitwise
+      num_warps: warps
+    block_size:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
+      - 32768
+    use_bitwise:
+      - false
+    warps:
+      - 4
+      - 8
+      - 16
+      - 32
+
+roll_4d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+        USE_BITWISE: use_bitwise
+      num_warps: warps
+    block_size:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
+      - 32768
+    use_bitwise:
+      - false
+    warps:
+      - 4
+      - 8
+      - 16
+      - 32
+
+roll_5d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+        USE_BITWISE: use_bitwise
+      num_warps: warps
+    block_size:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
+      - 32768
+    use_bitwise:
+      - false
+    warps:
+      - 4
+      - 8
+      - 16
+      - 32
