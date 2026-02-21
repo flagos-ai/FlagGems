@@ -125,10 +125,6 @@ def upsample_nearest2d_backward_kernel(
     IW,
     OH,
     OW,
-    scale_h,
-    scale_w,
-    reciprocal_scale_h,
-    reciprocal_scale_w,
     BLOCK_SIZE: tl.constexpr,
     MAX_REGION_H: tl.constexpr,
     MAX_REGION_W: tl.constexpr,
@@ -150,36 +146,18 @@ def upsample_nearest2d_backward_kernel(
         oh_start = ih
         oh_end = ih + 1
     else:
-        oh_start = (ih * scale_h).to(tl.int32)
-        oh_start = tl.where(
-            tl.minimum((oh_start * reciprocal_scale_h).to(tl.int32), IH - 1) < ih,
-            oh_start + 1,
-            oh_start,
-        )
-        oh_end = ((ih + 1) * scale_h).to(tl.int32)
-        oh_end = tl.where(
-            tl.minimum((oh_end * reciprocal_scale_h).to(tl.int32), IH - 1) <= ih,
-            oh_end + 1,
-            oh_end,
-        )
+        # Integer ceiling division: ceil(ih * OH / IH) avoids float rounding errors.
+        oh_start = (ih * OH + IH - 1) // IH
+        oh_end = ((ih + 1) * OH + IH - 1) // IH
         oh_end = tl.minimum(oh_end, OH)
 
     if SAME_W:
         ow_start = iw
         ow_end = iw + 1
     else:
-        ow_start = (iw * scale_w).to(tl.int32)
-        ow_start = tl.where(
-            tl.minimum((ow_start * reciprocal_scale_w).to(tl.int32), IW - 1) < iw,
-            ow_start + 1,
-            ow_start,
-        )
-        ow_end = ((iw + 1) * scale_w).to(tl.int32)
-        ow_end = tl.where(
-            tl.minimum((ow_end * reciprocal_scale_w).to(tl.int32), IW - 1) <= iw,
-            ow_end + 1,
-            ow_end,
-        )
+        # Integer ceiling division: ceil(iw * OW / IW) avoids float rounding errors.
+        ow_start = (iw * OW + IW - 1) // IW
+        ow_end = ((iw + 1) * OW + IW - 1) // IW
         ow_end = tl.minimum(ow_end, OW)
 
     gi_stride = nc_stride * IH * IW
@@ -233,16 +211,12 @@ def upsample_nearest2d_backward(
     OH, OW = output_size
 
     if scales_h is not None:
-        reciprocal_scale_h = 1 / scales_h
         scale_h_val = scales_h
     else:
-        reciprocal_scale_h = IH / OH
         scale_h_val = OH / IH
     if scales_w is not None:
-        reciprocal_scale_w = 1 / scales_w
         scale_w_val = scales_w
     else:
-        reciprocal_scale_w = IW / OW
         scale_w_val = OW / IW
 
     SAME_H = OH == IH
@@ -269,10 +243,6 @@ def upsample_nearest2d_backward(
             IW,
             OH,
             OW,
-            scale_h_val,
-            scale_w_val,
-            reciprocal_scale_h,
-            reciprocal_scale_w,
             MAX_REGION_H=MAX_REGION_H,
             MAX_REGION_W=MAX_REGION_W,
             SAME_H=SAME_H,
