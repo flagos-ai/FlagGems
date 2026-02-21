@@ -447,6 +447,49 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 
+@pytest.mark.nansum
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_nansum_without_dim(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    flat = inp.flatten()
+    nan_count = max(1, flat.numel() // 5)
+    flat[torch.randperm(flat.numel())[:nan_count]] = float("nan")
+    inp = flat.view(shape)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nansum(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nansum(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
+
+
+@pytest.mark.nansum
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_nansum_dim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    flat = inp.flatten()
+    nan_count = max(1, flat.numel() // 5)
+    flat[torch.randperm(flat.numel())[:nan_count]] = float("nan")
+    inp = flat.view(shape)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nansum(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.nansum(inp, dim=dim, keepdim=keepdim)
+
+    if isinstance(dim, int):
+        dim = [dim]
+    dim = [d % inp.ndim for d in dim]
+    _dim = 1
+    for d in dim:
+        _dim *= shape[d]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
+
+
 QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]
 QUANTILE_FLOAT_DTYPES = [torch.float32]
 QUANTILE_Q = (
