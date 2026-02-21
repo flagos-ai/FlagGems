@@ -27,7 +27,7 @@ To enable only specific operators and skip the rest:
 import flag_gems
 
 # Enable only selected ops
-flag_gems.only_enable(include=["rms_norm", "softmax"])
+flag_gems.enable(include=["rms_norm", "softmax"])
 ```
 
 This is useful when you want to accelerate only a subset of operators.
@@ -71,16 +71,17 @@ If both are provided, `exclude` is ignored.
 
 ## Advanced Usage
 
-The `flag_gems.enable(...)` and `flag_gems.only_enable(...)` functions support several optional parameters
+The `flag_gems.enable(...)` functions support several optional parameters
 which give you finer-grained control over how acceleration is applied.
-This allows for more flexible integration and easier debugging or profiling when working with complex workflows.
+This allows for more flexible integration and easier debugging or profiling
+when working with complex workflows.
 
 ### Parameters
 
 | Parameter      | Type      | Description                                         |
 | -------------- | --------- | --------------------------------------------------- |
-| `unused`       | List[str] | Disable specific operators (for `enable`)           |
-| `include`      | List[str] | Enable only specific operators (for `only_enable`)  |
+| `exclude`      | List[str] | Disable specific operators                          |
+| `include`      | List[str] | Enable only specific operators                      |
 | `record`       | bool      | Log operator calls for debugging or profiling       |
 | `path`         | str       | Log file path (only used when `record=True`)        |
 
@@ -99,10 +100,10 @@ while all other supported operators will use the *FlagGems* version.
 
 ### Example : Selectively Enable Specific Operators
 
-You can use `only_enable()` with the `include` parameter to accelerate only a subset of operators:
+You can use `enable()` with the `include` parameter to accelerate only a subset of operators:
 
 ```python
-flag_gems.only_enable(include=["rms_norm", "softmax"])
+flag_gems.enable(include=["rms_norm", "softmax"])
 ```
 
 This registers only the specified operators, skipping all the others.
