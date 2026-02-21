@@ -1,3 +1,74 @@
+# Comments:
+# 
+# add(input, other, *, alpha=1) -> Tensor
+# 
+# Adds :attr:`other`, scaled by :attr:`alpha`, to :attr:`input`.
+# 
+# Supports :ref:`broadcasting to a common shape <broadcasting-semantics>`,
+# :ref:`type promotion <type-promotion-doc>`, and integer, float, and complex inputs.
+# 
+# Args:
+#     A (Tensor or Number): the first operand.
+#     B (Tensor or Number): the second operand.
+# 
+# Keyword arguments:
+#     alpha (Number): the multiplier for :attr:`B`.
+# 
+# Examples::
+# 
+#     >>> A = torch.tensor([1, 2, 3])
+#     >>> B = torch.tensor([4, 5, 6])
+#     >>> add(A, B, alpha=2)
+#     tensor([ 9, 12, 15])  # 1 + 4*2, 2 + 5*2, 3 + 6*2
+# 
+#     >>> A = torch.tensor([1, 2, 3])
+#     >>> B = 4
+#     >>> add(A, B, alpha=2)
+#     tensor([ 9, 12, 15])  # 1 + 4*2, 2 + 4*2, 3 + 4*2
+# 
+#     >>> A = 1
+#     >>> B = torch.tensor([4, 5, 6])
+#     >>> add(A, B, alpha=2)
+#     tensor([ 9, 12, 15])  # 1 + 4*2, 1 + 5*2, 1 + 6*2
+# 
+#     >>> A = 1
+#     >>> B = 4
+#     >>> add(A, B, alpha=2)
+#     tensor(9)  # 1 + 4*2
+# 
+# add_(input, other, *, alpha=1) -> Tensor
+# 
+# In-place version of :func:`~torch.add`. Adds :attr:`other`, scaled by :attr:`alpha`, to :attr:`input` and stores the result in :attr:`input`.
+# 
+# Args:
+#     A (Tensor or Number): the first operand.
+#     B (Tensor or Number): the second operand.
+# 
+# Keyword arguments:
+#     alpha (Number): the multiplier for :attr:`B`.
+# 
+# Examples::
+# 
+#     >>> A = torch.tensor([1, 2, 3])
+#     >>> B = torch.tensor([4, 5, 6])
+#     >>> add_(A, B, alpha=2)
+#     tensor([ 9, 12, 15])  # 1 + 4*2, 2 + 5*2, 3 + 6*2
+# 
+#     >>> A = torch.tensor([1, 2, 3])
+#     >>> B = 4
+#     >>> add_(A, B, alpha=2)
+#     tensor([ 9, 12, 15])  # 1 + 4*2, 2 + 4*2, 3 + 4*2
+# 
+#     >>> A = 1
+#     >>> B = torch.tensor([4, 5, 6])
+#     >>> add_(A, B, alpha=2)
+#     tensor([ 9, 12, 15])  # 1 + 4*2, 1 + 5*2, 1 + 6*2
+# 
+#     >>> A = 1
+#     >>> B = 4
+#     >>> add_(A, B, alpha=2)
+#     tensor(9)  # 1 + 4*2
+
 import logging
 
 import torch
