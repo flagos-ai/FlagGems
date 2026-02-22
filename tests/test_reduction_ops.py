@@ -958,6 +958,121 @@ def test_accuracy_inplace_scatter_mul(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+SCATTER_REDUCE_CASES = (
+    [((8, 8), 0), ((8, 8), 1)]
+    if QUICK_MODE
+    else [
+        ((1, 1), 0),
+        ((8, 8), 0),
+        ((8, 8), 1),
+        ((64, 64), 0),
+        ((64, 64), 1),
+        ((1024, 1024), 1),
+        ((8, 8, 8), 2),
+        ((16, 32, 32), 1),
+    ]
+)
+SCATTER_REDUCE_REDUCES = ["sum", "prod", "mean", "amax", "amin"]
+
+
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("shape, dim", SCATTER_REDUCE_CASES)
+@pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCES)
+@pytest.mark.parametrize("include_self", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_scatter_reduce(shape, dim, reduce, include_self, dtype):
+    init_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    index = torch.randint(
+        0, shape[dim], shape, device=flag_gems.device, dtype=torch.long
+    )
+
+    ref_inp = to_reference(inp, upcast=True)
+    ref_src = to_reference(src, upcast=True)
+    ref_index = to_reference(index)
+    ref_out = torch.scatter_reduce(
+        ref_inp, dim, ref_index, ref_src, reduce=reduce, include_self=include_self
+    )
+    with flag_gems.use_gems():
+        res_out = torch.scatter_reduce(
+            inp, dim, index, src, reduce=reduce, include_self=include_self
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+SCATTER_REDUCE_OUT_CASES = [((8, 8), 1)] if QUICK_MODE else [((8, 8), 1)]
+
+
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("shape, dim", SCATTER_REDUCE_OUT_CASES)
+@pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCES)
+@pytest.mark.parametrize("include_self", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_scatter_reduce_out(shape, dim, reduce, include_self, dtype):
+    init_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    index = torch.randint(
+        0, shape[dim], shape, device=flag_gems.device, dtype=torch.long
+    )
+    out = torch.empty_like(inp)
+
+    ref_inp = to_reference(inp, upcast=True)
+    ref_src = to_reference(src, upcast=True)
+    ref_index = to_reference(index)
+    ref_out = torch.empty_like(ref_inp)
+    torch.ops.aten.scatter_reduce.two_out(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        include_self=include_self,
+        out=ref_out,
+    )
+    with flag_gems.use_gems():
+        torch.ops.aten.scatter_reduce.two_out(
+            inp,
+            dim,
+            index,
+            src,
+            reduce,
+            include_self=include_self,
+            out=out,
+        )
+
+    gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("shape, dim", SCATTER_REDUCE_OUT_CASES)
+@pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCES)
+@pytest.mark.parametrize("include_self", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_scatter_reduce_(shape, dim, reduce, include_self, dtype):
+    init_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    index = torch.randint(
+        0, shape[dim], shape, device=flag_gems.device, dtype=torch.long
+    )
+
+    ref_inp = to_reference(inp.clone(), upcast=True)
+    ref_src = to_reference(src, upcast=True)
+    ref_index = to_reference(index)
+    ref_out = ref_inp.scatter_reduce_(
+        dim, ref_index, ref_src, reduce=reduce, include_self=include_self
+    )
+    with flag_gems.use_gems():
+        res_out = inp.clone().scatter_reduce_(
+            dim, index, src, reduce=reduce, include_self=include_self
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 TRACE_SHAPES = [
     (1, 1),
     (5, 5),
