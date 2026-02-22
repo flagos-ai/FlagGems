@@ -53,6 +53,22 @@ RENORMALIZE_LIST = [True, False] if not QUICK_MODE else [True]
 SCORING_FUNC_LIST = [0, 1] if not QUICK_MODE else [0]
 DTYPE_LIST = [torch.bfloat16, torch.float32] if not QUICK_MODE else [torch.float32]
 LARGE_SCALE_DTYPE_LIST = [torch.float32, torch.bfloat16]
+PIXEL_SHUFFLE_CONFIGS = (
+    [((1, 4, 2, 2), 2)]
+    if QUICK_MODE
+    else [
+        # small
+        ((1, 4, 1, 1), 2),
+        # regular
+        ((2, 16, 8, 8), 2),
+        # regular (upscale_factor=1)
+        ((1, 8, 4, 4), 1),
+        # regular (r=3)
+        ((1, 9, 2, 2), 3),
+        # large
+        ((1, 64, 32, 32), 2),
+    ]
+)
 
 
 def check_valid_config(n_expert, n_group, topk):
@@ -1890,3 +1906,17 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("shape, upscale_factor", PIXEL_SHUFFLE_CONFIGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_pixel_shuffle(shape, upscale_factor, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.pixel_shuffle(ref_inp, upscale_factor)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.pixel_shuffle(inp, upscale_factor)
+
+    gems_assert_close(res_out, ref_out, dtype)
