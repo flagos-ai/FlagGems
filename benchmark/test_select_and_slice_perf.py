@@ -640,3 +640,25 @@ def test_index_acc_perf():
     )
     bench.set_gems(gems_op)
     bench.run()
+
+
+@pytest.mark.index_select_backward
+def test_index_select_backward_perf():
+    def index_select_backward_input_fn(shape, dtype, device):
+        from math import floor
+
+        dim = 0 if len(shape) == 1 else 1
+        index_len = max(1, floor(shape[dim] * 0.8))
+        grad_shape = list(shape)
+        grad_shape[dim] = index_len
+        grad = torch.randn(grad_shape, dtype=dtype, device=device)
+        index = torch.randperm(index_len, device=device)
+        yield grad, shape, dim, index
+
+    bench = TensorSelectBenchmark(
+        op_name="index_select_backward",
+        torch_op=torch.ops.aten.index_select_backward,
+        input_fn=index_select_backward_input_fn,
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()

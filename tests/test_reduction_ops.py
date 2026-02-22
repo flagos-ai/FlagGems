@@ -2201,3 +2201,28 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
         inp.masked_scatter_(mask, src)
 
     gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.index_select_backward
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_select_backward(shape, dim, dtype):
+    from math import floor
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    index_size = inp.size(dim)
+    index = torch.randint(
+        0, index_size, [floor(index_size * 0.8)], device=flag_gems.device
+    )
+    grad_shape = list(shape)
+    grad_shape[dim] = floor(index_size * 0.8)
+    grad = torch.randn(grad_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_grad = to_reference(grad)
+    ref_index = to_reference(index)
+    ref_out = torch.ops.aten.index_select_backward(ref_grad, shape, dim, ref_index)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.index_select_backward(grad, shape, dim, index)
+
+    gems_assert_close(res_out, ref_out)
