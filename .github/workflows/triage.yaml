@@ -16,6 +16,7 @@ jobs:
         uses: actions/labeler@v6
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          sync-labels: true
       - id: sizer
         uses: codelytv/pr-size-labeler@v1
         with:
