@@ -441,6 +441,42 @@ def test_index_add__perf():
     bench.run()
 
 
+@pytest.mark.index_fill
+def test_index_fill_perf():
+    def index_fill_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = 0 if len(shape) == 1 else 1
+        index_len = max(1, inp.size(dim) // 2)
+        index = torch.randperm(index_len, device=device)
+        yield inp, dim, index, 3.14
+
+    bench = TensorSelectBenchmark(
+        op_name="index_fill",
+        torch_op=torch.index_fill,
+        input_fn=index_fill_input_fn,
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()
+
+
+@pytest.mark.index_fill_
+def test_index_fill__perf():
+    def index_fill__input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = 0 if len(shape) == 1 else 1
+        index_len = max(1, inp.size(dim) // 2)
+        index = torch.randperm(index_len, device=device)
+        yield inp, dim, index, 3.14
+
+    bench = TensorSelectBenchmark(
+        op_name="index_fill_",
+        torch_op=torch.Tensor.index_fill_,
+        input_fn=index_fill__input_fn,
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()
+
+
 def gen_indices(input_shape, indices_shape, accumulate):
     indices = []
     for i, shape in enumerate(indices_shape):
