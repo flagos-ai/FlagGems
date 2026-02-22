@@ -636,6 +636,15 @@ upsample_nearest2d:
   block_n: [1024, 2048, 4096, 8192, 16384]
   warps: [1]
 #######################################
+upsample_nearest2d_backward:
+- gen : true
+  param_map:
+    META:
+      BLOCK_SIZE: block_n
+    num_warps: warps
+  block_n: [1024, 2048, 4096, 8192, 16384]
+  warps: [1]
+#######################################
 masked_fill:
 - gen: true
   param_map:
