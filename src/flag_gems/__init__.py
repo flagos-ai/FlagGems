@@ -295,6 +295,7 @@ _FULL_CONFIG = (
     ("repeat_interleave.Tensor", repeat_interleave_tensor),
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
+    ("roll", roll),
     ("rms_norm", rms_norm),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
