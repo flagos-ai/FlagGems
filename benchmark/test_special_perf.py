@@ -287,6 +287,25 @@ def test_perf_sort():
     bench.run()
 
 
+@pytest.mark.msort
+def test_perf_msort():
+    class MsortBenchmark(GenericBenchmark2DOnly):
+        def set_more_shapes(self):
+            return [(1024, 1), (1024, 512), (16, 128 * 1024), (8, 256 * 1024)]
+
+    def msort_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield (inp,)
+
+    bench = MsortBenchmark(
+        input_fn=msort_input_fn,
+        op_name="msort",
+        torch_op=torch.msort,
+        dtypes=INT_DTYPES + FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):

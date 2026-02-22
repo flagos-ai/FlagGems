@@ -139,6 +139,7 @@ from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out
 from flag_gems.ops.mse_loss import mse_loss
+from flag_gems.ops.msort import msort
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
@@ -216,6 +217,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.tril import tril, tril_
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -421,6 +423,7 @@ __all__ = [
     "mm",
     "mm_out",
     "mse_loss",
+    "msort",
     "mul",
     "mul_",
     "multinomial",
@@ -522,6 +525,8 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_",
     "triu",
     "triu_",
     "true_divide",
