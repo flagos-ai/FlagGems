@@ -1,0 +1,1136 @@
+{
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape0-scale0-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape0-scale0-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape0-scale1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape0-scale1-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape0-scale2-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape0-scale2-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape1-scale0-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape1-scale0-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape1-scale1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape1-scale1-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape1-scale2-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape1-scale2-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape2-scale0-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape2-scale0-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape2-scale1-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape2-scale1-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape2-scale2-False]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype0-shape2-scale2-True]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape0-scale0-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape0-scale0-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape0-scale1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape0-scale1-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape0-scale2-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape0-scale2-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape1-scale0-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape1-scale0-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape1-scale1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape1-scale1-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape1-scale2-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape1-scale2-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape2-scale0-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape2-scale0-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape2-scale1-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape2-scale1-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape2-scale2-False]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype1-shape2-scale2-True]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape0-scale0-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape0-scale0-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape0-scale1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape0-scale1-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape0-scale2-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape0-scale2-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                1,
+                4,
+                4
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape1-scale0-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape1-scale0-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape1-scale1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape1-scale1-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape1-scale2-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape1-scale2-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                32,
+                32
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape2-scale0-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape2-scale0-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                2.0,
+                2.0
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape2-scale1-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape2-scale1-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                1.5,
+                0.75
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape2-scale2-False]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": false
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_upsample_nearest2d_backward[dtype2-shape2-scale2-True]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                4,
+                128,
+                128
+            ],
+            "scale": [
+                0.5,
+                0.5
+            ],
+            "use_scales": true
+        },
+        "result": "failed",
+        "opname": [
+            "upsample_nearest2d_backward"
+        ],
+        "skipped_reason": null
+    }
+}

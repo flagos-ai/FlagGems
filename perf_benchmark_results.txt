@@ -1,0 +1,53 @@
+================================================================================
+FlagGems Performance Benchmark Results
+================================================================================
+
+codex/max_pool3d:
+Shape                                    Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-----------------------------------------------------------------------------------------------
+torch.Size([2, 4, 8, 8, 8])              torch.float16   0.0204          3.1905          0.006     
+torch.Size([2, 4, 8, 8, 8])              torch.float32   0.0133          3.0988          0.004     
+torch.Size([1, 3, 16, 16, 16])           torch.float16   0.0147          3.1874          0.005     
+torch.Size([1, 3, 16, 16, 16])           torch.float32   0.0134          3.0886          0.004     
+torch.Size([4, 8, 32, 32, 32])           torch.float16   0.0134          3.0991          0.004     
+torch.Size([4, 8, 32, 32, 32])           torch.float32   0.0126          3.1130          0.004     
+Average Speedup: 0.005x
+
+codex/avg_pool3d:
+Shape                                    Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-----------------------------------------------------------------------------------------------
+torch.Size([2, 4, 8, 8, 8])              torch.float16   0.0324          3.1324          0.010     
+torch.Size([2, 4, 8, 8, 8])              torch.float32   0.0125          3.1787          0.004     
+torch.Size([1, 3, 16, 16, 16])           torch.float16   0.0097          3.1288          0.003     
+torch.Size([1, 3, 16, 16, 16])           torch.float32   0.0097          3.1208          0.003     
+torch.Size([4, 8, 32, 32, 32])           torch.float16   0.0102          3.1139          0.003     
+torch.Size([4, 8, 32, 32, 32])           torch.float32   0.0114          3.2162          0.004     
+Average Speedup: 0.005x
+
+codex/grid_sample:
+Shape                                    Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-----------------------------------------------------------------------------------------------
+torch.Size([1, 3, 8, 8])                 torch.float16   0.0094          3.1653          0.003     
+torch.Size([1, 3, 8, 8])                 torch.float32   0.0092          3.2297          0.003     
+torch.Size([2, 4, 16, 16])               torch.float16   0.0094          3.7220          0.003     
+torch.Size([2, 4, 16, 16])               torch.float32   0.0092          3.2116          0.003     
+torch.Size([4, 8, 32, 32])               torch.float16   0.0093          3.2866          0.003     
+torch.Size([4, 8, 32, 32])               torch.float32   0.0092          3.1198          0.003     
+Average Speedup: 0.003x
+
+codex/svd:
+Shape                                    Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-----------------------------------------------------------------------------------------------
+torch.Size([4, 3])                       torch.float32   0.1289          10.9679         0.012     
+torch.Size([8, 8])                       torch.float32   0.1713          3.8182          0.045     
+torch.Size([16, 16])                     torch.float32   0.2165          4.5920          0.047     
+torch.Size([32, 32])                     torch.float32   0.2730          4.8140          0.057     
+Average Speedup: 0.040x
+
+codex/ctc_loss:
+Shape                                    Dtype           Torch (ms)      GEMS (ms)       Speedup   
+-----------------------------------------------------------------------------------------------
+torch.Size([50, 2, 20])                  float32         0.1133          4.6361          0.024     
+torch.Size([100, 4, 30])                 float32         0.1303          7.5231          0.017     
+Average Speedup: 0.021x
+
