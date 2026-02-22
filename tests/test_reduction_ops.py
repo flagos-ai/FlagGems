@@ -1977,6 +1977,59 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
 
 
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("beta", [0.5, 1.0, 2.0])
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss(shape, dtype, reduction, beta):
+    dim = 1
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction=reduction, beta=beta
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(
+            inp, target, reduction=reduction, beta=beta
+        )
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
+
+
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("beta", [0.5, 1.0, 2.0])
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss_backward(shape, dtype, reduction, beta):
+    dim = 1
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True).detach().requires_grad_(True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction=reduction, beta=beta
+    )
+    ref_out.sum().backward()
+    ref_grad = ref_inp.grad.to(dtype)
+
+    res_inp = inp.detach().clone().requires_grad_(True)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(
+            res_inp, target, reduction=reduction, beta=beta
+        )
+    res_out.sum().backward()
+    res_grad = res_inp.grad
+
+    gems_assert_close(res_grad, ref_grad, dtype, reduce_dim=shape[dim])
+
+
 def generate_test_params():
     params = [torch.int32, torch.int64]
     if SkipVersion("torch", ">2.2"):
