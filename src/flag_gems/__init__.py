@@ -236,6 +236,8 @@ _FULL_CONFIG = (
     ("mm", mm),
     ("mm.out", mm_out),
     ("mse_loss", mse_loss),
+    ("smooth_l1_loss", smooth_l1_loss),
+    ("smooth_l1_loss.out", smooth_l1_loss_out),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
     ("multinomial", multinomial),
