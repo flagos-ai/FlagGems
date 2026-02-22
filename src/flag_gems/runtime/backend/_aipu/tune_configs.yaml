@@ -766,6 +766,34 @@ sum:
   - 2
   - 4
   - 8
+tril:
+- gen: true
+  param_map:
+    META:
+      M_BLOCK_SIZE: 1
+      N_BLOCK_SIZE: 2048
+    num_warps: warps
+  warps:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+tril_batch:
+- gen: true
+  param_map:
+    META:
+      BATCH_BLOCK_SIZE: 1
+      MN_BLOCK_SIZE: 512
+    num_warps: warps
+  warps:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
 triu:
 - gen: true
   param_map:

@@ -92,6 +92,7 @@ from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from flag_gems.ops.flip import flip
+from flag_gems.ops.frac import frac, frac_, frac_out
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -216,6 +217,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.tril import tril, tril_
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -350,6 +352,9 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
+    "frac",
+    "frac_",
+    "frac_out",
     "floor_divide",
     "floor_divide_",
     "full",
@@ -522,6 +527,8 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_",
     "triu",
     "triu_",
     "true_divide",
