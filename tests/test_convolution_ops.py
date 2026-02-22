@@ -175,6 +175,112 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
         del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
+SHAPE_CONV_TRANSPOSE2D = [
+    # small (3D input)
+    ((4, 8, 8), (4, 3, 3, 3), 1),
+    # small
+    ((1, 1, 4, 4), (1, 1, 3, 3), 1),
+    ((2, 4, 8, 8), (4, 3, 3, 3), 1),
+    ((1, 4, 7, 7), (4, 2, 3, 3), 1),
+    ((2, 6, 8, 8), (6, 2, 3, 3), 3),
+    ((1, 8, 5, 5), (8, 4, 2, 2), 2),
+    # large
+    ((1, 4, 64, 64), (4, 2, 3, 3), 1),
+]
+
+CONV_TRANSPOSE2D_PARAMS = [
+    (1, 0, 0, 1),
+    (2, 1, 0, 1),
+    (2, 1, 1, 1),
+    (1, 0, 0, 2),
+    ((2, 1), (1, 0), (1, 0), (1, 1)),
+]
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("shape, kernel, groups", SHAPE_CONV_TRANSPOSE2D)
+@pytest.mark.parametrize("stride, padding, output_padding, dilation", CONV_TRANSPOSE2D_PARAMS)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("bias", [True, False])
+def test_accuracy_conv_transpose2d(
+    shape,
+    kernel,
+    groups,
+    stride,
+    padding,
+    output_padding,
+    dilation,
+    dtype,
+    bias,
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+    weight = torch.randn(
+        kernel, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    if bias is True:
+        bias = torch.randn(
+            [kernel[1] * groups],
+            dtype=dtype,
+            device=flag_gems.device,
+            requires_grad=True,
+        )
+        bias_ref = to_reference(bias, True)
+    else:
+        bias = None
+        bias_ref = None
+
+    ref_weight = to_reference(weight, True)
+    ref_out = torch.nn.functional.conv_transpose2d(
+        ref_inp,
+        ref_weight,
+        bias=bias_ref,
+        stride=stride,
+        padding=padding,
+        output_padding=output_padding,
+        groups=groups,
+        dilation=dilation,
+    ).to(dtype)
+
+    res_out = flag_gems.conv_transpose2d(
+        inp,
+        weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        output_padding=output_padding,
+        groups=groups,
+        dilation=dilation,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(ref_out).to(flag_gems.device)
+    ref_grad = to_reference(out_grad, True)
+
+    if bias is not None:
+        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight, bias_ref), ref_grad
+        )
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+    else:
+        (ref_in_grad, ref_weight_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight), ref_grad
+        )
+        (res_in_grad, res_weight_grad) = torch.autograd.grad(
+            res_out, (inp, weight), out_grad
+        )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=weight.shape[2])
+    gems_assert_close(
+        res_weight_grad, ref_weight_grad, dtype, reduce_dim=kernel[0]
+    )
+    if bias is not None:
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
+
+
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv2d_padding
