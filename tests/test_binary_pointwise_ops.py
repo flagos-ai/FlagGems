@@ -2166,3 +2166,37 @@ def test_accuracy_addcdiv(shape, dtype):
         res_out = torch.addcdiv(res_inp, t1, t2, value=v)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_out(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.empty_like(ref_inp1)
+    torch.logaddexp(ref_inp1, ref_inp2, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.empty_like(inp1)
+        torch.logaddexp(inp1, inp2, out=res_out)
+
+    gems_assert_close(res_out, ref_out, dtype)
