@@ -1890,3 +1890,73 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+TRIL_SHAPES = [(2, 3), (128, 256), (512, 512), (4, 16, 32)]
+TRIL_DIAGONALS = [-2, -1, 0, 1, 3]
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("shape", TRIL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("diagonal", TRIL_DIAGONALS)
+def test_accuracy_tril(shape, dtype, diagonal):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.tril(ref_inp, diagonal)
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp, diagonal)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("shape", TRIL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("diagonal", TRIL_DIAGONALS)
+def test_accuracy_tril_(shape, dtype, diagonal):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = ref_inp.clone().tril_(diagonal)
+    with flag_gems.use_gems():
+        res_out = inp.clone().tril_(diagonal)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+# ---------------------------------------------------------------------------
+# pixel_shuffle
+# ---------------------------------------------------------------------------
+PIXEL_SHUFFLE_SHAPES = [
+    # (N, C_in, H, W) where C_in = C_out * r^2
+    (1, 4, 4, 4),  # r=2, C_out=1
+    (2, 16, 8, 8),  # r=2, C_out=4
+    (1, 9, 4, 4),  # r=3, C_out=1
+    (4, 36, 16, 16),  # r=3, C_out=4
+    (8, 64, 32, 32),  # r=2, C_out=16
+    (2, 144, 64, 64),  # r=3, C_out=16
+]
+PIXEL_SHUFFLE_FACTORS = [2, 3]
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("upscale_factor", PIXEL_SHUFFLE_FACTORS)
+@pytest.mark.parametrize("shape", PIXEL_SHUFFLE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_pixel_shuffle(shape, dtype, upscale_factor):
+    N, C_in, H, W = shape
+    # Only test shapes compatible with this upscale_factor
+    if C_in % (upscale_factor**2) != 0:
+        pytest.skip(
+            f"C_in={C_in} not divisible by upscale_factor^2={upscale_factor**2}"
+        )
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.pixel_shuffle(ref_inp, upscale_factor)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, upscale_factor)
+
+    gems_assert_equal(res_out, ref_out)
