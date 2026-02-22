@@ -54,6 +54,42 @@ SCORING_FUNC_LIST = [0, 1] if not QUICK_MODE else [0]
 DTYPE_LIST = [torch.bfloat16, torch.float32] if not QUICK_MODE else [torch.float32]
 LARGE_SCALE_DTYPE_LIST = [torch.float32, torch.bfloat16]
 
+ROLL_SHAPES = [
+    (8,),
+    (2, 5),
+    (2, 3, 4),
+    (2, 3, 4, 5),
+    (2, 3, 4, 5, 6),
+]
+
+ROLL_CASES = [
+    (1, None),
+    (-2, 0),
+    (1, (0, -1)),
+    ((1, -1), (0, -1)),
+]
+
+
+def _roll_is_valid(shape, shifts, dims):
+    ndim = len(shape)
+    if dims is None:
+        return not isinstance(shifts, (tuple, list))
+    if isinstance(dims, int):
+        if not (-ndim <= dims < ndim):
+            return False
+        if isinstance(shifts, (tuple, list)) and len(shifts) != 1:
+            return False
+        return True
+    dims_tuple = tuple(dims)
+    if any(d < -ndim or d >= ndim for d in dims_tuple):
+        return False
+    if isinstance(shifts, (tuple, list)):
+        if len(shifts) != len(dims_tuple):
+            return False
+    else:
+        return False
+    return True
+
 
 def check_valid_config(n_expert, n_group, topk):
     if n_expert % n_group != 0:
@@ -135,6 +171,23 @@ def test_accuracy_grouped_topk(
 
     atol, rtol = get_tolerance(dtype, scoring_func, renormalize)
     torch.testing.assert_close(res_topk_weights, ref_topk_weights, atol=atol, rtol=rtol)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", ROLL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shifts,dims", ROLL_CASES)
+def test_accuracy_roll(shape, dtype, shifts, dims):
+    if not _roll_is_valid(shape, shifts, dims):
+        pytest.skip("Invalid shifts/dims for input shape.")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.roll(ref_inp, shifts=shifts, dims=dims)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts=shifts, dims=dims)
+
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
