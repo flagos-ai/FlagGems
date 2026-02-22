@@ -1,5 +1,8 @@
 #!/bin/bash
 
+export PATH=/usr/local/corex/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/corex/lib64:$LD_LIBRARY_PATH
+
 # Configuration parameters
 memory_usage_max=30000     # Maximum memory usage limit (MB)
 sleep_time=120             # Wait time (seconds), default is 2 minutes
