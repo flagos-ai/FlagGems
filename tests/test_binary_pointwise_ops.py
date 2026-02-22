@@ -2166,3 +2166,68 @@ def test_accuracy_addcdiv(shape, dtype):
         res_out = torch.addcdiv(res_inp, t1, t2, value=v)
 
     gems_assert_close(res_out, ref_out, dtype)
+# ═══════════════════════════════════════════════════════
+# gcd tests — FlagGems Operator Development Competition
+# ═══════════════════════════════════════════════════════
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd(shape, dtype):
+    inp1 = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_with_zeros(dtype):
+    """gcd(0, n) = |n|, gcd(0, 0) = 0."""
+    inp1 = torch.tensor([0, 0, 12, -15, 0], dtype=dtype, device=flag_gems.device)
+    inp2 = torch.tensor([0, 7, 0, -10, -3], dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_same_values(dtype):
+    """gcd(x, x) = |x|."""
+    inp = torch.randint(1, 500, [1024], dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.gcd(ref_inp, ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp, inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_negative_inputs(dtype):
+    """GCD result is always non-negative."""
+    inp1 = torch.randint(-500, -1, [1024], dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(1, 500, [1024], dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
