@@ -7,20 +7,30 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (
-    FLOAT_DTYPES,
-    SCALARS,
-    UT_SHAPES_1D,
-    gems_assert_close,
-    to_reference,
-)
+from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
+from .accuracy_utils import SCALARS, UT_SHAPES_1D, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
-MN_SHAPES = [(1, 32)] if QUICK_MODE else [(1, 32), (160, 1024), (5333, 497)]
-MNK_SHAPES = (
-    [(1, 1, 32)] if QUICK_MODE else [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
-)
-FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
+if QUICK_MODE:
+    MN_SHAPES = [
+        (1, 32),
+    ]
+    MNK_SHAPES = [
+        (1, 1, 32),
+    ]
+    FLOAT_DTYPES = [torch.float32]
+else:
+    MN_SHAPES = [
+        (1, 32),
+        (160, 1024),
+        (5333, 497),
+    ]
+    MNK_SHAPES = [
+        (1, 1, 32),
+        (15, 160, 1024),
+        (495, 5333, 71),
+    ]
+    FLOAT_DTYPES = ORIG_FLOAT_DTYPES
 
 
 @pytest.mark.addmm
