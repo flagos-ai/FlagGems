@@ -32,7 +32,7 @@ jobs:
           echo "PR_ID=${PR_ID}" >> "$GITHUB_OUTPUT"
 
       - id: wait-for-triage
-        uses: ArcticLampyrid/action-wait-for-workflow@v1
+        uses: ArcticLampyrid/action-wait-for-workflow@v1.3.0
         with:
           workflow: .github/workflows/triage.yaml
 
