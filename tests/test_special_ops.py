@@ -1890,3 +1890,68 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+TRIL_SHAPES = [(2, 3), (128, 256), (512, 512), (4, 16, 32)]
+TRIL_DIAGONALS = [-2, -1, 0, 1, 3]
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("shape", TRIL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("diagonal", TRIL_DIAGONALS)
+def test_accuracy_tril(shape, dtype, diagonal):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.tril(ref_inp, diagonal)
+    with flag_gems.use_gems():
+        res_out = torch.tril(inp, diagonal)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.tril
+@pytest.mark.parametrize("shape", TRIL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("diagonal", TRIL_DIAGONALS)
+def test_accuracy_tril_(shape, dtype, diagonal):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.tril_(ref_inp.clone(), diagonal)
+    with flag_gems.use_gems():
+        res_out = torch.tril_(inp.clone(), diagonal)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+CHANNEL_SHUFFLE_CASES = (
+    [(2, 4, 8, 8), 2],
+    [(2, 4, 8, 8), 4],
+    [(1, 6, 16, 16), 2],
+    [(1, 6, 16, 16), 3],
+    [(4, 12, 7, 7), 3],
+    [(4, 12, 7, 7), 4],
+) if not QUICK_MODE else [
+    [(2, 4, 8, 8), 2],
+]
+
+
+@pytest.mark.channel_shuffle
+@pytest.mark.parametrize("shape, groups", CHANNEL_SHUFFLE_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_channel_shuffle(shape, groups, dtype):
+    if dtype in INT_DTYPES:
+        inp = torch.randint(
+            low=0, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.channel_shuffle(ref_inp, groups)
+    with flag_gems.use_gems():
+        res_out = torch.channel_shuffle(inp, groups)
+
+    gems_assert_equal(res_out, ref_out)
