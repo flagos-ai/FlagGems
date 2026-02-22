@@ -1288,6 +1288,61 @@ def test_accuracy_repeat(shape, sizes, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll_single_dim(shape, dtype):
+    """Test rolling on a single dimension"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    for dim in range(len(shape)):
+        shift = shape[dim] // 3 if shape[dim] > 0 else 0
+        ref_out = torch.roll(ref_inp, shift, dims=dim)
+        with flag_gems.use_gems():
+            res_out = torch.roll(inp, shift, dims=dim)
+        gems_assert_equal(res_out, ref_out)
+
+        shift = -shape[dim] // 4 if shape[dim] > 0 else 0
+        ref_out = torch.roll(ref_inp, shift, dims=dim)
+        with flag_gems.use_gems():
+            res_out = torch.roll(inp, shift, dims=dim)
+        gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", [(64, 64), (20, 320, 15)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll_multi_dim(shape, dtype):
+    """Test rolling on multiple dimensions"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    shifts = [shape[0] // 3, shape[1] // 4]
+    dims = [0, 1]
+
+    ref_out = torch.roll(ref_inp, shifts, dims=dims)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts, dims=dims)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll_flatten(shape, dtype):
+    """Test rolling with dims=None (flattened)"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    shift = inp.numel() // 3 if inp.numel() > 0 else 0
+
+    ref_out = torch.roll(ref_inp, shift, dims=None)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shift, dims=None)
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.logical_not
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES)
