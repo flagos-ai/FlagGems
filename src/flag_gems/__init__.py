@@ -284,6 +284,8 @@ _FULL_CONFIG = (
     ("reciprocal_", reciprocal_),
     ("relu", relu),
     ("relu_", relu_),
+    ("leaky_relu", leaky_relu),
+    ("leaky_relu_", leaky_relu_),
     ("remainder.Scalar", remainder),
     ("remainder.Scalar_Tensor", remainder),
     ("remainder.Tensor", remainder),
