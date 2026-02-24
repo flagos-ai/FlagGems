@@ -262,6 +262,45 @@ def rms_norm_grad_dw_kernel(
     )
 
 
+@libentry()
+@triton.jit
+def rms_norm_grad_kernel(
+    X,
+    DY,
+    DX,
+    W,
+    INV_RMS,
+    DW,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    eps: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    row_idx = tl.program_id(0)
+
+    cols = tl.arange(0, BLOCK_SIZE)
+    mask = cols < N
+
+    x_ptr = X + row_idx * N + cols
+    dy_ptr = DY + row_idx * N + cols
+    w_ptr = W + cols
+
+    x = tl.load(x_ptr, mask=mask, other=0.0).to(tl.float32)
+    dy = tl.load(dy_ptr, mask=mask, other=0.0).to(tl.float32)
+    weight = tl.load(w_ptr, mask=mask, other=0.0).to(tl.float32)
+    inv_rms = tl.load(INV_RMS + row_idx).to(tl.float32)
+
+    dy_w = dy * weight
+    x_inv_rms = x * inv_rms
+    m_grad = tl.sum(dy_w * x, axis=0)
+    dx = inv_rms * (dy_w - x_inv_rms * (m_grad / N))
+    dx_ptr = DX + row_idx * N + cols
+    tl.store(dx_ptr, dx, mask=mask)
+    dw_partial = dy * x_inv_rms
+    dw_ptr = DW + cols
+    tl.store(dw_ptr, dw_partial, mask=mask)
+
+
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     logger.debug("GEMS RMS_NORM FORWARD")
     dim = x.ndim - len(normalized_shape)
@@ -370,6 +409,38 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
     return dx, dw
 
 
+def rms_norm_backward_fusion(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
+    logger.debug("GEMS RMS_NORM BACKWARD")
+
+    dim = x.ndim - len(normalized_shape)
+    M = math.prod(x.shape[:dim])  # Batch dimension
+    N = math.prod(normalized_shape)  # Feature dimension
+
+    x = x.contiguous()
+    dy = dy.contiguous()
+    weight = weight.contiguous()
+
+    dx = torch.empty_like(x)
+    dw = torch.empty_like(weight)
+
+    BLOCK_SIZE = 64
+
+    with torch_device_fn.device(x.device):
+        rms_norm_grad_kernel[(M,)](
+            x,
+            dy,
+            dx,
+            weight,
+            inv_rms,
+            dw,
+            M,
+            N,
+            eps,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+    return dx, dw
+
+
 class RmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, eps=1e-5):
@@ -385,7 +456,8 @@ class RmsNorm(torch.autograd.Function):
         normalized_shape = ctx.normalized_shape
         eps = ctx.eps
 
-        dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
+        # dx, dw = rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps)
+        dx, dw = rms_norm_backward_fusion(dy, x, inv_rms, normalized_shape, weight, eps)
         return dx, None, dw, None
 
 
