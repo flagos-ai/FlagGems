@@ -1025,6 +1025,38 @@ def test_fill(value, shape, dtype):
     gems_assert_equal(res_out_tensor, ref_out_tensor)
 
 
+@pytest.mark.fill
+@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_fill_out(value, shape, dtype):
+    # Test fill.Scalar_out
+    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = to_reference(x, False)
+    out = torch.empty_like(x)
+    ref_out = torch.empty_like(ref_x)
+
+    ref_result = torch.ops.aten.fill.Scalar_out(ref_x, value, out=ref_out)
+    with flag_gems.use_gems():
+        res_result = torch.ops.aten.fill.Scalar_out(x, value, out=out)
+
+    gems_assert_equal(res_result, ref_result)
+    assert res_result is out, "fill.Scalar_out should return the out tensor"
+
+    # Test fill.Tensor_out
+    value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
+    ref_value_tensor = to_reference(value_tensor, False)
+    out_tensor = torch.empty_like(x)
+    ref_out_tensor = torch.empty_like(ref_x)
+
+    ref_result_tensor = torch.ops.aten.fill.Tensor_out(ref_x, ref_value_tensor, out=ref_out_tensor)
+    with flag_gems.use_gems():
+        res_result_tensor = torch.ops.aten.fill.Tensor_out(x, value_tensor, out=out_tensor)
+
+    gems_assert_equal(res_result_tensor, ref_result_tensor)
+    assert res_result_tensor is out_tensor, "fill.Tensor_out should return the out tensor"
+
+
 CAMBRICON_STACK_SHAPES = [
     [
         (8, 8, 128),
