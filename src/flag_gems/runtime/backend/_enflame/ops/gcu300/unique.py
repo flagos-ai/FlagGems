@@ -709,7 +709,11 @@ def sorted_indices_unique_flat(
                 num_warps=num_warps,
             )
 
-    return data_out[:out_size], inverse_indices.to(torch.int64), counts
+    return (
+        data_out[:out_size],
+        inverse_indices.to(torch.int64) if inverse_indices is not None else None,
+        counts,
+    )
 
 
 def simple_unique_flat(
