@@ -284,7 +284,7 @@ def create_random_logits(
 
     if clean_logits:
         for i, end in enumerate(row_ends):
-            logits[i, int(end):] = float("-inf")
+            logits[i, int(end) :] = float("-inf")
     return logits
 
 
@@ -414,7 +414,9 @@ def _run_top_k_per_row_decode_test(
 @pytest.mark.parametrize("batch_size", TOP_K_BATCH_SIZE if not QUICK_MODE else [1, 32])
 @pytest.mark.parametrize("next_n", TOP_K_NEXT_N if not QUICK_MODE else [1])
 @pytest.mark.parametrize("clean_logits", [True, False] if not QUICK_MODE else [True])
-@pytest.mark.parametrize("data_generation", TOP_K_DATA_GENERATION if not QUICK_MODE else ["random"])
+@pytest.mark.parametrize(
+    "data_generation", TOP_K_DATA_GENERATION if not QUICK_MODE else ["random"]
+)
 @torch.inference_mode()
 def test_top_k_per_row_decode(
     top_k: int,

@@ -79,31 +79,47 @@ def kernel_topk_decode_histogram(
     TS = tl.cdiv(S, BS)
     for s in range(TS):
         input_idx = s * BS + tl.arange(0, BS)
-        input_mask = (input_idx < l_end_idx) & (input_idx >= l_start_idx) & (input_idx < S)
+        input_mask = (
+            (input_idx < l_end_idx) & (input_idx >= l_start_idx) & (input_idx < S)
+        )
         if stride1 == 1:
-            input_val = tl.load(s_base + input_idx, input_mask, other=float("-inf")).to(tl.float32)
+            input_val = tl.load(s_base + input_idx, input_mask, other=float("-inf")).to(
+                tl.float32
+            )
         else:
-            input_val = tl.load(s_base + input_idx * stride1, input_mask, other=float("-inf")).to(tl.float32)
+            input_val = tl.load(
+                s_base + input_idx * stride1, input_mask, other=float("-inf")
+            ).to(tl.float32)
         inval_uint8 = (convert_to_uint32(input_val) >> 24) & 0xFF
         s_histogram += inval_uint8.to(tl.int32).histogram(HISTOGRAM_SIZE)
 
     # Find threshold bin using suffix sum
     s_histogram = s_histogram.cumsum(0, reverse=True)
-    mv_idx = (tl.arange(1, HISTOGRAM_SIZE + 1) % HISTOGRAM_SIZE)
-    cond = (s_histogram > l_new_topk) & ((s_histogram.gather(mv_idx, 0) <= l_new_topk) | (mv_idx == 0))
+    mv_idx = tl.arange(1, HISTOGRAM_SIZE + 1) % HISTOGRAM_SIZE
+    cond = (s_histogram > l_new_topk) & (
+        (s_histogram.gather(mv_idx, 0) <= l_new_topk) | (mv_idx == 0)
+    )
     l_threshold_bin_id = cond.argmax(0)
-    l_new_topk -= tl.where(tl.arange(0, HISTOGRAM_SIZE) == l_threshold_bin_id + 1, s_histogram, 0).max(0)
+    l_new_topk -= tl.where(
+        tl.arange(0, HISTOGRAM_SIZE) == l_threshold_bin_id + 1, s_histogram, 0
+    ).max(0)
 
     # Partition elements: above threshold -> output, equal threshold -> candidates
     sum_val = 0
     thre_bin_sum = 0
     for s in range(TS):
         input_idx = s * BS + tl.arange(0, BS)
-        input_mask = (input_idx < l_end_idx) & (input_idx >= l_start_idx) & (input_idx < S)
+        input_mask = (
+            (input_idx < l_end_idx) & (input_idx >= l_start_idx) & (input_idx < S)
+        )
         if stride1 == 1:
-            input_val = tl.load(s_base + input_idx, input_mask, other=float("-inf")).to(tl.float32)
+            input_val = tl.load(s_base + input_idx, input_mask, other=float("-inf")).to(
+                tl.float32
+            )
         else:
-            input_val = tl.load(s_base + input_idx * stride1, input_mask, other=float("-inf")).to(tl.float32)
+            input_val = tl.load(
+                s_base + input_idx * stride1, input_mask, other=float("-inf")
+            ).to(tl.float32)
         inval_uint8 = (convert_to_uint32(input_val) >> 24) & 0xFF
 
         # Must AND with input_mask to exclude invalid positions
@@ -146,19 +162,33 @@ def kernel_topk_decode_histogram(
             if s < ss:
                 s_input_idx = s * BSS + tl.arange(0, BSS)
                 s_input_idx_mask = s_input_idx < thre_bin_sum
-                input_idx = tl.load(s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1)
+                input_idx = tl.load(
+                    s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1
+                )
                 if stride1 == 1:
-                    s_input = tl.load(s_base + input_idx, s_input_idx_mask, other=padding_num).to(tl.float32)
+                    s_input = tl.load(
+                        s_base + input_idx, s_input_idx_mask, other=padding_num
+                    ).to(tl.float32)
                 else:
-                    s_input = tl.load(s_base + input_idx * stride1, s_input_idx_mask, other=padding_num).to(tl.float32)
-                inval_int32 = (convert_to_uint32(s_input) >> (24 - round_num * 8)) & 0xFF
+                    s_input = tl.load(
+                        s_base + input_idx * stride1,
+                        s_input_idx_mask,
+                        other=padding_num,
+                    ).to(tl.float32)
+                inval_int32 = (
+                    convert_to_uint32(s_input) >> (24 - round_num * 8)
+                ) & 0xFF
                 s_histogram += inval_int32.to(tl.int32).histogram(HISTOGRAM_SIZE)
 
         s_histogram = s_histogram.cumsum(0, reverse=True)
-        mv_idx = (tl.arange(1, HISTOGRAM_SIZE + 1) % HISTOGRAM_SIZE)
-        cond = (s_histogram > l_new_topk) & ((s_histogram.gather(mv_idx, 0) <= l_new_topk) | (mv_idx == 0))
+        mv_idx = tl.arange(1, HISTOGRAM_SIZE + 1) % HISTOGRAM_SIZE
+        cond = (s_histogram > l_new_topk) & (
+            (s_histogram.gather(mv_idx, 0) <= l_new_topk) | (mv_idx == 0)
+        )
         l_threshold_bin_id = cond.argmax(0)
-        l_new_topk -= tl.where(tl.arange(0, HISTOGRAM_SIZE) == l_threshold_bin_id + 1, s_histogram, 0).max(0)
+        l_new_topk -= tl.where(
+            tl.arange(0, HISTOGRAM_SIZE) == l_threshold_bin_id + 1, s_histogram, 0
+        ).max(0)
         thre_bin_sum, old_thre_bin_sum = 0, thre_bin_sum
         old_ss = ss
 
@@ -166,17 +196,31 @@ def kernel_topk_decode_histogram(
             if s < old_ss:
                 s_input_idx = s * BSS + tl.arange(0, BSS)
                 s_input_idx_mask = s_input_idx < old_thre_bin_sum
-                input_idx = tl.load(s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1)
+                input_idx = tl.load(
+                    s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1
+                )
                 if stride1 == 1:
-                    s_input = tl.load(s_base + input_idx, s_input_idx_mask, other=padding_num).to(tl.float32)
+                    s_input = tl.load(
+                        s_base + input_idx, s_input_idx_mask, other=padding_num
+                    ).to(tl.float32)
                 else:
-                    s_input = tl.load(s_base + input_idx * stride1, s_input_idx_mask, other=padding_num).to(tl.float32)
-                inval_int32 = (convert_to_uint32(s_input) >> (24 - round_num * 8)) & 0xFF
+                    s_input = tl.load(
+                        s_base + input_idx * stride1,
+                        s_input_idx_mask,
+                        other=padding_num,
+                    ).to(tl.float32)
+                inval_int32 = (
+                    convert_to_uint32(s_input) >> (24 - round_num * 8)
+                ) & 0xFF
 
                 # Must AND with s_input_idx_mask to exclude invalid positions (padding values)
-                over_thre = (inval_int32.to(tl.int32) > l_threshold_bin_id) & s_input_idx_mask
+                over_thre = (
+                    inval_int32.to(tl.int32) > l_threshold_bin_id
+                ) & s_input_idx_mask
                 cur_sum = over_thre.to(tl.int32).sum(-1)
-                eq_thre = (inval_int32.to(tl.int32) == l_threshold_bin_id) & s_input_idx_mask
+                eq_thre = (
+                    inval_int32.to(tl.int32) == l_threshold_bin_id
+                ) & s_input_idx_mask
                 thre_bin_cur_sum = eq_thre.to(tl.int32).sum(-1)
 
                 topk_idx = over_thre.to(tl.int32).cumsum(-1)
@@ -196,7 +240,9 @@ def kernel_topk_decode_histogram(
                 tl.store(concat_pointer_matrix, concat_input, mask=concat_mask)
 
                 # Track actual candidates stored (bounded by SMEM_INPUT_SIZE)
-                thre_bin_sum = tl.minimum(thre_bin_sum + thre_bin_cur_sum, SMEM_INPUT_SIZE)
+                thre_bin_sum = tl.minimum(
+                    thre_bin_sum + thre_bin_cur_sum, SMEM_INPUT_SIZE
+                )
                 sum_val += cur_sum
 
         round_num += 1
@@ -211,8 +257,14 @@ def kernel_topk_decode_histogram(
             if s < ss:
                 s_input_idx = s * BSS + tl.arange(0, BSS)
                 s_input_idx_mask = s_input_idx < copy_count
-                input_idx = tl.load(s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1)
-                tl.store(indices_base + sum_val + tl.arange(0, BSS), input_idx, mask=s_input_idx_mask)
+                input_idx = tl.load(
+                    s_input_ids_base + s_input_idx, s_input_idx_mask, other=-1
+                )
+                tl.store(
+                    indices_base + sum_val + tl.arange(0, BSS),
+                    input_idx,
+                    mask=s_input_idx_mask,
+                )
                 sum_val += BSS
 
 
