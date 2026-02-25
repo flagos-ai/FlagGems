@@ -40,7 +40,7 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             padding_width = 0
         else:
             raise ValueError(
-                f"Unsupported padding string: {padding}, only'valild'/'same' are allowed."
+                f"Unsupported padding mode: {padding}, only 'valid' or 'same' are allowed."
             )
     elif isinstance(padding, (list, tuple)):
         padding_width = padding[0]
