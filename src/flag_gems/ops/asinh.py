@@ -7,7 +7,7 @@ from flag_gems.utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def asinh_kernel(x):
-    # 数学公式: asinh(x) = ln(x + sqrt(x^2 + 1))
+    # asinh(x) = ln(x + sqrt(x^2 + 1))
     x_f32 = x.to(tl.float32)
     abs_x = tl.abs(x_f32)
     res = tl.log(abs_x + tl.sqrt(abs_x * abs_x + 1.0))
