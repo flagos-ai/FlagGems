@@ -136,6 +136,9 @@ def generate_destination_passing_wrapper(
 
         # kernel launch
         code.writeline("BLOCK_SIZE = 256")  # BLOCK_SIZE setting
+        code.writeline("if N // BLOCK_SIZE > 65535:")
+        with code.indent():
+            code.writeline("BLOCK_SIZE = 16384")
         code.writeline("grid = (triton.cdiv(N, BLOCK_SIZE),)")
         kernel_launch: str = f"{kernel_name}[grid]("
         code.writeline(kernel_launch)
