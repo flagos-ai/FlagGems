@@ -1,10 +1,10 @@
 # auto_gen configuration
 
 # FlagGems project root (the git repo)
-flaggems_dir: /share/project/tj/workspace/FlagGems
+flaggems_dir: /path/to/FlagGems
 
 # Python interpreter with FlagGems environment
-python_path: /share/project/tj/miniconda3/envs/flaggems/bin/python
+python_path: /path/to/python
 
 # Claude Code executable
 claude_bin: claude
@@ -28,6 +28,9 @@ device:
   # Set to null to auto-detect all GPUs
   # Or specify a list of GPU IDs to use, e.g. [0, 1, 2, 3]
   gpu_ids: null
+
+# Timeout (seconds) per operator task; 0 or null to disable
+timeout_per_op: 1800
 
 # Polling interval (seconds) for checking process status
 poll_interval: 10

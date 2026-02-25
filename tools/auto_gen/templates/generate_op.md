@@ -79,7 +79,7 @@ for op in dir(torch.ops.aten):
     if '{{OPERATOR}}' in op.lower():
         fn = getattr(torch.ops.aten, op)
         if hasattr(fn, 'default'):
-            print(f'{op}: {fn.default.schema}')
+            print(f'{op}: {fn.default._schema}')
 "
 ```
 
@@ -288,6 +288,17 @@ cd {{WORK_DIR}}
 CUDA_VISIBLE_DEVICES={{GPU_ID}} {{PYTHON_PATH}} -m pytest benchmark/<benchmark_file>.py -m {{OPERATOR}} -vs 2>&1
 ```
 
+**解析 benchmark 输出**：benchmark 输出格式为：
+```
+Operator: {{OPERATOR}}  Performance Test (dtype=torch.float16, mode=kernel,level=comprehensive)
+SUCCESS    <torch_latency_ms>    <gems_latency_ms>    <speedup>    <gems_gbps>    [<shape>]
+SUCCESS    ...
+Operator: {{OPERATOR}}  Performance Test (dtype=torch.float32, ...)
+SUCCESS    ...
+```
+
+请从输出中提取每一行 `SUCCESS` 的数据，按 dtype 分组记录到最终 JSON 中。
+
 ### Step 8: 输出结果
 
 在所有步骤完成后，输出以下 JSON 格式的最终结果（用 ```json 代码块包裹）：
@@ -315,12 +326,23 @@ CUDA_VISIBLE_DEVICES={{GPU_ID}} {{PYTHON_PATH}} -m pytest benchmark/<benchmark_f
     "test_command": "python -m pytest tests/test_xxx_ops.py -m {{OPERATOR}} -vs"
   },
   "benchmark_results": {
-    "benchmark_command": "python -m pytest benchmark/test_xxx_perf.py -m {{OPERATOR}} -vs"
+    "benchmark_command": "python -m pytest benchmark/test_xxx_perf.py -m {{OPERATOR}} -vs",
+    "data": [
+      {
+        "dtype": "torch.float16",
+        "shape": "[1024, 1024]",
+        "torch_latency_ms": 0.056,
+        "gems_latency_ms": 0.057,
+        "speedup": 0.987
+      }
+    ]
   },
   "error_message": "null 或错误描述",
   "notes": "实现说明或特殊处理"
 }
 ```
+
+**注意**：`benchmark_results.data` 数组中应包含 benchmark 输出中**每一行 SUCCESS** 的数据。如果 benchmark 运行失败或没有输出，`data` 可以为空数组 `[]`。
 
 ## 重要约束
 

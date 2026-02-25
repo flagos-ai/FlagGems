@@ -55,32 +55,10 @@ def load_dotenv(env_path: str = None):
 def load_config(config_path: str) -> dict:
     """Load YAML config file."""
     if yaml is None:
-        # Fallback: parse simple YAML manually
-        return _parse_simple_yaml(config_path)
+        print("Error: 'pyyaml' is required but not installed. Please install it with: pip install pyyaml")
+        sys.exit(1)
     with open(config_path) as f:
         return yaml.safe_load(f)
-
-
-def _parse_simple_yaml(path: str) -> dict:
-    """Minimal YAML parser for flat key-value configs."""
-    config = {}
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" in line:
-                key, _, val = line.partition(":")
-                key = key.strip()
-                val = val.strip()
-                if val == "null":
-                    val = None
-                elif val.replace(".", "", 1).isdigit():
-                    val = float(val) if "." in val else int(val)
-                elif val.lower() in ("true", "false"):
-                    val = val.lower() == "true"
-                config[key] = val
-    return config
 
 
 def load_ops_list(path: str) -> list[str]:
@@ -127,13 +105,16 @@ def create_worktree(flaggems_dir: str, operator: str) -> tuple[str, str]:
     branch_name = f"auto-gen/{operator}"
     worktree_path = os.path.join(flaggems_dir, ".worktrees", f"gen-{operator}")
 
-    # Clean up existing worktree if present
+    # Always clean up: remove worktree, delete leftover directory, prune git records
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", worktree_path],
+        cwd=flaggems_dir,
+        capture_output=True,
+    )
     if os.path.exists(worktree_path):
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", worktree_path],
-            cwd=flaggems_dir,
-            capture_output=True,
-        )
+        import shutil
+        shutil.rmtree(worktree_path, ignore_errors=True)
+    subprocess.run(["git", "worktree", "prune"], cwd=flaggems_dir, capture_output=True)
 
     # Delete branch if it exists
     subprocess.run(
@@ -208,13 +189,20 @@ def launch_cc(
     stdout_path = os.path.join(log_dir, f"{operator}.jsonl")
     stdout_file = open(stdout_path, "w")
     stderr_file = open(log_path, "w")
-    proc = subprocess.Popen(
-        cmd,
-        cwd=worktree_path,
-        env=env,
-        stdout=stdout_file,
-        stderr=stderr_file,
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=worktree_path,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            start_new_session=True,
+        )
+    except Exception:
+        stdout_file.close()
+        stderr_file.close()
+        raise
     # Attach paths for later reading
     proc._stdout_path = stdout_path
     proc._stderr_path = log_path
@@ -223,6 +211,24 @@ def launch_cc(
 
     logger.info(f"Launched CC for {operator} (PID={proc.pid}, GPU={gpu_id})")
     return proc
+
+
+def _kill_cc_process(proc: subprocess.Popen):
+    """Kill a CC process and its entire process group, then close file handles."""
+    try:
+        pgid = os.getpgid(proc.pid)
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, OSError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Process {proc.pid} did not exit after SIGKILL, abandoning")
+    proc._stdout_file.close()
+    proc._stderr_file.close()
 
 
 def check_worktree_has_changes(worktree_path: str, operator: str) -> bool:
@@ -301,6 +307,127 @@ def parse_cc_result(proc: subprocess.Popen, operator: str, worktree_path: str = 
     }
 
 
+def generate_timeline(jsonl_path: str, operator: str) -> str | None:
+    """Generate a human-readable timeline from a CC stream-json log.
+
+    Writes a .timeline.txt file next to the .jsonl and returns its path.
+    """
+    timeline_path = jsonl_path.replace(".jsonl", ".timeline.txt")
+    try:
+        events = []
+        with open(jsonl_path, "r", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+
+        out: list[str] = []
+        step = 0
+
+        def _format_tool_use(name: str, inp: dict) -> str:
+            if name == "Bash":
+                return inp.get("command", "")
+            elif name in ("Read", "Write"):
+                return inp.get("file_path", "")
+            elif name == "Edit":
+                s = inp.get("file_path", "")
+                old = inp.get("old_string", "")
+                new = inp.get("new_string", "")
+                return f"{s}\n--- old ---\n{old}\n+++ new +++\n{new}"
+            elif name in ("Grep", "Glob"):
+                return f"pattern={inp.get('pattern', '')}  path={inp.get('path', '')}"
+            else:
+                return json.dumps(inp, ensure_ascii=False)
+
+        for event in events:
+            etype = event.get("type", "")
+
+            if etype == "system" and event.get("subtype") == "init":
+                out.append(f"=== {operator} ===")
+                out.append(f"Session: {event.get('session_id', '?')}")
+                out.append(f"Model: {event.get('model', '?')}")
+                out.append("")
+                continue
+
+            if etype == "result":
+                step += 1
+                out.append(f"[{step}] ✅ Result:")
+                out.append(event.get("result", ""))
+                out.append("")
+                continue
+
+            if etype == "user":
+                # Extract tool result output
+                tool_result = event.get("tool_use_result")
+                if isinstance(tool_result, dict):
+                    output = tool_result.get("stdout", "") or tool_result.get("stderr", "")
+                    if output:
+                        out.append(f"    ↳ Output:")
+                        out.append(str(output))
+                        out.append("")
+                        continue
+                # Fallback: check message.content for tool_result entries
+                contents = event.get("message", {}).get("content", [])
+                if isinstance(contents, list):
+                    for c in contents:
+                        if isinstance(c, dict) and c.get("type") == "tool_result":
+                            content_val = c.get("content", "")
+                            if content_val:
+                                out.append(f"    ↳ Output:")
+                                out.append(str(content_val))
+                                out.append("")
+                            break
+                continue
+
+            if etype != "assistant":
+                continue
+
+            contents = event.get("message", {}).get("content", [])
+            if not isinstance(contents, list):
+                continue
+
+            for content in contents:
+                if not isinstance(content, dict):
+                    continue
+                ctype = content.get("type", "")
+
+                if ctype == "thinking":
+                    step += 1
+                    out.append(f"[{step}] 🤔 Thinking:")
+                    out.append(content.get("thinking", ""))
+                    out.append("")
+
+                elif ctype == "text":
+                    text = content.get("text", "")
+                    if text.strip():
+                        step += 1
+                        out.append(f"[{step}] 💬 Text:")
+                        out.append(text)
+                        out.append("")
+
+                elif ctype == "tool_use":
+                    step += 1
+                    name = content.get("name", "?")
+                    inp = content.get("input", {})
+                    out.append(f"[{step}] 🔧 {name}:")
+                    out.append(_format_tool_use(name, inp))
+                    out.append("")
+
+        with open(timeline_path, "w") as f:
+            f.write("\n".join(out))
+
+        logger.info(f"Generated timeline for {operator}: {timeline_path}")
+        return timeline_path
+
+    except Exception as e:
+        logger.warning(f"Failed to generate timeline for {operator}: {e}")
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Summary management
 # ---------------------------------------------------------------------------
@@ -358,8 +485,8 @@ class Summary:
         ops = self.data["operators"]
         self.data["summary"]["total"] = len(ops)
         self.data["summary"]["success"] = sum(1 for v in ops.values() if v["status"] == "success")
-        self.data["summary"]["failed"] = sum(1 for v in ops.values() if v["status"] == "failed")
-        self.data["summary"]["in_progress"] = sum(1 for v in ops.values() if v["status"] == "in_progress")
+        self.data["summary"]["failed"] = sum(1 for v in ops.values() if v["status"] in ("failed", "cancelled"))
+        self.data["summary"]["in_progress"] = sum(1 for v in ops.values() if v["status"] in ("in_progress", "retrying"))
 
     def _save(self):
         """Write summary to disk."""
@@ -384,6 +511,7 @@ def run(args):
     log_dir = os.path.join(results_dir, "logs")
     summary_path = os.path.join(results_dir, "summary.json")
     max_retries = config.get("max_retries", 3)
+    timeout_per_op = config.get("timeout_per_op", 1800) or 0
     poll_interval = config.get("poll_interval", 10)
 
     os.makedirs(log_dir, exist_ok=True)
@@ -418,10 +546,11 @@ def run(args):
     def signal_handler(sig, frame):
         nonlocal shutdown_requested
         if shutdown_requested:
-            logger.warning("Force shutdown requested")
-            sys.exit(1)
+            logger.warning("Force shutdown requested, exiting immediately")
+            os.system("stty sane 2>/dev/null")
+            os._exit(1)
         shutdown_requested = True
-        logger.warning("Shutdown requested, waiting for running tasks to finish...")
+        logger.warning(f"Shutdown requested (signal={sig}), killing {len(running)} running tasks...")
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -463,13 +592,31 @@ def run(args):
         for operator in list(running.keys()):
             proc, gpu_id, attempt, worktree_path, start_time = running[operator]
 
+            # Check for timeout
+            if timeout_per_op and proc.poll() is None and time.time() - start_time > timeout_per_op:
+                logger.error(f"[TIMEOUT] {operator} exceeded {timeout_per_op}s, killing process")
+                _kill_cc_process(proc)
+                duration = time.time() - start_time
+                device_mgr.release(gpu_id)
+                del running[operator]
+                summary.update_operator(
+                    operator,
+                    status="failed",
+                    accuracy_passed=False,
+                    duration_seconds=round(duration),
+                    end_time=datetime.now(timezone.utc).isoformat(),
+                    error_message=f"Timed out after {timeout_per_op}s",
+                )
+                continue
+
             if proc.poll() is not None:
                 duration = time.time() - start_time
                 device_mgr.release(gpu_id)
                 del running[operator]
 
-                # Parse result
+                # Parse result and generate timeline
                 result = parse_cc_result(proc, operator, worktree_path)
+                generate_timeline(proc._stdout_path, operator)
                 success = (
                     result.get("status") == "success"
                     and result.get("accuracy_passed", False)
@@ -520,8 +667,7 @@ def run(args):
     # Handle shutdown: kill running tasks immediately
     if shutdown_requested:
         for operator, (proc, gpu_id, attempt, wt, st) in running.items():
-            proc.kill()
-            proc.wait()
+            _kill_cc_process(proc)
             device_mgr.release(gpu_id)
             summary.update_operator(
                 operator,
@@ -532,6 +678,12 @@ def run(args):
 
     device_mgr.release_all()
     summary.finalize()
+
+    # Restore terminal state (claude CLI may leave it in raw/no-echo mode)
+    try:
+        os.system("stty sane 2>/dev/null")
+    except Exception:
+        pass
 
     # Print final summary
     s = summary.data["summary"]

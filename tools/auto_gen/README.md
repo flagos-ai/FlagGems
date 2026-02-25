@@ -117,5 +117,5 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest tests/test_unary_pointwise_ops.py -m flo
 
 - 运行环境中 **不能** 有 `pip install -e .` 的 flag-gems，否则会覆盖 worktree 的代码
 - 每个 worktree 独立运行，CC 之间不会互相干扰
-- 支持 Ctrl+C 优雅退出，等待当前任务完成后停止
-- 再次 Ctrl+C 强制退出
+- 支持 Ctrl+C 优雅退出，立即终止所有运行中的 CC 进程
+- 再次 Ctrl+C 强制退出主进程
