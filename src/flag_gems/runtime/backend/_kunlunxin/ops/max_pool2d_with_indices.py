@@ -328,10 +328,7 @@ def max_pool2d_backward(
 ):
     logger.debug("GEMS MAX_POOL2D BACKWARD")
     original_dtype = grad_output.dtype
-    # Convert grad_output to float32 to match grad_input dtype,
-    # since C++ xpudnn API uses grad_output's dtype to interpret grad_input's memory
     grad_output = grad_output.to(torch.float32).contiguous()
-    # Convert indices to int32 as the C++ xpudnn API expects int32 indices
     indices = indices.to(torch.int32).contiguous()
 
     params = _parse_pool_params(kernel_size, stride, padding, dilation)

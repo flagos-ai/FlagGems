@@ -97,11 +97,8 @@ def avg_pool2d_forward_kernel(
             sum_acc += tl.where(in_mask, current_val, 0.0)
             count_acc += in_mask.to(tl.int32)
 
-    # Compute divisor: avoid runtime if-else branches that produce different tensor shapes
-    # Use count_acc as base shape reference, then select values via tl.where
     count_divisor = count_acc.to(tl.float32)
 
-    # Compile-time branch for COUNT_INCLUDE_PAD (constexpr, OK to use if-else)
     if COUNT_INCLUDE_PAD:
         default_divisor = tl.where(
             count_divisor >= 0, float(kernel_h * kernel_w), count_divisor
@@ -109,7 +106,6 @@ def avg_pool2d_forward_kernel(
     else:
         default_divisor = count_divisor
 
-    # Runtime selection for divisor_override: use tl.where to avoid shape mismatch
     divisor = tl.where(
         divisor_override != 0, divisor_override + default_divisor * 0, default_divisor
     )
@@ -222,7 +218,6 @@ def avg_pool2d_backward_kernel(
 
             count_divisor = count.to(tl.float32)
 
-            # Compile-time branch for COUNT_INCLUDE_PAD
             if COUNT_INCLUDE_PAD:
                 default_divisor = tl.where(
                     count_divisor >= 0, float(kernel_h * kernel_w), count_divisor
@@ -230,7 +225,6 @@ def avg_pool2d_backward_kernel(
             else:
                 default_divisor = count_divisor
 
-            # Runtime selection for divisor_override
             divisor = tl.where(
                 divisor_override != 0,
                 divisor_override + default_divisor * 0,
