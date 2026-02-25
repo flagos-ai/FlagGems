@@ -42,6 +42,7 @@ from .bitwise_or import (
     bitwise_or_tensor_,
 )
 from .bitwise_right_shift import bitwise_right_shift
+from .bmm import bmm, bmm_out
 from .cat import cat
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
