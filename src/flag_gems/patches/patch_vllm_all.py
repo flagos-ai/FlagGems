@@ -435,9 +435,7 @@ def custom_cp_gather_indexer_k_quant_cache(
     block_table: torch.Tensor,
     cu_seq_lens: torch.Tensor,
 ) -> None:
-    from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
-        cp_gather_indexer_k_quant_cache,
-    )
+    from flag_gems.fused import cp_gather_indexer_k_quant_cache
 
     return cp_gather_indexer_k_quant_cache(
         kv_cache, dst_k, dst_scale, block_table, cu_seq_lens

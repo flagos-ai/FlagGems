@@ -267,9 +267,7 @@ class CpGatherIndexerKQuantCacheTestKit:
     CpGatherIndexerKQuantCacheTestKit.get_test_params(),
 )
 def test_cp_gather_indexer_k_quant_cache(batch_size, max_seq_len, head_dim, block_size):
-    from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
-        cp_gather_indexer_k_quant_cache,
-    )
+    from flag_gems.fused import cp_gather_indexer_k_quant_cache
 
     device = flag_gems.device
 
