@@ -117,10 +117,10 @@ def create_worktree(flaggems_dir: str, operator: str) -> tuple[str, str]:
         capture_output=True,
     )
 
-    # Create worktree
+    # Create worktree based on master
     os.makedirs(os.path.dirname(worktree_path), exist_ok=True)
     result = subprocess.run(
-        ["git", "worktree", "add", "-b", branch_name, worktree_path, "HEAD"],
+        ["git", "worktree", "add", "-b", branch_name, worktree_path, "master"],
         cwd=flaggems_dir,
         capture_output=True,
         text=True,
