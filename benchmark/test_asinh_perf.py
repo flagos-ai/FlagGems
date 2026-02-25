@@ -7,37 +7,37 @@ import flag_gems
 
 
 def benchmark_asinh(shape, dtype, iters=100):
-    # 初始化数据
+    # initialization data
     x = torch.randn(shape, device="cuda", dtype=dtype)
 
-    # Warm up: 必须预热，排除 Triton 首次编译耗时
+    # Warm up: Preheating is necessary to exclude the initial compilation time of Triton.
     for _ in range(10):
         with flag_gems.use_gems():
             _ = torch.asinh(x)
     torch.cuda.synchronize()
 
-    # 测试 PyTorch 原生性能
+    # Testing PyTorch's native performance
     start_ptr = time.time()
     for _ in range(iters):
         _ = torch.asinh(x)
     torch.cuda.synchronize()
     end_ptr = time.time()
-    t_ptr = (end_ptr - start_ptr) / iters * 1000  # 毫秒
+    t_ptr = (end_ptr - start_ptr) / iters * 1000  # millisecond
 
-    # 测试 FlagGems 性能
+    # Testing FlagGems performance
     start_gems = time.time()
     with flag_gems.use_gems():
         for _ in range(iters):
             _ = torch.asinh(x)
     torch.cuda.synchronize()
     end_gems = time.time()
-    t_gems = (end_gems - start_gems) / iters * 1000  # 毫秒
+    t_gems = (end_gems - start_gems) / iters * 1000  # millisecond
 
     return t_ptr, t_gems
 
 
 def run_performance_test():
-    # 严格按照 4.1.4 要求的规模
+    # Strictly adhere to the scale requirements of 4.1.4
     scales = [
         ("Small", (1, 1)),
         ("Small", (8, 8)),
@@ -47,7 +47,7 @@ def run_performance_test():
         ("Large", (4096, 4096)),
     ]
 
-    # 按照 4.1.3 要求的数据类型
+    # Data types as required by 4.1.3
     dtypes = [torch.float16, torch.float32, torch.bfloat16]
 
     results = []
@@ -71,7 +71,7 @@ def run_performance_test():
     headers = ["Scale", "Shape", "Dtype", "PyTorch (ms)", "FlagGems (ms)", "Speedup"]
     print("\n" + tabulate(results, headers=headers, tablefmt="github"))
 
-    # 额外提醒：4.1.4 要求提供测例覆盖清单
+    # Additional reminder: 4.1.4 requires a test case coverage list.
     print(
         "\n✅ Benchmark completed. Please copy the table above into your PR description."
     )
