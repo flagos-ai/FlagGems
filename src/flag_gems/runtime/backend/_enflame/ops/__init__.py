@@ -438,6 +438,7 @@ elif arch_version >= 400:
     from .gcu400.linspace import linspace
     from .gcu400.arange import arange, arange_start
     from .gcu400.slice_scatter import slice_scatter
+    from .gcu400.select_scatter import select_scatter
     __all__ = [
         "mean_dim",
         "zeros",
@@ -610,4 +611,5 @@ elif arch_version >= 400:
         "arange",
         "arange_start",
         "slice_scatter",
+        "select_scatter",
     ]
