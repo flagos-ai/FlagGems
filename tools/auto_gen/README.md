@@ -33,11 +33,12 @@ tools/auto_gen/
 ├── ops_list.txt             # 待生成的算子列表
 ├── templates/
 │   └── generate_op.md       # CC prompt 模板
+├── .env.example             # 环境变量模板
+├── .env                     # 实际环境变量（不提交）
 └── results/
     ├── summary.json          # 运行汇总
     └── logs/
-        ├── <op>.log          # CC 可读输出
-        └── <op>.stdout.json  # CC 原始 JSON 输出
+        └── <op>.jsonl        # CC 实时流式日志（stream-json）
 ```
 
 ## 用法
@@ -98,11 +99,11 @@ poll_interval: 10                        # 进程轮询间隔 (秒)
 ## 结果查看
 
 ```bash
+# 实时查看某个 CC 的工作过程
+tail -f results/logs/floor.jsonl
+
 # 查看汇总
 cat results/summary.json | python -m json.tool
-
-# 查看单个算子日志
-cat results/logs/floor.log
 
 # 查看生成的代码
 ls /path/to/FlagGems/.worktrees/gen-floor/src/flag_gems/ops/floor.py

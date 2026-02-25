@@ -43,7 +43,7 @@ def load_dotenv(env_path: str = None):
                 key, val = key.strip(), val.strip()
                 if val and val[0] in ('"', "'") and val[-1] == val[0]:
                     val = val[1:-1]
-                if key and key not in os.environ:
+                if key:
                     os.environ[key] = val
     logger.debug(f"Loaded .env from {env_path}")
 
@@ -187,19 +187,25 @@ def launch_cc(
     env["IS_SANDBOX"] = "1"
     # Do NOT set CUDA_VISIBLE_DEVICES here; CC will set it per-command via the template
 
+    # Debug: verify API credentials are present
+    _token = env.get("ANTHROPIC_AUTH_TOKEN", "")
+    _base = env.get("ANTHROPIC_BASE_URL", "")
+    logger.debug(f"CC env for {operator}: AUTH_TOKEN={'set(' + _token[:8] + '...)' if _token else 'MISSING'}, BASE_URL={_base or 'MISSING'}")
+
     claude_bin = config.get("claude_bin", "claude")
     cmd = [
         claude_bin,
         "-p", prompt,
         "--dangerously-skip-permissions",
-        "--output-format", "json",
+        "--output-format", "stream-json",
+        "--verbose",
     ]
 
     budget = config.get("budget_per_op")
     if budget:
         cmd.extend(["--max-budget-usd", str(budget)])
 
-    stdout_path = os.path.join(log_dir, f"{operator}.stdout.json")
+    stdout_path = os.path.join(log_dir, f"{operator}.jsonl")
     stdout_file = open(stdout_path, "w")
     stderr_file = open(log_path, "w")
     proc = subprocess.Popen(
@@ -235,41 +241,42 @@ def check_worktree_has_changes(worktree_path: str, operator: str) -> bool:
 
 
 def parse_cc_result(proc: subprocess.Popen, operator: str, worktree_path: str = None) -> dict:
-    """Parse the output from a CC process."""
+    """Parse stream-json output from a CC process.
+
+    The .jsonl file contains one JSON object per line. We look for the last
+    line with "type": "result" to get the final result, then extract the
+    operator JSON from the result text.
+    """
     try:
         # Close file handles first so all data is flushed
         proc._stdout_file.close()
         proc._stderr_file.close()
 
-        # Read stdout from file
+        # Parse stream-json: read lines and find the result event
+        result_text = ""
         with open(proc._stdout_path, "r", errors="replace") as f:
-            stdout_text = f.read()
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") == "result":
+                    result_text = event.get("result", "")
+                    break
 
-        # Save a human-readable log: extract the result text and write to .log
-        log_path = proc._stderr_path  # reuse the .log path for readable output
+        # Extract the operator JSON result block from the result text
+        if result_text:
+            json_match = re.search(r"```json\s*(\{.*?\})\s*```", result_text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(1))
 
-        # Try to parse as JSON (--output-format json)
-        result_text = stdout_text
-        try:
-            cc_output = json.loads(stdout_text)
-            result_text = cc_output.get("result", "")
-        except json.JSONDecodeError:
-            pass
-
-        # Write the human-readable CC output to the .log file
-        with open(log_path, "w") as f:
-            f.write(result_text)
-        logger.debug(f"Saved CC output for {operator} to {log_path}")
-
-        # Extract the JSON result block from the text
-        json_match = re.search(r"```json\s*(\{.*?\})\s*```", result_text, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group(1))
-
-        # Try to find any JSON object in the text
-        json_match = re.search(r"\{[^{}]*\"operator\"[^{}]*\"status\"[^{}]*\}", result_text, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group(0))
+            # Try to find any JSON object with operator/status fields
+            json_match = re.search(r"\{[^{}]*\"operator\"[^{}]*\"status\"[^{}]*\}", result_text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(0))
 
         # Fallback: if CC exited normally and worktree has changes, treat as success
         if proc.returncode == 0 and worktree_path and check_worktree_has_changes(worktree_path, operator):
@@ -510,10 +517,11 @@ def run(args):
         if running:
             time.sleep(poll_interval)
 
-    # Handle shutdown: mark in-progress tasks
+    # Handle shutdown: kill running tasks immediately
     if shutdown_requested:
         for operator, (proc, gpu_id, attempt, wt, st) in running.items():
-            proc.terminate()
+            proc.kill()
+            proc.wait()
             device_mgr.release(gpu_id)
             summary.update_operator(
                 operator,
