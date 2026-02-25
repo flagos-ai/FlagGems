@@ -367,11 +367,11 @@ class TopKPerRowDecodeBenchmark(Benchmark):
     DEFAULT_METRICS = ["latency_base", "latency", "speedup"]
 
     def __init__(self):
-        from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
-
         # vLLM reference function
         # Must import vllm._C first to register torch.ops._C.top_k_per_row_decode
         import vllm._C  # noqa: F401
+
+        from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 
         def vllm_top_k_per_row_decode(
             logits, next_n, seq_lens, indices, num_rows, stride0, stride1, top_k
