@@ -100,7 +100,6 @@ if arch_version == 300:
     from .gcu300.eye_m import eye_m
     from .gcu300.pad import pad
     from .gcu300.log_softmax import log_softmax
-    from .gcu300.count_nonzero import count_nonzero
     from .gcu300.linspace import linspace
     from .gcu300.var_mean import var_mean
     from .gcu300.slice_scatter import slice_scatter
@@ -439,6 +438,11 @@ elif arch_version >= 400:
     from .gcu400.arange import arange, arange_start
     from .gcu400.slice_scatter import slice_scatter
     from .gcu400.select_scatter import select_scatter
+    from .gcu400.zeros_like import zeros_like
+    from .gcu400.ones import ones
+    from .gcu400.ones_like import ones_like
+
+
     __all__ = [
         "mean_dim",
         "zeros",
@@ -612,4 +616,7 @@ elif arch_version >= 400:
         "arange_start",
         "slice_scatter",
         "select_scatter",
+        "ones",
+        "ones_like",
+        "zeros_like",
     ]
