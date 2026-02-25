@@ -239,3 +239,92 @@ class CutlassScaledMMBenchmark(Benchmark):
 def test_cutlass_scaled_mm_benchmark():
     bench = CutlassScaledMMBenchmark()
     bench.run()
+
+
+# ============ top_k_per_row_prefill benchmark ============
+class TopKPerRowPrefillBenchmark(Benchmark):
+    """Benchmark for top_k_per_row_prefill operator.
+
+    Compares FlagGems Triton implementation with vLLM CUDA implementation.
+    Uses histogram-based radix select O(n) algorithm.
+    """
+
+    DEFAULT_METRICS = ["latency_base", "latency", "speedup"]
+
+    def __init__(self):
+        # Must import vllm._C first to register torch.ops._C.top_k_per_row_prefill
+        import vllm._C  # noqa: F401
+
+        from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
+
+        def vllm_top_k_per_row_prefill(
+            logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+        ):
+            torch.ops._C.top_k_per_row_prefill(
+                logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+            )
+
+        super().__init__(
+            "top_k_per_row_prefill",
+            vllm_top_k_per_row_prefill,
+            dtypes=["small_rows", "medium_rows", "large_rows"],
+        )
+        self.set_gems(top_k_per_row_prefill)
+
+    def set_shapes(self, shape_file_path=None):
+        # (num_rows, vocab_size, top_k)
+        self.shapes = {
+            "small_rows": [
+                (32, 20000, 2048),
+                (128, 20000, 2048),
+            ],
+            "medium_rows": [
+                (1024, 20000, 2048),
+                (2048, 20000, 2048),
+            ],
+            "large_rows": [
+                (4096, 20000, 2048),
+                (8192, 20000, 2048),
+            ],
+        }
+
+    def get_input_iter(self, dtype):
+        shapes = self.shapes.get(dtype, [])
+        for num_rows, vocab_size, top_k in shapes:
+            device = flag_gems.device
+
+            # Create logits tensor
+            logits = torch.randn(
+                num_rows, vocab_size, dtype=torch.float32, device=device
+            )
+
+            # Create row_starts and row_ends - each row uses full vocab
+            row_starts = torch.zeros(num_rows, dtype=torch.int32, device=device)
+            row_ends = torch.full(
+                (num_rows,), vocab_size, dtype=torch.int32, device=device
+            )
+
+            # Create output indices tensor
+            indices = torch.empty(num_rows, top_k, dtype=torch.int32, device=device)
+
+            stride0 = logits.stride(0)
+            stride1 = logits.stride(1)
+
+            yield (
+                logits,
+                row_starts,
+                row_ends,
+                indices,
+                num_rows,
+                stride0,
+                stride1,
+                top_k,
+            )
+
+
+@pytest.mark.skipif(not VLLM_AVAILABLE, reason="requires vLLM")
+@pytest.mark.top_k_per_row_prefill
+@pytest.mark.performance
+def test_top_k_per_row_prefill_benchmark():
+    bench = TopKPerRowPrefillBenchmark()
+    bench.run()
