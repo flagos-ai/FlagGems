@@ -24,6 +24,31 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# .env loading
+# ---------------------------------------------------------------------------
+
+def load_dotenv(env_path: str = None):
+    """Load .env file into os.environ (simple key=value parser)."""
+    if env_path is None:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, _, val = line.partition("=")
+                key, val = key.strip(), val.strip()
+                if val and val[0] in ('"', "'") and val[-1] == val[0]:
+                    val = val[1:-1]
+                if key and key not in os.environ:
+                    os.environ[key] = val
+    logger.debug(f"Loaded .env from {env_path}")
+
+
+# ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
 
@@ -158,6 +183,8 @@ def launch_cc(
     env = os.environ.copy()
     # Remove CLAUDECODE env var to allow launching CC from within a CC session
     env.pop("CLAUDECODE", None)
+    # Allow --dangerously-skip-permissions under root
+    env["IS_SANDBOX"] = "1"
     # Do NOT set CUDA_VISIBLE_DEVICES here; CC will set it per-command via the template
 
     claude_bin = config.get("claude_bin", "claude")
@@ -524,6 +551,8 @@ def main():
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+
+    load_dotenv()
 
     run(args)
 
