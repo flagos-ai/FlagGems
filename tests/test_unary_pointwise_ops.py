@@ -777,9 +777,7 @@ def test_accuracy_leaky_relu(shape, dtype, negative_slope):
 
     ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.leaky_relu(
-            res_inp, negative_slope=negative_slope
-        )
+        res_out = torch.nn.functional.leaky_relu(res_inp, negative_slope=negative_slope)
 
     gems_assert_close(res_out, ref_out, dtype)
 
