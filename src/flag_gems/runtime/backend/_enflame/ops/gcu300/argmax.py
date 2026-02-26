@@ -143,7 +143,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 out_shape[dim] = 1
             else:
                 del out_shape[dim]
-            print("inp.numel() == 0")
             return torch.zeros(out_shape, dtype=torch.int32, device=inp.device).to(torch.int64)
         N = shape[dim]
         M = math.prod(shape[:dim])
