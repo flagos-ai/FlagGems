@@ -351,8 +351,8 @@ def test_accuracy_ctc_loss(shape, reduction, use_tensor_lengths, dtype):
     log_probs = log_probs.detach().requires_grad_(True)
 
     targets = torch.randint(1, C, (N, S), dtype=torch.long, device=flag_gems.device)
-    input_lengths_list = [T, max(1, T - 1)]
-    target_lengths_list = [S, max(1, S - 1)]
+    input_lengths_list = [max(1, T - (i % 2)) for i in range(N)]
+    target_lengths_list = [max(1, S - (i % 2)) for i in range(N)]
 
     if use_tensor_lengths:
         input_lengths = torch.tensor(input_lengths_list, dtype=torch.long)
@@ -361,7 +361,7 @@ def test_accuracy_ctc_loss(shape, reduction, use_tensor_lengths, dtype):
         input_lengths = input_lengths_list
         target_lengths = target_lengths_list
 
-    ref_log_probs = to_reference(log_probs).detach().requires_grad_(True)
+    ref_log_probs = to_reference(log_probs, True).detach().requires_grad_(True)
     ref_targets = to_reference(targets)
     if use_tensor_lengths:
         ref_input_lengths = to_reference(input_lengths)
@@ -407,10 +407,10 @@ def test_accuracy_ctc_loss_zero_infinity(shape, dtype):
     log_probs = torch.nn.functional.log_softmax(log_probs, dim=2)
 
     targets = torch.randint(1, C, (N, S), dtype=torch.long, device=flag_gems.device)
-    input_lengths = [T, max(1, T - 1)]
-    target_lengths = [S, max(1, S - 1)]
+    input_lengths = [max(1, T - (i % 2)) for i in range(N)]
+    target_lengths = [max(1, S - (i % 2)) for i in range(N)]
 
-    ref_log_probs = to_reference(log_probs)
+    ref_log_probs = to_reference(log_probs, True)
     ref_targets = to_reference(targets)
 
     ref_out = torch.nn.functional.ctc_loss(

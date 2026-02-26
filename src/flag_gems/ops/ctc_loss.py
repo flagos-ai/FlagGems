@@ -110,12 +110,23 @@ def ctc_loss(
 ):
     logger.debug("GEMS CTC LOSS")
     reduction = _normalize_reduction(reduction)
+    compute_dtype = (
+        torch.float32
+        if log_probs.dtype in (torch.float16, torch.bfloat16)
+        else log_probs.dtype
+    )
+    log_probs_compute = (
+        log_probs.to(compute_dtype) if compute_dtype != log_probs.dtype else log_probs
+    )
     loss, _log_alpha = _ctc_loss_raw(
-        log_probs,
+        log_probs_compute,
         targets,
         input_lengths,
         target_lengths,
         blank,
         zero_infinity,
     )
-    return _apply_reduction(loss, target_lengths, reduction)
+    reduced_loss = _apply_reduction(loss, target_lengths, reduction)
+    if reduced_loss.dtype != log_probs.dtype:
+        reduced_loss = reduced_loss.to(log_probs.dtype)
+    return reduced_loss
