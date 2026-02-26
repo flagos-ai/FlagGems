@@ -847,6 +847,41 @@ def test_upsample_nearest2d(dtype, shape, scale):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+UPSAMPLE_NEAREST2D_BWD_SHAPES = [
+    (1, 1, 4, 4),
+    (2, 3, 32, 32),
+    (1, 4, 128, 128),
+]
+
+UPSAMPLE_NEAREST2D_BWD_SCALES = [(2.0, 2.0), (1.5, 0.75), (0.5, 0.5)]
+
+
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.parametrize("use_scales", [False, True])
+@pytest.mark.parametrize("scale", UPSAMPLE_NEAREST2D_BWD_SCALES)
+@pytest.mark.parametrize("shape", UPSAMPLE_NEAREST2D_BWD_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_nearest2d_backward(dtype, shape, scale, use_scales):
+    output_size = [int(shape[2] * scale[0]), int(shape[3] * scale[1])]
+    grad_output = torch.randn(
+        (shape[0], shape[1], output_size[0], output_size[1]),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_grad = to_reference(grad_output, True)
+
+    scales_h = float(scale[0]) if use_scales else None
+    scales_w = float(scale[1]) if use_scales else None
+    ref_in_grad = torch.ops.aten.upsample_nearest2d_backward(
+        ref_grad, output_size, shape, scales_h, scales_w
+    )
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.upsample_nearest2d_backward(
+            grad_output, output_size, shape, scales_h, scales_w
+        )
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 @pytest.mark.arange
 @pytest.mark.parametrize("start", ARANGE_START)
 @pytest.mark.parametrize("step", [1, 2, 5])
