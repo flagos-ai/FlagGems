@@ -1,5 +1,6 @@
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -28,11 +29,19 @@ def pow_func(x, exponent):
 
 def pow_tensor_tensor(A, exponent):
     logger.debug("GEMS POW_TENSOR_TENSOR")
+    if exponent.dtype == torch.int64:
+        exponent = exponent.to(torch.int32)
+    if A.dtype == torch.int64:
+        A = A.to(torch.int32)
     return pow_func(A, exponent)
 
 
 def pow_tensor_tensor_(A, exponent):
     logger.debug("GEMS POW_TENSOR_TENSOR_")
+    if exponent.dtype == torch.int64:
+        exponent = exponent.to(torch.int32)
+    if A.dtype == torch.int64:
+        A = A.to(torch.int32)
     return pow_func(A, exponent, out0=A)
 
 
