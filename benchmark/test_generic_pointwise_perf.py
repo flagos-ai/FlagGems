@@ -216,3 +216,45 @@ def test_generic_inplace_pointwise_benchmark_triu(op_name, torch_op, input_fn, d
         is_inplace=True,
     )
     bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "tril",
+            torch.tril,
+            unary_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.tril,
+        ),
+    ],
+)
+def test_generic_pointwise_benchmark_tril(op_name, torch_op, input_fn, dtypes):
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+    )
+    bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "tril_",
+            torch.Tensor.tril_,
+            unary_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.tril_,
+        ),
+    ],
+)
+def test_generic_inplace_pointwise_benchmark_tril(op_name, torch_op, input_fn, dtypes):
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        is_inplace=True,
+    )
+    bench.run()
