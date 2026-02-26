@@ -10,7 +10,7 @@ if arch_version == 300:
     from .gcu300.sort import sort, sort_stable
     from .gcu300.cat import cat
     from .gcu300.addmm import addmm
-    from .gcu300.bmm import bmm
+    from .gcu300.bmm import bmm, bmm_out
     from .gcu300.mm import mm
     from .gcu300.mv import mv
     from .gcu300.arange import arange, arange_start
@@ -138,6 +138,7 @@ if arch_version == 300:
         "cat",
         "addmm",
         "bmm",
+        "bmm_out",
         "mm",
         "mv",
         "arange",
@@ -400,7 +401,7 @@ elif arch_version >= 400:
     from .gcu400.copy import copy, copy_
     from .gcu400.contiguous import contiguous
     from .gcu400.index_add import index_add
-    from .gcu400.bmm import bmm
+    from .gcu400.bmm import bmm, bmm_out
     from .gcu400.diag_embed import diag_embed
     from .gcu400.diagonal import diagonal_backward
     from .gcu400.flip import flip
@@ -556,6 +557,7 @@ elif arch_version >= 400:
         "eye_m",
         "index_add",
         "bmm",
+        "bmm_out",
         "diag_embed",
         "diagonal_backward",
         "flip",

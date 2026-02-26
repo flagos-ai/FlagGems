@@ -120,3 +120,39 @@ def bmm(A, B):
             MAX_GRID_DIM=MAX_GRID_DIM
         )
     return out
+
+def bmm_out(A, B, out):
+    logger.debug("GEMS BMM_OUT")
+    assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
+    assert A.shape[2] == B.shape[1], "K dim mismatch"
+    Batch, M, K = A.shape
+    _, _, N = B.shape
+
+    A = A.contiguous()
+    B = B.contiguous()
+    MAX_GRID_DIM = 24
+    grid = lambda META: (
+        min(triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
+            Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"])),
+    )
+    with torch_device_fn.device(A.device):
+        bmm_kernel[grid](
+            A,
+            B,
+            out,
+            Batch,
+            M,
+            N,
+            K,
+            A.stride(0),
+            A.stride(1),
+            A.stride(2),
+            B.stride(0),
+            B.stride(1),
+            B.stride(2),
+            out.stride(0),
+            out.stride(1),
+            out.stride(2),
+            MAX_GRID_DIM=MAX_GRID_DIM
+        )
+    return out
