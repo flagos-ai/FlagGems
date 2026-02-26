@@ -137,10 +137,17 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         shape = inp.shape
         dim = dim % inp.ndim
+        if inp.numel() == 0:
+            out_shape = list(shape)
+            if keepdim:
+                out_shape[dim] = 1
+            else:
+                del out_shape[dim]
+            print("inp.numel() == 0")
+            return torch.zeros(out_shape, dtype=torch.int32, device=inp.device).to(torch.int64)
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
-
         inp = inp.contiguous()
 
         shape_list = list(shape)
