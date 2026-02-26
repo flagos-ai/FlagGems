@@ -227,6 +227,8 @@ _FULL_CONFIG = (
     ("max.dim", max_dim),
     ("maximum", maximum),
     ("max_pool2d_with_indices", max_pool2d_with_indices),
+    ("max_pool3d", max_pool3d),
+    ("max_pool3d_with_indices", max_pool3d_with_indices),
     ("max_pool2d_backward", max_pool2d_backward),
     ("mean", mean),
     ("mean.dim", mean_dim),
