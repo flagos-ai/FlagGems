@@ -260,6 +260,18 @@ CUDA_VISIBLE_DEVICES={{GPU_ID}} {{PYTHON_PATH}} -c "import sys; sys.path.insert(
 3. 修复 `src/flag_gems/ops/{{OPERATOR}}.py` 或测试代码
 4. 重新运行测试，直到所有测试通过
 
+### Step 6.5: 提交代码
+
+**当 accuracy 测试全部通过后**，立即将所有改动提交到当前 worktree 的分支：
+
+```bash
+cd {{WORK_DIR}}
+git add -A
+git commit --author="taooo <gumptao2997@gmail.com>" -m "Add {{OPERATOR}} operator implementation, tests and benchmark"
+```
+
+**必须在运行 benchmark 之前提交**，确保代码变更不会丢失。
+
 ### Step 7: 编写 benchmark 并运行
 
 **在 FlagGems 标准 benchmark 文件中添加 benchmark 条目**。
@@ -301,7 +313,7 @@ SUCCESS    ...
 
 ### Step 8: 输出结果
 
-在所有步骤完成后，输出以下 JSON 格式的最终结果（用 ```json 代码块包裹）：
+**【必须】** 在所有步骤完成后，你**必须**输出以下 JSON 格式的最终结果。用 ````json` 和 ```` ` 代码块包裹，这是解析你输出的唯一方式，不输出 JSON 将导致结果丢失：
 
 ```json
 {
