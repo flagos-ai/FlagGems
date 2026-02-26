@@ -301,6 +301,13 @@ MoeAlignBlockSizeBenchmark:
     - [8, 64]
     - [128, 4]
 
+PerTokenGroupQuantFp8Benchmark:
+  shapes:
+    - [7, 512, 512]
+    - [7, 4096, 256]
+    - [83, 512, 64]
+    - [2048, 4096, 256]
+    - [2048, 13824, 512]
 ReshapeAndCacheBenchmark:
   shapes:
     - [21, 4, 64, 8, 512]
