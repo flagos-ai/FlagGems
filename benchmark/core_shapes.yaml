@@ -301,6 +301,13 @@ MoeAlignBlockSizeBenchmark:
     - [8, 64]
     - [128, 4]
 
+ConcatAndCacheMLABenchmark:
+  shapes:
+    - [16, 8, 84, 32, 4]
+    - [32, 4, 21, 16, 16]
+    - [64, 8, 21, 8, 4]
+    - [512, 64, 42, 16, 8]
+    - [1024, 64, 84, 16, 8]
 PerTokenGroupQuantFp8Benchmark:
   shapes:
     - [7, 512, 512]
