@@ -434,3 +434,161 @@ def test_accuracy_depthwise2d(
         inp, weight, kernel, bias=None, stride=stride, padding=padding, dilation=1
     )
     gems_assert_close(res_out, ref_out, dtype)
+
+
+# Test shapes for convolution_backward
+SHAPE_CONV_BACKWARD = [
+    ((2, 3, 8, 8), (4, 3, 3, 3)),  # batch=2, in_ch=3, out_ch=4, 3x3 kernel
+    ((1, 2, 5, 5), (1, 2, 3, 3)),  # batch=1, in_ch=2, out_ch=1, 3x3 kernel
+    ((4, 8, 16, 16), (16, 8, 3, 3)),  # larger batch and channels
+]
+
+
+@pytest.mark.convolution_backward
+@pytest.mark.parametrize("input_shape, weight_shape", SHAPE_CONV_BACKWARD)
+@pytest.mark.parametrize("stride", [1, 2])
+@pytest.mark.parametrize("padding", [0, 1])
+@pytest.mark.parametrize("dilation", [1])
+@pytest.mark.parametrize("groups", [1])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("bias", [True, False])
+def test_accuracy_convolution_backward(
+    input_shape, weight_shape, stride, padding, dilation, groups, dtype, bias
+):
+    """Test convolution_backward accuracy against PyTorch reference implementation."""
+    torch.backends.cudnn.allow_tf32 = False
+
+    # Create input and weight tensors
+    input = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+
+    # Forward pass to determine output shape
+    output = torch.nn.functional.conv2d(
+        input, weight, bias=None, stride=stride, padding=padding, dilation=dilation
+    )
+
+    # Create grad_output
+    grad_output = torch.randn_like(output)
+
+    # Determine bias_sizes
+    bias_sizes = [weight_shape[0]] if bias else None
+
+    # Reference implementation
+    ref_input = to_reference(input)
+    ref_weight = to_reference(weight)
+    ref_grad_output = to_reference(grad_output)
+
+    ref_grad_input, ref_grad_weight, ref_grad_bias = (
+        torch.ops.aten.convolution_backward.default(
+            ref_grad_output,
+            ref_input,
+            ref_weight,
+            bias_sizes=bias_sizes,
+            stride=[stride, stride],
+            padding=[padding, padding],
+            dilation=[dilation, dilation],
+            transposed=False,
+            output_padding=[0, 0],
+            groups=groups,
+            output_mask=[True, True, bias],
+        )
+    )
+
+    # FlagGems implementation
+    with flag_gems.use_gems():
+        res_grad_input, res_grad_weight, res_grad_bias = (
+            torch.ops.aten.convolution_backward(
+                grad_output,
+                input,
+                weight,
+                bias_sizes=bias_sizes,
+                stride=[stride, stride],
+                padding=[padding, padding],
+                dilation=[dilation, dilation],
+                transposed=False,
+                output_padding=[0, 0],
+                groups=groups,
+                output_mask=[True, True, bias],
+            )
+        )
+
+    # Check grad_input
+    gems_assert_close(res_grad_input, ref_grad_input, dtype, reduce_dim=weight_shape[2])
+
+    # Check grad_weight
+    gems_assert_close(
+        res_grad_weight, ref_grad_weight, dtype, reduce_dim=weight_shape[0]
+    )
+
+    # Check grad_bias if applicable
+    if bias:
+        gems_assert_close(res_grad_bias, ref_grad_bias, dtype)
+
+
+@pytest.mark.convolution_backward
+@pytest.mark.parametrize(
+    "input_shape, weight_shape, groups",
+    [
+        ((4, 8, 8, 8), (8, 4, 3, 3), 2),  # groups=2
+    ],
+)
+@pytest.mark.parametrize("stride", [1])
+@pytest.mark.parametrize("padding", [1])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_convolution_backward_groups(
+    input_shape, weight_shape, groups, stride, padding, dtype
+):
+    """Test convolution_backward with group convolution."""
+    torch.backends.cudnn.allow_tf32 = False
+
+    input = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+
+    # Forward pass to determine output shape
+    output = torch.nn.functional.conv2d(
+        input, weight, bias=None, stride=stride, padding=padding, groups=groups
+    )
+
+    grad_output = torch.randn_like(output)
+
+    ref_input = to_reference(input)
+    ref_weight = to_reference(weight)
+    ref_grad_output = to_reference(grad_output)
+
+    ref_grad_input, ref_grad_weight, ref_grad_bias = (
+        torch.ops.aten.convolution_backward.default(
+            ref_grad_output,
+            ref_input,
+            ref_weight,
+            bias_sizes=None,
+            stride=[stride, stride],
+            padding=[padding, padding],
+            dilation=[1, 1],
+            transposed=False,
+            output_padding=[0, 0],
+            groups=groups,
+            output_mask=[True, True, False],
+        )
+    )
+
+    with flag_gems.use_gems():
+        res_grad_input, res_grad_weight, res_grad_bias = (
+            torch.ops.aten.convolution_backward(
+                grad_output,
+                input,
+                weight,
+                bias_sizes=None,
+                stride=[stride, stride],
+                padding=[padding, padding],
+                dilation=[1, 1],
+                transposed=False,
+                output_padding=[0, 0],
+                groups=groups,
+                output_mask=[True, True, False],
+            )
+        )
+
+    gems_assert_close(res_grad_input, ref_grad_input, dtype, reduce_dim=weight_shape[2])
+    gems_assert_close(
+        res_grad_weight, ref_grad_weight, dtype, reduce_dim=weight_shape[0]
+    )

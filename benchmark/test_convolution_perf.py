@@ -168,3 +168,92 @@ def test_perf_conv3d():
     )
     bench.set_gems(flag_gems.conv3d)
     bench.run()
+
+
+class ConvolutionBackwardBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        return [
+            # (batch, in_c, h, w, out_c, kh, kw, stride, padding, groups)
+            (2, 64, 56, 56, 64, 3, 3, 1, 1, 1),
+            (4, 128, 28, 28, 128, 3, 3, 1, 1, 1),
+            (8, 256, 14, 14, 256, 3, 3, 1, 1, 1),
+            (16, 512, 7, 7, 512, 3, 3, 1, 1, 1),
+        ]
+
+
+@pytest.mark.convolution_backward
+def test_perf_convolution_backward():
+    def convolution_backward_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_h,
+            input_w,
+            out_c,
+            kernel_h,
+            kernel_w,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_h, input_w)
+        weight_shape = (out_c, input_c // groups, kernel_h, kernel_w)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        # Forward pass to get output shape
+        output = torch.nn.functional.conv2d(
+            input, weight, bias=None, stride=stride, padding=padding, groups=groups
+        )
+        grad_output = torch.randn_like(output)
+
+        yield {
+            "grad_output": grad_output,
+            "input": input,
+            "weight": weight,
+            "bias_sizes": None,
+            "stride": [stride, stride],
+            "padding": [padding, padding],
+            "dilation": [1, 1],
+            "transposed": False,
+            "output_padding": [0, 0],
+            "groups": groups,
+            "output_mask": [True, True, False],
+        },
+
+    def torch_convolution_backward(
+        grad_output,
+        input,
+        weight,
+        bias_sizes,
+        stride,
+        padding,
+        dilation,
+        transposed,
+        output_padding,
+        groups,
+        output_mask,
+    ):
+        return torch.ops.aten.convolution_backward.default(
+            grad_output,
+            input,
+            weight,
+            bias_sizes,
+            stride,
+            padding,
+            dilation,
+            transposed,
+            output_padding,
+            groups,
+            output_mask,
+        )
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = ConvolutionBackwardBenchmark(
+        input_fn=convolution_backward_input_fn,
+        op_name="convolution_backward",
+        torch_op=torch_convolution_backward,
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.set_gems(flag_gems.convolution_backward)
+    bench.run()
