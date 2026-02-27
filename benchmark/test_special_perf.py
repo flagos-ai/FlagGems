@@ -821,3 +821,18 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+@pytest.mark.histc
+def test_perf_histc():
+    def histc_input_fn(shape, dtype, device):
+        inp = torch.rand(shape, dtype=dtype, device=device) * 10
+        yield inp, {"bins": 100, "min": 0, "max": 10},
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=histc_input_fn,
+        op_name="histc",
+        torch_op=torch.histc,
+        dtypes=[torch.float32],  # PyTorch histc only supports float32/float64
+    )
+    bench.run()

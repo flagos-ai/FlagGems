@@ -1890,3 +1890,43 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+HISTC_SHAPES = [(64,), (1024,), (4096,), (100, 100), (32, 64, 16)]
+HISTC_BINS = [10, 50, 100]
+# PyTorch's histc only supports float32 and float64
+HISTC_DTYPES = [torch.float32]
+
+
+@pytest.mark.histc
+@pytest.mark.parametrize("shape", HISTC_SHAPES)
+@pytest.mark.parametrize("bins", HISTC_BINS)
+@pytest.mark.parametrize("dtype", HISTC_DTYPES)
+def test_accuracy_histc(shape, bins, dtype):
+    # Generate input data in range [0, 10]
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10
+    ref_inp = to_reference(inp)
+
+    # Test with auto min/max (min=0, max=0)
+    ref_out = torch.histc(ref_inp, bins=bins, min=0, max=0)
+    with flag_gems.use_gems():
+        res_out = torch.histc(inp, bins=bins, min=0, max=0)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.histc
+@pytest.mark.parametrize("shape", HISTC_SHAPES)
+@pytest.mark.parametrize("bins", HISTC_BINS)
+@pytest.mark.parametrize("dtype", HISTC_DTYPES)
+def test_accuracy_histc_with_range(shape, bins, dtype):
+    # Generate input data in range [-5, 15] but histogram only [0, 10]
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 20 - 5
+    ref_inp = to_reference(inp)
+
+    # Test with explicit min/max
+    ref_out = torch.histc(ref_inp, bins=bins, min=0, max=10)
+    with flag_gems.use_gems():
+        res_out = torch.histc(inp, bins=bins, min=0, max=10)
+
+    gems_assert_close(res_out, ref_out, dtype)
