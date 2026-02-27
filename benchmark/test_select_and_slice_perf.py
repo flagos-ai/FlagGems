@@ -78,6 +78,62 @@ def index_select_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+def index_select_backward_input_fn(shape, cur_dtype, device):
+    # Create input tensor to determine shapes
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    threshold = 0.1
+    dim = 0
+    index_size = inp.size(dim)
+    from math import floor
+
+    index_len = max(1, floor(index_size * threshold))
+    index = torch.randint(0, index_size, [index_len], device=device)
+
+    # Create gradient tensor with output shape of index_select
+    grad_shape = list(shape)
+    grad_shape[dim] = index_len
+    grad = torch.randn(grad_shape, dtype=cur_dtype, device=device)
+
+    yield grad, list(shape), dim, index
+
+
+def index_select_backward_gbps(bench_fn_args, latency):
+    grad = bench_fn_args[0]
+    self_sizes = bench_fn_args[1]
+    # IO: read grad + write output (of size self_sizes)
+    grad_bytes = shape_utils.size_in_bytes(grad)
+    output_bytes = grad.element_size()
+    for s in self_sizes:
+        output_bytes *= s
+    io_amount = grad_bytes + output_bytes
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
+@pytest.mark.index_select_backward
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, gbps_fn, dtypes",
+    [
+        pytest.param(
+            "index_select_backward",
+            torch.ops.aten.index_select_backward,
+            index_select_backward_input_fn,
+            index_select_backward_gbps,
+            FLOAT_DTYPES,
+            marks=pytest.mark.index_select_backward,
+        ),
+    ],
+)
+def test_perf_index_select_backward(op_name, torch_op, input_fn, gbps_fn, dtypes):
+    bench = TensorSelectBenchmark(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        get_gbps=gbps_fn,
+    )
+    bench.run()
+
+
 @pytest.mark.index_select
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",

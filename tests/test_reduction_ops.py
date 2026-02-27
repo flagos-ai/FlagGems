@@ -1250,6 +1250,72 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.index_select_backward
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_select_backward(shape, dim, dtype):
+    from math import floor
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    dim = dim % len(shape)
+    index_size = inp.size(dim)
+
+    index = torch.randint(
+        0, index_size, [floor(index_size * 0.8)], device=flag_gems.device
+    )
+
+    # Perform forward pass to get the output shape
+    out = torch.index_select(inp, dim, index)
+    grad = torch.randn_like(out)
+
+    ref_grad = to_reference(grad, upcast=True)
+    ref_out = torch.ops.aten.index_select_backward(
+        ref_grad, list(inp.shape), dim, to_reference(index)
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.index_select_backward(
+            grad, list(inp.shape), dim, index
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.index_select_backward
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_select_backward_with_duplicates(shape, dim, dtype):
+    """Test index_select_backward with duplicate indices to verify gradient accumulation."""
+    from math import floor
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    dim = dim % len(shape)
+    index_size = inp.size(dim)
+
+    # Create index with intentional duplicates
+    num_indices = max(2, floor(index_size * 0.8))
+    index = torch.randint(
+        0, max(1, index_size // 2), [num_indices], device=flag_gems.device
+    )
+
+    # Create gradient tensor matching the output shape of index_select
+    out_shape = list(shape)
+    out_shape[dim] = num_indices
+    grad = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_grad = to_reference(grad, upcast=True)
+    ref_out = torch.ops.aten.index_select_backward(
+        ref_grad, list(inp.shape), dim, to_reference(index)
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.index_select_backward(
+            grad, list(inp.shape), dim, index
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
