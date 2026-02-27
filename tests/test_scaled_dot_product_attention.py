@@ -345,3 +345,169 @@ def test_scaled_dot_product_attention_nonsquare_qk(
         gems_result = torch_sdpa(q, k, v, scale, is_causal)
 
     utils.gems_assert_close(gems_result, torch_result, dtype)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.parametrize(
+    "batch, num_head, seq_len, head_size",
+    [
+        (2, 4, 8, 16),
+        (2, 4, 32, 32),
+        (4, 8, 64, 64),
+        (2, 4, 128, 128),
+        (1, 2, 256, 64),
+    ],
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_accuracy_scaled_dot_product_attention_math(
+    batch,
+    num_head,
+    seq_len,
+    head_size,
+    is_causal,
+    dtype,
+):
+    utils.init_seed(1234567890)
+
+    q = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+    k = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+    v = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+
+    ref_q = utils.to_reference(q)
+    ref_k = utils.to_reference(k)
+    ref_v = utils.to_reference(v)
+
+    ref_out, ref_weights = torch._scaled_dot_product_attention_math(
+        ref_q, ref_k, ref_v, is_causal=is_causal
+    )
+
+    with flag_gems.use_gems():
+        res_out, res_weights = torch._scaled_dot_product_attention_math(
+            q, k, v, is_causal=is_causal
+        )
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.parametrize(
+    "batch, num_head, q_seq_len, kv_seq_len, head_size",
+    [
+        (2, 4, 32, 64, 32),
+        (4, 8, 64, 128, 64),
+        (2, 4, 128, 64, 64),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_attention_math_diff_seq(
+    batch,
+    num_head,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    dtype,
+):
+    utils.init_seed(1234567890)
+
+    q = torch.randn(batch, num_head, q_seq_len, head_size, dtype=dtype, device=device)
+    k = torch.randn(batch, num_head, kv_seq_len, head_size, dtype=dtype, device=device)
+    v = torch.randn(batch, num_head, kv_seq_len, head_size, dtype=dtype, device=device)
+
+    ref_q = utils.to_reference(q)
+    ref_k = utils.to_reference(k)
+    ref_v = utils.to_reference(v)
+
+    ref_out, ref_weights = torch._scaled_dot_product_attention_math(
+        ref_q, ref_k, ref_v, is_causal=False
+    )
+
+    with flag_gems.use_gems():
+        res_out, res_weights = torch._scaled_dot_product_attention_math(
+            q, k, v, is_causal=False
+        )
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.parametrize(
+    "batch, num_head, seq_len, head_size",
+    [
+        (2, 4, 32, 32),
+        (4, 8, 64, 64),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_attention_math_with_mask(
+    batch,
+    num_head,
+    seq_len,
+    head_size,
+    dtype,
+):
+    utils.init_seed(1234567890)
+
+    q = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+    k = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+    v = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+    attn_mask = torch.randn(seq_len, seq_len, dtype=dtype, device=device)
+
+    ref_q = utils.to_reference(q)
+    ref_k = utils.to_reference(k)
+    ref_v = utils.to_reference(v)
+    ref_mask = utils.to_reference(attn_mask)
+
+    ref_out, ref_weights = torch._scaled_dot_product_attention_math(
+        ref_q, ref_k, ref_v, attn_mask=ref_mask
+    )
+
+    with flag_gems.use_gems():
+        res_out, res_weights = torch._scaled_dot_product_attention_math(
+            q, k, v, attn_mask=attn_mask
+        )
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.parametrize(
+    "batch, num_head, seq_len, head_size",
+    [
+        (2, 4, 32, 32),
+    ],
+)
+@pytest.mark.parametrize("scale", [0.5, 1.0, 2.0])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_scaled_dot_product_attention_math_with_scale(
+    batch,
+    num_head,
+    seq_len,
+    head_size,
+    scale,
+    dtype,
+):
+    utils.init_seed(1234567890)
+
+    q = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+    k = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+    v = torch.randn(batch, num_head, seq_len, head_size, dtype=dtype, device=device)
+
+    ref_q = utils.to_reference(q)
+    ref_k = utils.to_reference(k)
+    ref_v = utils.to_reference(v)
+
+    ref_out, ref_weights = torch._scaled_dot_product_attention_math(
+        ref_q, ref_k, ref_v, scale=scale
+    )
+
+    with flag_gems.use_gems():
+        res_out, res_weights = torch._scaled_dot_product_attention_math(
+            q, k, v, scale=scale
+        )
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)

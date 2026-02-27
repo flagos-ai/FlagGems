@@ -2233,6 +2233,18 @@ ops:
       - Tensor
     stages:
       - stable: '5.0'
+  - id: _scaled_dot_product_attention_math
+    description: |
+      Computes scaled dot-product attention using the math-based implementation.
+    for:
+      - _scaled_dot_product_attention_math
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: flash_attention_forward
     for:
       - _flash_attention_forward
