@@ -102,6 +102,7 @@ _FULL_CONFIG = (
     ("arcsinh_", arcsinh_),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("argsort", argsort),
     ("asinh", asinh),
     ("asinh.out", asinh_out),
     ("asinh_", asinh_),
