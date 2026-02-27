@@ -847,6 +847,64 @@ def test_upsample_nearest2d(dtype, shape, scale):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.upsample_linear1d
+@pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("align_corners", [False, True])
+def test_upsample_linear1d(dtype, shape, scale, align_corners):
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_i = to_reference(input).to(torch.float32)
+    output_size = [int(input.shape[2] * scale)]
+    ref_out = torch.nn.functional.interpolate(
+        ref_i, size=output_size, mode="linear", align_corners=align_corners
+    ).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.upsample_linear1d.default(
+            input, output_size, align_corners, None
+        )
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.upsample_linear1d_backward
+@pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("align_corners", [False, True])
+def test_upsample_linear1d_backward(dtype, shape, scale, align_corners):
+    # Create input tensors - use same dtype for both to compare against native PyTorch
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_input = input.detach().clone().requires_grad_(True)
+    output_size = [int(input.shape[2] * scale)]
+
+    # Reference forward and backward using native PyTorch (same dtype)
+    ref_out = torch.nn.functional.interpolate(
+        ref_input, size=output_size, mode="linear", align_corners=align_corners
+    )
+    grad_output = torch.randn_like(ref_out)
+    ref_out.backward(grad_output)
+    ref_grad_input = ref_input.grad.clone()
+
+    # Gems forward and backward
+    input.grad = None  # Reset grad
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.upsample_linear1d.default(
+            input, output_size, align_corners, None
+        )
+        res_out.backward(grad_output)
+    res_grad_input = input.grad
+
+    # Backward involves atomic accumulation which can have different rounding for fp16/bf16
+    # Use larger tolerance for half-precision types
+    if dtype == torch.bfloat16:
+        reduce_dim = 250  # bfloat16 has lower precision
+    elif dtype == torch.float16:
+        reduce_dim = 30
+    else:
+        reduce_dim = 1
+    gems_assert_close(res_grad_input, ref_grad_input, dtype, reduce_dim=reduce_dim)
+
+
 @pytest.mark.arange
 @pytest.mark.parametrize("start", ARANGE_START)
 @pytest.mark.parametrize("step", [1, 2, 5])

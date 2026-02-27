@@ -496,6 +496,25 @@ def test_perf_upsample_nearest1d():
     bench.run()
 
 
+@pytest.mark.upsample_linear1d
+def test_perf_upsample_linear1d():
+    def upsample_linear1d_input_fn(shape, dtype, device):
+        batch, channel, height, width = shape
+        length = height * width  # flatten spatial dims to 1D length
+        input = torch.randn((batch, channel, length), device=device, dtype=dtype)
+        scale_factors = 2
+        output_size = [int(length * scale_factors)]
+        yield input, output_size, False, None
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_linear1d_input_fn,
+        op_name="upsample_linear1d",
+        torch_op=torch.ops.aten.upsample_linear1d.default,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
     def upsample_nearest2d_input_fn(shape, dtype, device):
