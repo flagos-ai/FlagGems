@@ -137,6 +137,7 @@ from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.mish_backward import mish_backward
 from flag_gems.ops.mm import mm, mm_out
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mul import mul, mul_
@@ -418,6 +419,7 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "mish_backward",
     "mm",
     "mm_out",
     "mse_loss",

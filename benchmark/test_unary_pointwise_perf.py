@@ -246,6 +246,24 @@ def test_elu_backward_perf():
     bench.run()
 
 
+class MishBackwardBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype: torch.dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            grad_out = torch.randn_like(inp)
+            yield grad_out, inp
+
+
+@pytest.mark.mish_backward
+def test_mish_backward_perf():
+    bench = MishBackwardBenchmark(
+        op_name="mish_backward",
+        torch_op=torch.ops.aten.mish_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 class GluBenchmark(UnaryPointwiseBenchmark):
     # Glu test requires even numbers
     def set_more_shapes(self):
