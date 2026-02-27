@@ -196,6 +196,7 @@ _FULL_CONFIG = (
     ("isin.Tensor_Tensor", isin),
     ("isinf", isinf),
     ("isnan", isnan),
+    ("isneginf", isneginf),
     ("kron", kron),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
