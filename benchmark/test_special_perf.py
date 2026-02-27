@@ -821,3 +821,58 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+# ============== FFT C2R Benchmark ==============
+class FFTC2RBenchmark(Benchmark):
+    """Benchmark for _fft_c2r (complex-to-real FFT)."""
+
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+
+    def set_shapes(self, shape_file_path=None):
+        # Shapes represent the output real size of the FFT transform
+        # Shapes: (batch_size, fft_size)
+        fft_c2r_shapes = [
+            (1, 16),
+            (1, 32),
+            (1, 64),
+            (1, 128),
+            (1, 256),
+            (4, 16),
+            (4, 32),
+            (4, 64),
+            (4, 128),
+            (16, 64),
+            (16, 128),
+            (16, 256),
+            (64, 64),
+            (64, 128),
+            (128, 128),
+        ]
+        self.shapes = fft_c2r_shapes
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield from self._fft_c2r_input_fn(shape, cur_dtype, self.device)
+
+    def _fft_c2r_input_fn(self, shape, dtype, device):
+        batch_size, fft_size = shape
+        # Create real input, compute rfft to get complex input
+        real_inp = torch.randn(batch_size, fft_size, dtype=torch.float32, device=device)
+        complex_inp = torch.fft.rfft(real_inp, dim=-1)
+        # Parameters for _fft_c2r
+        dim = [1]
+        normalization = 2  # backward norm
+        last_dim_size = fft_size
+        yield complex_inp, dim, normalization, last_dim_size
+
+
+@pytest.mark.fft_c2r
+def test_perf_fft_c2r():
+    bench = FFTC2RBenchmark(
+        op_name="_fft_c2r",
+        torch_op=torch._fft_c2r,
+        dtypes=[torch.float32],
+    )
+    bench.run()

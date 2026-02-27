@@ -1890,3 +1890,118 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# ============== FFT C2R Tests ==============
+FFT_SHAPES = [(8,), (16,), (32,), (64,), (128,)] if not QUICK_MODE else [(16,)]
+FFT_BATCH_SHAPES = (
+    [(4, 8), (2, 3, 16), (2, 4, 32)]
+    if not QUICK_MODE
+    else [(4, 16)]
+)
+FFT_NORMALIZATIONS = [0, 1, 2]  # 0: none, 1: ortho, 2: backward
+
+
+def fft_assert_close(res, ref, dtype):
+    """Custom assertion for FFT with relaxed tolerance for larger transforms."""
+    res = res.to(dtype)
+    ref = ref.to(dtype)
+    # FFT accumulates numerical errors, use relaxed tolerance
+    # For larger transforms, error grows as O(N * log(N))
+    torch.testing.assert_close(res, ref, atol=5e-3, rtol=5e-4)
+
+
+@pytest.mark.fft_c2r
+@pytest.mark.parametrize("shape", FFT_SHAPES)
+@pytest.mark.parametrize("normalization", FFT_NORMALIZATIONS)
+def test_accuracy__fft_c2r_1d(shape, normalization):
+    """Test _fft_c2r for 1D inputs."""
+    inp = torch.randn(shape, dtype=torch.float32, device=device)
+    # Compute rfft to get complex input
+    inp_fft = torch.fft.rfft(inp).to(torch.complex64)
+    inp_fft = inp_fft.unsqueeze(0)  # Add batch dim for _fft_c2r
+
+    ref_inp = to_reference(inp_fft)
+    ref_out = torch._fft_c2r(ref_inp, dim=[1], normalization=normalization, last_dim_size=shape[0])
+
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2r(inp_fft, dim=[1], normalization=normalization, last_dim_size=shape[0])
+
+    fft_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.fft_c2r
+@pytest.mark.parametrize("shape", FFT_BATCH_SHAPES)
+@pytest.mark.parametrize("normalization", FFT_NORMALIZATIONS)
+def test_accuracy__fft_c2r_batch(shape, normalization):
+    """Test _fft_c2r for batched inputs with transform on last dimension."""
+    inp = torch.randn(shape, dtype=torch.float32, device=device)
+    last_dim_size = shape[-1]
+    transform_dim = len(shape) - 1
+
+    # Compute rfft to get complex input
+    inp_fft = torch.fft.rfft(inp, dim=-1).to(torch.complex64)
+
+    ref_inp = to_reference(inp_fft)
+    ref_out = torch._fft_c2r(ref_inp, dim=[transform_dim], normalization=normalization, last_dim_size=last_dim_size)
+
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2r(inp_fft, dim=[transform_dim], normalization=normalization, last_dim_size=last_dim_size)
+
+    fft_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.fft_c2r
+def test_accuracy__fft_c2r_non_last_dim():
+    """Test _fft_c2r for transform on non-last dimension."""
+    shape = (16, 4)
+    inp = torch.randn(shape, dtype=torch.float32, device=device)
+    last_dim_size = shape[0]
+
+    # Compute rfft on dim=0
+    inp_fft = torch.fft.rfft(inp, dim=0).to(torch.complex64)
+
+    ref_inp = to_reference(inp_fft)
+    ref_out = torch._fft_c2r(ref_inp, dim=[0], normalization=2, last_dim_size=last_dim_size)
+
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2r(inp_fft, dim=[0], normalization=2, last_dim_size=last_dim_size)
+
+    fft_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.fft_c2r
+def test_accuracy__fft_c2r_middle_dim():
+    """Test _fft_c2r for transform on middle dimension."""
+    shape = (2, 16, 4)
+    inp = torch.randn(shape, dtype=torch.float32, device=device)
+    last_dim_size = shape[1]
+
+    # Compute rfft on dim=1
+    inp_fft = torch.fft.rfft(inp, dim=1).to(torch.complex64)
+
+    ref_inp = to_reference(inp_fft)
+    ref_out = torch._fft_c2r(ref_inp, dim=[1], normalization=2, last_dim_size=last_dim_size)
+
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2r(inp_fft, dim=[1], normalization=2, last_dim_size=last_dim_size)
+
+    fft_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.fft_c2r
+def test_accuracy__fft_c2r_odd_size():
+    """Test _fft_c2r for odd-sized transform dimension."""
+    shape = (4, 15)  # 15 is odd
+    inp = torch.randn(shape, dtype=torch.float32, device=device)
+    last_dim_size = shape[-1]
+
+    inp_fft = torch.fft.rfft(inp, dim=-1).to(torch.complex64)
+
+    ref_inp = to_reference(inp_fft)
+    ref_out = torch._fft_c2r(ref_inp, dim=[1], normalization=2, last_dim_size=last_dim_size)
+
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2r(inp_fft, dim=[1], normalization=2, last_dim_size=last_dim_size)
+
+    fft_assert_close(res_out, ref_out, torch.float32)
