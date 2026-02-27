@@ -422,6 +422,34 @@ def test_perf_max_pool2d_backward():
     bench.run()
 
 
+@pytest.mark.max_pool2d_with_indices_backward
+def test_perf_max_pool2d_with_indices_backward():
+    def max_pool2d_with_indices_backward_input_fn(shape, dtype, device):
+        for forward_args in max_pool2d_input_fn(shape, dtype, device):
+            inp, params = forward_args
+            output, indices = torch.ops.aten.max_pool2d_with_indices(
+                inp,
+                params["kernel_size"],
+                params["stride"],
+                params["padding"],
+                params["dilation"],
+                params["ceil_mode"],
+            )
+            grad_output = torch.randn_like(output)
+            yield grad_output, inp, params["kernel_size"], params["stride"], params[
+                "padding"
+            ], params["dilation"], params["ceil_mode"], indices
+
+    bench = MaxPool2dBenchmark(
+        input_fn=max_pool2d_with_indices_backward_input_fn,
+        op_name="max_pool2d_with_indices_backward",
+        torch_op=torch.ops.aten.max_pool2d_with_indices_backward,
+        dtypes=FLOAT_DTYPES,
+        is_backward=False,
+    )
+    bench.run()
+
+
 @pytest.mark.dot
 def test_perf_dot():
     def dot_input_fn(shape, dtype, device):

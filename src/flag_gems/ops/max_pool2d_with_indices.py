@@ -339,7 +339,7 @@ def max_pool2d_backward(
     dilation,
     ceil_mode,
 ):
-    logger.debug("GEMS MAX_POOL2D BACKWARD")
+    logger.debug("GEMS MAX_POOL2D_BACKWARD")
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
 
@@ -394,3 +394,20 @@ def max_pool2d_backward(
     )
 
     return grad_input.to(grad_output.dtype)
+
+
+def max_pool2d_with_indices_backward(
+    grad_output: torch.Tensor,
+    self: torch.Tensor,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode: bool,
+    indices: torch.Tensor,
+):
+    """Wrapper matching the aten::max_pool2d_with_indices_backward schema."""
+    logger.debug("GEMS MAX_POOL2D_WITH_INDICES_BACKWARD")
+    return max_pool2d_backward(
+        grad_output, self, indices, kernel_size, stride, padding, dilation, ceil_mode
+    )

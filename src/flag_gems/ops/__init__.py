@@ -132,6 +132,7 @@ from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
+    max_pool2d_with_indices_backward,
 )
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
@@ -411,6 +412,7 @@ __all__ = [
     "max",
     "max_dim",
     "max_pool2d_with_indices",
+    "max_pool2d_with_indices_backward",
     "max_pool2d_backward",
     "maximum",
     "mean",
