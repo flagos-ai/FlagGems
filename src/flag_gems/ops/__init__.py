@@ -88,6 +88,7 @@ from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
 from flag_gems.ops.exponential_ import exponential_
+from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
@@ -341,6 +342,8 @@ __all__ = [
     "exp2",
     "exp2_",
     "exponential_",
+    "feature_dropout",
+    "feature_dropout_",
     "eye",
     "eye_m",
     "fill_scalar",

@@ -821,3 +821,39 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+@pytest.mark.feature_dropout
+def test_perf_feature_dropout():
+    """Benchmark for feature_dropout operation."""
+
+    def feature_dropout_input_fn(shape, dtype, device):
+        # Feature dropout requires at least 2D input
+        # shape should be (N, C, ...) format
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        yield inp, 0.5, True
+
+    class FeatureDropoutBenchmark(GenericBenchmarkExcluse1D):
+        def set_shapes(self, shape_file_path=None):
+            # Use shapes suitable for feature dropout (at least 2D)
+            self.shapes = [
+                (8, 64),
+                (16, 128),
+                (32, 256),
+                (4, 64, 32, 32),
+                (8, 128, 16, 16),
+                (16, 256, 8, 8),
+                (2, 512, 14, 14),
+                (4, 1024, 7, 7),
+            ]
+
+        def set_more_shapes(self):
+            return None
+
+    bench = FeatureDropoutBenchmark(
+        input_fn=feature_dropout_input_fn,
+        op_name="feature_dropout",
+        torch_op=torch.feature_dropout,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

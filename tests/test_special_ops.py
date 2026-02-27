@@ -1890,3 +1890,151 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# Feature dropout shapes - must have at least 2 dimensions
+FEATURE_DROPOUT_SHAPES = (
+    [(2, 8, 4, 4)]
+    if QUICK_MODE
+    else [(2, 3), (4, 8, 16), (2, 16, 8, 8), (2, 32, 4, 4, 4)]
+)
+
+
+@pytest.mark.feature_dropout
+@pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
+@pytest.mark.parametrize("p", [0.3, 0.5, 0.7])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_feature_dropout(shape, p, dtype):
+    """Test feature dropout accuracy.
+
+    Feature dropout drops entire channels (feature maps) with probability p.
+    For non-zero channels, values should be scaled by 1/(1-p).
+    """
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    # Test with train=True
+    with flag_gems.use_gems():
+        res_out = torch.feature_dropout(inp, p, True)
+
+    # Verify output shape
+    assert res_out.shape == inp.shape, f"Shape mismatch: {res_out.shape} vs {inp.shape}"
+
+    # Verify that channels are either all-zero or all-scaled
+    batch_size = shape[0]
+    num_channels = shape[1]
+    scale = 1.0 / (1.0 - p)
+
+    # Reshape to (batch_size, num_channels, -1) for easier checking
+    inp_reshaped = inp.view(batch_size, num_channels, -1)
+    out_reshaped = res_out.view(batch_size, num_channels, -1)
+
+    for b in range(batch_size):
+        for c in range(num_channels):
+            channel_out = out_reshaped[b, c]
+            channel_inp = inp_reshaped[b, c]
+
+            # Check if channel is all zeros (dropped)
+            is_all_zero = torch.all(channel_out == 0).item()
+
+            if not is_all_zero:
+                # Non-zero channel should be scaled by 1/(1-p)
+                expected = channel_inp * scale
+                assert torch.allclose(channel_out, expected, rtol=1e-4, atol=1e-5), (
+                    f"Channel [{b},{c}] scaling mismatch"
+                )
+
+    # Verify dropout rate is approximately correct
+    # Count dropped channels across all batches
+    out_by_channel = res_out.view(batch_size, num_channels, -1)
+    dropped_channels = 0
+    total_channels = batch_size * num_channels
+    for b in range(batch_size):
+        for c in range(num_channels):
+            if torch.all(out_by_channel[b, c] == 0):
+                dropped_channels += 1
+
+    actual_drop_rate = dropped_channels / total_channels
+    # Allow some tolerance for randomness - higher tolerance for small sample sizes
+    # With very few channels, variance is high
+    tolerance = max(0.3, 2.0 / (total_channels ** 0.5)) if total_channels < 50 else 0.2
+    assert abs(actual_drop_rate - p) < tolerance, (
+        f"Drop rate mismatch: expected ~{p}, got {actual_drop_rate}, tolerance={tolerance}"
+    )
+
+
+@pytest.mark.feature_dropout
+@pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_feature_dropout_no_train(shape, dtype):
+    """Test feature dropout with train=False returns input unchanged."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res_out = torch.feature_dropout(inp, 0.5, False)
+
+    gems_assert_close(res_out, inp, dtype)
+
+
+@pytest.mark.feature_dropout
+@pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_feature_dropout_p_zero(shape, dtype):
+    """Test feature dropout with p=0 returns scaled input."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res_out = torch.feature_dropout(inp, 0.0, True)
+
+    gems_assert_close(res_out, inp, dtype)
+
+
+@pytest.mark.feature_dropout
+@pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_feature_dropout_p_one(shape, dtype):
+    """Test feature dropout with p=1 returns zeros."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res_out = torch.feature_dropout(inp, 1.0, True)
+
+    expected = torch.zeros_like(inp)
+    gems_assert_equal(res_out, expected)
+
+
+@pytest.mark.feature_dropout_
+@pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
+@pytest.mark.parametrize("p", [0.3, 0.5])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_feature_dropout_inplace(shape, p, dtype):
+    """Test in-place feature dropout."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp_clone = inp.clone()
+
+    with flag_gems.use_gems():
+        res_out = torch.feature_dropout_(inp, p, True)
+
+    # Verify it's in-place
+    assert res_out.data_ptr() == inp.data_ptr(), "In-place operation failed"
+
+    # Verify output shape
+    assert res_out.shape == inp_clone.shape
+
+    # Verify channel-wise behavior
+    batch_size = shape[0]
+    num_channels = shape[1]
+    scale = 1.0 / (1.0 - p)
+
+    inp_reshaped = inp_clone.view(batch_size, num_channels, -1)
+    out_reshaped = res_out.view(batch_size, num_channels, -1)
+
+    for b in range(batch_size):
+        for c in range(num_channels):
+            channel_out = out_reshaped[b, c]
+            channel_inp = inp_reshaped[b, c]
+
+            is_all_zero = torch.all(channel_out == 0).item()
+
+            if not is_all_zero:
+                expected = channel_inp * scale
+                assert torch.allclose(channel_out, expected, rtol=1e-4, atol=1e-5)
