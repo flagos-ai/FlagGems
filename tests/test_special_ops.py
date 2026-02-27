@@ -1890,3 +1890,97 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# ==================== bincount tests ====================
+
+BINCOUNT_SIZES = [16, 100, 1024, 10000] if not QUICK_MODE else [100, 1024]
+BINCOUNT_MAXVALS = [10, 100, 1000] if not QUICK_MODE else [100]
+
+
+@pytest.mark.bincount
+@pytest.mark.parametrize("size", BINCOUNT_SIZES)
+@pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
+def test_accuracy_bincount(size, max_val):
+    """Test bincount without weights."""
+    inp = torch.randint(0, max_val, (size,), dtype=torch.int64, device=device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.bincount(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.bincount(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.bincount
+@pytest.mark.parametrize("size", BINCOUNT_SIZES)
+@pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_bincount_with_weights(size, max_val, dtype):
+    """Test bincount with weights."""
+    inp = torch.randint(0, max_val, (size,), dtype=torch.int64, device=device)
+    weights = torch.randn(size, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_weights = to_reference(weights)
+
+    ref_out = torch.bincount(ref_inp, weights=ref_weights)
+    with flag_gems.use_gems():
+        res_out = torch.bincount(inp, weights=weights)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.bincount
+@pytest.mark.parametrize("size", BINCOUNT_SIZES)
+@pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
+@pytest.mark.parametrize("minlength", [0, 50, 2000])
+def test_accuracy_bincount_with_minlength(size, max_val, minlength):
+    """Test bincount with minlength parameter."""
+    inp = torch.randint(0, max_val, (size,), dtype=torch.int64, device=device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.bincount(ref_inp, minlength=minlength)
+    with flag_gems.use_gems():
+        res_out = torch.bincount(inp, minlength=minlength)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.bincount
+def test_accuracy_bincount_empty():
+    """Test bincount with empty input."""
+    inp = torch.tensor([], dtype=torch.int64, device=device)
+    ref_inp = to_reference(inp)
+
+    # Without minlength
+    ref_out = torch.bincount(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.bincount(inp)
+    gems_assert_equal(res_out, ref_out)
+
+    # With minlength
+    ref_out = torch.bincount(ref_inp, minlength=10)
+    with flag_gems.use_gems():
+        res_out = torch.bincount(inp, minlength=10)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.bincount
+@pytest.mark.parametrize(
+    "dtype", [torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8]
+)
+def test_accuracy_bincount_int_dtypes(dtype):
+    """Test bincount with different integer input dtypes."""
+    if dtype == torch.int8 or dtype == torch.uint8:
+        max_val = 100
+    else:
+        max_val = 500
+    inp = torch.randint(0, max_val, (1000,), dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.bincount(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.bincount(inp)
+
+    gems_assert_equal(res_out, ref_out)
