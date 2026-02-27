@@ -86,6 +86,8 @@ def test_nmsnorm_accuracy(shape, dtype, eps):
 
     # Move result to CPU for comparison
     res_out_cpu = res_out.cpu()
+    if flag_gems.vendor_name == "enflame":
+        ref_out = ref_out.cpu()
     gems_assert_close(res_out_cpu, ref_out, dtype, equal_nan=True)
 
 
