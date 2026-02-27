@@ -1771,3 +1771,227 @@ def test_scheduler_metadata_correctness(
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+
+
+# Test cases for _scaled_dot_product_efficient_attention
+SDPA_EFFICIENT_SHAPES = [
+    # (batch, num_heads, seq_len, head_dim)
+    (2, 4, 128, 64),
+    (2, 8, 256, 64),
+    (1, 4, 512, 128),
+    (4, 8, 64, 32),
+]
+
+
+@pytest.mark.scaled_dot_product_efficient_attention
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_len, head_dim",
+    SDPA_EFFICIENT_SHAPES,
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("compute_log_sumexp", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_efficient_attention(
+    batch,
+    num_heads,
+    seq_len,
+    head_dim,
+    is_causal,
+    compute_log_sumexp,
+    dtype,
+):
+    """Test _scaled_dot_product_efficient_attention accuracy against PyTorch."""
+    device = torch_device_fn.current_device()
+
+    # Create input tensors
+    q = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    k = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    v = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+
+    ref_q = to_reference(q)
+    ref_k = to_reference(k)
+    ref_v = to_reference(v)
+
+    # Reference: PyTorch implementation
+    ref_out, ref_logsumexp, ref_seed, ref_offset = (
+        torch._scaled_dot_product_efficient_attention(
+            ref_q,
+            ref_k,
+            ref_v,
+            None,  # attn_bias
+            compute_log_sumexp,
+            0.0,  # dropout_p
+            is_causal,
+            scale=None,
+        )
+    )
+
+    # Test: FlagGems implementation
+    with flag_gems.use_gems():
+        gems_out, gems_logsumexp, gems_seed, gems_offset = (
+            torch._scaled_dot_product_efficient_attention(
+                q,
+                k,
+                v,
+                None,  # attn_bias
+                compute_log_sumexp,
+                0.0,  # dropout_p
+                is_causal,
+                scale=None,
+            )
+        )
+
+    # Check output
+    gems_assert_close(gems_out, ref_out, dtype)
+
+    # Check logsumexp if computed
+    if compute_log_sumexp:
+        gems_assert_close(gems_logsumexp, ref_logsumexp, dtype=torch.float32)
+
+
+@pytest.mark.scaled_dot_product_efficient_attention
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_len, head_dim",
+    [(2, 4, 128, 64), (1, 8, 256, 64)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_efficient_attention_with_bias(
+    batch,
+    num_heads,
+    seq_len,
+    head_dim,
+    dtype,
+):
+    """Test _scaled_dot_product_efficient_attention with attention bias."""
+    device = torch_device_fn.current_device()
+
+    # Create input tensors
+    q = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    k = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    v = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    attn_bias = torch.randn(
+        batch, num_heads, seq_len, seq_len, dtype=dtype, device=device
+    ).uniform_(-0.1, 0.1)
+
+    ref_q = to_reference(q)
+    ref_k = to_reference(k)
+    ref_v = to_reference(v)
+    ref_attn_bias = to_reference(attn_bias)
+
+    # Reference: PyTorch implementation
+    ref_out, ref_logsumexp, ref_seed, ref_offset = (
+        torch._scaled_dot_product_efficient_attention(
+            ref_q,
+            ref_k,
+            ref_v,
+            ref_attn_bias,
+            True,  # compute_log_sumexp
+            0.0,  # dropout_p
+            False,  # is_causal
+            scale=None,
+        )
+    )
+
+    # Test: FlagGems implementation
+    with flag_gems.use_gems():
+        gems_out, gems_logsumexp, gems_seed, gems_offset = (
+            torch._scaled_dot_product_efficient_attention(
+                q,
+                k,
+                v,
+                attn_bias,
+                True,  # compute_log_sumexp
+                0.0,  # dropout_p
+                False,  # is_causal
+                scale=None,
+            )
+        )
+
+    # Check output with relaxed tolerance for attention with bias
+    # Attention operations with bias can have slightly higher numerical variance
+    atol = 2e-4 if dtype == torch.bfloat16 else 2e-4
+    rtol = 0.05 if dtype == torch.bfloat16 else 0.05
+    torch.testing.assert_close(gems_out, ref_out.to(dtype), atol=atol, rtol=rtol)
+
+    # Check logsumexp with relaxed tolerance
+    torch.testing.assert_close(
+        gems_logsumexp, ref_logsumexp.to(torch.float32), atol=1e-3, rtol=0.01
+    )
+
+
+@pytest.mark.scaled_dot_product_efficient_attention
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_len, head_dim",
+    [(2, 4, 128, 64)],
+)
+@pytest.mark.parametrize("scale", [0.1, 0.5, 1.0])
+@pytest.mark.parametrize("dtype", [torch.float16])
+def test_accuracy_scaled_dot_product_efficient_attention_with_scale(
+    batch,
+    num_heads,
+    seq_len,
+    head_dim,
+    scale,
+    dtype,
+):
+    """Test _scaled_dot_product_efficient_attention with custom scale."""
+    device = torch_device_fn.current_device()
+
+    # Create input tensors
+    q = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    k = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    v = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+
+    ref_q = to_reference(q)
+    ref_k = to_reference(k)
+    ref_v = to_reference(v)
+
+    # Reference: PyTorch implementation
+    ref_out, ref_logsumexp, ref_seed, ref_offset = (
+        torch._scaled_dot_product_efficient_attention(
+            ref_q,
+            ref_k,
+            ref_v,
+            None,
+            True,  # compute_log_sumexp
+            0.0,  # dropout_p
+            False,  # is_causal
+            scale=scale,
+        )
+    )
+
+    # Test: FlagGems implementation
+    with flag_gems.use_gems():
+        gems_out, gems_logsumexp, gems_seed, gems_offset = (
+            torch._scaled_dot_product_efficient_attention(
+                q,
+                k,
+                v,
+                None,
+                True,  # compute_log_sumexp
+                0.0,  # dropout_p
+                False,  # is_causal
+                scale=scale,
+            )
+        )
+
+    # Check output
+    gems_assert_close(gems_out, ref_out, dtype)

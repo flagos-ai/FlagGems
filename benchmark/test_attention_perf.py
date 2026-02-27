@@ -700,3 +700,65 @@ def test_perf_reshape_and_cache_flash():
     )
     bench.set_gems(flag_gems.reshape_and_cache_flash)
     bench.run()
+
+
+class ScaledDotProductEfficientAttentionBenchmark(GenericBenchmark):
+    """
+    benchmark for _scaled_dot_product_efficient_attention
+    """
+
+    DEFAULT_SHAPES = [
+        # (batch, num_heads, seq_len, head_size)
+        (2, 4, 128, 64),
+        (2, 8, 256, 64),
+        (4, 8, 512, 64),
+        (2, 8, 1024, 64),
+        (1, 4, 2048, 128),
+    ]
+    DEFAULT_SHAPE_DESC = "batch, num_heads, seq_len, head_size"
+
+    def set_shapes(self, shape_file_path=None):
+        # Override to always use our attention-specific shapes
+        self.shapes = self.DEFAULT_SHAPES
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+    def set_more_shapes(self):
+        # Return None to use only DEFAULT_SHAPES
+        return None
+
+
+@pytest.mark.scaled_dot_product_efficient_attention
+@pytest.mark.parametrize("is_causal", [False, True])
+def test_perf_scaled_dot_product_efficient_attention(is_causal):
+    def input_kwargs(shape, dtype, device):
+        query = torch.randn(shape, device=device, dtype=dtype)
+        key = torch.randn(shape, device=device, dtype=dtype)
+        value = torch.randn(shape, device=device, dtype=dtype)
+        # attn_bias, compute_log_sumexp, dropout_p, is_causal, scale
+        yield query, key, value, None, True, 0.0, is_causal, {"scale": None}
+
+    def torch_sdpa_efficient(
+        query, key, value, attn_bias, compute_log_sumexp, dropout_p, is_causal, **kwargs
+    ):
+        return torch._scaled_dot_product_efficient_attention(
+            query, key, value, attn_bias, compute_log_sumexp, dropout_p, is_causal, **kwargs
+        )
+
+    def gems_sdpa_efficient(
+        query, key, value, attn_bias, compute_log_sumexp, dropout_p, is_causal, **kwargs
+    ):
+        return flag_gems._scaled_dot_product_efficient_attention(
+            query, key, value, attn_bias, compute_log_sumexp, dropout_p, is_causal, **kwargs
+        )
+
+    bench = ScaledDotProductEfficientAttentionBenchmark(
+        op_name="_scaled_dot_product_efficient_attention",
+        input_fn=input_kwargs,
+        torch_op=torch_sdpa_efficient,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+    bench.set_gems(gems_sdpa_efficient)
+    bench.run()
