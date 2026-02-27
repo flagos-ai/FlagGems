@@ -109,3 +109,23 @@ def test_general_inplace_binary_pointwise_perf(op_name, torch_op, dtypes):
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
     )
     bench.run()
+
+
+class SoftplusBackwardBenchmark(BinaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            grad_out = torch.randn_like(inp)
+            beta = 1.0
+            threshold = 20.0
+            yield grad_out, inp, beta, threshold
+
+
+@pytest.mark.softplus_backward
+def test_softplus_backward_perf():
+    bench = SoftplusBackwardBenchmark(
+        op_name="softplus_backward",
+        torch_op=torch.ops.aten.softplus_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

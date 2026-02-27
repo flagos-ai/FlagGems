@@ -2166,3 +2166,22 @@ def test_accuracy_addcdiv(shape, dtype):
         res_out = torch.addcdiv(res_inp, t1, t2, value=v)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.softplus_backward
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_softplus_backward(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
+    beta = 1.0
+    threshold = 20.0
+
+    ref_inp = to_reference(res_inp, True)
+    ref_grad = to_reference(res_grad, True)
+
+    ref_in_grad = torch.ops.aten.softplus_backward(ref_grad, ref_inp, beta, threshold)
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.softplus_backward(res_grad, res_inp, beta, threshold)
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
