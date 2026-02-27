@@ -1771,3 +1771,104 @@ def test_scheduler_metadata_correctness(
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+
+
+@pytest.mark.efficient_attention_backward
+@pytest.mark.parametrize(
+    "batch, num_head, seq_q, seq_k, head_size",
+    [
+        (2, 4, 128, 128, 64),
+        (2, 4, 256, 256, 64),
+        (1, 8, 512, 512, 64),
+        (1, 4, 128, 128, 128),
+    ],
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_efficient_attention_backward(
+    batch, num_head, seq_q, seq_k, head_size, is_causal, dtype
+):
+    """Test _efficient_attention_backward operator."""
+    device = torch_device_fn.current_device()
+
+    # Create input tensors in [batch, seq, heads, head_dim] format
+    # (this is the format expected by _efficient_attention_forward/backward)
+    # Note: _efficient_attention_forward does not support GQA (different num_heads for Q vs K/V)
+    q_shape = (batch, seq_q, num_head, head_size)
+    kv_shape = (batch, seq_k, num_head, head_size)
+
+    query = torch.randn(q_shape, dtype=dtype, device=device)
+    key = torch.randn(kv_shape, dtype=dtype, device=device)
+    value = torch.randn(kv_shape, dtype=dtype, device=device)
+
+    scale = 1.0 / math.sqrt(head_size)
+    custom_mask_type = 1 if is_causal else 0
+
+    # Run forward pass to get outputs needed for backward
+    ref_out, ref_logsumexp, ref_seed, ref_offset, _, _ = torch.ops.aten._efficient_attention_forward(
+        query,
+        key,
+        value,
+        None,  # bias
+        None,  # cu_seqlens_q
+        None,  # cu_seqlens_k
+        seq_q,  # max_seqlen_q
+        seq_k,  # max_seqlen_k
+        0.0,   # dropout_p
+        custom_mask_type,
+        True,  # compute_log_sumexp
+        scale=scale,
+    )
+
+    # Create gradient for output
+    grad_out = torch.randn_like(ref_out)
+
+    # Reference backward (using PyTorch's native implementation)
+    ref_grad_q, ref_grad_k, ref_grad_v, ref_grad_bias = torch.ops.aten._efficient_attention_backward(
+        grad_out,
+        query,
+        key,
+        value,
+        None,  # bias
+        ref_out,
+        None,  # cu_seqlens_q
+        None,  # cu_seqlens_k
+        seq_q,
+        seq_k,
+        ref_logsumexp,
+        0.0,   # dropout_p
+        ref_seed,
+        ref_offset,
+        custom_mask_type,
+        False,  # bias_requires_grad
+        scale=scale,
+    )
+
+    # Run with FlagGems
+    with flag_gems.use_gems():
+        gems_grad_q, gems_grad_k, gems_grad_v, gems_grad_bias = torch.ops.aten._efficient_attention_backward(
+            grad_out,
+            query,
+            key,
+            value,
+            None,  # bias
+            ref_out,
+            None,  # cu_seqlens_q
+            None,  # cu_seqlens_k
+            seq_q,
+            seq_k,
+            ref_logsumexp,
+            0.0,   # dropout_p
+            ref_seed,
+            ref_offset,
+            custom_mask_type,
+            False,  # bias_requires_grad
+            scale=scale,
+        )
+
+    # Compare results with relaxed tolerance for attention backward
+    # The backward computation involves many operations, so numerical differences are expected
+    atol = 0.02  # Relaxed tolerance for attention backward
+    gems_assert_close(gems_grad_q, ref_grad_q, dtype, equal_nan=True, atol=atol)
+    gems_assert_close(gems_grad_k, ref_grad_k, dtype, equal_nan=True, atol=atol)
+    gems_assert_close(gems_grad_v, ref_grad_v, dtype, equal_nan=True, atol=atol)

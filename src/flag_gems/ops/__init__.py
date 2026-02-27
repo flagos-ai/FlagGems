@@ -1,3 +1,4 @@
+from flag_gems.ops._efficient_attention_backward import efficient_attention_backward
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
@@ -325,6 +326,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "efficient_attention_backward",
     "elu",
     "elu_",
     "elu_backward",

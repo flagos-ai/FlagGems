@@ -700,3 +700,72 @@ def test_perf_reshape_and_cache_flash():
     )
     bench.set_gems(flag_gems.reshape_and_cache_flash)
     bench.run()
+
+
+class EfficientAttentionBackwardBenchmark(Benchmark):
+    """
+    Benchmark for _efficient_attention_backward
+    """
+
+    def set_shapes(self, shape_file_path=None):
+        # (batch, num_heads, seq_q, seq_k, head_dim)
+        self.shapes = [
+            (2, 4, 128, 128, 64),
+            (2, 8, 256, 256, 64),
+            (1, 8, 512, 512, 64),
+            (2, 4, 128, 128, 128),
+            (1, 16, 1024, 1024, 64),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield self.efficient_attention_backward_input_fn(shape, cur_dtype, self.device)
+
+    def efficient_attention_backward_input_fn(self, shape, dtype, device):
+        batch, num_heads, seq_q, seq_k, head_dim = shape
+        scale = head_dim**-0.5
+
+        # Create input tensors in [batch, seq, heads, head_dim] format
+        query = torch.randn(batch, seq_q, num_heads, head_dim, dtype=dtype, device=device)
+        key = torch.randn(batch, seq_k, num_heads, head_dim, dtype=dtype, device=device)
+        value = torch.randn(batch, seq_k, num_heads, head_dim, dtype=dtype, device=device)
+
+        # Run forward pass to get outputs needed for backward
+        custom_mask_type = 1  # causal
+        out, logsumexp, seed, offset, _, _ = torch.ops.aten._efficient_attention_forward(
+            query, key, value, None, None, None, seq_q, seq_k, 0.0, custom_mask_type, True, scale=scale
+        )
+
+        grad_out = torch.randn_like(out)
+
+        return (
+            grad_out, query, key, value, None, out,
+            None, None, seq_q, seq_k, logsumexp, 0.0,
+            seed, offset, custom_mask_type, False,
+            {"scale": scale}
+        )
+
+
+@pytest.mark.efficient_attention_backward
+def test_perf_efficient_attention_backward():
+    def torch_efficient_attention_backward(
+        grad_out, query, key, value, bias, out,
+        cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
+        logsumexp, dropout_p, philox_seed, philox_offset,
+        custom_mask_type, bias_requires_grad,
+        **kwargs
+    ):
+        return torch.ops.aten._efficient_attention_backward(
+            grad_out, query, key, value, bias, out,
+            cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k,
+            logsumexp, dropout_p, philox_seed, philox_offset,
+            custom_mask_type, bias_requires_grad,
+            **kwargs
+        )
+
+    bench = EfficientAttentionBackwardBenchmark(
+        op_name="efficient_attention_backward",
+        torch_op=torch_efficient_attention_backward,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.run()
