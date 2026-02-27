@@ -256,6 +256,15 @@ Conv3DBenchmark:
     - [16, 32, 12, 12, 12, 24, 3, 3, 3, 1, 2, 1]  # smaller input, different padding
   shape_desc: "N, C_in, D, H, W, C_out, K_d, K_h, K_w, stride, padding, groups"
 
+ConvTranspose1DBenchmark:
+  shapes:
+    - [32, 64, 128, 64, 3, 1, 0, 1]   # basic configuration
+    - [64, 48, 256, 128, 5, 2, 2, 1]  # larger batch, stride 2
+    - [16, 24, 512, 96, 7, 1, 3, 1]   # larger input length
+    - [8, 16, 1024, 32, 3, 2, 1, 2]   # groups=2
+    - [4, 8, 2048, 16, 5, 1, 2, 1]    # long input sequence
+  shape_desc: "N, C_in, L, C_out, kernel, stride, padding, groups"
+
 # Depthwise Conv2D: (batch, channels, input_h, input_w, kernel_h, kernel_w, stride, padding, dilation)
 ConvDepthwise2DBenchmark:
   shapes:

@@ -1102,6 +1102,80 @@ batch_norm:
       - 8
       - 16
 
+conv_transpose1d:
+  - META:
+      BLOCK_N_OW: 32
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 64
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 64
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 128
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_N_OW: 32
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_N_OW: 64
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_N_OW: 64
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 32
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 64
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_N_OW: 128
+      BLOCK_OC: 128
+      BLOCK_IC: 32
+    num_warps: 4
+    num_stages: 3
+
 conv3d_forward:
   - META:
       BLOCK_NI_DO_HO_WO: 512

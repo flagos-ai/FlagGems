@@ -481,3 +481,131 @@ def test_accuracy__conv_depthwise2d(
             inp, weight, kernel, bias_tensor, stride, padding, dilation
         )
     gems_assert_close(res_out, ref_out, dtype)
+
+
+# conv_transpose1d test shapes: (input_shape, weight_shape)
+# input: (N, in_channels, L_in)
+# weight: (in_channels, out_channels/groups, kernel_width)
+SHAPE_CONV_TRANSPOSE1D = [
+    ((2, 4, 8), (4, 8, 3)),
+    ((4, 8, 16), (8, 16, 3)),
+    ((2, 16, 32), (16, 32, 5)),
+]
+
+
+@pytest.mark.conv_transpose1d
+@pytest.mark.parametrize("shape, kernel", SHAPE_CONV_TRANSPOSE1D)
+@pytest.mark.parametrize("stride", [1, 2])
+@pytest.mark.parametrize("padding", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_accuracy_conv_transpose1d(shape, kernel, stride, padding, dtype):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
+    ref_inp = to_reference(inp, False)
+    torch.backends.cudnn.allow_tf32 = False
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    ref_weight = to_reference(weight, False)
+    ref_out = torch.nn.functional.conv_transpose1d(
+        ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
+    )
+
+    res_out = flag_gems.conv_transpose1d(
+        inp, weight, bias=None, stride=stride, padding=padding, dilation=1
+    )
+    # Use reduce_dim to account for accumulation precision (in_channels * kernel_width)
+    in_channels = kernel[0]
+    kernel_width = kernel[2]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
+
+@pytest.mark.conv_transpose1d_bias
+@pytest.mark.parametrize("shape, kernel", SHAPE_CONV_TRANSPOSE1D)
+@pytest.mark.parametrize("stride", [1, 2])
+@pytest.mark.parametrize("padding", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_accuracy_conv_transpose1d_bias(shape, kernel, stride, padding, dtype):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
+    ref_inp = to_reference(inp, False)
+    torch.backends.cudnn.allow_tf32 = False
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    ref_weight = to_reference(weight, False)
+    # weight shape is (in_channels, out_channels/groups, kernel_width)
+    out_channels = kernel[1]
+    kernel_width = kernel[2]
+    bias = torch.randn(out_channels, dtype=dtype, device=flag_gems.device)
+    ref_bias = to_reference(bias, False)
+
+    ref_out = torch.nn.functional.conv_transpose1d(
+        ref_inp, ref_weight, bias=ref_bias, stride=stride, padding=padding, dilation=1
+    )
+
+    res_out = flag_gems.conv_transpose1d(
+        inp, weight, bias=bias, stride=stride, padding=padding, dilation=1
+    )
+    # Use reduce_dim to account for accumulation precision (in_channels * kernel_width)
+    in_channels = kernel[0]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
+
+@pytest.mark.conv_transpose1d_groups
+@pytest.mark.parametrize(
+    "shape, kernel, groups",
+    [
+        ((2, 8, 16), (8, 4, 3), 2),  # 8 in_channels, 2 groups, 4 out_channels per group
+        ((4, 12, 32), (12, 4, 3), 3),  # 12 in_channels, 3 groups
+    ],
+)
+@pytest.mark.parametrize("stride", [1, 2])
+@pytest.mark.parametrize("padding", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_accuracy_conv_transpose1d_groups(
+    shape, kernel, groups, stride, padding, dtype
+):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
+    ref_inp = to_reference(inp, False)
+    torch.backends.cudnn.allow_tf32 = False
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    ref_weight = to_reference(weight, False)
+
+    ref_out = torch.nn.functional.conv_transpose1d(
+        ref_inp,
+        ref_weight,
+        bias=None,
+        stride=stride,
+        padding=padding,
+        dilation=1,
+        groups=groups,
+    )
+
+    res_out = flag_gems.conv_transpose1d(
+        inp,
+        weight,
+        bias=None,
+        stride=stride,
+        padding=padding,
+        dilation=1,
+        groups=groups,
+    )
+    # Use reduce_dim to account for accumulation precision (in_channels_per_group * kernel_width)
+    in_channels_per_group = kernel[0] // groups
+    kernel_width = kernel[2]
+    gems_assert_close(
+        res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels_per_group
+    )
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]

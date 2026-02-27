@@ -220,3 +220,57 @@ def test_conv3d():
     )
     bench.set_gems(flag_gems.conv3d)
     bench.run()
+
+
+class ConvTranspose1DBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        return [
+            # (batch, input_c, input_l, out_c, kernel, stride, padding, groups)
+            (32, 64, 128, 64, 3, 1, 0, 1),
+            (64, 48, 256, 128, 5, 2, 2, 1),
+            (16, 24, 512, 96, 7, 1, 3, 1),
+            (8, 16, 1024, 32, 3, 2, 1, 2),
+            (4, 8, 2048, 16, 5, 1, 2, 1),
+        ]
+
+
+@pytest.mark.conv_transpose1d
+def test_perf_conv_transpose1d():
+    def conv_transpose1d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_l,
+            out_c,
+            kernel,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_l)
+        # For conv_transpose1d, weight shape is (in_channels, out_channels/groups, kernel_width)
+        weight_shape = (input_c, out_c // groups, kernel)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": input,
+            "weight": weight,
+            "bias": None,
+            "groups": groups,
+            "stride": stride,
+            "padding": padding,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = ConvTranspose1DBenchmark(
+        input_fn=conv_transpose1d_input_fn,
+        op_name="conv_transpose1d",
+        torch_op=torch.nn.functional.conv_transpose1d,
+        dtypes=[
+            torch.float16,
+            torch.float32,
+        ],
+    )
+    bench.set_gems(flag_gems.conv_transpose1d)
+    bench.run()
