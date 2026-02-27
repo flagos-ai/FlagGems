@@ -1,3 +1,6 @@
+from flag_gems.ops._scaled_dot_product_cudnn_attention import (
+    _scaled_dot_product_cudnn_attention,
+)
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
@@ -241,6 +244,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_scaled_dot_product_cudnn_attention",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
