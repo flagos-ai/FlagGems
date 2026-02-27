@@ -29,6 +29,7 @@ def torch_ge(v):
 
 _FULL_CONFIG = (
     ("_flash_attention_forward", flash_attention_forward),
+    ("_is_all_true", _is_all_true),
     ("_log_softmax", log_softmax),
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_softmax", softmax),
