@@ -821,3 +821,44 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+class UnfoldBackwardBenchmark(Benchmark):
+    """Benchmark for unfold_backward operation."""
+
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+
+    def set_shapes(self, shape_file_path=None):
+        # Shapes for unfold_backward: (input_shape, dim, size, step)
+        self.shapes = [
+            ((128, 1024), 1, 64, 32),
+            ((128, 1024), 1, 128, 64),
+            ((64, 512, 256), 2, 32, 16),
+            ((64, 512, 256), 1, 64, 32),
+            ((32, 256, 512), 2, 64, 32),
+            ((16, 128, 64, 64), 3, 16, 8),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield from self.unfold_backward_input_fn(shape, cur_dtype, self.device)
+
+    def unfold_backward_input_fn(self, config, dtype, device):
+        input_shape, dim, size, step = config
+        # Create the original input and unfold to get grad_in shape
+        inp = torch.randn(input_shape, dtype=dtype, device=device)
+        unfolded = inp.unfold(dim, size, step)
+        grad_in = torch.randn_like(unfolded)
+
+        yield (grad_in, input_shape, dim, size, step)
+
+
+@pytest.mark.unfold_backward
+def test_perf_unfold_backward():
+    bench = UnfoldBackwardBenchmark(
+        op_name="unfold_backward",
+        torch_op=torch.ops.aten.unfold_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

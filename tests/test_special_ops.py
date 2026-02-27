@@ -1890,3 +1890,71 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# unfold_backward test shapes
+UNFOLD_SHAPES = (
+    [(16,), (32, 16), (8, 16, 32)]
+    if not QUICK_MODE
+    else [(32, 16)]
+)
+UNFOLD_PARAMS = (
+    [(4, 2), (8, 4), (3, 1)]
+    if not QUICK_MODE
+    else [(4, 2)]
+)
+
+
+@pytest.mark.unfold_backward
+@pytest.mark.parametrize("shape", UNFOLD_SHAPES)
+@pytest.mark.parametrize("size_step", UNFOLD_PARAMS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_unfold_backward(shape, size_step, dtype):
+    size, step = size_step
+    # Choose dim based on shape (use last valid dim for simplicity)
+    dim = len(shape) - 1
+
+    # Skip if size is larger than the dimension
+    if shape[dim] < size:
+        pytest.skip("Size larger than dimension")
+
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    unfolded = inp.unfold(dim, size, step)
+    grad = torch.randn_like(unfolded)
+    # Use upcast=True for reference to get more accurate comparison
+    # because unfold_backward uses atomic_add which accumulates multiple values
+    ref_grad = to_reference(grad, upcast=True)
+
+    ref_out = torch.ops.aten.unfold_backward(ref_grad, inp.shape, dim, size, step)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.unfold_backward(grad, inp.shape, dim, size, step)
+
+    # When step < size, values can accumulate multiple times (up to ceil(size/step))
+    # so we need a larger tolerance. reduce_dim accounts for this.
+    max_accumulations = (size + step - 1) // step
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=max_accumulations)
+
+
+@pytest.mark.unfold_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_unfold_backward_various_dims(dtype):
+    """Test unfold_backward on various dimensions."""
+    # 3D tensor, test unfolding on different dims
+    shape = (4, 8, 16)
+    size, step = 3, 2
+
+    for dim in range(len(shape)):
+        if shape[dim] < size:
+            continue
+
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        unfolded = inp.unfold(dim, size, step)
+        grad = torch.randn_like(unfolded)
+        ref_grad = to_reference(grad, upcast=True)
+
+        ref_out = torch.ops.aten.unfold_backward(ref_grad, inp.shape, dim, size, step)
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.unfold_backward(grad, inp.shape, dim, size, step)
+
+        max_accumulations = (size + step - 1) // step
+        gems_assert_close(res_out, ref_out, dtype, reduce_dim=max_accumulations)
