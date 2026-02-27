@@ -821,3 +821,52 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+# FFT IRFFT Benchmark
+class FFTIRFFTBenchmark(Benchmark):
+    """
+    Benchmark for FFT IRFFT operation.
+    """
+
+    def set_shapes(self, shape_file_path=None):
+        # FFT sizes (powers of 2 work best with cuFFT)
+        fft_shapes = [
+            (64,),
+            (128,),
+            (256,),
+            (512,),
+            (1024,),
+            # Batched shapes
+            (4, 64),
+            (4, 256),
+            (16, 64),
+            (16, 256),
+            (64, 64),
+            (64, 256),
+        ]
+        self.shapes = fft_shapes
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            # Create real input and compute rfft to get complex input
+            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
+            complex_inp = torch.fft.rfft(inp, dim=-1)
+            n = shape[-1]
+            yield complex_inp, n
+
+
+def fft_irfft_op(complex_inp, n):
+    return torch.fft.irfft(complex_inp, n=n, dim=-1)
+
+
+@pytest.mark.fft_irfft
+def test_perf_fft_irfft():
+    # FFT doesn't support bfloat16, only float16 and float32
+    fft_dtypes = [torch.float16, torch.float32]
+    bench = FFTIRFFTBenchmark(
+        op_name="fft_irfft",
+        torch_op=fft_irfft_op,
+        dtypes=fft_dtypes,
+    )
+    bench.run()

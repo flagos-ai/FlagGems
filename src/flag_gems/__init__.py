@@ -160,6 +160,7 @@ _FULL_CONFIG = (
     ("exponential_", exponential_),
     ("eye", eye),
     ("eye.m", eye_m),
+    ("fft_irfft", fft_irfft),
     ("fill.Scalar", fill_scalar),
     ("fill.Tensor", fill_tensor),
     ("fill_.Scalar", fill_scalar_),

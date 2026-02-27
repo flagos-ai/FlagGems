@@ -1890,3 +1890,83 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# FFT IRFFT Tests
+FFT_SIZES = [8, 16, 32, 64, 128, 256, 512, 1024] if not QUICK_MODE else [32, 64]
+FFT_BATCH_SHAPES = [(4,), (2, 4), (2, 3, 4)] if not QUICK_MODE else [(4,)]
+FFT_NORMS = [None, "backward", "forward", "ortho"]
+FFT_FLOAT_DTYPES = [torch.float32, torch.float64] if not QUICK_MODE else [torch.float32]
+
+
+@pytest.mark.fft_irfft
+@pytest.mark.parametrize("n", FFT_SIZES)
+@pytest.mark.parametrize("dtype", FFT_FLOAT_DTYPES)
+def test_accuracy_fft_irfft_1d(n, dtype):
+    """Test 1D fft_irfft accuracy."""
+    # Create real input, compute rfft to get complex input for irfft
+    inp = torch.randn(n, dtype=dtype, device=device)
+    complex_inp = torch.fft.rfft(inp)
+    ref_complex_inp = to_reference(complex_inp)
+
+    ref_out = torch.fft.irfft(ref_complex_inp, n=n)
+    with flag_gems.use_gems():
+        res_out = torch.fft.irfft(complex_inp, n=n)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fft_irfft
+@pytest.mark.parametrize("batch_shape", FFT_BATCH_SHAPES)
+@pytest.mark.parametrize("n", FFT_SIZES[:4] if not QUICK_MODE else FFT_SIZES[:2])
+@pytest.mark.parametrize("dtype", FFT_FLOAT_DTYPES)
+def test_accuracy_fft_irfft_batched(batch_shape, n, dtype):
+    """Test batched fft_irfft accuracy."""
+    shape = batch_shape + (n,)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    complex_inp = torch.fft.rfft(inp, dim=-1)
+    ref_complex_inp = to_reference(complex_inp)
+
+    ref_out = torch.fft.irfft(ref_complex_inp, n=n, dim=-1)
+    with flag_gems.use_gems():
+        res_out = torch.fft.irfft(complex_inp, n=n, dim=-1)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fft_irfft
+@pytest.mark.parametrize("norm", FFT_NORMS)
+@pytest.mark.parametrize("n", FFT_SIZES[:4] if not QUICK_MODE else FFT_SIZES[:2])
+@pytest.mark.parametrize("dtype", FFT_FLOAT_DTYPES)
+def test_accuracy_fft_irfft_norm(norm, n, dtype):
+    """Test fft_irfft with different normalization modes."""
+    inp = torch.randn(n, dtype=dtype, device=device)
+    complex_inp = torch.fft.rfft(inp, norm=norm)
+    ref_complex_inp = to_reference(complex_inp)
+
+    ref_out = torch.fft.irfft(ref_complex_inp, n=n, norm=norm)
+    with flag_gems.use_gems():
+        res_out = torch.fft.irfft(complex_inp, n=n, norm=norm)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fft_irfft
+@pytest.mark.parametrize("n", FFT_SIZES[:4] if not QUICK_MODE else FFT_SIZES[:2])
+@pytest.mark.parametrize("dtype", FFT_FLOAT_DTYPES)
+def test_accuracy_fft_irfft_roundtrip(n, dtype):
+    """Test that rfft followed by irfft is an identity operation."""
+    inp = torch.randn(n, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+
+    # PyTorch reference round-trip
+    ref_fft = torch.fft.rfft(ref_inp)
+    ref_out = torch.fft.irfft(ref_fft, n=n)
+
+    # FlagGems round-trip
+    with flag_gems.use_gems():
+        fft_result = torch.fft.rfft(inp)
+        res_out = torch.fft.irfft(fft_result, n=n)
+
+    # Check that round-trip is accurate
+    gems_assert_close(res_out, ref_out, dtype)
