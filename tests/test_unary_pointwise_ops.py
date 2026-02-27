@@ -974,6 +974,21 @@ def test_accuracy_log_sigmoid(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.signbit
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_signbit(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Include some negative zeros and special values to test sign bit detection
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.signbit(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.signbit(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.silu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
