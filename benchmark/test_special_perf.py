@@ -821,3 +821,49 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+# ============== reflection_pad2d_backward benchmark ==============
+
+
+def reflection_pad2d_backward_input_fn(shape, dtype, device):
+    """Generate input for reflection_pad2d_backward benchmark."""
+    inp = generate_tensor_input(shape, dtype, device)
+    # Use moderate padding
+    padding = [2, 2, 2, 2]  # left, right, top, bottom
+    padded = torch.nn.functional.pad(inp, padding, mode="reflect")
+    grad_output = torch.randn_like(padded)
+    yield grad_output, inp, padding
+
+
+class ReflectionPad2dBackwardBenchmark(GenericBenchmark4DOnly):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def set_shapes(self, shape_file_path=None):
+        reflection_pad2d_shapes = [
+            (4, 3, 224, 224),
+            (16, 64, 56, 56),
+            (32, 128, 28, 28),
+            (64, 256, 14, 14),
+            (128, 512, 7, 7),
+        ]
+        self.shapes = reflection_pad2d_shapes
+
+    def set_more_shapes(self):
+        return [
+            (1, 3, 512, 512),
+            (8, 64, 128, 128),
+            (4, 128, 64, 64),
+        ]
+
+
+@pytest.mark.reflection_pad2d_backward
+def test_perf_reflection_pad2d_backward():
+    bench = ReflectionPad2dBackwardBenchmark(
+        input_fn=reflection_pad2d_backward_input_fn,
+        op_name="reflection_pad2d_backward",
+        torch_op=torch.ops.aten.reflection_pad2d_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

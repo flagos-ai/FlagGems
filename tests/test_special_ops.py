@@ -1890,3 +1890,81 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# ============== reflection_pad2d_backward tests ==============
+
+REFLECTION_PAD2D_SHAPES = [
+    (1, 1, 3, 3),
+    (1, 3, 8, 8),
+    (2, 4, 16, 16),
+    (4, 8, 32, 32),
+]
+if not QUICK_MODE:
+    REFLECTION_PAD2D_SHAPES += [
+        (2, 16, 64, 64),
+        (1, 32, 128, 128),
+    ]
+
+REFLECTION_PAD2D_PADDINGS = [
+    [1, 1, 1, 1],
+    [2, 2, 2, 2],
+    [1, 2, 3, 4],
+]
+if not QUICK_MODE:
+    REFLECTION_PAD2D_PADDINGS += [
+        [5, 5, 5, 5],
+        [3, 4, 2, 5],
+    ]
+
+
+@pytest.mark.reflection_pad2d_backward
+@pytest.mark.parametrize("shape", REFLECTION_PAD2D_SHAPES)
+@pytest.mark.parametrize("padding", REFLECTION_PAD2D_PADDINGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_reflection_pad2d_backward(shape, padding, dtype):
+    # Ensure padding doesn't exceed input dimensions
+    _, _, h, w = shape
+    pad_left, pad_right, pad_top, pad_bottom = padding
+    if pad_left >= w or pad_right >= w or pad_top >= h or pad_bottom >= h:
+        pytest.skip("Padding exceeds input dimensions")
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, upcast=True)
+
+    # Create padded output and gradient
+    padded = torch.nn.functional.pad(inp, padding, mode="reflect")
+    grad_output = torch.randn_like(padded)
+    ref_grad_output = to_reference(grad_output, upcast=True)
+
+    # Reference backward (computed in float64 for higher precision)
+    ref_out = torch.ops.aten.reflection_pad2d_backward(ref_grad_output, ref_inp, padding)
+
+    # FlagGems backward
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.reflection_pad2d_backward(grad_output, inp, padding)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.reflection_pad2d_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_reflection_pad2d_backward_3d(dtype):
+    """Test with 3D input (C, H, W) instead of 4D (N, C, H, W)"""
+    shape = (3, 8, 8)
+    padding = [2, 2, 2, 2]
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, upcast=True)
+
+    padded = torch.nn.functional.pad(inp, padding, mode="reflect")
+    grad_output = torch.randn_like(padded)
+    ref_grad_output = to_reference(grad_output, upcast=True)
+
+    # Reference backward (computed in float64 for higher precision)
+    ref_out = torch.ops.aten.reflection_pad2d_backward(ref_grad_output, ref_inp, padding)
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.reflection_pad2d_backward(grad_output, inp, padding)
+
+    gems_assert_close(res_out, ref_out, dtype)
