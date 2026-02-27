@@ -1890,3 +1890,30 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+@pytest.mark.upsample_bicubic2d
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1)])
+@pytest.mark.parametrize(
+    "shape",
+    UPSAMPLE_SHAPES,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_bicubic2d(dtype, shape, scale, align_corners):
+    input = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_i = to_reference(input, True)
+    output_size = tuple([int(input.shape[i + 2] * scale[i]) for i in range(2)])
+    ref_out = torch._C._nn.upsample_bicubic2d(
+        ref_i, output_size=output_size, align_corners=align_corners
+    )
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_bicubic2d(
+            input, output_size=output_size, align_corners=align_corners
+        )
+
+    if ref_out.dtype != res_out.dtype:
+        ref_out = ref_out.to(res_out.dtype)
+
+    # Bicubic uses 4x4 neighborhood, so reduce_dim=16
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=16)
