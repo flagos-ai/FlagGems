@@ -8,24 +8,23 @@ logger = logging.getLogger(__name__)
 
 
 def new_full(
-    self,
+    x,
     size,
     fill_value,
     *,
     dtype=None,
     layout=None,
     device=None,
-    requires_grad=False,
-    pin_memory=False,
+    pin_memory=None,
 ):
     logger.debug("GEMS NEW_FULL")
     if device is None:
-        device = self.device
+        device = x.device
     if dtype is None:
-        dtype = self.dtype
+        dtype = x.dtype
     fill_value = check_dtype(fill_value, dtype, device)
     out = torch.empty(size, device=device, dtype=dtype)
     if isinstance(fill_value, torch.Tensor):
-        return full_func(out, fill_value)
+        return full_func(out, fill_value, out0=out)
     else:
-        return full_func_scalar(out, fill_value)
+        return full_func_scalar(out, fill_value, out0=out)
