@@ -160,6 +160,13 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             marks=pytest.mark.nonzero,
         ),
         pytest.param(
+            "nonzero_numpy",
+            torch.ops.aten.nonzero_numpy,
+            unary_input_fn,
+            FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+            marks=pytest.mark.nonzero_numpy,
+        ),
+        pytest.param(
             "cross_entropy_loss",
             torch.nn.functional.cross_entropy,
             cross_entropy_loss_input_fn,
