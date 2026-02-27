@@ -142,6 +142,7 @@ _FULL_CONFIG = (
     ("conv2d.padding", conv2d),
     ("conv3d", conv3d),
     ("conv3d.padding", conv3d),
+    ("conv_transpose2d.input", conv_transpose2d),
     (
         "copy_",
         copy_,
