@@ -104,6 +104,7 @@ from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
+from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_put import index_put, index_put_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
@@ -372,6 +373,8 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_copy",
+    "index_copy_",
     "index_put",
     "index_put_",
     "index_select",

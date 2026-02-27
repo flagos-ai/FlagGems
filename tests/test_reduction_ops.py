@@ -2201,3 +2201,51 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
         inp.masked_scatter_(mask, src)
 
     gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.index_copy
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_index_copy(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    src_shape = list(inp.shape)
+    index_max = src_shape[dim]
+    index_len = index_max
+    index = torch.randperm(index_len, device=flag_gems.device)
+    src_shape[dim] = index_len
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_src = to_reference(src)
+    ref_index = to_reference(index)
+    ref_out = torch.index_copy(ref_inp, dim, ref_index, ref_src)
+    with flag_gems.use_gems():
+        res_out = torch.index_copy(inp, dim, index, src)
+
+    gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
+
+
+@pytest.mark.index_copy_
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_index_copy_(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    src_shape = list(inp.shape)
+    index_max = src_shape[dim]
+    index_len = index_max
+    index = torch.randperm(index_len, device=flag_gems.device)
+    src_shape[dim] = index_len
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_src = to_reference(src)
+    ref_index = to_reference(index)
+    ref_inp.index_copy_(dim, ref_index, ref_src)
+    with flag_gems.use_gems():
+        inp.index_copy_(dim, index, src)
+
+    gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)
