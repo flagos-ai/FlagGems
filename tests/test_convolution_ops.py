@@ -387,6 +387,165 @@ def test_accuracy_conv3d_padding(
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
+# Test shapes for general convolution operator (aten::convolution)
+# Use same shapes as existing conv1d tests for consistency
+SHAPE_CONVOLUTION_1D = [
+    ((32, 2, 4), (17, 2, 2)),
+    ((32, 15, 6), (17, 15, 2)),
+]
+
+SHAPE_CONVOLUTION_2D = [
+    ((1, 2, 5, 5), (1, 2, 3, 3), 1),
+    ((2, 4, 8, 8), (8, 4, 3, 3), 1),
+    ((4, 8, 8, 8), (16, 4, 3, 3), 2),
+]
+
+SHAPE_CONVOLUTION_3D = [
+    ((1, 2, 5, 5, 5), (1, 2, 3, 3, 3), 1),
+    ((2, 4, 8, 8, 8), (8, 4, 3, 3, 3), 1),
+]
+
+
+@pytest.mark.convolution
+@pytest.mark.parametrize("shape, kernel", SHAPE_CONVOLUTION_1D)
+@pytest.mark.parametrize("stride", [[1], [2]])
+@pytest.mark.parametrize("padding", [[0], [1]])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_accuracy_convolution_1d(shape, kernel, stride, padding, dtype):
+    """Test general convolution for 1D inputs via aten::convolution"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    ref_weight = to_reference(weight)
+
+    # aten::convolution signature:
+    # convolution(input, weight, bias, stride, padding, dilation, transposed, output_padding, groups)
+    ref_out = torch.convolution(
+        ref_inp,
+        ref_weight,
+        bias=None,
+        stride=stride,
+        padding=padding,
+        dilation=[1],
+        transposed=False,
+        output_padding=[0],
+        groups=1,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.convolution(
+            inp,
+            weight,
+            bias=None,
+            stride=stride,
+            padding=padding,
+            dilation=[1],
+            transposed=False,
+            output_padding=[0],
+            groups=1,
+        )
+
+    # reduce_dim accounts for accumulation: kernel_width * in_channels
+    reduce_dim = kernel[2] * kernel[1]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.convolution
+@pytest.mark.parametrize("shape, kernel, groups", SHAPE_CONVOLUTION_2D)
+@pytest.mark.parametrize("stride", [[1, 1], [2, 2]])
+@pytest.mark.parametrize("padding", [[0, 0], [1, 1]])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("bias", [True, False])
+def test_accuracy_convolution_2d(shape, kernel, groups, stride, padding, dtype, bias):
+    """Test general convolution for 2D inputs via aten::convolution"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    ref_weight = to_reference(weight)
+
+    if bias:
+        bias_tensor = torch.randn([kernel[0]], dtype=dtype, device=flag_gems.device)
+        ref_bias = to_reference(bias_tensor)
+    else:
+        bias_tensor = None
+        ref_bias = None
+
+    torch.backends.cudnn.allow_tf32 = False
+
+    ref_out = torch.convolution(
+        ref_inp,
+        ref_weight,
+        bias=ref_bias,
+        stride=stride,
+        padding=padding,
+        dilation=[1, 1],
+        transposed=False,
+        output_padding=[0, 0],
+        groups=groups,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.convolution(
+            inp,
+            weight,
+            bias=bias_tensor,
+            stride=stride,
+            padding=padding,
+            dilation=[1, 1],
+            transposed=False,
+            output_padding=[0, 0],
+            groups=groups,
+        )
+
+    # reduce_dim accounts for accumulation: kernel_h * kernel_w * (in_channels / groups)
+    reduce_dim = kernel[2] * kernel[3] * kernel[1]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.convolution
+@pytest.mark.parametrize("shape, kernel, groups", SHAPE_CONVOLUTION_3D)
+@pytest.mark.parametrize("stride", [[1, 1, 1], [2, 2, 2]])
+@pytest.mark.parametrize("padding", [[0, 0, 0], [1, 1, 1]])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_accuracy_convolution_3d(shape, kernel, groups, stride, padding, dtype):
+    """Test general convolution for 3D inputs via aten::convolution"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    ref_weight = to_reference(weight)
+
+    torch.backends.cudnn.allow_tf32 = False
+
+    ref_out = torch.convolution(
+        ref_inp,
+        ref_weight,
+        bias=None,
+        stride=stride,
+        padding=padding,
+        dilation=[1, 1, 1],
+        transposed=False,
+        output_padding=[0, 0, 0],
+        groups=groups,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.convolution(
+            inp,
+            weight,
+            bias=None,
+            stride=stride,
+            padding=padding,
+            dilation=[1, 1, 1],
+            transposed=False,
+            output_padding=[0, 0, 0],
+            groups=groups,
+        )
+
+    # reduce_dim accounts for accumulation: kernel_d * kernel_h * kernel_w * in_channels
+    reduce_dim = kernel[2] * kernel[3] * kernel[4] * kernel[1]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
 SHAPE_DEPTHWISE = [
     ((32, 4, 8, 8), (32, 1, 2, 2), (2, 2)),
     ((18, 16, 4, 4), (16, 1, 2, 2), (2, 2)),
