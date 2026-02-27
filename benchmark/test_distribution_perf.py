@@ -18,9 +18,28 @@ def normal__input_fn(shape, cur_dtype, device):
     yield self, loc, scale
 
 
+def log_normal__input_fn(shape, cur_dtype, device):
+    self = torch.empty(shape, dtype=cur_dtype, device=device)
+    mean = 1.0
+    std = 2.0
+    yield self, mean, std
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
+        pytest.param(
+            "exponential_",
+            torch.Tensor.exponential_,
+            unary_input_fn,
+            marks=pytest.mark.exponential_,
+        ),
+        pytest.param(
+            "log_normal_",
+            torch.Tensor.log_normal_,
+            log_normal__input_fn,
+            marks=pytest.mark.log_normal_,
+        ),
         pytest.param(
             "normal",
             torch.normal,
@@ -38,12 +57,6 @@ def normal__input_fn(shape, cur_dtype, device):
             torch.Tensor.uniform_,
             unary_input_fn,
             marks=pytest.mark.uniform_,
-        ),
-        pytest.param(
-            "exponential_",
-            torch.Tensor.exponential_,
-            unary_input_fn,
-            marks=pytest.mark.exponential_,
         ),
     ],
 )

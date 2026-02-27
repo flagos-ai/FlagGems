@@ -107,6 +107,37 @@ def test_accuracy_fast_exponential_(shape, dtype):
     assert torch.abs(var_res - var_ref) < var_tol
 
 
+@pytest.mark.inplace
+@pytest.mark.log_normal_
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log_normal_(shape, dtype):
+    """Test log_normal_ generates samples from log-normal distribution.
+
+    For log-normal distribution with parameters mean and std:
+    - If X ~ LogNormal(mean, std), then ln(X) ~ Normal(mean, std^2)
+    - So we verify that ln(X) has the expected mean and std
+    """
+    mean_param = 1.0
+    std_param = 2.0
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        x.log_normal_(mean_param, std_param)
+
+    # All values should be positive for log-normal distribution
+    assert x.min() > 0
+
+    # Verify by checking ln(X) ~ N(mean, std^2)
+    x_ref = to_reference(x)
+    log_x = torch.log(x_ref.to(torch.float32))
+    log_mean = torch.mean(log_x)
+    log_std = torch.std(log_x)
+
+    # Check that ln(X) has approximately the expected mean and std
+    assert torch.abs(log_mean - mean_param) < 0.1
+    assert torch.abs(log_std - std_param) < 0.2
+
+
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", [(1024, 10)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
