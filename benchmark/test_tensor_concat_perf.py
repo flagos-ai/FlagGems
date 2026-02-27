@@ -78,6 +78,13 @@ def hstack_vstack_input_fn(shape, dtype, device):
             FLOAT_DTYPES,
             marks=pytest.mark.vstack,
         ),
+        pytest.param(
+            "concatenate",
+            torch.concatenate,
+            stack_cat_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=pytest.mark.concatenate,
+        ),
     ],
 )
 def test_concat_benchmark(op_name, torch_op, input_fn, dtype):

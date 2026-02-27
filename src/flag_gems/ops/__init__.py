@@ -54,6 +54,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
@@ -303,6 +304,7 @@ __all__ = [
     "clamp_min_",
     "clamp_tensor",
     "clamp_tensor_",
+    "concatenate",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
