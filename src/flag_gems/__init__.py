@@ -29,6 +29,7 @@ def torch_ge(v):
 
 _FULL_CONFIG = (
     ("_assert_async", _assert_async),
+    ("_conv_depthwise2d", _conv_depthwise2d),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
