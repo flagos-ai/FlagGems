@@ -107,6 +107,86 @@ def test_accuracy_fast_exponential_(shape, dtype):
     assert torch.abs(var_res - var_ref) < var_tol
 
 
+@pytest.mark.poisson
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_poisson(shape, dtype):
+    # Test that Poisson samples have correct mean and variance
+    # For Poisson(lambda), mean = lambda and variance = lambda
+    lam = 5.0
+    inp = torch.full(size=shape, fill_value=lam, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res_out = torch.poisson(inp)
+
+    ref_out = to_reference(res_out)
+    mean = torch.mean(ref_out.to(torch.float32))
+    var = torch.var(ref_out.to(torch.float32))
+
+    # Statistical tolerance
+    mean_tol = 0.3
+    var_tol = 0.5
+
+    assert torch.abs(mean - lam) < mean_tol, f"Mean {mean} differs from expected {lam}"
+    assert torch.abs(var - lam) < var_tol, f"Variance {var} differs from expected {lam}"
+    # Poisson samples should be non-negative integers
+    assert (res_out >= 0).all(), "Poisson samples should be non-negative"
+
+
+@pytest.mark.poisson
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_poisson_varying_rates(shape, dtype):
+    # Test with varying lambda values
+    # Create input tensor with different rate values
+    inp = torch.rand(size=shape, dtype=dtype, device=flag_gems.device) * 10 + 1  # rates between 1 and 11
+
+    with flag_gems.use_gems():
+        res_out = torch.poisson(inp)
+
+    # All outputs should be non-negative
+    assert (res_out >= 0).all(), "Poisson samples should be non-negative"
+    # Output should be finite
+    assert torch.isfinite(res_out).all(), "Poisson samples should be finite"
+
+
+@pytest.mark.poisson
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_poisson_large_lambda(shape, dtype):
+    # Test with large lambda (uses normal approximation)
+    lam = 50.0
+    inp = torch.full(size=shape, fill_value=lam, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res_out = torch.poisson(inp)
+
+    ref_out = to_reference(res_out)
+    mean = torch.mean(ref_out.to(torch.float32))
+    var = torch.var(ref_out.to(torch.float32))
+
+    # For large lambda, tolerances can be slightly larger
+    mean_tol = 1.0
+    var_tol = 5.0
+
+    assert torch.abs(mean - lam) < mean_tol, f"Mean {mean} differs from expected {lam}"
+    assert torch.abs(var - lam) < var_tol, f"Variance {var} differs from expected {lam}"
+    assert (res_out >= 0).all(), "Poisson samples should be non-negative"
+
+
+@pytest.mark.poisson
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_poisson_zero_rate(dtype):
+    # Test with zero rate - should always return 0
+    shape = (1000,)
+    inp = torch.zeros(size=shape, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res_out = torch.poisson(inp)
+
+    assert (res_out == 0).all(), "Poisson(0) should always return 0"
+
+
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", [(1024, 10)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

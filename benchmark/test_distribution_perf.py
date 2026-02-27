@@ -5,6 +5,13 @@ from benchmark.attri_util import FLOAT_DTYPES
 from benchmark.performance_utils import GenericBenchmark, unary_input_fn
 
 
+def poisson_input_fn(shape, cur_dtype, device):
+    # Poisson rate parameter (lambda), must be non-negative
+    # Using values in range [0, 10] for reasonable sampling
+    inp = torch.rand(shape, dtype=cur_dtype, device=device) * 10
+    yield (inp,)
+
+
 def normal_input_fn(shape, cur_dtype, device):
     loc = torch.full(shape, fill_value=3.0, dtype=cur_dtype, device=device)
     scale = torch.full(shape, fill_value=10.0, dtype=cur_dtype, device=device)
@@ -44,6 +51,12 @@ def normal__input_fn(shape, cur_dtype, device):
             torch.Tensor.exponential_,
             unary_input_fn,
             marks=pytest.mark.exponential_,
+        ),
+        pytest.param(
+            "poisson",
+            torch.poisson,
+            poisson_input_fn,
+            marks=pytest.mark.poisson,
         ),
     ],
 )
