@@ -640,3 +640,88 @@ def test_index_acc_perf():
     )
     bench.set_gems(gems_op)
     bench.run()
+
+
+def scatter_reduce_input_fn_factory(reduce):
+    def inner(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = -1
+        size_dim = shape[dim]
+        index = torch.randint(0, size_dim, shape, dtype=torch.long, device=device)
+        src = torch.randn(shape, dtype=dtype, device=device)
+        yield inp, dim, index, src, {"reduce": reduce}
+
+    return inner
+
+
+def scatter_reduce_gbps(bench_fn_args, latency):
+    inp, dim, index, src = bench_fn_args[:4]
+    data_shape = list(inp.shape)
+    data_shape[dim] = index.shape[dim]
+    io_amount = sum([shape_utils.size_in_bytes(item) for item in [index, src, inp]])
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
+@pytest.mark.scatter_reduce_
+def test_perf_scatter_reduce_sum():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce_.sum",
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_reduce_input_fn_factory("sum"),
+        get_gbps=scatter_reduce_gbps,
+        dtypes=[torch.float16, torch.float32],
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_
+def test_perf_scatter_reduce_prod():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce_.prod",
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_reduce_input_fn_factory("prod"),
+        get_gbps=scatter_reduce_gbps,
+        dtypes=[torch.float16, torch.float32],
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_
+def test_perf_scatter_reduce_amax():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce_.amax",
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_reduce_input_fn_factory("amax"),
+        get_gbps=scatter_reduce_gbps,
+        dtypes=[torch.float16, torch.float32],
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_
+def test_perf_scatter_reduce_amin():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce_.amin",
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_reduce_input_fn_factory("amin"),
+        get_gbps=scatter_reduce_gbps,
+        dtypes=[torch.float16, torch.float32],
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_
+def test_perf_scatter_reduce_mean():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce_.mean",
+        torch_op=torch.Tensor.scatter_reduce_,
+        input_fn=scatter_reduce_input_fn_factory("mean"),
+        get_gbps=scatter_reduce_gbps,
+        dtypes=[torch.float16, torch.float32],
+        is_inplace=True,
+    )
+    bench.run()
