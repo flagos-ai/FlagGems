@@ -2072,3 +2072,41 @@ kron:
   warps:
   - 4
   - 8
+
+conv_transpose2d_forward:
+  - META:
+      BLOCK_NI_HO_WO: 32
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 64
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 64
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 128
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
