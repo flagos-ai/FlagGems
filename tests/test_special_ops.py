@@ -819,6 +819,28 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
+@pytest.mark.upsample_bilinear2d
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_bilinear2d(dtype, shape, scale, align_corners):
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_i = to_reference(input, True)
+    output_size = tuple([int(input.shape[i + 2] * scale[i]) for i in range(2)])
+    ref_out = torch._C._nn.upsample_bilinear2d(
+        ref_i, output_size=output_size, align_corners=align_corners
+    )
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_bilinear2d(
+            input, output_size=output_size, align_corners=align_corners
+        )
+    if ref_out.dtype != res_out.dtype:
+        ref_out = ref_out.to(res_out.dtype)
+    # Bilinear interpolation uses 4 neighbors with weighted average
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=8)
+
+
 @pytest.mark.upsample_nearest1d
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)

@@ -676,6 +676,17 @@ upsample_bicubic2d_aa:
     block_y: [2, 1]
     warps: [4, 8]
 
+upsample_bilinear2d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_X: block_x
+        BLOCK_Y: block_y
+      num_warps: warps
+    block_x: [512, 256, 128, 64]
+    block_y: [2, 1]
+    warps: [4, 8]
+
 mv:
   - gen: true
     param_map:

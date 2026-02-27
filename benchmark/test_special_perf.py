@@ -473,6 +473,33 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
+@pytest.mark.upsample_bilinear2d
+def test_perf_upsample_bilinear2d():
+    def upsample_bilinear2d_input_fn(shape, dtype, device):
+        batch, channel, height, weight = shape
+        input = torch.randn(size=shape, device=device, dtype=dtype)
+        scale_factors = (2, 2)
+        output_size = (
+            int(height * scale_factors[0]),
+            int(weight * scale_factors[1]),
+        )
+        yield {
+            "input": input,
+            "output_size": output_size,
+            "align_corners": False,
+            "scales_h": None,
+            "scales_w": None,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_bilinear2d_input_fn,
+        op_name="upsample_bilinear2d",
+        torch_op=torch._C._nn.upsample_bilinear2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.upsample_nearest1d
 def test_perf_upsample_nearest1d():
     def upsample_nearest1d_input_fn(shape, dtype, device):
