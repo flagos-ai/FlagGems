@@ -700,3 +700,51 @@ def test_perf_reshape_and_cache_flash():
     )
     bench.set_gems(flag_gems.reshape_and_cache_flash)
     bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.scaled_dot_product_flash_attention_backward
+@pytest.mark.parametrize("is_causal", [True])
+def test_perf_scaled_dot_product_flash_attention_backward(is_causal):
+    """
+    Benchmark for _scaled_dot_product_flash_attention_backward.
+    Uses the forward attention followed by backward pass.
+    """
+    if flag_gems.vendor_name == "hygon":
+        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
+
+    def sdpa_backward_kwargs(shape, dtype, device):
+        query = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        key = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        value = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        yield query, key, value, None, 0.0, is_causal
+
+    def sdpa_flash(
+        query, key, value, attn_mask=None, dropout_p=0.0, is_causal=is_causal
+    ):
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+
+        with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
+            return torch.nn.functional.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+            )
+
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_flash_attention",
+        input_fn=sdpa_backward_kwargs,
+        torch_op=sdpa_flash,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.scaled_dot_product_attention)
+    bench.run()
+    if flag_gems.vendor_name == "hygon":
+        del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]

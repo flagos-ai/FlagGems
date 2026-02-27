@@ -1771,3 +1771,87 @@ def test_scheduler_metadata_correctness(
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+
+
+@pytest.mark.scaled_dot_product_flash_attention_backward
+@pytest.mark.parametrize(
+    "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size",
+    [
+        (2, 4, 4, 128, 128, 64),
+        (2, 4, 4, 256, 256, 64),
+        (2, 4, 4, 128, 128, 128),
+        # GQA cases
+        (2, 8, 4, 128, 128, 64),
+    ],
+)
+# Note: Currently only causal attention is supported in the backward pass
+@pytest.mark.parametrize("is_causal", [True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_flash_attention_backward(
+    batch,
+    num_q_head,
+    num_kv_head,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    is_causal,
+    dtype,
+):
+    """
+    Test the _scaled_dot_product_flash_attention_backward operator.
+    This tests the backward pass using autograd through the forward pass.
+    """
+    if TO_CPU:
+        pytest.skip("Skipping attention backward test in CPU mode.")
+
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch,
+        num_q_head,
+        num_kv_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        device,
+        requires_grad=True,
+    )
+    ref_q = to_reference(q, False)
+    ref_k = to_reference(k, False)
+    ref_v = to_reference(v, False)
+    scale = float(1.0 / np.sqrt(head_size))
+
+    # Run reference forward and backward through autograd
+    torch_result = torch_sdpa(
+        ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=(num_q_head != num_kv_head)
+    )
+
+    # Run FlagGems forward and backward
+    gems_result = flag_gems.ops.scaled_dot_product_attention(
+        q,
+        k,
+        v,
+        attn_mask=None,
+        scale=scale,
+        is_causal=is_causal,
+        enable_gqa=(num_q_head != num_kv_head),
+    )
+
+    gems_assert_close(gems_result, torch_result, dtype)
+
+    # Test backward
+    dout = torch.randn_like(ref_q)
+    torch_result.backward(dout)
+    gems_result.backward(dout)
+
+    torch_q_grad = ref_q.grad.clone() if ref_q.grad is not None else None
+    torch_k_grad = ref_k.grad.clone() if ref_k.grad is not None else None
+    torch_v_grad = ref_v.grad.clone() if ref_v.grad is not None else None
+    gems_q_grad = q.grad.clone() if q.grad is not None else None
+    gems_k_grad = k.grad.clone() if k.grad is not None else None
+    gems_v_grad = v.grad.clone() if v.grad is not None else None
+
+    # NOTE: NaN may arise in the gradients, this behavior aligns with PyTorch's SDPA
+    gems_assert_close(gems_q_grad, torch_q_grad, dtype, equal_nan=True)
+    gems_assert_close(gems_k_grad, torch_k_grad, dtype, equal_nan=True)
+    gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True)

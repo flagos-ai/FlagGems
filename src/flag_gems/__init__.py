@@ -34,6 +34,10 @@ _FULL_CONFIG = (
     ("_softmax", softmax),
     ("_softmax_backward_data", softmax_backward),
     (
+        "_scaled_dot_product_flash_attention_backward",
+        _scaled_dot_product_flash_attention_backward,
+    ),
+    (
         "_to_copy",
         to_copy,
         lambda: version.parse(torch.__version__) >= version.parse("2.4"),
