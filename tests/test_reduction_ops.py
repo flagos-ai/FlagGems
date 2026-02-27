@@ -1476,6 +1476,59 @@ def test_accuracy_max_pool2d_backward(
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
+# Adaptive max pool 2d backward configs
+# Format: (input_shape, output_size)
+ADAPTIVE_MAXPOOL2D_BACKWARD_CONFIGS = [
+    # Standard cases
+    ((2, 3, 8, 8), (4, 4)),
+    ((4, 16, 32, 32), (8, 8)),
+    ((1, 64, 56, 56), (7, 7)),
+    # Non-square output
+    ((2, 8, 16, 16), (4, 8)),
+    ((1, 3, 28, 28), (7, 14)),
+    # Single output element per channel
+    ((2, 4, 8, 8), (1, 1)),
+    # Output same as input (identity-like)
+    ((2, 3, 4, 4), (4, 4)),
+    # Large reduction
+    ((1, 8, 64, 64), (4, 4)),
+]
+
+
+@pytest.mark.adaptive_max_pool2d_backward
+@pytest.mark.parametrize("shape, output_size", ADAPTIVE_MAXPOOL2D_BACKWARD_CONFIGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_adaptive_max_pool2d_backward(shape, output_size, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, upcast=True)
+
+    # Forward pass to get output and indices (use reference to get consistent indices)
+    ref_out, ref_indices = torch.nn.functional.adaptive_max_pool2d_with_indices(
+        ref_inp, output_size
+    )
+
+    # Create gradient for backward
+    out_grad = torch.randn_like(ref_out, dtype=dtype, device=flag_gems.device)
+    ref_grad = to_reference(out_grad, upcast=True)
+
+    # Reference backward
+    ref_in_grad = torch.ops.aten.adaptive_max_pool2d_backward(
+        ref_grad, ref_inp, ref_indices
+    )
+
+    # Use the same indices (from reference) for FlagGems backward
+    # This ensures we test the backward kernel independently of forward differences
+    indices_on_device = ref_indices.to(device=flag_gems.device)
+
+    # FlagGems backward using same indices
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.adaptive_max_pool2d_backward(
+            out_grad, inp, indices_on_device
+        )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 INDEX_PUT_SHAPE_ACC_FALSE = (
     ((2**28,), ((2**16,),), (2**16,), False),
     ((32, 32), ((8,), (8,)), (8,), False),

@@ -422,6 +422,56 @@ def test_perf_max_pool2d_backward():
     bench.run()
 
 
+def adaptive_max_pool2d_backward_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    inp.requires_grad_(True)
+    # Common output size
+    output_size = (shape[-2] // 2, shape[-1] // 2)
+    output, indices = torch.nn.functional.adaptive_max_pool2d_with_indices(
+        inp, output_size
+    )
+    grad_output = torch.randn_like(output)
+    yield grad_output, inp, indices
+
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # Output size 7x7 (common in ResNet)
+        if shape[-2] >= 14 and shape[-1] >= 14:
+            output_size = (7, 7)
+            output, indices = torch.nn.functional.adaptive_max_pool2d_with_indices(
+                inp, output_size
+            )
+            grad_output = torch.randn_like(output)
+            yield grad_output, inp, indices
+
+        # Output size 1x1 (global pooling)
+        output_size = (1, 1)
+        output, indices = torch.nn.functional.adaptive_max_pool2d_with_indices(
+            inp, output_size
+        )
+        grad_output = torch.randn_like(output)
+        yield grad_output, inp, indices
+
+
+class AdaptiveMaxPool2dBackwardBenchmark(GenericBenchmark4DOnly):
+    pass
+
+
+@pytest.mark.adaptive_max_pool2d_backward
+def test_perf_adaptive_max_pool2d_backward():
+    def torch_adaptive_max_pool2d_backward_wrapper(grad_output, input, indices):
+        return torch.ops.aten.adaptive_max_pool2d_backward(grad_output, input, indices)
+
+    bench = AdaptiveMaxPool2dBackwardBenchmark(
+        input_fn=adaptive_max_pool2d_backward_input_fn,
+        op_name="adaptive_max_pool2d_backward",
+        torch_op=torch_adaptive_max_pool2d_backward_wrapper,
+        dtypes=FLOAT_DTYPES,
+    )
+
+    bench.set_gems(flag_gems.adaptive_max_pool2d_backward)
+    bench.run()
+
+
 @pytest.mark.dot
 def test_perf_dot():
     def dot_input_fn(shape, dtype, device):
