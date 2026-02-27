@@ -233,6 +233,8 @@ _FULL_CONFIG = (
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
+    ("mish", mish),
+    ("mish_", mish_),
     ("mm", mm),
     ("mm.out", mm_out),
     ("mse_loss", mse_loss),
