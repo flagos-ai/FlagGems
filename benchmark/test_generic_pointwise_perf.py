@@ -21,6 +21,14 @@ def flip_input_fn(shape, cur_dtype, device):
         yield inp, {"dims": (0,)}
 
 
+def roll_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    if len(shape) > 1:
+        yield inp, {"shifts": (1, 2), "dims": (0, 1)}
+    else:
+        yield inp, {"shifts": 1, "dims": 0}
+
+
 def where_input_fn(shape, cur_dtype, device):
     inp1 = generate_tensor_input(shape, cur_dtype, device)
     inp2 = generate_tensor_input(shape, cur_dtype, device)
@@ -107,6 +115,13 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             flip_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
             marks=pytest.mark.flip,
+        ),
+        pytest.param(
+            "roll",
+            torch.roll,
+            roll_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=pytest.mark.roll,
         ),
         pytest.param(
             "where", torch.where, where_input_fn, FLOAT_DTYPES, marks=pytest.mark.where
