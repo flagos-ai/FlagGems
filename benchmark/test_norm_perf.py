@@ -257,3 +257,42 @@ def test_perf_rms_norm():
         torch_op=torch.nn.functional.rms_norm,
     )
     bench.run()
+
+
+@pytest.mark.fused_rms_norm_backward
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The version prior to 2.4 does not include the rms_norm API in torch.",
+)
+def test_perf_fused_rms_norm_backward():
+    def fused_rms_norm_backward_input_fn(shape, dtype, device):
+        M, N = shape
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        weight = torch.randn(N, dtype=dtype, device=device)
+        grad_out = torch.randn(shape, dtype=dtype, device=device)
+        # Compute inv_rms for backward
+        eps = 1e-5
+        upcast_inp = inp.to(torch.float32)
+        variance = upcast_inp.pow(2).mean(-1)
+        inv_rms = torch.rsqrt(variance + eps).to(torch.float32)
+        yield grad_out, inp, (N,), inv_rms, weight, eps
+
+    def torch_fused_rms_norm_backward(grad_out, inp, normalized_shape, inv_rms, weight, eps):
+        # Reference implementation using autograd
+        inp_ref = inp.clone().requires_grad_(True)
+        weight_ref = weight.clone().requires_grad_(True)
+        upcast_x = inp_ref.to(torch.float32)
+        variance = upcast_x.pow(2).mean(-1, keepdim=True)
+        hidden_states = upcast_x * torch.rsqrt(variance + eps).to(torch.float32)
+        hidden_states = hidden_states.to(inp.dtype)
+        out = weight_ref * hidden_states
+        dx, dw = torch.autograd.grad(out, (inp_ref, weight_ref), grad_out)
+        return dx, dw
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=fused_rms_norm_backward_input_fn,
+        op_name="fused_rms_norm_backward",
+        torch_op=torch_fused_rms_norm_backward,
+    )
+    bench.set_gems(flag_gems._fused_rms_norm_backward)
+    bench.run()

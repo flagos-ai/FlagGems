@@ -796,3 +796,55 @@ def test_accuracy_batch_norm_backward(shape, dtype, affine):
             res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim
         )
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.fused_rms_norm_backward
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_fused_rms_norm_backward(shape, dtype):
+    N = shape[1]
+    layer_shape = [
+        N,
+    ]
+    np.random.seed(0)
+    np_inp = np.random.uniform(-0.1, 0.1, shape[:2]).astype(np.float32)
+    np_grad = np.random.uniform(-0.01, 0.01, shape[:2]).astype(np.float32)
+    np_weight = np.random.uniform(-0.1, 0.1, layer_shape).astype(np.float32)
+
+    inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    weight = torch.tensor(
+        np_weight, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+
+    eps = 1e-5
+
+    ref_inp = to_reference(inp, True)
+    ref_weight = to_reference(weight, True)
+
+    def _torch_rms_norm(x, weight, eps):
+        upcast_x = x.to(torch.float32)
+        variance = upcast_x.pow(2).mean(-1, keepdim=True)
+        hidden_states = upcast_x * torch.rsqrt(variance + eps).to(torch.float32)
+        hidden_states = hidden_states.to(x.dtype)
+        return weight * hidden_states
+
+    ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
+
+    grad_out = torch.tensor(np_grad, dtype=dtype, device=flag_gems.device)
+    ref_grad_out = to_reference(grad_out)
+
+    # Reference backward using autograd
+    ref_inp_grad, ref_weight_grad = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight), ref_grad_out
+    )
+
+    # FlagGems forward to get inv_rms
+    res_out, inv_rms = flag_gems.rms_norm_forward(inp, layer_shape, weight, eps)
+
+    # FlagGems backward using _fused_rms_norm_backward
+    res_inp_grad, res_weight_grad = flag_gems._fused_rms_norm_backward(
+        grad_out, inp, layer_shape, inv_rms, weight, eps
+    )
+
+    gems_assert_close(res_inp_grad, ref_inp_grad, dtype)
+    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)

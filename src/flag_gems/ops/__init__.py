@@ -1,3 +1,4 @@
+from flag_gems.ops._fused_rms_norm_backward import _fused_rms_norm_backward
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
@@ -241,6 +242,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_fused_rms_norm_backward",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
