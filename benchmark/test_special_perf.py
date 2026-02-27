@@ -821,3 +821,40 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+# FFT RFFT Benchmark
+class FFTRfftBenchmark(GenericBenchmark):
+    """Benchmark for FFT RFFT operation."""
+
+    def set_more_shapes(self):
+        # FFT shapes: additional 1D and batched signals
+        return [
+            (64,),
+            (128,),
+            (256,),
+            (512,),
+            (1024,),
+            (2048,),
+            (4096,),
+            (8192,),
+            # Batched FFT
+            (32, 1024),
+            (64, 1024),
+            (128, 1024),
+        ]
+
+
+@pytest.mark.fft_rfft
+def test_perf_fft_rfft():
+    def fft_rfft_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp,
+
+    bench = FFTRfftBenchmark(
+        input_fn=fft_rfft_input_fn,
+        op_name="fft_rfft",
+        torch_op=torch.fft.rfft,
+        dtypes=[torch.float16, torch.float32],  # bfloat16 not supported by cuFFT
+    )
+    bench.run()

@@ -1890,3 +1890,82 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# FFT RFFT Tests
+# Note: FFT operations only support float16 and float32 (cuFFT limitation, no bfloat16 support)
+FFT_SHAPES = [(16,), (32,), (64,), (128,), (256,), (512,), (1024,)]
+FFT_BATCH_SHAPES = [(4, 64), (8, 128), (2, 4, 256)]
+FFT_NORMS = [None, "backward", "forward", "ortho"]
+FFT_DTYPES = [torch.float16, torch.float32]  # bfloat16 not supported by cuFFT
+
+
+@pytest.mark.fft_rfft
+@pytest.mark.parametrize("shape", FFT_SHAPES + FFT_BATCH_SHAPES)
+@pytest.mark.parametrize("dtype", FFT_DTYPES)
+def test_accuracy_fft_rfft(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.rfft(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.fft.rfft(inp)
+
+    # FFT outputs complex tensors, use torch.testing.assert_close directly
+    res_out_cpu = res_out.to("cpu") if res_out.is_cuda else res_out
+    ref_out_cpu = ref_out.to("cpu") if ref_out.is_cuda else ref_out
+    # Convert to same dtype for comparison
+    res_out_cpu = res_out_cpu.to(torch.complex64)
+    ref_out_cpu = ref_out_cpu.to(torch.complex64)
+    torch.testing.assert_close(res_out_cpu, ref_out_cpu, rtol=1e-3, atol=1e-3)
+
+
+@pytest.mark.fft_rfft
+@pytest.mark.parametrize("shape", [(64,), (128,)])
+@pytest.mark.parametrize("norm", FFT_NORMS)
+@pytest.mark.parametrize("dtype", FFT_DTYPES)
+def test_accuracy_fft_rfft_norm(shape, norm, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.rfft(ref_inp, norm=norm)
+    with flag_gems.use_gems():
+        res_out = torch.fft.rfft(inp, norm=norm)
+
+    res_out_cpu = res_out.to("cpu").to(torch.complex64) if res_out.is_cuda else res_out.to(torch.complex64)
+    ref_out_cpu = ref_out.to("cpu").to(torch.complex64) if ref_out.is_cuda else ref_out.to(torch.complex64)
+    torch.testing.assert_close(res_out_cpu, ref_out_cpu, rtol=1e-3, atol=1e-3)
+
+
+@pytest.mark.fft_rfft
+@pytest.mark.parametrize("shape", [(64,), (128,)])
+@pytest.mark.parametrize("n", [32, 64, 128, 256])
+@pytest.mark.parametrize("dtype", FFT_DTYPES)
+def test_accuracy_fft_rfft_n(shape, n, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.rfft(ref_inp, n=n)
+    with flag_gems.use_gems():
+        res_out = torch.fft.rfft(inp, n=n)
+
+    res_out_cpu = res_out.to("cpu").to(torch.complex64) if res_out.is_cuda else res_out.to(torch.complex64)
+    ref_out_cpu = ref_out.to("cpu").to(torch.complex64) if ref_out.is_cuda else ref_out.to(torch.complex64)
+    torch.testing.assert_close(res_out_cpu, ref_out_cpu, rtol=1e-3, atol=1e-3)
+
+
+@pytest.mark.fft_rfft
+@pytest.mark.parametrize("shape", [(4, 64), (8, 32, 128)])
+@pytest.mark.parametrize("dim", [-1, -2])
+@pytest.mark.parametrize("dtype", FFT_DTYPES)
+def test_accuracy_fft_rfft_dim(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.rfft(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.fft.rfft(inp, dim=dim)
+
+    res_out_cpu = res_out.to("cpu").to(torch.complex64) if res_out.is_cuda else res_out.to(torch.complex64)
+    ref_out_cpu = ref_out.to("cpu").to(torch.complex64) if ref_out.is_cuda else ref_out.to(torch.complex64)
+    torch.testing.assert_close(res_out_cpu, ref_out_cpu, rtol=1e-3, atol=1e-3)
