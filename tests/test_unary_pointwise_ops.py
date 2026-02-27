@@ -2276,6 +2276,7 @@ def test_accuracy_round_(shape, dtype):
     ref_inp = to_reference(inp.clone())
 
     ref_out = torch.round_(ref_inp)
+    ref_out = ref_inp.round_()
     with flag_gems.use_gems():
         res_out = inp.round_()
 

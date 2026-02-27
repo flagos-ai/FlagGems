@@ -369,6 +369,8 @@ _FULL_CONFIG = (
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
+    ("round", round),
+    ("round_", round_),
     ("scaled_softmax_backward", scaled_softmax_backward),
     ("scaled_softmax_forward", scaled_softmax_forward),
     ("scatter.reduce", scatter),
