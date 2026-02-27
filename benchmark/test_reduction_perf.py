@@ -233,6 +233,44 @@ def test_nll_loss2d_benchmark():
     bench.run()
 
 
+def nll_loss_nd_input_fn(shape, cur_dtype, device):
+    """Input function for nll_loss_nd supporting N-dimensional inputs."""
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target_shape = list(shape)
+    del target_shape[1]  # Remove C dimension
+    target = torch.randint(0, shape[1], target_shape, device=device)
+    yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[1], dtype=cur_dtype, device=device)
+        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+
+
+class NLLLossNDBenchmark(GenericBenchmark):
+    """Benchmark for N-dimensional NLL Loss."""
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        # N-dimensional shapes: (N, C, d1, d2, ..., dk)
+        shapes_nd = [
+            (16, 32),  # 2D: (N, C)
+            (8, 16, 128),  # 3D: (N, C, L)
+            (4, 8, 32, 32),  # 4D: (N, C, H, W)
+            (2, 4, 8, 16, 16),  # 5D: (N, C, D, H, W)
+        ]
+        for shape in shapes_nd:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.nll_loss_nd
+def test_nll_loss_nd_benchmark():
+    bench = NLLLossNDBenchmark(
+        input_fn=nll_loss_nd_input_fn,
+        op_name="nll_loss_nd",
+        torch_op=torch.nn.functional.nll_loss,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 # @pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
