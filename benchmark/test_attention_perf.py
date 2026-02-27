@@ -700,3 +700,111 @@ def test_perf_reshape_and_cache_flash():
     )
     bench.set_gems(flag_gems.reshape_and_cache_flash)
     bench.run()
+
+
+class ScaledDotProductEfficientAttentionBackwardBenchmark(AttentionBenchmark):
+    """
+    benchmark for _scaled_dot_product_efficient_attention_backward
+    """
+
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing four elements:
+        # (batch, num_heads, seq_len, head_size).
+        return [
+            (2, 8, 128, 64),
+            (2, 8, 256, 64),
+            (2, 8, 512, 64),
+            (4, 8, 1024, 64),
+            (2, 8, 2048, 64),
+            (1, 8, 4096, 64),
+        ]
+
+
+@pytest.mark.scaled_dot_product_efficient_attention_backward
+@pytest.mark.parametrize("is_causal", [True, False])
+def test_perf_scaled_dot_product_efficient_attention_backward(is_causal):
+    def input_kwargs(shape, dtype, device):
+        batch, num_heads, seq_len, head_size = shape
+        query = torch.randn(
+            (batch, num_heads, seq_len, head_size), device=device, dtype=dtype
+        )
+        key = torch.randn(
+            (batch, num_heads, seq_len, head_size), device=device, dtype=dtype
+        )
+        value = torch.randn(
+            (batch, num_heads, seq_len, head_size), device=device, dtype=dtype
+        )
+
+        scale = 1.0 / (head_size**0.5)
+
+        # Run forward pass to get output and logsumexp
+        out, logsumexp = flag_gems.ops.scaled_dot_product_attention_forward(
+            query, key, value, is_causal=is_causal, scale=scale
+        )
+
+        grad_out = torch.randn_like(out)
+        philox_seed = torch.tensor(0, dtype=torch.int64, device=device)
+        philox_offset = torch.tensor(0, dtype=torch.int64, device=device)
+        grad_input_mask = [True, True, True, False]
+
+        # Yield flat tuple with kwargs dict at the end
+        yield (
+            grad_out,
+            query,
+            key,
+            value,
+            None,  # attn_bias
+            out,
+            logsumexp,
+            philox_seed,
+            philox_offset,
+            0.0,  # dropout_p
+            grad_input_mask,
+            is_causal,
+            {"scale": scale},
+        )
+
+    # Use FlagGems implementation as both baseline and test
+    # (since torch's efficient attention backward requires compatible forward outputs)
+    def gems_backward(
+        grad_out,
+        query,
+        key,
+        value,
+        attn_bias,
+        out,
+        logsumexp,
+        philox_seed,
+        philox_offset,
+        dropout_p,
+        grad_input_mask,
+        is_causal,
+        scale=None,
+    ):
+        return flag_gems.ops._scaled_dot_product_efficient_attention_backward(
+            grad_out,
+            query,
+            key,
+            value,
+            attn_bias,
+            out,
+            logsumexp,
+            philox_seed,
+            philox_offset,
+            dropout_p,
+            grad_input_mask,
+            is_causal,
+            scale=scale,
+        )
+
+    bench = ScaledDotProductEfficientAttentionBackwardBenchmark(
+        op_name="_scaled_dot_product_efficient_attention_backward",
+        input_fn=input_kwargs,
+        torch_op=gems_backward,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+    bench.set_gems(flag_gems.ops._scaled_dot_product_efficient_attention_backward)
+    bench.run()

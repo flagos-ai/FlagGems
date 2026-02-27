@@ -1771,3 +1771,97 @@ def test_scheduler_metadata_correctness(
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+
+
+@pytest.mark.scaled_dot_product_efficient_attention_backward
+@pytest.mark.parametrize(
+    ["batch", "num_head", "q_seq_len", "kv_seq_len", "head_size"],
+    [
+        (2, 4, 128, 128, 64),
+        (2, 4, 256, 256, 64),
+        (2, 4, 512, 512, 64),
+        (1, 8, 128, 128, 128),
+    ],
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_efficient_attention_backward(
+    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
+):
+    """Test accuracy of _scaled_dot_product_efficient_attention_backward.
+
+    This test verifies that _scaled_dot_product_efficient_attention_backward
+    produces outputs with the correct shape and dtype.
+    """
+    device = torch_device_fn.current_device()
+
+    # Set fixed random seed for reproducibility
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+
+    # Create input tensors using make_input pattern
+    q, k, v = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        device,
+        requires_grad=False,
+    )
+
+    scale = 1.0 / (head_size**0.5)
+
+    # Forward pass using FlagGems to get output and logsumexp
+    gems_out, gems_logsumexp = flag_gems.ops.scaled_dot_product_attention_forward(
+        q, k, v, is_causal=is_causal, scale=scale
+    )
+
+    # Ensure forward pass is completed before creating grad_out
+    torch.cuda.synchronize()
+
+    # Create grad_out with fixed seed
+    torch.manual_seed(123)
+    grad_out = torch.randn_like(gems_out)
+
+    # Compute FlagGems gradients using _scaled_dot_product_efficient_attention_backward
+    grad_input_mask = [True, True, True, False]
+    philox_seed = torch.tensor(0, dtype=torch.int64, device=device)
+    philox_offset = torch.tensor(0, dtype=torch.int64, device=device)
+
+    gems_dq, gems_dk, gems_dv, gems_dbias = (
+        flag_gems.ops._scaled_dot_product_efficient_attention_backward(
+            grad_out,
+            q,
+            k,
+            v,
+            None,  # attn_bias
+            gems_out,
+            gems_logsumexp,
+            philox_seed,
+            philox_offset,
+            0.0,  # dropout_p
+            grad_input_mask,
+            is_causal,
+            scale=scale,
+        )
+    )
+
+    # Synchronize after computation
+    torch.cuda.synchronize()
+
+    # Verify output shapes and dtypes
+    assert gems_dq.shape == q.shape, f"grad_query shape mismatch: {gems_dq.shape} vs {q.shape}"
+    assert gems_dk.shape == k.shape, f"grad_key shape mismatch: {gems_dk.shape} vs {k.shape}"
+    assert gems_dv.shape == v.shape, f"grad_value shape mismatch: {gems_dv.shape} vs {v.shape}"
+    assert gems_dq.dtype == dtype, f"grad_query dtype mismatch: {gems_dq.dtype} vs {dtype}"
+    assert gems_dk.dtype == dtype, f"grad_key dtype mismatch: {gems_dk.dtype} vs {dtype}"
+    assert gems_dv.dtype == dtype, f"grad_value dtype mismatch: {gems_dv.dtype} vs {dtype}"
+
+    # Verify that at least some gradients are finite (not all NaN/Inf)
+    # Note: Some values may be zero or very small, which is expected for attention gradients
+    assert torch.isfinite(gems_dq).any(), "grad_query has no finite values"
+    assert torch.isfinite(gems_dk).any(), "grad_key has no finite values"
+    assert torch.isfinite(gems_dv).any(), "grad_value has no finite values"

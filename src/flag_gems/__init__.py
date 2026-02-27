@@ -31,6 +31,10 @@ _FULL_CONFIG = (
     ("_flash_attention_forward", flash_attention_forward),
     ("_log_softmax", log_softmax),
     ("_log_softmax_backward_data", log_softmax_backward),
+    (
+        "_scaled_dot_product_efficient_attention_backward",
+        _scaled_dot_product_efficient_attention_backward,
+    ),
     ("_softmax", softmax),
     ("_softmax_backward_data", softmax_backward),
     (
