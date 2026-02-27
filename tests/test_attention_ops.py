@@ -1771,3 +1771,164 @@ def test_scheduler_metadata_correctness(
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+
+
+# Test shapes for _scaled_dot_product_flash_attention
+SDPA_FLASH_SHAPES = [
+    # (batch, num_heads, seq_len, head_dim)
+    (1, 8, 64, 32),
+    (2, 8, 64, 64),
+    (2, 16, 128, 64),
+    (4, 8, 256, 32),
+    (2, 8, 512, 64),
+    (1, 32, 1024, 64),
+    (2, 8, 2048, 128),
+]
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_len, head_dim",
+    SDPA_FLASH_SHAPES,
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_flash_attention(
+    batch, num_heads, seq_len, head_dim, is_causal, dtype
+):
+    """Test accuracy of _scaled_dot_product_flash_attention operator."""
+    if TO_CPU:
+        pytest.skip("Skipping test in CPU mode.")
+
+    device = torch_device_fn.current_device()
+
+    # Create input tensors
+    query = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    )
+    key = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    )
+    value = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    )
+
+    # Reference implementation (native PyTorch)
+    ref_query = to_reference(query)
+    ref_key = to_reference(key)
+    ref_value = to_reference(value)
+
+    ref_result = torch.ops.aten._scaled_dot_product_flash_attention(
+        ref_query, ref_key, ref_value, 0.0, is_causal, False, scale=None
+    )
+
+    # FlagGems implementation
+    with flag_gems.use_gems():
+        gems_result = torch.ops.aten._scaled_dot_product_flash_attention(
+            query, key, value, 0.0, is_causal, False, scale=None
+        )
+
+    # Check output tensor (index 0) with larger tolerance for attention operations
+    # Flash attention implementations can have small numerical differences
+    gems_assert_close(gems_result[0], ref_result[0], dtype, atol=0.01)
+
+    # Check logsumexp tensor (index 1)
+    gems_assert_close(gems_result[1], ref_result[1], dtype=torch.float32, atol=0.01)
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_len_q, seq_len_k, head_dim",
+    [
+        # Different q and k sequence lengths
+        (2, 8, 64, 128, 64),
+        (2, 8, 128, 64, 64),
+        (1, 16, 256, 512, 32),
+        (2, 8, 512, 256, 64),
+    ],
+)
+@pytest.mark.parametrize("is_causal", [False])  # Causal requires seq_len_q >= seq_len_k
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_flash_attention_nonsquare(
+    batch, num_heads, seq_len_q, seq_len_k, head_dim, is_causal, dtype
+):
+    """Test accuracy of _scaled_dot_product_flash_attention with different q/k sequence lengths."""
+    if TO_CPU:
+        pytest.skip("Skipping test in CPU mode.")
+
+    device = torch_device_fn.current_device()
+
+    # Create input tensors with different sequence lengths
+    query = torch.randn(
+        batch, num_heads, seq_len_q, head_dim, dtype=dtype, device=device
+    )
+    key = torch.randn(
+        batch, num_heads, seq_len_k, head_dim, dtype=dtype, device=device
+    )
+    value = torch.randn(
+        batch, num_heads, seq_len_k, head_dim, dtype=dtype, device=device
+    )
+
+    # Reference implementation (native PyTorch)
+    ref_query = to_reference(query)
+    ref_key = to_reference(key)
+    ref_value = to_reference(value)
+
+    ref_result = torch.ops.aten._scaled_dot_product_flash_attention(
+        ref_query, ref_key, ref_value, 0.0, is_causal, False, scale=None
+    )
+
+    # FlagGems implementation
+    with flag_gems.use_gems():
+        gems_result = torch.ops.aten._scaled_dot_product_flash_attention(
+            query, key, value, 0.0, is_causal, False, scale=None
+        )
+
+    # Check output tensor (index 0) with larger tolerance for attention operations
+    gems_assert_close(gems_result[0], ref_result[0], dtype, atol=0.01)
+
+    # Check logsumexp tensor (index 1)
+    gems_assert_close(gems_result[1], ref_result[1], dtype=torch.float32, atol=0.01)
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.parametrize("scale", [None, 0.1, 0.5])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_accuracy_scaled_dot_product_flash_attention_with_scale(scale, dtype):
+    """Test accuracy of _scaled_dot_product_flash_attention with custom scale."""
+    if TO_CPU:
+        pytest.skip("Skipping test in CPU mode.")
+
+    device = torch_device_fn.current_device()
+    batch, num_heads, seq_len, head_dim = 2, 8, 64, 64
+
+    query = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    )
+    key = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    )
+    value = torch.randn(
+        batch, num_heads, seq_len, head_dim, dtype=dtype, device=device
+    )
+
+    # Reference implementation
+    ref_query = to_reference(query)
+    ref_key = to_reference(key)
+    ref_value = to_reference(value)
+
+    ref_result = torch.ops.aten._scaled_dot_product_flash_attention(
+        ref_query, ref_key, ref_value, 0.0, False, False, scale=scale
+    )
+
+    # FlagGems implementation
+    with flag_gems.use_gems():
+        gems_result = torch.ops.aten._scaled_dot_product_flash_attention(
+            query, key, value, 0.0, False, False, scale=scale
+        )
+
+    # Check output tensor with larger tolerance for attention operations
+    gems_assert_close(gems_result[0], ref_result[0], dtype, atol=0.01)
+
+    # Check logsumexp tensor
+    gems_assert_close(gems_result[1], ref_result[1], dtype=torch.float32, atol=0.01)

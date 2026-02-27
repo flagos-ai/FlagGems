@@ -700,3 +700,62 @@ def test_perf_reshape_and_cache_flash():
     )
     bench.set_gems(flag_gems.reshape_and_cache_flash)
     bench.run()
+
+
+class ScaledDotProductFlashAttentionBenchmark(GenericBenchmark):
+    """
+    benchmark for _scaled_dot_product_flash_attention
+    """
+
+    def set_shapes(self, shape_file_path=None):
+        # Shapes for attention: (batch, num_heads, seq_len, head_size)
+        self.shapes = [
+            (1, 8, 64, 64),
+            (2, 8, 128, 64),
+            (2, 16, 256, 64),
+            (4, 8, 512, 64),
+            (2, 32, 1024, 64),
+            (1, 8, 2048, 128),
+        ]
+
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing four elements:
+        # (batch, num_heads, seq_len, head_size).
+        return None
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.parametrize("is_causal", [True, False])
+def test_perf_scaled_dot_product_flash_attention(is_causal):
+    def scaled_dot_product_flash_attention_kwargs(shape, dtype, device):
+        batch, num_heads, seq_len, head_size = shape
+        query = torch.randn(shape, device=device, dtype=dtype)
+        key = torch.randn(shape, device=device, dtype=dtype)
+        value = torch.randn(shape, device=device, dtype=dtype)
+        yield query, key, value, 0.0, is_causal, False
+
+    def torch_scaled_dot_product_flash_attention(
+        query, key, value, dropout_p, is_causal, return_debug_mask
+    ):
+        return torch.ops.aten._scaled_dot_product_flash_attention(
+            query, key, value, dropout_p, is_causal, return_debug_mask, scale=None
+        )
+
+    def gems_scaled_dot_product_flash_attention(
+        query, key, value, dropout_p, is_causal, return_debug_mask
+    ):
+        return flag_gems.ops._scaled_dot_product_flash_attention(
+            query, key, value, dropout_p, is_causal, return_debug_mask, scale=None
+        )
+
+    bench = ScaledDotProductFlashAttentionBenchmark(
+        op_name="_scaled_dot_product_flash_attention",
+        input_fn=scaled_dot_product_flash_attention_kwargs,
+        torch_op=torch_scaled_dot_product_flash_attention,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+    bench.set_gems(gems_scaled_dot_product_flash_attention)
+    bench.run()

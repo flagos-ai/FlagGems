@@ -59,6 +59,9 @@ from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
+from flag_gems.ops._scaled_dot_product_flash_attention import (
+    _scaled_dot_product_flash_attention,
+)
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -241,6 +244,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_scaled_dot_product_flash_attention",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
