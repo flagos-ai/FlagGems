@@ -819,6 +819,59 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
+@pytest.mark.upsample_bicubic2d_aa_backward
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [(2, 2), (0.5, 0.5)])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (2, 3, 8, 8),
+        (2, 3, 16, 16),
+        (2, 3, 32, 32),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_bicubic2d_aa_backward(dtype, shape, scale, align_corners):
+    # Create input tensor for the forward pass
+    input_tensor = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    output_size = tuple([int(input_tensor.shape[i + 2] * scale[i]) for i in range(2)])
+
+    # Create grad_output tensor (same shape as forward output)
+    grad_output = torch.randn(
+        (shape[0], shape[1], output_size[0], output_size[1]),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_grad = to_reference(grad_output)
+
+    # Reference backward
+    ref_out = torch.ops.aten._upsample_bicubic2d_aa_backward(
+        ref_grad, list(output_size), list(shape), align_corners=align_corners
+    )
+
+    # FlagGems backward
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._upsample_bicubic2d_aa_backward(
+            grad_output, list(output_size), list(shape), align_corners=align_corners
+        )
+
+    def span(scale_val):
+        support = 2 if (scale_val >= 1.0) else 2.0 / scale_val
+        interpolate_range = int(support + 0.5) * 2 + 1
+        return interpolate_range
+
+    if ref_out.dtype != res_out.dtype:
+        ref_out = ref_out.to(res_out.dtype)
+
+    reduce_dim = span(scale[0]) * span(scale[1])
+    # Use higher tolerance for lower precision dtypes due to accumulated error
+    if dtype in [torch.float16, torch.bfloat16]:
+        atol = 0.01  # Higher tolerance for half precision
+    else:
+        atol = 1e-4  # Default tolerance for float32
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim, atol=atol)
+
+
 @pytest.mark.upsample_nearest1d
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)

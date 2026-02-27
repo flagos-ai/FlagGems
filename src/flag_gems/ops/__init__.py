@@ -220,6 +220,7 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from flag_gems.ops._upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.var_mean import var_mean
@@ -243,6 +244,7 @@ __all__ = [
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "_upsample_bicubic2d_aa_backward",
     "abs",
     "abs_",
     "acos",

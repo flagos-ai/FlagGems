@@ -473,6 +473,45 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
+@pytest.mark.upsample_bicubic2d_aa_backward
+def test_perf_upsample_bicubic2d_aa_backward():
+    def upsample_bicubic2d_aa_backward_input_fn(shape, dtype, device):
+        batch, channel, height, width = shape
+        scale_factors = (2, 2)
+        output_size = (
+            int(height * scale_factors[0]),
+            int(width * scale_factors[1]),
+        )
+        grad_output = torch.randn(
+            size=(batch, channel, output_size[0], output_size[1]),
+            device=device,
+            dtype=dtype,
+        )
+        input_size = list(shape)
+        yield {
+            "grad_output": grad_output,
+            "output_size": list(output_size),
+            "input_size": input_size,
+            "align_corners": False,
+            "scales_h": None,
+            "scales_w": None,
+        },
+
+    if vendor_name == "cambricon":
+        dtypes = [torch.float32]
+    elif vendor_name == "kunlunxin":
+        dtypes = [torch.float32, torch.float16]
+    else:
+        dtypes = FLOAT_DTYPES
+    bench = UpsampleBenchmark(
+        input_fn=upsample_bicubic2d_aa_backward_input_fn,
+        op_name="upsample_bicubic2d_aa_backward",
+        torch_op=torch.ops.aten._upsample_bicubic2d_aa_backward,
+        dtypes=dtypes,
+    )
+    bench.run()
+
+
 @pytest.mark.upsample_nearest1d
 def test_perf_upsample_nearest1d():
     def upsample_nearest1d_input_fn(shape, dtype, device):
