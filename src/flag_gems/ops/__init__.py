@@ -14,6 +14,7 @@ from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.atan import atan, atan_
+from flag_gems.ops._flash_attention_backward import _flash_attention_backward
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -241,6 +242,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_flash_attention_backward",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",

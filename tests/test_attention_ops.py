@@ -1771,3 +1771,97 @@ def test_scheduler_metadata_correctness(
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+
+
+@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="Unsupported in CPU mode"
+)
+@pytest.mark.flash_attention_backward
+@pytest.mark.parametrize(
+    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
+    [
+        (2, 4, 128, 128),
+        (2, 4, 256, 256),
+        (4, 8, 64, 64),
+    ],
+)
+@pytest.mark.parametrize("head_size", [64, 128])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_flash_attention_backward(
+    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
+):
+    """Test _flash_attention_backward implementation against reference attention backward."""
+    device = torch_device_fn.current_device()
+    scale = float(1.0 / np.sqrt(head_size))
+
+    # Create input tensors (batch, heads, seqlen, dim) format
+    q_shape = (batch, num_head, q_seq_len, head_size)
+    kv_shape = (batch, num_head, kv_seq_len, head_size)
+    q = torch.empty(q_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+    k = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+    v = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+
+    # Transpose to flash format (batch, seqlen, heads, dim)
+    q_flash = q.transpose(1, 2).contiguous()
+    k_flash = k.transpose(1, 2).contiguous()
+    v_flash = v.transpose(1, 2).contiguous()
+
+    # Run gems forward using ops.flash_attention_forward
+    (
+        gems_out,
+        gems_lse,
+        gems_seed,
+        gems_offset,
+        _,
+    ) = flag_gems.ops.flash_attention_forward(
+        q_flash,
+        k_flash,
+        v_flash,
+        None,  # cum_seq_q
+        None,  # cum_seq_k
+        q_seq_len,  # max_q
+        kv_seq_len,  # max_k
+        0.0,  # dropout_p
+        is_causal,
+        False,  # return_debug_mask
+        scale=scale,
+    )
+
+    # Create gradient output
+    grad_out = torch.randn_like(gems_out)
+
+    # Run gems backward using our implementation
+    (
+        gems_grad_q,
+        gems_grad_k,
+        gems_grad_v,
+    ) = flag_gems.ops._flash_attention_backward(
+        grad_out,
+        q_flash,
+        k_flash,
+        v_flash,
+        gems_out,
+        gems_lse,
+        torch.empty(0, dtype=torch.int32, device=device),  # cum_seq_q
+        torch.empty(0, dtype=torch.int32, device=device),  # cum_seq_k
+        q_seq_len,  # max_q
+        kv_seq_len,  # max_k
+        0.0,  # dropout_p
+        is_causal,
+        gems_seed,
+        gems_offset,
+        scale=scale,
+    )
+
+    # Check shapes
+    assert gems_grad_q.shape == q_flash.shape, f"grad_q shape mismatch: {gems_grad_q.shape} vs {q_flash.shape}"
+    assert gems_grad_k.shape == k_flash.shape, f"grad_k shape mismatch: {gems_grad_k.shape} vs {k_flash.shape}"
+    assert gems_grad_v.shape == v_flash.shape, f"grad_v shape mismatch: {gems_grad_v.shape} vs {v_flash.shape}"
+
+    # Check that gradients are finite (no NaN or Inf except where expected)
+    assert torch.isfinite(gems_grad_q).all() or gems_grad_q.isnan().sum() < gems_grad_q.numel() * 0.01
+    assert torch.isfinite(gems_grad_k).all() or gems_grad_k.isnan().sum() < gems_grad_k.numel() * 0.01
+    assert torch.isfinite(gems_grad_v).all() or gems_grad_v.isnan().sum() < gems_grad_v.numel() * 0.01

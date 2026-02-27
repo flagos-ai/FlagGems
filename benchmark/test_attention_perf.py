@@ -700,3 +700,76 @@ def test_perf_reshape_and_cache_flash():
     )
     bench.set_gems(flag_gems.reshape_and_cache_flash)
     bench.run()
+
+
+class FlashAttentionBackwardBenchmark(GenericBenchmark):
+    """
+    benchmark for _flash_attention_backward
+    """
+
+    def set_more_shapes(self):
+        # Returns shapes in (batch, num_heads, seq_len, head_size) format
+        return [
+            (2, 4, 128, 64),
+            (2, 4, 256, 64),
+            (2, 8, 128, 128),
+            (4, 8, 256, 128),
+        ]
+
+    def set_shapes(self, shape_file_path=None):
+        # Override to set attention-specific shapes
+        self.shapes = [
+            (2, 4, 128, 64),
+            (2, 4, 256, 64),
+            (2, 8, 128, 128),
+            (4, 8, 256, 128),
+        ]
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.flash_attention_backward
+@pytest.mark.parametrize("is_causal", [True, False])
+def test_perf_flash_attention_backward(is_causal):
+    def flash_attention_backward_kwargs(shape, dtype, device):
+        batch, num_heads, seq_len, head_size = shape
+        scale = float(1.0 / math.sqrt(head_size))
+
+        # Create inputs (batch, seqlen, heads, dim) - flash format
+        q = torch.randn(batch, seq_len, num_heads, head_size, dtype=dtype, device=device)
+        k = torch.randn(batch, seq_len, num_heads, head_size, dtype=dtype, device=device)
+        v = torch.randn(batch, seq_len, num_heads, head_size, dtype=dtype, device=device)
+
+        # Run forward to get output and logsumexp
+        out, lse, seed, offset, _ = flag_gems.ops.flash_attention_forward(
+            q, k, v, None, None, seq_len, seq_len, 0.0, is_causal, False, scale=scale
+        )
+
+        grad_out = torch.randn_like(out)
+
+        yield (
+            grad_out,
+            q,
+            k,
+            v,
+            out,
+            lse,
+            torch.empty(0, dtype=torch.int32, device=device),  # cum_seq_q
+            torch.empty(0, dtype=torch.int32, device=device),  # cum_seq_k
+            seq_len,  # max_q
+            seq_len,  # max_k
+            0.0,  # dropout_p
+            is_causal,
+            seed,
+            offset,
+            {"scale": scale},
+        )
+
+    bench = FlashAttentionBackwardBenchmark(
+        op_name="flash_attention_backward",
+        input_fn=flash_attention_backward_kwargs,
+        torch_op=flag_gems.ops._flash_attention_backward,  # Use our implementation as torch_op (no native reference)
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.ops._flash_attention_backward)
+    bench.run()
