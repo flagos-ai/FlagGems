@@ -4,7 +4,7 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from benchmark.performance_utils import (
     Benchmark,
     Config,
@@ -820,4 +820,51 @@ def test_perf_moe_align_block_size():
     )
 
     bench.set_gems(gems_op)
+    bench.run()
+
+
+# FFT benchmark
+class FFTBenchmark(Benchmark):
+    """Benchmark for FFT operations."""
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_shapes(self, shape_file_path=None):
+        # FFT shapes - powers of 2 work best
+        fft_shapes = [
+            (64, 64),
+            (128, 128),
+            (256, 256),
+            (512, 512),
+            (1024, 1024),
+            (32, 32, 32),
+            (64, 64, 64),
+            (128, 128, 128),
+        ]
+        self.shapes = fft_shapes
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
+
+    def get_tflops(self, op, *args, **kwargs):
+        shape = list(args[0].shape)
+        n = torch.tensor(shape).prod().item()
+        # FFT complexity is O(n log n)
+        return n * torch.log2(torch.tensor(float(n))).item()
+
+
+@pytest.mark.fft_fftn
+def test_perf_fft_fftn():
+    # FFT supports float32 (float64 may not be supported on all devices)
+    fft_dtypes = [torch.float32]
+    bench = FFTBenchmark(
+        op_name="fft_fftn",
+        torch_op=torch.fft.fftn,
+        dtypes=fft_dtypes,
+    )
     bench.run()

@@ -1890,3 +1890,101 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# FFT shapes for testing - power of 2 sizes work best
+FFT_SHAPES = [(8, 8), (16, 16), (32, 32), (64, 64), (4, 8, 16)]
+FFT_DTYPES = [torch.float32, torch.float64]
+FFT_COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+FFT_NORMS = [None, "backward", "forward", "ortho"]
+
+
+@pytest.mark.fft_fftn
+@pytest.mark.parametrize("shape", FFT_SHAPES)
+@pytest.mark.parametrize("dtype", FFT_DTYPES)
+def test_accuracy_fft_fftn_real(shape, dtype):
+    """Test fft_fftn with real input tensors."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.fftn(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.fft.fftn(inp)
+
+    # FFT output is complex, compare absolute values with tolerance
+    assert res_out.dtype == ref_out.dtype, f"Expected {ref_out.dtype}, got {res_out.dtype}"
+    assert res_out.shape == ref_out.shape, f"Expected shape {ref_out.shape}, got {res_out.shape}"
+    
+    # Move ref_out to same device for comparison
+    ref_out_device = ref_out.to(res_out.device)
+    torch.testing.assert_close(res_out, ref_out_device, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.fft_fftn
+@pytest.mark.parametrize("shape", FFT_SHAPES)
+@pytest.mark.parametrize("dtype", FFT_COMPLEX_DTYPES)
+def test_accuracy_fft_fftn_complex(shape, dtype):
+    """Test fft_fftn with complex input tensors."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.fftn(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.fft.fftn(inp)
+
+    assert res_out.dtype == ref_out.dtype, f"Expected {ref_out.dtype}, got {res_out.dtype}"
+    assert res_out.shape == ref_out.shape, f"Expected shape {ref_out.shape}, got {res_out.shape}"
+    
+    ref_out_device = ref_out.to(res_out.device)
+    torch.testing.assert_close(res_out, ref_out_device, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.fft_fftn
+@pytest.mark.parametrize("shape", [(16, 16), (32, 32)])
+@pytest.mark.parametrize("norm", FFT_NORMS)
+def test_accuracy_fft_fftn_norm(shape, norm):
+    """Test fft_fftn with different normalization modes."""
+    dtype = torch.float32
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.fftn(ref_inp, norm=norm)
+    with flag_gems.use_gems():
+        res_out = torch.fft.fftn(inp, norm=norm)
+
+    ref_out_device = ref_out.to(res_out.device)
+    torch.testing.assert_close(res_out, ref_out_device, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.fft_fftn
+@pytest.mark.parametrize("shape", [(16, 16, 16), (8, 16, 32)])
+@pytest.mark.parametrize("dim", [None, (0,), (1,), (0, 1), (-1,), (0, 2)])
+def test_accuracy_fft_fftn_dim(shape, dim):
+    """Test fft_fftn with different dimension specifications."""
+    dtype = torch.float32
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.fftn(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.fft.fftn(inp, dim=dim)
+
+    ref_out_device = ref_out.to(res_out.device)
+    torch.testing.assert_close(res_out, ref_out_device, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.fft_fftn
+@pytest.mark.parametrize("shape", [(16, 16), (32, 32)])
+@pytest.mark.parametrize("s", [(8, 8), (32, 32), (16, 32)])
+def test_accuracy_fft_fftn_s(shape, s):
+    """Test fft_fftn with signal size specification (padding/truncation)."""
+    dtype = torch.float32
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.fft.fftn(ref_inp, s=s)
+    with flag_gems.use_gems():
+        res_out = torch.fft.fftn(inp, s=s)
+
+    ref_out_device = ref_out.to(res_out.device)
+    torch.testing.assert_close(res_out, ref_out_device, rtol=1e-4, atol=1e-4)
