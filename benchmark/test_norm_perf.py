@@ -257,3 +257,33 @@ def test_perf_rms_norm():
         torch_op=torch.nn.functional.rms_norm,
     )
     bench.run()
+
+
+@pytest.mark.fused_rms_norm_internal
+def test_perf_fused_rms_norm():
+    """Benchmark for _fused_rms_norm which returns (output, inv_rms)."""
+
+    def _torch_fused_rms_norm(x, normalized_shape, weight=None, eps=1e-5):
+        """Reference implementation for comparison."""
+        upcast_x = x.to(torch.float32)
+        variance = upcast_x.pow(2).mean(-1, keepdim=True)
+        inv_rms = torch.rsqrt(variance + eps)
+        hidden_states = upcast_x * inv_rms
+        hidden_states = hidden_states.to(x.dtype)
+        if weight is not None:
+            return weight * hidden_states, inv_rms.squeeze(-1)
+        return hidden_states, inv_rms.squeeze(-1)
+
+    def fused_rms_norm_input_fn(shape, dtype, device):
+        M, N = shape
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        weight = torch.randn(N, dtype=dtype, device=device)
+        yield inp, (N,), weight
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=fused_rms_norm_input_fn,
+        op_name="_fused_rms_norm",
+        torch_op=_torch_fused_rms_norm,
+    )
+    bench.set_gems(flag_gems._fused_rms_norm)
+    bench.run()

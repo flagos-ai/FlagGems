@@ -60,6 +60,11 @@ from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
+from flag_gems.ops._fused_rms_norm import (
+    _fused_rms_norm,
+    _fused_rms_norm_backward,
+    _fused_rms_norm_forward,
+)
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
@@ -241,6 +246,9 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_fused_rms_norm",
+    "_fused_rms_norm_backward",
+    "_fused_rms_norm_forward",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",

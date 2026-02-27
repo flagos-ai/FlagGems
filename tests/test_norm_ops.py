@@ -632,6 +632,97 @@ def test_accuracy_fused_add_rms_norm(shape, dtype):
     gems_assert_close(res_new_residual, ref_new_residual, dtype)
 
 
+@pytest.mark.fused_rms_norm_internal
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy__fused_rms_norm(shape, dtype):
+    N = shape[1]
+    layer_shape = [
+        N,
+    ]
+    np.random.seed(0)
+    np_inp = np.random.uniform(-0.1, 0.1, shape[:2]).astype(np.float32)
+    np_grad = np.random.uniform(-0.01, 0.01, shape[:2]).astype(np.float32)
+    np_weight = np.random.uniform(-0.1, 0.1, layer_shape).astype(np.float32)
+
+    inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    weight = torch.tensor(
+        np_weight, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+
+    eps = 1e-5
+
+    ref_inp = to_reference(inp)
+    ref_weight = to_reference(weight)
+
+    def _torch_rms_norm(x, weight, eps):
+        upcast_x = x.to(torch.float32)
+        variance = upcast_x.pow(2).mean(-1, keepdim=True)
+        inv_rms = torch.rsqrt(variance + eps)
+        hidden_states = upcast_x * inv_rms.to(torch.float32)
+        hidden_states = hidden_states.to(x.dtype)
+        return weight * hidden_states, inv_rms.squeeze(-1)
+
+    ref_out, ref_inv_rms = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
+    res_out, res_inv_rms = flag_gems._fused_rms_norm(
+        inp, list(layer_shape), weight=weight, eps=eps
+    )
+
+    # Check forward outputs
+    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_inv_rms, ref_inv_rms, torch.float32)
+
+    # Check backward
+    res_grad = torch.tensor(
+        np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_grad = to_reference(res_grad)
+
+    res_in_grad, res_weight_grad = torch.autograd.grad(
+        res_out, (inp, weight), res_grad
+    )
+    ref_in_grad, ref_weight_grad = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight), ref_grad
+    )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
+
+
+@pytest.mark.fused_rms_norm_internal
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy__fused_rms_norm_no_weight(shape, dtype):
+    """Test _fused_rms_norm without weight parameter."""
+    N = shape[1]
+    layer_shape = [
+        N,
+    ]
+    np.random.seed(0)
+    np_inp = np.random.uniform(-0.1, 0.1, shape[:2]).astype(np.float32)
+
+    inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device)
+    eps = 1e-5
+
+    ref_inp = to_reference(inp)
+
+    def _torch_rms_norm_no_weight(x, eps):
+        upcast_x = x.to(torch.float32)
+        variance = upcast_x.pow(2).mean(-1, keepdim=True)
+        inv_rms = torch.rsqrt(variance + eps)
+        hidden_states = upcast_x * inv_rms.to(torch.float32)
+        hidden_states = hidden_states.to(x.dtype)
+        return hidden_states, inv_rms.squeeze(-1)
+
+    ref_out, ref_inv_rms = _torch_rms_norm_no_weight(ref_inp, eps=eps)
+    res_out, res_inv_rms = flag_gems._fused_rms_norm(
+        inp, list(layer_shape), weight=None, eps=eps
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_inv_rms, ref_inv_rms, torch.float32)
+
+
 @pytest.mark.vector_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize(
