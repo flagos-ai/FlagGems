@@ -557,3 +557,73 @@ def test_perf_scaled_softmax_backward():
     )
     bench.set_gems(flag_gems.scaled_softmax_backward)
     bench.run()
+
+
+def adaptive_max_pool2d_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    # Common output sizes
+    yield inp, {"output_size": (7, 7)}
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        yield inp, {"output_size": (1, 1)}  # Global pooling
+        yield inp, {"output_size": (14, 14)}
+
+
+class AdaptiveMaxPool2dBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        shapes_4d = [
+            (4, 3, 224, 224),  # Typical input image size
+            (16, 64, 56, 56),  # Early ResNet layer output
+            (32, 128, 28, 28),  # Mid ResNet layer output
+            (64, 256, 14, 14),  # Later ResNet layer output
+            (128, 512, 7, 7),  # Final ResNet layer output
+        ]
+
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.adaptive_max_pool2d
+def test_perf_adaptive_max_pool2d():
+    bench = AdaptiveMaxPool2dBenchmark(
+        input_fn=adaptive_max_pool2d_input_fn,
+        op_name="adaptive_max_pool2d",
+        torch_op=torch.nn.functional.adaptive_max_pool2d_with_indices,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.adaptive_max_pool2d)
+    bench.run()
+
+
+@pytest.mark.adaptive_max_pool2d_backward
+def test_perf_adaptive_max_pool2d_backward():
+    def adaptive_max_pool2d_backward_input_fn(shape, dtype, device):
+        for forward_args in adaptive_max_pool2d_input_fn(shape, dtype, device):
+            inp, params = forward_args
+            inp.requires_grad_(True)
+            output, indices = torch.nn.functional.adaptive_max_pool2d_with_indices(
+                inp, **params
+            )
+            grad_output = torch.randn_like(output)
+            yield grad_output, inp, indices
+
+    def torch_adaptive_max_pool2d_backward_wrapper(grad_output, input, indices):
+        # Re-compute forward to get the output for autograd
+        input_clone = input.clone().requires_grad_(True)
+        output, _ = torch.nn.functional.adaptive_max_pool2d_with_indices(
+            input_clone, output_size=grad_output.shape[2:]
+        )
+        grad_input = torch.autograd.grad(
+            outputs=(output,), inputs=(input_clone,), grad_outputs=(grad_output,)
+        )
+        return grad_input[0]
+
+    bench = AdaptiveMaxPool2dBenchmark(
+        input_fn=adaptive_max_pool2d_backward_input_fn,
+        op_name="adaptive_max_pool2d_backward",
+        torch_op=torch_adaptive_max_pool2d_backward_wrapper,
+        dtypes=FLOAT_DTYPES,
+        is_backward=False,
+    )
+
+    bench.set_gems(flag_gems.adaptive_max_pool2d_backward)
+    bench.run()

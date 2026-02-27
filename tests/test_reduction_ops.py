@@ -2201,3 +2201,53 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
         inp.masked_scatter_(mask, src)
 
     gems_assert_equal(inp, ref_inp)
+
+
+# Adaptive Max Pool 2D test configurations
+ADAPTIVE_MAXPOOL2D_CONFIGS = [
+    # (input_shape, output_size)
+    ((1, 3, 224, 224), (7, 7)),  # Typical image to small output
+    ((2, 64, 56, 56), (14, 14)),  # Larger batch
+    ((1, 128, 28, 28), (7, 7)),  # Mid-layer output
+    ((4, 256, 14, 14), (1, 1)),  # Global adaptive max pooling
+    ((1, 512, 7, 7), (3, 3)),  # Small input to smaller output
+    ((2, 3, 32, 32), (8, 8)),  # Non-standard size
+    ((1, 1, 10, 10), (5, 5)),  # Simple case
+]
+
+
+@pytest.mark.adaptive_max_pool2d
+@pytest.mark.parametrize("shape, output_size", ADAPTIVE_MAXPOOL2D_CONFIGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_adaptive_max_pool2d(shape, output_size, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out, ref_indices = torch.nn.functional.adaptive_max_pool2d_with_indices(
+        ref_inp, output_size=output_size
+    )
+
+    res_out, res_indices = flag_gems.adaptive_max_pool2d(inp, output_size=output_size)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.adaptive_max_pool2d_backward
+@pytest.mark.parametrize("shape, output_size", ADAPTIVE_MAXPOOL2D_CONFIGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_adaptive_max_pool2d_backward(shape, output_size, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, upcast=True)
+
+    ref_out, _ = torch.nn.functional.adaptive_max_pool2d_with_indices(
+        ref_inp, output_size=output_size
+    )
+    res_out, res_indices = flag_gems.adaptive_max_pool2d(inp, output_size=output_size)
+
+    out_grad = torch.randn_like(res_out, device=flag_gems.device)
+    ref_grad = to_reference(out_grad, upcast=True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+
+    res_in_grad = flag_gems.adaptive_max_pool2d_backward(out_grad, inp, res_indices)
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)

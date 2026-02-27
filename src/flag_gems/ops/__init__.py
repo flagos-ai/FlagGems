@@ -14,6 +14,10 @@ from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.atan import atan, atan_
+from flag_gems.ops.adaptive_max_pool2d import (
+    adaptive_max_pool2d,
+    adaptive_max_pool2d_backward,
+)
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -246,6 +250,8 @@ __all__ = [
     "abs",
     "abs_",
     "acos",
+    "adaptive_max_pool2d",
+    "adaptive_max_pool2d_backward",
     "add",
     "add_",
     "addcdiv",

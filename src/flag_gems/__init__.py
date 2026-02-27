@@ -45,6 +45,8 @@ _FULL_CONFIG = (
     ("abs", abs),
     ("abs_", abs_),
     ("acos", acos),
+    ("adaptive_max_pool2d", adaptive_max_pool2d),
+    ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
     ("addcdiv", addcdiv),
