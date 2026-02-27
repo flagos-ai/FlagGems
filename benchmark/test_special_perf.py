@@ -821,3 +821,38 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+@pytest.mark.upsample_bilinear2d_backward
+def test_perf_upsample_bilinear2d_backward():
+    def upsample_bilinear2d_backward_input_fn(shape, dtype, device):
+        batch, channel, height, width = shape
+        scale_factors = (2, 2)
+        output_height = int(height * scale_factors[0])
+        output_width = int(width * scale_factors[1])
+
+        # grad_output is the gradient w.r.t. the output of forward pass
+        grad_output = torch.randn(
+            (batch, channel, output_height, output_width),
+            device=device,
+            dtype=dtype,
+        )
+        output_size = [output_height, output_width]
+        input_size = [batch, channel, height, width]
+
+        yield {
+            "grad_output": grad_output,
+            "output_size": output_size,
+            "input_size": input_size,
+            "align_corners": False,
+            "scales_h": None,
+            "scales_w": None,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_bilinear2d_backward_input_fn,
+        op_name="upsample_bilinear2d_backward",
+        torch_op=torch.ops.aten.upsample_bilinear2d_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

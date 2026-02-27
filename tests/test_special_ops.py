@@ -1890,3 +1890,45 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+@pytest.mark.upsample_bilinear2d_backward
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [(2, 2), (2.5, 3.5), (1.5, 2.0), (0.5, 0.5)])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_upsample_bilinear2d_backward(dtype, shape, scale, align_corners):
+    """Test backward pass of bilinear 2D upsampling."""
+    N, C, IH, IW = shape
+    OH = int(IH * scale[0])
+    OW = int(IW * scale[1])
+
+    # Skip invalid shapes
+    if OH == 0 or OW == 0:
+        pytest.skip("Invalid output shape")
+
+    # Create gradient for output
+    grad_output = torch.randn((N, C, OH, OW), dtype=dtype, device=flag_gems.device)
+    # Upcast to float64 for more accurate reference computation
+    ref_grad_output = to_reference(grad_output, upcast=True)
+
+    output_size = [OH, OW]
+    input_size = [N, C, IH, IW]
+
+    ref_out = torch.ops.aten.upsample_bilinear2d_backward(
+        ref_grad_output, output_size, input_size, align_corners, None, None
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.upsample_bilinear2d_backward(
+            grad_output, output_size, input_size, align_corners, None, None
+        )
+
+    # Each input pixel accumulates gradients from multiple output pixels
+    # The number of contributing output pixels depends on the upsampling factor
+    # For bilinear backward: range_h * range_w where range = 2 / rheight
+    # Use scale factors to estimate the reduction dimension
+    reduce_dim_h = max(2, int(2 * scale[0]) + 2)
+    reduce_dim_w = max(2, int(2 * scale[1]) + 2)
+    reduce_dim = reduce_dim_h * reduce_dim_w
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
