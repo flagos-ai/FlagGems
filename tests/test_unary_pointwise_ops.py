@@ -1769,3 +1769,72 @@ def test_accuracy_ceil_out(shape, dtype):
         torch.ceil(inp, out=out)
 
     gems_assert_equal(out, ref_out)
+
+
+# ============== __rshift__ (bitwise right shift via >> operator) ==============
+
+
+@pytest.mark.rshift
+@pytest.mark.parametrize("shapes", BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_rshift_tensor(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = to_reference(res_a)
+    ref_b = to_reference(res_b)
+
+    ref_out = ref_a >> ref_b
+    with flag_gems.use_gems():
+        res_out = res_a >> res_b
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.rshift
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_rshift_scalar(shape, dtype):
+    res_a = torch.randint(0, 100, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = to_reference(res_a)
+    shift_amount = 2
+
+    ref_out = ref_a >> shift_amount
+    with flag_gems.use_gems():
+        res_out = res_a >> shift_amount
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.rshift_
+@pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_rshift_tensor_(shapes, dtype):
+    shape_a, shape_b = shapes
+    res_a = torch.randint(0, 100, shape_a, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    res_b = torch.randint(0, 8, shape_b, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = to_reference(res_a.clone())
+    ref_b = to_reference(res_b)
+
+    ref_a >>= ref_b
+    with flag_gems.use_gems():
+        res_a >>= res_b
+    gems_assert_close(res_a, ref_a, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.rshift_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + [torch.uint8])
+def test_accuracy_rshift_scalar_(shape, dtype):
+    res_a = torch.randint(0, 100, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    ref_a = to_reference(res_a.clone())
+    shift_amount = 2
+
+    ref_a >>= shift_amount
+    with flag_gems.use_gems():
+        res_a >>= shift_amount
+    gems_assert_close(res_a, ref_a, dtype)

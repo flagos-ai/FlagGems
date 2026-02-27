@@ -28,6 +28,10 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__irshift__.Scalar", rshift_scalar_),
+    ("__irshift__.Tensor", rshift_tensor_),
+    ("__rshift__.Scalar", rshift_scalar),
+    ("__rshift__.Tensor", rshift_tensor),
     ("_flash_attention_forward", flash_attention_forward),
     ("_log_softmax", log_softmax),
     ("_log_softmax_backward_data", log_softmax_backward),
