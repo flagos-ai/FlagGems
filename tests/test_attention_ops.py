@@ -1771,3 +1771,192 @@ def test_scheduler_metadata_correctness(
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+
+
+@pytest.mark.efficient_attention_forward
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_q, seq_k, head_size",
+    [
+        (2, 4, 64, 64, 64),
+        (2, 4, 128, 128, 64),
+        (2, 8, 256, 256, 32),
+        (1, 4, 512, 512, 64),
+        (2, 4, 128, 256, 64),
+        (2, 4, 256, 128, 64),
+        (2, 4, 64, 64, 128),
+    ],
+)
+@pytest.mark.parametrize("custom_mask_type", [0, 1])  # 0=no mask, 1=causal
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_efficient_attention_forward(
+    batch, num_heads, seq_q, seq_k, head_size, custom_mask_type, dtype
+):
+    """Test _efficient_attention_forward operator."""
+    device = torch_device_fn.current_device()
+
+    # Input shape for _efficient_attention_forward: (batch, seq_len, heads, head_dim)
+    query = torch.randn(batch, seq_q, num_heads, head_size, device=device, dtype=dtype)
+    key = torch.randn(batch, seq_k, num_heads, head_size, device=device, dtype=dtype)
+    value = torch.randn(batch, seq_k, num_heads, head_size, device=device, dtype=dtype)
+
+    ref_query = to_reference(query)
+    ref_key = to_reference(key)
+    ref_value = to_reference(value)
+
+    # Call PyTorch reference
+    ref_out = torch.ops.aten._efficient_attention_forward(
+        ref_query,
+        ref_key,
+        ref_value,
+        None,  # bias
+        None,  # cu_seqlens_q
+        None,  # cu_seqlens_k
+        None,  # max_seqlen_q
+        None,  # max_seqlen_k
+        0.0,  # dropout_p
+        custom_mask_type,
+        False,  # compute_log_sumexp
+    )
+
+    # Call FlagGems implementation
+    with flag_gems.use_gems():
+        gems_out = torch.ops.aten._efficient_attention_forward(
+            query,
+            key,
+            value,
+            None,  # bias
+            None,  # cu_seqlens_q
+            None,  # cu_seqlens_k
+            None,  # max_seqlen_q
+            None,  # max_seqlen_k
+            0.0,  # dropout_p
+            custom_mask_type,
+            False,  # compute_log_sumexp
+        )
+
+    # Compare output tensors - use larger atol for attention due to numerical differences
+    gems_assert_close(gems_out[0], ref_out[0], dtype, atol=5e-3)
+
+
+@pytest.mark.efficient_attention_forward
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_q, seq_k, head_size",
+    [
+        (2, 4, 64, 64, 64),
+        (2, 4, 128, 128, 64),
+        (1, 4, 256, 256, 64),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_efficient_attention_forward_with_bias(
+    batch, num_heads, seq_q, seq_k, head_size, dtype
+):
+    """Test _efficient_attention_forward operator with bias."""
+    device = torch_device_fn.current_device()
+
+    # Input shape for _efficient_attention_forward: (batch, seq_len, heads, head_dim)
+    query = torch.randn(batch, seq_q, num_heads, head_size, device=device, dtype=dtype)
+    key = torch.randn(batch, seq_k, num_heads, head_size, device=device, dtype=dtype)
+    value = torch.randn(batch, seq_k, num_heads, head_size, device=device, dtype=dtype)
+    bias = torch.randn(batch, num_heads, seq_q, seq_k, device=device, dtype=dtype)
+
+    ref_query = to_reference(query)
+    ref_key = to_reference(key)
+    ref_value = to_reference(value)
+    ref_bias = to_reference(bias)
+
+    # Call PyTorch reference
+    ref_out = torch.ops.aten._efficient_attention_forward(
+        ref_query,
+        ref_key,
+        ref_value,
+        ref_bias,  # bias
+        None,  # cu_seqlens_q
+        None,  # cu_seqlens_k
+        None,  # max_seqlen_q
+        None,  # max_seqlen_k
+        0.0,  # dropout_p
+        0,  # custom_mask_type (no causal mask when bias is used)
+        False,  # compute_log_sumexp
+    )
+
+    # Call FlagGems implementation
+    with flag_gems.use_gems():
+        gems_out = torch.ops.aten._efficient_attention_forward(
+            query,
+            key,
+            value,
+            bias,  # bias
+            None,  # cu_seqlens_q
+            None,  # cu_seqlens_k
+            None,  # max_seqlen_q
+            None,  # max_seqlen_k
+            0.0,  # dropout_p
+            0,  # custom_mask_type
+            False,  # compute_log_sumexp
+        )
+
+    # Compare output tensors - use larger atol for attention due to numerical differences
+    gems_assert_close(gems_out[0], ref_out[0], dtype, atol=5e-3)
+
+
+@pytest.mark.efficient_attention_forward
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_q, seq_k, head_size",
+    [
+        (2, 4, 64, 64, 64),
+        (2, 4, 128, 128, 64),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_efficient_attention_forward_logsumexp(
+    batch, num_heads, seq_q, seq_k, head_size, dtype
+):
+    """Test _efficient_attention_forward operator with compute_log_sumexp=True."""
+    device = torch_device_fn.current_device()
+
+    # Input shape for _efficient_attention_forward: (batch, seq_len, heads, head_dim)
+    query = torch.randn(batch, seq_q, num_heads, head_size, device=device, dtype=dtype)
+    key = torch.randn(batch, seq_k, num_heads, head_size, device=device, dtype=dtype)
+    value = torch.randn(batch, seq_k, num_heads, head_size, device=device, dtype=dtype)
+
+    ref_query = to_reference(query)
+    ref_key = to_reference(key)
+    ref_value = to_reference(value)
+
+    # Call PyTorch reference
+    ref_out = torch.ops.aten._efficient_attention_forward(
+        ref_query,
+        ref_key,
+        ref_value,
+        None,  # bias
+        None,  # cu_seqlens_q
+        None,  # cu_seqlens_k
+        None,  # max_seqlen_q
+        None,  # max_seqlen_k
+        0.0,  # dropout_p
+        0,  # custom_mask_type
+        True,  # compute_log_sumexp
+    )
+
+    # Call FlagGems implementation
+    with flag_gems.use_gems():
+        gems_out = torch.ops.aten._efficient_attention_forward(
+            query,
+            key,
+            value,
+            None,  # bias
+            None,  # cu_seqlens_q
+            None,  # cu_seqlens_k
+            None,  # max_seqlen_q
+            None,  # max_seqlen_k
+            0.0,  # dropout_p
+            0,  # custom_mask_type
+            True,  # compute_log_sumexp
+        )
+
+    # Compare output tensors - use larger atol for attention due to numerical differences
+    gems_assert_close(gems_out[0], ref_out[0], dtype, atol=5e-3)
+    # Compare logsumexp - shape may differ slightly but values should be close
+    if gems_out[1].numel() > 0 and ref_out[1].numel() > 0:
+        gems_assert_close(gems_out[1], ref_out[1], torch.float32, atol=5e-3)

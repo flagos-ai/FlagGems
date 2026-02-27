@@ -700,3 +700,84 @@ def test_perf_reshape_and_cache_flash():
     )
     bench.set_gems(flag_gems.reshape_and_cache_flash)
     bench.run()
+
+
+class EfficientAttentionBenchmark(Benchmark):
+    """
+    benchmark for _efficient_attention_forward
+    """
+
+    def __init__(self, custom_mask_type, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.custom_mask_type = custom_mask_type
+
+    def set_shapes(self, shape_file_path=None):
+        # (batch, seq_len, num_heads, head_size)
+        self.shapes = [
+            (2, 256, 8, 64),
+            (2, 512, 8, 64),
+            (2, 1024, 8, 64),
+            (4, 512, 8, 64),
+            (4, 1024, 16, 64),
+            (2, 2048, 8, 64),
+            (2, 512, 8, 128),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield self.efficient_attention_input_fn(shape, cur_dtype, self.device)
+
+    def efficient_attention_input_fn(self, shape, dtype, device):
+        # shape is (batch, seq_len, num_heads, head_size)
+        batch, seq_len, num_heads, head_size = shape
+        # Input shape for _efficient_attention_forward: (batch, seq_len, num_heads, head_dim)
+        query = torch.randn(batch, seq_len, num_heads, head_size, device=device, dtype=dtype)
+        key = torch.randn(batch, seq_len, num_heads, head_size, device=device, dtype=dtype)
+        value = torch.randn(batch, seq_len, num_heads, head_size, device=device, dtype=dtype)
+        return (
+            query,
+            key,
+            value,
+            None,  # bias
+            None,  # cu_seqlens_q
+            None,  # cu_seqlens_k
+            None,  # max_seqlen_q
+            None,  # max_seqlen_k
+            0.0,   # dropout_p
+            self.custom_mask_type,  # custom_mask_type
+            False,  # compute_log_sumexp
+        )
+
+
+@pytest.mark.efficient_attention_forward
+@pytest.mark.parametrize("custom_mask_type", [0, 1])  # 0=no mask, 1=causal
+def test_perf_efficient_attention_forward(custom_mask_type):
+    def torch_efficient_attention(
+        query, key, value, bias, cu_seqlens_q, cu_seqlens_k,
+        max_seqlen_q, max_seqlen_k, dropout_p, custom_mask_type, compute_log_sumexp
+    ):
+        return torch.ops.aten._efficient_attention_forward(
+            query, key, value, bias, cu_seqlens_q, cu_seqlens_k,
+            max_seqlen_q, max_seqlen_k, dropout_p, custom_mask_type, compute_log_sumexp
+        )
+
+    def gems_efficient_attention(
+        query, key, value, bias, cu_seqlens_q, cu_seqlens_k,
+        max_seqlen_q, max_seqlen_k, dropout_p, custom_mask_type, compute_log_sumexp
+    ):
+        return flag_gems._efficient_attention_forward(
+            query, key, value, bias, cu_seqlens_q, cu_seqlens_k,
+            max_seqlen_q, max_seqlen_k, dropout_p, custom_mask_type, compute_log_sumexp
+        )
+
+    bench = EfficientAttentionBenchmark(
+        custom_mask_type=custom_mask_type,
+        op_name="efficient_attention_forward",
+        torch_op=torch_efficient_attention,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+    bench.set_gems(gems_efficient_attention)
+    bench.run()
