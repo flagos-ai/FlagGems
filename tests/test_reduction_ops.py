@@ -2201,3 +2201,118 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
         inp.masked_scatter_(mask, src)
 
     gems_assert_equal(inp, ref_inp)
+
+
+# Test shapes for value_selecting_reduction_backward
+VALUE_SELECTING_SHAPES = (
+    [((3,), (3, 4))]
+    if QUICK_MODE
+    else [
+        ((3,), (3, 4)),
+        ((4,), (4, 8)),
+        ((2, 3), (2, 3, 5)),
+        ((8, 16), (8, 16, 32)),
+    ]
+)
+
+
+@pytest.mark.value_selecting_reduction_backward
+@pytest.mark.parametrize("grad_shape, sizes", VALUE_SELECTING_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_value_selecting_reduction_backward(
+    grad_shape, sizes, dim, keepdim, dtype
+):
+    # Adjust dim to be valid for the sizes
+    ndim = len(sizes)
+    dim = dim % ndim
+
+    # Determine the actual grad shape based on keepdim
+    if keepdim:
+        grad_actual_shape = list(sizes)
+        grad_actual_shape[dim] = 1
+    else:
+        grad_actual_shape = list(sizes)
+        grad_actual_shape.pop(dim)
+
+    # Create gradient tensor
+    grad = torch.randn(grad_actual_shape, dtype=dtype, device=flag_gems.device)
+    ref_grad = to_reference(grad)
+
+    # Create indices tensor with valid indices for the dim
+    index_shape = grad_actual_shape
+    max_index = sizes[dim]
+    indices = torch.randint(0, max_index, index_shape, device=flag_gems.device)
+    ref_indices = to_reference(indices)
+
+    # Test reference implementation
+    ref_out = torch.ops.aten.value_selecting_reduction_backward(
+        ref_grad, dim, ref_indices, list(sizes), keepdim
+    )
+
+    # Test FlagGems implementation
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.value_selecting_reduction_backward(
+            grad, dim, indices, list(sizes), keepdim
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.value_selecting_reduction_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_value_selecting_reduction_backward_max_dim(dtype):
+    """Test value_selecting_reduction_backward in a realistic max.dim backward scenario."""
+    # Create input tensor
+    inp = torch.randn((4, 8), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # Forward pass: max.dim
+    values, indices = inp.max(dim=1)
+    ref_values, ref_indices = ref_inp.max(dim=1)
+
+    # Create upstream gradient
+    grad_output = torch.randn_like(values)
+    ref_grad_output = to_reference(grad_output)
+
+    # Backward using value_selecting_reduction_backward
+    ref_out = torch.ops.aten.value_selecting_reduction_backward(
+        ref_grad_output, 1, ref_indices, list(ref_inp.shape), False
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.value_selecting_reduction_backward(
+            grad_output, 1, indices, list(inp.shape), False
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.value_selecting_reduction_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_value_selecting_reduction_backward_min_dim(dtype):
+    """Test value_selecting_reduction_backward in a realistic min.dim backward scenario."""
+    # Create input tensor
+    inp = torch.randn((4, 8), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # Forward pass: min.dim
+    values, indices = inp.min(dim=1)
+    ref_values, ref_indices = ref_inp.min(dim=1)
+
+    # Create upstream gradient
+    grad_output = torch.randn_like(values)
+    ref_grad_output = to_reference(grad_output)
+
+    # Backward using value_selecting_reduction_backward
+    ref_out = torch.ops.aten.value_selecting_reduction_backward(
+        ref_grad_output, 1, ref_indices, list(ref_inp.shape), False
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.value_selecting_reduction_backward(
+            grad_output, 1, indices, list(inp.shape), False
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)

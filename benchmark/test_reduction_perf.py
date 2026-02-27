@@ -557,3 +557,49 @@ def test_perf_scaled_softmax_backward():
     )
     bench.set_gems(flag_gems.scaled_softmax_backward)
     bench.run()
+
+
+class ValueSelectingReductionBackwardBenchmark(GenericBenchmark):
+    """
+    Benchmark for value_selecting_reduction_backward operation.
+    """
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        # Shape configurations: (output_shape, input_sizes, dim, keepdim)
+        shapes_2d = [
+            ((1024,), (1024, 1024), 1, False),
+            ((4096,), (4096, 4096), 1, False),
+            ((8192,), (8192, 8192), 1, False),
+        ]
+        shapes_3d = [
+            ((32, 64), (32, 64, 128), 2, False),
+            ((64, 128), (64, 128, 256), 2, False),
+            ((128, 256), (128, 256, 512), 2, False),
+        ]
+
+        for grad_shape, sizes, dim, keepdim in shapes_2d + shapes_3d:
+            yield from self.input_fn(
+                grad_shape, cur_dtype, self.device, sizes=sizes, dim=dim, keepdim=keepdim
+            )
+
+
+def value_selecting_reduction_backward_input_fn(
+    shape, dtype, device, sizes=None, dim=1, keepdim=False
+):
+    """Generate inputs for value_selecting_reduction_backward."""
+    grad = generate_tensor_input(shape, dtype, device)
+    max_index = sizes[dim]
+    indices = torch.randint(0, max_index, shape, device=device)
+    yield grad, dim, indices, list(sizes), keepdim
+
+
+@pytest.mark.value_selecting_reduction_backward
+def test_perf_value_selecting_reduction_backward():
+    bench = ValueSelectingReductionBackwardBenchmark(
+        input_fn=value_selecting_reduction_backward_input_fn,
+        op_name="value_selecting_reduction_backward",
+        torch_op=torch.ops.aten.value_selecting_reduction_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.value_selecting_reduction_backward)
+    bench.run()
