@@ -821,3 +821,54 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+# FFT Benchmark
+COMPLEX_DTYPES = [torch.complex64]
+
+
+class FFTBenchmark(Benchmark):
+    """Benchmark for _fft_c2c operation."""
+
+    def set_shapes(self, shape_file_path=None):
+        # Power-of-2 sizes for optimal performance
+        fft_shapes = [
+            (64,),
+            (128,),
+            (256,),
+            (512,),
+            (1024,),
+            (2048,),
+            (4096,),
+            (8, 512),
+            (16, 256),
+            (32, 128),
+            (64, 64),
+            (8, 8, 64),
+            (4, 16, 128),
+        ]
+        self.shapes = fft_shapes
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield from self.fft_input_fn(shape, cur_dtype, self.device)
+
+    def fft_input_fn(self, shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        # Forward FFT on last dimension
+        yield (inp, [-1], 0, True)
+
+
+@pytest.mark.fft_c2c
+def test_perf_fft_c2c():
+    def torch_op(inp, dim, normalization, forward):
+        return torch.fft.fft(inp, dim=dim[0], norm=None)
+
+    # Use torch.fft.fft with gems context to call our implementation
+    bench = FFTBenchmark(
+        op_name="_fft_c2c",
+        torch_op=torch_op,
+        dtypes=COMPLEX_DTYPES,
+    )
+    # Don't set gems_op directly; use_gems context will be used
+    bench.run()

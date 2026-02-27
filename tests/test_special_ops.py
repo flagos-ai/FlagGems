@@ -1890,3 +1890,71 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# FFT test shapes and dtypes
+FFT_SHAPES = [(8,), (16,), (32,), (64,), (4, 8), (4, 16), (8, 8), (2, 4, 8)]
+# Only use complex64 which is supported by gems_assert_close
+FFT_COMPLEX_DTYPES = [torch.complex64]
+
+
+@pytest.mark.fft_c2c
+@pytest.mark.parametrize("shape", FFT_SHAPES)
+@pytest.mark.parametrize("dtype", FFT_COMPLEX_DTYPES)
+def test_accuracy__fft_c2c_forward(shape, dtype):
+    """Test forward FFT accuracy."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    # Use torch.fft.fft for reference (works on GPU and CPU)
+    ref_out = torch.fft.fft(inp, dim=-1, norm=None)
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2c(inp, [-1], 0, True)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fft_c2c
+@pytest.mark.parametrize("shape", FFT_SHAPES)
+@pytest.mark.parametrize("dtype", FFT_COMPLEX_DTYPES)
+def test_accuracy__fft_c2c_inverse(shape, dtype):
+    """Test inverse FFT accuracy."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    # Use torch.fft.ifft for reference
+    ref_out = torch.fft.ifft(inp, dim=-1, norm=None)
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2c(inp, [-1], 0, False)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fft_c2c
+@pytest.mark.parametrize("shape", [(8, 8), (16, 16), (4, 8, 8)])
+@pytest.mark.parametrize("dtype", FFT_COMPLEX_DTYPES)
+def test_accuracy__fft_c2c_2d(shape, dtype):
+    """Test 2D FFT accuracy."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    # Use torch.fft.fftn for reference on last two dimensions
+    ref_out = torch.fft.fftn(inp, dim=(-2, -1), norm=None)
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2c(inp, [-2, -1], 0, True)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fft_c2c
+@pytest.mark.parametrize("norm_mode", [(0, None), (1, "ortho"), (2, "forward")])
+@pytest.mark.parametrize("dtype", FFT_COMPLEX_DTYPES)
+def test_accuracy__fft_c2c_normalization(norm_mode, dtype):
+    """Test FFT with different normalization modes."""
+    shape = (4, 16)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    norm_int, norm_str = norm_mode
+
+    ref_out = torch.fft.fft(inp, dim=-1, norm=norm_str)
+    with flag_gems.use_gems():
+        res_out = torch._fft_c2c(inp, [-1], norm_int, True)
+
+    gems_assert_close(res_out, ref_out, dtype)
