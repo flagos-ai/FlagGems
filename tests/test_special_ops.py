@@ -847,6 +847,33 @@ def test_upsample_nearest2d(dtype, shape, scale):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_nearest2d_backward(dtype, shape, scale):
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    output_size = [int(input.shape[i + 2] * scale[i]) for i in range(2)]
+    # Ensure output_size is at least 1
+    output_size = [max(1, s) for s in output_size]
+    input_size = list(input.shape)
+
+    # Create gradient tensor matching output shape
+    N, C, IH, IW = input.shape
+    OH, OW = output_size
+    grad_output = torch.randn((N, C, OH, OW), dtype=dtype, device=flag_gems.device)
+    ref_grad_output = to_reference(grad_output).to(torch.float32)
+
+    ref_out = torch.ops.aten.upsample_nearest2d_backward(
+        ref_grad_output, output_size, input_size, None, None
+    ).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.upsample_nearest2d_backward(
+            grad_output, output_size, input_size, None, None
+        )
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.arange
 @pytest.mark.parametrize("start", ARANGE_START)
 @pytest.mark.parametrize("step", [1, 2, 5])
