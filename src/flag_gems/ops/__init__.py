@@ -416,6 +416,8 @@ __all__ = [
     "maximum",
     "mean",
     "mean_dim",
+    "median_dim",
+    "median_dim_values",
     "min",
     "min_dim",
     "minimum",
