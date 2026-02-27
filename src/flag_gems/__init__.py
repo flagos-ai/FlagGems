@@ -117,6 +117,7 @@ _FULL_CONFIG = (
     ("cos", cos),
     ("cos_", cos_),
     ("count_nonzero", count_nonzero),
+    ("cudnn_convolution", cudnn_convolution),
     ("cummax", cummax),
     ("cummin", cummin),
     ("cumsum", cumsum),
