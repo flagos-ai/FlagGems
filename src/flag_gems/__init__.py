@@ -296,6 +296,7 @@ _FULL_CONFIG = (
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
+    ("roll", roll),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
     ("scaled_softmax_backward", scaled_softmax_backward),
