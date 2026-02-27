@@ -821,3 +821,40 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
+class FFTBenchmark(Benchmark):
+    """Benchmark for FFT operations."""
+
+    def set_shapes(self, shape_file_path=None):
+        # FFT shapes: (batch, fft_size)
+        fft_shapes = [
+            (1, 64),
+            (4, 128),
+            (8, 256),
+            (16, 512),
+            (32, 1024),
+            (64, 2048),
+            (128, 4096),
+            (256, 8192),
+            (1024, 1024),
+            (2048, 2048),
+        ]
+        self.shapes = fft_shapes
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
+            yield (inp, [len(shape) - 1], 0, True)  # dim, normalization, onesided
+
+
+@pytest.mark.fft_r2c
+def test_perf_fft_r2c():
+    """Benchmark for _fft_r2c operator."""
+    bench = FFTBenchmark(
+        op_name="_fft_r2c",
+        torch_op=torch._fft_r2c,
+        dtypes=[torch.float32],
+    )
+    bench.set_gems(flag_gems._fft_r2c)
+    bench.run()

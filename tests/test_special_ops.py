@@ -1890,3 +1890,85 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+# FFT test shapes: various sizes suitable for FFT operations
+FFT_SHAPES = (
+    [(4, 8)]
+    if QUICK_MODE
+    else [(4, 8), (2, 16), (8, 32), (4, 64), (2, 4, 16), (3, 8, 32)]
+)
+# Note: float64 is excluded because the testing framework doesn't support complex128
+FFT_DTYPES = [torch.float32] if QUICK_MODE else [torch.float16, torch.float32]
+
+
+@pytest.mark.fft_r2c
+@pytest.mark.parametrize("shape", FFT_SHAPES)
+@pytest.mark.parametrize("dtype", FFT_DTYPES)
+def test_accuracy__fft_r2c_onesided(shape, dtype):
+    """Test _fft_r2c with onesided=True (most common case)."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # FFT along the last dimension
+    dim = [len(shape) - 1]
+    ref_out = torch._fft_r2c(ref_inp, dim=dim, normalization=0, onesided=True)
+    with flag_gems.use_gems():
+        res_out = torch._fft_r2c(inp, dim=dim, normalization=0, onesided=True)
+
+    # Use larger tolerance for float16
+    atol = 1e-2 if dtype == torch.float16 else 1e-4
+    # FFT output is complex, pass the output dtype for checking
+    gems_assert_close(res_out, ref_out, res_out.dtype, atol=atol)
+
+
+@pytest.mark.fft_r2c
+@pytest.mark.parametrize("shape", FFT_SHAPES)
+@pytest.mark.parametrize("dtype", FFT_DTYPES)
+def test_accuracy__fft_r2c_full(shape, dtype):
+    """Test _fft_r2c with onesided=False (full spectrum)."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # FFT along the last dimension
+    dim = [len(shape) - 1]
+    ref_out = torch._fft_r2c(ref_inp, dim=dim, normalization=0, onesided=False)
+    with flag_gems.use_gems():
+        res_out = torch._fft_r2c(inp, dim=dim, normalization=0, onesided=False)
+
+    atol = 1e-2 if dtype == torch.float16 else 1e-4
+    gems_assert_close(res_out, ref_out, res_out.dtype, atol=atol)
+
+
+@pytest.mark.fft_r2c
+@pytest.mark.parametrize("normalization", [0, 1, 2])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy__fft_r2c_normalization(normalization, dtype):
+    """Test _fft_r2c with different normalization modes."""
+    shape = (4, 16)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    dim = [1]
+    ref_out = torch._fft_r2c(ref_inp, dim=dim, normalization=normalization, onesided=True)
+    with flag_gems.use_gems():
+        res_out = torch._fft_r2c(inp, dim=dim, normalization=normalization, onesided=True)
+
+    gems_assert_close(res_out, ref_out, res_out.dtype)
+
+
+@pytest.mark.fft_r2c
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy__fft_r2c_multidim(dtype):
+    """Test _fft_r2c with multiple dimensions."""
+    shape = (2, 4, 8)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # FFT along last two dimensions
+    dim = [1, 2]
+    ref_out = torch._fft_r2c(ref_inp, dim=dim, normalization=0, onesided=True)
+    with flag_gems.use_gems():
+        res_out = torch._fft_r2c(inp, dim=dim, normalization=0, onesided=True)
+
+    gems_assert_close(res_out, ref_out, res_out.dtype)
