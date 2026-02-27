@@ -46,6 +46,7 @@ from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.col2im import col2im
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -297,6 +298,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "col2im",
     "clamp",
     "clamp_",
     "clamp_min",
