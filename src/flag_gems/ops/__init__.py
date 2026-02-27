@@ -198,6 +198,7 @@ from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from flag_gems.ops.signbit import signbit
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
@@ -488,6 +489,7 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "signbit",
     "silu",
     "silu_",
     "silu_backward",
