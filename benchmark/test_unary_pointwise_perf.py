@@ -370,3 +370,21 @@ def test_perf_repetition_penalty():
     )
     bench.set_gems(flag_gems.apply_repetition_penalties)
     bench.run()
+
+
+class HardsigmoidBackwardBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype: torch.dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            grad_out = torch.randn_like(inp)
+            yield grad_out, inp
+
+
+@pytest.mark.hardsigmoid_backward
+def test_hardsigmoid_backward_perf():
+    bench = HardsigmoidBackwardBenchmark(
+        op_name="hardsigmoid_backward",
+        torch_op=torch.ops.aten.hardsigmoid_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
