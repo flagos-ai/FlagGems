@@ -42,6 +42,7 @@ if arch_version == 300:
     from .gcu300.copy import copy_
     from .gcu300.cos import cos
     from .gcu300.count_nonzero import count_nonzero
+    from .gcu300.diag import diag
     from .gcu300.diag_embed import diag_embed
     from .gcu300.div import true_divide , true_divide_, trunc_divide_, trunc_divide, floor_divide, floor_divide_, remainder, remainder_
     from .gcu300.elu import elu
@@ -127,6 +128,8 @@ if arch_version == 300:
     from .gcu300.layernorm import layer_norm, layer_norm_backward
     from .gcu300.to import to_copy
     from .gcu300.any import any, any_dim, any_dims
+    from .gcu300.nllloss import nll_loss_forward, nll_loss_backward
+    from .gcu300.vector_norm import vector_norm
     __all__ = [
         "mean_dim",
         "mean",
@@ -196,6 +199,7 @@ if arch_version == 300:
         "cos",
         "cos_",
         "count_nonzero",
+        "diag",
         "diag_embed",
         "true_divide",
         "true_divide_",
@@ -344,6 +348,9 @@ if arch_version == 300:
         "any_dim",
         "any_dims",
         "amax",
+        "nll_loss_forward",
+        "nll_loss_backward",
+        "vector_norm",
         ]
 elif arch_version >= 400:
     from .gcu400.mean import mean_dim
