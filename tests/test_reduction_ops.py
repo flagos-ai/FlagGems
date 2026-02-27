@@ -2601,3 +2601,134 @@ def test_accuracy_bincount_minlength(shape, num_classes, minlength):
     ref_out_w = torch.bincount(ref_inp, weights=ref_weights, minlength=minlength)
     res_out_w = flag_gems.bincount(inp, weights=weights, minlength=minlength)
     _assert_bincount(res_out_w, ref_out_w, dtype, shape, num_classes)
+
+
+# Tests for _index_put_impl_
+@pytest.mark.index_put_impl
+@pytest.mark.parametrize(
+    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_FALSE
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test__index_put_impl__acc_false(
+    input_shape, indices_shape, values_shape, is_bool, dtype
+):
+    accumulate = False
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
+
+    if is_bool:
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+    else:
+        values = torch.randn(
+            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+
+    ref_inp = to_reference(inp)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values)
+    torch._index_put_impl_(ref_inp, ref_indices, ref_values, accumulate, unsafe=False)
+    with flag_gems.use_gems():
+        torch._index_put_impl_(inp, indices, values, accumulate, unsafe=False)
+    gems_assert_close(inp, ref_inp, dtype)
+
+
+@pytest.mark.index_put_impl
+@pytest.mark.parametrize(
+    "input_shape, indices_shape, values_shape, is_bool", INDEX_PUT_SHAPE_ACC_TRUE
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test__index_put_impl__acc_true(
+    input_shape, indices_shape, values_shape, is_bool, dtype
+):
+    init_seed(0)
+    if flag_gems.vendor_name == "metax":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+    if flag_gems.vendor_name == "mthreads":
+        torch.manual_seed(0)
+        torch.musa.manual_seed_all(0)
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+    accumulate = True
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+
+    indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
+
+    if is_bool:
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+    else:
+        values = torch.randn(
+            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+
+    ref_inp = to_reference(inp, upcast=True)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values, upcast=True)
+    torch._index_put_impl_(ref_inp, ref_indices, ref_values, accumulate, unsafe=False)
+    with flag_gems.use_gems():
+        torch._index_put_impl_(inp, indices, values, accumulate, unsafe=False)
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float16:
+        from .accuracy_utils import to_cpu
+
+        inp = to_cpu(inp, ref_inp)
+        ref_inp = ref_inp.to(dtype)
+        torch.testing.assert_close(inp, ref_inp, atol=3e-3, rtol=3e-2)
+    else:
+        gems_assert_close(inp, ref_inp, dtype)
+
+
+@pytest.mark.index_put_impl
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("unsafe", [True, False])
+def test__index_put_impl__unsafe_param(dtype, unsafe):
+    """Test _index_put_impl_ with both unsafe=True and unsafe=False"""
+    inp = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
+    indices = [torch.randint(0, 32, (8,), device=flag_gems.device)]
+    values = torch.randn((8, 64), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values)
+    torch._index_put_impl_(
+        ref_inp, ref_indices, ref_values, accumulate=False, unsafe=unsafe
+    )
+    with flag_gems.use_gems():
+        torch._index_put_impl_(inp, indices, values, accumulate=False, unsafe=unsafe)
+    gems_assert_close(inp, ref_inp, dtype)
+
+
+@pytest.mark.index_put_impl
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test__index_put_impl__error_all_none(dtype):
+    """Test error handling: all None indices for _index_put_impl_"""
+    inp = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
+    indices = [None, None]
+    values = torch.randn((32, 64), dtype=dtype, device=flag_gems.device)
+
+    # PyTorch validates indices before dispatch, so TypeError is raised
+    with pytest.raises(TypeError):
+        with flag_gems.use_gems():
+            torch._index_put_impl_(inp, indices, values, accumulate=False, unsafe=False)
