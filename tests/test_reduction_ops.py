@@ -2201,3 +2201,70 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
         inp.masked_scatter_(mask, src)
 
     gems_assert_equal(inp, ref_inp)
+
+
+# Adaptive average pooling 2D backward configurations
+# (input_shape, output_size)
+ADAPTIVE_AVGPOOL2D_BACKWARD_CONFIGS = [
+    # Basic cases with even division
+    ((2, 3, 8, 8), (4, 4)),
+    ((1, 1, 16, 16), (8, 8)),
+    # Non-even division (different window sizes)
+    ((2, 4, 7, 7), (3, 3)),
+    ((1, 3, 10, 10), (4, 4)),
+    # Non-square input and output
+    ((2, 3, 8, 12), (4, 6)),
+    ((1, 2, 15, 10), (5, 4)),
+    # Larger input to smaller output
+    ((1, 64, 56, 56), (7, 7)),
+    # Same size (no pooling)
+    ((2, 3, 4, 4), (4, 4)),
+    # Upsampling case (output larger than input)
+    ((1, 1, 4, 4), (8, 8)),
+    # Single channel, single batch
+    ((1, 1, 6, 6), (2, 2)),
+]
+
+
+@pytest.mark.adaptive_avg_pool2d_backward
+@pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVGPOOL2D_BACKWARD_CONFIGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy__adaptive_avg_pool2d_backward(shape, output_size, dtype):
+    """Test _adaptive_avg_pool2d_backward accuracy."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+
+    # Compute forward pass to get the output shape
+    ref_out = torch.nn.functional.adaptive_avg_pool2d(ref_inp, output_size)
+    out_grad = torch.randn_like(ref_out, dtype=dtype, device=flag_gems.device)
+    ref_out_grad = to_reference(out_grad, True)
+
+    # Compute reference backward
+    ref_inp_grad = torch.ops.aten._adaptive_avg_pool2d_backward(ref_out_grad, ref_inp)
+
+    # Compute FlagGems backward
+    with flag_gems.use_gems():
+        res_inp_grad = torch.ops.aten._adaptive_avg_pool2d_backward(out_grad, inp)
+
+    gems_assert_close(res_inp_grad, ref_inp_grad, dtype)
+
+
+@pytest.mark.adaptive_avg_pool2d_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy__adaptive_avg_pool2d_backward_3d_input(dtype):
+    """Test _adaptive_avg_pool2d_backward with 3D input (C, H, W)."""
+    # 3D input without batch dimension
+    inp = torch.randn((3, 8, 8), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+    output_size = (4, 4)
+
+    ref_out = torch.nn.functional.adaptive_avg_pool2d(ref_inp, output_size)
+    out_grad = torch.randn_like(ref_out, dtype=dtype, device=flag_gems.device)
+    ref_out_grad = to_reference(out_grad, True)
+
+    ref_inp_grad = torch.ops.aten._adaptive_avg_pool2d_backward(ref_out_grad, ref_inp)
+
+    with flag_gems.use_gems():
+        res_inp_grad = torch.ops.aten._adaptive_avg_pool2d_backward(out_grad, inp)
+
+    gems_assert_close(res_inp_grad, ref_inp_grad, dtype)

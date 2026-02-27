@@ -422,6 +422,50 @@ def test_perf_max_pool2d_backward():
     bench.run()
 
 
+def adaptive_avg_pool2d_backward_input_fn(shape, dtype, device):
+    """Generate inputs for _adaptive_avg_pool2d_backward benchmark."""
+    inp = generate_tensor_input(shape, dtype, device)
+    # Common output sizes for adaptive pooling
+    output_sizes = [(7, 7)]  # Global pooling to 7x7 (common in ResNet)
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        output_sizes.extend([
+            (1, 1),  # Global average pooling
+            (4, 4),
+        ])
+
+    for output_size in output_sizes:
+        if output_size[0] <= shape[-2] and output_size[1] <= shape[-1]:
+            # Compute forward to get grad_output shape
+            forward_out = torch.nn.functional.adaptive_avg_pool2d(inp, output_size)
+            grad_output = torch.randn_like(forward_out)
+            yield grad_output, inp
+
+
+class AdaptiveAvgPool2dBackwardBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        shapes_4d = [
+            (4, 3, 224, 224),  # Typical input image size
+            (16, 64, 56, 56),  # Early ResNet layer output
+            (32, 128, 28, 28),  # Mid ResNet layer output
+            (64, 256, 14, 14),  # Later ResNet layer output
+            (128, 512, 7, 7),  # Final ResNet layer output
+        ]
+
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.adaptive_avg_pool2d_backward
+def test_perf_adaptive_avg_pool2d_backward():
+    bench = AdaptiveAvgPool2dBackwardBenchmark(
+        input_fn=adaptive_avg_pool2d_backward_input_fn,
+        op_name="adaptive_avg_pool2d_backward",
+        torch_op=torch.ops.aten._adaptive_avg_pool2d_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.dot
 def test_perf_dot():
     def dot_input_fn(shape, dtype, device):
