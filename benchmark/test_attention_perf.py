@@ -700,3 +700,88 @@ def test_perf_reshape_and_cache_flash():
     )
     bench.set_gems(flag_gems.reshape_and_cache_flash)
     bench.run()
+
+
+class ScaledDotProductCudnnAttentionBackwardBenchmark(Benchmark):
+    """
+    Benchmark for _scaled_dot_product_cudnn_attention_backward
+    """
+
+    def __init__(self, op_name, torch_op, dtypes, is_causal):
+        super().__init__(op_name, torch_op, dtypes)
+        self.is_causal = is_causal
+
+    def set_shapes(self, shape_file_path=None):
+        # Format: (batch, num_heads, seq_len, head_dim)
+        # Override to use custom shapes for this benchmark
+        self.shapes = [
+            (1, 4, 64, 64),
+            (2, 4, 64, 64),
+            (2, 8, 64, 64),
+            (4, 8, 64, 64),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            batch, num_heads, seq_len, head_dim = shape
+            device = self.device
+            dtype = cur_dtype
+
+            # Create input tensors
+            q = torch.randn(batch, num_heads, seq_len, head_dim, device=device, dtype=dtype) * 0.1
+            k = torch.randn(batch, num_heads, seq_len, head_dim, device=device, dtype=dtype) * 0.1
+            v = torch.randn(batch, num_heads, seq_len, head_dim, device=device, dtype=dtype) * 0.1
+
+            # Run forward pass to get outputs needed for backward
+            (
+                out,
+                logsumexp,
+                cum_seq_q,
+                cum_seq_k,
+                max_q,
+                max_k,
+                philox_seed,
+                philox_offset,
+                debug_mask,
+            ) = torch.ops.aten._scaled_dot_product_cudnn_attention(
+                q, k, v,
+                None,  # attn_bias
+                True,  # compute_log_sumexp
+                0.0,   # dropout_p
+                self.is_causal,
+                False,  # return_debug_mask
+                scale=None,
+            )
+
+            grad_out = torch.randn_like(out) * 0.1
+
+            yield (
+                grad_out, q, k, v, out, logsumexp,
+                philox_seed, philox_offset, None,  # attn_bias
+                cum_seq_q, cum_seq_k, max_q, max_k,
+                0.0, self.is_causal,
+                {"scale": None},
+            )
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="CUDNN not available")
+@pytest.mark.skipif(vendor_name == "hygon", reason="CUDNN not available")
+@pytest.mark.scaled_dot_product_cudnn_attention_backward
+@pytest.mark.parametrize("is_causal", [True])
+def test_perf_scaled_dot_product_cudnn_attention_backward(is_causal):
+    """Benchmark for _scaled_dot_product_cudnn_attention_backward"""
+
+    def torch_backward(*args, **kwargs):
+        return torch.ops.aten._scaled_dot_product_cudnn_attention_backward(*args, **kwargs)
+
+    def gems_backward(*args, **kwargs):
+        return flag_gems.ops._scaled_dot_product_cudnn_attention_backward(*args, **kwargs)
+
+    bench = ScaledDotProductCudnnAttentionBackwardBenchmark(
+        op_name="_scaled_dot_product_cudnn_attention_backward",
+        torch_op=torch_backward,
+        dtypes=[torch.float16],
+        is_causal=is_causal,
+    )
+    bench.set_gems(gems_backward)
+    bench.run()

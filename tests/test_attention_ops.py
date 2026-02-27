@@ -1771,3 +1771,118 @@ def test_scheduler_metadata_correctness(
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
+
+
+# Test configurations for _scaled_dot_product_cudnn_attention_backward
+# Note: The FlagGems backward implementation is optimized for causal attention.
+# Sequence length should be divisible by block sizes (typically 32 or 64)
+CUDNN_ATTENTION_BACKWARD_CONFIGS = [
+    # (batch, num_heads, seq_len, head_dim)
+    (1, 4, 64, 64),
+    (2, 4, 64, 64),
+    (1, 8, 64, 64),
+    (2, 8, 64, 64),
+]
+
+# Use float16 as the primary dtype for attention backward
+CUDNN_ATTENTION_BACKWARD_DTYPES = [torch.float16]
+
+
+@pytest.mark.scaled_dot_product_cudnn_attention_backward
+@pytest.mark.parametrize(
+    "batch, num_heads, seq_len, head_dim",
+    CUDNN_ATTENTION_BACKWARD_CONFIGS,
+)
+@pytest.mark.parametrize("dtype", CUDNN_ATTENTION_BACKWARD_DTYPES)
+@pytest.mark.parametrize("is_causal", [True])  # FlagGems backward supports causal attention
+def test_accuracy_scaled_dot_product_cudnn_attention_backward(
+    batch, num_heads, seq_len, head_dim, dtype, is_causal
+):
+    """Test accuracy of _scaled_dot_product_cudnn_attention_backward
+
+    Note: The FlagGems attention backward implementation is optimized for causal attention mode.
+    Non-causal attention backward has limitations in the current implementation.
+    """
+    if TO_CPU:
+        pytest.skip("CUDNN attention backward requires GPU.")
+
+    init_seed(42)
+
+    # Create input tensors with small values to improve numerical stability
+    q = torch.randn(batch, num_heads, seq_len, head_dim, device=device, dtype=dtype) * 0.1
+    k = torch.randn(batch, num_heads, seq_len, head_dim, device=device, dtype=dtype) * 0.1
+    v = torch.randn(batch, num_heads, seq_len, head_dim, device=device, dtype=dtype) * 0.1
+
+    # Run forward pass to get outputs needed for backward
+    try:
+        (
+            out,
+            logsumexp,
+            cum_seq_q,
+            cum_seq_k,
+            max_q,
+            max_k,
+            philox_seed,
+            philox_offset,
+            debug_mask,
+        ) = torch.ops.aten._scaled_dot_product_cudnn_attention(
+            q, k, v,
+            None,  # attn_bias
+            True,  # compute_log_sumexp
+            0.0,   # dropout_p
+            is_causal,
+            False,  # return_debug_mask
+            scale=None,
+        )
+    except RuntimeError as e:
+        pytest.skip(f"CUDNN attention forward not available: {e}")
+
+    # Create gradient for backward with small values
+    grad_out = torch.randn_like(out) * 0.1
+
+    # Reference backward
+    try:
+        ref_grad_q, ref_grad_k, ref_grad_v = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
+            grad_out,
+            q, k, v,
+            out,
+            logsumexp,
+            philox_seed,
+            philox_offset,
+            None,  # attn_bias
+            cum_seq_q,
+            cum_seq_k,
+            max_q,
+            max_k,
+            0.0,  # dropout_p
+            is_causal,
+            scale=None,
+        )
+    except RuntimeError as e:
+        pytest.skip(f"CUDNN attention backward not available: {e}")
+
+    # FlagGems backward
+    with flag_gems.use_gems():
+        res_grad_q, res_grad_k, res_grad_v = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
+            grad_out,
+            q, k, v,
+            out,
+            logsumexp,
+            philox_seed,
+            philox_offset,
+            None,  # attn_bias
+            cum_seq_q,
+            cum_seq_k,
+            max_q,
+            max_k,
+            0.0,  # dropout_p
+            is_causal,
+            scale=None,
+        )
+
+    # Use relaxed tolerance for attention backward - attention is numerically sensitive
+    # The FlagGems implementation may have small numerical differences due to different
+    # computation order and precision handling
+    gems_assert_close(res_grad_q, ref_grad_q, dtype, reduce_dim=head_dim)
+    gems_assert_close(res_grad_k, ref_grad_k, dtype, reduce_dim=head_dim)
+    gems_assert_close(res_grad_v, ref_grad_v, dtype, reduce_dim=head_dim)
