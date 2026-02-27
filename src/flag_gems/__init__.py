@@ -197,6 +197,7 @@ _FULL_CONFIG = (
     ("isinf", isinf),
     ("isnan", isnan),
     ("kron", kron),
+    ("leaky_relu_backward", leaky_relu_backward),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
     ("lerp.Scalar", lerp_scalar),

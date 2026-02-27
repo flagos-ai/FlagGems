@@ -1953,6 +1953,24 @@ def test_accuracy_threshold_backward(shape, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
+@pytest.mark.leaky_relu_backward
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_backward(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
+    negative_slope = 0.01
+
+    ref_inp = to_reference(res_inp, True)
+    ref_grad = to_reference(res_grad, True)
+
+    ref_in_grad = torch.ops.aten.leaky_relu_backward(ref_grad, ref_inp, negative_slope, False)
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.leaky_relu_backward(res_grad, res_inp, negative_slope, False)
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])

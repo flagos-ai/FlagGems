@@ -63,6 +63,12 @@ def threshold_input_fn(shape, cur_dtype, device):
     yield inp1, 3.14, 2.71
 
 
+def leaky_relu_backward_input_fn(shape, cur_dtype, device):
+    grad_output = generate_tensor_input(shape, cur_dtype, device)
+    self = generate_tensor_input(shape, cur_dtype, device)
+    yield grad_output, self, 0.01, False
+
+
 def addcmul_input_fn(shape, cur_dtype, device):
     inp1 = generate_tensor_input(shape, cur_dtype, device)
     inp2 = generate_tensor_input(shape, cur_dtype, device)
@@ -117,6 +123,13 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             threshold_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.threshold,
+        ),
+        pytest.param(
+            "leaky_relu_backward",
+            torch.ops.aten.leaky_relu_backward,
+            leaky_relu_backward_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.leaky_relu_backward,
         ),
         pytest.param(
             "addcmul",
