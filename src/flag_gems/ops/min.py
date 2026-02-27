@@ -15,7 +15,7 @@ from flag_gems.utils.limits import get_dtype_max
 logger = logging.getLogger(__name__)
 
 
-# @libentry()
+@libentry()
 @triton.jit
 def min_kernel_1(
     inp,
@@ -34,7 +34,7 @@ def min_kernel_1(
     tl.store(mid_ptr, min_val)
 
 
-# @libentry()
+@libentry()
 @triton.jit
 def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
