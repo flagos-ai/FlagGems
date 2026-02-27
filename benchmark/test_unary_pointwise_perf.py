@@ -246,6 +246,27 @@ def test_elu_backward_perf():
     bench.run()
 
 
+class HardtanhBackwardBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype: torch.dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            grad_out = torch.randn_like(inp)
+            min_val = -1.0
+            max_val = 1.0
+
+            yield grad_out, inp, min_val, max_val
+
+
+@pytest.mark.hardtanh_backward
+def test_hardtanh_backward_perf():
+    bench = HardtanhBackwardBenchmark(
+        op_name="hardtanh_backward",
+        torch_op=torch.ops.aten.hardtanh_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 class GluBenchmark(UnaryPointwiseBenchmark):
     # Glu test requires even numbers
     def set_more_shapes(self):

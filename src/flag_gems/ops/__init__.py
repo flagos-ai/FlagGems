@@ -101,6 +101,7 @@ from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
+from flag_gems.ops.hardtanh_backward import hardtanh_backward
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
@@ -368,6 +369,7 @@ __all__ = [
     "group_norm_backward",
     "gt",
     "gt_scalar",
+    "hardtanh_backward",
     "hstack",
     "index",
     "index_add",
