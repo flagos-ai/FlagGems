@@ -522,6 +522,38 @@ def test_perf_upsample_nearest2d():
     bench.run()
 
 
+@pytest.mark.upsample_bicubic2d_backward
+def test_perf_upsample_bicubic2d_backward():
+    def upsample_bicubic2d_backward_input_fn(shape, dtype, device):
+        batch, channel, height, width = shape
+        scale_factors = (2, 2)
+        output_size = (
+            int(height * scale_factors[0]),
+            int(width * scale_factors[1]),
+        )
+        grad_output = torch.randn(
+            (batch, channel, output_size[0], output_size[1]),
+            device=device,
+            dtype=dtype
+        )
+        yield {
+            "grad_output": grad_output,
+            "output_size": output_size,
+            "input_size": (batch, channel, height, width),
+            "align_corners": False,
+            "scales_h": None,
+            "scales_w": None,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_bicubic2d_backward_input_fn,
+        op_name="upsample_bicubic2d_backward",
+        torch_op=torch.ops.aten.upsample_bicubic2d_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.diag
 def test_perf_diag():
     def diag_input_fn(shape, dtype, device):

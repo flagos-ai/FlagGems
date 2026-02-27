@@ -1890,3 +1890,55 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+@pytest.mark.upsample_bicubic2d_backward
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [(2, 2), (2.5, 3.0), (1.5, 2.0)])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (1, 3, 8, 8),
+        (2, 4, 16, 16),
+        (1, 1, 32, 32),
+        (2, 3, 24, 24),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_bicubic2d_backward(dtype, shape, scale, align_corners):
+    N, C, IH, IW = shape
+    OH = int(IH * scale[0])
+    OW = int(IW * scale[1])
+
+    # Create input that requires grad
+    input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_input = to_reference(input_tensor.clone().detach(), True).requires_grad_(True)
+
+    # Forward pass to get output shape
+    output = torch.nn.functional.interpolate(
+        input_tensor, size=(OH, OW), mode='bicubic', align_corners=align_corners
+    )
+    ref_output = torch.nn.functional.interpolate(
+        ref_input, size=(OH, OW), mode='bicubic', align_corners=align_corners
+    )
+
+    # Create gradient output
+    grad_output = torch.randn_like(output)
+    ref_grad_output = to_reference(grad_output, True)
+
+    # Reference backward
+    ref_output.backward(ref_grad_output)
+    ref_grad_input = ref_input.grad
+
+    # Test using the backward op directly
+    with flag_gems.use_gems():
+        res_grad_input = torch.ops.aten.upsample_bicubic2d_backward(
+            grad_output,
+            (OH, OW),
+            (N, C, IH, IW),
+            align_corners,
+            None,
+            None
+        )
+
+    gems_assert_close(res_grad_input, ref_grad_input, dtype, reduce_dim=16)
