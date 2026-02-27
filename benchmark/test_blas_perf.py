@@ -13,7 +13,7 @@ from benchmark.attri_util import (
     model_shapes,
 )
 from benchmark.conftest import Config
-from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly, vendor_name
+from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly
 
 
 class BlasBenchmark(Benchmark):
@@ -305,7 +305,6 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Random Hang")
 @pytest.mark.vdot
 def test_vdot_benchmark():
     def vdot_input_fn(m, cur_dtype, device):

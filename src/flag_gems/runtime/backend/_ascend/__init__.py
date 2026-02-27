@@ -1,12 +1,14 @@
 from backend_utils import VendorInfoBase  # noqa: E402
 
+from .utils import CORE_NUM  # noqa: F401
+
 
 def get_triton_extra_name():
     try:
         import triton
         from packaging import version
 
-        if version.parse(triton.__version__) <= version.parse("3.2.0"):
+        if version.parse(triton.__version__) < version.parse("3.2.0"):
             return "ascend"
         else:
             return "cann"
@@ -26,7 +28,8 @@ CUSTOMIZED_UNUSED_OPS = (
     "contiguous",
     "sort",
     "sort_stable",
-    "topk",
+    "copy_",
+    "_to_copy",
 )
 
 

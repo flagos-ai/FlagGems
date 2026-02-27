@@ -17,3 +17,17 @@ def logical_and_func(x, y):
 def logical_and(A, B):
     logger.debug("GEMS_CAMBRICON LOGICAL_AND")
     return logical_and_func(A, B)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")]
+)
+@triton.jit
+def logical_and_func_(x, y, inplace):
+    return tl.where((x != 0) & (y != 0), 1, 0)
+
+
+def logical_and_(A, B):
+    logger.debug("GEMS_CAMBRICON LOGICAL_AND_")
+    logical_and_func_(A, B, True, out0=A)
+    return A
