@@ -556,7 +556,7 @@ def test_accuracy_resolve_neg(shape, dtype):
 @pytest.mark.topk
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128, 256])
-@pytest.mark.parametrize("topk", [5])
+@pytest.mark.parametrize("topk", [0, 5])
 @pytest.mark.parametrize("largest", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_topk(
