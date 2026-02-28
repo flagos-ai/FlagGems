@@ -5,7 +5,6 @@ on:
 
   push:
     branches: [ "master" ]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
 
   pull_request:
     branches: [ "master" ]
@@ -59,17 +58,17 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: contains(needs.preprocess.outpus.labels, 'documentation')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'documentation')
     uses: ./.github/workflows/mkdocs.yaml
 
   cpp-op:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'ops/cpp')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'ops/cpp')
     uses: ./.github/workflows/cpp-op-test.yaml
 
   blas-op:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'tests')
     concurrency:
       group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -82,8 +81,8 @@ jobs:
     needs: preprocess
     # NOTE: This contains a temporary hack to skip this job for PRs from FODC contest.
     if: |
-      contains(needs.preprocess.outputs.labels, 'tests') &&
-      ! contains(github.event.pull_request.labels.*.name, 'competition')
+      contains(fromJson(needs.preprocess.outputs.labels), 'tests') &&
+      (github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'competition'))
     concurrency:
       group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -94,7 +93,7 @@ jobs:
 
   pointwise-op:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'tests')
     concurrency:
       group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -105,7 +104,7 @@ jobs:
 
   reduction-op:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'tests')
     concurrency:
       group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -116,7 +115,7 @@ jobs:
 
   special-op:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'tests')
     concurrency:
       group: special-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -127,7 +126,7 @@ jobs:
 
   utils:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'tests')
     concurrency:
       group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -138,7 +137,7 @@ jobs:
 
   examples:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'examples')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'examples')
     concurrency:
       group: examples-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -149,7 +148,7 @@ jobs:
 
   backend-nvidia:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/NVIDIA')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
@@ -159,27 +158,27 @@ jobs:
 
   backend-ascend:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/Ascend')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
-      runner_label: ascend
+      runner_label: ascend_CI
       gpu_check_script: tools/gpu_check_ascend.sh
       test_script: tools/run_backend_tests.sh
 
   backend-iluvatar:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Iluvatar')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/Iluvatar')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: iluvatar
-      runner_label: iluvatar
+      runner_label: iluvatar_CI
       gpu_check_script: tools/gpu_check_iluvatar.sh
       test_script: tools/run_backend_tests.sh
 
   backend-metax:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/MetaX')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/MetaX')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
@@ -188,7 +187,7 @@ jobs:
 
   backend-moore:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: moore
@@ -198,7 +197,7 @@ jobs:
 
   alpha-ops:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
+    if: contains(fromJson(needs.preprocess.outputs.labels), 'ops/alpha')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
