@@ -106,8 +106,12 @@ def jacobi_svd_kernel(
             )
             tl.store(vw_base + j * vw_col_stride + v_row_idx, v_col, mask=v_mask)
 
-    # Jacobi sweeps with column-major load/store
+    # Jacobi sweeps with column-major load/store and early convergence
+    sweep_converged = tl.full((), 0, dtype=tl.int32)
+
     for _sweep in range(NUM_SWEEPS):
+        max_gamma = tl.full((), 0.0, dtype=tl.float32)
+
         for p in range(N):
             for q in range(p + 1, N):
                 # Load columns p and q from A_work — O(M) direct load
@@ -127,8 +131,17 @@ def jacobi_svd_kernel(
                 beta = tl.sum(a_q * a_q)
                 gamma = tl.sum(a_p * a_q)
 
-                # Check convergence for this pair
-                converged = tl.abs(gamma) < 1e-7 * tl.sqrt(alpha * beta + 1e-30)
+                abs_gamma = tl.abs(gamma)
+                threshold = 1e-7 * tl.sqrt(alpha * beta + 1e-30)
+                converged = abs_gamma < threshold
+
+                # Track max off-diagonal for sweep-level convergence
+                max_gamma = tl.where(
+                    abs_gamma > max_gamma, abs_gamma, max_gamma
+                )
+
+                # Only rotate if pair not converged and sweep not done
+                should_rotate = ~converged & (sweep_converged == 0)
 
                 # Compute Jacobi rotation angle
                 safe_gamma = tl.where(
@@ -144,9 +157,13 @@ def jacobi_svd_kernel(
                 c = 1.0 / tl.sqrt(1.0 + t * t)
                 s = t * c
 
-                # Skip rotation if already converged
-                c = tl.where(converged, tl.full((), 1.0, dtype=tl.float32), c)
-                s = tl.where(converged, tl.full((), 0.0, dtype=tl.float32), s)
+                # Identity rotation when skipping
+                c = tl.where(
+                    should_rotate, c, tl.full((), 1.0, dtype=tl.float32)
+                )
+                s = tl.where(
+                    should_rotate, s, tl.full((), 0.0, dtype=tl.float32)
+                )
 
                 # Apply rotation to A columns — O(M) store
                 new_a_p = c * a_p - s * a_q
@@ -176,6 +193,13 @@ def jacobi_svd_kernel(
                     tl.store(
                         vw_base + q * vw_col_stride + v_idx, new_v_q, mask=v_m
                     )
+
+        # After each sweep, check if globally converged
+        sweep_converged = tl.where(
+            max_gamma < 1e-7,
+            tl.full((), 1, dtype=tl.int32),
+            sweep_converged,
+        )
 
     # Extract singular values as column norms of A_work
     s_idx = tl.arange(0, BLOCK_N)
