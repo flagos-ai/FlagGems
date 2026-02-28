@@ -35,12 +35,22 @@ def _next_power_of_2(n):
 @triton.jit
 def jacobi_svd_kernel(
     A_ptr,
+    A_work_ptr,
+    V_work_ptr,
     U_ptr,
     S_ptr,
     V_ptr,
+    # Input A strides
     batch_stride_A,
     m_stride_A,
     n_stride_A,
+    # A_work strides (column-major: A_work[batch, col, row])
+    aw_batch_stride,
+    aw_col_stride,
+    # V_work strides (column-major: V_work[batch, col, row])
+    vw_batch_stride,
+    vw_col_stride,
+    # Output strides
     batch_stride_U,
     m_stride_U,
     k_stride_U,
@@ -48,6 +58,7 @@ def jacobi_svd_kernel(
     batch_stride_V,
     n_stride_V,
     k_stride_V,
+    # Dimensions
     M: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -58,53 +69,65 @@ def jacobi_svd_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """One-sided Jacobi SVD kernel.
+    """One-sided Jacobi SVD kernel with column-major global memory buffers.
 
     Each program instance handles one matrix from the batch.
-    The algorithm iteratively applies 2x2 Jacobi rotations to pairs
-    of columns until convergence, then extracts singular values and
-    vectors. After transpose normalization, M >= N always holds,
-    so K = N and BLOCK_N >= N = K.
+    Uses column-major scratch buffers in global memory for O(M) column
+    access instead of O(M*N) broadcast extraction from registers.
+    After transpose normalization, M >= N always holds, so K = N.
+    Singular values are output unsorted (sorting done in wrapper).
     """
     pid = tle.program_id(0)
-
-    # Load A into registers: shape (BLOCK_M, BLOCK_N)
     row_idx = tl.arange(0, BLOCK_M)
-    col_idx = tl.arange(0, BLOCK_N)
+    row_mask = row_idx < M
 
-    a_ptrs = (
-        A_ptr
-        + pid * batch_stride_A
-        + row_idx[:, None] * m_stride_A
-        + col_idx[None, :] * n_stride_A
-    )
-    mask = (row_idx[:, None] < M) & (col_idx[None, :] < N)
-    A = tl.load(a_ptrs, mask=mask, other=0.0).to(tl.float32)
+    # Base pointers for this batch element's scratch buffers
+    aw_base = A_work_ptr + pid * aw_batch_stride
+    vw_base = V_work_ptr + pid * vw_batch_stride
 
-    # Initialize V = I (BLOCK_N, BLOCK_N) — only needed when compute_uv=True
-    v_row = tl.arange(0, BLOCK_N)
-    v_col = tl.arange(0, BLOCK_N)
+    # Copy input A into A_work (column-major layout)
+    for j in range(N):
+        a_col = tl.load(
+            A_ptr + pid * batch_stride_A + row_idx * m_stride_A + j * n_stride_A,
+            mask=row_mask,
+            other=0.0,
+        ).to(tl.float32)
+        tl.store(aw_base + j * aw_col_stride + row_idx, a_col, mask=row_mask)
+
+    # Initialize V_work = Identity (column-major layout)
     if compute_uv:
-        V = tl.where(
-            v_row[:, None] == v_col[None, :],
-            tl.full((BLOCK_N, BLOCK_N), 1.0, dtype=tl.float32),
-            tl.full((BLOCK_N, BLOCK_N), 0.0, dtype=tl.float32),
-        )
+        v_row_idx = tl.arange(0, BLOCK_N)
+        v_mask = v_row_idx < N
+        for j in range(N):
+            v_col = tl.where(
+                v_row_idx == j,
+                tl.full((BLOCK_N,), 1.0, dtype=tl.float32),
+                tl.full((BLOCK_N,), 0.0, dtype=tl.float32),
+            )
+            tl.store(vw_base + j * vw_col_stride + v_row_idx, v_col, mask=v_mask)
 
-    # Jacobi sweeps: rotate column pairs (p, q) to diagonalize A^T A
+    # Jacobi sweeps with column-major load/store
     for _sweep in range(NUM_SWEEPS):
         for p in range(N):
             for q in range(p + 1, N):
-                # Extract columns p and q from A
-                a_p = tl.sum(A * (col_idx[None, :] == p).to(tl.float32), axis=1)
-                a_q = tl.sum(A * (col_idx[None, :] == q).to(tl.float32), axis=1)
+                # Load columns p and q from A_work — O(M) direct load
+                a_p = tl.load(
+                    aw_base + p * aw_col_stride + row_idx,
+                    mask=row_mask,
+                    other=0.0,
+                )
+                a_q = tl.load(
+                    aw_base + q * aw_col_stride + row_idx,
+                    mask=row_mask,
+                    other=0.0,
+                )
 
                 # Compute Gram matrix entries for the 2x2 subproblem
                 alpha = tl.sum(a_p * a_p)
                 beta = tl.sum(a_q * a_q)
                 gamma = tl.sum(a_p * a_q)
 
-                # Check convergence for this pair (1e-7 for float32 precision)
+                # Check convergence for this pair
                 converged = tl.abs(gamma) < 1e-7 * tl.sqrt(alpha * beta + 1e-30)
 
                 # Compute Jacobi rotation angle
@@ -112,14 +135,12 @@ def jacobi_svd_kernel(
                     converged, tl.full((), 1.0, dtype=tl.float32), gamma
                 )
                 zeta = (beta - alpha) / (2.0 * safe_gamma)
-
                 sign_zeta = tl.where(
                     zeta >= 0,
                     tl.full((), 1.0, dtype=tl.float32),
                     tl.full((), -1.0, dtype=tl.float32),
                 )
                 t = sign_zeta / (tl.abs(zeta) + tl.sqrt(1.0 + zeta * zeta))
-
                 c = 1.0 / tl.sqrt(1.0 + t * t)
                 s = t * c
 
@@ -127,122 +148,99 @@ def jacobi_svd_kernel(
                 c = tl.where(converged, tl.full((), 1.0, dtype=tl.float32), c)
                 s = tl.where(converged, tl.full((), 0.0, dtype=tl.float32), s)
 
-                # Apply rotation to columns of A
+                # Apply rotation to A columns — O(M) store
                 new_a_p = c * a_p - s * a_q
                 new_a_q = s * a_p + c * a_q
+                tl.store(
+                    aw_base + p * aw_col_stride + row_idx, new_a_p, mask=row_mask
+                )
+                tl.store(
+                    aw_base + q * aw_col_stride + row_idx, new_a_q, mask=row_mask
+                )
 
-                is_p = (col_idx[None, :] == p).to(tl.float32)
-                is_q = (col_idx[None, :] == q).to(tl.float32)
-                is_neither = 1.0 - is_p - is_q
-                A = A * is_neither + new_a_p[:, None] * is_p + new_a_q[:, None] * is_q
-
-                # Apply rotation to columns of V (only when computing U and V)
+                # Apply rotation to V columns
                 if compute_uv:
-                    v_p = tl.sum(V * (v_col[None, :] == p).to(tl.float32), axis=1)
-                    v_q = tl.sum(V * (v_col[None, :] == q).to(tl.float32), axis=1)
+                    v_idx = tl.arange(0, BLOCK_N)
+                    v_m = v_idx < N
+                    v_p = tl.load(
+                        vw_base + p * vw_col_stride + v_idx, mask=v_m, other=0.0
+                    )
+                    v_q = tl.load(
+                        vw_base + q * vw_col_stride + v_idx, mask=v_m, other=0.0
+                    )
                     new_v_p = c * v_p - s * v_q
                     new_v_q = s * v_p + c * v_q
-
-                    is_p_v = (v_col[None, :] == p).to(tl.float32)
-                    is_q_v = (v_col[None, :] == q).to(tl.float32)
-                    is_neither_v = 1.0 - is_p_v - is_q_v
-                    V = (
-                        V * is_neither_v
-                        + new_v_p[:, None] * is_p_v
-                        + new_v_q[:, None] * is_q_v
+                    tl.store(
+                        vw_base + p * vw_col_stride + v_idx, new_v_p, mask=v_m
+                    )
+                    tl.store(
+                        vw_base + q * vw_col_stride + v_idx, new_v_q, mask=v_m
                     )
 
-    # Extract singular values as column norms of A
-    col_norms_sq = tl.sum(A * A, axis=0)
-    S_vals = tl.sqrt(col_norms_sq)
-
-    # Compute U = A * diag(1/S) (normalize columns)
-    if compute_uv:
-        safe_S = tl.where(
-            S_vals > 1e-10,
-            S_vals,
-            tl.full((BLOCK_N,), 1.0, dtype=tl.float32),
+    # Extract singular values as column norms of A_work
+    s_idx = tl.arange(0, BLOCK_N)
+    s_mask = s_idx < K
+    S_vals = tl.full((BLOCK_N,), 0.0, dtype=tl.float32)
+    for j in range(N):
+        a_col_j = tl.load(
+            aw_base + j * aw_col_stride + row_idx, mask=row_mask, other=0.0
         )
-        U = A / safe_S[None, :]
+        norm_sq = tl.sum(a_col_j * a_col_j)
+        S_vals = tl.where(s_idx == j, tl.sqrt(norm_sq), S_vals)
 
-    # Sort singular values in descending order using branchless bubble sort.
-    # All swaps use tl.where to avoid data-dependent branching in the kernel.
-    for i in range(N):
-        for j in range(N - 1 - i):
-            sj = tl.sum(S_vals * (col_idx == j).to(tl.float32))
-            sj1 = tl.sum(S_vals * (col_idx == (j + 1)).to(tl.float32))
-            need_swap = sj < sj1
-
-            is_j = (col_idx == j).to(tl.float32)
-            is_j1 = (col_idx == (j + 1)).to(tl.float32)
-            is_other = 1.0 - is_j - is_j1
-
-            # Branchless swap of S values
-            swapped_S = S_vals * is_other + sj1 * is_j + sj * is_j1
-            S_vals = tl.where(need_swap, swapped_S, S_vals)
-
-            if compute_uv:
-                # Branchless swap of U columns
-                u_j = tl.sum(U * is_j[None, :], axis=1)
-                u_j1 = tl.sum(U * is_j1[None, :], axis=1)
-                swapped_U = (
-                    U * is_other[None, :]
-                    + u_j1[:, None] * is_j[None, :]
-                    + u_j[:, None] * is_j1[None, :]
-                )
-                U = tl.where(need_swap, swapped_U, U)
-
-                # Branchless swap of V columns
-                v_j = tl.sum(V * is_j[None, :], axis=1)
-                v_j1 = tl.sum(V * is_j1[None, :], axis=1)
-                swapped_V = (
-                    V * is_other[None, :]
-                    + v_j1[:, None] * is_j[None, :]
-                    + v_j[:, None] * is_j1[None, :]
-                )
-                V = tl.where(need_swap, swapped_V, V)
-
-    # Store singular values
-    s_ptrs = S_ptr + pid * batch_stride_S + tl.arange(0, BLOCK_N)
-    s_mask = tl.arange(0, BLOCK_N) < K
+    # Store S (unsorted — sorting done in wrapper)
+    s_ptrs = S_ptr + pid * batch_stride_S + s_idx
     tl.store(s_ptrs, S_vals, mask=s_mask)
 
-    # Store U and V matrices
+    # Compute and store U = A_work_col / S_col (normalize columns)
     if compute_uv:
-        u_row = tl.arange(0, BLOCK_M)
-        u_col = tl.arange(0, BLOCK_N)
-        u_ptrs = (
-            U_ptr
-            + pid * batch_stride_U
-            + u_row[:, None] * m_stride_U
-            + u_col[None, :] * k_stride_U
-        )
-        u_mask = (u_row[:, None] < M) & (u_col[None, :] < out_k_U)
-        tl.store(u_ptrs, U, mask=u_mask)
+        for j in range(N):
+            a_col_j = tl.load(
+                aw_base + j * aw_col_stride + row_idx, mask=row_mask, other=0.0
+            )
+            s_j = tl.sum(S_vals * (s_idx == j).to(tl.float32))
+            safe_s_j = tl.where(
+                s_j > 1e-10, s_j, tl.full((), 1.0, dtype=tl.float32)
+            )
+            u_col_j = a_col_j / safe_s_j
 
-        v_store_row = tl.arange(0, BLOCK_N)
-        v_store_col = tl.arange(0, BLOCK_N)
-        v_ptrs = (
-            V_ptr
-            + pid * batch_stride_V
-            + v_store_row[:, None] * n_stride_V
-            + v_store_col[None, :] * k_stride_V
-        )
-        v_mask = (v_store_row[:, None] < N) & (v_store_col[None, :] < out_k_V)
-        tl.store(v_ptrs, V, mask=v_mask)
+            u_mask_j = row_mask & (j < out_k_U)
+            u_ptrs = (
+                U_ptr
+                + pid * batch_stride_U
+                + row_idx * m_stride_U
+                + j * k_stride_U
+            )
+            tl.store(u_ptrs, u_col_j, mask=u_mask_j)
+
+        # Store V from V_work
+        v_out_idx = tl.arange(0, BLOCK_N)
+        for j in range(N):
+            v_col_j = tl.load(
+                vw_base + j * vw_col_stride + v_out_idx,
+                mask=v_out_idx < N,
+                other=0.0,
+            )
+            v_mask_j = (v_out_idx < N) & (j < out_k_V)
+            v_ptrs = (
+                V_ptr
+                + pid * batch_stride_V
+                + v_out_idx * n_stride_V
+                + j * k_stride_V
+            )
+            tl.store(v_ptrs, v_col_j, mask=v_mask_j)
 
 
 def svd(input, some=True, compute_uv=True):
     """Compute the Singular Value Decomposition of a matrix.
 
     Implements SVD using the One-sided Jacobi algorithm in pure Triton.
-    Supports matrices up to MAX_SVD_DIM x MAX_SVD_DIM per element in the batch.
+    Uses column-major global memory scratch buffers for efficient column
+    access. Supports matrices up to MAX_SVD_DIM x MAX_SVD_DIM per batch.
 
     Args:
         input: Input tensor of shape (..., m, n).
         some: If True, return reduced SVD. If False, return full SVD.
-            Note: some=False for non-square matrices is not supported and
-            will raise NotImplementedError.
         compute_uv: If True, compute U and V. If False, only compute S
             and return zero-filled U, V.
 
@@ -263,12 +261,6 @@ def svd(input, some=True, compute_uv=True):
         f"Jacobi SVD kernel supports matrices up to {MAX_SVD_DIM}x{MAX_SVD_DIM}, "
         f"got ({orig_m}, {orig_n}). Consider using torch.linalg.svd for larger matrices."
     )
-
-    # Note: For some=False with non-square matrices, the kernel computes
-    # only k = min(m,n) valid columns for U and V. The extra columns
-    # (spanning the null space) are left as zeros. This is sufficient for
-    # reconstruction A = U[:,:k] @ diag(S) @ V[:,:k]^T but the returned
-    # U and V are not fully orthogonal.
 
     batch_shape = input.shape[:-2]
     m, n = orig_m, orig_n
@@ -308,7 +300,6 @@ def svd(input, some=True, compute_uv=True):
         out_k_U = k
         out_k_V = k
     else:
-        # For square matrices (orig_m == orig_n), m == n == k
         out_k_U = m
         out_k_V = n
 
@@ -316,22 +307,39 @@ def svd(input, some=True, compute_uv=True):
     U_out = torch.zeros(batch_size, m, out_k_U, device=input.device, dtype=input.dtype)
     V_out = torch.zeros(batch_size, n, out_k_V, device=input.device, dtype=input.dtype)
 
+    # Allocate column-major scratch buffers
+    # A_work shape: (batch_size, n, m) — column j of A is A_work[batch, j, :]
+    A_work = torch.empty(
+        batch_size, n, m, device=input.device, dtype=torch.float32
+    )
+    V_work = torch.empty(
+        batch_size, n, n, device=input.device, dtype=torch.float32
+    )
+
     BLOCK_M = _next_power_of_2(m)
     BLOCK_N = _next_power_of_2(n)
-    # Sweep count: enough for convergence without excessive compilation time.
-    # For the Jacobi method, O(n) sweeps typically suffice.
     num_sweeps = max(10, n)
     grid = (batch_size,)
 
     with torch_device_fn.device(input.device):
         jacobi_svd_kernel[grid](
             A,
+            A_work,
+            V_work,
             U_out,
             S_out,
             V_out,
+            # Input A strides
             A.stride(0),
             A.stride(1),
             A.stride(2),
+            # A_work strides (column-major)
+            A_work.stride(0),
+            A_work.stride(1),
+            # V_work strides (column-major)
+            V_work.stride(0),
+            V_work.stride(1),
+            # Output strides
             U_out.stride(0),
             U_out.stride(1),
             U_out.stride(2),
@@ -339,6 +347,7 @@ def svd(input, some=True, compute_uv=True):
             V_out.stride(0),
             V_out.stride(1),
             V_out.stride(2),
+            # Dimensions
             M=m,
             N=n,
             K=k,
@@ -349,6 +358,15 @@ def svd(input, some=True, compute_uv=True):
             BLOCK_M=BLOCK_M,
             BLOCK_N=BLOCK_N,
         )
+
+    # Sort singular values in descending order (outside kernel)
+    sorted_indices = torch.argsort(S_out, dim=-1, descending=True)
+    S_out = torch.gather(S_out, -1, sorted_indices)
+    if compute_uv:
+        idx_U = sorted_indices.unsqueeze(-2).expand_as(U_out)
+        U_out = torch.gather(U_out, -1, idx_U)
+        idx_V = sorted_indices.unsqueeze(-2).expand_as(V_out)
+        V_out = torch.gather(V_out, -1, idx_V)
 
     # Undo transpose: swap U and V back
     if need_transpose:
@@ -364,7 +382,6 @@ def svd(input, some=True, compute_uv=True):
             U_out = U_out.reshape(*batch_shape, orig_m, out_k_U)
             V_out = V_out.reshape(*batch_shape, orig_n, out_k_V)
     else:
-        # compute_uv=False: return zero-filled U, V per torch.svd spec
         if some:
             U_out = torch.zeros(
                 *batch_shape, orig_m, k, device=input.device, dtype=input.dtype
