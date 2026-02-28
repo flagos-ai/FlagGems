@@ -37,8 +37,9 @@ def broadcast_indices(indices, target_shape):
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
+    code.writeline("import builtins")
     code.newline()
-    code.writeline("from flag_gems.utils import libentry, libtuner")
+    code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
@@ -51,15 +52,40 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 def generate_index_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
-    code.writeline("@libentry()")
-    code.writeline("@libtuner(")
+    code.newline()
+    code.newline()
+
+    code.writeline("def heur_block_m(args):")
     with code.indent():
-        code.writeline('configs=runtime.get_tuned_config("index"),')
-        code.writeline('key=["M", "N"],')
-        code.writeline('strategy=["align32", "align32"],')
-        code.writeline("warmup=5,")
-        code.writeline("rep=10,")
+        code.writeline('return builtins.max(1, triton.next_power_of_2(triton.cdiv(args["M"], 12)))')
+
+    code.newline()
+
+    code.writeline("def heur_block_n(args):")
+    with code.indent():
+        code.writeline('return builtins.max(1, builtins.min(triton.next_power_of_2(args["N"]), 4096))')
+
+    code.newline()
+    code.newline()
+    code.writeline("@libentry()")
+    code.writeline("@triton.heuristics(")
+    with code.indent():
+        code.writeline("values={")
+        with code.indent():
+            code.writeline('"BLOCK_SIZE0": heur_block_m,')
+            code.writeline('"BLOCK_SIZE1": heur_block_n,')
+        code.writeline("},")
     code.writeline(")")
+
+    # code.writeline("@libtuner(")
+    # with code.indent():
+    #     code.writeline('configs=runtime.get_tuned_config("index"),')
+    #     code.writeline('key=["M", "N"],')
+    #     code.writeline('strategy=["align32", "align32"],')
+    #     code.writeline("warmup=5,")
+    #     code.writeline("rep=10,")
+    # code.writeline(")")
+
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
