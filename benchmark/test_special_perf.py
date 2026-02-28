@@ -821,3 +821,41 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+# ========== SVD Benchmark ==========
+
+
+def svd_input_fn(shape, cur_dtype, device):
+    inp = torch.randn(shape, dtype=cur_dtype, device=device)
+    yield inp,
+
+
+SVD_SHAPES = [
+    (8, 8),
+    (16, 16),
+    (32, 32),
+    (64, 32),
+    (32, 64),
+    (10, 3, 3),
+    (100, 8, 8),
+    (50, 16, 16),
+]
+
+
+class SVDBenchmark(GenericBenchmark):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.shapes = SVD_SHAPES
+
+    def set_more_shapes(self):
+        return None
+
+
+@pytest.mark.svd
+def test_perf_svd():
+    bench = SVDBenchmark(
+        op_name="svd",
+        torch_op=torch.svd,
+        input_fn=svd_input_fn,
+        dtypes=[torch.float32],
+    )
+    bench.run()

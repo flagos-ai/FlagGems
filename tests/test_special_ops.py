@@ -1890,3 +1890,157 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+# ========== SVD Tests ==========
+
+SVD_SHAPES = [
+    (3, 3),
+    (5, 3),
+    (3, 5),
+    (8, 8),
+    (16, 8),
+    (8, 16),
+    (32, 32),
+    (1, 1),
+    (2, 3, 3),
+    (4, 5, 3),
+    (2, 3, 8, 4),
+    (7, 5),
+    (1, 5, 3),
+]
+
+# Square shapes for some=False (full SVD) testing
+SVD_SQUARE_SHAPES = [
+    (3, 3),
+    (8, 8),
+    (16, 16),
+    (1, 1),
+    (2, 4, 4),
+    (3, 8, 8),
+]
+
+# SVD requires float32+ precision for numerical stability. PyTorch's aten::svd
+# does not support bfloat16/float16 on CUDA, so we test float32 (and float64
+# if the device supports it).
+SVD_DTYPES = [torch.float32]
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", SVD_SHAPES)
+@pytest.mark.parametrize("dtype", SVD_DTYPES)
+@pytest.mark.parametrize("compute_uv", [True, False])
+def test_accuracy_svd_reduced(shape, dtype, compute_uv):
+    """Test reduced SVD (some=True) with various shapes and dtypes."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, upcast=True)
+
+    ref_result = torch.svd(ref_inp, some=True, compute_uv=compute_uv)
+    with flag_gems.use_gems():
+        res_result = torch.svd(inp, some=True, compute_uv=compute_uv)
+
+    # Compare singular values (always computed)
+    gems_assert_close(res_result.S, ref_result.S, dtype, reduce_dim=shape[-1])
+
+    if compute_uv:
+        # Verify reconstruction: A = U @ diag(S) @ V^T
+        reconstructed = torch.matmul(
+            res_result.U * res_result.S.unsqueeze(-2),
+            res_result.V.transpose(-2, -1),
+        )
+        ref_inp_device = inp.to(dtype)
+        gems_assert_close(reconstructed, ref_inp_device, dtype, reduce_dim=shape[-1])
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", SVD_SQUARE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("compute_uv", [True, False])
+def test_accuracy_svd_full(shape, dtype, compute_uv):
+    """Test full SVD (some=False) with square matrices."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, upcast=True)
+
+    ref_result = torch.svd(ref_inp, some=False, compute_uv=compute_uv)
+    with flag_gems.use_gems():
+        res_result = torch.svd(inp, some=False, compute_uv=compute_uv)
+
+    # Compare singular values
+    gems_assert_close(res_result.S, ref_result.S, dtype, reduce_dim=shape[-1])
+
+    if compute_uv:
+        # Verify reconstruction for square: A = U @ diag(S) @ V^T
+        m = shape[-2]
+        k = m  # square, so m == n == k
+        reconstructed = torch.matmul(
+            res_result.U[..., :k] * res_result.S.unsqueeze(-2),
+            res_result.V[..., :k].transpose(-2, -1),
+        )
+        ref_inp_device = inp.to(dtype)
+        gems_assert_close(reconstructed, ref_inp_device, dtype, reduce_dim=shape[-1])
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", SVD_SHAPES)
+@pytest.mark.parametrize("dtype", SVD_DTYPES)
+def test_accuracy_svd_descending_order(shape, dtype):
+    """Verify singular values are in descending order."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_result = torch.svd(inp, some=True, compute_uv=True)
+    S = res_result.S
+    # Check descending order along last dim
+    if S.shape[-1] > 1:
+        diff = S[..., :-1] - S[..., 1:]
+        assert (diff >= -1e-5).all(), f"Singular values not in descending order: {S}"
+
+
+@pytest.mark.svd
+def test_accuracy_svd_non_contiguous():
+    """Test SVD with non-contiguous (transposed) input."""
+    inp = torch.randn(8, 5, dtype=torch.float32, device=flag_gems.device)
+    inp_t = inp.t()  # non-contiguous (5, 8)
+    ref_inp = to_reference(inp_t, upcast=True)
+
+    ref_result = torch.svd(ref_inp, some=True, compute_uv=True)
+    with flag_gems.use_gems():
+        res_result = torch.svd(inp_t, some=True, compute_uv=True)
+
+    gems_assert_close(res_result.S, ref_result.S, torch.float32, reduce_dim=5)
+
+
+@pytest.mark.svd
+def test_accuracy_svd_zero_matrix():
+    """Test SVD with a zero matrix."""
+    inp = torch.zeros(4, 3, dtype=torch.float32, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_result = torch.svd(inp, some=True, compute_uv=True)
+
+    # All singular values should be zero
+    assert (
+        res_result.S == 0
+    ).all(), f"Expected all zero singular values, got {res_result.S}"
+
+
+@pytest.mark.svd
+def test_accuracy_svd_identity_matrix():
+    """Test SVD with identity matrix — singular values should all be 1."""
+    inp = torch.eye(8, dtype=torch.float32, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_result = torch.svd(inp, some=True, compute_uv=True)
+
+    expected_S = torch.ones(8, dtype=torch.float32, device=flag_gems.device)
+    gems_assert_close(res_result.S, expected_S, torch.float32)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("shape", [(5, 3), (3, 5), (2, 8, 4)])
+def test_accuracy_svd_full_non_square(shape):
+    """Test some=False with non-square matrix — verify singular values are correct."""
+    inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = to_reference(inp, upcast=True)
+
+    ref_result = torch.svd(ref_inp, some=False, compute_uv=False)
+    with flag_gems.use_gems():
+        res_result = torch.svd(inp, some=False, compute_uv=False)
+
+    # Singular values should match even for non-square full SVD
+    gems_assert_close(res_result.S, ref_result.S, torch.float32, reduce_dim=shape[-1])
