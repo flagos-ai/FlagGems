@@ -136,9 +136,7 @@ def jacobi_svd_kernel(
                 converged = abs_gamma < threshold
 
                 # Track max off-diagonal for sweep-level convergence
-                max_gamma = tl.where(
-                    abs_gamma > max_gamma, abs_gamma, max_gamma
-                )
+                max_gamma = tl.where(abs_gamma > max_gamma, abs_gamma, max_gamma)
 
                 # Only rotate if pair not converged and sweep not done
                 should_rotate = ~converged & (sweep_converged == 0)
@@ -158,22 +156,14 @@ def jacobi_svd_kernel(
                 s = t * c
 
                 # Identity rotation when skipping
-                c = tl.where(
-                    should_rotate, c, tl.full((), 1.0, dtype=tl.float32)
-                )
-                s = tl.where(
-                    should_rotate, s, tl.full((), 0.0, dtype=tl.float32)
-                )
+                c = tl.where(should_rotate, c, tl.full((), 1.0, dtype=tl.float32))
+                s = tl.where(should_rotate, s, tl.full((), 0.0, dtype=tl.float32))
 
                 # Apply rotation to A columns — O(M) store
                 new_a_p = c * a_p - s * a_q
                 new_a_q = s * a_p + c * a_q
-                tl.store(
-                    aw_base + p * aw_col_stride + row_idx, new_a_p, mask=row_mask
-                )
-                tl.store(
-                    aw_base + q * aw_col_stride + row_idx, new_a_q, mask=row_mask
-                )
+                tl.store(aw_base + p * aw_col_stride + row_idx, new_a_p, mask=row_mask)
+                tl.store(aw_base + q * aw_col_stride + row_idx, new_a_q, mask=row_mask)
 
                 # Apply rotation to V columns
                 if compute_uv:
@@ -187,16 +177,12 @@ def jacobi_svd_kernel(
                     )
                     new_v_p = c * v_p - s * v_q
                     new_v_q = s * v_p + c * v_q
-                    tl.store(
-                        vw_base + p * vw_col_stride + v_idx, new_v_p, mask=v_m
-                    )
-                    tl.store(
-                        vw_base + q * vw_col_stride + v_idx, new_v_q, mask=v_m
-                    )
+                    tl.store(vw_base + p * vw_col_stride + v_idx, new_v_p, mask=v_m)
+                    tl.store(vw_base + q * vw_col_stride + v_idx, new_v_q, mask=v_m)
 
         # After each sweep, check if globally converged
         sweep_converged = tl.where(
-            max_gamma < 1e-7,
+            max_gamma < 1e-6,
             tl.full((), 1, dtype=tl.int32),
             sweep_converged,
         )
@@ -223,17 +209,12 @@ def jacobi_svd_kernel(
                 aw_base + j * aw_col_stride + row_idx, mask=row_mask, other=0.0
             )
             s_j = tl.sum(S_vals * (s_idx == j).to(tl.float32))
-            safe_s_j = tl.where(
-                s_j > 1e-10, s_j, tl.full((), 1.0, dtype=tl.float32)
-            )
+            safe_s_j = tl.where(s_j > 1e-10, s_j, tl.full((), 1.0, dtype=tl.float32))
             u_col_j = a_col_j / safe_s_j
 
             u_mask_j = row_mask & (j < out_k_U)
             u_ptrs = (
-                U_ptr
-                + pid * batch_stride_U
-                + row_idx * m_stride_U
-                + j * k_stride_U
+                U_ptr + pid * batch_stride_U + row_idx * m_stride_U + j * k_stride_U
             )
             tl.store(u_ptrs, u_col_j, mask=u_mask_j)
 
@@ -247,10 +228,7 @@ def jacobi_svd_kernel(
             )
             v_mask_j = (v_out_idx < N) & (j < out_k_V)
             v_ptrs = (
-                V_ptr
-                + pid * batch_stride_V
-                + v_out_idx * n_stride_V
-                + j * k_stride_V
+                V_ptr + pid * batch_stride_V + v_out_idx * n_stride_V + j * k_stride_V
             )
             tl.store(v_ptrs, v_col_j, mask=v_mask_j)
 
@@ -311,7 +289,9 @@ def svd(input, some=True, compute_uv=True):
         S_out = torch.empty(*batch_shape, k, device=input.device, dtype=input.dtype)
         return SVDResult(U_out, S_out, V_out)
 
-    A = input.reshape(batch_size, m, n).contiguous()
+    A = input.reshape(batch_size, m, n)
+    if not A.is_contiguous():
+        A = A.contiguous()
 
     # Handle m < n by transposing: SVD(A^T) gives V, S, U
     need_transpose = m < n
@@ -328,21 +308,32 @@ def svd(input, some=True, compute_uv=True):
         out_k_V = n
 
     S_out = torch.empty(batch_size, k, device=input.device, dtype=input.dtype)
-    U_out = torch.zeros(batch_size, m, out_k_U, device=input.device, dtype=input.dtype)
-    V_out = torch.zeros(batch_size, n, out_k_V, device=input.device, dtype=input.dtype)
+    # Use torch.empty for common path; kernel writes all k columns
+    if some and compute_uv:
+        U_out = torch.empty(
+            batch_size, m, out_k_U, device=input.device, dtype=input.dtype
+        )
+        V_out = torch.empty(
+            batch_size, n, out_k_V, device=input.device, dtype=input.dtype
+        )
+    else:
+        U_out = torch.zeros(
+            batch_size, m, out_k_U, device=input.device, dtype=input.dtype
+        )
+        V_out = torch.zeros(
+            batch_size, n, out_k_V, device=input.device, dtype=input.dtype
+        )
 
     # Allocate column-major scratch buffers
     # A_work shape: (batch_size, n, m) — column j of A is A_work[batch, j, :]
-    A_work = torch.empty(
-        batch_size, n, m, device=input.device, dtype=torch.float32
-    )
-    V_work = torch.empty(
-        batch_size, n, n, device=input.device, dtype=torch.float32
-    )
+    A_work = torch.empty(batch_size, n, m, device=input.device, dtype=torch.float32)
+    V_work = torch.empty(batch_size, n, n, device=input.device, dtype=torch.float32)
 
     BLOCK_M = _next_power_of_2(m)
     BLOCK_N = _next_power_of_2(n)
-    num_sweeps = max(10, n)
+    # Sweep count tuned for convergence + compilation size tradeoff.
+    # Early convergence detection skips redundant sweeps at runtime.
+    num_sweeps = min(max(6, n), 12)
     grid = (batch_size,)
 
     with torch_device_fn.device(input.device):
@@ -383,9 +374,8 @@ def svd(input, some=True, compute_uv=True):
             BLOCK_N=BLOCK_N,
         )
 
-    # Sort singular values in descending order (outside kernel)
-    sorted_indices = torch.argsort(S_out, dim=-1, descending=True)
-    S_out = torch.gather(S_out, -1, sorted_indices)
+    # Sort singular values in descending order (kernel outputs unsorted)
+    S_out, sorted_indices = torch.sort(S_out, dim=-1, descending=True)
     if compute_uv:
         idx_U = sorted_indices.unsqueeze(-2).expand_as(U_out)
         U_out = torch.gather(U_out, -1, idx_U)
