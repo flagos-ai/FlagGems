@@ -130,6 +130,7 @@ if arch_version == 300:
     from .gcu300.any import any, any_dim, any_dims
     from .gcu300.nllloss import nll_loss_forward, nll_loss_backward
     from .gcu300.vector_norm import vector_norm
+    from .gcu300.triu import triu
     __all__ = [
         "mean_dim",
         "mean",
@@ -351,6 +352,7 @@ if arch_version == 300:
         "nll_loss_forward",
         "nll_loss_backward",
         "vector_norm",
+        "triu",
         ]
 elif arch_version >= 400:
     from .gcu400.mean import mean_dim
