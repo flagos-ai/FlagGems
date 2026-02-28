@@ -15,7 +15,10 @@
 
 ## 2. 代码贡献
 
-在提交拉取请求时，贡献者应描述所做的更改以及更改的原因。如果可以设计测试用例，请提供相应测试。拉取请求在合并前需要 **一位** 成员的批准，而且需要通过代码的持续集成检查。 详细信息见 [代码贡献指南](docs/code_countribution.md)
+在提交拉取请求时，贡献者应描述所做的更改以及更改的原因。
+如果可以设计测试用例，请提供相应测试。拉取请求在合并前需要 **一位** 成员的批准，
+而且需要通过代码的持续集成检查。
+详细信息见 [代码贡献指南](./docs/contribution.md)
 
 ## 3. 文档补充
 
@@ -32,7 +35,7 @@ FlagGems
 │       ├──ops           // python 独立算子
 │       ├──fused         // python 融合算子
 │       ├──modules       // python 模块
-│       ├──patches       // 布丁脚本
+│       ├──patches       // 补丁脚本
 │       ├──testing       // python 测试
 ├── tests                // python 算子精度测试
 ├── benchmark            // python 算子性能测试
@@ -51,4 +54,4 @@ FlagGems
 
 # FlagGems 许可证
 
-FlagGems 使用 [Apache 许可证](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE)
+FlagGems 使用 [Apache License (Version 2.0)](./LICENSE) 许可证。

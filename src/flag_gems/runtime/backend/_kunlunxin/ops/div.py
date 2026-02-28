@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.utils import tl_extra_shim
 
@@ -15,8 +16,19 @@ fmod = tl_extra_shim.fmod
 trunc = tl_extra_shim.trunc
 xpu_trunc_div = tl_extra_shim.xpu_trunc_div  # use it if we need to cmp result with xpu
 
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=True,
+    unroll_num=8,
+)
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def true_div_func(x, y):
     return x / y
@@ -45,6 +57,19 @@ def true_divide(A, B):
     else:
         # Both scalar
         return torch.tensor(A / B)
+
+
+def true_divide_out(A, B, out):
+    logger.debug("GEMS TRUE_DIVIDE OUT")
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return true_div_func(A, B, out0=out)
+    elif isinstance(A, torch.Tensor):
+        return true_div_func_tensor_scalar(A, B, out0=out)
+    elif isinstance(B, torch.Tensor):
+        return true_div_func_scalar_tensor(A, B, out0=out)
+    else:
+        # Both scalar
+        return torch.tensor(A / B) if out is None else out.fill_(A / B)
 
 
 def true_divide_(A, B):

@@ -2,9 +2,14 @@
 
 ## About
 
-FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It aims to provide a suite of kernel functions to accelerate LLM training and inference.
+FlagGems is a high-performance general operator library implemented in the [Triton](https://github.com/openai/triton) language.
+It aims to provide a suite of kernel functions to accelerate LLM training and inference.
 
-By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing users to switch to the Triton function library without the need to modify their model code. Users can still utilize the ATen backend as usual while experiencing significant performance enhancement. The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
+By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition,
+allowing users to switch to the Triton function library without the need to modify their model.
+Users can continue to use the ATen backend as usual while experiencing significant performance enhancement.
+The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA.
+This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
 
 ## Features
 
@@ -20,16 +25,21 @@ For more details, please refer to pointwise_dynamic(pointwise_dynamic.md).
 
 ### LibEntry
 
-FlagGems introduces `LibEntry`, which independently manages the kernel cache and bypasses the runtime of `Autotuner`, `Heuristics`, and `JitFunction`. To use it, simply decorate the Triton kernel with LibEntry.
+FlagGems introduces `LibEntry`, which independently manages the kernel cache and bypasses the runtime of `Autotuner`, `Heuristics`, and `JitFunction`.
+To use it, simply decorate the Triton kernel with LibEntry.
 
-`LibEntry` also supports direct wrapping of `Autotuner`, `Heuristics`, and `JitFunction`, preserving full tuning functionality. However, it avoids nested runtime type invocations, eliminating redundant parameter processing. This means no need for binding or type wrapping, resulting in a simplified cache key format and reduced unnecessary key computation.
+`LibEntry` also supports direct wrapping of `Autotuner`, `Heuristics`, and `JitFunction`, preserving full tuning functionality.
+However, it avoids nested runtime type invocations, eliminating redundant parameter processing.
+This means no need for binding or type wrapping, resulting in a simplified cache key format and reduced unnecessary key computation.
 
 ### C++ Runtime
 
-FlagGems can be installed either as a pure Python package or as a package with C++ extensions. The C++ runtime is designed to address the overhead of the Python runtime and improve end-to-end performance.
-
+FlagGems can be installed either as a pure Python package or as a package with C++ extensions.
+The C++ runtime is designed to address the overhead of the Python runtime and improve end-to-end performance.
 
 ## Changelog
+
+<!--TODO(Qiming) Drop this section-->
 
 ### v1.0
 
@@ -54,11 +64,11 @@ FlagGems can be installed either as a pure Python package or as a package with C
 
 ## Get Start
 
-For a quick start with installing and using flag_gems, please refer to the documentation [Get Start](get_start_with_flaggems.md).
+For a quick start with installing and using flag_gems, please refer to the [getting started](./getting-started.md) documentation.
 
 ## Supported Operators
 
-Operators will be implemented according to [OperatorList](operator_list.md).
+Operators will be implemented according to [OperatorList](./operators.md).
 
 ## Supported Models
 
@@ -74,23 +84,28 @@ Operators will be implemented according to [OperatorList](operator_list.md).
 
 ## Performance
 
-The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode. The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
+The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode.
+The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
 
-![Operator Speedup](assets/speedup-20250423.png)
+![Operator Speedup](./assets/speedup-20250423.png)
 
-## Contributions
+## Contribution
 
-If you are interested in contributing to the FlagGems project, please refer to [Countributing Guide](code_countribution.md). Any contributions would be highly appreciated.
+If you are interested in contributing to the FlagGems project, please refer to [Countributing Guide](./contribution.md).
+Any contributions would be highly appreciated.
 
 ## Contact us
 
 If you have any questions about our project, please submit an issue, or contact us through <a href="mailto:flaggems@baai.ac.cn">flaggems@baai.ac.cn</a>.
 
-We also created WeChat group for FlagGems. Scan the QR code to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
+We also created WeChat group for FlagGems.
+Scan the QR code to join the group chat! To get the first hand message about our updates and new release,
+or having any questions or ideas, join us now!
 
 <p align="center">
  <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
 </p>
+
 ## License
 
-The FlagGems project is based on [Apache 2.0](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE).
+The FlagGems project is based on [Apache 2.0](https://github.com/flagos-ai/FlagGems/blob/master/LICENSE).

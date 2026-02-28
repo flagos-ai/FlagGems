@@ -30,7 +30,7 @@ def sub_func_scalar_tensor(x, y, alpha):
     return x - y * alpha
 
 
-def sub(A, B, *, alpha=1):
+def sub(A, B, *, alpha=1.0):
     logger.debug("GEMS SUB")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return sub_func(A, B, alpha)

@@ -51,8 +51,10 @@ def copy(
 
 
 def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
-    if not isinstance(src, torch.Tensor):
-        raise TypeError("src must be a Tensor")
+    if isinstance(src, (int, float, bool)):
+        src = torch.tensor(src, device=dst.device)
+    elif not isinstance(src, torch.Tensor):
+        raise TypeError("unsupport src type for copy_: ", type(src))
 
     # this is the same as PyTorch's check
     if dst._is_zerotensor():
@@ -73,6 +75,11 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         ):
             return dst
         # Otherwise defer to PyTorch for well-defined semantics on overlapping writes.
+        return torch.ops.aten.copy_.default.redispatch(
+            _FALLBACK_KEYSET, dst, src, non_blocking
+        )
+
+    if src.numel() > 2**31 - 1 or dst.numel() > 2**31 - 1:
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
         )

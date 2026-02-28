@@ -1,5 +1,4 @@
 import logging
-from functools import lru_cache
 
 import torch
 import triton
@@ -10,35 +9,7 @@ from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
-
-
-@lru_cache(maxsize=1)
-def get_device_info():
-    try:
-        device_id = torch_device_fn.current_device()
-    except Exception:
-        device_id = 0
-
-    try:
-        props = torch_device_fn.get_device_properties(device_id)
-        return device_id, props.L2_cache_size, props.multi_processor_count
-    except Exception:
-        # fallback for A100 default attributes
-        # L2 cache size is 40MB and SM count is 108 for A100
-        return device_id, 40 * 1024 * 1024, 108
-
-
-def get_device_id():
-    return get_device_info()[0]
-
-
-def get_l2_cache_size():
-    return get_device_info()[1]
-
-
-def get_sm_count():
-    return get_device_info()[2]
-
+from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
 CACHE_USAGE_THRESHOLD = 0.8
 
@@ -92,13 +63,15 @@ def mm_kernel_general(
     # do matrix multiplication
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(tl.int64)
+    rm = rm.to(tl.int64)
+    rn = rn.to(tl.int64)
     prev_multiple = prev_multiple_of(K, BLOCK_K)
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
     for start_k in range(0, prev_multiple, BLOCK_K):
-        rk = start_k + tl.arange(0, BLOCK_K)
+        rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
         a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
         b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
         if a.dtype != b.dtype:
@@ -107,7 +80,7 @@ def mm_kernel_general(
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # loop peeling
-    rk = prev_multiple + tl.arange(0, BLOCK_K)
+    rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
     mask_k = rk < K
     a = tl.load(
         A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
@@ -126,8 +99,8 @@ def mm_kernel_general(
 
     acc = acc.to(C.dtype.element_ty)
     # rematerialize rm and rn to save registers
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+    rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
     C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
     mask = (rm < M)[:, None] & (rn < N)[None, :]
     # handles write-back with reduction-splitting
@@ -187,11 +160,13 @@ def streamk_scenario(a, b, M, N, K):
     # TODO: this my change sometime according to the realbenchmark result
     # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
     # The optimal settings for other devices need to be determined through real testing.
-    capability = torch_device_fn.get_device_capability(get_device_info())
+    capability = get_device_capability()
     return (
         capability[0] == 8
         and a.dtype in [torch.float16, torch.bfloat16]
         and b.dtype in [torch.float16, torch.bfloat16]
+        and a.is_contiguous()
+        and b.is_contiguous()
         and K > M * 5
         and K > N * 5
     )

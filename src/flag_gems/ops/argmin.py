@@ -65,6 +65,100 @@ def heur_block_n(args):
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("argmin"))
 @triton.jit
+def argmin_kernel_opt_k1(
+    inp,
+    out_index,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tle.program_id(0)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+
+    dtype = inp.type.element_ty
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    max_val = get_dtype_max(dtype)
+
+    min_vals = tl.full([BLOCK_M], dtype=acc_type, value=max_val)
+    argmin_vals = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N + n_offset[None, :]
+        inp_vals = tl.load(inp + offset, mask=True)
+
+        local_min, local_argmin = tl.min(
+            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
+        )
+        update = local_min < min_vals
+        min_vals = tl.where(update, local_min, min_vals)
+        argmin_vals = tl.where(update, start_n + local_argmin, argmin_vals)
+
+    out_ptr = out_index + m_offset
+    tl.store(out_ptr, argmin_vals, mask=True)
+
+
+@libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("argmin_split_k"), key=["M", "N", "K"]
+)
+@triton.jit
+def argmin_split_K_kernel_merged(
+    inp,
+    out_index,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    dtype: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
+
+    m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]  # (BLOCK_M, 1)
+    k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)[None, :]  # (1, BLOCK_K)
+
+    m_mask = m < M
+    k_mask = k < K
+    mk_mask = m_mask & k_mask
+
+    compute_dtype = tl.float32 if dtype == tl.bfloat16 else dtype
+    max_val = get_dtype_max(compute_dtype)
+
+    global_min = tl.full((BLOCK_M, BLOCK_K), max_val, dtype=compute_dtype)
+    global_argmin = tl.full((BLOCK_M, BLOCK_K), 0, dtype=tl.int64)
+
+    for start_n in range(0, N, BLOCK_N):
+        n = start_n + tl.arange(0, BLOCK_N)
+        n_mask = n < N
+
+        offset = m * N * K + n[:, None, None] * K + k[None, :, :]
+
+        inp_vals = tl.load(
+            inp + offset,
+            mask=(m_mask & n_mask[:, None, None] & k_mask[None, :, :]),
+            other=max_val,
+        )
+        inp_vals = inp_vals.to(compute_dtype)
+
+        local_min, local_argmin = tl.min(
+            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+        )
+        local_argmin += start_n
+
+        mask = local_min < global_min
+        global_min = tl.where(mask, local_min, global_min)
+        global_argmin = tl.where(mask, local_argmin, global_argmin)
+
+    out_offset = m * K + k  # (BLOCK_M, BLOCK_K)
+    tl.store(out_index + out_offset, global_argmin, mask=mk_mask)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("argmin"))
+@triton.jit
 def argmin_kernel(
     inp,
     out_index,
@@ -149,7 +243,6 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
-
         inp = inp.contiguous()
 
         shape_list = list(shape)
@@ -162,13 +255,49 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch_device_fn.device(inp.device):
-            argmin_kernel[grid](
-                inp,
-                out_index,
-                M,
-                N,
-                K,
-            )
+        if K == 1 and inp.dtype != torch.int32 and inp.dtype != torch.int16:
+            with torch_device_fn.device(inp.device):
+                argmin_kernel_opt_k1[grid](
+                    inp,
+                    out_index,
+                    M,
+                    N,
+                )
+
+        else:
+            torch2triton_dtype = {
+                torch.float16: tl.float16,
+                torch.bfloat16: tl.bfloat16,
+                torch.float32: tl.float32,
+            }
+            # general support for other (N, K)
+            if (
+                (N % 64 == 0 or N == 512)
+                and (K % 32 == 0)
+                and M % 8 == 0
+                and inp.dtype != torch.int32
+                and inp.dtype != torch.int16
+            ):
+                triton_dtype = torch2triton_dtype[inp.dtype]
+                # use default paramerter to calcualte grid
+                grid_for_split_K = (triton.cdiv(M, 8), triton.cdiv(K, 32))
+                with torch_device_fn.device(inp.device):
+                    argmin_split_K_kernel_merged[grid_for_split_K](
+                        inp,
+                        out_index,
+                        M,
+                        N,
+                        K,
+                        dtype=triton_dtype,
+                    )
+            else:
+                with torch_device_fn.device(inp.device):
+                    argmin_kernel[grid](
+                        inp,
+                        out_index,
+                        M,
+                        N,
+                        K,
+                    )
 
         return out_index

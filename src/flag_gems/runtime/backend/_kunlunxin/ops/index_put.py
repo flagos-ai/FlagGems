@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -48,6 +48,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 
     code.writeline("def heur_block_m(args):")
     with code.indent():
+        code.writeline('if args["M"] == 0:')
+        with code.indent():
+            code.writeline("return 2")
         code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
 
     code.newline()
@@ -58,7 +61,6 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 
     code.newline()
     code.newline()
-
     return code
 
 
@@ -293,6 +295,24 @@ def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX PUT")
 
     indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
     indices = [
         index.to(inp.device)
         if index is not None and index.device != inp.device
@@ -322,6 +342,24 @@ def index_put_(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX PUT_")
 
     indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
     indices = [
         index.to(inp.device)
         if index is not None and index.device != inp.device

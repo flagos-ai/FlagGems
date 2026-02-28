@@ -9,6 +9,7 @@ on:
 jobs:
   scan-code-and-report:
     runs-on: scan
+    if: ${{ github.repository == 'flagos-ai/FlagGems' }}
     concurrency:
       group: scan-code-and-report-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true

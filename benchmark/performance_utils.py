@@ -1,6 +1,5 @@
 import gc
 import importlib
-import logging
 import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
@@ -26,7 +25,7 @@ from .attri_util import (
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config
+from .conftest import Config, emit_record_logger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -262,12 +261,7 @@ class Benchmark:
         self.gems_op = gems_op
 
     def get_latency(self, op, *args, **kwargs):
-        if self.is_inplace:
-            fn = lambda: op(
-                *[x.clone() if torch.is_tensor(x) else x for x in args], **kwargs
-            )
-        else:
-            fn = lambda: op(*args, **kwargs)
+        fn = lambda: op(*args, **kwargs)
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)
@@ -377,7 +371,7 @@ class Benchmark:
                 shape_desc=self.shape_desc,
             )
             print(attri)
-            logging.info(attri.to_dict())
+            emit_record_logger(attri.to_dict())
             return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
@@ -430,7 +424,7 @@ class Benchmark:
                 result=metrics,
             )
             print(result)
-            logging.info(result.to_json())
+            emit_record_logger(result.to_json())
 
 
 class GenericBenchmark(Benchmark):
@@ -491,6 +485,19 @@ class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
 
     def __init__(self, *args, **kwargs):
         super().__init__(exclude_dims=3, *args, **kwargs)
+
+
+class GenericBenchmark4DOnly(GenericBenchmarkFilterShapes):
+    """
+    4d shapes only
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=None, *args, **kwargs)
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [shape for shape in shapes if len(shape) == 4]
 
 
 class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):

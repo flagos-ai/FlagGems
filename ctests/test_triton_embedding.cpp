@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "c10/util/Logging.h"
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
@@ -16,6 +17,9 @@ TEST_P(EmbeddingTest, CompareWithPyTorch) {
                      {Batch, M},
                      torch::TensorOptions().device(device).dtype(torch::kLong).requires_grad(false));
   auto embedding = torch::randn({EmbeddingSize, N}, options.requires_grad(true));
+  auto ref_indices = flag_gems::accuracy_utils::to_reference(indices);
+  auto ref_embedding = flag_gems::accuracy_utils::to_reference(embedding);
+
   auto out_torch = torch::nn::functional::embedding(indices,
                                                     embedding,
                                                     torch::nn::functional::EmbeddingFuncOptions()
@@ -23,7 +27,8 @@ TEST_P(EmbeddingTest, CompareWithPyTorch) {
                                                         .scale_grad_by_freq(scale_grad_by_freq)
                                                         .sparse(false));
   auto out_triton = flag_gems::embedding(embedding, indices, padding_idx, scale_grad_by_freq, false);
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 INSTANTIATE_TEST_SUITE_P(embedding_test,
                          EmbeddingTest,
@@ -53,14 +58,16 @@ TEST_P(EmbeddingBackwardTest, FixedValueTest) {
   auto grad = torch::randn({Batch, M, N}, options);
   auto indices =
       torch::randint(0, EmbeddingSize, {Batch, M}, torch::TensorOptions().device(device).dtype(torch::kLong));
+
+  auto ref_grad = flag_gems::accuracy_utils::to_reference(grad);
   int64_t num_weights = EmbeddingSize;
   bool sparse = false;
   auto torch_in_grad =
       at::embedding_backward(grad, indices, num_weights, padding_idx, scale_grad_by_freq, sparse);
-
   auto triton_in_grad =
       flag_gems::embedding_backward(grad, indices, num_weights, padding_idx, scale_grad_by_freq, sparse);
-  EXPECT_TRUE(torch::allclose(torch_in_grad, triton_in_grad));
+  auto result = flag_gems::accuracy_utils::gems_assert_close(triton_in_grad, torch_in_grad);
+  EXPECT_TRUE(result.ok) << result.message;
 }
 INSTANTIATE_TEST_SUITE_P(embedding_backward_test,
                          EmbeddingBackwardTest,

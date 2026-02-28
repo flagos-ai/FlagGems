@@ -8,13 +8,10 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
-
-if runtime.device.vendor_name == "iluvatar":
-    from flag_gems.runtime.backend._iluvatar.ops.bmm import bmm
-else:
-    from .bmm import bmm
-
+from .bmm import bmm
 from .mul import mul
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -135,7 +132,7 @@ def baddbmm_kernel(
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
-        logging.debug("GEMS BADDBMM FORWARD")
+        logger.debug("GEMS BADDBMM FORWARD")
 
         ctx.save_for_backward(A, B, bias)
         ctx.alpha = alpha
@@ -147,7 +144,7 @@ class BaddbmmFunction(torch.autograd.Function):
         B = B.contiguous()
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
-        bbias = torch.broadcast_to(bias, (batch, M, N))
+        bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
         bias_batch_stride = bbias.stride(0)
         bias_M_stride = bbias.stride(1)
         bias_N_stride = bbias.stride(-1)
@@ -176,7 +173,7 @@ class BaddbmmFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logging.debug("GEMS BADDBMM BACKWARD")
+        logger.debug("GEMS BADDBMM BACKWARD")
         A, B, bias = ctx.saved_tensors
 
         grad_A = None
@@ -233,4 +230,10 @@ def compute_B_grad(A, d_output, alpha):
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
-    return BaddbmmFunction.apply(bias, A.contiguous(), B.contiguous(), beta, alpha)
+    return BaddbmmFunction.apply(
+        bias.contiguous(),
+        A.contiguous(),
+        B.contiguous(),
+        beta,
+        alpha,
+    )

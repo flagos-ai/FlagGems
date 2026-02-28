@@ -19,15 +19,31 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
+  // div
+  m.def("div.Tensor", &flag_gems::true_div);
+  m.def("div_.Tensor", &flag_gems::true_div_);
+  m.def("div.Tensor_mode", &flag_gems::div_mode);
+  m.def("div_.Tensor_mode", &flag_gems::div_mode_);
+  m.def("floor_divide", &flag_gems::floor_div);
+  m.def("floor_divide_.Tensor", &flag_gems::floor_div_);
+  m.def("divide.Tensor", &flag_gems::true_div);
+  m.def("divide_.Tensor", &flag_gems::true_div_);
+  m.def("divide.Tensor_mode", &flag_gems::div_mode);
+  m.def("divide_.Tensor_mode", &flag_gems::div_mode_);
+  m.def("true_divide.Tensor", &flag_gems::true_div);
+  m.def("true_divide_.Tensor", &flag_gems::true_div_);
+  m.def("remainder.Tensor", &flag_gems::remainder);
+  m.def("remainder_.Tensor", &flag_gems::remainder_);
   m.def("rwkv_mm_sparsity", &flag_gems::rwkv_mm_sparsity);
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
+  m.def("copy_", &flag_gems::copy_);
+  m.def("to_copy", &flag_gems::to_copy);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
   m.def("exponential_(Tensor(a!) x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor(a!)");
   // blas
   m.def("addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor");
-  m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def("mm(Tensor self, Tensor mat2) -> Tensor");
 
   m.def(
@@ -55,6 +71,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("topk(Tensor x, SymInt k, int dim, bool largest, bool sorted) -> (Tensor, Tensor)");
   m.def("contiguous(Tensor(a) self, *, MemoryFormat memory_format=contiguous_format) -> Tensor(a)");
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
+  m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def(
       "embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool "
       "sparse=False) -> Tensor");
@@ -62,6 +79,21 @@ TORCH_LIBRARY(flag_gems, m) {
       "embedding_backward(Tensor grad_outputs, Tensor indices, SymInt num_weights, SymInt padding_idx, bool "
       "scale_grad_by_freq, bool sparse) -> Tensor");
   m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
+  // div
+  m.def("div.Tensor(Tensor self, Tensor other) -> Tensor");
+  m.def("div_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  m.def("div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor");
+  m.def("div_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)");
+  m.def("floor_divide(Tensor self, Tensor other) -> Tensor");
+  m.def("floor_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  m.def("divide.Tensor(Tensor self, Tensor other) -> Tensor");
+  m.def("divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  m.def("divide.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor");
+  m.def("divide_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)");
+  m.def("true_divide.Tensor(Tensor self, Tensor other) -> Tensor");
+  m.def("true_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  m.def("remainder.Tensor(Tensor self, Tensor other) -> Tensor");
+  m.def("remainder_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
   // sort
   m.def("sort(Tensor self, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)");
   m.def(
@@ -88,10 +120,15 @@ TORCH_LIBRARY(flag_gems, m) {
       "bool deterministic=False, bool return_attn_probs=False, Tensor? block_table=None, bool "
       "return_softmax_lse=False, "
       "Tensor? out=None, Tensor? scheduler_metadata=None, Tensor? q_descale=None, Tensor? k_descale=None, "
-      "Tensor? v_descale=None, "
-      "SymInt fa_version=2) -> (Tensor, Tensor)");
+      "Tensor? v_descale=None, Tensor? s_aux=None, SymInt num_splits=0, SymInt cp_world_size=1, "
+      "SymInt cp_rank=0, Tensor? cp_tot_seqused_k=None, SymInt fa_version=2) -> (Tensor, Tensor)");
+
   m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
   m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
+  m.def("copy_(Tensor(a!) dst, Tensor src, bool non_blocking=False) -> Tensor(a!)");
+  m.def(
+      "to_copy(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? "
+      "pin_memory=None, bool non_blocking=False, MemoryFormat? memory_format=None) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -122,6 +159,34 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("embedding", TORCH_FN(embedding));
   m.impl("embedding_backward", TORCH_FN(embedding_backward));
   m.impl("argmax", TORCH_FN(argmax));
+  // div
+  m.impl("div.Tensor", TORCH_FN(true_div));
+  m.impl("div_.Tensor", TORCH_FN(true_div_));
+  m.impl("div.Tensor_mode", TORCH_FN(div_mode));
+  m.impl("div_.Tensor_mode", TORCH_FN(div_mode_));
+  m.impl("div.Scalar", TORCH_FN(true_div));
+  m.impl("div_.Scalar", TORCH_FN(true_div_));
+  m.impl("div.Scalar_mode", TORCH_FN(div_mode));
+  m.impl("div_.Scalar_mode", TORCH_FN(div_mode_));
+  m.impl("floor_divide", TORCH_FN(floor_div));
+  m.impl("floor_divide_.Tensor", TORCH_FN(floor_div_));
+  m.impl("floor_divide.Scalar", TORCH_FN(floor_div));
+  m.impl("floor_divide_.Scalar", TORCH_FN(floor_div_));
+  m.impl("divide.Tensor", TORCH_FN(true_div));
+  m.impl("divide_.Tensor", TORCH_FN(true_div_));
+  m.impl("divide.Scalar", TORCH_FN(true_div));
+  m.impl("divide_.Scalar", TORCH_FN(true_div_));
+  m.impl("divide.Tensor_mode", TORCH_FN(div_mode));
+  m.impl("divide_.Tensor_mode", TORCH_FN(div_mode_));
+  m.impl("divide.Scalar_mode", TORCH_FN(div_mode));
+  m.impl("divide_.Scalar_mode", TORCH_FN(div_mode_));
+  m.impl("true_divide.Tensor", TORCH_FN(true_div));
+  m.impl("true_divide_.Tensor", TORCH_FN(true_div_));
+  m.impl("remainder.Scalar", TORCH_FN(remainder));
+  m.impl("remainder_.Scalar", TORCH_FN(remainder_));
+  m.impl("remainder.Tensor", TORCH_FN(remainder));
+  m.impl("remainder_.Tensor", TORCH_FN(remainder_));
+  m.impl("remainder.Scalar_Tensor", TORCH_FN(remainder));
   // sort
   m.impl("sort", TORCH_FN(sort));
   m.impl("sort.stable", TORCH_FN(sort_stable));
@@ -136,5 +201,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("flash_attn_varlen_func", TORCH_FN(flash_attn_varlen_func));
   m.impl("rwkv_mm_sparsity", TORCH_FN(rwkv_mm_sparsity));
   m.impl("rwkv_ka_fusion", TORCH_FN(rwkv_ka_fusion));
+  m.impl("to_copy", TORCH_FN(to_copy));
+  m.impl("copy_", TORCH_FN(copy_));
 }
 }  // namespace flag_gems

@@ -376,6 +376,10 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_prod_without_dim(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
@@ -392,6 +396,10 @@ def test_accuracy_prod_without_dim(shape, dtype):
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_prod_dim(shape, dim, keepdim, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
@@ -451,7 +459,7 @@ QUANTILE_INTERPOLATION = (
 )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(SkipVersion("triton", "<3.0"), reason="Skipping Triton version.")
 @pytest.mark.quantile
 @pytest.mark.parametrize("shape", QUANTILE_SHAPES)
@@ -471,7 +479,7 @@ def test_accuracy_quantile_without_dim(shape, dtype, q, interpolation):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(SkipVersion("triton", "<3.0"), reason="Skipping Triton version.")
 @pytest.mark.quantile
 @pytest.mark.parametrize("shape", QUANTILE_SHAPES)

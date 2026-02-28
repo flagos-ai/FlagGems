@@ -19,16 +19,17 @@ config_ = CodeGenConfig(
 )
 
 
-@pointwise_dynamic(
-    is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")], config=config_
-)
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
+# celu another way: max(0, x) + alpha * (exp(min(0, x) / alpha) - 1), getting smaller instrs.
 def celu_forward_kernel(x, alpha):
-    return tl.where(
-        x > 0,
-        x,
-        alpha * (tl.exp(x / alpha) - 1),
-    )
+    inv_alpha = 1.0 / alpha
+
+    pos_part = tl.maximum(0.0, x)
+
+    neg_part_input = x - pos_part
+
+    return pos_part + alpha * (tl.exp(neg_part_input * inv_alpha) - 1.0)
 
 
 def celu(A, alpha=1.0):

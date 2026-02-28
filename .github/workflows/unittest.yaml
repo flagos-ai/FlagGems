@@ -1,0 +1,250 @@
+name: unit-test
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [ "master" ]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+  pull_request:
+    branches: [ "master" ]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  preprocess:
+    runs-on: ubuntu-latest
+    outputs:
+      changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
+      pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
+      labels: ${{ steps.get-labels.outputs.result }}
+    steps:
+      - id: changed-files
+        uses: tj-actions/changed-files@v47
+      - id: wait-for-triage
+        uses: ArcticLampyrid/action-wait-for-workflow@v1.3.0
+        with:
+          workflow: .github/workflows/triage.yaml
+      - id: get-pr-id
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            PR_ID=${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            PR_ID=${PR_NUMBER}
+          fi
+          echo "PR_ID=${PR_ID}" >> "$GITHUB_OUTPUT"
+          # NOTE: Preserve these line for debugging's purpose
+          echo "PR_ID: ${PR_ID}"
+      - id: get-labels
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // Determine if the event is a pull request
+            const isPullRequest = context.eventName === 'pull_request';
+            if (!isPullRequest) {
+              return "";
+            }
+            const prNumber = context.payload.pull_request.number;
+
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            console.log('Labels:', labels.map(label => label.name));
+            return JSON.stringify(labels.map(label => label.name));
+
+  build-doc:
+    needs: preprocess
+    if: contains(needs.preprocess.outpus.labels, 'documentation')
+    uses: ./.github/workflows/mkdocs.yaml
+
+  cpp-op:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'ops/cpp')
+    uses: ./.github/workflows/cpp-op-test.yaml
+
+  blas-op:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'tests')
+    concurrency:
+      group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test.yaml
+    with:
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: blas-op-test.sh
+
+  quick-cpu-op:
+    needs: preprocess
+    # NOTE: This contains a temporary hack to skip this job for PRs from FODC contest.
+    if: |
+      contains(needs.preprocess.outputs.labels, 'tests') &&
+      ! contains(github.event.pull_request.labels.*.name, 'competition')
+    concurrency:
+      group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test.yaml
+    with:
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: op-test-quick-cpu.sh
+
+  pointwise-op:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'tests')
+    concurrency:
+      group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test.yaml
+    with:
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: pointwise-op-test.sh
+
+  reduction-op:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'tests')
+    concurrency:
+      group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test.yaml
+    with:
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: reduction-op-test.sh
+
+  special-op:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'tests')
+    concurrency:
+      group: special-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test.yaml
+    with:
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: special-op-test.sh
+
+  utils:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'tests')
+    concurrency:
+      group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test.yaml
+    with:
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: op-utils-test.sh
+
+  examples:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'examples')
+    concurrency:
+      group: examples-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test.yaml
+    with:
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+      script_path: examples-test.sh
+
+  backend-nvidia:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: nvidia
+      runner_label: hopper
+      gpu_check_script: tools/gpu_check.sh
+      test_script: tools/run_backend_tests_nvidia.sh
+
+  backend-ascend:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: ascend
+      runner_label: ascend
+      gpu_check_script: tools/gpu_check_ascend.sh
+      test_script: tools/run_backend_tests.sh
+
+  backend-iluvatar:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Iluvatar')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: iluvatar
+      runner_label: iluvatar
+      gpu_check_script: tools/gpu_check_iluvatar.sh
+      test_script: tools/run_backend_tests.sh
+
+  backend-metax:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/MetaX')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: metax
+      runner_label: metax
+      test_script: tools/run_backend_tests_metax.sh
+
+  backend-moore:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: moore
+      runner_label: mthreadsCI
+      gpu_check_script: tools/gpu_check_moore.sh
+      test_script: tools/run_backend_tests.sh
+
+  alpha-ops:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: nvidia
+      runner_label: hopper
+      gpu_check_script: tools/gpu_check.sh
+      test_script: tools/experimental-op-test.sh
+      changed_files: ${{ needs.preprocess.outputs.changed_files }}
+
+#   coverage:
+#     needs:
+#       - preprocess
+#       - blas-op-test
+#       - examples-test
+#       - quick-cpu-op-test
+#       - utils-test
+#       - pointwise-op-test
+#       - reduction-op-test
+#       - special-op-test
+#     if: contains(github.event.pull_request.labels.*.name, 'tests')
+#     concurrency:
+#       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
+#       cancel-in-progress: true
+#     runs-on: cpu
+#     continue-on-error: true
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v6
+#       - name: Get python coverage
+#         shell: bash
+#         run: |
+#           git config --global --add safe.directory ../FlagGems
+#           if [ "${{ github.event_name }}" == "pull_request" ]; then
+#             PR_ID=${{ github.event.pull_request.number }}
+#           elif [ "${{ github.event_name }}" == "push" ]; then
+#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+#             PR_ID=${PR_NUMBER}
+#           fi
+#           bash tools/code_coverage/coverage.sh ${PR_ID}
+#       - name: Report python coverage
+#         shell: bash
+#         run: |
+#           git config --global --add safe.directory ../FlagGems
+#           if [ "${{ github.event_name }}" == "pull_request" ]; then
+#             PR_ID=${{ github.event.pull_request.number }}
+#           elif [ "${{ github.event_name }}" == "push" ]; then
+#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+#             PR_ID=${PR_NUMBER}
+#           fi
+#           bash tools/code_coverage/report_coverage.sh ${PR_ID}

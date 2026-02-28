@@ -4,7 +4,7 @@ import torch
 
 from ..ops import mul, mv_cluster
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 class Outer(torch.autograd.Function):

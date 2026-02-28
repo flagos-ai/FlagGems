@@ -40,3 +40,12 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     with torch_device_fn.device(device):
         zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
     return out
+
+
+def zero_(x: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS_MTHREADS ZERO_")
+    N = x.numel()
+    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(x.device):
+        zeros_kernel[grid_fn](x, N, BLOCK_SIZE=1024)
+    return x

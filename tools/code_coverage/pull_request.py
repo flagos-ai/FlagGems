@@ -15,7 +15,7 @@ token = os.getenv("GITHUB_API_TOKEN")
 
 def get_pull(pull_id):
     github = Github(token, timeout=60)
-    repo = github.get_repo("FlagOpen/FlagGems")
+    repo = github.get_repo("flagos-ai/FlagGems")
     return repo.get_pull(pull_id)
 
 

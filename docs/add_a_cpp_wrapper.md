@@ -1,6 +1,7 @@
 # Add A C++ wrapper
 
-To add a c++ wrapper, you need to build FlagGems with C extensions first. Please refer to [Installation](./installation.md).
+To add a c++ wrapper, you need to build FlagGems with C extensions first.
+Please refer to [Installation](./installation.md).
 
 ## Write the Wrapper
 

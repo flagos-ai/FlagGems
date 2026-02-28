@@ -34,15 +34,17 @@ for sub_block_start_idx in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
     tl.store(output_ptr + sub_offset, 0.0, mask=mask)
 
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-print("GEMS_ASCEND ZEROS")
-if dtype is None:
-dtype = torch.get_default_dtype()
-if device is None:
-device = torch.device(device_.name)
+    logger.debug("GEMS_ASCEND ZEROS")
+    if dtype is None:
+        dtype = torch.get_default_dtype()
+    if device is None:
+        device = torch.device(device_.name)
 
-out = torch.empty(size, device=device, dtype=dtype)
-N = volume(size)
-grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-with torch_device_fn.device(device):
-    zeros_kernel[grid_fn](out, N)
-return out
+    out = torch.empty(size, device=device, dtype=dtype)
+    N = volume(size)
+    if N == 0:
+        return out
+    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(device):
+        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=20480, BLOCK_SIZE_SUB=1024)
+    return out

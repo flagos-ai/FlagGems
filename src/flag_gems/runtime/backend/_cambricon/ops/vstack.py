@@ -32,13 +32,21 @@ class VstackKernelCode(IndentedBuffer):
     def __init(self, tensors):
         """Initialize the vstack kernel."""
         self.device = tensors[0].device
-        self.dtype = tensors[0].dtype
-        for tensor in tensors:
+        dtypes = [t.dtype for t in tensors]
+        dtype = dtypes[0]
+        for ty in dtypes[1:]:
+            dtype = torch.promote_types(dtype, ty)
+        self.dtype = dtype
+        for i, tensor in enumerate(tensors):
             assert (
                 tensor.device == self.device
-                and tensor.dtype == self.dtype
+                and tensor.dim() == tensors[0].dim()
                 and tensors[0].shape[1:] == tensor.shape[1:]
+                if tensors[0].dim() > 1
+                else tensors[0].shape == tensor.shape
             )
+            if tensor.dtype != self.dtype:
+                tensors[i] = tensor.to(self.dtype)
         c_tensors = [t.contiguous() for t in tensors]
         self.inputs = []
         self.idxs = [0]
@@ -188,56 +196,57 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                     self.writeline(
                                         "tl.store(output + dst_offset, x, mask=dst_offset<idx_1)"
                                     )
-                            self.writeline("else:")
-                            with self.indent():
-                                for i in range(1, self.input_num, 1):
-                                    idx = i + 1
-                                    self.writeline(f"if input_iter == {i}:")
-                                    with self.indent():
-                                        self.writeline(
-                                            f"offset = idx_{idx} - idx_{i} - condidate_num"
-                                        )
-                                        self.writeline("if need_num != deal_num:")
+                            if self.input_num > 1:
+                                self.writeline("else:")
+                                with self.indent():
+                                    for i in range(1, self.input_num, 1):
+                                        idx = i + 1
+                                        self.writeline(f"if input_iter == {i}:")
                                         with self.indent():
                                             self.writeline(
-                                                "deal_rem = deal_num - per_fetch_num"
+                                                f"offset = idx_{idx} - idx_{i} - condidate_num"
                                             )
-                                            self.writeline(
-                                                "for i in range(0, need_num, BLOCK_SIZE):"
-                                            )
+                                            self.writeline("if need_num != deal_num:")
                                             with self.indent():
                                                 self.writeline(
-                                                    "in_offset = offset + i + block"
+                                                    "deal_rem = deal_num - per_fetch_num"
                                                 )
                                                 self.writeline(
-                                                    f"dst_offset = idx_{i} + in_offset"
+                                                    "for i in range(0, need_num, BLOCK_SIZE):"
                                                 )
-                                                self.writeline(
-                                                    f"x = tl.load(input_{i} + in_offset, mask=in_offset < need_num)"
-                                                )
-                                                self.writeline(
-                                                    f"tl.store(output + dst_offset, x, \
-                                                        mask=dst_offset<idx_{i}+per_fetch_num)"
-                                                )
-                                        self.writeline("else:")
-                                        with self.indent():
-                                            self.writeline(
-                                                "for i in range(0, need_num, BLOCK_SIZE):"
-                                            )
+                                                with self.indent():
+                                                    self.writeline(
+                                                        "in_offset = offset + i + block"
+                                                    )
+                                                    self.writeline(
+                                                        f"dst_offset = idx_{i} + in_offset"
+                                                    )
+                                                    self.writeline(
+                                                        f"x = tl.load(input_{i} + in_offset, mask=in_offset < need_num)"
+                                                    )
+                                                    self.writeline(
+                                                        f"tl.store(output + dst_offset, x, \
+                                                            mask=dst_offset<idx_{i}+per_fetch_num)"
+                                                    )
+                                            self.writeline("else:")
                                             with self.indent():
                                                 self.writeline(
-                                                    "in_offset = offset + i + block"
+                                                    "for i in range(0, need_num, BLOCK_SIZE):"
                                                 )
-                                                self.writeline(
-                                                    f"dst_offset = idx_{i} + in_offset"
-                                                )
-                                                self.writeline(
-                                                    f"x = tl.load(input_{i} + in_offset, \
-                                                        mask=in_offset < idx_{idx}-idx_{i})"
-                                                )
-                                                self.writeline(
-                                                    f"tl.store(output + dst_offset, x, mask=dst_offset<idx_{idx})"
-                                                )
+                                                with self.indent():
+                                                    self.writeline(
+                                                        "in_offset = offset + i + block"
+                                                    )
+                                                    self.writeline(
+                                                        f"dst_offset = idx_{i} + in_offset"
+                                                    )
+                                                    self.writeline(
+                                                        f"x = tl.load(input_{i} + in_offset, \
+                                                            mask=in_offset < idx_{idx}-idx_{i})"
+                                                    )
+                                                    self.writeline(
+                                                        f"tl.store(output + dst_offset, x, mask=dst_offset<idx_{idx})"
+                                                    )
                         self.writeline("condidate_num -= per_fetch_num")
                         self.writeline("need_num -= per_fetch_num")
                         self.writeline("if (condidate_num <= 0):")

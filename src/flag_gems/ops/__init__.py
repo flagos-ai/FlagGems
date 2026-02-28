@@ -1,4 +1,5 @@
 from flag_gems.ops.abs import abs, abs_
+from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
@@ -19,6 +20,7 @@ from flag_gems.ops.attention import (
     flash_attn_varlen_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
+    scaled_dot_product_attention_forward,
 )
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.baddbmm import baddbmm
@@ -40,8 +42,9 @@ from flag_gems.ops.bitwise_or import (
     bitwise_or_tensor_,
 )
 from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
-from flag_gems.ops.bmm import bmm
+from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat
+from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import (
     clamp,
@@ -74,12 +77,13 @@ from flag_gems.ops.div import (
     remainder_,
     true_divide,
     true_divide_,
+    true_divide_out,
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
-from flag_gems.ops.eq import eq, eq_scalar
+from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
@@ -115,13 +119,14 @@ from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
-from flag_gems.ops.logical_and import logical_and
+from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not
-from flag_gems.ops.logical_or import logical_or
+from flag_gems.ops.logical_or import logical_or, logical_or_
 from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
+from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
@@ -148,10 +153,12 @@ from flag_gems.ops.nllloss import (
 )
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.normal import (
+    normal_,
     normal_float_tensor,
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.pad import constant_pad_nd, pad
@@ -184,9 +191,11 @@ from flag_gems.ops.repeat_interleave import (
 )
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
-from flag_gems.ops.rms_norm import rms_norm
+from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
+from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
+from flag_gems.ops.scatter_add_ import scatter_add_
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
@@ -207,10 +216,11 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
-from flag_gems.ops.triu import triu
+from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
@@ -226,7 +236,7 @@ from flag_gems.ops.where import (
     where_self,
     where_self_out,
 )
-from flag_gems.ops.zeros import zeros
+from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
@@ -235,13 +245,16 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "abs",
     "abs_",
+    "acos",
     "add",
     "add_",
     "addcdiv",
+    "addcmul",
     "addmm",
     "addmm_out",
     "addmv",
     "addmv_out",
+    "addr",
     "all",
     "all_dim",
     "all_dims",
@@ -255,10 +268,10 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
-    "avg_pool2d",
-    "avg_pool2d_backward",
     "atan",
     "atan_",
+    "avg_pool2d",
+    "avg_pool2d_backward",
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
@@ -268,7 +281,6 @@ __all__ = [
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
     "bitwise_left_shift",
-    "bitwise_right_shift",
     "bitwise_not",
     "bitwise_not_",
     "bitwise_or_scalar",
@@ -276,16 +288,21 @@ __all__ = [
     "bitwise_or_scalar_tensor",
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
+    "bitwise_right_shift",
     "bmm",
+    "bmm_out",
     "cat",
+    "ceil",
+    "ceil_",
+    "ceil_out",
     "celu",
     "celu_",
     "clamp",
     "clamp_",
-    "clamp_tensor",
-    "clamp_tensor_",
     "clamp_min",
     "clamp_min_",
+    "clamp_tensor",
+    "clamp_tensor_",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
@@ -315,6 +332,7 @@ __all__ = [
     "embedding_backward",
     "eq",
     "eq_scalar",
+    "equal",
     "erf",
     "erf_",
     "exp",
@@ -343,6 +361,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "get_scheduler_metadata",
     "glu",
     "glu_backward",
     "group_norm",
@@ -376,20 +395,24 @@ __all__ = [
     "log_softmax",
     "log_softmax_backward",
     "logical_and",
+    "logical_and_",
     "logical_not",
     "logical_or",
+    "logical_or_",
     "logical_xor",
     "logspace",
     "lt",
     "lt_scalar",
     "masked_fill",
     "masked_fill_",
+    "masked_scatter",
+    "masked_scatter_",
     "masked_select",
     "max",
     "max_dim",
-    "maximum",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
+    "maximum",
     "mean",
     "mean_dim",
     "min",
@@ -415,10 +438,13 @@ __all__ = [
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
+    "normal_",
     "normed_cumsum",
     "ones",
     "ones_like",
+    "one_hot",
     "pad",
+    "per_token_group_quant_fp8",
     "polar",
     "pow_scalar",
     "pow_tensor_scalar",
@@ -437,8 +463,6 @@ __all__ = [
     "reciprocal_",
     "relu",
     "relu_",
-    "addcmul",
-    "softplus",
     "remainder",
     "remainder_",
     "repeat",
@@ -448,15 +472,18 @@ __all__ = [
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
-    "sqrt",
-    "sqrt_",
+    "rms_norm_backward",
+    "rms_norm_forward",
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
-    "ScaleDotProductAttention",
+    "scaled_dot_product_attention_forward",
+    "scaled_softmax_backward",
+    "scaled_softmax_forward",
     "scatter",
     "scatter_",
+    "scatter_add_",
     "select_scatter",
     "sigmoid",
     "sigmoid_",
@@ -469,8 +496,11 @@ __all__ = [
     "slice_scatter",
     "softmax",
     "softmax_backward",
+    "softplus",
     "sort",
     "sort_stable",
+    "sqrt",
+    "sqrt_",
     "stack",
     "std",
     "sub",
@@ -479,6 +509,8 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "ScaleDotProductAttention",
+    "SUPPORTED_FP8_DTYPE",
     "tan",
     "tan_",
     "tanh",
@@ -491,17 +523,17 @@ __all__ = [
     "topk",
     "trace",
     "triu",
+    "triu_",
     "true_divide",
     "true_divide_",
+    "true_divide_out",
     "uniform_",
+    "upsample_nearest1d",
     "upsample_nearest2d",
     "var_mean",
     "vdot",
-    "addr",
     "vector_norm",
     "vstack",
-    "per_token_group_quant_fp8",
-    "SUPPORTED_FP8_DTYPE",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",
@@ -509,6 +541,6 @@ __all__ = [
     "where_self",
     "where_self_out",
     "zeros",
+    "zero_",
     "zeros_like",
-    "get_scheduler_metadata",
 ]

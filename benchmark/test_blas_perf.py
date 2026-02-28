@@ -13,7 +13,7 @@ from benchmark.attri_util import (
     model_shapes,
 )
 from benchmark.conftest import Config
-from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly, vendor_name
+from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly
 
 
 class BlasBenchmark(Benchmark):
@@ -40,6 +40,7 @@ class BlasBenchmark(Benchmark):
             (8, 1848, 1536, 151936),
             (8, 1848, 1536, 128256),
             (8, 1848, 1536, 152064),
+            (8, 4096, 1, 152064),
         ]
 
         model_shaps = model_shapes()
@@ -304,7 +305,6 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="Segmentation fault")
 @pytest.mark.vdot
 def test_vdot_benchmark():
     def vdot_input_fn(m, cur_dtype, device):
