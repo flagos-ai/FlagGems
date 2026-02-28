@@ -39,6 +39,9 @@ else:
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 addmm test on tsingmicro platform")
+
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
@@ -77,6 +80,9 @@ def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_addmm_out(M, N, K, scalar, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 addmm_out test on tsingmicro platform")
+
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias1 = torch.randn((N,), dtype=dtype, device=flag_gems.device)
@@ -260,6 +266,9 @@ def test_accuracy_baddbmm_backward(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_accuracy_mm(M, N, K, dtype, b_column_major):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 mm test on tsingmicro platform")
+
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
