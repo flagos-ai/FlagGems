@@ -36,3 +36,19 @@ jobs:
             Note this PR might be rejected due to its size.
           github_api_url: 'https://api.github.com'
           files_to_ignore: ''
+      - id: attach-competition-label
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const isPullRequest = context.eventName === 'pull_request';
+            if (!isPullRequest) return;
+            const prTitle = context.payload.pull_request.title
+            const prNumber = context.payload.pull_request.number;
+            if (prTitle.includes('FlagGems Operator Development Competition')) {
+              await github.rest.issues.addLabels({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['competition']
+              });
+            }
