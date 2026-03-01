@@ -1,27 +1,28 @@
-# Add A C++ wrapper
+# Add a C++ wrapper
 
-To add a c++ wrapper, you need to build FlagGems with C extensions first.
+To add a c++ wrapper, you need to first build FlagGems with C++ extensions enabled.
 Please refer to [Installation](./installation.md).
 
-## Write the Wrapper
+## Write the wrapper
 
-Add function declaration of the operator in `include/flag_gems/operators.h`
+Follow the following steps to add a new C++ wrapped operator:
 
-Add implement of the function in `lib/op_name.cpp`
+- Add a function prototype for the operator in the `include/flag_gems/operators.h` file.
+- Add the operator function implementation in the `lib/op_name.cpp` file.
+- Change the cmakefile `lib/CMakeLists.txt` accordingly.
+- Add python bindings in `src/flag_gems/csrc/cstub.cpp`
+- Add the `triton_jit` function in `triton_src`.
+  Currently we use a dedicated directory to store the `triton_jit` functions
+  In the future, we will reuse the `triton_jit` functions in Python code under `flag_gems`.
 
-Change the cmakefile `lib/CMakeLists.txt`
+## Write test case
 
-Add python bindings in `src/flag_gems/csrc/cstub.cpp`
+FlagGems uses `ctest` and `googletest` for C++ unit tests.
+After having finished the C++ wrapper, a corresponding C++ test case should be added.
+Add your unit test in `ctests/test_triton_xxx.cpp` and `ctests/CMakeLists.txt`.
+Finally, build your test source and run it with [C++ Tests](./ctest_in_flaggems.md).
 
-Add the triton_jit function in `triton_src`, currently we use a new dir to store the triton_jit functions and later will reuse the triton_jit functions in flag_gems python code.
+## Create a PR for your code
 
-## Write the Test
-
-FlagGems uses ctest and googletest for c++ unnit test.
-After finish the c++ wrapper, a corresponding c++ test should be added as well.
-Add your test in `ctests/test_triton_xxx.cpp` and `ctests/CMakeLists.txt`
-Just build your test and run it with [C++ Tests](ctest_in_flaggems.md)
-
-## Push your code
-
-Its better to have an end-to-end performance data in the PR description.
+When submitting a PR, it's desirable to provide end-to-end performance data
+in your PR description.
