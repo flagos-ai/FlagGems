@@ -40,8 +40,6 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const isPullRequest = context.eventName === 'pull_request';
-            if (!isPullRequest) return;
             const prTitle = context.payload.pull_request.title
             const prNumber = context.payload.pull_request.number;
             if (prTitle.includes('FlagGems Operator Development Competition')) {
