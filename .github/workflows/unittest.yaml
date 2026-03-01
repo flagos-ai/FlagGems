@@ -59,7 +59,7 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: contains(needs.preprocess.outpus.labels, 'documentation')
+    if: contains(needs.preprocess.outputs.labels, 'documentation')
     uses: ./.github/workflows/mkdocs.yaml
 
   cpp-op:
@@ -76,7 +76,7 @@ jobs:
     uses: ./.github/workflows/op-test.yaml
     with:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: blas-op-test.sh
+      script_path: test-op-blas.sh
 
   quick-cpu-op:
     needs: preprocess
@@ -90,7 +90,7 @@ jobs:
     uses: ./.github/workflows/op-test.yaml
     with:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: op-test-quick-cpu.sh
+      script_path: test-op-quick-cpu.sh
 
   pointwise-op:
     needs: preprocess
@@ -101,7 +101,7 @@ jobs:
     uses: ./.github/workflows/op-test.yaml
     with:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: pointwise-op-test.sh
+      script_path: test-op-pointwise.sh
 
   reduction-op:
     needs: preprocess
@@ -112,7 +112,7 @@ jobs:
     uses: ./.github/workflows/op-test.yaml
     with:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: reduction-op-test.sh
+      script_path: test-op-reduction.sh
 
   special-op:
     needs: preprocess
@@ -123,7 +123,7 @@ jobs:
     uses: ./.github/workflows/op-test.yaml
     with:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: special-op-test.sh
+      script_path: test-op-special.sh
 
   utils:
     needs: preprocess
@@ -134,7 +134,7 @@ jobs:
     uses: ./.github/workflows/op-test.yaml
     with:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: op-utils-test.sh
+      script_path: test-op-utils.sh
 
   examples:
     needs: preprocess
@@ -145,7 +145,7 @@ jobs:
     uses: ./.github/workflows/op-test.yaml
     with:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: examples-test.sh
+      script_path: test-examples.sh
 
   backend-nvidia:
     needs: preprocess
@@ -204,7 +204,7 @@ jobs:
       vendor: nvidia
       runner_label: hopper
       gpu_check_script: tools/gpu_check.sh
-      test_script: tools/experimental-op-test.sh
+      test_script: tools/test-op-experimental.sh
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
 
 #   coverage:
