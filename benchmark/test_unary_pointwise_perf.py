@@ -28,8 +28,8 @@ class UnaryPointwiseBenchmark(Benchmark):
         # special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
         # sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
         # return special_shapes_2d + sp_shapes_3d
-        # ===== 小尺寸 (Small) =====
         special_shapes_2d = [
+            # ===== Small Sizes =====
             (),  # 0D: scalar
             (1,),  # 1D: single element
             (8,),  # 1D: small vector
