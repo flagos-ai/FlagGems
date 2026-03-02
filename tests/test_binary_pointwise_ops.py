@@ -2158,7 +2158,9 @@ def test_accuracy_addcmul(shape, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_addcmul_out_broadcast(inp_shape, t1_shape, t2_shape, out_shape, dtype):
+def test_accuracy_addcmul_out_broadcast(
+    inp_shape, t1_shape, t2_shape, out_shape, dtype
+):
     res_inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(t1_shape, dtype=dtype, device=flag_gems.device)
     t2 = torch.randn(t2_shape, dtype=dtype, device=flag_gems.device)
@@ -2169,7 +2171,7 @@ def test_accuracy_addcmul_out_broadcast(inp_shape, t1_shape, t2_shape, out_shape
 
     v = float(np.float32(random.random()))
 
-    ref_out_tensor = torch.randn(out_shape, dtype=dtype, device="cpu")
+    ref_out_tensor = torch.randn(out_shape, dtype=dtype, device=ref_inp.device)
     ref_result = torch.addcmul(ref_inp, ref_t1, ref_t2, value=v, out=ref_out_tensor)
 
     res_out_tensor = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
@@ -2177,9 +2179,9 @@ def test_accuracy_addcmul_out_broadcast(inp_shape, t1_shape, t2_shape, out_shape
         res_result = torch.addcmul(res_inp, t1, t2, value=v, out=res_out_tensor)
 
     broadcast_shape = torch.broadcast_shapes(inp_shape, t1_shape, t2_shape)
-    assert list(res_out_tensor.shape) == list(broadcast_shape), (
-        f"out tensor was not resized: expected {broadcast_shape}, got {res_out_tensor.shape}"
-    )
+    assert list(res_out_tensor.shape) == list(
+        broadcast_shape
+    ), f"out tensor was not resized: expected {broadcast_shape}, got {res_out_tensor.shape}"
     gems_assert_close(res_result, ref_result, dtype)
 
 
