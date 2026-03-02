@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ...utils.gcu300.pointwise_dynamic import pointwise_dynamic
+from ...gcu300.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils import tl_extra_shim
 
 erf = tl_extra_shim.erf
