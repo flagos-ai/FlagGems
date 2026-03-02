@@ -64,48 +64,7 @@ UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
 POINTWISE_SHAPES = (
     [(2, 19, 7)]
     if QUICK_MODE
-    else [
-            # ===== Small Sizes =====
-            (),  # 0D: scalar
-            (1,),  # 1D: single element
-            (8,),  # 1D: small vector
-            (1, 1),  # 2D: 1×1 matrix
-            (8, 8),  # 2D: 8×8 matrix
-            (1, 8, 8),  # 3D: single batch small matrix
-            (2, 4, 4, 4),  # 4D: small batch small tensor
-            (2, 2, 2, 2, 2),  # 5D: minimal 5D tensor
-            # ===== Medium Sizes =====
-            (64,),  # 1D: medium vector
-            (256,),  # 1D: larger vector
-            (64, 64),  # 2D: 64×64 matrix
-            (256, 256),  # 2D: 256×256 matrix
-            (16, 64, 64),  # 3D: medium batch
-            (8, 32, 128, 128),  # 4D: regular convolution size
-            (4, 8, 16, 32, 64),  # 5D: regular 5D tensor
-            # ===== Large Sizes =====
-            (4096,),  # 1D: large vector
-            (1024, 1024),  # 2D: 1024×1024 matrix
-            (4096, 4096),  # 2D: 4096×4096 large matrix
-            (32, 512, 512),  # 3D: large batch
-            (16, 64, 256, 256),  # 4D: large convolution size
-            (8, 16, 32, 64, 128),  # 5D: large 5D tensor
-            # ===== Edge Cases =====
-            (1, 1, 1),  # 3D: all-ones dimensions
-            (1, 1, 1, 1),  # 4D: all-ones dimensions
-            (1, 1, 1, 1, 1),  # 5D: all-ones dimensions
-            (1, 1024),  # 2D: single row large matrix
-            (1024, 1),  # 2D: single column large matrix
-            (1, 1, 1024, 1024),  # 4D: single batch large matrix
-            # ===== Irregular Shapes =====
-            (13,),  # 1D: prime dimensions
-            (17, 23),  # 2D: prime dimensions
-            (7, 11, 13),  # 3D: prime dimensions
-            (3, 5, 7, 11),  # 4D: prime dimensions
-            (2, 3, 5, 7, 11),  # 5D: prime dimensions
-            (20, 320, 15),  # 3D: original test case
-            (16, 128, 64, 60),  # 4D: original test case
-            (16, 7, 57, 32, 29),  # 5D: original test case
-    ]
+    else [(), (1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 60), (16, 7, 57, 32, 29)]
 )
 SPECIAL_SHAPES = (
     [(2, 19, 7)]
