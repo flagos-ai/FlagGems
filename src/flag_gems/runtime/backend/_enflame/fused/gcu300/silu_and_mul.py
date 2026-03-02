@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ...utils.gcu300.pointwise_dynamic import pointwise_dynamic
+from ...gcu300.utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
