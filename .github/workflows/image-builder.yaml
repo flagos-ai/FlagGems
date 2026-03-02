@@ -80,3 +80,4 @@ jobs:
     secrets:
       REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
       CONTAINER_REGISTRY: ${{ secrets.CONTAINER_REGISTRY }}
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
