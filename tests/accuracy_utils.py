@@ -56,11 +56,6 @@ sizes_2d_nr = [1] if QUICK_MODE else [1, 5, 1024]
 
 UT_SHAPES_1D = list((n,) for n in sizes_1d)
 UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
-# POINTWISE_SHAPES = (
-#     [(2, 19, 7)]
-#     if QUICK_MODE
-#     else [(), (1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 60), (16, 7, 57, 32, 29)]
-# )
 POINTWISE_SHAPES = (
     [(2, 19, 7)]
     if QUICK_MODE
