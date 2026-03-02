@@ -9,6 +9,7 @@ TEST_CASES=(
   "tests/test_pointwise_dynamic.py"
   "tests/test_pointwise_type_promotion.py"
   "tests/test_unary_pointwise_ops.py"
+  "tests/test_log10.py"
 )
 
 source tools/run_command.sh

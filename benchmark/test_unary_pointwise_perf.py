@@ -182,6 +182,36 @@ def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
+class UnaryPointwiseMoreShapeBenchmark(UnaryPointwiseBenchmark):
+    def set_more_shapes(self):
+        base_shapes = super().set_more_shapes()
+        addi_shapes = [
+            # small
+            (1, 1),
+            (8, 8),
+            # 4D and 5D
+            (16, 128, 64, 60),
+            (16, 8, 57, 32, 29),
+        ]
+        return base_shapes + addi_shapes
+
+
+@pytest.mark.log10
+def test_log10_perf():
+    bench = UnaryPointwiseMoreShapeBenchmark(
+        op_name="log10", torch_op=torch.log10, dtypes=FLOAT_DTYPES
+    )
+    bench.run()
+
+
+@pytest.mark.log10_
+def test_log10_inplace_perf():
+    bench = UnaryPointwiseMoreShapeBenchmark(
+        op_name="log10_", torch_op=torch.log10_, dtypes=FLOAT_DTYPES, is_inplace=True
+    )
+    bench.run()
+
+
 class ToCopyBenchmark(UnaryPointwiseBenchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
