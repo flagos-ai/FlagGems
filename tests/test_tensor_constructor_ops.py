@@ -326,3 +326,38 @@ def test_accuracy_one_hot():
 
     with pytest.raises(RuntimeError):
         gems_one_hot(torch.tensor([3, 4, 1, 0], dtype=torch.long, device=device), -2)
+
+
+@pytest.mark.arange
+@pytest.mark.parametrize(
+    "start, end, step",
+    [
+        (0, 10, 1),
+        (0, 100, 1),
+        (0, 1000, 1),
+        (5, 50, 3),
+        (0, 10, 2),
+        (0.0, 5.0, 0.5),
+        (1.0, 10.0, 1.5),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int64])
+def test_accuracy_arange_start(start, end, step, dtype):
+    if dtype == torch.int64 and isinstance(start, float):
+        pytest.skip("int64 with float start/end/step not applicable")
+    with flag_gems.use_gems():
+        res_out = torch.arange(start, end, step, dtype=dtype, device=device)
+    ref_out = torch.arange(start, end, step, dtype=dtype, device="cpu")
+    gems_assert_equal(res_out.cpu(), ref_out)
+
+
+@pytest.mark.arange
+@pytest.mark.parametrize("end", [10, 100, 1000, 5.0])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int64])
+def test_accuracy_arange(end, dtype):
+    if dtype == torch.int64 and isinstance(end, float):
+        pytest.skip("int64 with float end not applicable")
+    with flag_gems.use_gems():
+        res_out = torch.arange(end, dtype=dtype, device=device)
+    ref_out = torch.arange(end, dtype=dtype, device="cpu")
+    gems_assert_equal(res_out.cpu(), ref_out)
