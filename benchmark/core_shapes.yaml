@@ -303,14 +303,19 @@ MoeAlignBlockSizeBenchmark:
 
 SVDBenchmark:
   shapes:
+    - [3, 3]
     - [8, 8]
     - [16, 16]
+    - [16, 8]
+    - [8, 16]
+    - [10, 3, 3]
+    - [100, 8, 8]
+    - [1000, 8, 8]
+    - [50, 16, 16]
+    - [200, 16, 16]
     - [32, 32]
     - [64, 32]
     - [32, 64]
-    - [10, 3, 3]
-    - [100, 8, 8]
-    - [50, 16, 16]
   shape_desc: "(..., M, N)"
 
 ReshapeAndCacheFlashBenchmark:

@@ -821,6 +821,8 @@ def test_perf_moe_align_block_size():
 
     bench.set_gems(gems_op)
     bench.run()
+
+
 # ========== SVD Benchmark ==========
 
 
@@ -830,14 +832,22 @@ def svd_input_fn(shape, cur_dtype, device):
 
 
 SVD_SHAPES = [
+    # Single small matrices (Triton Jacobi kernel)
+    (3, 3),
     (8, 8),
     (16, 16),
+    (16, 8),
+    (8, 16),
+    # Batched small matrices (Triton Jacobi kernel — high speedup)
+    (10, 3, 3),
+    (100, 8, 8),
+    (1000, 8, 8),
+    (50, 16, 16),
+    (200, 16, 16),
+    # Larger matrices (cuSOLVER fallback)
     (32, 32),
     (64, 32),
     (32, 64),
-    (10, 3, 3),
-    (100, 8, 8),
-    (50, 16, 16),
 ]
 
 

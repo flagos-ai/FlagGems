@@ -14,8 +14,12 @@ logger = logging.getLogger(__name__)
 SVDResult = namedtuple("SVDResult", ["U", "S", "V"])
 
 # Maximum matrix dimension supported by the Jacobi SVD kernel.
-# Limited by Triton register pressure and compilation time for unrolled loops.
 MAX_SVD_DIM = 64
+
+# Threshold for Triton Jacobi SVD vs fallback to torch.linalg.svd.
+# Jacobi SVD is faster for small matrices; for larger ones the cuSOLVER-based
+# divide-and-conquer algorithm in torch.linalg.svd is asymptotically better.
+_JACOBI_THRESHOLD = 16
 
 
 def _next_power_of_2(n):
@@ -58,24 +62,26 @@ def jacobi_svd_kernel(
     batch_stride_V,
     n_stride_V,
     k_stride_V,
-    # Dimensions
+    # Runtime dimension for dynamic loop bounds (prevents unrolling)
+    N_dim,
+    num_sweeps,
+    # Constexpr dimensions for block sizing and output
     M: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
     out_k_U: tl.constexpr,
     out_k_V: tl.constexpr,
     compute_uv: tl.constexpr,
-    NUM_SWEEPS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """One-sided Jacobi SVD kernel with column-major global memory buffers.
+    """One-sided Jacobi SVD kernel with dynamic loops and in-kernel sort.
 
     Each program instance handles one matrix from the batch.
     Uses column-major scratch buffers in global memory for O(M) column
-    access instead of O(M*N) broadcast extraction from registers.
-    After transpose normalization, M >= N always holds, so K = N.
-    Singular values are output unsorted (sorting done in wrapper).
+    access. The Jacobi pair loops use runtime bounds (N_dim, num_sweeps)
+    to prevent full unrolling, avoiding instruction cache thrashing.
+    Singular values are sorted in descending order within the kernel.
     """
     pid = tle.program_id(0)
     row_idx = tl.arange(0, BLOCK_M)
@@ -106,15 +112,15 @@ def jacobi_svd_kernel(
             )
             tl.store(vw_base + j * vw_col_stride + v_row_idx, v_col, mask=v_mask)
 
-    # Jacobi sweeps with column-major load/store and early convergence
+    # Jacobi sweeps — dynamic loop bounds prevent code bloat
     sweep_converged = tl.full((), 0, dtype=tl.int32)
 
-    for _sweep in range(NUM_SWEEPS):
+    for _sweep in range(num_sweeps):
         max_gamma = tl.full((), 0.0, dtype=tl.float32)
 
-        for p in range(N):
-            for q in range(p + 1, N):
-                # Load columns p and q from A_work — O(M) direct load
+        for p in range(N_dim):
+            for q in range(p + 1, N_dim):
+                # Load columns p and q from A_work
                 a_p = tl.load(
                     aw_base + p * aw_col_stride + row_idx,
                     mask=row_mask,
@@ -159,7 +165,7 @@ def jacobi_svd_kernel(
                 c = tl.where(should_rotate, c, tl.full((), 1.0, dtype=tl.float32))
                 s = tl.where(should_rotate, s, tl.full((), 0.0, dtype=tl.float32))
 
-                # Apply rotation to A columns — O(M) store
+                # Apply rotation to A columns
                 new_a_p = c * a_p - s * a_q
                 new_a_q = s * a_p + c * a_q
                 tl.store(aw_base + p * aw_col_stride + row_idx, new_a_p, mask=row_mask)
@@ -198,47 +204,77 @@ def jacobi_svd_kernel(
         norm_sq = tl.sum(a_col_j * a_col_j)
         S_vals = tl.where(s_idx == j, tl.sqrt(norm_sq), S_vals)
 
-    # Store S (unsorted — sorting done in wrapper)
-    s_ptrs = S_ptr + pid * batch_stride_S + s_idx
-    tl.store(s_ptrs, S_vals, mask=s_mask)
+    # --- In-kernel descending sort by computing ranks ---
+    ranks = tl.zeros((BLOCK_N,), dtype=tl.int32)
+    for i in range(N):
+        s_i = tl.sum(tl.where(s_idx == i, S_vals, tl.zeros((BLOCK_N,), tl.float32)))
+        i_val = tl.full((BLOCK_N,), i, dtype=tl.int32)
+        beats = ((s_i > S_vals) | ((s_i == S_vals) & (i_val < s_idx))) & (s_idx < N)
+        ranks = ranks + beats.to(tl.int32)
 
-    # Compute and store U = A_work_col / S_col (normalize columns)
+    # Output S in sorted descending order
+    sorted_S = tl.zeros((BLOCK_N,), dtype=tl.float32)
+    for j in range(N):
+        s_j = tl.sum(tl.where(s_idx == j, S_vals, tl.zeros((BLOCK_N,), tl.float32)))
+        rank_j = tl.sum(tl.where(s_idx == j, ranks, tl.zeros((BLOCK_N,), tl.int32)))
+        sorted_S = tl.where(s_idx == rank_j, s_j, sorted_S)
+    tl.store(S_ptr + pid * batch_stride_S + s_idx, sorted_S, mask=s_mask)
+
+    # Output U and V columns in sorted order
     if compute_uv:
         for j in range(N):
+            rank_j = tl.sum(tl.where(s_idx == j, ranks, tl.zeros((BLOCK_N,), tl.int32)))
+
             a_col_j = tl.load(
                 aw_base + j * aw_col_stride + row_idx, mask=row_mask, other=0.0
             )
-            s_j = tl.sum(S_vals * (s_idx == j).to(tl.float32))
+            s_j = tl.sum(tl.where(s_idx == j, S_vals, tl.zeros((BLOCK_N,), tl.float32)))
             safe_s_j = tl.where(s_j > 1e-10, s_j, tl.full((), 1.0, dtype=tl.float32))
             u_col_j = a_col_j / safe_s_j
 
-            u_mask_j = row_mask & (j < out_k_U)
             u_ptrs = (
-                U_ptr + pid * batch_stride_U + row_idx * m_stride_U + j * k_stride_U
+                U_ptr
+                + pid * batch_stride_U
+                + row_idx * m_stride_U
+                + rank_j * k_stride_U
             )
-            tl.store(u_ptrs, u_col_j, mask=u_mask_j)
+            tl.store(u_ptrs, u_col_j, mask=row_mask & (rank_j < out_k_U))
 
-        # Store V from V_work
-        v_out_idx = tl.arange(0, BLOCK_N)
-        for j in range(N):
+            v_out_idx = tl.arange(0, BLOCK_N)
             v_col_j = tl.load(
                 vw_base + j * vw_col_stride + v_out_idx,
                 mask=v_out_idx < N,
                 other=0.0,
             )
-            v_mask_j = (v_out_idx < N) & (j < out_k_V)
             v_ptrs = (
-                V_ptr + pid * batch_stride_V + v_out_idx * n_stride_V + j * k_stride_V
+                V_ptr
+                + pid * batch_stride_V
+                + v_out_idx * n_stride_V
+                + rank_j * k_stride_V
             )
-            tl.store(v_ptrs, v_col_j, mask=v_mask_j)
+            tl.store(v_ptrs, v_col_j, mask=(v_out_idx < N) & (rank_j < out_k_V))
+
+
+def _svd_fallback(input, some, compute_uv):
+    """Fallback to torch.linalg.svd for matrices exceeding Jacobi threshold.
+
+    Uses cuSOLVER's divide-and-conquer SVD which is asymptotically faster
+    for larger matrices (O(N^3) vs Jacobi's O(N^4)).
+    """
+    U, S, Vh = torch.linalg.svd(input, full_matrices=not some)
+    V = Vh.mH  # conjugate transpose (= transpose for real matrices)
+    if not compute_uv:
+        U = torch.zeros_like(U)
+        V = torch.zeros_like(V)
+    return SVDResult(U, S, V)
 
 
 def svd(input, some=True, compute_uv=True):
     """Compute the Singular Value Decomposition of a matrix.
 
-    Implements SVD using the One-sided Jacobi algorithm in pure Triton.
-    Uses column-major global memory scratch buffers for efficient column
-    access. Supports matrices up to MAX_SVD_DIM x MAX_SVD_DIM per batch.
+    Implements SVD using the One-sided Jacobi algorithm in pure Triton for
+    small matrices (min(m,n) <= threshold), falling back to torch.linalg.svd
+    for larger matrices where cuSOLVER's divide-and-conquer is faster.
 
     Args:
         input: Input tensor of shape (..., m, n).
@@ -258,11 +294,10 @@ def svd(input, some=True, compute_uv=True):
     orig_m, orig_n = input.shape[-2], input.shape[-1]
     k = min(orig_m, orig_n)
 
-    # Enforce maximum dimension constraint
-    assert orig_m <= MAX_SVD_DIM and orig_n <= MAX_SVD_DIM, (
-        f"Jacobi SVD kernel supports matrices up to {MAX_SVD_DIM}x{MAX_SVD_DIM}, "
-        f"got ({orig_m}, {orig_n}). Consider using torch.linalg.svd for larger matrices."
-    )
+    # Fall back to torch.linalg.svd for large matrices where cuSOLVER's
+    # divide-and-conquer algorithm is asymptotically better than Jacobi
+    if k > _JACOBI_THRESHOLD:
+        return _svd_fallback(input, some, compute_uv)
 
     batch_shape = input.shape[:-2]
     m, n = orig_m, orig_n
@@ -308,7 +343,6 @@ def svd(input, some=True, compute_uv=True):
         out_k_V = n
 
     S_out = torch.empty(batch_size, k, device=input.device, dtype=input.dtype)
-    # Use torch.empty for common path; kernel writes all k columns
     if some and compute_uv:
         U_out = torch.empty(
             batch_size, m, out_k_U, device=input.device, dtype=input.dtype
@@ -325,15 +359,18 @@ def svd(input, some=True, compute_uv=True):
         )
 
     # Allocate column-major scratch buffers
-    # A_work shape: (batch_size, n, m) — column j of A is A_work[batch, j, :]
     A_work = torch.empty(batch_size, n, m, device=input.device, dtype=torch.float32)
     V_work = torch.empty(batch_size, n, n, device=input.device, dtype=torch.float32)
 
     BLOCK_M = _next_power_of_2(m)
     BLOCK_N = _next_power_of_2(n)
-    # Sweep count tuned for convergence + compilation size tradeoff.
-    # Early convergence detection skips redundant sweeps at runtime.
-    num_sweeps = min(max(6, n), 12)
+
+    # Sweep count: 6 sweeps suffices for small matrices with early convergence
+    num_sweeps = 6
+
+    # num_warps: 1 is optimal for small BLOCK sizes (fewer scheduling overhead)
+    num_warps_val = 1
+
     grid = (batch_size,)
 
     with torch_device_fn.device(input.device):
@@ -362,25 +399,21 @@ def svd(input, some=True, compute_uv=True):
             V_out.stride(0),
             V_out.stride(1),
             V_out.stride(2),
-            # Dimensions
+            # Runtime loop bounds
+            n,
+            num_sweeps,
+            # Constexpr dimensions
             M=m,
             N=n,
             K=k,
             out_k_U=out_k_U,
             out_k_V=out_k_V,
             compute_uv=compute_uv,
-            NUM_SWEEPS=num_sweeps,
             BLOCK_M=BLOCK_M,
             BLOCK_N=BLOCK_N,
+            num_warps=num_warps_val,
+            num_stages=1,
         )
-
-    # Sort singular values in descending order (kernel outputs unsorted)
-    S_out, sorted_indices = torch.sort(S_out, dim=-1, descending=True)
-    if compute_uv:
-        idx_U = sorted_indices.unsqueeze(-2).expand_as(U_out)
-        U_out = torch.gather(U_out, -1, idx_U)
-        idx_V = sorted_indices.unsqueeze(-2).expand_as(V_out)
-        V_out = torch.gather(V_out, -1, idx_V)
 
     # Undo transpose: swap U and V back
     if need_transpose:
