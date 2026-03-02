@@ -30,45 +30,45 @@ class UnaryPointwiseBenchmark(Benchmark):
         # return special_shapes_2d + sp_shapes_3d
         # ===== 小尺寸 (Small) =====
         special_shapes_2d = [
-            (),  # 0D: 标量
-            (1,),  # 1D: 单元素
-            (8,),  # 1D: 小向量
-            (1, 1),  # 2D: 1×1 矩阵
-            (8, 8),  # 2D: 8×8 矩阵
-            (1, 8, 8),  # 3D: 单批次小矩阵
-            (2, 4, 4, 4),  # 4D: 小批次小张量
-            (2, 2, 2, 2, 2),  # 5D: 最小 5 维张量
-            # ===== 常规尺寸 (Medium) =====
-            (64,),  # 1D: 中等向量
-            (256,),  # 1D: 较大向量
-            (64, 64),  # 2D: 64×64 矩阵
-            (256, 256),  # 2D: 256×256 矩阵
-            (16, 64, 64),  # 3D: 中等批次
-            (8, 32, 128, 128),  # 4D: 常规卷积尺寸
-            (4, 8, 16, 32, 64),  # 5D: 常规 5 维张量
-            # ===== 大尺寸 (Large) =====
-            (4096,),  # 1D: 大向量
-            (1024, 1024),  # 2D: 1024×1024 矩阵
-            (4096, 4096),  # 2D: 4096×4096 大矩阵
-            (32, 512, 512),  # 3D: 大批次
-            (16, 64, 256, 256),  # 4D: 大卷积尺寸
-            (8, 16, 32, 64, 128),  # 5D: 大 5 维张量
-            # ===== 边界情况 (Edge Cases) =====
-            (1, 1, 1),  # 3D: 全 1 维度
-            (1, 1, 1, 1),  # 4D: 全 1 维度
-            (1, 1, 1, 1, 1),  # 5D: 全 1 维度
-            (1, 1024),  # 2D: 单行大矩阵
-            (1024, 1),  # 2D: 单列大矩阵
-            (1, 1, 1024, 1024),  # 4D: 单批次大矩阵
-            # ===== 不规则形状 (Irregular) =====
-            (13,),  # 1D: 质数维度
-            (17, 23),  # 2D: 质数维度
-            (7, 11, 13),  # 3D: 质数维度
-            (3, 5, 7, 11),  # 4D: 质数维度
-            (2, 3, 5, 7, 11),  # 5D: 质数维度
-            (20, 320, 15),  # 3D: 原有测试用例
-            (16, 128, 64, 60),  # 4D: 原有测试用例
-            (16, 7, 57, 32, 29),  # 5D: 原有测试用例
+            (),  # 0D: scalar
+            (1,),  # 1D: single element
+            (8,),  # 1D: small vector
+            (1, 1),  # 2D: 1×1 matrix
+            (8, 8),  # 2D: 8×8 matrix
+            (1, 8, 8),  # 3D: single batch small matrix
+            (2, 4, 4, 4),  # 4D: small batch small tensor
+            (2, 2, 2, 2, 2),  # 5D: minimal 5D tensor
+            # ===== Medium Sizes =====
+            (64,),  # 1D: medium vector
+            (256,),  # 1D: larger vector
+            (64, 64),  # 2D: 64×64 matrix
+            (256, 256),  # 2D: 256×256 matrix
+            (16, 64, 64),  # 3D: medium batch
+            (8, 32, 128, 128),  # 4D: regular convolution size
+            (4, 8, 16, 32, 64),  # 5D: regular 5D tensor
+            # ===== Large Sizes =====
+            (4096,),  # 1D: large vector
+            (1024, 1024),  # 2D: 1024×1024 matrix
+            (4096, 4096),  # 2D: 4096×4096 large matrix
+            (32, 512, 512),  # 3D: large batch
+            (16, 64, 256, 256),  # 4D: large convolution size
+            (8, 16, 32, 64, 128),  # 5D: large 5D tensor
+            # ===== Edge Cases =====
+            (1, 1, 1),  # 3D: all-ones dimensions
+            (1, 1, 1, 1),  # 4D: all-ones dimensions
+            (1, 1, 1, 1, 1),  # 5D: all-ones dimensions
+            (1, 1024),  # 2D: single row large matrix
+            (1024, 1),  # 2D: single column large matrix
+            (1, 1, 1024, 1024),  # 4D: single batch large matrix
+            # ===== Irregular Shapes =====
+            (13,),  # 1D: prime dimensions
+            (17, 23),  # 2D: prime dimensions
+            (7, 11, 13),  # 3D: prime dimensions
+            (3, 5, 7, 11),  # 4D: prime dimensions
+            (2, 3, 5, 7, 11),  # 5D: prime dimensions
+            (20, 320, 15),  # 3D: original test case
+            (16, 128, 64, 60),  # 4D: original test case
+            (16, 7, 57, 32, 29),  # 5D: original test case
         ]
         return special_shapes_2d
 
