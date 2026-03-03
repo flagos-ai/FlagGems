@@ -82,7 +82,8 @@ def assert_close_inf(
     b = b.masked_fill(~b_finite, 0)
     correlation = compute_correlation(a, b, tensor_name)
     difference = 1.0 - correlation
-    if not (0 <= difference <= tolerance):
+    difference = abs(difference)
+    if not difference <= tolerance:
         display_error_message(f"{tensor_name} Error: {difference}")
         if should_raise:
             assert False
