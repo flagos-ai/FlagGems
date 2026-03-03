@@ -74,11 +74,16 @@ jobs:
     concurrency:
       group: python-op-${{ needs.preprocess.outputs.pr_id }}
       cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-op.sh
-      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@v6
+      - shell: bash
+        run: tools/gpu_check.sh
+      - shell: bash
+        env:
+          CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+        run: |
+          bash tools/test-op.sh ${{ needs.preprocess.outputs.pr_id }}
 
   examples:
     needs: preprocess
@@ -86,10 +91,16 @@ jobs:
     concurrency:
       group: examples-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-examples.sh
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@v6
+      - shell: bash
+        run: tools/gpu_check.sh
+      - shell: bash
+        env:
+          CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+        run: |
+          bash tools/test-examples.sh ${{ needs.preprocess.outputs.pr_id }}
 
   backend-nvidia:
     needs: preprocess
