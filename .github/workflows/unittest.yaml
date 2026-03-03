@@ -84,7 +84,7 @@ jobs:
     # NOTE: This contains a temporary hack to skip this job for PRs from FODC contest.
     if: |
       contains(needs.preprocess.outputs.labels, 'tests') &&
-      ! contains(github.event.pull_request.labels.*.name, 'competition')
+      ! contains(needs.preprocess.outputs.outputs.labels, 'competition')
     concurrency:
       group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
