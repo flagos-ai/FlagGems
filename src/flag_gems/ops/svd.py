@@ -914,13 +914,7 @@ def svd(input, some=True, compute_uv=True):
     orig_m, orig_n = input.shape[-2], input.shape[-1]
     k = min(orig_m, orig_n)
 
-    # Fall back to cuSOLVER (via aten::_linalg_svd) for:
-    #   1. Large matrices beyond our kernel's maximum dimension
-    #   2. Unbatched matrices above the Jacobi threshold, where cuSOLVER's
-    #      multi-SM divide-and-conquer outperforms our single-program kernel
-    # Our Triton bidiag kernel excels for batched workloads (one SM per element).
-    if k > _JACOBI_THRESHOLD and input.ndim == 2:
-        return _svd_fallback(input, some, compute_uv)
+    # Fall back to cuSOLVER for matrices beyond our kernel's maximum dimension.
     if k > MAX_SVD_DIM:
         return _svd_fallback(input, some, compute_uv)
 
