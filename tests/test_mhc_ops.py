@@ -13,6 +13,7 @@ import torch
 
 from flag_gems.fused.mhc.mhc_post import mhc_post, mhc_post_ref
 from flag_gems.fused.mhc.mhc_pre import mhc_pre, mhc_pre_ref
+from flag_gems.fused.mhc.mhc_bwd import mhc_bwd, mhc_bwd_ref, sinkhorn_forward
 
 # ─── Import TileLang versions for comparison ───
 sys.path.insert(0, "/workspace/tilelang/examples/deepseek_mhc")
@@ -25,6 +26,16 @@ except ImportError:
     HAS_TILELANG = False
     mhc_post_tl = None
     mhc_pre_tl = None
+
+try:
+    from example_mhc_bwd import sinkhorn_bwd_implicit_cg as sinkhorn_bwd_tl_factory
+    from tilelang.autotuner import set_autotune_inputs
+
+    HAS_TILELANG_BWD = True
+except ImportError:
+    HAS_TILELANG_BWD = False
+    sinkhorn_bwd_tl_factory = None
+    set_autotune_inputs = None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -168,3 +179,80 @@ def test_mhc_pre_vs_tilelang(n, hidden_size, hc_mult):
     torch.testing.assert_close(post_triton, post_tl, rtol=1e-2, atol=1e-2)
     torch.testing.assert_close(comb_triton, comb_tl, rtol=1e-2, atol=1e-2)
     torch.testing.assert_close(li_triton, li_tl, rtol=1e-2, atol=1e-2)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  mhc_bwd tests (Sinkhorn backward via implicit CG)
+# ═══════════════════════════════════════════════════════════════
+
+MHC_BWD_CONFIGS = list(
+    product(
+        [256, 1024, 4096, 65536],  # seqlen
+        [4],  # n_stream (optimized kernel only supports n_stream=4)
+        [20],  # sinkhorn_iters
+    )
+)
+
+
+def generate_mhc_bwd_data(
+    seqlen: int,
+    n_stream: int,
+    sinkhorn_iters: int = 20,
+    device: str = "cuda",
+):
+    """Generate test data for mhc_bwd.
+
+    Returns (R, dR) where R is Sinkhorn output and dR is upstream gradient.
+    """
+    torch.manual_seed(42)
+    dist = torch.distributions.uniform.Uniform(0.0, 4.0)
+    M = dist.sample((seqlen, n_stream, n_stream)).to(device)
+
+    R, _P = sinkhorn_forward(M, iters=sinkhorn_iters)
+    dR = torch.randn_like(R)
+
+    return dict(R=R.detach(), dR=dR, n_stream=n_stream)
+
+
+@pytest.mark.mhc_bwd
+@pytest.mark.parametrize(
+    "seqlen, n_stream, sinkhorn_iters",
+    MHC_BWD_CONFIGS,
+    ids=[f"seq{s}_ns{ns}_it{it}" for s, ns, it in MHC_BWD_CONFIGS],
+)
+def test_mhc_bwd_vs_ref(seqlen, n_stream, sinkhorn_iters):
+    """Test Triton mhc_bwd against PyTorch reference."""
+    data = generate_mhc_bwd_data(seqlen, n_stream, sinkhorn_iters)
+    R, dR = data["R"], data["dR"]
+
+    out_triton = mhc_bwd(R, dR)
+    out_ref = mhc_bwd_ref(R, dR)
+
+    torch.testing.assert_close(out_triton, out_ref, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.mhc_bwd
+@pytest.mark.skipif(not HAS_TILELANG_BWD, reason="TileLang mhc_bwd not available")
+@pytest.mark.parametrize(
+    "seqlen, n_stream",
+    [(4096, 4), (65536, 4)],
+    ids=[f"seq{s}_ns{ns}" for s, ns in [(4096, 4), (65536, 4)]],
+)
+def test_mhc_bwd_vs_tilelang(seqlen, n_stream):
+    """Test Triton mhc_bwd against TileLang implementation."""
+    torch.manual_seed(42)
+    device = torch.device("cuda")
+    dist = torch.distributions.uniform.Uniform(0.0, 4.0)
+    M = dist.sample((seqlen, n_stream, n_stream)).to(device)
+    R, _P = sinkhorn_forward(M, iters=20)
+    dR = torch.randn_like(R)
+
+    # FlagGems Triton
+    out_triton = mhc_bwd(R, dR)
+
+    # TileLang (needs autotuning)
+    with set_autotune_inputs(R, dR):
+        tl_kernel = sinkhorn_bwd_tl_factory(n_stream)
+    out_tl = tl_kernel(R, dR)
+
+    torch.testing.assert_close(out_triton, out_tl, rtol=1e-3, atol=1e-3)
