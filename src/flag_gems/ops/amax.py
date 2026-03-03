@@ -90,15 +90,15 @@ def amax(inp, dim=None, keepdim=False):
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype
-        mid = torch.empty((mid_size,), dtype=dtype, device=inp.place)
+        mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         if not keepdim:
-            out = torch.empty([], dtype=dtype, device=inp.place)
+            out = torch.empty([], dtype=dtype, device=inp.device)
         else:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
                 shape[i] = 1
-            out = torch.empty(shape, dtype=dtype, device=inp.place)
-        with torch_device_fn.device(inp.place):
+            out = torch.empty(shape, dtype=dtype, device=inp.device)
+        with torch_device_fn.device(inp.device):
             amax_kernel_1[(mid_size, 1)](
                 inp,
                 mid,
@@ -124,10 +124,10 @@ def amax(inp, dim=None, keepdim=False):
             shape[i] = 1
         M = inp.size // N
 
-        out = torch.empty(shape, dtype=dtype, device=inp.place)
+        out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.place):
+        with torch_device_fn.device(inp.device):
             amax_kernel[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)

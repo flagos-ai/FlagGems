@@ -71,11 +71,11 @@ def vstack(tensors: list):
     assert num_tensors > 0
 
     # Ensure all tensors are on the same device and have the same dtype
-    device = tensors[0].place
+    device = tensors[0].device
     dtype = tensors[0].dtype
     for tensor in tensors:
         assert (
-            tensor.place == device
+            tensor.device == device
             and tensor.dtype == dtype
             and tensors[0].shape[1:] == tensor.shape[1:]
         )
@@ -108,7 +108,7 @@ def vstack(tensors: list):
                 max_rows = max(max_rows, c_tensors[tensor_idx].shape[0])
             else:
                 empty_tensor = torch.empty(
-                    0, dtype=c_tensors[0].dtype, device=c_tensors[0].place
+                    0, dtype=c_tensors[0].dtype, device=c_tensors[0].device
                 )
                 itensors.append(empty_tensor)
                 local_row.append(local_row[-1])
@@ -119,7 +119,7 @@ def vstack(tensors: list):
             scheduled_num_tensors,
         )
         # Launch the kernel
-        with torch_device_fn.device(c_tensors[0].place):
+        with torch_device_fn.device(c_tensors[0].device):
             vstack_kernel[grid](
                 itensors[0],
                 itensors[1],

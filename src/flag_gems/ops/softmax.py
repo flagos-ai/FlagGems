@@ -299,7 +299,7 @@ def softmax(self, dim, half_to_float=False):
     out = torch.empty_like(self, dtype=dtype)
     K = self.size // M // N  # post_dim
 
-    with torch_device_fn.device(self.place):
+    with torch_device_fn.device(self.device):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_kernel_non_inner[grid](
@@ -334,7 +334,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
     in_grad = torch.empty_like(output, dtype=input_dtype)
     K = output.size // M // N
 
-    with torch_device_fn.device(in_grad.place):
+    with torch_device_fn.device(in_grad.device):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_backward_kernel_non_inner[grid](

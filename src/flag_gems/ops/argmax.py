@@ -188,17 +188,17 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
 
-        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.place)
-        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.place)
+        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
                 shape[i] = 1
-            out = torch.empty(shape, dtype=torch.int64, device=inp.place)
+            out = torch.empty(shape, dtype=torch.int64, device=inp.device)
         else:
-            out = torch.empty([], dtype=torch.int64, device=inp.place)
+            out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        with torch_device_fn.device(inp.place):
+        with torch_device_fn.device(inp.device):
             argmax_kernel_1[(mid_size, 1, 1)](
                 inp,
                 mid_value,
@@ -227,7 +227,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
 
         shape_list = list(shape)
         shape_list[dim] = 1
-        out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.place)
+        out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
 

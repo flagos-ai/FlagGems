@@ -74,10 +74,10 @@ def dot(x, y):
         grid_1 = (mid_size, 1, 1)
         grid_2 = (1, 1, 1)
 
-        mid = torch.empty((mid_size,), dtype=torch.float32, device=x.place)
-        out = torch.empty([], dtype=x.dtype, device=x.place)
+        mid = torch.empty((mid_size,), dtype=torch.float32, device=x.device)
+        out = torch.empty([], dtype=x.dtype, device=x.device)
 
-        with torch_device_fn.device(x.place):
+        with torch_device_fn.device(x.device):
             dot_kernel_1[grid_1](x, y, mid, N, block_size)
             dot_kernel_2[grid_2](mid, out, mid_size, block_mid)
 
@@ -86,9 +86,9 @@ def dot(x, y):
 
         grid = (1, 1, 1)
 
-        out = torch.empty([], dtype=torch.float32, device=x.place)
+        out = torch.empty([], dtype=torch.float32, device=x.device)
 
-        with torch_device_fn.device(x.place):
+        with torch_device_fn.device(x.device):
             dot_kernel[grid](x, y, out, N, block_size)
             out = out.to(x.dtype)
 

@@ -106,7 +106,7 @@ def dropout(input, p, train=True):
         mask = torch.zeros_like(input, dtype=torch.bool)
         return out, mask
     assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
-    device = input.place
+    device = input.device
     # TODO: remove contiguous enforcement
     input = input.contiguous()
     out = torch.empty_like(input)

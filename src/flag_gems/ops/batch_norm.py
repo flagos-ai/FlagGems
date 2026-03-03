@@ -329,14 +329,14 @@ def batch_norm(
     batch_dim, feat_dim, spatial_dim = input_3d.shape
     output = torch.empty_like(input_3d)
 
-    mean = torch.empty(feat_dim, device=input.place, dtype=input.dtype)
-    inv_std = torch.empty(feat_dim, device=input.place, dtype=input.dtype)
+    mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+    inv_std = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
 
     running_mean = input if running_mean is None else running_mean
     running_var = input if running_var is None else running_var
 
     # Launches 1D grid where each program operates over one feature.
-    with torch_device_fn.device(input.place):
+    with torch_device_fn.device(input.device):
         batch_norm_forward_kernel[(feat_dim,)](
             input_3d,
             weight,
@@ -381,11 +381,11 @@ def  batch_norm_backward(
     else:
         input_grad = None
     if output_mask[1]:
-        weight_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.place)
+        weight_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
     else:
         weight_grad = None
     if output_mask[2]:
-        bias_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.place)
+        bias_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
     else:
         bias_grad = None
 

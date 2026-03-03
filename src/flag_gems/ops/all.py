@@ -92,10 +92,10 @@ def all(inp):
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.place)
-    out = torch.empty([], dtype=torch.bool, device=inp.place)
+    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
+    out = torch.empty([], dtype=torch.bool, device=inp.device)
 
-    with torch_device_fn.device(inp.place):
+    with torch_device_fn.device(inp.device):
         all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
         all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 

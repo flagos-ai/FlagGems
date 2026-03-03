@@ -82,7 +82,7 @@ def triu(A, diagonal=0):
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     M, N = A.shape[-2:]
-    with torch_device_fn.device(A.place):
+    with torch_device_fn.device(A.device):
         if len(A.shape) == 2:
             grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
             triu_kernel[grid](A, out, M, N, diagonal)

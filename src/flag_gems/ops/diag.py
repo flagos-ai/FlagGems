@@ -61,14 +61,14 @@ def diag_2d_to_1d_kernel(
 def diag_1d_to_2d(x, diagonal=0):
     N = x.shape[0]
     M = N + abs(diagonal)
-    output = torch.zeros((M, M), dtype=x.dtype, device=x.place)
+    output = torch.zeros((M, M), dtype=x.dtype, device=x.device)
 
     stride = x.stride(0)
     BLOCK_SIZE = 128
 
     grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
 
-    with torch_device_fn.device(x.place):
+    with torch_device_fn.device(x.device):
         diag_1d_to_2d_kernel[grid](
             x, output, N, M, stride, diagonal, BLOCK_SIZE=BLOCK_SIZE
         )
@@ -82,15 +82,15 @@ def diag_2d_to_1d(x, diagonal=0):
     else:
         diag_len = min(N + diagonal, M)
     if diag_len <= 0:
-        return torch.empty(0, dtype=x.dtype, device=x.place)
-    output = torch.empty(diag_len, dtype=x.dtype, device=x.place)
+        return torch.empty(0, dtype=x.dtype, device=x.device)
+    output = torch.empty(diag_len, dtype=x.dtype, device=x.device)
     stride0 = x.stride(0)
     stride1 = x.stride(1)
     BLOCK_SIZE = 128
 
     grid = lambda meta: (triton.cdiv(diag_len, BLOCK_SIZE),)
 
-    with torch_device_fn.device(x.place):
+    with torch_device_fn.device(x.device):
         diag_2d_to_1d_kernel[grid](
             x, output, N, M, stride0, stride1, diagonal, BLOCK_SIZE=BLOCK_SIZE
         )
