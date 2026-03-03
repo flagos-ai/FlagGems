@@ -844,10 +844,14 @@ SVD_SHAPES = [
     (1000, 8, 8),
     (50, 16, 16),
     (200, 16, 16),
-    # Larger matrices (cuSOLVER fallback)
+    # Larger matrices (Triton bidiagonal SVD kernel)
     (32, 32),
     (64, 32),
     (32, 64),
+    # Batched larger matrices (Triton bidiagonal SVD — high speedup)
+    (10, 32, 32),
+    (50, 32, 32),
+    (10, 64, 32),
 ]
 
 

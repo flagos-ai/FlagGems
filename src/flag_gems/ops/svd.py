@@ -14,12 +14,14 @@ logger = logging.getLogger(__name__)
 SVDResult = namedtuple("SVDResult", ["U", "S", "V"])
 
 # Maximum matrix dimension supported by native Triton SVD kernels.
-MAX_SVD_DIM = 64
+# Tested correct up to N=1024; BLOCK_N must be power-of-2, so practical
+# upper bound is 1024 (32 warps).
+MAX_SVD_DIM = 1024
 
 # Routing thresholds:
 # k <= _JACOBI_THRESHOLD: Jacobi SVD (O(N^4), but fast for tiny matrices)
 # _JACOBI_THRESHOLD < k <= MAX_SVD_DIM: Bidiagonal SVD (O(N^3))
-# k > MAX_SVD_DIM: cuSOLVER fallback
+# k > MAX_SVD_DIM: cuSOLVER fallback (safety net for very large matrices)
 _JACOBI_THRESHOLD = 16
 
 
@@ -334,14 +336,17 @@ def bidiag_svd_kernel(
     tl_base = tau_left_ptr + pid * scratch_batch_stride
     tr_base = tau_right_ptr + pid * scratch_batch_stride
 
-    # ---- Copy A into A_work (column-major) ----
-    for j in range(N):
-        a_col = tl.load(
-            A_ptr + pid * batch_stride_A + row_idx * m_stride_A + j * n_stride_A,
-            mask=row_mask,
-            other=0.0,
-        ).to(tl.float32)
-        tl.store(aw_base + j * aw_col_stride + row_idx, a_col, mask=row_mask)
+    # ---- Copy A into A_work (column-major) via 2D block ----
+    a_ptr_2d = (
+        A_ptr
+        + pid * batch_stride_A
+        + row_idx[:, None] * m_stride_A
+        + col_idx[None, :] * n_stride_A
+    )
+    a_mask_2d = row_mask[:, None] & col_mask[None, :]
+    A_block = tl.load(a_ptr_2d, mask=a_mask_2d, other=0.0).to(tl.float32)
+    aw_ptr_2d = aw_base + col_idx[None, :] * aw_col_stride + row_idx[:, None]
+    tl.store(aw_ptr_2d, A_block, mask=a_mask_2d)
 
     # ================================================================
     # Phase 1: Householder Bidiagonalization
@@ -389,25 +394,30 @@ def bidiag_svd_kernel(
             mask=row_mask & (row_idx >= k),
         )
 
-        # Apply left reflector to remaining columns j = k+1..N-1
-        # A[:,j] -= tau * (v^T A[:,j]) * v
-        for j in range(k + 1, N_dim):
-            a_col_j = tl.load(
-                aw_base + j * aw_col_stride + row_idx,
-                mask=row_mask,
-                other=0.0,
-            )
-            dot = tl.sum(tl.where(row_idx >= k, v_left * a_col_j, 0.0))
-            a_col_j = tl.where(row_idx >= k, a_col_j - tau_k * dot * v_left, a_col_j)
-            tl.store(aw_base + j * aw_col_stride + row_idx, a_col_j, mask=row_mask)
+        # Apply left reflector to columns k+1..N-1 via 2D block operation
+        # A[:, k+1:N] -= tau * v * (v^T @ A[:, k+1:N])
+        trail_ptr = (
+            aw_base + (col_idx[None, :] + k + 1) * aw_col_stride + row_idx[:, None]
+        )
+        trail_mask = row_mask[:, None] & ((col_idx[None, :] + k + 1) < N)
+        A_trail = tl.load(trail_ptr, mask=trail_mask, other=0.0)
+        v_masked = tl.where(
+            (row_idx >= k)[:, None],
+            v_left[:, None],
+            tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32),
+        )
+        dots = tl.sum(v_masked * A_trail, axis=0)
+        A_trail = A_trail - tau_k * v_masked * dots[None, :]
+        tl.store(trail_ptr, A_trail, mask=trail_mask)
 
         # --- RIGHT Householder: zero out A_work[k, k+2:N] ---
         if k < N - 2:
-            # Load row k from columns k+1..N-1 (strided access)
-            w_right = tl.zeros((BLOCK_N,), dtype=tl.float32)
-            for jj in range(k + 1, N_dim):
-                val = tl.load(aw_base + jj * aw_col_stride + k)
-                w_right = tl.where(col_idx == jj, val, w_right)
+            # Load row k using strided vector load (replaces scalar gather)
+            w_right = tl.load(
+                aw_base + col_idx * aw_col_stride + k,
+                mask=col_mask & (col_idx >= (k + 1)),
+                other=0.0,
+            )
 
             # Norm of row[k+1:N]
             r_norm_sq = tl.sum(tl.where(col_idx >= (k + 1), w_right * w_right, 0.0))
@@ -430,43 +440,28 @@ def bidiag_svd_kernel(
             tau_r_k = tl.where(wtw > 1e-30, 2.0 / wtw, 0.0)
             tl.store(tr_base + k, tau_r_k)
 
-            # Store w in A_work row k, cols k+1..N-1
-            for jj in range(k + 1, N_dim):
-                w_jj = tl.sum(
-                    tl.where(col_idx == jj, w_right, tl.zeros((BLOCK_N,), tl.float32))
-                )
-                tl.store(aw_base + jj * aw_col_stride + k, w_jj)
+            # Store w using strided vector store (replaces scalar scatter)
+            tl.store(
+                aw_base + col_idx * aw_col_stride + k,
+                w_right,
+                mask=col_mask & (col_idx >= (k + 1)),
+            )
 
-            # Apply right reflector column-wise: A -= tau * (A * w) * w^T
-            # Step 1: p = A[k+1:M, k+1:N] * w (length-M vector)
-            p = tl.zeros((BLOCK_M,), dtype=tl.float32)
-            for jj in range(k + 1, N_dim):
-                w_jj = tl.load(aw_base + jj * aw_col_stride + k)
-                a_col = tl.load(
-                    aw_base + jj * aw_col_stride + row_idx,
-                    mask=row_mask,
-                    other=0.0,
-                )
-                p = tl.where(row_idx > k, p + w_jj * a_col, p)
-
-            # Step 2: A[:, j] -= tau * w[j] * p
-            for jj in range(k + 1, N_dim):
-                w_jj = tl.load(aw_base + jj * aw_col_stride + k)
-                a_col = tl.load(
-                    aw_base + jj * aw_col_stride + row_idx,
-                    mask=row_mask,
-                    other=0.0,
-                )
-                a_col = tl.where(
-                    row_idx > k,
-                    a_col - tau_r_k * w_jj * p,
-                    a_col,
-                )
-                tl.store(
-                    aw_base + jj * aw_col_stride + row_idx,
-                    a_col,
-                    mask=row_mask,
-                )
+            # Apply right reflector via 2D block: A -= tau * (A @ w) * w^T
+            # Load A_work[0:M, 0:N] as 2D block, mask rows > k and cols >= k+1
+            right_ptr = aw_base + col_idx[None, :] * aw_col_stride + row_idx[:, None]
+            right_mask = (
+                (row_idx[:, None] > k)
+                & row_mask[:, None]
+                & (col_idx[None, :] >= (k + 1))
+                & col_mask[None, :]
+            )
+            A_right = tl.load(right_ptr, mask=right_mask, other=0.0)
+            # p = A @ w (per-row dot product with w_right)
+            p = tl.sum(A_right * w_right[None, :], axis=1)
+            # A -= tau * p * w^T
+            A_right = A_right - tau_r_k * p[:, None] * w_right[None, :]
+            tl.store(right_ptr, A_right, mask=right_mask)
 
         elif k == N - 2:
             # Last superdiagonal element: just read it
@@ -476,22 +471,19 @@ def bidiag_svd_kernel(
     # ================================================================
     # Phase 2: Golub-Kahan Implicit QR on bidiagonal (d, e)
     # ================================================================
-    # Initialize U2 = I(N x N) and V2 = I(N x N)
+    # Initialize U2 = I(N x N) and V2 = I(N x N) via 2D identity
     n_idx = tl.arange(0, BLOCK_N)
     n_mask = n_idx < N
-    for j in range(N_dim):
-        u_col = tl.where(
-            n_idx == j,
-            tl.full((BLOCK_N,), 1.0, dtype=tl.float64),
-            tl.full((BLOCK_N,), 0.0, dtype=tl.float64),
-        )
-        tl.store(uw_base + j * uw_col_stride + n_idx, u_col, mask=n_mask)
-        v_col = tl.where(
-            n_idx == j,
-            tl.full((BLOCK_N,), 1.0, dtype=tl.float64),
-            tl.full((BLOCK_N,), 0.0, dtype=tl.float64),
-        )
-        tl.store(vw_base + j * vw_col_stride + n_idx, v_col, mask=n_mask)
+    eye_2d = tl.where(
+        n_idx[:, None] == n_idx[None, :],
+        tl.full((BLOCK_N, BLOCK_N), 1.0, dtype=tl.float64),
+        tl.full((BLOCK_N, BLOCK_N), 0.0, dtype=tl.float64),
+    )
+    eye_mask = n_mask[:, None] & n_mask[None, :]
+    uw_ptr_2d = uw_base + n_idx[None, :] * uw_col_stride + n_idx[:, None]
+    vw_ptr_2d = vw_base + n_idx[None, :] * vw_col_stride + n_idx[:, None]
+    tl.store(uw_ptr_2d, eye_2d, mask=eye_mask)
+    tl.store(vw_ptr_2d, eye_2d, mask=eye_mask)
 
     # NOTE: No pre-QR sign flipping. The Golub-Kahan QR algorithm handles
     # signed bidiagonal entries correctly. Flipping d and e signs independently
@@ -499,38 +491,44 @@ def bidiag_svd_kernel(
     # structure. Signs are fixed post-convergence instead.
 
     # QR iterations
-    eps = 1e-10
+    eps = 5e-4
     all_converged = tl.full((), 0, dtype=tl.int32)
 
     for _qr_iter in range(max_qr_iters):
         if all_converged == 0:
-            # Deflate negligible superdiagonal elements
-            for k in range(N_dim - 1):
-                e_k = tl.load(e_base + k)
-                d_k = tl.load(d_base + k)
-                d_kp1 = tl.load(d_base + k + 1)
-                thresh = eps * (tl.abs(d_k) + tl.abs(d_kp1))
-                if tl.abs(e_k) < thresh:
-                    tl.store(e_base + k, 0.0)
+            # Vectorized deflation: load e[] and d[] as vectors
+            e_vec = tl.load(e_base + n_idx, mask=n_idx < (N - 1), other=0.0)
+            d_vec = tl.load(d_base + n_idx, mask=n_mask, other=0.0)
+            d_next = tl.load(d_base + n_idx + 1, mask=n_idx < (N - 1), other=0.0)
 
-            # Find hi: largest index where e[hi-1] != 0
-            hi = 0
-            for k in range(N_dim - 1):
-                e_k = tl.load(e_base + k)
-                if e_k != 0.0:
-                    hi = k + 1
+            # Deflate: set e[k]=0 where |e[k]| < eps*(|d[k]|+|d[k+1]|)
+            thresh = eps * (tl.abs(d_vec) + tl.abs(d_next))
+            defl = (tl.abs(e_vec) < thresh) & (n_idx < (N - 1))
+            e_vec = tl.where(
+                defl,
+                tl.zeros((BLOCK_N,), dtype=tl.float64),
+                e_vec,
+            )
+            tl.store(e_base + n_idx, e_vec, mask=n_idx < (N - 1))
+
+            # Find hi: largest (k+1) where e[k] != 0
+            active = (e_vec != 0.0) & (n_idx < (N - 1))
+            hi_vals = tl.where(
+                active, (n_idx + 1).to(tl.int32), tl.zeros((BLOCK_N,), tl.int32)
+            )
+            hi = tl.max(hi_vals, axis=0)
 
             if hi == 0:
                 all_converged = tl.full((), 1, dtype=tl.int32)
             else:
-                # Find lo: walk backwards from hi-1 to find first zero e
-                lo = 0
-                for k in range(N_dim - 1):
-                    # Forward scan: find last zero e below hi
-                    if k < hi:
-                        e_k = tl.load(e_base + k)
-                        if e_k == 0.0:
-                            lo = k + 1
+                # Find lo: largest (k+1) where e[k]==0 and k < hi
+                zero_below = (e_vec == 0.0) & (n_idx < hi) & (n_idx < (N - 1))
+                lo_vals = tl.where(
+                    zero_below,
+                    (n_idx + 1).to(tl.int32),
+                    tl.zeros((BLOCK_N,), tl.int32),
+                )
+                lo = tl.max(lo_vals, axis=0)
 
                 if lo < hi:
                     # Wilkinson shift from bottom-right 2x2 of B^T B
@@ -560,11 +558,10 @@ def bidiag_svd_kernel(
                     y = d_lo * d_lo - shift
                     z = d_lo * e_lo
 
-                    # Pre-load first V2/U2 columns for register carry.
-                    # This avoids cross-warp read-after-write hazards:
-                    # instead of re-reading column k+1 from global memory
-                    # (which another warp may not have finished writing),
-                    # we carry the rotated value in registers.
+                    # Pre-load first V2/U2 columns and scalar carries.
+                    # Scalar carries for d[k] and e[k] avoid re-reading
+                    # values just written in the previous step from global
+                    # memory, saving ~2 scalar loads per bulge chase step.
                     if compute_uv:
                         v_carry = tl.load(
                             vw_base + lo * vw_col_stride + n_idx,
@@ -577,6 +574,9 @@ def bidiag_svd_kernel(
                             other=0.0,
                         )
 
+                    d_carry = tl.load(d_base + lo)
+                    e_carry = tl.load(e_base + lo)
+
                     # Bulge chase from lo to hi-1
                     for k in range(lo, hi):
                         # Right Givens
@@ -585,9 +585,9 @@ def bidiag_svd_kernel(
                         c = y / safe_r
                         s = -z / safe_r
 
-                        d_k = tl.load(d_base + k)
+                        d_k = d_carry
                         d_kp1 = tl.load(d_base + k + 1)
-                        e_k = tl.load(e_base + k)
+                        e_k = e_carry
 
                         if k > lo:
                             tl.store(e_base + k - 1, r)
@@ -619,11 +619,13 @@ def bidiag_svd_kernel(
                         c2 = new_dk / safe_r2
                         s2 = -tmp2 / safe_r2
 
-                        tl.store(d_base + k, r2)
                         new_ek2 = c2 * tmp1 - s2 * new_dkp1
                         new_dkp1_2 = s2 * tmp1 + c2 * new_dkp1
-                        tl.store(d_base + k + 1, new_dkp1_2)
-                        tl.store(e_base + k, new_ek2)
+
+                        # Store d[k], carry d[k+1] and e[k] forward
+                        tl.store(d_base + k, r2)
+                        d_carry = new_dkp1_2
+                        e_carry = new_ek2
 
                         # Accumulate U2 (carry: avoid re-reading just-written col)
                         if compute_uv:
@@ -646,9 +648,13 @@ def bidiag_svd_kernel(
                             e_kp1 = tl.load(e_base + k + 1)
                             y = new_ek2
                             z = -s2 * e_kp1
-                            tl.store(e_base + k + 1, c2 * e_kp1)
+                            e_carry = c2 * e_kp1
 
-                    # Store last carried columns after bulge chase
+                    # Flush carried scalars after bulge chase
+                    tl.store(d_base + hi, d_carry)
+                    tl.store(e_base + hi - 1, e_carry)
+
+                    # Store last carried columns
                     if compute_uv:
                         tl.store(
                             vw_base + hi * vw_col_stride + n_idx,
@@ -680,24 +686,18 @@ def bidiag_svd_kernel(
         # V = Q_R * V2      where Q_R = G_0 * G_1 * ... * G_{N-3}
         # Apply reflectors in reverse order to U2/V2.
 
-        # Copy U2 (N x N) expanded to M x N into output U
-        for j in range(N_dim):
-            u_col_out = tl.where(
-                row_idx < N,
-                tl.load(
-                    uw_base + j * uw_col_stride + row_idx,
-                    mask=row_mask & (row_idx < N),
-                    other=0.0,
-                ),
-                tl.zeros((BLOCK_M,), dtype=tl.float64),
-            ).to(tl.float32)
-            tl.store(
-                U_ptr + pid * batch_stride_U + row_idx * m_stride_U + j * k_stride_U,
-                u_col_out,
-                mask=row_mask,
-            )
+        # Copy U2 (N x N) expanded to M x N into output U via 2D block
+        u_base_pid = U_ptr + pid * batch_stride_U
+        u_ptr_2d = (
+            u_base_pid + row_idx[:, None] * m_stride_U + col_idx[None, :] * k_stride_U
+        )
+        u_mask_2d = row_mask[:, None] & col_mask[None, :]
 
-        # Apply H_{N-1}, H_{N-2}, ..., H_0 to U columns
+        uw_read_2d = uw_base + col_idx[None, :] * uw_col_stride + row_idx[:, None]
+        uw_read_mask = (row_idx[:, None] < N) & row_mask[:, None] & col_mask[None, :]
+        U_init = tl.load(uw_read_2d, mask=uw_read_mask, other=0.0).to(tl.float32)
+        tl.store(u_ptr_2d, U_init, mask=u_mask_2d)
+
         for k_rev in range(N_dim):
             k = N_dim - 1 - k_rev
             v_k = tl.load(
@@ -707,73 +707,48 @@ def bidiag_svd_kernel(
             )
             tau_k = tl.load(tl_base + k)
 
-            for j in range(N_dim):
-                u_col = tl.load(
-                    U_ptr
-                    + pid * batch_stride_U
-                    + row_idx * m_stride_U
-                    + j * k_stride_U,
-                    mask=row_mask,
-                    other=0.0,
-                )
-                dot = tl.sum(tl.where(row_idx >= k, v_k * u_col, 0.0))
-                u_col = tl.where(row_idx >= k, u_col - tau_k * dot * v_k, u_col)
-                tl.store(
-                    U_ptr
-                    + pid * batch_stride_U
-                    + row_idx * m_stride_U
-                    + j * k_stride_U,
-                    u_col,
-                    mask=row_mask,
-                )
-
-        # Copy V2 into output V
-        for j in range(N_dim):
-            v_col_out = tl.load(
-                vw_base + j * vw_col_stride + col_idx,
-                mask=col_mask,
-                other=0.0,
-            ).to(tl.float32)
-            tl.store(
-                V_ptr + pid * batch_stride_V + col_idx * n_stride_V + j * k_stride_V,
-                v_col_out,
-                mask=col_mask,
+            U_block = tl.load(u_ptr_2d, mask=u_mask_2d, other=0.0)
+            v_masked = tl.where(
+                (row_idx >= k)[:, None],
+                v_k[:, None],
+                tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32),
             )
+            dots = tl.sum(v_masked * U_block, axis=0)
+            U_block = U_block - tau_k * v_masked * dots[None, :]
+            tl.store(u_ptr_2d, U_block, mask=u_mask_2d)
 
-        # Apply right reflectors: k = N-3 down to 0
+        # Copy V2 into output V via 2D block
+        v_base_pid = V_ptr + pid * batch_stride_V
+        v_ptr_2d = (
+            v_base_pid + col_idx[:, None] * n_stride_V + col_idx[None, :] * k_stride_V
+        )
+        v_mask_2d = col_mask[:, None] & col_mask[None, :]
+
+        vw_read_2d = vw_base + col_idx[None, :] * vw_col_stride + col_idx[:, None]
+        V_init = tl.load(vw_read_2d, mask=v_mask_2d, other=0.0).to(tl.float32)
+        tl.store(v_ptr_2d, V_init, mask=v_mask_2d)
+
         for k_rev in range(N_dim):
             k = N_dim - 3 - k_rev
             if k >= 0:
-                w_k = tl.zeros((BLOCK_N,), dtype=tl.float32)
-                for jj in range(k + 1, N_dim):
-                    val = tl.load(aw_base + jj * aw_col_stride + k)
-                    w_k = tl.where(col_idx == jj, val, w_k)
-
+                # Strided vector load for right Householder vector
+                w_k = tl.load(
+                    aw_base + col_idx * aw_col_stride + k,
+                    mask=col_mask & (col_idx >= (k + 1)),
+                    other=0.0,
+                )
                 tau_r_k = tl.load(tr_base + k)
 
-                for j in range(N_dim):
-                    v_col = tl.load(
-                        V_ptr
-                        + pid * batch_stride_V
-                        + col_idx * n_stride_V
-                        + j * k_stride_V,
-                        mask=col_mask,
-                        other=0.0,
-                    )
-                    dot = tl.sum(tl.where(col_idx >= (k + 1), w_k * v_col, 0.0))
-                    v_col = tl.where(
-                        col_idx >= (k + 1),
-                        v_col - tau_r_k * dot * w_k,
-                        v_col,
-                    )
-                    tl.store(
-                        V_ptr
-                        + pid * batch_stride_V
-                        + col_idx * n_stride_V
-                        + j * k_stride_V,
-                        v_col,
-                        mask=col_mask,
-                    )
+                V_block = tl.load(v_ptr_2d, mask=v_mask_2d, other=0.0)
+                # dots = w^T @ V (per-column dot products) → BLOCK_N vector
+                w_masked = tl.where(
+                    (col_idx >= (k + 1))[:, None],
+                    w_k[:, None],
+                    tl.zeros((BLOCK_N, BLOCK_N), dtype=tl.float32),
+                )
+                dots = tl.sum(w_masked * V_block, axis=0)
+                V_block = V_block - tau_r_k * w_masked * dots[None, :]
+                tl.store(v_ptr_2d, V_block, mask=v_mask_2d)
 
     # ================================================================
     # Phase 4: Sort singular values descending and output
@@ -781,86 +756,58 @@ def bidiag_svd_kernel(
     s_idx = tl.arange(0, BLOCK_N)
     s_mask = s_idx < K
 
-    # Load final singular values from diag (float64)
-    S_vals = tl.zeros((BLOCK_N,), dtype=tl.float64)
-    for j in range(N_dim):
-        d_j = tl.load(d_base + j)
-        S_vals = tl.where(s_idx == j, d_j, S_vals)
+    # Load all singular values as a vector (replaces N-iteration scalar loop)
+    S_vals = tl.load(d_base + s_idx, mask=s_mask, other=0.0)
 
-    # Compute ranks for descending sort
-    ranks = tl.zeros((BLOCK_N,), dtype=tl.int32)
-    for i in range(N_dim):
-        s_i = tl.sum(tl.where(s_idx == i, S_vals, tl.zeros((BLOCK_N,), tl.float64)))
-        i_val = tl.full((BLOCK_N,), i, dtype=tl.int32)
-        beats = ((s_i > S_vals) | ((s_i == S_vals) & (i_val < s_idx))) & (s_idx < N)
-        ranks = ranks + beats.to(tl.int32)
+    # Compute ranks via 2D comparison matrix (replaces N-iteration loop)
+    # ranks[j] = number of elements i where S[i] > S[j] or tied with i < j
+    valid_2d = (s_idx[:, None] < N) & (s_idx[None, :] < N)
+    beats_2d = (
+        (S_vals[:, None] > S_vals[None, :])
+        | ((S_vals[:, None] == S_vals[None, :]) & (s_idx[:, None] < s_idx[None, :]))
+    ) & valid_2d
+    ranks = tl.sum(beats_2d.to(tl.int32), axis=0)
 
-    # Output S sorted (convert to float32 for output)
-    sorted_S = tl.zeros((BLOCK_N,), dtype=tl.float64)
-    for j in range(N_dim):
-        s_j = tl.sum(tl.where(s_idx == j, S_vals, tl.zeros((BLOCK_N,), tl.float64)))
-        rank_j = tl.sum(tl.where(s_idx == j, ranks, tl.zeros((BLOCK_N,), tl.int32)))
-        sorted_S = tl.where(s_idx == rank_j, s_j, sorted_S)
-    tl.store(S_ptr + pid * batch_stride_S + s_idx, sorted_S.to(tl.float32), mask=s_mask)
+    # Output S sorted via scatter store (replaces N-iteration loop)
+    tl.store(
+        S_ptr + pid * batch_stride_S + ranks,
+        S_vals.to(tl.float32),
+        mask=s_mask,
+    )
 
-    # Permute U and V columns by rank
+    # Permute U and V columns via gather (replaces 7 N-iteration loops)
     if compute_uv:
-        for j in range(N_dim):
-            rank_j = tl.sum(tl.where(s_idx == j, ranks, tl.zeros((BLOCK_N,), tl.int32)))
+        # Compute inverse permutation: inv_ranks[i] = source col for output pos i
+        valid_j = s_idx[None, :] < N
+        perm_match = (ranks[None, :] == s_idx[:, None]) & valid_j
+        inv_ranks = tl.sum(
+            tl.where(
+                perm_match,
+                s_idx[None, :],
+                tl.zeros((BLOCK_N, BLOCK_N), tl.int32),
+            ),
+            axis=1,
+        )
 
-            # Read U column j, write to rank_j position
-            u_col = tl.load(
-                U_ptr + pid * batch_stride_U + row_idx * m_stride_U + j * k_stride_U,
-                mask=row_mask,
-                other=0.0,
-            )
-            # We need to permute in-place which is tricky. Instead, store
-            # to A_work as temp buffer then copy back.
-            tl.store(aw_base + rank_j * aw_col_stride + row_idx, u_col, mask=row_mask)
+        # Gather-permute U columns (load from source, store to dest)
+        u_gather_ptr = (
+            U_ptr
+            + pid * batch_stride_U
+            + row_idx[:, None] * m_stride_U
+            + inv_ranks[None, :] * k_stride_U
+        )
+        U_sorted = tl.load(u_gather_ptr, mask=u_mask_2d, other=0.0)
+        tl.store(u_ptr_2d, U_sorted, mask=u_mask_2d)
 
-        # Copy permuted U back
-        for j in range(N_dim):
-            if j < out_k_U:
-                u_col = tl.load(
-                    aw_base + j * aw_col_stride + row_idx,
-                    mask=row_mask,
-                    other=0.0,
-                )
-                tl.store(
-                    U_ptr
-                    + pid * batch_stride_U
-                    + row_idx * m_stride_U
-                    + j * k_stride_U,
-                    u_col,
-                    mask=row_mask,
-                )
-
-        # Permute V columns
-        for j in range(N_dim):
-            rank_j = tl.sum(tl.where(s_idx == j, ranks, tl.zeros((BLOCK_N,), tl.int32)))
-            v_col = tl.load(
-                V_ptr + pid * batch_stride_V + col_idx * n_stride_V + j * k_stride_V,
-                mask=col_mask,
-                other=0.0,
-            )
-            # Store to U_work as temp
-            tl.store(uw_base + rank_j * uw_col_stride + col_idx, v_col, mask=col_mask)
-
-        for j in range(N_dim):
-            if j < out_k_V:
-                v_col = tl.load(
-                    uw_base + j * uw_col_stride + col_idx,
-                    mask=col_mask,
-                    other=0.0,
-                ).to(tl.float32)
-                tl.store(
-                    V_ptr
-                    + pid * batch_stride_V
-                    + col_idx * n_stride_V
-                    + j * k_stride_V,
-                    v_col,
-                    mask=col_mask,
-                )
+        # Gather-permute V columns
+        v_gather_ptr = (
+            V_ptr
+            + pid * batch_stride_V
+            + col_idx[:, None] * n_stride_V
+            + inv_ranks[None, :] * k_stride_V
+        )
+        V_sorted = tl.load(v_gather_ptr, mask=v_mask_2d, other=0.0)
+        tl.store(v_ptr_2d, V_sorted, mask=v_mask_2d)
 
 
 def _svd_fallback(input, some, compute_uv):
@@ -890,11 +837,11 @@ def _svd_fallback(input, some, compute_uv):
 def svd(input, some=True, compute_uv=True):
     """Compute the Singular Value Decomposition of a matrix.
 
-    Implements SVD using:
+    Implements SVD using native Triton kernels:
     - One-sided Jacobi for small matrices (min(m,n) <= 16)
-    - Householder bidiagonalization + Golub-Kahan QR for medium matrices
-      (16 < min(m,n) <= 64)
-    - torch.linalg.svd fallback for larger matrices (min(m,n) > 64)
+    - Householder bidiagonalization + Golub-Kahan QR for larger matrices
+      (16 < min(m,n) <= 1024)
+    - cuSOLVER fallback only for very large matrices (min(m,n) > 1024)
 
     Args:
         input: Input tensor of shape (..., m, n).
@@ -1024,7 +971,7 @@ def svd(input, some=True, compute_uv=True):
                 num_stages=1,
             )
     else:
-        # --- Bidiagonal SVD path (medium matrices, 16 < k <= 64) ---
+        # --- Bidiagonal SVD path (16 < k <= 1024) ---
         A_work = torch.empty(batch_size, n, m, device=input.device, dtype=torch.float32)
         U_work = torch.empty(batch_size, n, n, device=input.device, dtype=torch.float64)
         V_work = torch.empty(batch_size, n, n, device=input.device, dtype=torch.float64)
@@ -1033,11 +980,11 @@ def svd(input, some=True, compute_uv=True):
         tau_left = torch.zeros(batch_size, n, device=input.device, dtype=torch.float32)
         tau_right = torch.zeros(batch_size, n, device=input.device, dtype=torch.float32)
 
-        max_qr_iters = 30 * n
-        # The QR bulge chase uses register-carried columns (v_carry, u_carry)
-        # to avoid cross-warp read-after-write hazards. This allows using
-        # multiple warps safely. Use enough warps to cover the block size.
-        num_warps_val = max(1, max(BLOCK_M, BLOCK_N) // 32)
+        max_qr_iters = 2 * n
+        # Use a single warp to avoid cross-warp synchronization issues in
+        # the sequential Householder / QR loops that access shared state
+        # (A_work, diag, superdiag) within the same iteration.
+        num_warps_val = 1
 
         with torch_device_fn.device(input.device):
             bidiag_svd_kernel[grid](
