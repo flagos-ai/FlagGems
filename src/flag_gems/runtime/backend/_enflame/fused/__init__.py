@@ -10,6 +10,7 @@ if arch_version == 300:
     from .gcu300.flash_mla import flash_mla
     from .gcu300.skip_layernorm import skip_layer_norm
     from .gcu300.fused_add_rms_norm import fused_add_rms_norm
+    from .gcu300.concat_and_cache_mla import concat_and_cache_mla
     __all__ = [
         "apply_rotary_pos_emb",
         "silu_and_mul",
@@ -18,6 +19,7 @@ if arch_version == 300:
         "flash_mla",
         "skip_layer_norm",
         "fused_add_rms_norm",
+        "concat_and_cache_mla",
     ]
 elif arch_version == 400 or arch_version == 410:
     from .gcu400.gelu_and_mul import gelu_and_mul
