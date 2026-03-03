@@ -93,6 +93,9 @@ def test_concat_and_cache_mla(
     device: str,
     kv_cache_dtype: str,
 ) -> None:
+    if flag_gems.vendor_name in ["enflame", ] and kv_cache_dtype == "fp8":
+        pytest.skip("Skipping fp8 tests on enflame platform.")
+    
     random.seed(seed)
     torch.manual_seed(seed)
 
