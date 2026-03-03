@@ -835,6 +835,9 @@ class WrapperGenerator:
                 code.writeline(f"in{i}_strides = in{i}.stride()")
                 code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
                 code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
+                code.writeline(f"FlagOfNotUseDMA |= in{i}.dtype == torch.int64")
+                code.writeline(f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))")
+
                 if not with_block_pointer:
                     continue
                 if ndim >= 2:
@@ -845,6 +848,8 @@ class WrapperGenerator:
                 code.writeline(f"out{i}_strides = out{i}.stride()")
                 code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
                 code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
+                code.writeline(f"FlagOfNotUseDMA |= in{i}.dtype == torch.int64")
+                code.writeline(f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))")
                 if not with_block_pointer:
                     continue
                 if ndim >= 2:
@@ -899,10 +904,14 @@ class WrapperGenerator:
                 code.writeline(f"in{i}_strides = in{i}.stride()")
                 code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
                 code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
+                code.writeline(f"FlagOfNotUseDMA |= in{i}.dtype == torch.int64")
+                code.writeline(f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))")
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
                 code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
                 code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
+                code.writeline(f"FlagOfNotUseDMA |= out{i}.dtype == torch.int64")
+                code.writeline(f"FlagOfNotUseDMA |= len(out{i}_strides) >= 5 or (len(out{i}_strides) == 4 and all(s != 1 for s in out{i}_strides))")
             if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("tile_sizes = tuple([64])")
             else:
