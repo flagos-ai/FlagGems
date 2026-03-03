@@ -490,8 +490,10 @@ def bidiag_svd_kernel(
     # is incorrect because row/column sign flips interact through the bidiagonal
     # structure. Signs are fixed post-convergence instead.
 
-    # QR iterations
-    eps = 5e-4
+    # QR iterations — use machine-epsilon-scale convergence for float64 QR
+    # The bidiagonal QR runs in float64, so eps ≈ 1e-7 gives near-optimal
+    # singular vectors while minimizing iteration count.
+    eps = 1e-7
     all_converged = tl.full((), 0, dtype=tl.int32)
 
     for _qr_iter in range(max_qr_iters):
@@ -980,7 +982,7 @@ def svd(input, some=True, compute_uv=True):
         tau_left = torch.zeros(batch_size, n, device=input.device, dtype=torch.float32)
         tau_right = torch.zeros(batch_size, n, device=input.device, dtype=torch.float32)
 
-        max_qr_iters = 2 * n
+        max_qr_iters = 3 * n
         # Use a single warp to avoid cross-warp synchronization issues in
         # the sequential Householder / QR loops that access shared state
         # (A_work, diag, superdiag) within the same iteration.
