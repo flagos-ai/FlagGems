@@ -24,17 +24,20 @@ TEST_CASES=()
 TEST_CASES_CPU=()
 UNARY_POINTWISE=0
 for item in $CHANGED_FILES; do
-  if [[ $item == tests/* ]]; then
-    TEST_CASES+=($item)
-  fi
-  if [[ $item == "tests/test_unary_pointwise_ops.py" ]]; then
+  case $item in
+    tests/*) TEST_CASES+=($item)
+  esac
+  if [[ "$item" == "tests/test_unary_pointwise_ops.py" ]]; then
     UNARY_POINTWISE=1
   fi
-  for item_cpu in $QUICK_CPU_TESTS; do
+
+  for item_cpu in "${QUICK_CPU_TESTS[@]}"; do
     if [[ "$item" == "$item_cpu" ]]; then
       TEST_CASES_CPU+=($item)
+      break
     fi
   done
+
 done
 
 # Skip tests if no tests file is found
@@ -47,8 +50,8 @@ echo "Running unit tests for ${TEST_CASES[@]}"
 coverage run --data-file=${ID_SHA}-op -m pytest -s -x ${TEST_CASES[@]}
 
 # Run quick-cpu test if necessary
-echo "Running quick-cpu mode unit tests for ${TEST_CASES[@]}"
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
+  echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
   coverage run --data-file=${ID_SHA}-op -m pytest -s -x ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
 fi
 
