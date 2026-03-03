@@ -17,7 +17,7 @@ jobs:
     outputs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
       pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
-      labels: ${{ steps.get-labels.outputs.result }}
+      labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
     steps:
       - id: changed-files
         uses: tj-actions/changed-files@v47
@@ -68,74 +68,22 @@ jobs:
     if: contains(needs.preprocess.outputs.labels, 'ops/cpp')
     uses: ./.github/workflows/cpp-op-test.yaml
 
-  blas-op:
+  python-op:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'tests')
     concurrency:
-      group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
+      group: python-op-${{ needs.preprocess.outputs.pr_id }}
       cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-op-blas.sh
-
-  quick-cpu-op:
-    needs: preprocess
-    # NOTE: This contains a temporary hack to skip this job for PRs from FODC contest.
-    if: |
-      contains(needs.preprocess.outputs.labels, 'tests') &&
-      ! contains(github.event.pull_request.labels.*.name, 'competition')
-    concurrency:
-      group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-op-quick-cpu.sh
-
-  pointwise-op:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
-    concurrency:
-      group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-op-pointwise.sh
-
-  reduction-op:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
-    concurrency:
-      group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-op-reduction.sh
-
-  special-op:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
-    concurrency:
-      group: special-op-test-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-op-special.sh
-
-  utils:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
-    concurrency:
-      group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-op-utils.sh
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@v6
+      - shell: bash
+        run: tools/gpu_check.sh
+      - shell: bash
+        env:
+          CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+        run: |
+          bash tools/test-op.sh ${{ needs.preprocess.outputs.pr_id }}
 
   examples:
     needs: preprocess
@@ -143,10 +91,16 @@ jobs:
     concurrency:
       group: examples-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/op-test.yaml
-    with:
-      pr_id: ${{ needs.preprocess.outputs.pr_id }}
-      script_path: test-examples.sh
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@v6
+      - shell: bash
+        run: tools/gpu_check.sh
+      - shell: bash
+        env:
+          CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+        run: |
+          bash tools/test-examples.sh ${{ needs.preprocess.outputs.pr_id }}
 
   backend-nvidia:
     needs: preprocess
