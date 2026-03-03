@@ -768,9 +768,11 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     if pad_mode == "constant":
         num_pad = rank * 2
     else:
-        # Non-constant modes only pad last 1~3 dims; ensure pad < dim size.
-        num_pad = min(rank, 3) * 2
-    pad_params = list(torch.randint(0, 10, (num_pad,), dtype=torch.int32, device="cpu"))
+        # Non-constant modes only pad last (rank-1) dims, up to 3 dims max.
+        # For 2D: pad last 1 dim (2 values); 3D: pad last 2 dims (4 values);
+        # 4D+: pad last 3 dims (6 values).
+        num_pad = min(rank - 1, 3) * 2
+    pad_params = torch.randint(0, 10, (num_pad,), dtype=torch.int32, device="cpu")
     pad_value = float(torch.randint(0, 1024, (1,), dtype=torch.int32, device="cpu"))
 
     if pad_mode != "constant":
@@ -782,11 +784,12 @@ def test_pad(shape, dtype, pad_mode, contiguous):
             pad_params[2 * i + 1] = int(pad_params[2 * i + 1]) % max(max_pad, 1)
         pad_value = None
 
-    ref_pad_params = [to_reference(pad_param) for pad_param in pad_params]
+    # Convert pad_params to list of Python ints for torch.nn.functional.pad
+    pad_params_list = [int(pad_params[i]) for i in range(pad_params.shape[0])]
 
-    ref_out = torch.nn.functional.pad(ref_x, ref_pad_params, pad_mode, pad_value)
+    ref_out = torch.nn.functional.pad(ref_x, pad_params_list, pad_mode, pad_value)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.pad(x, pad_params, pad_mode, pad_value)
+        res_out = torch.nn.functional.pad(x, pad_params_list, pad_mode, pad_value)
 
     if ref_out.dtype != res_out.dtype:
         ref_out = ref_out.to(res_out.dtype)
