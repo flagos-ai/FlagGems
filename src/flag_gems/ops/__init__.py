@@ -544,3 +544,4 @@ __all__ = [
     "zero_",
     "zeros_like",
 ]
+from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_  # noqa: F401
