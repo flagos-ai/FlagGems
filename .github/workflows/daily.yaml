@@ -1,5 +1,15 @@
+# Daily testing workflow
+#
+# This script is designed to be triggered on the provided cron time,
+# and it can be manually triggered. The purposes of this script include:
+#
+# - running all unit tests against all operators for correctness verification;
+# - running all performance tests (benchmarks) against all operators to
+#   validate if there are performance regress;
+# - running all SVT tests where selected models are launched for E2E tests.
+#
 # TODO(Qiming): Enable daily tests for benchmark and all backends
-
+#
 name: daily
 
 on:
@@ -11,8 +21,12 @@ on:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    run: |
-      echo "CURRENT_DATE=$(date +'%Y-%m-%d-%H%M%S')" >> $GITHUB_ENV
+    outputs:
+      - datetime: ${{ steps.get-date.outputs.CURRENT_DATE }}
+    steps:
+      - id: get-date
+        run: |
+          echo "CURRENT_DATE=$(date +'%Y-%m-%d-%H%M%S')" >> $GITHUB_ENV
 
   cpp-op:
     runs-on: cpp
@@ -21,7 +35,7 @@ jobs:
   python-op:
     needs: prepare
     concurrency:
-      group: python-op-${{ needs.prepare.outputs.CURRENT_DATE }}
+      group: python-op-${{ needs.prepare.outputs.datetime }}
       cancel-in-progress: true
     runs-on: jiuding
     steps:
@@ -33,12 +47,12 @@ jobs:
           CHANGED_FILES: '__ALL__'
         run: |
           # Use CURRENT_DATE as a fake PR ID
-          bash tools/test-op.sh ${{ needs.prepare.outputs.CURRENT_DATE }}
+          bash tools/test-op.sh ${{ needs.prepare.outputs.datetime }}
 
   examples:
     needs: prepare
     concurrency:
-      group: examples-test-${{ needs.prepare.outputs.CURRENT_DATE }}
+      group: examples-test-${{ needs.prepare.outputs.datetime }}
       cancel-in-progress: true
     runs-on: jiuding
     steps:
@@ -49,7 +63,7 @@ jobs:
         env:
           CHANGED_FILES: '__ALL__'
         run: |
-          bash tools/test-examples.sh ${{ needs.prepare.outputs.CURRENT_DATE }}
+          bash tools/test-examples.sh ${{ needs.prepare.outputs.datetime }}
 
 #   coverage:
 #     needs:
