@@ -2123,4 +2123,6 @@ def test_accuracy_svd_full_non_square(shape):
         res_result.U[..., :k] * res_result.S.unsqueeze(-2),
         res_result.V[..., :k].transpose(-2, -1),
     )
-    gems_assert_close(reconstructed, to_reference(inp), torch.float32, reduce_dim=shape[-1])
+    gems_assert_close(
+        reconstructed, to_reference(inp), torch.float32, reduce_dim=shape[-1]
+    )
