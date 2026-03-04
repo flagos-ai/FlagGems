@@ -4,12 +4,12 @@ Test suite for grid_sample operator.
 This test module validates the correctness, precision, and performance
 of the grid_sample operator implementation following FlagGems testing conventions.
 
-测试覆盖说明：
-- 输入规模：小尺寸（32×32）、常规尺寸（64×64）、大尺寸（128×128）
-- 输入维数：4D (N, C, H, W)、5D (N, C, D, H, W) [TODO]
-- 数据类型：float16, float32, bfloat16
-- 参数模式：mode, padding_mode, align_corners
-- 功能完整性：基本采样、边界处理、多维度输入 [TODO]
+Test coverage description:
+- Input sizes: small (32×32), regular (64×64), large (128×128)
+- Input dimensions: 4D (N, C, H, W), 5D (N, C, D, H, W) [TODO]
+- Data types: float16, float32, bfloat16
+- Parameter patterns: mode, padding_mode, align_corners
+- Functional completeness: basic sampling, boundary handling, multi-dimensional input [TODO]
 """
 
 import pytest
@@ -18,19 +18,19 @@ import torch
 from flag_gems.ops import grid_sample
 
 # ============================================================================
-# 测试数据定义（按照比赛要求）
+# Test data definitions (following competition requirements)
 # ============================================================================
 
-# 数据类型覆盖（比赛要求：至少支持 float32/float16）
+# Data type coverage (competition requirement: at least support float32/float16)
 FLOAT_DTYPES = [
     torch.float16,
     torch.float32,
     torch.bfloat16,
 ]
 
-# 精度标准（比赛要求的标准）
-# rtol = 1e-4 (所有浮点类型)
-# atol 根据数据类型变化
+# Precision standards (competition requirement standards)
+# rtol = 1e-4 (all floating point types)
+# atol varies by data type
 ATOL_DICT = {
     torch.float16: 1e-3,
     torch.float32: 1.3e-6,
@@ -39,48 +39,48 @@ ATOL_DICT = {
 
 
 # ============================================================================
-# 辅助函数
+# Helper functions
 # ============================================================================
 
 
 def assert_close(actual, expected, rtol=1e-4, atol=None, dtype=torch.float32):
     """
-    使用 torch.allclose 验证精度（比赛要求的标准）
+    Verify precision using torch.allclose (competition requirement standards)
 
     Args:
-        actual: FlagGems 实现结果
-        expected: PyTorch 参考结果
-        rtol: 相对误差容差（默认 1e-4）
-        atol: 绝对误差容差（根据数据类型）
-        dtype: 数据类型
+        actual: FlagGems implementation result
+        expected: PyTorch reference result
+        rtol: relative error tolerance (default 1e-4)
+        atol: absolute error tolerance (based on data type)
+        dtype: data type
     """
     if atol is None:
         atol = ATOL_DICT.get(dtype, 1e-5)
 
-    # 使用 torch.allclose 进行比较（比赛标准）
+    # Compare using torch.allclose (competition standard)
     assert torch.allclose(
         actual, expected, rtol=rtol, atol=atol, equal_nan=True
     ), f"Results don't match: max diff={(actual - expected).abs().max().item()}"
 
 
 def create_tensor(shape, dtype, device="cuda"):
-    """创建测试张量"""
+    """Create test tensor"""
     x = torch.randn(shape, dtype=dtype, device=device)
     return x
 
 
 # ============================================================================
-# 1. 基础功能测试 - Nearest Neighbor Mode
+# 1. Basic functionality tests - Nearest Neighbor Mode
 # ============================================================================
 
 
 class TestGridSampleNearest4D:
-    """测试 4D nearest neighbor 模式."""
+    """Test 4D nearest neighbor mode."""
 
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_nearest_zeros_4d_small(self, dtype):
-        """测试：小尺寸 (1, 3, 32, 32) with zeros padding."""
+        """Test: small size (1, 3, 32, 32) with zeros padding."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -103,7 +103,7 @@ class TestGridSampleNearest4D:
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_nearest_zeros_4d_medium(self, dtype):
-        """测试：常规尺寸 (2, 16, 64, 64) with zeros padding."""
+        """Test: regular size (2, 16, 64, 64) with zeros padding."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -127,7 +127,7 @@ class TestGridSampleNearest4D:
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_nearest_all_padding_modes(self, padding_mode, align_corners):
-        """测试：所有 padding 模式和 align_corners 组合."""
+        """Test: all padding modes and align_corners combinations."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -157,7 +157,7 @@ class TestGridSampleNearest4D:
 
     @pytest.mark.grid_sample
     def test_nearest_upsample(self):
-        """测试：上采样场景 (input 32x32 -> output 64x64)."""
+        """Test: upsampling scenario (input 32x32 -> output 64x64)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -185,7 +185,7 @@ class TestGridSampleNearest4D:
 
     @pytest.mark.grid_sample
     def test_nearest_downsample(self):
-        """测试：下采样场景 (input 64x64 -> output 32x32)."""
+        """Test: downsampling scenario (input 64x64 -> output 32x32)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -208,11 +208,11 @@ class TestGridSampleNearest4D:
 
 
 class TestGridSampleEdgeCases:
-    """测试边界情况."""
+    """Test edge cases."""
 
     @pytest.mark.grid_sample
     def test_grid_out_of_bounds_zeros(self):
-        """测试：网格超出边界时 zeros padding 应该返回 0."""
+        """Test: zeros padding should return 0 when grid is out of bounds."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -237,7 +237,7 @@ class TestGridSampleEdgeCases:
 
     @pytest.mark.grid_sample
     def test_grid_out_of_bounds_border(self):
-        """测试：网格超出边界时 border padding 应该使用边界值."""
+        """Test: border padding should use boundary values when grid is out of bounds."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -259,7 +259,7 @@ class TestGridSampleEdgeCases:
 
     @pytest.mark.grid_sample
     def test_nan_in_grid(self):
-        """测试：网格中的 NaN 应该被当作 -1 处理（PyTorch 行为）."""
+        """Test: NaN in grid should be treated as -1 (PyTorch behavior)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -284,7 +284,7 @@ class TestGridSampleEdgeCases:
 
     @pytest.mark.grid_sample
     def test_align_corners_difference(self):
-        """测试：align_corners=True 和 False 应该产生不同结果."""
+        """Test: align_corners=True and False should produce different results."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -317,7 +317,7 @@ class TestGridSampleEdgeCases:
 
     @pytest.mark.grid_sample
     def test_identity_grid(self):
-        """测试：恒等网格应该重构输入（受限于插值）."""
+        """Test: identity grid should reconstruct input (limited by interpolation)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -346,11 +346,11 @@ class TestGridSampleEdgeCases:
 
 
 class TestGridSampleValidation:
-    """测试输入验证."""
+    """Test input validation."""
 
     @pytest.mark.grid_sample
     def test_invalid_input_dimensions(self):
-        """测试：无效的输入维度应该抛出错误."""
+        """Test: invalid input dimensions should raise error."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -363,7 +363,7 @@ class TestGridSampleValidation:
 
     @pytest.mark.grid_sample
     def test_invalid_mode(self):
-        """测试：无效的 mode 应该抛出错误."""
+        """Test: invalid mode should raise error."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -376,7 +376,7 @@ class TestGridSampleValidation:
 
     @pytest.mark.grid_sample
     def test_invalid_padding_mode(self):
-        """测试：无效的 padding_mode 应该抛出错误."""
+        """Test: invalid padding_mode should raise error."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -389,7 +389,7 @@ class TestGridSampleValidation:
 
     @pytest.mark.grid_sample
     def test_bicubic_5d_not_supported(self):
-        """测试：5D 输入不支持 bicubic 模式."""
+        """Test: 5D input does not support bicubic mode."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -409,12 +409,12 @@ class TestGridSampleValidation:
 
 
 class TestGridSampleBilinear4D:
-    """测试 4D bilinear 模式."""
+    """Test 4D bilinear mode."""
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 8), (2, 3, 16, 16)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_bilinear_zeros_4d_small(self, shape, dtype):
-        """测试 4D bilinear 模式 with zeros padding."""
+        """Test 4D bilinear mode with zeros padding."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -437,7 +437,7 @@ class TestGridSampleBilinear4D:
     @pytest.mark.parametrize("shape", [(1, 1, 8, 8), (2, 3, 16, 16)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_bilinear_zeros_4d_small_align_corners(self, shape, dtype):
-        """测试 4D bilinear 模式 with zeros padding (align_corners=True)."""
+        """Test 4D bilinear mode with zeros padding (align_corners=True)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -460,7 +460,7 @@ class TestGridSampleBilinear4D:
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_bilinear_all_padding_modes(self, padding_mode, align_corners):
-        """测试 bilinear 模式 with all padding modes."""
+        """Test bilinear mode with all padding modes."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -490,7 +490,7 @@ class TestGridSampleBilinear4D:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     def test_bilinear_upsample(self):
-        """测试 bilinear 模式 for upsampling."""
+        """Test bilinear mode for upsampling."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -516,7 +516,7 @@ class TestGridSampleBilinear4D:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     def test_bilinear_downsample(self):
-        """测试 bilinear 模式 for downsampling."""
+        """Test bilinear mode for downsampling."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -543,14 +543,14 @@ class TestGridSampleBilinear4D:
 
 
 class TestGridSampleBicubic4D:
-    """测试 4D bicubic 模式."""
+    """Test 4D bicubic mode."""
 
     @pytest.mark.parametrize("shape", [(2, 3, 16, 16)])
     @pytest.mark.parametrize(
         "dtype", [torch.float32]
     )  # Start with float32 for debugging
     def test_bicubic_zeros_4d_small(self, shape, dtype):
-        """测试 4D bicubic 模式 with zeros padding."""
+        """Test 4D bicubic mode with zeros padding."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -574,7 +574,7 @@ class TestGridSampleBicubic4D:
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_bicubic_all_padding_modes(self, padding_mode, align_corners):
-        """测试 bicubic 模式 with all padding modes."""
+        """Test bicubic mode with all padding modes."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -606,12 +606,12 @@ class TestGridSampleBicubic4D:
 
 
 class TestGridSample5D:
-    """测试 5D 输入支持."""
+    """Test 5D input support."""
 
     @pytest.mark.parametrize("shape", [(1, 2, 8, 8, 8), (2, 3, 8, 8, 8)])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_5d_nearest_zeros_small(self, shape, dtype):
-        """测试 5D nearest 模式 with zeros padding."""
+        """Test 5D nearest mode with zeros padding."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -637,7 +637,7 @@ class TestGridSample5D:
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_5d_all_modes_padding(self, mode, padding_mode, align_corners):
-        """测试 5D 所有模式和padding模式组合."""
+        """Test 5D all modes and padding mode combinations."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -659,7 +659,7 @@ class TestGridSample5D:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     def test_5d_bicubic_not_supported(self):
-        """测试 5D 不支持 bicubic."""
+        """Test 5D does not support bicubic."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -676,22 +676,22 @@ class TestGridSample5D:
 
 
 # ============================================================================
-# 极端尺寸测试 - 满足竞赛要求 4.1.4 (测例完整度要求)
+# Extreme size tests - Meet competition requirement 4.1.4 (test case completeness requirements)
 # ============================================================================
 
 
 class TestGridSampleExtremeSizes:
     """
-    测试极端输入尺寸以满足竞赛要求 4.1.4。
+    Test extreme input sizes to meet competition requirement 4.1.4.
 
-    覆盖范围：
-    - 小尺寸：1×1, 2×2, 4×4
-    - 常规大尺寸：256×256
-    - 大尺寸：512×512, 1024×1024, 2048×2048, 4096×4096
+    Coverage:
+    - Small sizes: 1×1, 2×2, 4×4
+    - Regular large sizes: 256×256
+    - Large sizes: 512×512, 1024×1024, 2048×2048, 4096×4096
     """
 
     # ------------------------------------------------------------------------
-    # Phase 1: 极小尺寸测试 (1×1, 2×2, 4×4)
+    # Phase 1: Very small size tests (1×1, 2×2, 4×4)
     # ------------------------------------------------------------------------
 
     @pytest.mark.grid_sample
@@ -699,7 +699,7 @@ class TestGridSampleExtremeSizes:
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_1x1_minimum_size(self, mode, padding_mode, align_corners):
-        """测试极小尺寸 1×1 - 最小可能的输入."""
+        """Test extremely small size 1×1 - smallest possible input."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -723,7 +723,7 @@ class TestGridSampleExtremeSizes:
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     def test_2x2_small_size(self, mode, padding_mode):
-        """测试极小尺寸 2×2."""
+        """Test extremely small size 2×2."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -747,7 +747,7 @@ class TestGridSampleExtremeSizes:
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     def test_4x4_small_size(self, mode, padding_mode):
-        """测试极小尺寸 4×4."""
+        """Test extremely small size 4×4."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -769,14 +769,14 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     # ------------------------------------------------------------------------
-    # Phase 2: 大尺寸测试 (256×256, 512×512, 1024×1024)
+    # Phase 2: Large size tests (256×256, 512×512, 1024×1024)
     # ------------------------------------------------------------------------
 
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("mode", ["nearest", "bilinear", "bicubic"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     def test_256x256_large_size(self, mode, padding_mode):
-        """测试常规大尺寸 256×256 - 竞赛要求."""
+        """Test regular large size 256×256 - competition requirement."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -803,7 +803,7 @@ class TestGridSampleExtremeSizes:
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
     def test_512x512_very_large_size(self, mode, padding_mode):
-        """测试非常大尺寸 512×512."""
+        """Test very large size 512×512."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -828,7 +828,7 @@ class TestGridSampleExtremeSizes:
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
     def test_1024x1024_very_large_size(self, mode, padding_mode):
-        """测试非常大尺寸 1024×1024 - 竞赛要求."""
+        """Test very large size 1024×1024 - competition requirement."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -860,14 +860,14 @@ class TestGridSampleExtremeSizes:
             pytest.skip(f"GPU memory insufficient for 1024×1024 test: {str(e)[:100]}")
 
     # ------------------------------------------------------------------------
-    # Phase 3: 超大尺寸测试 (2048×2048, 4096×4096)
+    # Phase 3: Extra large size tests (2048×2048, 4096×4096)
     # ------------------------------------------------------------------------
 
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
     def test_2048x2048_extreme_large_size(self, mode, padding_mode):
-        """测试超大尺寸 2048×2048."""
+        """Test extra large size 2048×2048."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -902,7 +902,7 @@ class TestGridSampleExtremeSizes:
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
     def test_4096x4096_extreme_large_size(self, mode, padding_mode):
-        """测试超大尺寸 4096×4096 - 竞赛要求."""
+        """Test extra large size 4096×4096 - competition requirement."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -934,14 +934,14 @@ class TestGridSampleExtremeSizes:
             pytest.skip(f"GPU memory insufficient for 4096×4096 test: {str(e)[:100]}")
 
     # ------------------------------------------------------------------------
-    # Phase 4: 5D 大尺寸测试
+    # Phase 4: 5D large size tests
     # ------------------------------------------------------------------------
 
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
     def test_5d_64x64x64_large_size(self, mode, padding_mode):
-        """测试 5D 输入大尺寸 64×64×64."""
+        """Test 5D input large size 64×64×64."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -975,7 +975,7 @@ class TestGridSampleExtremeSizes:
     @pytest.mark.grid_sample
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     def test_5d_128x128x128_very_large_size(self, mode):
-        """测试 5D 输入超大尺寸 128×128×128."""
+        """Test 5D input extra large size 128×128×128."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
