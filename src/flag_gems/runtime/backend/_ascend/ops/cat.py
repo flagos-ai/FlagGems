@@ -37,9 +37,20 @@ def cat(
     if len(A) == 1:
         return A[0]
 
+    # remove torch.Size([0]) tensors
+    device = A[0].device
+    dtype = A[0].dtype
+    A = list(A)
+    for i in range(len(A) - 1, -1, -1):
+        if A[i].shape == torch.Size([0]):
+            A.pop(i)
+    if len(A) == 0:
+        return torch.tensor([], device=device, dtype=dtype)
+    elif len(A) == 1:
+        return A[0]
+
     assert dim >= -A[0].ndim and dim < A[0].ndim, f"Invalid dim: {dim}"
-    # Convert negative dim to positive
-    dim = dim % A[0].ndim
+    dim %= A[0].ndim
 
     # Same rank check
     inp_shapes = [list(_.shape) for _ in A]
@@ -49,12 +60,9 @@ def cat(
             raise RuntimeError(
                 f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
             )
-    # Same size check
     for tensor_idx, inp_shape in enumerate(inp_shapes):
         for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):
-            if idx == dim:
-                continue
-            elif length != common_length:
+            if idx != dim and length != common_length:
                 raise RuntimeError(
                     f"Sizes of tensors must match except in dimension {dim}. "
                     f"Expected size {common_length} but got size {length} for tensor number "
