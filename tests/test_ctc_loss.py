@@ -4,12 +4,12 @@ Test suite for ctc_loss operator.
 This test module validates correctness, precision, and performance
 of ctc_loss operator implementation following FlagGems testing conventions.
 
-测试覆盖说明：
-- 输入规模：小尺寸(T=8, N=1, C=5)、常规尺寸(T=64, N=4, C=20)、大尺寸(T=256, N=8, C=50)
-- 输入维数：3D (T, N, C)
-- 数据类型：float32（注：PyTorch的ctc_loss只支持float32）
-- 参数模式：blank, reduction, zero_infinity
-- 功能完整性：不同长度的输入、blank值、reduction模式、zero_infinity处理
+Test coverage description:
+- Input sizes: small (T=8, N=1, C=5), medium (T=64, N=4, C=20), large (T=256, N=8, C=50)
+- Input dimensions: 3D (T, N, C)
+- Data types: float32 (Note: PyTorch's ctc_loss only supports float32)
+- Parameter modes: blank, reduction, zero_infinity
+- Functional completeness: inputs of different lengths, blank values, reduction modes, zero_infinity handling
 
 Note:
 PyTorch's torch.nn.functional.ctc_loss only supports float32 dtype.
@@ -22,19 +22,19 @@ import torch
 from flag_gems.ops import ctc_loss
 
 # ============================================================================
-# 测试数据定义（按照比赛要求）
+# Test data definitions (following competition requirements)
 # ============================================================================
 
-# 数据类型覆盖（比赛要求：至少支持 float32/float16）
+# Data type coverage (competition requirement: at least support float32/float16)
 FLOAT_DTYPES = [
     # torch.float16,
     torch.float32,
     # torch.bfloat16,
 ]
 
-# 精度标准（比赛要求的标准）
-# rtol = 1e-4 (所有浮点类型)
-# atol 根据数据类型变化
+# Precision standards (competition requirement standards)
+# rtol = 1e-4 (all floating point types)
+# atol varies based on data type
 ATOL_DICT = {
     torch.float16: 1e-3,
     torch.float32: 1.3e-6,
@@ -42,20 +42,20 @@ ATOL_DICT = {
 }
 
 # ============================================================================
-# 辅助函数
+# Helper functions
 # ============================================================================
 
 
 def assert_close(actual, expected, rtol=1e-4, atol=None, dtype=torch.float32):
     """
-    使用 torch.allclose 验证精度（比赛要求的标准）
+    Verify precision using torch.allclose (competition requirement standards)
 
     Args:
-        actual: FlagGems 实现结果
-        expected: PyTorch 参考结果
-        rtol: 相对误差容差（默认 1e-4）
-        atol: 绝对误差容差（根据数据类型）
-        dtype: 数据类型
+        actual: FlagGems implementation result
+        expected: PyTorch reference result
+        rtol: Relative error tolerance (default 1e-4)
+        atol: Absolute error tolerance (based on data type)
+        dtype: Data type
     """
     if atol is None:
         atol = ATOL_DICT.get(dtype, 1e-5)
@@ -73,17 +73,17 @@ def assert_close(actual, expected, rtol=1e-4, atol=None, dtype=torch.float32):
 
 def create_log_probs(T, N, C, dtype, device="cuda"):
     """
-    创建 log probabilities 张量
+    Create log probabilities tensor
 
     Args:
-        T: 时间步数
-        N: 批量大小
-        C: 类别数（包括 blank）
-        dtype: 数据类型
-        device: 设备
+        T: Number of time steps
+        N: Batch size
+        C: Number of classes (including blank)
+        dtype: Data type
+        device: Device
 
     Returns:
-        log_probs: (T, N, C) 形状的张量
+        log_probs: Tensor of shape (T, N, C)
     """
     # Create random log probabilities (log space)
     log_probs = torch.randn(T, N, C, dtype=dtype, device=device)
@@ -94,17 +94,17 @@ def create_log_probs(T, N, C, dtype, device="cuda"):
 
 def create_targets(N, max_target_len, num_classes, device="cuda"):
     """
-    创建目标序列张量（1D拼接格式）
+    Create target sequence tensor (1D concatenated format)
 
     Args:
-        N: 批量大小
-        max_target_len: 最大目标长度
-        num_classes: 类别数（不包括 blank）
-        device: 设备
+        N: Batch size
+        max_target_len: Maximum target length
+        num_classes: Number of classes (excluding blank)
+        device: Device
 
     Returns:
-        targets: 拼接的目标序列
-        target_lengths: 每个目标序列的长度
+        targets: Concatenated target sequences
+        target_lengths: Length of each target sequence
     """
     targets_list = []
     target_lengths_list = []
@@ -123,15 +123,15 @@ def create_targets(N, max_target_len, num_classes, device="cuda"):
 
 def create_input_lengths(N, T, device="cuda"):
     """
-    创建输入长度张量
+    Create input length tensor
 
     Args:
-        N: 批量大小
-        T: 最大时间步数
-        device: 设备
+        N: Batch size
+        T: Maximum number of time steps
+        device: Device
 
     Returns:
-        input_lengths: 每个序列的输入长度
+        input_lengths: Input length for each sequence
     """
     # Random lengths between T//2 and T
     input_lengths = torch.randint(
@@ -141,17 +141,17 @@ def create_input_lengths(N, T, device="cuda"):
 
 
 # ============================================================================
-# 1. 基础功能测试 - 不同尺寸
+# 1. Basic functionality tests - different sizes
 # ============================================================================
 
 
 class TestCTCLossBasic:
-    """测试基础功能."""
+    """Test basic functionality."""
 
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_small_size(self, dtype):
-        """测试：小尺寸 (T=8, N=1, C=5)."""
+        """Test: small size (T=8, N=1, C=5)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -189,7 +189,7 @@ class TestCTCLossBasic:
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_medium_size(self, dtype):
-        """测试：常规尺寸 (T=32, N=4, C=15)."""
+        """Test: medium size (T=32, N=4, C=15)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -228,7 +228,7 @@ class TestCTCLossBasic:
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_large_size(self, dtype):
-        """测试：大尺寸 (T=128, N=8, C=30)."""
+        """Test: large size (T=128, N=8, C=30)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -266,17 +266,17 @@ class TestCTCLossBasic:
 
 
 # ============================================================================
-# 2. 参数模式测试 - blank, reduction, zero_infinity
+# 2. Parameter mode tests - blank, reduction, zero_infinity
 # ============================================================================
 
 
 class TestCTCLossParameters:
-    """测试不同参数组合."""
+    """Test different parameter combinations."""
 
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("blank", [0, 1, 5])
     def test_different_blank_values(self, blank):
-        """测试：不同的 blank 值."""
+        """Test: different blank values."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -333,7 +333,7 @@ class TestCTCLossParameters:
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_different_reduction_modes(self, reduction, dtype):
-        """测试：不同的 reduction 模式."""
+        """Test: different reduction modes."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -371,7 +371,7 @@ class TestCTCLossParameters:
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("zero_infinity", [True, False])
     def test_zero_infinity(self, zero_infinity):
-        """测试：zero_infinity 参数."""
+        """Test: zero_infinity parameter."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -415,16 +415,16 @@ class TestCTCLossParameters:
 
 
 # ============================================================================
-# 3. 边界情况测试
+# 3. Edge case tests
 # ============================================================================
 
 
 class TestCTCLossEdgeCases:
-    """测试边界情况."""
+    """Test edge cases."""
 
     @pytest.mark.ctc_loss
     def test_minimum_batch_size(self):
-        """测试：最小批量大小 N=1."""
+        """Test: minimum batch size N=1."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -459,7 +459,7 @@ class TestCTCLossEdgeCases:
 
     @pytest.mark.ctc_loss
     def test_minimum_time_steps(self):
-        """测试：最小时间步数."""
+        """Test: minimum time steps."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -485,7 +485,7 @@ class TestCTCLossEdgeCases:
 
     @pytest.mark.ctc_loss
     def test_empty_targets(self):
-        """测试：空目标序列."""
+        """Test: empty target sequence."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -514,7 +514,7 @@ class TestCTCLossEdgeCases:
 
     @pytest.mark.ctc_loss
     def test_single_target(self):
-        """测试：单个目标."""
+        """Test: single target."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -542,7 +542,7 @@ class TestCTCLossEdgeCases:
 
     @pytest.mark.ctc_loss
     def test_long_target_sequence(self):
-        """测试：长目标序列."""
+        """Test: long target sequence."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -577,7 +577,7 @@ class TestCTCLossEdgeCases:
 
     @pytest.mark.ctc_loss
     def test_target_with_repeated_labels(self):
-        """测试：目标包含重复标签."""
+        """Test: target with repeated labels."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -602,16 +602,16 @@ class TestCTCLossEdgeCases:
 
 
 # ============================================================================
-# 4. 输入验证测试
+# 4. Input validation tests
 # ============================================================================
 
 
 class TestCTCLossValidation:
-    """测试输入验证."""
+    """Test input validation."""
 
     @pytest.mark.ctc_loss
     def test_2d_log_probs_supported(self):
-        """测试：2D log_probs 应该被支持，与PyTorch行为一致."""
+        """Test: 2D log_probs should be supported, consistent with PyTorch behavior."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -632,7 +632,7 @@ class TestCTCLossValidation:
 
     @pytest.mark.ctc_loss
     def test_mismatched_batch_size(self):
-        """测试：批量大小不匹配."""
+        """Test: mismatched batch size."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -649,7 +649,7 @@ class TestCTCLossValidation:
 
     @pytest.mark.ctc_loss
     def test_invalid_target_length(self):
-        """测试：目标长度超过输入长度."""
+        """Test: target length exceeds input length."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -688,7 +688,7 @@ class TestCTCLossValidation:
 
     @pytest.mark.ctc_loss
     def test_nan_in_log_probs(self):
-        """测试：log_probs 包含 NaN."""
+        """Test: log_probs contains NaN."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -728,7 +728,7 @@ class TestCTCLossValidation:
 
     @pytest.mark.ctc_loss
     def test_inf_in_log_probs(self):
-        """测试：log_probs 包含 Inf."""
+        """Test: log_probs contains Inf."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -768,25 +768,25 @@ class TestCTCLossValidation:
 
 
 # ============================================================================
-# 5. 极端尺寸测试 - 满足竞赛要求 4.1.4 (测例完整度要求)
+# 5. Extreme size tests - satisfy competition requirement 4.1.4 (test case completeness requirement)
 # ============================================================================
 
 
 class TestCTCLossExtremeSizes:
     """
-    测试极端输入尺寸以满足竞赛要求 4.1.4。
+    Test extreme input sizes to satisfy competition requirement 4.1.4.
 
-    覆盖范围：
-    - 小尺寸：T=4, N=1, C=3（最小有效尺寸）
-    - 常规大尺寸：T=256, N=8, C=50
-    - 大尺寸：T=512, N=16, C=100
-    - 超大尺寸：T=1024, N=16, C=100
+    Coverage:
+    - Small size: T=4, N=1, C=3 (minimum valid size)
+    - Regular large size: T=256, N=8, C=50
+    - Large size: T=512, N=16, C=100
+    - Extra large size: T=1024, N=16, C=100
     """
 
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_extremely_small_size(self, dtype):
-        """测试：极小尺寸 (T=4, N=1, C=3)."""
+        """Test: extremely small size (T=4, N=1, C=3)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -809,7 +809,7 @@ class TestCTCLossExtremeSizes:
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_very_large_batch(self, dtype):
-        """测试：大批量 (T=32, N=32, C=20)."""
+        """Test: large batch (T=32, N=32, C=20)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -839,7 +839,7 @@ class TestCTCLossExtremeSizes:
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_256_time_steps_large(self, dtype):
-        """测试：256时间步 - 竞赛要求."""
+        """Test: 256 time steps - competition requirement."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -867,7 +867,7 @@ class TestCTCLossExtremeSizes:
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_512_time_steps_very_large(self, dtype):
-        """测试：512时间步."""
+        """Test: 512 time steps."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -891,7 +891,7 @@ class TestCTCLossExtremeSizes:
 
     @pytest.mark.ctc_loss
     def test_1024_time_steps_extreme_large(self):
-        """测试：1024时间步 - 竞赛要求."""
+        """Test: 1024 time steps - competition requirement."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -928,7 +928,7 @@ class TestCTCLossExtremeSizes:
 
     @pytest.mark.ctc_loss
     def test_large_vocabulary(self):
-        """测试：大词汇表 (C=200)."""
+        """Test: large vocabulary (C=200)."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -953,18 +953,18 @@ class TestCTCLossExtremeSizes:
 
 
 # ============================================================================
-# 6. 数据类型支持测试
+# 6. Data type support tests
 # ============================================================================
 
 
 class TestCTCLossDtypes:
-    """测试不同数据类型."""
+    """Test different data types."""
 
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     def test_all_dtypes_with_reductions(self, dtype, reduction):
-        """测试：所有支持的数据类型和 reduction 模式组合."""
+        """Test: all supported data types and reduction mode combinations."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
@@ -997,7 +997,7 @@ class TestCTCLossDtypes:
     @pytest.mark.ctc_loss
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_all_dtypes_with_zero_infinity(self, dtype):
-        """测试：所有数据类型与 zero_infinity 参数."""
+        """Test: all data types with zero_infinity parameter."""
         if not torch.cuda.is_available():
             pytest.skip("CUDA not available")
 
