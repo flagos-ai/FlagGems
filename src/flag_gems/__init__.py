@@ -28,6 +28,10 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("_ctc_loss", _ctc_loss_impl),
+    ("_ctc_loss.Tensor", _ctc_loss_impl),
+    ("_ctc_loss_backward", _ctc_loss_backward_impl),
+    ("_ctc_loss_backward.Tensor", _ctc_loss_backward_impl),
     ("_flash_attention_forward", flash_attention_forward),
     ("_log_softmax", log_softmax),
     ("_log_softmax_backward_data", log_softmax_backward),
@@ -117,10 +121,6 @@ _FULL_CONFIG = (
     ("cos", cos),
     ("cos_", cos_),
     ("count_nonzero", count_nonzero),
-    ("_ctc_loss", _ctc_loss_impl),
-    ("_ctc_loss.Tensor", _ctc_loss_impl),
-    ("_ctc_loss_backward", _ctc_loss_backward_impl),
-    ("_ctc_loss_backward.Tensor", _ctc_loss_backward_impl),
     ("cummax", cummax),
     ("cummin", cummin),
     ("cumsum", cumsum),

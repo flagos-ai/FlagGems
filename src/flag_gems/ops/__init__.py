@@ -242,6 +242,8 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_ctc_loss_backward_impl",
+    "_ctc_loss_impl",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
@@ -315,8 +317,6 @@ __all__ = [
     "cos_",
     "count_nonzero",
     "ctc_loss",
-    "_ctc_loss_impl",
-    "_ctc_loss_backward_impl",
     "cummax",
     "cummin",
     "cumsum",
