@@ -175,21 +175,5 @@ def bmm_out(A, B, out):
         batch,
     )
     with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](
-            A,
-            B,
-            out,
-            M,
-            N,
-            K,
-            A.stride(0),
-            A.stride(1),
-            A.stride(2),
-            B.stride(0),
-            B.stride(1),
-            B.stride(2),
-            out.stride(0),
-            out.stride(1),
-            out.stride(2),
-        )
+        bmm_kernel[grid_fn](A, B, out, M, N, K)
     return out

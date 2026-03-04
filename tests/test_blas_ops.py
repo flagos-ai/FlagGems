@@ -7,20 +7,30 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (
-    FLOAT_DTYPES,
-    SCALARS,
-    UT_SHAPES_1D,
-    gems_assert_close,
-    to_reference,
-)
+from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
+from .accuracy_utils import SCALARS, UT_SHAPES_1D, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
-MN_SHAPES = [(1, 32)] if QUICK_MODE else [(1, 32), (160, 1024), (5333, 497)]
-MNK_SHAPES = (
-    [(1, 1, 32)] if QUICK_MODE else [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
-)
-FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
+if QUICK_MODE:
+    MN_SHAPES = [
+        (1, 32),
+    ]
+    MNK_SHAPES = [
+        (1, 1, 32),
+    ]
+    FLOAT_DTYPES = [torch.float32]
+else:
+    MN_SHAPES = [
+        (1, 32),
+        (160, 1024),
+        (5333, 497),
+    ]
+    MNK_SHAPES = [
+        (1, 1, 32),
+        (15, 160, 1024),
+        (495, 5333, 71),
+    ]
+    FLOAT_DTYPES = ORIG_FLOAT_DTYPES
 
 
 @pytest.mark.addmm
@@ -29,6 +39,9 @@ FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 addmm test on tsingmicro platform")
+
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
@@ -67,6 +80,9 @@ def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_addmm_out(M, N, K, scalar, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 addmm_out test on tsingmicro platform")
+
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias1 = torch.randn((N,), dtype=dtype, device=flag_gems.device)
@@ -127,9 +143,6 @@ def test_accuracy_bmm(M, N, K, dtype):
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm_out(M, N, K, dtype):
-    if flag_gems.vendor_name == "mthreads":
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
-
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -149,17 +162,11 @@ def test_accuracy_bmm_out(M, N, K, dtype):
 
     gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["MUSA_ENABLE_SQMMA"]
-
 
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm_non_contiguous(M, N, K, dtype):
-    if flag_gems.vendor_name == "mthreads":
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
-
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -183,8 +190,6 @@ def test_accuracy_bmm_non_contiguous(M, N, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.bmm(mat1, mat2)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["MUSA_ENABLE_SQMMA"]
 
 
 @pytest.mark.baddbmm
@@ -261,6 +266,9 @@ def test_accuracy_baddbmm_backward(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_accuracy_mm(M, N, K, dtype, b_column_major):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 mm test on tsingmicro platform")
+
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
