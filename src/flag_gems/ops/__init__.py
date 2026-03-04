@@ -14,6 +14,7 @@ from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.asinh import asinh, asinh_
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -271,6 +272,8 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "asinh",
+    "asinh_",
     "atan",
     "atan_",
     "avg_pool2d",
