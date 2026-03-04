@@ -16,18 +16,18 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: '0 16 * * *'
+    - cron: '3 0 * * *'
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      - datetime: ${{ steps.get-date.outputs.CURRENT_DATE }}
+      datetime: ${{ steps.get-date.outputs.CURRENT_DATE }}
     steps:
       - id: get-date
         shell: bash
         run: |
-          echo "CURRENT_DATE=$(date +'%Y-%m-%d-%H%M%S')" >> $GITHUB_ENV
+          echo "CURRENT_DATE=$(date +'%Y-%m-%d-%H%M%S')" >> "$GITHUB_OUTPUT"
 
   cpp-op:
     needs: prepare
