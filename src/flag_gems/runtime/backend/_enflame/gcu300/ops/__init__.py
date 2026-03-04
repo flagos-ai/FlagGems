@@ -83,6 +83,7 @@ from .sin import sin, sin_
 from .sub import sub, sub_
 from .tanh import tanh_backward, tanh, tanh_
 from .threshold import threshold_backward, threshold
+from .trace import trace
 from .tile import tile
 from .upsample_nearest2d import upsample_nearest2d
 from .where import where_self_out, where_self, where_scalar_self, where_scalar_other
@@ -285,6 +286,7 @@ __all__ = [
     "tanh_",
     "threshold_backward",
     "threshold",
+    "trace",
     "tile",
     "upsample_nearest2d",
     "where_self_out",
