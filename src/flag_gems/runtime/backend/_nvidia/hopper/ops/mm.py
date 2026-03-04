@@ -16,7 +16,8 @@ from flag_gems.utils.device_info import get_device_capability, get_sm_count
 ## if (f16, N%8, K%8) or (f32, N%4, K%4): tma host
 ## elif (M % BM, N % BN, K % BK):  tma device
 ## else: tl.load
-ForceTmaDevice = False
+ForceTmaHost = False
+ForceTmaDevice = (not ForceTmaHost) and False
 ForceLoad = False
 ForceTmaDevice = ForceTmaDevice or ForceLoad
 
@@ -329,9 +330,9 @@ def general_mm(a, b, c, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    if not ForceTmaDevice and hasattr(
+    if ForceTmaHost or (not ForceTmaDevice and hasattr(
         triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
+    ) and is_tma_compatible(a, b, N, K)):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]

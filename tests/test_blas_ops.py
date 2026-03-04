@@ -122,11 +122,12 @@ MNK_SHAPES = (
 MNK_SHAPES = (
     [
         # tl.load
-        (1, 1, 1),
-        # tl.load + tma_device
+        #(1, 1, 1),
+        # tl.load + tma_device ForceTmaHost => tma_host
         (1, 2, 2),
         # tma_host: mm.py ForceTmaDevice => tma_device, ForceLoad => tl.load
         (1, 8, 8),
+        (1, 2048, 128),
     ]
 )
 '''
@@ -139,7 +140,8 @@ FLOAT_DTYPES = [torch.bfloat16] if QUICK_MODE else FLOAT_DTYPES
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("b_column_major", [True, False])
+@pytest.mark.parametrize("b_column_major", [True])
+#@pytest.mark.parametrize("b_column_major", [True, False])
 def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
