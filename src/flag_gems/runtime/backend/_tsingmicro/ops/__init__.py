@@ -9,6 +9,7 @@ from .mm import mm, mm_out
 from .rms_norm import rms_norm
 from .stack import stack
 from .unique import _unique2
+from .zeros import zeros, zero_
 
 __all__ = [
     "argmax",
@@ -23,4 +24,6 @@ __all__ = [
     "kron",
     "isin",
     "_unique2",
+    "zeros",
+    "zero_",
 ]
