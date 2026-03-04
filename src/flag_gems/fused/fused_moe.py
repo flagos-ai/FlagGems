@@ -437,7 +437,7 @@ def _apply_silu_and_mul(out: torch.Tensor, inp: torch.Tensor) -> None:
     silu_and_mul_kernel(x, y, out0=out)
 
 
-def fused_moe(
+def fused_experts_impl(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
     w2: torch.Tensor,

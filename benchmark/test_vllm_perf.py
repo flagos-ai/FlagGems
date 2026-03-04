@@ -257,7 +257,7 @@ except ImportError:
 
 class FusedMoEBenchmark(Benchmark):
     """
-    Benchmark for fused_moe comparing FlagGems Triton kernel vs vLLM.
+    Benchmark for fused_experts_impl comparing FlagGems Triton kernel vs vLLM.
 
     Measures latency of the full fused MoE pipeline:
       moe_align_block_size → GEMM1(up+gate) → SiLU+Mul → GEMM2(down) → moe_sum
@@ -334,8 +334,8 @@ def _vllm_fused_moe_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
 
 
 def _gems_fused_moe_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
-    """Wrapper to call FlagGems fused_moe."""
-    return flag_gems.fused_moe(
+    """Wrapper to call FlagGems fused_experts_impl."""
+    return flag_gems.fused_experts_impl(
         hidden_states,
         w1,
         w2,
@@ -348,7 +348,7 @@ def _gems_fused_moe_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
 def test_perf_fused_moe_gems_vs_vllm():
     """
-    Benchmark FlagGems fused_moe vs vLLM fused_experts_impl (bf16).
+    Benchmark FlagGems fused_experts_impl vs vLLM fused_experts_impl (bf16).
     """
     bench = FusedMoEBenchmark(
         op_name="fused_moe_gems_vs_vllm",

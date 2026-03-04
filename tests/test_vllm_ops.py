@@ -308,7 +308,7 @@ def test_accuracy_fused_moe(config, dtype):
     topk_weights = topk_weights.to(dtype)
 
     # FlagGems result
-    result = flag_gems.fused_moe(
+    result = flag_gems.fused_experts_impl(
         hidden_states,
         w1,
         w2,
