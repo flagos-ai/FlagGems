@@ -32,7 +32,7 @@ jobs:
   cpp-op:
     needs: prepare
     runs-on: cpp
-    uses: ./.github/workflows/cpp-op-test.yaml
+    uses: flagos-ai/FlagGems/.github/workflows/cpp-op-test.yaml@master
 
   python-op:
     needs: prepare
