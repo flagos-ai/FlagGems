@@ -2,6 +2,11 @@
 
 set -e
 
+# Replace "__ALL__" with all tests
+if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  CHANGED_FILES=$(find tests -name "test*.py")
+fi
+
 # Test cases that needs to run quick cpu tests
 QUICK_CPU_TESTS=(
   "tests/test_attention_ops.py"
@@ -18,7 +23,6 @@ QUICK_CPU_TESTS=(
 
 PR_ID=$1
 ID_SHA="${PR_ID}-${GITHUB_SHA::7}"
-echo "CHANGED_FILES=$CHANGED_FILES"
 
 TEST_CASES=()
 TEST_CASES_CPU=()
