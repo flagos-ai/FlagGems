@@ -55,8 +55,6 @@ def tril(A, diagonal=0):
         batch_size,
     )
 
-    tril_kernel[grid](
-        A, out, M, N, diagonal, BLOCK_M=32, BLOCK_N=32
-    )
+    tril_kernel[grid](A, out, M, N, diagonal, BLOCK_M=32, BLOCK_N=32)
 
     return out
