@@ -7,19 +7,19 @@
 </td>
 <td align="right">
   <a href="https://https://www.linkedin.com/company/flagos-community" target="_blank">
-    <img src="./docs/assets/Linkedin.png" alt="LinkIn" width="64" height="64" />
+    <img src="./docs/assets/Linkedin.png" alt="LinkIn" width="32" height="32" />
   </a>
   &nbsp;
   <a href="https://www.youtube.com/@FlagOS_Official" target="_blank">
-    <img src="./docs/assets/Youtube.png" alt="YouTube" width="64" height="64" />
+    <img src="./docs/assets/youtube.png" alt="YouTube" width="32" height="32" />
   </a>
   &nbsp;
   <a href="https://x.com/FlagOS_Official" target="_blank">
-    <img src="./docs/assets/X.png" alt="X" width="64" height="64" />
+    <img src="./docs/assets/x.png" alt="X" width="32" height="32" />
   </a>
   &nbsp;
   <a href="https://www.facebook.com/FlagOSCommunity" target="_blank">
-    <img src="./docs/assets/Facebook.png" alt="X" width="64" height="64" />
+    <img src="./docs/assets/Facebook.png" alt="X" width="32" height="32" />
   </a>
 </td>
 </tr>
