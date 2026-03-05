@@ -290,6 +290,7 @@ _FULL_CONFIG = (
     ("remainder_.Scalar", remainder_),
     ("remainder_.Tensor", remainder_),
     ("repeat", repeat),
+    ("roll", roll),
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
     ("repeat_interleave.Tensor", repeat_interleave_tensor),
