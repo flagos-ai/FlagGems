@@ -1,6 +1,30 @@
 [<img width="2182" height="602" alt="github+banner-20260130" src=".github/assets/banner-20260130.png" />](https://flagos.io/)
 
-[中文版|[English](./README.md)]
+<table>
+<tr>
+<td width="70%">
+  中文版 | <a href="./README.md">English</a>
+</td>
+<td align="right">
+  <a href="https://https://www.linkedin.com/company/flagos-community" target="_blank">
+    <img src="./docs/assets/Linkedin.png" alt="LinkIn" width="64" height="64" />
+  </a>
+  &nbsp;
+  <a href="https://www.youtube.com/@FlagOS_Official" target="_blank">
+    <img src="./docs/assets/Youtube.png" alt="YouTube" width="64" height="64" />
+  </a>
+  &nbsp;
+  <a href="https://x.com/FlagOS_Official" target="_blank">
+    <img src="./docs/assets/X.png" alt="X" width="64" height="64" />
+  </a>
+  &nbsp;
+  <a href="https://www.facebook.com/FlagOSCommunity" target="_blank">
+    <img src="./docs/assets/Facebook.png" alt="X" width="64" height="64" />
+  </a>
+</td>
+</tr>
+</table>
+
 
 ## 介绍
 
