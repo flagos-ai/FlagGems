@@ -29,7 +29,8 @@ def roll_kernel(
     # Decompose linear index into (outer_idx, roll_idx, inner_idx)
     # But for simplicity, we compute flat source index
     # The rolled dimension has size roll_size
-    # inner_size is folded into total_n as: total_n = outer_size * roll_size * inner_size
+    # inner_size is folded into total_n as:
+    # total_n = outer_size * roll_size * inner_size
     # We use the flat approach: each block handles a contiguous chunk of the output
 
     batch_offset = pid_batch * total_n
@@ -93,9 +94,9 @@ def roll(
     elif isinstance(dims, int):
         dims = [dims]
 
-    assert len(shifts) == len(dims) or len(dims) == 0, (
-        "shifts and dims must have the same length, or dims must be empty"
-    )
+    assert (
+        len(shifts) == len(dims) or len(dims) == 0
+    ), "shifts and dims must have the same length, or dims must be empty"
 
     # Make input contiguous
     A = A.contiguous()
@@ -142,7 +143,13 @@ def roll(
             grid = (triton.cdiv(n_inner_roll, BLOCK), outer_size)
 
             roll_dim_kernel[grid](
-                result, out, inner_size, roll_size, shift, n_inner_roll, BLOCK=BLOCK
+                result,
+                out,
+                inner_size,
+                roll_size,
+                shift,
+                n_inner_roll,
+                BLOCK=BLOCK,
             )
             result = out
 
