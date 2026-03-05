@@ -66,6 +66,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     return code
 
+
 def gcu_generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import math")
     code.writeline("import torch")
@@ -146,6 +147,7 @@ def generate_functional_repeat_wrapper(
 
     return code
 
+
 def gcu_generate_functional_repeat_wrapper(
     wrapper_name: str,
     destination_passing_func_name: str,
@@ -160,7 +162,7 @@ def gcu_generate_functional_repeat_wrapper(
         code.writeline("in0_rank = in0.dim()")
         code.writeline("sizes_rank = len(sizes)")
         code.writeline("in0_shape = list(in0.shape)")
-        code.writeline("sizes_shape = list(sizes)")        
+        code.writeline("sizes_shape = list(sizes)")
         code.newline()
         code.writeline(
             "assert(sizes_rank >= in0_rank), \
@@ -201,8 +203,10 @@ def gcu_generate_functional_repeat_wrapper(
         code.writeline("reshape_len = len(in0_shape)")
         code.writeline("if reshape_len > 4: ")
         with code.indent():
-            code.writeline("assert(insertCount == 1 and insertIdx >=0), 'broadcast dim count is error'")
-            code.writeline("limit = 1024 * 1024 * 16") 
+            code.writeline(
+                "assert(insertCount == 1 and insertIdx >=0), 'broadcast dim count is error'"
+            )
+            code.writeline("limit = 1024 * 1024 * 16")
             code.writeline("in0_merge_shape = []")
             code.writeline("out_merge_shape = []")
             code.writeline("cur_shape = 1")
@@ -218,8 +222,8 @@ def gcu_generate_functional_repeat_wrapper(
                     code.writeline("cur_shape *= in0_shape[i]")
             code.writeline("if insertIdx > 0:")
             with code.indent():
-                    code.writeline("in0_merge_shape.append(cur_shape)")
-                    code.writeline("out_merge_shape.append(cur_shape)")
+                code.writeline("in0_merge_shape.append(cur_shape)")
+                code.writeline("out_merge_shape.append(cur_shape)")
             code.writeline("in0_merge_shape.append(in0_shape[insertIdx])")
             code.writeline("out_merge_shape.append(reshape_out_shape[insertIdx])")
 
@@ -236,8 +240,8 @@ def gcu_generate_functional_repeat_wrapper(
                     code.writeline("cur_shape *= in0_shape[i]")
             code.writeline("if insertIdx < reshape_len - 1:")
             with code.indent():
-                    code.writeline("in0_merge_shape.append(cur_shape)")
-                    code.writeline("out_merge_shape.append(cur_shape)")
+                code.writeline("in0_merge_shape.append(cur_shape)")
+                code.writeline("out_merge_shape.append(cur_shape)")
             code.writeline("in0_shape = in0_merge_shape")
             code.writeline("reshape_out_shape = out_merge_shape")
             code.writeline("assert(len(in0_shape) <= 4), 'merged shape is error'")
@@ -262,6 +266,7 @@ def gcu_generate_functional_repeat_wrapper(
         code.newline()
         code.newline()
     return code
+
 
 def generate_destination_passing_repeat_wrapper(
     rank: int,
@@ -340,6 +345,7 @@ def generate_destination_passing_repeat_wrapper(
         code.newline()
     return code
 
+
 def gcu_generate_destination_passing_repeat_wrapper(
     rank: int,
     wrapper_name: str,
@@ -398,7 +404,9 @@ def gcu_generate_destination_passing_repeat_wrapper(
                 code.writeline("in0, out0, ")
 
             if rank > 0:
-                s = ", ".join(f"in_strides[{j}] if in0_shape[{j}] > 1 else 0" for j in range(rank))
+                s = ", ".join(
+                    f"in_strides[{j}] if in0_shape[{j}] > 1 else 0" for j in range(rank)
+                )
                 code.writeline(f"{s}, # stride for in0")
 
                 s = ", ".join(f"out0_strides[{j}]" for j in range(rank))
@@ -419,6 +427,7 @@ def gcu_generate_destination_passing_repeat_wrapper(
         code.newline()
         code.newline()
     return code
+
 
 def generate_repeat_kernel(
     rank: int,
@@ -579,6 +588,7 @@ def generate_repeat_kernel(
                 code.newline()
     return code
 
+
 def _tuple_content(strings: Sequence[str]) -> str:
     # comma separated list
     if len(strings) == 0:
@@ -587,6 +597,7 @@ def _tuple_content(strings: Sequence[str]) -> str:
         return f"{strings[0]},"
     else:
         return ", ".join(strings)
+
 
 def gcu_generate_repeat_kernel(
     rank: int,
@@ -630,9 +641,11 @@ def gcu_generate_repeat_kernel(
         # tile size & tiles_per_cta, gsl style
         if rank > 0:
             code.writeline("tiles_per_cta,")
-            tile_size_args = ", ".join(f"tile_size{i}: tl.constexpr" for i in range(rank))
+            tile_size_args = ", ".join(
+                f"tile_size{i}: tl.constexpr" for i in range(rank)
+            )
             code.writeline(f"{tile_size_args}, ")
-            #code.writeline("tile_size: tl.constexpr,")
+            # code.writeline("tile_size: tl.constexpr,")
 
             code.writeline("one_tile_per_cta: tl.constexpr,")
     code.writeline("):")
@@ -655,7 +668,7 @@ def gcu_generate_repeat_kernel(
         # one-tile-per-cta, monolithic kernel style
         code.writeline("if one_tile_per_cta: # monolitic kernel style")
         with code.indent():
-            #tid_stmt = "tid = init_tid"
+            # tid_stmt = "tid = init_tid"
             tid_stmt = "tile_id = pid"
             code.writeline(tid_stmt)
 
@@ -696,9 +709,9 @@ def gcu_generate_repeat_kernel(
             code.newline()
 
             code.writeline(
-            "# stores, note that store to block pointer does not automatically cast the value to the pointer's dtype"
+                "# stores, note that store to block pointer does not automatically cast the value to the pointer's dtype"
             )
-            
+
             out_strides = _tuple_content(tuple(f"out0_stride{i}" for i in range(rank)))
             code.writeline(
                 f"out0_bptr = tl.make_block_ptr("
@@ -724,8 +737,10 @@ def gcu_generate_repeat_kernel(
 
                 code.writeline("# tile offsets")
                 for i in range(rank):
-                    code.writeline(f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)")
-                
+                    code.writeline(
+                        f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)"
+                    )
+
                 shape = _tuple_content(tuple(f"s{i}" for i in range(rank)))
                 offsets = _tuple_content(tuple(f"offset{i}" for i in range(rank)))
                 tile_sizes = _tuple_content(tuple(f"tile_size{i}" for i in range(rank)))
@@ -748,10 +763,12 @@ def gcu_generate_repeat_kernel(
                 code.newline()
 
                 code.writeline(
-                "# stores, note that store to block pointer does not automatically cast the value to the pointer's dtype"
+                    "# stores, note that store to block pointer does not automatically cast the value to the pointer's dtype"
                 )
-                
-                out_strides = _tuple_content(tuple(f"out0_stride{j}" for j in range(rank)))
+
+                out_strides = _tuple_content(
+                    tuple(f"out0_stride{j}" for j in range(rank))
+                )
                 code.writeline(
                     f"out0_bptr = tl.make_block_ptr("
                     f"out0_ptr, ({shape}), ({out_strides}), ({offsets}), ({tile_sizes}), order=({order}))"
@@ -760,6 +777,7 @@ def gcu_generate_repeat_kernel(
                     f"tl.store(out0_bptr, out0.to(out0_bptr.type.element_ty), boundary_check=({order}))"
                 )
     return code
+
 
 def generate_code(
     rank: int,
@@ -778,6 +796,7 @@ def generate_code(
     )
     code = generate_repeat_kernel(rank, kernel_name, code)
     return code
+
 
 def gcu_generate_code(
     rank: int,
@@ -896,6 +915,7 @@ class RepeatFunction:
 
 
 _repeat_func = RepeatFunction()
+
 
 def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
     logger.debug("GEMS REPEAT")

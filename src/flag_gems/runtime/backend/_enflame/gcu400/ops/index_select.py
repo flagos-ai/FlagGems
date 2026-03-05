@@ -6,6 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import dim_compress, libentry
+
 from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,9 @@ def index_select_kernel(
 
         out_mask = rows_mask and (cols_offsets < index_len)
 
-        indices = tl.load(index + cols_offsets, mask=(cols_offsets < index_len), other=0)
+        indices = tl.load(
+            index + cols_offsets, mask=(cols_offsets < index_len), other=0
+        )
         inp_off = rows_offsets * N + indices[None, :]
         out_off = rows_offsets * index_len + cols_offsets[None, :]
 

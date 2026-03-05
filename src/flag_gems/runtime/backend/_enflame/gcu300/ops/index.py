@@ -158,7 +158,9 @@ def generate_index_wrapper(
         code.writeline(f"  else:")
         code.writeline(f"    input = input.to(torch.int32)")
         for i in range(indices_len):
-            code.writeline(f"if indices[{i}] is not None and indices[{i}].dtype == torch.int64:")
+            code.writeline(
+                f"if indices[{i}] is not None and indices[{i}].dtype == torch.int64:"
+            )
             code.writeline(f"   indices[{i}] = indices[{i}].to(torch.int32)")
         code.writeline(f"if out.dtype == torch.int64:")
         code.writeline(f"  if isinstance(out, StridedBuffer):")

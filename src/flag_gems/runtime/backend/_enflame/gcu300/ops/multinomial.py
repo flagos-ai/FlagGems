@@ -90,14 +90,14 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     # indexing into distributions and grid.x output sample batches
     increment = n_dist * n_samples
     philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
-    
+
     # gcu300: don't support int64, convert int64 to int32
     philox_tensor = torch.tensor([philox_seed, philox_offset], dtype=torch.int64)
     philox_tensor = philox_tensor.to(torch.int32)
     philox_list = philox_tensor.tolist()
     philox_seed = philox_list[0]
     philox_offset = philox_list[1]
-    
+
     grid = lambda META: (n_dist, triton.cdiv(n_samples, META["NBLOCK"]))
     multinomial_with_replacement[grid](
         cum_prob, out, n_categories, n_samples, philox_seed, philox_offset

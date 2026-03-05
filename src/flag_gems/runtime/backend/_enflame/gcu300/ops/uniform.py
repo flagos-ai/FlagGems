@@ -60,7 +60,7 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
         increment, generator=generator
     )
     philox_seed = philox_seed % (2 ^ 32)
-    philox_offset = philox_offset % (2 ^32)
+    philox_offset = philox_offset % (2 ^ 32)
     with torch_device_fn.device(self.device):
         uniform_kernel[grid_fn](self, N, philox_seed, philox_offset, from_, to)
     return self

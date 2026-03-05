@@ -11,18 +11,20 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+
 def keep(conf):
     BLOCK_M = conf.kwargs["BLOCK_M"]
     BLOCK_N = conf.kwargs["BLOCK_N"]
-    if BLOCK_M * BLOCK_N  / conf.num_warps > 64 * 512:
+    if BLOCK_M * BLOCK_N / conf.num_warps > 64 * 512:
         return False
-    if BLOCK_M * BLOCK_N < 64 *64:
+    if BLOCK_M * BLOCK_N < 64 * 64:
         return False
     if conf.num_stages > 1:
         return False
     if conf.num_warps == 1:
         return False
     return True
+
 
 @libentry()
 @libtuner(
@@ -130,7 +132,7 @@ def log_softmax(self, dim, half_to_float=False):
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
-        min(48,K),
+        min(48, K),
     )
     with torch_device_fn.device(inp.device):
         log_softmax_kernel[grid](

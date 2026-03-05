@@ -166,8 +166,10 @@ def upsample_nearest2d_NUM_TILE(args):
         num_tile = triton.cdiv(grid_y, 128)
     return num_tile
 
+
 def upsample_nearest2d_TOTAL_TILE(args):
     return triton.cdiv(args["N"] * args["C"], 4)
+
 
 def upsample_nearest2d_SAME_H(args):
     return args["OH"] == args["IH"]
@@ -175,6 +177,7 @@ def upsample_nearest2d_SAME_H(args):
 
 def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
+
 
 def upsample_nearest2d_USE_INT32_IDX(args):
     return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)  # INT32 MAX
@@ -204,12 +207,14 @@ def vdot_heur_block_size(args):
     else:
         return 1024
 
+
 def simple_elementwise_blocksize_heur(args):
     n = args["n_elements"]
     if n < 65535:
         return 1024
     else:
         return 16384
+
 
 HEURISTICS_CONFIGS = {
     "argmax": {
@@ -221,9 +226,9 @@ HEURISTICS_CONFIGS = {
         "BLOCK_N": argmin_heur_block_n,
     },
     "bmm": {
-    #     "DIVISIBLE_M": bmm_heur_divisible_m,
-    #     "DIVISIBLE_N": bmm_heur_divisible_n,
-    #     "DIVISIBLE_K": bmm_heur_divisible_k,
+        #     "DIVISIBLE_M": bmm_heur_divisible_m,
+        #     "DIVISIBLE_N": bmm_heur_divisible_n,
+        #     "DIVISIBLE_K": bmm_heur_divisible_k,
     },
     "dropout": {
         "BLOCK": dropout_heur_block,

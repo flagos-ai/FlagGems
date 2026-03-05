@@ -7,10 +7,11 @@ import triton.language as tl
 
 from flag_gems.ops.all import reduce_all
 from flag_gems.ops.any import reduce_any
-from .unique import _unique2
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.libentry import libentry
+
+from .unique import _unique2
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +220,7 @@ def isin_by_search(
         # invert=False: 全部为 False（没有元素在空集合中）
         # invert=True: 全部为 True（所有元素都不在空集合中）
         return torch.full_like(in0, fill_value=invert, dtype=torch.bool)
-    
+
     if M <= 1048576:  # 2 ** 20 = 1024 * 1024
         _, BLOCK_M, num_warps = launch_arg(None, 512, M, 8)
     elif M <= 4194304:  # 2 ** 22 = 1024 * 4096

@@ -17,13 +17,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def max_kernel_1(
-    inp,
-    mid,
-    M,
-    BLOCK_SIZE: tl.constexpr,
-    num_stages: tl.constexpr=1
-):
+def max_kernel_1(inp, mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     num_prog = tl.num_programs(0)
     num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -66,6 +60,8 @@ def keep(conf):
     if BLOCK_M * BLOCK_N >= 256 * 1024:
         return False
     return True
+
+
 @libentry()
 @libtuner(
     configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
@@ -78,8 +74,8 @@ def max_kernel_dim_low(
     out_index,
     M,
     N,
-    BLOCK_M: tl.constexpr=16,
-    BLOCK_N: tl.constexpr=4096,
+    BLOCK_M: tl.constexpr = 16,
+    BLOCK_N: tl.constexpr = 4096,
     num_stages: tl.constexpr = 2,
 ):
     # set offset
@@ -185,6 +181,7 @@ def max_kernel_dim_high(
         tl.store(out_value_ptrs, result_value, mask=mask1)
         tl.store(out_index_ptrs, result_index, mask=mask1)
 
+
 @libentry()
 @libtuner(
     configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
@@ -219,7 +216,7 @@ def max_kernel_dim_mid(
         # result_value = tl.full([BLOCK_N], value=min_value, dtype=acc_type)
         # result_index = tl.zeros([BLOCK_N], dtype=tl.int32)
         m_offset_0 = tl.arange(0, BLOCK_M)
-        offset_0 = m_offset_0[:, None] *N  + n_offset[None, :]
+        offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
         # set mask
         mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
         inp_ptrs_0 = inp + offset_0
@@ -228,7 +225,7 @@ def max_kernel_dim_mid(
         if M > BLOCK_M:
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
                 m_offset = i + tl.arange(0, BLOCK_M)
-                offset = m_offset[:, None] *N  + n_offset[None, :]
+                offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
                 mask = m_offset[:, None] < M and n_offset[None, :] < N
                 inp_ptrs = inp + offset
@@ -256,13 +253,13 @@ def max(inp):
 
     inp = inp.contiguous()
     M = inp.numel()
-    block_size = 32*64
-    if M < 24*16*1024:
-        block_size = 16*1024
-    elif M >= 24*32*1024 and M < 24*64*1024:
-        block_size = 32*1024
-    elif M >= 24*64*1024 :
-        block_size = 64*1024
+    block_size = 32 * 64
+    if M < 24 * 16 * 1024:
+        block_size = 16 * 1024
+    elif M >= 24 * 32 * 1024 and M < 24 * 64 * 1024:
+        block_size = 32 * 1024
+    elif M >= 24 * 64 * 1024:
+        block_size = 64 * 1024
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
@@ -270,10 +267,12 @@ def max(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
     num_stages = 1
-    if mid_size > 4*24:
+    if mid_size > 4 * 24:
         num_stages = 3
     with torch_device_fn.device(inp.device):
-        max_kernel_1[(min(mid_size, 24), 1, 1)](inp, mid, M, block_size, num_stages=num_stages, num_warps=1)
+        max_kernel_1[(min(mid_size, 24), 1, 1)](
+            inp, mid, M, block_size, num_stages=num_stages, num_warps=1
+        )
         max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, num_warps=1)
     return out.to(return_dtype)
 
@@ -304,13 +303,13 @@ def max_dim(inp, dim=None, keepdim=False):
     if dim == 0:
         M = inp.shape[0]
         N = inp.numel() // M
-        grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]),24),)
+        grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), 24),)
         with torch_device_fn.device(inp.device):
             max_kernel_dim_high[grid](inp, out_value, out_index, M, N)
-    elif dim == inp.ndim-1:
-        N = inp.shape[inp.ndim-1]
+    elif dim == inp.ndim - 1:
+        N = inp.shape[inp.ndim - 1]
         M = inp.numel() // N
-        grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]),24),)
+        grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
         # grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
             max_kernel_dim_low[grid](inp, out_value, out_index, M, N)
@@ -318,11 +317,11 @@ def max_dim(inp, dim=None, keepdim=False):
         B = 1
         for i in range(0, dim):
             B *= inp.shape[i]
-        M  = inp.shape[dim]
+        M = inp.shape[dim]
         N = 1
-        for i in range(dim+1, inp.ndim):
+        for i in range(dim + 1, inp.ndim):
             N *= inp.shape[i]
-        if B <= N*128:
+        if B <= N * 128:
             grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, 24), 1)
             with torch_device_fn.device(inp.device):
                 max_kernel_dim_mid[grid](inp, out_value, out_index, B, M, N)
@@ -335,7 +334,7 @@ def max_dim(inp, dim=None, keepdim=False):
             with torch_device_fn.device(inp.device):
                 max_kernel_dim_high[grid](inp_new, out_value, out_index, M, N)
     if not keepdim:
-        out_value = torch.squeeze(out_value, dim)  
+        out_value = torch.squeeze(out_value, dim)
         out_index = torch.squeeze(out_index, dim)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value.to(return_dtype), indices=out_index.to(torch.int64))

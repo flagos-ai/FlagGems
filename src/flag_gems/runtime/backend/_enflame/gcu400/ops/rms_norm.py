@@ -7,6 +7,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
 from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ def rms_norm_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
-):  
+):
     for i in range(BLOCK_SIZE_M):
         pid = tl.program_id(0) * BLOCK_SIZE_M + i
         Y_cur = pid * y_stride_r + Y
@@ -164,7 +165,9 @@ class RmsNorm(torch.autograd.Function):
             BLOCK_SIZE_M = (M + MAX_GRID_DIM - 1) // MAX_GRID_DIM
 
         with torch_device_fn.device(x.device):
-            rms_norm_kernel[grid_m,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, BLOCK_SIZE_M)
+            rms_norm_kernel[grid_m,](
+                y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, BLOCK_SIZE_M
+            )
 
         ctx.save_for_backward(x, inv_rms, weight)
         ctx.normalized_shape = normalized_shape

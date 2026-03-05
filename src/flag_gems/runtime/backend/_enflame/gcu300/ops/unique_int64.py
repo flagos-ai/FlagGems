@@ -389,7 +389,9 @@ def sorted_quick_unique_flat_int64(sorted_data: torch.Tensor, return_counts: boo
         idx = None
         counts = None
     tile_sum = torch.empty(
-        (global_ctas_num,), dtype=torch.int64, device=sorted_data.device  # int32 -> int64
+        (global_ctas_num,),
+        dtype=torch.int64,
+        device=sorted_data.device,  # int32 -> int64
     )
     data_out = None
     if not return_counts:
@@ -664,7 +666,9 @@ def sorted_indices_unique_flat_int64(
     # allocate tensor - 关键修改：int32 -> int64
     ne_result = torch.empty_like(sorted_data, dtype=torch.bool)
     tile_sum = torch.empty(
-        (global_ctas_num,), dtype=torch.int64, device=sorted_data.device  # int32 -> int64
+        (global_ctas_num,),
+        dtype=torch.int64,
+        device=sorted_data.device,  # int32 -> int64
     )
     data_out = torch.empty_like(sorted_data)
     inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)  # int32 -> int64
@@ -732,14 +736,18 @@ def simple_unique_flat_int64(
     # allocate tensor - 关键修改：int32 -> int64
     data_out = torch.empty_like(sorted_data)
     if return_inverse:
-        inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)  # int32 -> int64
+        inverse_indices = torch.empty_like(
+            sorted_data, dtype=torch.int64
+        )  # int32 -> int64
     else:
         inverse_indices = None
     if return_counts:
         idx = torch.empty_like(sorted_data, dtype=torch.int64)  # int32 -> int64
     else:
         idx = None
-    unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)  # int32 -> int64
+    unique_size = torch.empty(
+        [1], dtype=torch.int64, device=sorted_data.device
+    )  # int32 -> int64
 
     # launch kernel
     with torch_device_fn.device(sorted_data.device.index):

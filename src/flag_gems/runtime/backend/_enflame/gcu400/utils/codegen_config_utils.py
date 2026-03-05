@@ -49,6 +49,7 @@ class CodeGenConfig:
         if self.prefer_1d_tile:
             self.prefer_block_pointer = False
 
+
 CODEGEN_COFIGS = {
     vendors.NVIDIA: CodeGenConfig(
         512,

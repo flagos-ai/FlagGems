@@ -1,7 +1,7 @@
 import logging
 
-import triton
 import torch
+import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -36,7 +36,6 @@ def bitwise_or_tensor_(A, B):
 @triton.jit
 def bitwise_or_func_scalar(x, y):
     return x | y
-
 
 
 def bitwise_or_scalar(A, B):

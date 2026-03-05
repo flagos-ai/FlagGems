@@ -61,6 +61,7 @@ def keep(conf):
         return False
     return True
 
+
 @libentry()
 @libtuner(
     configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),

@@ -62,7 +62,6 @@ def eye(size, *, dtype=None, layout=torch.strided, device=None, pin_memory=None)
     MAX_GRID_DIM_x = 48
     MAX_GRID_DIM_y = 48
     grid = (MAX_GRID_DIM_x, MAX_GRID_DIM_y)
-    
 
     with torch_device_fn.device(device):
         eye_kernel[grid](

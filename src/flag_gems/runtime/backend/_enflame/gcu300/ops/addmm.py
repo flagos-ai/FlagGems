@@ -102,8 +102,10 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
 
     MAX_GRID_DIM = 24
     grid = lambda META: (
-        min(triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
-            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"])),
+        min(
+            triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
+            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        ),
     )
     with torch_device_fn.device(mat1.device):
         addmm_kernel[grid](
@@ -124,6 +126,6 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
             bias.stride(1),
             out.stride(0),
             out.stride(1),
-            MAX_GRID_DIM=MAX_GRID_DIM
+            MAX_GRID_DIM=MAX_GRID_DIM,
         )
     return out

@@ -57,9 +57,7 @@ def generate_gather_kernel(
 
     with code.indent():
         code.writeline("pid = tl.program_id(0)")
-        code.writeline(
-            "offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)"
-        )
+        code.writeline("offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)")
         code.newline()
         code.writeline("cur_offset = offset")
         for i in range(rank - 1, -1, -1):

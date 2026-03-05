@@ -111,7 +111,7 @@ def embedding_grad_scale_kernel(
 
 def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
     if indices.dtype == torch.int64:
-            indices = indices.to(torch.int32)
+        indices = indices.to(torch.int32)
     if weight.dtype == torch.float64:
         weight = weight.to(torch.float32)
     logger.debug("GEMS EMBEDDING FORWARD")
@@ -146,7 +146,7 @@ def embedding_backward(
     sparse=False,
 ):
     if grad_outputs.dtype == torch.int64:
-            grad_outputs = grad_outputs.to(torch.int32)
+        grad_outputs = grad_outputs.to(torch.int32)
     logger.debug("GEMS EMBEDDING BACKWARD")
     assert not sparse, "Currently do not support sparse format"
 

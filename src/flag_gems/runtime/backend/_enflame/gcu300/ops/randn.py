@@ -79,7 +79,7 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     philox_seed = philox_seed % (2 ^ 32)
-    philox_offset = philox_offset % (2 ^32)
+    philox_offset = philox_offset % (2 ^ 32)
     with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

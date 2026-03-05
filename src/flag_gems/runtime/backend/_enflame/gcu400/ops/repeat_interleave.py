@@ -5,9 +5,10 @@ import triton
 from triton import language as tl
 
 from flag_gems.utils import triton_lang_extension as tle
-from ..utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 

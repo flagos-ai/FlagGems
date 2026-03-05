@@ -5,9 +5,10 @@ import triton
 
 from flag_gems.ops.randn import randn_kernel
 from flag_gems.runtime import torch_device_fn
-from ..utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems.utils.shape_utils import broadcast_shapes, volume
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 UNROLL = 4

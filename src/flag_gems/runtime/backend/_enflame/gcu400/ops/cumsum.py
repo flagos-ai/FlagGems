@@ -5,11 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
-
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import get_device_properties
+from flag_gems.utils import get_device_properties, libentry
 from flag_gems.utils import triton_lang_extension as tle
+
 from ..utils.config_utils import MAX_GRID_DIM
 
 device = device.name
@@ -203,7 +202,9 @@ def scan_then_fan(inp, out, A, B, C, dtype):
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
         with torch_device_fn.device(inp.device):
-            add_base_sum_abc_kernel[grid](out, partial_sum, A, B, C, grid_a, part_num, BLOCK_SIZE)
+            add_base_sum_abc_kernel[grid](
+                out, partial_sum, A, B, C, grid_a, part_num, BLOCK_SIZE
+            )
 
 
 def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
@@ -305,7 +306,7 @@ def block_cumsum_kernel(
     gridx = tl.program_id(0)
     gridy = tl.program_id(1)
     n_chunks = tl.num_programs(0)
-    
+
     for row in range(gridy * r, min((gridy + 1) * r, R)):
         curr_cumsum = tl.zeros((1,), tl.float32)
         row_offset = row * r_stride

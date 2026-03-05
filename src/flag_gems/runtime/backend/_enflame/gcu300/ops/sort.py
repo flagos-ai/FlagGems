@@ -8,10 +8,12 @@ from triton.language.core import _unwrap_if_constexpr
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from .topk import _get_finfo_val, _get_iinfo_val, argsort
+
 from ..utils.config_utils import MAX_GRID_DIM
+from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
 logger = logging.getLogger(__name__)
+
 
 @tl.constexpr
 def get_int_t(num_bits: tl.constexpr, signed: tl.constexpr) -> tl.dtype:
@@ -92,11 +94,11 @@ def add_global_hist_kernel(
     grid_n,
     m,
     num_ctas,
-    num_passes : tl.constexpr,
-    num_bins : tl.constexpr,
+    num_passes: tl.constexpr,
+    num_bins: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    
+
     index = tl.arange(0, num_passes) * num_bins
     passes_index = index[:, None]
 
@@ -134,7 +136,7 @@ def compute_global_hist_kernel_all_cta(
     descending: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    
+
     r: tl.constexpr = 2**num_bits_per_pass
     bfe_mask: tl.constexpr = (1 << num_bits_per_pass) - 1  # a.k.a. 2 ** k_bits - 1
     CTA_TILE_N: tl.constexpr = TILE_N * tiles_n_per_cta
@@ -164,11 +166,15 @@ def compute_global_hist_kernel_all_cta(
                     acc += matches
                 local_sum = tl.sum(acc, axis=1)
 
-                tl.store(out_ptr +
-                         pid_n * (m * num_passes * r) + 
-                         pid_m * (num_passes * r) +
-                         (p * r) + bin_indices,
-                         local_sum)
+                tl.store(
+                    out_ptr
+                    + pid_n * (m * num_passes * r)
+                    + pid_m * (num_passes * r)
+                    + (p * r)
+                    + bin_indices,
+                    local_sum,
+                )
+
 
 @triton.jit
 def sweep(
@@ -274,7 +280,9 @@ def sweep(
                 associate_arr = tl.load(
                     associate_arr_ptr + pid_m * N + n_offsets, mask=mask
                 )
-                tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
+                tl.store(
+                    associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches
+                )
 
 
 def radix_sort(arr, k_bits=8, descending=False):
@@ -304,8 +312,7 @@ def radix_sort(arr, k_bits=8, descending=False):
 
     with torch_device_fn.device(arr.device):
         global_hist_all_cta = torch.zeros(
-            (m * grid_n, n_passes, num_bins),
-            device=arr.device, dtype=torch.int32
+            (m * grid_n, n_passes, num_bins), device=arr.device, dtype=torch.int32
         )
         compute_global_hist_kernel_all_cta[grid_for_global_hist_all_cta](
             arr,
@@ -424,6 +431,7 @@ def sort_kernel(
     )
     tl.store(out_ptr, sorted_in_val, mask=mask)
     tl.store(out_index_ptr, sorted_index_val, mask=mask)
+
 
 def sort(inp, dim=-1, descending=False):
     # We only implement stable radix sort here

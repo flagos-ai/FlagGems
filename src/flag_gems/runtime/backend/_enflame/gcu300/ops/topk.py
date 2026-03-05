@@ -17,6 +17,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
+
 from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,9 @@ def topk_stage1_kernel(
             cols = tl.arange(0, CHUNK_SIZE)
             mask = (chunk_offset + cols) < N
 
-            mask_val = _get_finfo_val(x_ptr_cur.dtype.element_ty, return_max=not DESCENDING)
+            mask_val = _get_finfo_val(
+                x_ptr_cur.dtype.element_ty, return_max=not DESCENDING
+            )
             x_val = tl.load(x_ptr_cur + cols, mask=mask, other=mask_val).to(tl.float32)
             for k_idx in range(k):
                 if DESCENDING:
@@ -260,13 +263,17 @@ def topk_stage2_kernel(
             cols = tl.arange(0, BLOCK_SIZE)
             mask = cols < N
 
-            mask_val = _get_finfo_val(chunk_x.dtype.element_ty, return_max=not DESCENDING)
+            mask_val = _get_finfo_val(
+                chunk_x.dtype.element_ty, return_max=not DESCENDING
+            )
             mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
-            chunk_x_val = tl.load(chunk_x_cur + cols, mask=mask, other=mask_val).to(tl.float32)
-            chunk_index_val = tl.load(chunk_index_cur + cols, mask=mask, other=mask_index_val).to(
-                tl.int32
+            chunk_x_val = tl.load(chunk_x_cur + cols, mask=mask, other=mask_val).to(
+                tl.float32
             )
+            chunk_index_val = tl.load(
+                chunk_index_cur + cols, mask=mask, other=mask_index_val
+            ).to(tl.int32)
 
             sorted_chunk_x, sorted_chunk_index = argsort(
                 chunk_x_val, chunk_index_val, 0, descending=DESCENDING

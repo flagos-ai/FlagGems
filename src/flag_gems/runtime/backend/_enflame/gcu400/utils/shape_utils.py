@@ -1,10 +1,11 @@
 import triton
 import triton.language as tl
-
 from _enflame.gcu400.utils.codegen_config_utils import get_heuristics_for_num_warps
+
 
 def heuristics_for_num_warps(tile_size):
     return get_heuristics_for_num_warps(tile_size)
+
 
 def heuristics_for_tile_size(max_tile_size, *sizes):
     ndim = len(sizes)

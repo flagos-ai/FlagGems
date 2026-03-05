@@ -7,6 +7,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+
 from ...gcu300.utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
@@ -68,11 +69,11 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     x = x.contiguous()
     residual = residual.contiguous()
     weight = weight.contiguous()
-    grid = (M, )
+    grid = (M,)
     BLOCK_SIZE_N = triton.next_power_of_2(N)
     BLOCK_SIZE_M = 1
     if M > 65535:
-        grid = (128, )
+        grid = (128,)
         BLOCK_SIZE_M = (M + 128 - 1) // 128
 
     with torch_device_fn.device(x.device):

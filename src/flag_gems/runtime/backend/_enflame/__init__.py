@@ -1,14 +1,14 @@
-import torch
-import os
 import importlib.util
+import os
 import re
 
+import torch
 from backend_utils import VendorInfoBase
 
 try:
     from torch_gcu import transfer_to_gcu
 except:
-    print(f'torch_gcu not installed')
+    print(f"torch_gcu not installed")
 
 if importlib.util.find_spec("triton.backends.enflame") is None:
     from triton_gcu.triton.driver import _GCUDriver
@@ -17,7 +17,7 @@ else:
 
 driver = _GCUDriver()
 arch = driver.get_arch()
-arch_version = int(re.search(r'gcu(\d+)', arch).group(1))
+arch_version = int(re.search(r"gcu(\d+)", arch).group(1))
 
 vendor_info = VendorInfoBase(
     vendor_name="enflame",

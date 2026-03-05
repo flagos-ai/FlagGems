@@ -7,9 +7,10 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from ..utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 

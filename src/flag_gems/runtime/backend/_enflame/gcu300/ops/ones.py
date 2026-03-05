@@ -10,6 +10,7 @@ from flag_gems.utils.shape_utils import volume
 device_ = device
 logger = logging.getLogger(__name__)
 
+
 @triton.jit
 def ones_kernel(
     output_ptr,
@@ -39,5 +40,5 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     N = volume(size)
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
     with torch_device_fn.device(device):
-        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024*128, num_warps=1)
+        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 128, num_warps=1)
     return out

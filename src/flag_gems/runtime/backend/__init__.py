@@ -189,6 +189,7 @@ def set_tl_extra_backend_module(vendor_name=None):
     module_str = f"triton.language.extra.{extra_name}.libdevice"
     tl_extra_backend_module = importlib.import_module(module_str)
 
+
 def get_tl_extra_backend_module():
     return tl_extra_backend_module
 

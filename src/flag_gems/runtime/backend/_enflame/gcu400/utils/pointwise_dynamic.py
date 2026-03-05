@@ -4,12 +4,12 @@ from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 import triton
+from _enflame.gcu400.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
 from triton.runtime.jit import JITFunction
 
-from flag_gems.utils.device_info import get_device_capability
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
-from _enflame.gcu400.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+from flag_gems.utils.device_info import get_device_capability
 from flag_gems.utils.shape_utils import (
     MemOverlap,
     all_c_contiguous,
@@ -394,7 +394,6 @@ class KernelGenerator:
                 code.writeline("one_tile_per_cta: tl.constexpr,")
             code.writeline("ENABLE_STRIDE_GATHER: tl.constexpr,")
         code.writeline("):")
-
 
     def gen_num_tiles(self, code):
         # tile-grid size
@@ -834,9 +833,13 @@ class WrapperGenerator:
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
                 code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
-                code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])"
+                )
                 code.writeline(f"FlagOfNotUseDMA |= in{i}.dtype == torch.int64")
-                code.writeline(f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))"
+                )
 
                 if not with_block_pointer:
                     continue
@@ -846,14 +849,22 @@ class WrapperGenerator:
                     code.writeline(f"in{i}_stride_order = (0,)")
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
-                code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)"
+                )
+                code.writeline(
+                    f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])"
+                )
                 code.writeline(f"FlagOfNotUseDMA |= in{i}.dtype == torch.int64")
-                code.writeline(f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))"
+                )
                 if not with_block_pointer:
                     continue
                 if ndim >= 2:
-                    code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
+                    code.writeline(
+                        f"out{i}_stride_order = stride_order(out{i}_strides)"
+                    )
                 else:
                     code.writeline(f"out{i}_stride_order = (0,)")
             if self.name.find("fill_scalar") != -1 and major >= 9:
@@ -862,13 +873,13 @@ class WrapperGenerator:
                 code.writeline("if FlagOfNotUseDMA:")
                 with code.indent():
                     code.writeline(
-                    f"tile_sizes = heuristics_for_tile_size({max_tile_size // 8}, *shape)"
-                )
+                        f"tile_sizes = heuristics_for_tile_size({max_tile_size // 8}, *shape)"
+                    )
                 code.writeline("else:")
                 with code.indent():
                     code.writeline(
-                    f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
-                )
+                        f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
+                    )
             code.writeline("tile_size = math.prod(tile_sizes)")
             code.writeline(
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
@@ -903,28 +914,38 @@ class WrapperGenerator:
             for i in range(schema.num_input_tensors()):
                 code.writeline(f"in{i}_strides = in{i}.stride()")
                 code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in in{i}_strides)")
-                code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in in{i}_strides if x != 0])"
+                )
                 code.writeline(f"FlagOfNotUseDMA |= in{i}.dtype == torch.int64")
-                code.writeline(f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= len(in{i}_strides) >= 5 or (len(in{i}_strides) == 4 and all(s != 1 for s in in{i}_strides))"
+                )
             for i in range(schema.num_output_tensors()):
                 code.writeline(f"out{i}_strides = out{i}.stride()")
-                code.writeline(f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)")
-                code.writeline(f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= any(s == 0 for s in out{i}_strides)"
+                )
+                code.writeline(
+                    f"FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in out{i}_strides if x != 0])"
+                )
                 code.writeline(f"FlagOfNotUseDMA |= out{i}.dtype == torch.int64")
-                code.writeline(f"FlagOfNotUseDMA |= len(out{i}_strides) >= 5 or (len(out{i}_strides) == 4 and all(s != 1 for s in out{i}_strides))")
+                code.writeline(
+                    f"FlagOfNotUseDMA |= len(out{i}_strides) >= 5 or (len(out{i}_strides) == 4 and all(s != 1 for s in out{i}_strides))"
+                )
             if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("tile_sizes = tuple([64])")
             else:
                 code.writeline("if FlagOfNotUseDMA:")
                 with code.indent():
                     code.writeline(
-                    f"tile_sizes = heuristics_for_tile_size({max_tile_size // 8}, num_tasks)"
-                )
+                        f"tile_sizes = heuristics_for_tile_size({max_tile_size // 8}, num_tasks)"
+                    )
                 code.writeline("else:")
                 with code.indent():
                     code.writeline(
-                    f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
-                )
+                        f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
+                    )
 
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
@@ -995,7 +1016,6 @@ class WrapperGenerator:
                 code.writeline("ENABLE_STRIDE_GATHER=FlagOfNotUseDMA,")
                 code.writeline("num_warps=num_warps,")
             code.writeline(")")
-
 
     def gen_kernel_launch_1d(
         self,
@@ -1101,7 +1121,9 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
-        code.writeline("from flag_gems.runtime.backend._enflame.gcu400.utils.shape_utils import (")
+        code.writeline(
+            "from flag_gems.runtime.backend._enflame.gcu400.utils.shape_utils import ("
+        )
         code.writeline("    heuristics_for_tile_size,")
         code.writeline("    heuristics_for_num_warps,")
         code.writeline(")")

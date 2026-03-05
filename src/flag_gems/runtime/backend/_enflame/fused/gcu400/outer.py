@@ -2,8 +2,9 @@ import logging
 
 import torch
 
-from ...gcu400.ops.mul import mul
 from flag_gems.ops.mv import mv
+
+from ...gcu400.ops.mul import mul
 
 logger = logging.getLogger(__name__)
 

@@ -4,10 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
-from .cumsum import normed_cumsum
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
+
 from ...utils.config_utils import MAX_GRID_DIM
+from .cumsum import normed_cumsum
 
 logger = logging.getLogger(__name__)
 

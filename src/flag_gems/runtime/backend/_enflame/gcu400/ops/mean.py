@@ -1,10 +1,11 @@
 import logging
+import math
 import sys
 
 import torch
 import triton
 import triton.language as tl
-import math
+
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
@@ -13,15 +14,10 @@ from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
+
 @libentry()
 @triton.jit
-def mean_kernel_1(
-    inp,
-    mid,
-    M,
-    BLOCK_SIZE: tl.constexpr,
-    num_stages: tl.constexpr=1
-):
+def mean_kernel_1(inp, mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexpr = 1):
     pid = tl.program_id(0)
     num_prog = tl.num_programs(0)
     num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
@@ -51,25 +47,28 @@ def mean(inp, *, dtype=None):
     if dtype is None:
         dtype = inp.dtype
 
-    block_size = 32*64
-    if M < 24*16*1024:
-        block_size = 16*1024
-    elif M >= 24*32*1024 and M < 24*64*1024:
-        block_size = 32*1024
-    elif M >= 24*64*1024 :
-        block_size = 64*1024
+    block_size = 32 * 64
+    if M < 24 * 16 * 1024:
+        block_size = 16 * 1024
+    elif M >= 24 * 32 * 1024 and M < 24 * 64 * 1024:
+        block_size = 32 * 1024
+    elif M >= 24 * 64 * 1024:
+        block_size = 64 * 1024
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
     num_stages = 1
-    if mid_size > 4*24:
+    if mid_size > 4 * 24:
         num_stages = 3
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        mean_kernel_1[(min(triton.cdiv(M, block_size), 24), 1, 1)](inp, mid, M, block_size, num_stages=num_stages, num_warps=1)
+        mean_kernel_1[(min(triton.cdiv(M, block_size), 24), 1, 1)](
+            inp, mid, M, block_size, num_stages=num_stages, num_warps=1
+        )
         mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid, num_warps=1)
     return out
+
 
 def keep(conf):
     BLOCK_M = conf.kwargs["BLOCK_M"]
@@ -80,13 +79,22 @@ def keep(conf):
         return False
     return True
 
+
 @libentry()
 @libtuner(
     configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
     key=["M", "N"],
 )
 @triton.jit
-def mean_kernel_dim_low(inp, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr=1):
+def mean_kernel_dim_low(
+    inp,
+    Mean,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    num_stages: tl.constexpr = 1,
+):
     # Map the program id to the row of X it should compute.
     step = tl.num_programs(0)
     pid_m = tl.program_id(0)
@@ -113,8 +121,9 @@ def mean_kernel_dim_low(inp, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.cons
         _mean /= N
         mean_row = tl.sum(_mean, axis=1)
         Mean_ptr = Mean + m_offset
-        mask_m = m_offset < M 
+        mask_m = m_offset < M
         tl.store(Mean_ptr, mean_row, mask_m)
+
 
 @libentry()
 @libtuner(
@@ -122,7 +131,15 @@ def mean_kernel_dim_low(inp, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.cons
     key=["M", "N"],
 )
 @triton.jit
-def mean_kernel_dim_high(inp, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr=1):
+def mean_kernel_dim_high(
+    inp,
+    Mean,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    num_stages: tl.constexpr = 1,
+):
     # Map the program id to the row of X it should compute.
     pid_n = tl.program_id(0)
     step = tl.num_programs(0)
@@ -149,13 +166,23 @@ def mean_kernel_dim_high(inp, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.con
         n_mask = n_offset < N
         tl.store(Mean_ptr, mean_col, n_mask)
 
+
 @libentry()
 @libtuner(
     configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
     key=["M", "N"],
 )
 @triton.jit
-def mean_kernel_dim_mid(inpIn, out_value_in, B, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, num_stages: tl.constexpr=1):
+def mean_kernel_dim_mid(
+    inpIn,
+    out_value_in,
+    B,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    num_stages: tl.constexpr = 1,
+):
     # Map the program id to the row of X it should compute.
     pid_b = tl.program_id(1)
     pid_n = tl.program_id(0)
@@ -166,7 +193,7 @@ def mean_kernel_dim_mid(inpIn, out_value_in, B, M, N, BLOCK_M: tl.constexpr, BLO
         out_value = out_value_in + tile_id_b * N
         n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
         m_offset_0 = tl.arange(0, BLOCK_M)
-        offset_0 = m_offset_0[:, None] *N  + n_offset[None, :]
+        offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
         mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
@@ -184,6 +211,7 @@ def mean_kernel_dim_mid(inpIn, out_value_in, B, M, N, BLOCK_M: tl.constexpr, BLO
         out_value_ptrs = out_value + n_offset
         n_mask = n_offset < N
         tl.store(out_value_ptrs, mean, n_mask)
+
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
     return_dtype = x.dtype
@@ -215,13 +243,13 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         if mean_dim == 0:
             M = inp.shape[0]
             N = inp.numel() // M
-            grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]),24),)
+            grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), 24),)
             with torch_device_fn.device(inp.device):
-                mean_kernel_dim_high[grid](inp, out,  M, N)
-        elif mean_dim == inp.ndim-1:
-            N = inp.shape[inp.ndim-1]
+                mean_kernel_dim_high[grid](inp, out, M, N)
+        elif mean_dim == inp.ndim - 1:
+            N = inp.shape[inp.ndim - 1]
             M = inp.numel() // N
-            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]),24),)
+            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
             # grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
             with torch_device_fn.device(inp.device):
                 mean_kernel_dim_low[grid](inp, out, M, N)
@@ -229,11 +257,11 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
             B = 1
             for i in range(0, mean_dim):
                 B *= inp.shape[i]
-            M  = inp.shape[mean_dim]
+            M = inp.shape[mean_dim]
             N = 1
-            for i in range(mean_dim+1, inp.ndim):
+            for i in range(mean_dim + 1, inp.ndim):
                 N *= inp.shape[i]
-            if B <= N*128:
+            if B <= N * 128:
                 grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]), min(B, 24), 1)
                 with torch_device_fn.device(inp.device):
                     mean_kernel_dim_mid[grid](inp, out, B, M, N)
@@ -248,7 +276,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         if not keepdim:
             out = out.squeeze(dim)
         return out.to(return_dtype)
-    else :
+    else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
         x = dim_compress(x, dim)

@@ -9,10 +9,11 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+
 from ...gcu300.utils.config_utils import MAX_GRID_DIM
 
-
 logger = logging.getLogger(__name__)
+
 
 # change pid_d and pid_n in grid(celoss_probability_kernel, celoss_probability_bwd)
 @libentry()
@@ -51,7 +52,9 @@ def celoss_indices_kernel(
 
         for off in range(0, C, BLOCK_C):
             offset_c = off + tl.arange(0, BLOCK_C)
-            inp_ptrs = inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            inp_ptrs = (
+                inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
             inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
             inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
             cur_max = tl.maximum(tmp_max, inp)
@@ -63,7 +66,9 @@ def celoss_indices_kernel(
         final_sum = tl.log(tl.sum(tmp_sum, axis=0))
 
         inp_tgt_ptrs = inp_ptr + n_idx * C * D + tgt * D + offset_d
-        inp_tgt = tl.load(inp_tgt_ptrs, mask=tgt_mask, other=-float("inf")).to(tl.float32)
+        inp_tgt = tl.load(inp_tgt_ptrs, mask=tgt_mask, other=-float("inf")).to(
+            tl.float32
+        )
 
         out = final_sum + final_max - inp_tgt
         w_tgt_ptrs = w_tgt_ptr + n_idx * D + offset_d
@@ -182,7 +187,9 @@ def celoss_indices_smooth_kernel(
 
         for off in range(0, C, BLOCK_C):
             offset_c = off + tl.arange(0, BLOCK_C)
-            inp_ptrs = inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            inp_ptrs = (
+                inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
             mask = offset_c[:, None] < C and offset_d[None, :] < D
             inp = tl.load(inp_ptrs, mask, other=-float("inf")).to(tl.float32)
             cur_max = tl.maximum(tmp_max, inp)
@@ -197,7 +204,9 @@ def celoss_indices_smooth_kernel(
         _sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
         for off in range(0, C, BLOCK_C):
             offset_c = off + tl.arange(0, BLOCK_C)
-            inp_ptrs = inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            inp_ptrs = (
+                inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
             mask = offset_c[:, None] < C and offset_d[None, :] < D
             inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
 
@@ -409,7 +418,9 @@ def celoss_indices_smooth_bwd(
         tgt_mask = offset_d < D
         tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
         out_grad_ptrs = out_grad_ptr + n_idx * D + offset_d
-        out_grad = tl.load(out_grad_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
+        out_grad = tl.load(out_grad_ptrs, mask=tgt_mask, other=0).to(tl.float32)[
+            None, :
+        ]
 
         ignore_mask = (tgt != ignore_index)[None, :]
 
@@ -419,7 +430,9 @@ def celoss_indices_smooth_bwd(
 
         for off in range(0, C, BLOCK_C):
             offset_c = off + tl.arange(0, BLOCK_C)
-            inp_ptrs = inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            inp_ptrs = (
+                inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
             inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
             inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
 
@@ -450,7 +463,9 @@ def celoss_indices_smooth_bwd(
 
         for off in range(0, C, BLOCK_C):
             offset_c = off + tl.arange(0, BLOCK_C)
-            inp_ptrs = inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            inp_ptrs = (
+                inp_ptr + n_idx * C * D + offset_c[:, None] * D + offset_d[None, :]
+            )
             inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
             inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
 

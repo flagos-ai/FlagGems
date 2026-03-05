@@ -223,7 +223,7 @@ class Benchmark:
                         import math
 
                         self.shapes = [
-                            shape for shape in self.shapes if math.prod(shape) < 2 ** 28
+                            shape for shape in self.shapes if math.prod(shape) < 2**28
                         ]
         except yaml.YAMLError as e:
             raise ValueError(

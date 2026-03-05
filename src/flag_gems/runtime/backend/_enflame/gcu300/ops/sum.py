@@ -56,12 +56,14 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     sum_val = tl.sum(mid_val)
     tl.store(out, sum_val)
 
+
 def keep(conf):
     BLOCK_M = conf.kwargs["BLOCK_M"]
     # grid limit
     if BLOCK_M < 64:
         return False
     return True
+
 
 @libentry()
 @libtuner(

@@ -5,11 +5,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry, libtuner
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import get_device_properties
+from flag_gems.utils import get_device_properties, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
+
 from ..utils.config_utils import MAX_GRID_DIM
 
 device = device.name
@@ -126,6 +126,7 @@ def scan_part_sum_abc_kernel(
 
         a_idx += grid_a
 
+
 def keep(conf):
     BLOCK_M = conf.kwargs["BLOCK_M"]
     BLOCK_N = conf.kwargs["BLOCK_N"]
@@ -135,13 +136,22 @@ def keep(conf):
         return False
     return True
 
+
 @libentry()
 @libtuner(
     configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
     key=["M", "N"],
 )
 @triton.jit
-def cumsum_kernel_dim_low(inp, out, M, N, BLOCK_M: tl.constexpr=128, BLOCK_N : tl.constexpr=128, num_stages: tl.constexpr=1):
+def cumsum_kernel_dim_low(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr = 128,
+    BLOCK_N: tl.constexpr = 128,
+    num_stages: tl.constexpr = 1,
+):
     # Map the program id to the row of X it should compute.
     step = tl.num_programs(0)
     pid_m = tl.program_id(0)
@@ -167,7 +177,7 @@ def cumsum_kernel_dim_low(inp, out, M, N, BLOCK_M: tl.constexpr=128, BLOCK_N : t
         out_ptrs_0 = out + offset_0
         tl.store(out_ptrs_0, result0, mask_0)
         if N > BLOCK_N:
-            part_sum =  tl.sum(inp_vals_0, axis=1)
+            part_sum = tl.sum(inp_vals_0, axis=1)
             for i in tl.range(BLOCK_N, N, BLOCK_N, num_stages=num_stages):
                 n_offset = i + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
@@ -189,13 +199,22 @@ def cumsum_kernel_dim_low(inp, out, M, N, BLOCK_M: tl.constexpr=128, BLOCK_N : t
                 out_ptrs = out + offset
                 tl.store(out_ptrs, result, mask)
 
+
 @libentry()
 @libtuner(
     configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
     key=["M", "N"],
 )
 @triton.jit
-def cumsum_kernel_dim_high(inp, out, M, N, BLOCK_M: tl.constexpr=128, BLOCK_N : tl.constexpr =128, num_stages: tl.constexpr=1):
+def cumsum_kernel_dim_high(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr = 128,
+    BLOCK_N: tl.constexpr = 128,
+    num_stages: tl.constexpr = 1,
+):
     # Map the program id to the row of X it should compute.
     pid_n = tl.program_id(0)
     step = tl.num_programs(0)
@@ -220,7 +239,7 @@ def cumsum_kernel_dim_high(inp, out, M, N, BLOCK_M: tl.constexpr=128, BLOCK_N : 
         out_ptrs_0 = out + offset_0
         tl.store(out_ptrs_0, result0, mask_0)
         if M > BLOCK_M:
-            part_sum =  tl.sum(inp_vals_0, axis=0)
+            part_sum = tl.sum(inp_vals_0, axis=0)
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
@@ -238,9 +257,11 @@ def cumsum_kernel_dim_high(inp, out, M, N, BLOCK_M: tl.constexpr=128, BLOCK_N : 
                 else:
                     inp_vals = inp_vals.to(tl.float32)
                 result = tl.cumsum(inp_vals, axis=0) + part_sum[None, :]
-                part_sum =  tl.sum(inp_vals, axis=0) + part_sum
+                part_sum = tl.sum(inp_vals, axis=0) + part_sum
                 out_ptrs = out + offset
                 tl.store(out_ptrs, result, mask)
+
+
 @libentry()
 @libtuner(
     configs=list(filter(keep, runtime.get_tuned_config("naive_reduction"))),
@@ -266,7 +287,7 @@ def cumsum_kernel_dim_mid(
         out = outIn + b_offset
         n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
         m_offset_0 = tl.arange(0, BLOCK_M)
-        offset_0 = m_offset_0[:, None] *N  + n_offset[None, :]
+        offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
         # set mask
         mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
         inp_ptrs_0 = inp + offset_0
@@ -284,7 +305,7 @@ def cumsum_kernel_dim_mid(
         out_ptrs_0 = out + offset_0
         tl.store(out_ptrs_0, result0, mask_0)
         if M > BLOCK_M:
-            part_sum =  tl.sum(inp_vals_0, axis=0)
+            part_sum = tl.sum(inp_vals_0, axis=0)
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
@@ -302,9 +323,10 @@ def cumsum_kernel_dim_mid(
                 else:
                     inp_vals = inp_vals.to(tl.float32)
                 result = tl.cumsum(inp_vals, axis=0) + part_sum[None, :]
-                part_sum =  tl.sum(inp_vals, axis=0) + part_sum
+                part_sum = tl.sum(inp_vals, axis=0) + part_sum
                 out_ptrs = out + offset
                 tl.store(out_ptrs, result, mask)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["part_num"])
@@ -383,7 +405,9 @@ def scan_then_fan(inp, out, A, B, C, dtype):
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
         with torch_device_fn.device(inp.device):
-            add_base_sum_abc_kernel[grid](out, partial_sum, A, B, C, grid_a, part_num, BLOCK_SIZE)
+            add_base_sum_abc_kernel[grid](
+                out, partial_sum, A, B, C, grid_a, part_num, BLOCK_SIZE
+            )
 
 
 def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
@@ -426,27 +450,27 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     if dim == 0:
         M = inp.shape[0]
         N = inp.numel() // M
-        grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]),24),)
+        grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK_N"]), 24),)
         with torch_device_fn.device(inp.device):
             cumsum_kernel_dim_high[grid](inp, out, M, N)
-    elif dim == inp.ndim-1:
-        N = inp.shape[inp.ndim-1]
+    elif dim == inp.ndim - 1:
+        N = inp.shape[inp.ndim - 1]
         M = inp.numel() // N
-        grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]),24),)
+        grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
         with torch_device_fn.device(inp.device):
             cumsum_kernel_dim_low[grid](inp, out, M, N)
     else:
         B = 1
         for i in range(0, dim):
             B *= inp.shape[i]
-        M  = inp.shape[dim]
+        M = inp.shape[dim]
         N = 1
-        for i in range(dim+1, inp.ndim):
+        for i in range(dim + 1, inp.ndim):
             N *= inp.shape[i]
-        if N==1:
-            N=M
-            M=B
-            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]),24),)
+        if N == 1:
+            N = M
+            M = B
+            grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_M"]), 24),)
             with torch_device_fn.device(inp.device):
                 cumsum_kernel_dim_low[grid](inp, out, M, N)
             return out
@@ -454,6 +478,7 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
         with torch_device_fn.device(inp.device):
             cumsum_kernel_dim_mid[grid](inp, out, B, M, N)
     return out
+
 
 def cumsum(inp, dim=1, *, dtype=None):
     logger.debug("GEMS CUMSUM")
@@ -520,7 +545,7 @@ def block_cumsum_kernel(
     gridx = tl.program_id(0)
     gridy = tl.program_id(1)
     n_chunks = tl.num_programs(0)
-    
+
     for row in range(gridy * r, min((gridy + 1) * r, R)):
         curr_cumsum = tl.zeros((1,), tl.float32)
         row_offset = row * r_stride

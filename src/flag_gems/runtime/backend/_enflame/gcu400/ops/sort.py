@@ -7,6 +7,7 @@ import triton.language as tl
 from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val, argsort
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
 from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
@@ -253,7 +254,9 @@ def sweep(
                 associate_arr = tl.load(
                     associate_arr_ptr + pid_m * N + n_offsets, mask=mask
                 )
-                tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
+                tl.store(
+                    associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches
+                )
 
 
 def radix_sort(arr, k_bits=8, descending=False):

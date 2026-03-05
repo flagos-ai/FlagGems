@@ -12,6 +12,7 @@ from flag_gems.utils.shape_utils import (
     has_internal_overlapping,
     restride_dim,
 )
+
 logger = logging.getLogger(__name__)
 
 

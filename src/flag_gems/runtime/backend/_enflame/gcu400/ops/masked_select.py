@@ -97,6 +97,7 @@ def write_back_kernel(
     pre_sums = tl.cumsum(select_ints, axis=0) - 1
     tl.store(out_ptr + pre_sums, inp, mask=offset < N and select_mask)
 
+
 @libentry()
 @triton.jit
 def masked_select_single_pass_kernel(
@@ -111,13 +112,15 @@ def masked_select_single_pass_kernel(
 
     tl.store(out_ptr + out_offsets, inp, mask=offsets < N and mask)
 
+
 @libentry()
 @triton.jit
 def masked_select_out_size(mask_ptr, out_size_ptr, N: tl.constexpr):
-  offsets = tl.arange(0, N)
-  mask = tl.load(mask_ptr + offsets)
-  out_size = tl.sum(mask)
-  tl.store(out_size_ptr, out_size)
+    offsets = tl.arange(0, N)
+    mask = tl.load(mask_ptr + offsets)
+    out_size = tl.sum(mask)
+    tl.store(out_size_ptr, out_size)
+
 
 def masked_select(inp, mask):
     logger.debug("GEMS MASKED SELECT")
