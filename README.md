@@ -1,11 +1,10 @@
 [<img width="2182" height="602" alt="github+banner-20260130" src=".github/assets/banner-20260130.png" />](https://flagos.io/)
 
-<table width="100%" style="border: none;">
+[中文版](./README_cn.md) | English
+
+<table>
 <tr>
-<td width="70%"style="border: none;">
-  <a href="./README_cn.md">中文版</a> | English
-</td>
-<td align="right"style="border: none;">
+<td>
   <a href="https://https://www.linkedin.com/company/flagos-community" target="_blank">
     <img src="./docs/assets/Linkedin.png" alt="LinkIn" width="32" height="32" />
   </a>
