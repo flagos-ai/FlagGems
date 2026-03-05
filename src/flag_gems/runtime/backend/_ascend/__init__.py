@@ -25,12 +25,11 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
+    "_to_copy",
     "contiguous",
+    "copy_",
     "sort",
     "sort_stable",
-    "copy_",
-    "_to_copy",
 )
-
 
 __all__ = ["*"]
