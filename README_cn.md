@@ -2,27 +2,23 @@
 
 中文版 | [English](./README.md)
 
-<table width="100%" style="border: none;">
-<tr>
-<td>
-  <a href="https://https://www.linkedin.com/company/flagos-community" target="_blank">
+<div align="right">
+  <a href="https://www.linkedin.com/company/flagos-community" target="_blank">
     <img src="./docs/assets/Linkedin.png" alt="LinkIn" width="32" height="32" />
   </a>
-  &nbsp;
+
   <a href="https://www.youtube.com/@FlagOS_Official" target="_blank">
     <img src="./docs/assets/youtube.png" alt="YouTube" width="32" height="32" />
   </a>
-  &nbsp;
+
   <a href="https://x.com/FlagOS_Official" target="_blank">
     <img src="./docs/assets/x.png" alt="X" width="32" height="32" />
   </a>
-  &nbsp;
+
   <a href="https://www.facebook.com/FlagOSCommunity" target="_blank">
     <img src="./docs/assets/Facebook.png" alt="X" width="32" height="32" />
   </a>
-</td>
-</tr>
-</table>
+</div>
 
 
 ## 介绍
