@@ -118,6 +118,8 @@ def test_accuracy_grouped_topk(
         bias,
         scoring_func,
     )
+    ref_topk_weights = to_reference(ref_topk_weights)
+    ref_topk_ids = to_reference(ref_topk_ids)
 
     with flag_gems.use_gems():
         res_topk_weights, res_topk_ids = flag_gems.grouped_topk(
@@ -134,6 +136,7 @@ def test_accuracy_grouped_topk(
     gems_assert_equal(res_topk_ids, ref_topk_ids)
 
     atol, rtol = get_tolerance(dtype, scoring_func, renormalize)
+    res_topk_weights = to_reference(res_topk_weights)
     torch.testing.assert_close(res_topk_weights, ref_topk_weights, atol=atol, rtol=rtol)
 
 
@@ -177,6 +180,8 @@ def test_accuracy_grouped_topk_large_scale(
         bias,
         scoring_func,
     )
+    ref_topk_weights = to_reference(ref_topk_weights)
+    ref_topk_ids = to_reference(ref_topk_ids)
 
     with flag_gems.use_gems():
         res_topk_weights, res_topk_ids = flag_gems.grouped_topk(
@@ -193,6 +198,7 @@ def test_accuracy_grouped_topk_large_scale(
     gems_assert_equal(res_topk_ids, ref_topk_ids)
 
     atol, rtol = get_tolerance(dtype, scoring_func, renormalize)
+    res_topk_weights = to_reference(res_topk_weights)
     torch.testing.assert_close(res_topk_weights, ref_topk_weights, atol=atol, rtol=rtol)
 
 
@@ -213,6 +219,8 @@ def test_accuracy_grouped_topk_scaling_factor(routed_scaling_factor, renormalize
     ref_weights, ref_ids = vllm_grouped_topk(
         scores.clone(), 4, 2, 2, renormalize, routed_scaling_factor, bias, 0
     )
+    ref_weights = to_reference(ref_weights)
+    ref_ids = to_reference(ref_ids)
 
     with flag_gems.use_gems():
         res_weights, res_ids = flag_gems.grouped_topk(
@@ -222,6 +230,7 @@ def test_accuracy_grouped_topk_scaling_factor(routed_scaling_factor, renormalize
     gems_assert_equal(res_ids, ref_ids)
 
     atol, rtol = get_tolerance(dtype, 0, renormalize)
+    res_weights = to_reference(res_weights)
     torch.testing.assert_close(res_weights, ref_weights, atol=atol, rtol=rtol)
 
 
@@ -242,6 +251,8 @@ def test_accuracy_grouped_topk_single_token(renormalize, scoring_func):
     ref_weights, ref_ids = vllm_grouped_topk(
         scores.clone(), 4, 2, 2, renormalize, 1.0, bias, scoring_func
     )
+    ref_weights = to_reference(ref_weights)
+    ref_ids = to_reference(ref_ids)
 
     with flag_gems.use_gems():
         res_weights, res_ids = flag_gems.grouped_topk(
@@ -251,6 +262,7 @@ def test_accuracy_grouped_topk_single_token(renormalize, scoring_func):
     gems_assert_equal(res_ids, ref_ids)
 
     atol, rtol = get_tolerance(dtype, scoring_func, renormalize)
+    res_weights = to_reference(res_weights)
     torch.testing.assert_close(res_weights, ref_weights, atol=atol, rtol=rtol)
 
 
@@ -270,6 +282,8 @@ def test_accuracy_grouped_topk_sigmoid(renormalize):
     ref_weights, ref_ids = vllm_grouped_topk(
         scores.clone(), 4, 2, 2, renormalize, 1.0, bias, 1
     )
+    ref_weights = to_reference(ref_weights)
+    ref_ids = to_reference(ref_ids)
 
     with flag_gems.use_gems():
         res_weights, res_ids = flag_gems.grouped_topk(
@@ -279,6 +293,7 @@ def test_accuracy_grouped_topk_sigmoid(renormalize):
     gems_assert_equal(res_ids, ref_ids)
 
     atol, rtol = get_tolerance(dtype, 1, renormalize)
+    res_weights = to_reference(res_weights)
     torch.testing.assert_close(res_weights, ref_weights, atol=atol, rtol=rtol)
 
 
@@ -300,8 +315,6 @@ def test_accuracy_dropout(shape, p, dtype):
     )
     ref_inp = to_reference(res_inp)
 
-    # NOTE: ensure that scalars are float32(instead of float64)
-    # in some cases, casting up then casting down have different result
     p = np.float32(p)
     one_minus_p = np.float32(1.0) - p
 
@@ -1544,7 +1557,7 @@ def native_per_token_group_quant_fp8(
 
     x_ = x.reshape(x.numel() // group_size, group_size)
     amax = x_.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
-    x_s = amax / fp8_max
+    x_s = amax * torch.tensor(1.0 / fp8_max, dtype=torch.float32, device=x.device)
     if scale_ue8m0:
         min_val = torch.tensor(1e-10, dtype=x_s.dtype, device=x_s.device)
         x_s = torch.exp2(torch.ceil(torch.log2(torch.maximum(x_s.abs(), min_val))))
