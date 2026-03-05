@@ -343,8 +343,13 @@ def test_accuracy_one_hot():
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int64])
 def test_accuracy_arange_start(start, end, step, dtype):
-    if dtype == torch.int64 and isinstance(start, float):
-        pytest.skip("int64 with float start/end/step not applicable")
+    if dtype == torch.int64 and (
+        isinstance(start, float) or isinstance(end, float) or isinstance(step, float)
+    ):
+        with pytest.raises(RuntimeError):
+            with flag_gems.use_gems():
+                torch.arange(start, end, step, dtype=dtype, device=device)
+        return
     with flag_gems.use_gems():
         res_out = torch.arange(start, end, step, dtype=dtype, device=device)
     ref_out = torch.arange(start, end, step, dtype=dtype, device="cpu")
@@ -355,8 +360,6 @@ def test_accuracy_arange_start(start, end, step, dtype):
 @pytest.mark.parametrize("end", [10, 100, 1000, 5.0])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int64])
 def test_accuracy_arange(end, dtype):
-    if dtype == torch.int64 and isinstance(end, float):
-        pytest.skip("int64 with float end not applicable")
     with flag_gems.use_gems():
         res_out = torch.arange(end, dtype=dtype, device=device)
     ref_out = torch.arange(end, dtype=dtype, device="cpu")
