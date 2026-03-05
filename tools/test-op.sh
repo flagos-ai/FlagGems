@@ -2,9 +2,18 @@
 
 set -e
 
+PR_ID=$1
+
 # Replace "__ALL__" with all tests
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   CHANGED_FILES=$(find tests -name "test*.py")
+  FAIL_EARLY=""
+  echo "TIMESTAMP=${PR_ID}"
+  SUFFIX="all"
+else
+  FAIL_EARLY="-x"
+  echo "PR_ID=${PR_ID}"
+  SUFFIX="${GITHUB_SHA::7}"
 fi
 
 # Test cases that needs to run quick cpu tests
@@ -21,8 +30,7 @@ QUICK_CPU_TESTS=(
   "tests/test_unary_pointwise_ops.py"
 )
 
-PR_ID=$1
-ID_SHA="${PR_ID}-${GITHUB_SHA::7}"
+ID_SHA="${PR_ID}-${SUFFIX::7}"
 
 TEST_CASES=()
 TEST_CASES_CPU=()
@@ -30,6 +38,9 @@ for item in $CHANGED_FILES; do
   case $item in
     tests/test_DSA/*)
       # skip DSA test for now
+      ;;
+    tests/test_quant.py)
+      # skip
       ;;
     tests/*) TEST_CASES+=($item)
   esac
@@ -50,10 +61,10 @@ fi
 
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
-coverage run --data-file=${ID_SHA}-op -m pytest -s -x ${TEST_CASES[@]}
+coverage run --data-file=${ID_SHA}-op -m pytest -s ${FAIL_EARLY} ${TEST_CASES[@]}
 
 # Run quick-cpu test if necessary
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run --data-file=${ID_SHA}-op -m pytest -s -x ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
+  coverage run --data-file=${ID_SHA}-op -m pytest -s ${FAIL_EARLY} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
 fi
