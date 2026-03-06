@@ -7,9 +7,9 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+
 
 def keep(conf):
     BLOCK_M = conf.kwargs["BLOCK_M"]
@@ -21,6 +21,7 @@ def keep(conf):
     if conf.num_warps > 1:
         return False
     return True
+
 
 @libentry()
 @libtuner(
@@ -51,7 +52,7 @@ def log_softmax_kernel(
         input_ptrs0 = input_ptr + offset0
         m_new = tl.load(input_ptrs0, mask=mask0, other=-float("inf")).to(tl.float32)
         all_neg_inf = m_new == float("-inf")
-        z = tl.where(all_neg_inf, zero,  one)
+        z = tl.where(all_neg_inf, zero, one)
         m = m_new
         if N > BLOCK_N:
             for start_n in tl.range(BLOCK_N, N, BLOCK_N, num_stages=num_stages):
@@ -75,6 +76,7 @@ def log_softmax_kernel(
             inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
             o = inp - mid
             tl.store(output_ptr + offset, o, mask=mask)
+
 
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("log_softmax"), key=["M", "N"])
@@ -138,7 +140,7 @@ def log_softmax(self, dim, half_to_float=False):
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
-        min(48,K),
+        min(48, K),
     )
 
     with torch_device_fn.device(inp.device):

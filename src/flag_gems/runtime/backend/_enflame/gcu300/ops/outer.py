@@ -2,8 +2,9 @@ import logging
 
 import torch
 
-from .mul import mul
 from flag_gems.ops.mv import mv
+
+from .mul import mul
 
 logger = logging.getLogger(__name__)
 

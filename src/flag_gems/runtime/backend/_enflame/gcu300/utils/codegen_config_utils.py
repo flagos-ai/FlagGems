@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -7,7 +8,6 @@ from flag_gems.runtime import device
 from flag_gems.runtime.backend import vendor_module
 from flag_gems.runtime.common import vendors
 
-import os
 ENFLAME_GCU300_4SIPS = int(os.getenv("ENFLAME_GCU300_4SIPS", "0"))
 
 
@@ -97,9 +97,11 @@ CODEGEN_COFIGS = {
         prefer_1d_tile=True,
     ),
     vendors.ENFLAME: CodeGenConfig(
-        32 * 1024  if ENFLAME_GCU300_4SIPS != 1 else 64 * 1024, # base for bpe8, which means base*2 for bpe4, base*4 for bpe2
+        32 * 1024
+        if ENFLAME_GCU300_4SIPS != 1
+        else 64 * 1024,  # base for bpe8, which means base*2 for bpe4, base*4 for bpe2
         (12, 1, 1) if ENFLAME_GCU300_4SIPS != 1 else (1, 1, 1),
-        2          if ENFLAME_GCU300_4SIPS != 1 else 4,
+        2 if ENFLAME_GCU300_4SIPS != 1 else 4,
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),

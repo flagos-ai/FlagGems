@@ -6,7 +6,6 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
-from ..utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 

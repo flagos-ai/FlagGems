@@ -3,8 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils import tl_extra_shim
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 exp2 = tl_extra_shim.exp2

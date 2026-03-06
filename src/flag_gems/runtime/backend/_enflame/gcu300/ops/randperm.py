@@ -386,7 +386,7 @@ def sort_by_key(key, value, valid_bits, generator=None):
         )
 
         philox_seed = philox_seed % (2 ^ 32)
-        philox_offset = philox_offset % (2 ^32)
+        philox_offset = philox_offset % (2 ^ 32)
         with torch_device_fn.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,

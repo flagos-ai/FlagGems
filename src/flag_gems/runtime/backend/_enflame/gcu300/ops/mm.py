@@ -7,7 +7,6 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +122,10 @@ def mm(a, b):
     # launch kernel
     MAX_GRID_DIM = 24
     grid = lambda META: (
-        min(triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
-            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"])),
+        min(
+            triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
+            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        ),
         META["SPLIT_K"],
     )
     with torch_device_fn.device(a.device):
@@ -142,7 +143,7 @@ def mm(a, b):
             c.stride(0),
             c.stride(1),
             GROUP_M=8,
-            MAX_GRID_DIM=MAX_GRID_DIM
+            MAX_GRID_DIM=MAX_GRID_DIM,
         )
     return c
 
@@ -161,8 +162,10 @@ def mm_out(a, b, *, out):
     # launch kernel
     MAX_GRID_DIM = 24
     grid = lambda META: (
-        min(triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
-            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"])),
+        min(
+            triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
+            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        ),
         META["SPLIT_K"],
     )
     with torch_device_fn.device(a.device):
@@ -180,6 +183,6 @@ def mm_out(a, b, *, out):
             out.stride(0),
             out.stride(1),
             GROUP_M=8,
-            MAX_GRID_DIM=MAX_GRID_DIM
+            MAX_GRID_DIM=MAX_GRID_DIM,
         )
     return out

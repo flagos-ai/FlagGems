@@ -118,8 +118,8 @@ def dropout(input, p, train=True):
     increment = triton.cdiv(N, UNROLL)
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
-        philox_seed = philox_seed % (2 ^32)
-        philox_offset = philox_offset % (2 ^32)
+        philox_seed = philox_seed % (2 ^ 32)
+        philox_offset = philox_offset % (2 ^ 32)
         dropout_forward_kernel[grid_fn](
             input, out, mask, N, p, philox_seed, philox_offset
         )

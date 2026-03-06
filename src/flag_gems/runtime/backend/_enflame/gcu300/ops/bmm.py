@@ -7,7 +7,6 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +27,15 @@ def bmm_kernel(
     M,
     N,
     K,
-    stride_ab, stride_am, stride_ak,
-    stride_bb, stride_bk, stride_bn,
-    stride_cb, stride_cm, stride_cn,
+    stride_ab,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bk,
+    stride_bn,
+    stride_cb,
+    stride_cm,
+    stride_cn,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -48,7 +53,7 @@ def bmm_kernel(
 
         A = A_in + pid_b * M * K
         B = B_in + pid_b * K * N
-        O = O_in + pid_b * M * N
+        Out = O_in + pid_b * M * N
 
         L_block_ptr = tl.make_block_ptr(
             base=A,
@@ -56,7 +61,7 @@ def bmm_kernel(
             strides=(stride_am, stride_ak),
             offsets=(pid_m * BLOCK_M, 0),
             block_shape=(BLOCK_M, BLOCK_K),
-            order=(1, 0)
+            order=(1, 0),
         )
         R_block_ptr = tl.make_block_ptr(
             base=B,
@@ -64,26 +69,47 @@ def bmm_kernel(
             strides=(stride_bk, stride_bn),
             offsets=(0, pid_n * BLOCK_N),
             block_shape=(BLOCK_K, BLOCK_N),
-            order=(1, 0)
+            order=(1, 0),
         )
         O_block_ptr = tl.make_block_ptr(
-            base=O,
+            base=Out,
             shape=(M, N),
             strides=(stride_cm, stride_cn),
             offsets=(pid_m * BLOCK_M, pid_n * BLOCK_N),
             block_shape=(BLOCK_M, BLOCK_N),
-            order=(1, 0)
+            order=(1, 0),
         )
 
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for k in range(0, tl.cdiv(K, BLOCK_K)):
-            a = tl.load(L_block_ptr, boundary_check=(0, 1,), padding_option="zero")
-            b = tl.load(R_block_ptr, boundary_check=(0, 1,), padding_option="zero")
+            a = tl.load(
+                L_block_ptr,
+                boundary_check=(
+                    0,
+                    1,
+                ),
+                padding_option="zero",
+            )
+            b = tl.load(
+                R_block_ptr,
+                boundary_check=(
+                    0,
+                    1,
+                ),
+                padding_option="zero",
+            )
             acc += tl.dot(a, b, out_dtype=tl.float32)
             L_block_ptr = tl.advance(L_block_ptr, (0, BLOCK_K))
             R_block_ptr = tl.advance(R_block_ptr, (BLOCK_K, 0))
-        c = acc.to(O.dtype.element_ty)
-        tl.store(O_block_ptr, c, boundary_check=(0, 1,))
+        c = acc.to(Out.dtype.element_ty)
+        tl.store(
+            O_block_ptr,
+            c,
+            boundary_check=(
+                0,
+                1,
+            ),
+        )
 
 
 def bmm(A, B):
@@ -96,8 +122,10 @@ def bmm(A, B):
 
     MAX_GRID_DIM = 24
     grid = lambda META: (
-        min(triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
-            Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"])),
+        min(
+            triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
+            Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        ),
     )
     with torch_device_fn.device(A.device):
         bmm_kernel[grid](
@@ -117,7 +145,7 @@ def bmm(A, B):
             out.stride(0),
             out.stride(1),
             out.stride(2),
-            MAX_GRID_DIM=MAX_GRID_DIM
+            MAX_GRID_DIM=MAX_GRID_DIM,
         )
     return out
 
@@ -133,8 +161,10 @@ def bmm_out(A, B, out):
     B = B.contiguous()
     MAX_GRID_DIM = 24
     grid = lambda META: (
-        min(triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
-            Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"])),
+        min(
+            triton.cdiv(MAX_GRID_DIM, META["num_warps"]),
+            Batch * triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        ),
     )
     with torch_device_fn.device(A.device):
         bmm_kernel[grid](
@@ -154,6 +184,6 @@ def bmm_out(A, B, out):
             out.stride(0),
             out.stride(1),
             out.stride(2),
-            MAX_GRID_DIM=MAX_GRID_DIM
+            MAX_GRID_DIM=MAX_GRID_DIM,
         )
     return out

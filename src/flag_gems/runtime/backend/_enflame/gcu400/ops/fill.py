@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ def fill_tensor_(self, value):
     return self
 
 
-def fill_scalar_(self, value = 0):
+def fill_scalar_(self, value=0):
     logging.debug("GEMS FILL_SCALAR_")
     with torch_device_fn.device(self.device):
         fill_scalar_func(self, value, out0=self)

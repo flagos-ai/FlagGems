@@ -12,6 +12,7 @@ from flag_gems.utils.shape_utils import (
     has_internal_overlapping,
     restride_dim,
 )
+
 logger = logging.getLogger(__name__)
 
 
@@ -218,23 +219,23 @@ def generate_destination_passing_wrapper(
 
     with code.indent():
         code.writeline("# convert all the inputs to int32 only if they are int64")
-        code.writeline(f"if src_strided.dtype == torch.int64:")
-        code.writeline(f"  if isinstance(src_strided, StridedBuffer):")
-        code.writeline(f"    src_strided.convert_to_int32()")
-        code.writeline(f"  else:")
-        code.writeline(f"    src_strided = src_strided.to(torch.int32)")
-        code.writeline(f"if inp.dtype == torch.int64:")
-        code.writeline(f"  if isinstance(inp, StridedBuffer):")
-        code.writeline(f"    inp.convert_to_int32()")
-        code.writeline(f"  else:")
-        code.writeline(f"    inp = inp.to(torch.int32)")
-        code.writeline(f"if out.dtype == torch.int64:")
-        code.writeline(f"  if isinstance(out, StridedBuffer):")
-        code.writeline(f"    out.convert_to_int32()")
-        code.writeline(f"  else:")
-        code.writeline(f"    out = out.to(torch.int32)")
-        code.writeline(f"if index.dtype == torch.int64:")
-        code.writeline(f"  index = index.to(torch.int32)")
+        code.writeline("if src_strided.dtype == torch.int64:")
+        code.writeline("  if isinstance(src_strided, StridedBuffer):")
+        code.writeline("    src_strided.convert_to_int32()")
+        code.writeline("  else:")
+        code.writeline("    src_strided = src_strided.to(torch.int32)")
+        code.writeline("if inp.dtype == torch.int64:")
+        code.writeline("  if isinstance(inp, StridedBuffer):")
+        code.writeline("    inp.convert_to_int32()")
+        code.writeline("  else:")
+        code.writeline("    inp = inp.to(torch.int32)")
+        code.writeline("if out.dtype == torch.int64:")
+        code.writeline("  if isinstance(out, StridedBuffer):")
+        code.writeline("    out.convert_to_int32()")
+        code.writeline("  else:")
+        code.writeline("    out = out.to(torch.int32)")
+        code.writeline("if index.dtype == torch.int64:")
+        code.writeline("  index = index.to(torch.int32)")
 
         code.writeline("inp_strides = list(inp.stride())")
         code.writeline("index_strides = index.stride()")

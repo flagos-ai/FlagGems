@@ -7,7 +7,6 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +127,7 @@ def kron_stride_constant_kernel(
     )
     tl.store(c_ptr + c_idx, c, mask=mask)
 
+
 @triton.autotune(configs=runtime.get_tuned_config("kron"), key=["M", "N"])
 @triton.jit
 def kron_kernel(
@@ -238,12 +238,33 @@ def kron(A, B):
     b_batch_stride = M2 * N2
     c_batch_stride = M * N
     FlagOfNotUseDMA = False
-    FlagOfNotUseDMA |= torch.any(torch.tensor(A_view.stride()) <= 0 )
-    FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in A_view.stride() if x != 0])
-    FlagOfNotUseDMA |= torch.any(torch.tensor(B_view.stride()) <= 0 )
-    FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in B_view.stride() if x != 0])
-    FlagOfNotUseDMA |= torch.any(torch.tensor(C_reshaped.stride()) <= 0 )
-    FlagOfNotUseDMA |= (lambda s: len(s) >= 2 and not all((max(a,b) % min(a,b) == 0 and a != b) for i, a in enumerate(s) for b in s[i+1:]))([x for x in C_reshaped.stride() if x != 0])
+    FlagOfNotUseDMA |= torch.any(torch.tensor(A_view.stride()) <= 0)
+    FlagOfNotUseDMA |= (
+        lambda s: len(s) >= 2
+        and not all(
+            (max(a, b) % min(a, b) == 0 and a != b)
+            for i, a in enumerate(s)
+            for b in s[i + 1 :]
+        )
+    )([x for x in A_view.stride() if x != 0])
+    FlagOfNotUseDMA |= torch.any(torch.tensor(B_view.stride()) <= 0)
+    FlagOfNotUseDMA |= (
+        lambda s: len(s) >= 2
+        and not all(
+            (max(a, b) % min(a, b) == 0 and a != b)
+            for i, a in enumerate(s)
+            for b in s[i + 1 :]
+        )
+    )([x for x in B_view.stride() if x != 0])
+    FlagOfNotUseDMA |= torch.any(torch.tensor(C_reshaped.stride()) <= 0)
+    FlagOfNotUseDMA |= (
+        lambda s: len(s) >= 2
+        and not all(
+            (max(a, b) % min(a, b) == 0 and a != b)
+            for i, a in enumerate(s)
+            for b in s[i + 1 :]
+        )
+    )([x for x in C_reshaped.stride() if x != 0])
     with torch_device_fn.device(A.device):
         grid = lambda meta: (
             batch_size

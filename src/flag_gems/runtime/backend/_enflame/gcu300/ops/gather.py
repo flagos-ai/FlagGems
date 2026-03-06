@@ -57,9 +57,7 @@ def generate_gather_kernel(
 
     with code.indent():
         code.writeline("pid = tl.program_id(0)")
-        code.writeline(
-            "offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)"
-        )
+        code.writeline("offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)")
         code.newline()
         code.writeline("cur_offset = offset")
         for i in range(rank - 1, -1, -1):
@@ -99,18 +97,18 @@ def generate_gather_wrapper(
             code.writeline("return out")
 
         code.writeline("# convert all the inputs to int32 only if they are int64")
-        code.writeline(f"if inp.dtype == torch.int64:")
-        code.writeline(f"  if isinstance(inp, StridedBuffer):")
-        code.writeline(f"    inp.convert_to_int32()")
-        code.writeline(f"  else:")
-        code.writeline(f"    inp = inp.to(torch.int32)")
-        code.writeline(f"if out.dtype == torch.int64:")
-        code.writeline(f"  if isinstance(out, StridedBuffer):")
-        code.writeline(f"    out.convert_to_int32()")
-        code.writeline(f"  else:")
-        code.writeline(f"    out = out.to(torch.int32)")
-        code.writeline(f"if index.dtype == torch.int64:")
-        code.writeline(f"  index = index.to(torch.int32)")
+        code.writeline("if inp.dtype == torch.int64:")
+        code.writeline("  if isinstance(inp, StridedBuffer):")
+        code.writeline("    inp.convert_to_int32()")
+        code.writeline("  else:")
+        code.writeline("    inp = inp.to(torch.int32)")
+        code.writeline("if out.dtype == torch.int64:")
+        code.writeline("  if isinstance(out, StridedBuffer):")
+        code.writeline("    out.convert_to_int32()")
+        code.writeline("  else:")
+        code.writeline("    out = out.to(torch.int32)")
+        code.writeline("if index.dtype == torch.int64:")
+        code.writeline("  index = index.to(torch.int32)")
         code.writeline("inp_shape = inp.shape")
         code.writeline("inp_stride = inp.stride()")
         code.writeline("index_shape = index.shape")

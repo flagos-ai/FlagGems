@@ -74,7 +74,7 @@ def trace(self):
     else:
         output_dtype = torch.int32
     # notice:
-    # gcu300 don't some operation for torch.int64. 
+    # gcu300 don't some operation for torch.int64.
     # Be careful the overflow
     out = torch.empty((), dtype=output_dtype, device=self.device)
 

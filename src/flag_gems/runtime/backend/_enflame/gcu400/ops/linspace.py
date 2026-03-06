@@ -5,7 +5,6 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ def linspace(
         mid = steps // 2
         step_size = (float(end) - float(start)) / (steps - 1)
         BLOCK_SIZE = 128
-        if (steps // BLOCK_SIZE > 65535):
+        if steps // BLOCK_SIZE > 65535:
             BLOCK_SIZE = 16384
 
         grid = (triton.cdiv(steps, BLOCK_SIZE),)

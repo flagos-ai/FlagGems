@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils import tl_extra_shim
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 exp = tl_extra_shim.exp
@@ -14,7 +15,7 @@ exp = tl_extra_shim.exp
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def glu_kernel(a, b):
-    sigmoid_b = tl.sigmoid(b.to(tl.float32)) # 1 / (1 + exp(-b.to(tl.float32)))
+    sigmoid_b = tl.sigmoid(b.to(tl.float32))  # 1 / (1 + exp(-b.to(tl.float32)))
     result = a * sigmoid_b
     return result
 

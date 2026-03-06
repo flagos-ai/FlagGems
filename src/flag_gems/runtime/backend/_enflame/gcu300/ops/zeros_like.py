@@ -3,8 +3,9 @@ import logging
 import torch
 import triton
 
-from .zeros import zeros_kernel
 from flag_gems.runtime import torch_device_fn
+
+from .zeros import zeros_kernel
 
 logger = logging.getLogger(__name__)
 
@@ -21,5 +22,5 @@ def zeros_like(
     N = x.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
     with torch_device_fn.device(x.device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024*128, num_warps=1)
+        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 128, num_warps=1)
     return out

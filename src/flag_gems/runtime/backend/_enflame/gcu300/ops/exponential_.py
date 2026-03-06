@@ -26,8 +26,8 @@ def fused_exponential_kernel(
     philox_offset: tl.uint32,
     BLOCK: tl.constexpr,
 ):
-    c0 = (philox_offset & 0xFFFFFFFF)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF)
+    c0 = philox_offset & 0xFFFFFFFF
+    c1 = (philox_offset >> 32) & 0xFFFFFFFF
     i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
@@ -103,9 +103,7 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     seed = torch.tensor(philox_seed, dtype=torch.int64).to(torch.int32)
     offset = torch.tensor(philox_offset, dtype=torch.int64).to(torch.int32)
     with torch_device_fn.device(device):
-        fused_exponential_kernel[grid_fn](
-            x_, N, is_double, lambd, eps, seed, offset
-        )
+        fused_exponential_kernel[grid_fn](x_, N, is_double, lambd, eps, seed, offset)
     if not inplace:
         x.copy_(x_)
     return x

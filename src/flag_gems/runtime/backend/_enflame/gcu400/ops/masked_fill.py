@@ -4,7 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import broadcastable_to, pointwise_dynamic
+from flag_gems.utils import broadcastable_to
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)

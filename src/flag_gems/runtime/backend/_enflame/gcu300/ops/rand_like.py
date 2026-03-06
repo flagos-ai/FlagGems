@@ -26,8 +26,8 @@ def rand_like(
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
-    philox_seed = philox_seed % (2 ^32)
-    philox_offset = philox_offset % (2 ^32)
+    philox_seed = philox_seed % (2 ^ 32)
+    philox_offset = philox_offset % (2 ^ 32)
     with torch_device_fn.device(x.device):
         rand_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

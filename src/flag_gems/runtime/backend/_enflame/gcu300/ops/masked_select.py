@@ -46,6 +46,7 @@ def mask_part_sum_kernel(
     part_sum = tl.sum(acc, axis=0)
     tl.store(part_sums_ptr + pid, part_sum)
 
+
 @libentry()
 @triton.jit(do_not_specialize=["N", "nr", "row_stride"])
 def mask_part_sum_atomic_add_kernel(
@@ -57,10 +58,9 @@ def mask_part_sum_atomic_add_kernel(
     part_sums = tl.load(part_sums_ptr + tl.arange(0, NP_BLOCK), mask=mask)
     final_sum = tl.sum(part_sums, axis=0)
     pre_sums = tl.cumsum(part_sums, axis=0)
-    tl.store(
-        part_sums_ptr + tl.arange(0, NP_BLOCK), pre_sums - part_sums, mask=mask
-    )
+    tl.store(part_sums_ptr + tl.arange(0, NP_BLOCK), pre_sums - part_sums, mask=mask)
     tl.store(part_sums_ptr + np, final_sum)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["N", "nr", "row_stride"])
@@ -100,6 +100,7 @@ def write_back_kernel(
     pre_sums = tl.cumsum(select_ints, axis=0) - 1
     tl.store(out_ptr + pre_sums, inp, mask=offset < N and select_mask)
 
+
 @libentry()
 @triton.jit
 def masked_select_single_pass_kernel(
@@ -114,13 +115,15 @@ def masked_select_single_pass_kernel(
 
     tl.store(out_ptr + out_offsets, inp, mask=offsets < N and mask)
 
+
 @libentry()
 @triton.jit
 def masked_select_out_size(mask_ptr, out_size_ptr, N: tl.constexpr):
-  offsets = tl.arange(0, N)
-  mask = tl.load(mask_ptr + offsets)
-  out_size = tl.sum(mask)
-  tl.store(out_size_ptr, out_size)
+    offsets = tl.arange(0, N)
+    mask = tl.load(mask_ptr + offsets)
+    out_size = tl.sum(mask)
+    tl.store(out_size_ptr, out_size)
+
 
 def masked_select(inp, mask):
     logger.debug("GEMS MASKED SELECT")

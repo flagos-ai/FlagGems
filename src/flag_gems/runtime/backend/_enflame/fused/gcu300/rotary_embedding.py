@@ -7,6 +7,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
 # from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
@@ -241,7 +242,7 @@ def apply_rotary_pos_emb(
     if k.dtype == torch.int64:
         k = k.to(torch.int32)
     if position_ids is not None and position_ids.dtype == torch.int64:
-            position_ids = position_ids.to(torch.int32)
+        position_ids = position_ids.to(torch.int32)
 
     q = q.view(-1, q.shape[-2], q.shape[-1])
     k = k.view(-1, k.shape[-2], k.shape[-1])

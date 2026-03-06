@@ -50,7 +50,7 @@ def upsample_nearest2d_kernel(
         iw = ow
     else:
         iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
-    
+
     for i in range(NUM_TILE):
         nc_iter_start = nc_iter * NUM_TILE + i
         ptr_i_start = ptr_i
@@ -66,6 +66,7 @@ def upsample_nearest2d_kernel(
             ptr_i_start += src_index_stride
             ptr_o_start += dst_index_stride
             nc_iter_tmp += TOTAL_TILE
+
 
 def upsample_nearest2d(
     input: torch.Tensor,

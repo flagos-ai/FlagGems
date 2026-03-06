@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils import tl_extra_shim
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 try:
     # _isfinited = tl_extra_shim.isfinited
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def isfinite_func(x):
     # return _isfinited(x) if x.dtype.is_fp64() else _finitef(x.to(tl.float32))
-    return  _finitef(x.to(tl.float32))
+    return _finitef(x.to(tl.float32))
 
 
 def isfinite(

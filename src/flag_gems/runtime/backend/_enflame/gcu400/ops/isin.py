@@ -7,10 +7,11 @@ import triton.language as tl
 
 from flag_gems.ops.all import reduce_all
 from flag_gems.ops.any import reduce_any
-from .unique import _unique2
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.libentry import libentry
+
+from .unique import _unique2
 
 logger = logging.getLogger(__name__)
 

@@ -9,6 +9,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_min
+
 from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
@@ -143,7 +144,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 out_shape[dim] = 1
             else:
                 del out_shape[dim]
-            return torch.zeros(out_shape, dtype=torch.int32, device=inp.device).to(torch.int64)
+            return torch.zeros(out_shape, dtype=torch.int32, device=inp.device).to(
+                torch.int64
+            )
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N

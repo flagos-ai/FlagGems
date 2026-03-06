@@ -36,7 +36,7 @@ def arange_start(
         size = math.ceil((end - start) / step)
 
     BLOCK_SIZE = 128
-    if (size // BLOCK_SIZE > 65535):
+    if size // BLOCK_SIZE > 65535:
         BLOCK_SIZE = 32768
     grid = triton.cdiv(size, BLOCK_SIZE)
 

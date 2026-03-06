@@ -7,10 +7,12 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def sub_func_no_alpha(x, y):
     return x - y
+
 
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
