@@ -116,43 +116,43 @@ def roll(
         grid = (triton.cdiv(total_n, BLOCK), 1)
         roll_kernel[grid](flat_A, flat_out, total_n, total_n, shift, BLOCK=BLOCK)
         return out
-    else:
-        # Dim-specific roll: apply shifts one by one
-        result = A
-        for shift, dim in zip(shifts, dims):
-            dim = dim % A.ndim
-            roll_size = result.shape[dim]
-            shift = shift % roll_size
-            if shift == 0:
-                continue
 
-            result = result.contiguous()
-            out = torch.empty_like(result)
+    # Dim-specific roll: apply shifts one by one
+    result = A
+    for shift, dim in zip(shifts, dims):
+        dim = dim % A.ndim
+        roll_size = result.shape[dim]
+        shift = shift % roll_size
+        if shift == 0:
+            continue
 
-            # outer_size = product of dims before `dim`
-            # inner_size = product of dims after `dim`
-            outer_size = 1
-            for i in range(dim):
-                outer_size *= result.shape[i]
-            inner_size = 1
-            for i in range(dim + 1, result.ndim):
-                inner_size *= result.shape[i]
+        result = result.contiguous()
+        out = torch.empty_like(result)
 
-            n_inner_roll = roll_size * inner_size
-            BLOCK = 1024
-            grid = (triton.cdiv(n_inner_roll, BLOCK), outer_size)
+        # outer_size = product of dims before `dim`
+        # inner_size = product of dims after `dim`
+        outer_size = 1
+        for i in range(dim):
+            outer_size *= result.shape[i]
+        inner_size = 1
+        for i in range(dim + 1, result.ndim):
+            inner_size *= result.shape[i]
 
-            roll_dim_kernel[grid](
-                result,
-                out,
-                inner_size,
-                roll_size,
-                shift,
-                n_inner_roll,
-                BLOCK=BLOCK,
-            )
-            result = out
+        n_inner_roll = roll_size * inner_size
+        BLOCK = 1024
+        grid = (triton.cdiv(n_inner_roll, BLOCK), outer_size)
 
-        if result is A:
-            return A.clone()
-        return result
+        roll_dim_kernel[grid](
+            result,
+            out,
+            inner_size,
+            roll_size,
+            shift,
+            n_inner_roll,
+            BLOCK=BLOCK,
+        )
+        result = out
+
+    if result is A:
+        return A.clone()
+    return result
