@@ -522,6 +522,20 @@ sum:
   - 128
   - 256
 
+tril:
+- gen: true
+  param_map:
+    META:
+      M_BLOCK_SIZE: 2
+      N_BLOCK_SIZE: 2048
+
+tril_batch:
+- gen: true
+  param_map:
+    META:
+      BATCH_BLOCK_SIZE: 16
+      MN_BLOCK_SIZE: 512
+
 triu:
 - gen: true
   param_map:

@@ -1228,6 +1228,54 @@ def test_accuracy_index_add_(shape, dim, dtype):
     gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)
 
 
+@pytest.mark.index_fill
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_index_fill(shape, dim, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        value = 3.14
+    else:
+        inp = torch.randint(-100, 100, size=shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+        value = 42
+    index_size = inp.size(dim)
+    index = torch.randperm(index_size, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_index = to_reference(index)
+    ref_out = torch.index_fill(ref_inp, dim, ref_index, value)
+    with flag_gems.use_gems():
+        res_out = torch.index_fill(inp, dim, index, value)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.index_fill_
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_index_fill_(shape, dim, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        value = -1.5
+    else:
+        inp = torch.randint(-100, 100, size=shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+        value = -7
+    index_size = inp.size(dim)
+    index = torch.randperm(index_size, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_index = to_reference(index)
+    ref_inp.index_fill_(dim, ref_index, value)
+    with flag_gems.use_gems():
+        inp.index_fill_(dim, index, value)
+    gems_assert_equal(inp, ref_inp)
+
+
 @pytest.mark.index_select
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
