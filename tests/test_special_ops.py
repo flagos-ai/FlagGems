@@ -1903,3 +1903,34 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+@pytest.mark.argsort
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize(
+    "hiddensize", [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
+)
+@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.parametrize("dim", [0, -1])
+def test_accuracy_argsort(batch_size, hiddensize, descending, dtype, dim):
+    if dtype in BOOL_TYPES:
+        y = torch.randint(
+            0, 2, (batch_size, hiddensize), dtype=dtype, device=flag_gems.device
+        )
+    elif dtype in ALL_INT_DTYPES:
+        min_v, max_v = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+        y = torch.randint(
+            min_v, max_v, (batch_size, hiddensize), dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
+    else:
+        y = torch.randn((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
+
+    ref_y = to_reference(y)
+    # we only implement stable sort, non-stable sort is undefined
+    ref_index = torch.argsort(ref_y, dim=dim, stable=True, descending=descending)
+
+    with flag_gems.use_gems():
+        res_index = torch.argsort(y, dim=dim, stable=True, descending=descending)
+
+    gems_assert_equal(res_index, ref_index)
