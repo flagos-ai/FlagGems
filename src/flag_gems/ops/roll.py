@@ -53,7 +53,6 @@ def roll_dim_kernel(
     inner_size,
     roll_size,
     shift,
-    stride_total,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -148,7 +147,6 @@ def roll(
             inner_size,
             roll_size,
             shift,
-            n_inner_roll,
             BLOCK=BLOCK,
         )
         result = out
