@@ -328,6 +328,7 @@ _FULL_CONFIG = (
     ("sum.dim_IntList", sum_dim),
     ("sum.IntList_out", sum_dim_out),
     ("sum.out", sum_out),
+    ("svd", svd),
     ("tan", tan),
     ("tan_", tan_),
     ("tanh", tanh),
