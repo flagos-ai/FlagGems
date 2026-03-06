@@ -1313,7 +1313,7 @@ def test_accuracy_logaddexp(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.logaddexp(inp1, inp2)
 
-    gems_assert_close(res_out, ref_out)
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.minimum

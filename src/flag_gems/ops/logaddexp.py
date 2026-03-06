@@ -34,9 +34,7 @@ def logaddexp_kernel(
 def logaddexp(X, Y):
     logger.debug("GEMS LOGADDEXP")
 
-    out = torch.empty_like(
-        X, dtype=torch.promote_types(X.dtype, Y.dtype)
-    )
+    out = torch.empty_like(X, dtype=torch.promote_types(X.dtype, Y.dtype))
     n_elements = X.numel()
 
     if n_elements == 0:
