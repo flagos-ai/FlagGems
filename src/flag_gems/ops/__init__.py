@@ -95,6 +95,7 @@ from flag_gems.ops.flip import flip
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
+from flag_gems.ops.gcd import gcd, gcd_, gcd_out
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
@@ -216,6 +217,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.tril import tril, tril_
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -356,6 +358,9 @@ __all__ = [
     "full_like",
     "gather",
     "gather_backward",
+    "gcd",
+    "gcd_",
+    "gcd_out",
     "ge",
     "ge_scalar",
     "gelu",
@@ -522,6 +527,8 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_",
     "triu",
     "triu_",
     "true_divide",
