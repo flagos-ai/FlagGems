@@ -182,6 +182,8 @@ _FULL_CONFIG = (
     ("glu_backward", glu_backward),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
+    ("greater.Scalar", greater_scalar),
+    ("greater.Tensor", greater),
     ("hstack", hstack),
     ("index.Tensor", index),
     ("index_add", index_add),
