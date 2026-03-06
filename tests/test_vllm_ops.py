@@ -233,3 +233,91 @@ def test_cutlass_scaled_mm(p):
         rtol, atol = 5e-1, 1.5e-1
 
     torch.testing.assert_close(c, output_ref, rtol=rtol, atol=atol)
+
+
+# ============ top_k_per_row_prefill tests ============
+class TopKPerRowPrefillTestKit:
+    num_test_cases = 8 if QUICK_MODE else 16
+
+    @staticmethod
+    def _get_all_combinations():
+        # Test various row configurations
+        row_configs = [
+            # (num_rows, vocab_size, top_k)
+            (1, 32000, 10),
+            (4, 32000, 10),
+            (8, 128256, 10),
+            (16, 32000, 5),
+            (32, 128256, 10),
+            (64, 32000, 10),
+            (128, 128256, 5),
+            (256, 32000, 10),
+        ]
+        return row_configs
+
+    @classmethod
+    def get_test_params(cls):
+        all_combinations = cls._get_all_combinations()
+        random.shuffle(all_combinations)
+        return all_combinations[: cls.num_test_cases]
+
+
+@pytest.mark.top_k_per_row_prefill
+@pytest.mark.parametrize(
+    "num_rows,vocab_size,top_k", TopKPerRowPrefillTestKit.get_test_params()
+)
+def test_top_k_per_row_prefill(num_rows, vocab_size, top_k):
+    from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
+
+    # Generate random row lengths (variable length rows)
+    min_len = vocab_size // 2
+    max_len = vocab_size
+    row_lengths = torch.randint(
+        min_len, max_len + 1, (num_rows,), device=flag_gems.device
+    )
+
+    # Create row_starts and row_ends
+    row_starts = torch.zeros(num_rows, dtype=torch.int32, device=flag_gems.device)
+    row_ends = row_lengths.to(torch.int32)
+
+    # Total elements
+    total_elements = int(row_lengths.sum().item())
+
+    # Create logits tensor (flattened for all rows)
+    logits = torch.randn(total_elements, dtype=torch.float32, device=flag_gems.device)
+
+    # Output indices tensor
+    indices = torch.empty(num_rows * top_k, dtype=torch.int64, device=flag_gems.device)
+
+    stride0 = top_k
+    stride1 = 1
+
+    # Call the function
+    top_k_per_row_prefill(
+        logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+    )
+
+    # Verify results using PyTorch reference
+    indices_result = indices.view(num_rows, top_k)
+    offset = 0
+    for row_idx in range(num_rows):
+        row_len = int(row_lengths[row_idx].item())
+        row_logits = logits[offset : offset + row_len]
+
+        # Get reference top-k
+        _, ref_indices = torch.topk(row_logits, min(top_k, row_len), dim=0)
+
+        # Get actual indices for this row
+        actual_indices = indices_result[row_idx]
+
+        # Check that actual indices are valid and point to top values
+        actual_values = row_logits[actual_indices]
+        ref_values = row_logits[ref_indices]
+
+        # The top-k values should match (not necessarily the indices due to ties)
+        actual_sorted = torch.sort(actual_values, descending=True)[0]
+        ref_sorted = torch.sort(ref_values, descending=True)[0]
+
+        torch.testing.assert_close(actual_sorted, ref_sorted, rtol=1e-5, atol=1e-5)
+
+        offset += row_len

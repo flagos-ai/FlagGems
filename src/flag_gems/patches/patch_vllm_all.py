@@ -428,6 +428,23 @@ def custom_concat_and_cache_mla(
     )
 
 
+def custom_top_k_per_row_prefill(
+    logits: torch.Tensor,
+    row_starts: torch.Tensor,
+    row_ends: torch.Tensor,
+    indices: torch.Tensor,
+    num_rows: int,
+    stride0: int,
+    stride1: int,
+    top_k: int,
+) -> None:
+    from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
+
+    return top_k_per_row_prefill(
+        logits, row_starts, row_ends, indices, num_rows, stride0, stride1, top_k
+    )
+
+
 def custom_gems_flashattn_mla_forward_decode(
     self,
     q: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
@@ -585,6 +602,7 @@ def apply_gems_patches_to_vllm(verbose=True):
     lib_patches = [
         ("_C", "silu_and_mul", custom_silu_and_mul),
         ("_C", "cutlass_scaled_mm", custom_cutlass_scaled_mm),
+        ("_C", "top_k_per_row_prefill", custom_top_k_per_row_prefill),
         ("_moe_C", "moe_align_block_size", custom_moe_align_block_size),
         ("_moe_C", "topk_softmax", custom_topk_softmax),
         ("_moe_C", "moe_sum", custom_moe_sum),
