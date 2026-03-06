@@ -66,6 +66,8 @@ _FULL_CONFIG = (
     ("arange", arange),
     ("arange.start", arange_start),
     ("arange.start_step", arange_start),
+    ("acosh", acosh),
+    ("acosh_", acosh_),
     ("argmax", argmax),
     ("argmin", argmin),
     ("atan", atan),

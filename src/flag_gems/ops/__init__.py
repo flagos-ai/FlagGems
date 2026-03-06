@@ -13,6 +13,7 @@ from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -266,6 +267,8 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "acosh",
+    "acosh_",
     "argmax",
     "argmin",
     "atan",
