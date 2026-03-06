@@ -560,3 +560,40 @@ def test_perf_scaled_softmax_backward():
     )
     bench.set_gems(flag_gems.scaled_softmax_backward)
     bench.run()
+
+
+class DiffBenchmark(Benchmark):
+    """Benchmark for torch.diff operation."""
+
+    def set_more_shapes(self):
+        # Shapes suitable for diff - all dimensions should have size >= 2
+        more_shapes_1d = [
+            (1024,),
+            (1024 * 1024,),
+            (16 * 1024 * 1024,),
+        ]
+        more_shapes_2d = [
+            (1024, 1024),
+            (4096, 4096),
+            (8192, 8192),
+        ]
+        more_shapes_3d = [
+            (64, 256, 256),
+            (128, 512, 512),
+        ]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield (inp,)
+
+
+@pytest.mark.diff
+def test_perf_diff():
+    bench = DiffBenchmark(
+        op_name="diff",
+        torch_op=torch.diff,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

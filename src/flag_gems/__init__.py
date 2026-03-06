@@ -124,6 +124,7 @@ _FULL_CONFIG = (
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
+    ("diff", diff),
     ("div.Scalar", true_divide),
     ("div.Scalar_mode", div_mode),
     ("div.Tensor", true_divide),
