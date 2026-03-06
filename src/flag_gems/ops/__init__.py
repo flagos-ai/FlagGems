@@ -68,6 +68,7 @@ from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
+from flag_gems.ops.diff import diff
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -216,6 +217,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.tril import tril, tril_
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -320,6 +322,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "div_mode",
     "div_mode_",
     "dot",
@@ -522,6 +525,8 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_",
     "triu",
     "triu_",
     "true_divide",

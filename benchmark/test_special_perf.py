@@ -559,6 +559,24 @@ def test_perf_diag_embed():
     bench.run()
 
 
+@pytest.mark.diff
+def test_perf_diff():
+    def diff_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp, {"n": 1, "dim": -1},
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield inp, {"n": 2, "dim": 0},
+
+    bench = GenericBenchmark(
+        input_fn=diff_input_fn,
+        op_name="diff",
+        torch_op=torch.diff,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.diagonal
 def test_perf_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):
