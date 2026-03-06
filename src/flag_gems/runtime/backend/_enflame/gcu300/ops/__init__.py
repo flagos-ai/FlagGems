@@ -163,13 +163,14 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
-from .zeros import zeros
+from .zeros import zeros, zero_
 from .zeros_like import zeros_like
 
 __all__ = [
     "mean_dim",
     "mean",
     "zeros",
+    "zero_",
     "scatter",
     "scatter_",
     "sort",

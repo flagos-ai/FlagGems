@@ -133,12 +133,13 @@ from .unique import (
 from .upsample_nearest2d import upsample_nearest2d
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
-from .zeros import zeros
+from .zeros import zeros, zero_
 from .zeros_like import zeros_like
 
 __all__ = [
     "mean_dim",
     "zeros",
+    "zero_",
     "scatter_",
     "sort",
     "cat",
