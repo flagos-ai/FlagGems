@@ -233,3 +233,123 @@ def test_cutlass_scaled_mm(p):
         rtol, atol = 5e-1, 1.5e-1
 
     torch.testing.assert_close(c, output_ref, rtol=rtol, atol=atol)
+
+
+# ============ cp_gather_indexer_k_quant_cache tests ============
+class CpGatherIndexerKQuantCacheTestKit:
+    num_test_cases = 8 if QUICK_MODE else 16
+
+    @staticmethod
+    def _get_all_combinations():
+        # Test configurations: (batch_size, max_seq_len, head_dim, block_size)
+        configs = [
+            (1, 128, 64, 16),
+            (2, 256, 64, 16),
+            (4, 512, 128, 32),
+            (8, 256, 64, 16),
+            (16, 128, 64, 32),
+            (32, 64, 128, 16),
+            (4, 1024, 64, 64),
+            (8, 512, 128, 32),
+        ]
+        return configs
+
+    @classmethod
+    def get_test_params(cls):
+        all_configs = cls._get_all_combinations()
+        random.shuffle(all_configs)
+        return all_configs[: cls.num_test_cases]
+
+
+@pytest.mark.cp_gather_indexer_k_quant_cache
+@pytest.mark.parametrize(
+    "batch_size,max_seq_len,head_dim,block_size",
+    CpGatherIndexerKQuantCacheTestKit.get_test_params(),
+)
+def test_cp_gather_indexer_k_quant_cache(batch_size, max_seq_len, head_dim, block_size):
+    from flag_gems.fused import cp_gather_indexer_k_quant_cache
+
+    device = flag_gems.device
+
+    # Generate random sequence lengths for each batch
+    seq_lens = torch.randint(
+        block_size, max_seq_len + 1, (batch_size,), device=device, dtype=torch.int32
+    )
+
+    # Create cumulative sequence lengths
+    cu_seq_lens = torch.zeros(batch_size + 1, device=device, dtype=torch.int32)
+    cu_seq_lens[1:] = torch.cumsum(seq_lens, dim=0)
+    num_tokens = int(cu_seq_lens[-1].item())
+
+    # Calculate number of blocks needed
+    num_blocks_per_seq = (max_seq_len + block_size - 1) // block_size
+    total_blocks = batch_size * num_blocks_per_seq
+
+    # cache_stride = head_dim + 4 (4 bytes for float32 scale per token)
+    cache_stride = head_dim + 4
+
+    # Create kv_cache: [num_blocks, block_size, cache_stride]
+    # FP8 data for K values, float32 scale packed at the end
+    kv_cache = torch.zeros(
+        total_blocks, block_size, cache_stride, dtype=torch.float8_e4m3fn, device=device
+    )
+
+    # Fill kv_cache with test data
+    for b in range(batch_size):
+        seq_len = int(seq_lens[b].item())
+        for pos in range(seq_len):
+            block_idx = b * num_blocks_per_seq + pos // block_size
+            block_offset = pos % block_size
+            # Fill K values with position-dependent data
+            kv_cache[block_idx, block_offset, :head_dim] = to_fp8(
+                torch.randn(head_dim, device=device) * 0.1
+            )
+            # Fill scale (last 4 bytes as float32)
+            scale_val = torch.tensor(
+                [0.5 + pos * 0.01], dtype=torch.float32, device=device
+            )
+            kv_cache[block_idx, block_offset, head_dim:] = scale_val.view(
+                torch.float8_e4m3fn
+            )
+
+    # Create block_table: [batch_size, num_blocks_per_seq]
+    block_table = torch.arange(total_blocks, device=device, dtype=torch.int32).view(
+        batch_size, num_blocks_per_seq
+    )
+
+    # Create output tensors
+    dst_k = torch.empty(num_tokens, head_dim, dtype=torch.float8_e4m3fn, device=device)
+    dst_scale = torch.empty(num_tokens, 1, dtype=torch.float8_e4m3fn, device=device)
+
+    # Call the function
+    cp_gather_indexer_k_quant_cache(
+        kv_cache, dst_k, dst_scale, block_table, cu_seq_lens
+    )
+
+    # Verify results by checking that data was gathered correctly
+    dst_scale_f32 = dst_scale.view(-1).view(torch.float32)
+
+    token_idx = 0
+    for b in range(batch_size):
+        seq_len = int(seq_lens[b].item())
+        for pos in range(seq_len):
+            block_idx = b * num_blocks_per_seq + pos // block_size
+            block_offset = pos % block_size
+
+            # Check K values match
+            expected_k = kv_cache[block_idx, block_offset, :head_dim]
+            actual_k = dst_k[token_idx]
+            assert torch.equal(
+                actual_k, expected_k
+            ), f"K mismatch at batch {b}, pos {pos}"
+
+            # Check scale matches
+            expected_scale = kv_cache[block_idx, block_offset, head_dim:].view(
+                torch.float32
+            )
+            actual_scale = dst_scale_f32[token_idx : token_idx + 1]
+            torch.testing.assert_close(
+                actual_scale, expected_scale, rtol=1e-5, atol=1e-5
+            )
+
+            token_idx += 1

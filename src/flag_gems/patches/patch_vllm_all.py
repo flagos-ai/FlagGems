@@ -428,6 +428,20 @@ def custom_concat_and_cache_mla(
     )
 
 
+def custom_cp_gather_indexer_k_quant_cache(
+    kv_cache: torch.Tensor,
+    dst_k: torch.Tensor,
+    dst_scale: torch.Tensor,
+    block_table: torch.Tensor,
+    cu_seq_lens: torch.Tensor,
+) -> None:
+    from flag_gems.fused import cp_gather_indexer_k_quant_cache
+
+    return cp_gather_indexer_k_quant_cache(
+        kv_cache, dst_k, dst_scale, block_table, cu_seq_lens
+    )
+
+
 def custom_gems_flashattn_mla_forward_decode(
     self,
     q: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
@@ -593,6 +607,11 @@ def apply_gems_patches_to_vllm(verbose=True):
         ("_C", "per_token_group_fp8_quant", custom_per_token_group_fp8_quant),
         ("_C", "apply_repetition_penalties_", custom_apply_repetition_penalties),
         ("_C_cache_ops", "concat_and_cache_mla", custom_concat_and_cache_mla),
+        (
+            "_C_cache_ops",
+            "cp_gather_indexer_k_quant_cache",
+            custom_cp_gather_indexer_k_quant_cache,
+        ),
     ]
     for lib_name, fn_name, fn in lib_patches:
         patch_vllm_lib(lib_name, fn_name, fn, dispatch_key, verbose)

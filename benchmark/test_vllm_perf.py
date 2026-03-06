@@ -239,3 +239,119 @@ class CutlassScaledMMBenchmark(Benchmark):
 def test_cutlass_scaled_mm_benchmark():
     bench = CutlassScaledMMBenchmark()
     bench.run()
+
+
+# ============ cp_gather_indexer_k_quant_cache benchmark ============
+class CpGatherIndexerKQuantCacheBenchmark(Benchmark):
+    """Benchmark for cp_gather_indexer_k_quant_cache operator.
+
+    Compares FlagGems Triton implementation with vLLM CUDA implementation.
+    """
+
+    DEFAULT_METRICS = ["latency_base", "latency", "speedup"]
+
+    def __init__(self):
+        import vllm._custom_ops as ops
+
+        from flag_gems.fused.cp_gather_indexer_k_quant_cache import (
+            cp_gather_indexer_k_quant_cache,
+        )
+
+        super().__init__(
+            "cp_gather_indexer_k_quant_cache",
+            ops.cp_gather_indexer_k_quant_cache,
+            dtypes=["small_batch", "medium_batch", "large_batch"],
+        )
+        self.set_gems(cp_gather_indexer_k_quant_cache)
+
+    def set_shapes(self, shape_file_path=None):
+        # (batch_size, block_size, head_dim, num_blocks_per_seq, avg_seq_len)
+        # cache_stride = head_dim + 4 (4 bytes for float32 scale)
+        self.shapes = {
+            "small_batch": [
+                (1, 16, 128, 8, 113),
+                (4, 16, 128, 8, 68),
+                (8, 16, 256, 8, 86),
+            ],
+            "medium_batch": [
+                (16, 16, 128, 16, 154),
+                (32, 32, 256, 8, 148),
+                (64, 16, 512, 8, 81),
+            ],
+            "large_batch": [
+                (128, 16, 128, 16, 160),
+                (256, 32, 256, 4, 78),
+                (512, 16, 512, 4, 41),
+            ],
+        }
+
+    def get_input_iter(self, dtype):
+        shapes = self.shapes.get(dtype, [])
+        for batch_size, block_size, head_dim, num_blocks_per_seq, avg_seq_len in shapes:
+            device = flag_gems.device
+
+            # Calculate dimensions
+            cache_stride = head_dim + 4  # head_dim + 4 bytes for scale
+
+            # Generate random sequence lengths around avg_seq_len
+            max_seq_len = block_size * num_blocks_per_seq
+            seq_lens = torch.randint(
+                max(1, avg_seq_len - 20),
+                min(avg_seq_len + 20, max_seq_len) + 1,
+                (batch_size,),
+                device=device,
+                dtype=torch.int32,
+            )
+            num_tokens = int(seq_lens.sum().item())
+
+            # Calculate actual blocks needed
+            blocks_per_batch = (seq_lens + block_size - 1) // block_size
+            num_blocks = int(blocks_per_batch.sum().item())
+
+            # Create kv_cache: [num_blocks, block_size, cache_stride]
+            kv_cache = torch.zeros(
+                num_blocks,
+                block_size,
+                cache_stride,
+                dtype=torch.float8_e4m3fn,
+                device=device,
+            )
+
+            # Fill with random data
+            kv_cache[:, :, :head_dim] = to_fp8(
+                torch.randn(num_blocks, block_size, head_dim, device=device) * 0.1
+            )
+
+            # Create block_table: [batch_size, num_blocks_per_seq]
+            block_table = torch.zeros(
+                batch_size, num_blocks_per_seq, device=device, dtype=torch.int32
+            )
+            block_idx = 0
+            for i in range(batch_size):
+                n_blocks = int(blocks_per_batch[i].item())
+                block_table[i, :n_blocks] = torch.arange(
+                    block_idx, block_idx + n_blocks, device=device, dtype=torch.int32
+                )
+                block_idx += n_blocks
+
+            # Create cu_seq_lens: [batch_size + 1]
+            cu_seq_lens = torch.zeros(batch_size + 1, device=device, dtype=torch.int32)
+            cu_seq_lens[1:] = torch.cumsum(seq_lens, dim=0)
+
+            # Create output tensors
+            dst_k = torch.empty(
+                num_tokens, head_dim, dtype=torch.float8_e4m3fn, device=device
+            )
+            dst_scale = torch.empty(
+                num_tokens, 4, dtype=torch.float8_e4m3fn, device=device
+            )
+
+            yield (kv_cache, dst_k, dst_scale, block_table, cu_seq_lens)
+
+
+@pytest.mark.skipif(not VLLM_AVAILABLE, reason="requires vLLM")
+@pytest.mark.cp_gather_indexer_k_quant_cache
+@pytest.mark.performance
+def test_cp_gather_indexer_k_quant_cache_benchmark():
+    bench = CpGatherIndexerKQuantCacheBenchmark()
+    bench.run()
