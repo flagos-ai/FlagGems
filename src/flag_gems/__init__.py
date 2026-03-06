@@ -178,6 +178,7 @@ _FULL_CONFIG = (
     ("gelu", gelu),
     ("gelu_", gelu_),
     ("gelu_backward", gelu_backward),
+    ("gcd", gcd),
     ("glu", glu),
     ("glu_backward", glu_backward),
     ("gt.Scalar", gt_scalar),
