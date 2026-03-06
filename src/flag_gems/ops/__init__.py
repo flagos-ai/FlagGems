@@ -143,6 +143,7 @@ from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
+from flag_gems.ops.nansum import nansum, nansum_out
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.nllloss import (
@@ -216,6 +217,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.tril import tril, tril_
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -426,6 +428,8 @@ __all__ = [
     "multinomial",
     "mv",
     "nan_to_num",
+    "nansum",
+    "nansum_out",
     "ne",
     "ne_scalar",
     "neg",
@@ -522,6 +526,8 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_",
     "triu",
     "triu_",
     "true_divide",
