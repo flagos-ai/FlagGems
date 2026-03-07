@@ -35,7 +35,7 @@ QUICK_CPU_TESTS=(
   "tests/test_unary_pointwise_ops.py"
 )
 
-ID_SHA="${PR_ID}-${SUFFIX::7}"
+
 
 TEST_CASES=()
 TEST_CASES_CPU=()
@@ -65,17 +65,24 @@ if [ ${#TEST_CASES[@]} -eq 0 ]; then
 fi
 
 # Clear existing coverage data if any
-rm -fr coverage
-mkdir coverage
+coverage erase
 
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
-coverage run --data-file=${ID_SHA}-op -m pytest -s ${FAIL_EARLY} ${TEST_CASES[@]}
+coverage run -m pytest -s ${FAIL_EARLY} ${TEST_CASES[@]}
 
 # Run quick-cpu test if necessary
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run --data-file=${ID_SHA}-op -m pytest -s ${FAIL_EARLY} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
+  coverage run -m pytest -s ${FAIL_EARLY} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
 fi
 
-mv ${ID_SHA}-op* coverage/
+# Process coverage data only when full-range testing
+# Coverage data HTML dumped to `htmlcov/` by default
+if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  coverage html
+  rm -fr coverage
+  mkdir coverage
+  mv htmlcov coverage/
+  echo "${PR_ID}-${SUFFIX::7}" > coverage/COVERAGE_ID
+fi
