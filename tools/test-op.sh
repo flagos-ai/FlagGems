@@ -16,6 +16,11 @@ else
   SUFFIX="${GITHUB_SHA::7}"
 fi
 
+# Temporary hack
+CHANGE_FILES=(
+  "tests/test_libentry.py"
+)
+
 # Test cases that needs to run quick cpu tests
 QUICK_CPU_TESTS=(
   "tests/test_attention_ops.py"
@@ -59,6 +64,9 @@ if [ ${#TEST_CASES[@]} -eq 0 ]; then
   exit 0
 fi
 
+# Clear existing coverage data if any
+rm -fr coverage
+
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
 coverage run --data-file=${ID_SHA}-op -m pytest -s ${FAIL_EARLY} ${TEST_CASES[@]}
@@ -68,3 +76,5 @@ if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
   coverage run --data-file=${ID_SHA}-op -m pytest -s ${FAIL_EARLY} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
 fi
+
+mv ${ID_SHA}-op* coverage/

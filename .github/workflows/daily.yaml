@@ -48,8 +48,24 @@ jobs:
         env:
           CHANGED_FILES: '__ALL__'
         run: |
-          # Use CURRENT_DATE as a fake PR ID
-          bash tools/test-op.sh ${{ needs.prepare.outputs.datetime }}
+          # Invoke script to run full-range unit tests,
+          # Use datetime timestamp as the fake PR ID, with optional affix if
+          # workflow is triggered manually
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+             RUN_TAG="${{ needs.prepare.outputs.datetime}}-manual"
+          else
+             RUN_TAG="${{ needs.prepare.outputs.datetime}}"
+          fi
+
+          # Save RUN_TAG for next step to use
+          echo "RUN_TAG=${{ RUN_TAG }}" >> $GITHUB_ENV
+
+          bash tools/test-op.sh ${{ RUN_TAG }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ RUN_TAG }}
+          path: coverage
 
   examples:
     needs: prepare
@@ -65,24 +81,17 @@ jobs:
         env:
           CHANGED_FILES: '__ALL__'
         run: |
-          bash tools/test-examples.sh ${{ needs.prepare.outputs.datetime }}
+          # Invoke script to run full-range example tests,
+          # Use datetime timestamp as the fake PR ID, with optional affix if
+          # workflow is triggered manually
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+             PR_ID="${{ needs.prepare.outputs.datetime}}-manual"
+          else
+             PR_ID="${{ needs.prepare.outputs.datetime}}"
+          fi
+          bash tools/test-examples.sh ${{ PR_ID }}
 
 #   coverage:
-#     needs:
-#       - preprocess
-#       - blas-op-test
-#       - examples-test
-#       - quick-cpu-op-test
-#       - utils-test
-#       - pointwise-op-test
-#       - reduction-op-test
-#       - special-op-test
-#     if: contains(github.event.pull_request.labels.*.name, 'tests')
-#     concurrency:
-#       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
-#       cancel-in-progress: true
-#     runs-on: cpu
-#     continue-on-error: true
 #     steps:
 #       - name: Checkout code
 #         uses: actions/checkout@v6
