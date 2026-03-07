@@ -11,7 +11,7 @@ name: coverage
 on:
   workflow_run:
     workflows:
-      - unit-test
+      - daily
     types:
       - completed
 
