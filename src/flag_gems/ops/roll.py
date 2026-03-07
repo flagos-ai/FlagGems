@@ -53,12 +53,16 @@ def roll_dim_kernel(
     inner_size,
     roll_size,
     shift,
+    n_blocks_per_outer,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    pid_outer = tl.program_id(1)
 
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    # Decompose linear pid into (pid_outer, pid_inner)
+    pid_outer = pid // n_blocks_per_outer
+    pid_inner = pid % n_blocks_per_outer
+
+    offsets = pid_inner * BLOCK + tl.arange(0, BLOCK)
     n_inner_roll = roll_size * inner_size
     mask = offsets < n_inner_roll
 
@@ -139,7 +143,9 @@ def roll(
 
         n_inner_roll = roll_size * inner_size
         BLOCK = 1024
-        grid = (triton.cdiv(n_inner_roll, BLOCK), outer_size)
+        n_blocks_per_outer = triton.cdiv(n_inner_roll, BLOCK)
+        # Use 1D grid to avoid exceeding CUDA grid dimension limits
+        grid = (n_blocks_per_outer * outer_size,)
 
         roll_dim_kernel[grid](
             result,
@@ -147,6 +153,7 @@ def roll(
             inner_size,
             roll_size,
             shift,
+            n_blocks_per_outer,
             BLOCK=BLOCK,
         )
         result = out
