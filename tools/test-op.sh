@@ -9,11 +9,11 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   CHANGED_FILES=$(find tests -name "test*.py")
   FAIL_EARLY=""
   echo "TIMESTAMP=${PR_ID}"
-  SUFFIX="all"
+  SUFFIX=""
 else
   FAIL_EARLY="-x"
   echo "PR_ID=${PR_ID}"
-  SUFFIX="${GITHUB_SHA::7}"
+  SUFFIX="-${GITHUB_SHA::7}"
 fi
 
 # Temporary hack
@@ -85,6 +85,6 @@ fi
   rm -fr coverage
   mkdir coverage
   mv htmlcov coverage/
-  echo "${PR_ID}-${SUFFIX::7}" > coverage/COVERAGE_ID
+  echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
   ls coverage
 # fi

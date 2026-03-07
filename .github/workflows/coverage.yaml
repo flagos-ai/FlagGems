@@ -60,6 +60,8 @@ jobs:
         run: |
           COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
           echo "COV_ID=${COV_ID}" > $GITHUB_ENV
+          DATE=${COV_ID:0:8}
+          rm -fr docs/coverage/${DATE}*
           mkdir -p docs/coverage/${COV_ID}
           mv ${{ runner.temp }}/artifacts/htmlcov docs/coverage/${COV_ID}
 
@@ -67,7 +69,7 @@ jobs:
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add docs/coverage
+          git add docs
           git commit -a -m "Add coverage data for ${COV_ID}"
 
       - id: push-change

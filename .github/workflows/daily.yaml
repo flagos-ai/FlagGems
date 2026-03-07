@@ -28,7 +28,7 @@ jobs:
       - id: get-date
         shell: bash
         run: |
-          echo "CURRENT_DATE=$(date +'%Y-%m-%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_DATE=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
 
   cpp-op:
     needs: prepare
@@ -90,30 +90,3 @@ jobs:
              PR_ID="${{ needs.prepare.outputs.datetime}}"
           fi
           bash tools/test-examples.sh ${PR_ID}
-
-#   coverage:
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v6
-#       - name: Get python coverage
-#         shell: bash
-#         run: |
-#           git config --global --add safe.directory ../FlagGems
-#           if [ "${{ github.event_name }}" == "pull_request" ]; then
-#             PR_ID=${{ github.event.pull_request.number }}
-#           elif [ "${{ github.event_name }}" == "push" ]; then
-#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-#             PR_ID=${PR_NUMBER}
-#           fi
-#           bash tools/code_coverage/coverage.sh ${PR_ID}
-#       - name: Report python coverage
-#         shell: bash
-#         run: |
-#           git config --global --add safe.directory ../FlagGems
-#           if [ "${{ github.event_name }}" == "pull_request" ]; then
-#             PR_ID=${{ github.event.pull_request.number }}
-#           elif [ "${{ github.event_name }}" == "push" ]; then
-#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-#             PR_ID=${PR_NUMBER}
-#           fi
-#           bash tools/code_coverage/report_coverage.sh ${PR_ID}
