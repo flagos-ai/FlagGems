@@ -1769,3 +1769,79 @@ def test_accuracy_ceil_out(shape, dtype):
         torch.ceil(inp, out=out)
 
     gems_assert_equal(out, ref_out)
+# ═══════════════════════════════════════════════════════
+# roll tests — FlagGems Operator Development Competition
+# ═══════════════════════════════════════════════════════
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shifts", [1, -1, 3])
+def test_accuracy_roll_no_dims(shape, dtype, shifts):
+    if len(shape) == 0:
+        pytest.skip("roll on scalar tensor")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.roll(ref_inp, shifts)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", [(1024, 1024), (20, 320, 15), (16, 128, 64, 60)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", [0, 1, -1])
+@pytest.mark.parametrize("shifts", [1, -1, 7])
+def test_accuracy_roll_with_dim(shape, dtype, dim, shifts):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.roll(ref_inp, shifts, dims=dim)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts, dims=dim)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll_multi_dim(dtype):
+    inp = torch.randn([16, 32, 64], dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.roll(ref_inp, shifts=(2, -3), dims=(0, 2))
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts=(2, -3), dims=(0, 2))
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll_full_rotation(dtype):
+    """Rolling by dimension size should return the original."""
+    inp = torch.randn([256], dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.roll(ref_inp, 256)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, 256)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.roll
+def test_accuracy_roll_zero_shift():
+    """Zero shift should return a copy."""
+    inp = torch.randn([1024], device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.roll(ref_inp, 0)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, 0)
+
+    gems_assert_close(res_out, ref_out, torch.float32)
