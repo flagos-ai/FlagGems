@@ -17,7 +17,7 @@ else
 fi
 
 # Temporary hack
-CHANGE_FILES=(
+CHANGED_FILES=(
   "tests/test_libentry.py"
 )
 
@@ -66,6 +66,7 @@ fi
 
 # Clear existing coverage data if any
 rm -fr coverage
+mkdir coverage
 
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
