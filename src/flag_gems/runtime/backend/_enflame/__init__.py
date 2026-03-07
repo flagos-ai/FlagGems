@@ -4,11 +4,13 @@ import re
 
 from backend_utils import VendorInfoBase
 
-try:
-    from torch_gcu import transfer_to_gcu  # noqa: F401
-except Exception:
-    print("torch_gcu not installed")
+# NOTE: transfer_to_gcu is not used anywhere
+# try:
+#     from torch_gcu import transfer_to_gcu  # noqa: F401
+# except Exception:
+#    logger.warning("torch_gcu not installed")
 
+# TODO: Revise the following imports to be exception free
 if importlib.util.find_spec("triton.backends.enflame") is None:
     from triton_gcu.triton.driver import _GCUDriver
 else:
