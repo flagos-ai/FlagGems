@@ -16,11 +16,6 @@ else
   SUFFIX="-${GITHUB_SHA::7}"
 fi
 
-# Temporary hack
-CHANGED_FILES=(
-  "tests/test_tensor_wrapper.py"
-)
-
 # Test cases that needs to run quick cpu tests
 QUICK_CPU_TESTS=(
   "tests/test_attention_ops.py"

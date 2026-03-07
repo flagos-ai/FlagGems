@@ -63,7 +63,7 @@ jobs:
           DATE=${COV_ID:0:8}
           rm -fr docs/coverage/${DATE}*
           mkdir -p docs/coverage/${COV_ID}
-          mv ${{ runner.temp }}/artifacts/htmlcov docs/coverage/${COV_ID}
+          mv ${{ runner.temp }}/artifacts/htmlcov/* docs/coverage/${COV_ID}/
 
       - id: commit-change
         run: |
