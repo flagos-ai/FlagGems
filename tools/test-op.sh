@@ -18,7 +18,7 @@ fi
 
 # Temporary hack
 CHANGED_FILES=(
-  "tests/test_libentry.py"
+  "tests/test_tensor_wrapper.py"
 )
 
 # Test cases that needs to run quick cpu tests
@@ -80,6 +80,7 @@ fi
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  coverage combine
   coverage html
   rm -fr coverage
   mkdir coverage
