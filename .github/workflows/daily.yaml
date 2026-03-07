@@ -65,7 +65,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: op-ut-coverage
-          path: coverage
+          path: coverage/
 
   examples:
     needs: prepare
