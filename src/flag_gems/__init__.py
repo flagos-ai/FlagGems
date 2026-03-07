@@ -200,6 +200,7 @@ _FULL_CONFIG = (
     ("kron", kron),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
+    ("leaky_relu", leaky_relu),
     ("lerp.Scalar", lerp_scalar),
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
