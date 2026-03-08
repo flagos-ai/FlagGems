@@ -13,7 +13,9 @@ def test_log10_perf():
     bench = Benchmark(
         op_name="log10",
         torch_op=log10_torch,
-        arg_func=lambda: (torch.randn([1024, 1024], dtype=torch.float32, device="cuda"),),
+        arg_func=lambda: (
+            torch.randn([1024, 1024], dtype=torch.float32, device="cuda"),
+        ),
         dtype_list=[torch.float16, torch.float32, torch.bfloat16],
         shape_list=[(1024, 1024), (2048, 2048), (4096, 4096)],
     )
