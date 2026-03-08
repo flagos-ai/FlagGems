@@ -1,5 +1,4 @@
 import torch
-import flag_gems
 
 from .performance_utils import Benchmark
 
@@ -22,3 +21,4 @@ def test_gcd_perf():
         shape_list=[(1024, 1024), (2048, 2048), (4096, 4096)],
     )
     bench.run()
+
