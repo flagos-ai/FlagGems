@@ -192,6 +192,7 @@ from flag_gems.ops.repeat_interleave import (
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from flag_gems.ops.roll import roll
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
@@ -473,6 +474,7 @@ __all__ = [
     "resolve_neg",
     "rms_norm",
     "rms_norm_backward",
+    "roll",
     "rms_norm_forward",
     "rsqrt",
     "rsqrt_",
