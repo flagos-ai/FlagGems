@@ -399,11 +399,14 @@ def test_perf_max_pool2d_backward():
         for forward_args in max_pool2d_input_fn(shape, dtype, device):
             inp, params = forward_args
             inp.requires_grad_(True)
-            output, indices = torch.nn.functional.max_pool2d_with_indices(inp, **params)
+            # Use FlagGems forward to produce indices compatible with FlagGems backward
+            # Note: FlagGems indices format differs from PyTorch's format
+            output, indices = flag_gems.max_pool2d_with_indices(inp, **params)
             grad_output = torch.randn_like(output)
             yield grad_output, inp, indices, params
 
     def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
+        # For torch baseline, we use torch forward to get compatible indices
         output, _ = torch.nn.functional.max_pool2d_with_indices(input, **kwargs)
         grad_input = torch.autograd.grad(
             outputs=(output,), inputs=(input,), grad_outputs=(grad_output,)
@@ -470,7 +473,7 @@ def quantile_input_fn(shape, cur_dtype, device):
     yield inp, q, 0
 
 
-@pytest.mark.skipif(True, reason="Skipping Triton version due to poor performance")
+# @pytest.mark.skipif(True, reason="Skipping Triton version due to poor performance")
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [

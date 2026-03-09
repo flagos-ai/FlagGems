@@ -25,7 +25,7 @@ from .attri_util import (
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config, recordLogger
+from .conftest import Config, emit_record_logger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -36,7 +36,7 @@ if device == "musa":
 elif device == "npu":
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-elif device != "gcu":
+else:
     torch_backend_device.matmul.allow_tf32 = False
 
 
@@ -384,7 +384,7 @@ class Benchmark:
                 shape_desc=self.shape_desc,
             )
             print(attri)
-            recordLogger.info(attri.to_dict())
+            emit_record_logger(attri.to_dict())
             return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
@@ -437,7 +437,7 @@ class Benchmark:
                 result=metrics,
             )
             print(result)
-            recordLogger.info(result.to_json())
+            emit_record_logger(result.to_json())
 
 
 class GenericBenchmark(Benchmark):

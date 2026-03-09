@@ -193,3 +193,26 @@ def test_generic_pointwise_benchmark_exclude_1d(op_name, torch_op, input_fn, dty
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "triu_",
+            torch.Tensor.triu_,
+            unary_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.triu_,
+        ),
+    ],
+)
+def test_generic_inplace_pointwise_benchmark_triu(op_name, torch_op, input_fn, dtypes):
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        is_inplace=True,
+    )
+    bench.run()

@@ -9,6 +9,19 @@ def argmax_heur_block_n(args):
     return 100
 
 
+def argmax_heur_tile_k(args):
+    tile_k = 64
+    return tile_k
+
+
+def argmax_heur_tile_n_non_inner(args):
+    return 128
+
+
+def argmax_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
 def argmin_heur_block_m(args):
     return 16
 
@@ -133,7 +146,7 @@ def softmax_heur_tile_k(args):
 
 
 def softmax_heur_tile_n_non_inner(args):
-    return triton.cdiv(1024, args["TILE_K"])
+    return triton.cdiv(768, args["TILE_K"])
 
 
 def softmax_heur_one_tile_per_cta(args):
@@ -227,6 +240,11 @@ def vdot_heur_block_size(args):
 
 
 HEURISTICS_CONFIGS = {
+    "argmax_non_inner": {
+        "TILE_K": argmax_heur_tile_k,
+        "TILE_N": argmax_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+    },
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
         "BLOCK_N": argmax_heur_block_n,

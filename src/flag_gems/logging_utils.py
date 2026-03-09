@@ -28,11 +28,11 @@ class LogOncePerLocationFilter(logging.Filter):
 
 
 def _remove_file_handlers(logger: logging.Logger):
-    # Remove and close all FileHandlers so subsequent setup can attach a fresh file
-    # handler (used when switching log files or re-entering use_gems with record=True).
+    # Remove and close only the FileHandlers created by setup_flaggems_logging.
+    # This avoids touching unrelated FileHandlers attached by other modules.
     removed = False
     for h in list(logger.handlers):
-        if isinstance(h, logging.FileHandler):
+        if isinstance(h, logging.FileHandler) and getattr(h, "_flaggems_owned", False):
             h.close()
             logger.removeHandler(h)
             removed = True
@@ -50,6 +50,7 @@ def setup_flaggems_logging(path=None, record=True, once=False):
 
     filename = Path(path or Path.home() / ".flaggems/oplist.log")
     handler = logging.FileHandler(filename, mode="w")
+    handler._flaggems_owned = True
 
     if once:
         handler.addFilter(LogOncePerLocationFilter())

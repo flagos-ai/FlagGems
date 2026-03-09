@@ -35,5 +35,6 @@ nav:
   - References:
     - Changelog: CHANGELOG.md
     - Operator List: operators.md
+    - Experimental Operators: experimental_ops.md
     - The LibCache DB backend: libcache_db_backend.md
     - Countributing: contribution.md
