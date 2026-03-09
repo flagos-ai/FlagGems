@@ -11,38 +11,69 @@ name: coverage
 on:
   workflow_run:
     workflows:
-      - unit-test
+      - daily
     types:
       - completed
-
 jobs:
-  summarize:
+  publish-coverage:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - id: prepare
-        run: |
-          echo "Installing coverage.py"
-
-      - id: download-data
-        run: |
-          echo "Downloading coverage artifacts"
-
-      - id: generate-html
-        run: |
-          echo "Combining coverage data"
-          echo "Generating HTML report for PR"
-
-      - id: checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           ref: gh-pages
-          # Use PAT if needed.
-          # token: ${{ secrets.MY_TOKEN }}
 
-      - id: update-pages
-        run: |
-          echo "Uploading coverage report to Pages"
+      - id: download-coverage-data
+        uses: actions/github-script@v8
+        with:
+          script: |
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: context.payload.workflow_run.id,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "op-ut-coverage"
+            })[0];
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            const fs = require('fs');
+            const path = require('path');
+            const temp = '${{ runner.temp }}/artifacts';
+            if (!fs.existsSync(temp)){
+              fs.mkdirSync(temp);
+            }
+            fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
 
-      - id: comment-pr
+      - id: nnzip-artifact
+        run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
+
+      - id: prepare-changes
+        shell: bash
         run: |
-          echo "Commenting PR with links to coverage report."
+          COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
+          echo "COV_ID=${COV_ID}" > $GITHUB_ENV
+          DATE=${COV_ID:0:8}
+          rm -fr docs/coverage/${DATE}*
+          mkdir -p docs/coverage/${COV_ID}
+          mv ${{ runner.temp }}/artifacts/htmlcov/* docs/coverage/${COV_ID}/
+
+      - id: commit-change
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs
+          git commit -a -m "Add coverage data for ${COV_ID}"
+
+      - id: push-change
+        uses: ad-m/github-push-action@master
+        with:
+          branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}

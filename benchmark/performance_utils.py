@@ -215,6 +215,14 @@ class Benchmark:
                 # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
+                if vendor_name == "enflame":
+                    if self.op_name in ["isin"]:
+                        # isin shapelimit
+                        import math
+
+                        self.shapes = [
+                            shape for shape in self.shapes if math.prod(shape) < 2**28
+                        ]
         except yaml.YAMLError as e:
             raise ValueError(
                 f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
@@ -255,6 +263,11 @@ class Benchmark:
                 os.path.dirname(__file__),
                 "../src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml",
             )  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        elif vendor_name == "enflame":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_enflame/core_shapes.yaml",
+            )
         self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):
