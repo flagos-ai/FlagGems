@@ -34,23 +34,23 @@ def gcd_kernel(
     orig_b = b
 
     # Binary GCD (Stein's algorithm) - optimized version
-    # Step 1: Find common power of 2 (reduced iterations)
+    # Step 1: Find common power of 2
     shift = tl.zeros_like(a).to(tl.int64)
-    for i in range(5):  # Reduced from 6 to 5
+    for i in range(10):  # Need enough iterations for int16 (max 15 bits)
         both_even = ((a & 1) == 0) & ((b & 1) == 0) & (a != 0) & (b != 0)
         a = tl.where(both_even, a >> 1, a)
         b = tl.where(both_even, b >> 1, b)
         shift = tl.where(both_even, shift + 1, shift)
 
-    # Step 2: Make a odd (reduced iterations)
-    for i in range(5):  # Reduced from 6 to 5
+    # Step 2: Make a odd
+    for i in range(10):  # Need enough iterations for int16
         a_even = ((a & 1) == 0) & (a != 0)
         a = tl.where(a_even, a >> 1, a)
 
     # Step 3: Main loop (balanced iterations for accuracy and performance)
-    for i in range(13):  # Increased from 12 to 16 for better accuracy
-        # Make b odd (reduced iterations)
-        for j in range(5):  # Reduced from 6 to 5
+    for i in range(13):  # Optimal value from testing
+        # Make b odd
+        for j in range(10):  # Need enough iterations for int16
             b_even = ((b & 1) == 0) & (b != 0)
             b = tl.where(b_even, b >> 1, b)
 
