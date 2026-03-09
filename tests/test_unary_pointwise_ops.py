@@ -356,7 +356,8 @@ def test_accuracy_cosh_even_property(shape, dtype):
         pos = torch.cosh(inp)
         neg = torch.cosh(-inp)
 
-    gems_assert_close(neg, pos, dtype)
+    ref_pos = to_reference(pos, True)
+    gems_assert_close(neg, ref_pos, dtype)
 
 
 @pytest.mark.cosh
