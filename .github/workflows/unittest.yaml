@@ -159,7 +159,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
-      runner_label: jiuding
+      runner_label: hopper
       gpu_check_script: tools/gpu_check.sh
       test_script: tools/test-op-experimental.sh
       changed_files: ${{ needs.preprocess.outputs.changed_files }}

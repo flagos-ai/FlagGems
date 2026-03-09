@@ -9,8 +9,9 @@ std::vector<std::string> get_registered_ops() {
   return registered_ops;
 }
 
-// TODO: use pytorch's argparse utilities to generate CPython bindings, since it is more efficient than
-// bindings provided by torch library, since it is in a boxed fashion
+// TODO: use pytorch's argparse utilities to generate CPython bindings,
+// since it is more efficient than bindings provided by torch library,
+// since it is in a boxed fashion
 PYBIND11_MODULE(aten_patch, m) {
   m.def("get_registered_ops", &get_registered_ops);
 }

@@ -1,9 +1,14 @@
+import logging
+
 import torch
 
 from flag_gems.ops.scatter import scatter_
 
+logger = logging.getLogger(__name__)
+
 
 def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
+    logger.debug("GEMS ONE_HOT")
     if tensor.dtype != torch.int64:
         raise RuntimeError(
             "one_hot is only applicable to index tensor of type LongTensor."
