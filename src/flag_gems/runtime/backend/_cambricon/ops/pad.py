@@ -410,9 +410,9 @@ class PadFunction:
             code = IndentedBuffer()
             code = generate_code(
                 args,
-                "_wrapper",
-                "_wrapper_out",
-                "_jit_function",
+                "_pad_wrapper",
+                "_pad_wrapper_out",
+                "_pad_jit_function",
                 code,
             )
 
@@ -431,7 +431,7 @@ class PadFunction:
             # do not expose it to sys.modules
             # sys.modules["_add_module"] = m
             spec.loader.exec_module(m)
-            overload = getattr(m, "_wrapper")
+            overload = getattr(m, "_pad_wrapper")
             self.overloads[key] = overload
         return overload(*args, **kwargs)
 
@@ -640,5 +640,5 @@ def pad(self, pad, mode="constant", value=None):
     return out
 
 
-def constant_pad_nd(self, pad, value=0):
-    return pad(self, pad, mode="constant", value=value)
+def constant_pad_nd(self, pad_list, value=0):
+    return pad(self, pad_list, mode="constant", value=value)

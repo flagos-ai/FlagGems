@@ -160,3 +160,20 @@ def bmm(A, B):
     with torch_device_fn.device(A.device):
         bmm_kernel[grid_fn](A, B, out, M, N, K)
     return out
+
+
+def bmm_out(A, B, out):
+    logger.debug("GEMS BMM_OUT")
+    assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
+    assert A.shape[2] == B.shape[1], "K dim mismatch"
+    batch, M, K = A.shape
+    _, _, N = B.shape
+
+    grid_fn = lambda meta: (
+        triton.cdiv(meta["M"], meta["TILE_M"]),
+        triton.cdiv(meta["N"], meta["TILE_N"]),
+        batch,
+    )
+    with torch_device_fn.device(A.device):
+        bmm_kernel[grid_fn](A, B, out, M, N, K)
+    return out

@@ -1,10 +1,6 @@
 import json
 import logging
 import os
-# TODO: enflame locally
-import sys
-flag_gems_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
-sys.path.append(flag_gems_DIR)
 
 import pytest
 import torch
@@ -26,8 +22,20 @@ from flag_gems.runtime import torch_device_fn
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
-recordLogger = logging.getLogger("flag_gems.benchmark.record")
+recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
+
+
+def emit_record_logger(message: str) -> None:
+    if recordLogger.handlers:
+        handler = recordLogger.handlers[0]
+        if getattr(handler, "stream", None) is None:
+            handler.acquire()
+            try:
+                handler.stream = handler._open()
+            finally:
+                handler.release()
+    recordLogger.info(message)
 
 
 class BenchConfig:
@@ -182,12 +190,12 @@ def pytest_configure(config):
 
                 warnings.warn(f"Failed to close handler: {e}")
 
-        handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        handler = logging.FileHandler(log_file, mode="w", encoding="utf-8", delay=False)
         handler.setLevel(logging.INFO)
         handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
         recordLogger.addHandler(handler)
         recordLogger.setLevel(logging.INFO)
-        recordLogger.info("Benchmark record logger enabled")
+        emit_record_logger("Benchmark record logger enabled")
 
 
 BUILTIN_MARKS = {
@@ -254,6 +262,5 @@ def extract_and_log_op_attributes(request):
         pytest.skip("Skipping benchmark due to the query parameter.")
 
     yield
-
     if Config.record_log and op_attributes:
-        recordLogger.info(json.dumps(op_attributes, indent=2))
+        emit_record_logger(json.dumps(op_attributes, indent=2))

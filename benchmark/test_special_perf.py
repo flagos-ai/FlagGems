@@ -10,6 +10,7 @@ from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
+    GenericBenchmark4DOnly,
     GenericBenchmarkExcluse1D,
     GenericBenchmarkExcluse3D,
     SkipVersion,
@@ -459,7 +460,7 @@ def test_perf_upsample_bicubic2d_aa():
 
     if vendor_name == "cambricon":
         dtypes = [torch.float32]
-    elif vendor_name == "kunlunxin" or vendor_name == "enflame":
+    elif vendor_name == "kunlunxin":
         dtypes = [torch.float32, torch.float16]
     else:
         dtypes = FLOAT_DTYPES
@@ -749,6 +750,7 @@ try:
     import vllm._custom_ops as vllm_ops
 
     HAS_VLLM = True
+    WARP_SIZE = 32
 except ImportError:
     HAS_VLLM = False
 
@@ -757,12 +759,13 @@ except ImportError:
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
 def test_perf_moe_align_block_size():
     def moe_align_block_size_input_fn(shape, dtype, device):
-        # ------------ parameters ------------
         num_experts = shape[0]
         block_size = shape[1]
         dtype = torch.int32
-        topk_ids = torch.randint(0, num_experts, (3, 4), dtype=dtype, device=device)
-        max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+        topk_ids = torch.randint(
+            0, num_experts, (shape[2], shape[3]), dtype=dtype, device=device
+        )
+        max_num_tokens_padded = ((num_experts + WARP_SIZE - 1) // WARP_SIZE) * WARP_SIZE
 
         # padded_num_experts in vllm._custom_ops.moe_align_block_size
         # must be less than 1024
@@ -783,19 +786,28 @@ def test_perf_moe_align_block_size():
             num_tokens_post_pad,
         )
 
-    class MoeAlignBlockSizeBenchmark(GenericBenchmark2DOnly):
-        def set_more_shapes(self):
-            return [
-                (16, 8),
-                (16, 16),
-                (16, 32),
-                (32, 8),
-                (32, 16),
-                (32, 32),
-                (64, 8),
-                (64, 16),
-                (128, 8),
+    class MoeAlignBlockSizeBenchmark(GenericBenchmark4DOnly):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def set_shapes(self, shape_file_path: None):
+            moe_align_block_size_shape = [
+                (512, 64, 16384, 10),
+                (512, 64, 6152, 10),
+                (512, 64, 4727, 10),
+                (512, 64, 1905, 10),
+                (512, 64, 11575, 10),
+                (512, 64, 1032, 10),
+                (512, 64, 4201, 10),
+                (512, 64, 2056, 10),
+                (512, 64, 7561, 10),
+                (512, 64, 4104, 10),
+                (512, 64, 14281, 10),
             ]
+            self.shapes = moe_align_block_size_shape
+
+        def set_more_shapes(self):
+            return None
 
     gems_op = flag_gems.moe_align_block_size_triton
     bench = MoeAlignBlockSizeBenchmark(
@@ -808,4 +820,64 @@ def test_perf_moe_align_block_size():
     )
 
     bench.set_gems(gems_op)
+    bench.run()
+
+
+def torch_per_token_group_quant_fp8_ref(x, group_size, scale_ue8m0):
+    dtype = flag_gems.SUPPORTED_FP8_DTYPE
+    eps = 1e-10
+    assert (
+        x.shape[-1] % group_size == 0
+    ), "the last dimension of `x` cannot be divisible by `group_size`"
+    assert x.is_contiguous(), "`x` is not contiguous"
+
+    finfo = torch.finfo(dtype)
+    fp8_min = finfo.min
+    fp8_max = finfo.max
+
+    x_ = x.reshape(x.numel() // group_size, group_size)
+    amax = x_.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
+    x_s = amax / fp8_max
+    if scale_ue8m0:
+        min_val = torch.tensor(1e-10, dtype=x_s.dtype, device=x_s.device)
+        x_s = torch.exp2(torch.ceil(torch.log2(torch.maximum(x_s.abs(), min_val))))
+    x_q = (x_ / x_s).clamp(min=fp8_min, max=fp8_max).to(dtype)
+    x_q = x_q.reshape(x.shape)
+    x_s = x_s.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
+    return x_q, x_s
+
+
+class PerTokenGroupQuantFp8Benchmark(GenericBenchmark):
+    """
+    benchmark for per_token_group_quant_fp8
+    """
+
+    def set_more_shapes(self):
+        return None
+
+
+@pytest.mark.per_token_group_quant_fp8
+def test_perf_per_token_group_quant_fp8():
+    def input_kwargs(shape, dtype, device):
+        (
+            num_tokens,
+            d,
+            group_size,
+        ) = shape
+        scale_ue8m0 = random.choice([True, False])
+        x = torch.rand(num_tokens, d, dtype=dtype, device=device)
+
+        yield (
+            x,
+            group_size,
+            scale_ue8m0,
+        )
+
+    bench = PerTokenGroupQuantFp8Benchmark(
+        op_name="per_token_group_quant_fp8",
+        input_fn=input_kwargs,
+        torch_op=torch_per_token_group_quant_fp8_ref,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.per_token_group_quant_fp8)
     bench.run()

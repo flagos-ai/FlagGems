@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
@@ -52,10 +52,23 @@ def paste_u64(hi: tl.uint32, lo: tl.uint32):
 
 
 @triton.jit
-def transform_exponential_f32(u, inv_lambd, eps_minus):
+def transform_exponential_f32_precise(u, inv_lambd, eps_minus):
+    log = tl.where(u >= 1.0 + eps_minus, eps_minus, tl.math.log(u))
+    # log = tl.log(tl.maximum(u, 1e-38))
+    return -inv_lambd * log
+
+
+@triton.jit
+def transform_exponential_f32_fast(u, inv_lambd, eps_minus):
     log = tl.where(u >= 1.0 + eps_minus, eps_minus, safe_fast_log_f32(u))
     # log = tl.log(tl.maximum(u, 1e-38))
     return -inv_lambd * log
+
+
+if device.vendor_name == "iluvatar":
+    transform_exponential_f32 = transform_exponential_f32_precise
+else:
+    transform_exponential_f32 = transform_exponential_f32_fast
 
 
 @triton.jit
