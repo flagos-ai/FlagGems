@@ -39,6 +39,14 @@ class UnaryPointwiseBenchmark(Benchmark):
         return torch.tensor(shape).prod().item()
 
 
+class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty_like(inp)
+            yield inp, {"out": out}
+
+
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
     ("ceil", torch.ceil, FLOAT_DTYPES),
@@ -52,6 +60,7 @@ forward_operations = [
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     ("log", torch.log, FLOAT_DTYPES),
+    ("log10", torch.log10, FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
     # Dropout
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
@@ -113,6 +122,7 @@ forward_inplace_operations = [
     ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
     ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
+    ("log10_", torch.log10_, FLOAT_DTYPES),
     # Activation operations
     ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
@@ -151,6 +161,16 @@ def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
             )
     bench = UnaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
+    bench.run()
+
+
+@pytest.mark.log10
+def test_log10_out_perf():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="log10_out",
+        torch_op=torch.log10,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 
