@@ -315,6 +315,36 @@ def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
         del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
+# NOTE: Added by KunlunXin team for backward performance benchmarking.
+# Feel free to modify or remove if it doesn't fit the project conventions.
+@pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.parametrize("is_causal", [True, False])
+def test_perf_scaled_dot_product_attention_backward(is_causal):
+    if flag_gems.vendor_name == "hygon":
+        os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
+
+    def scaled_dot_product_attention_bwd_kwargs(shape, dtype, device):
+        query = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        key = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        value = torch.randn(shape, device=device, dtype=dtype, requires_grad=True)
+        yield query, key, value, None, 0.0, is_causal
+
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_attention",
+        input_fn=scaled_dot_product_attention_bwd_kwargs,
+        torch_op=torch.nn.functional.scaled_dot_product_attention,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.scaled_dot_product_attention)
+    bench.run()
+    if flag_gems.vendor_name == "hygon":
+        del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
+
+
 class FlashMLABenchmark(GenericBenchmark):
     """
     benchmark for flash_mla

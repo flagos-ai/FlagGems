@@ -1,5 +1,4 @@
 import logging
-import math
 from functools import partial
 
 import torch
@@ -334,24 +333,18 @@ def _attn_bwd_preprocess(
     O, DO, Delta, Z, H, Q_CTX, BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr
 ):
     off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
-    mask = off_m < Q_CTX
+    # No mask needed - Q_CTX is padded to BLOCK_M multiple
 
     off_hz = tl.program_id(1)
     off_n = tl.arange(0, D_HEAD)
-    # load
-    o = tl.load(
-        O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
-        mask=mask[:, None],
-        other=0.0,
-    )
+    # load - no mask needed, data is padded
+    o = tl.load(O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :])
     do = tl.load(
-        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
-        mask=mask[:, None],
-        other=0.0,
+        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :]
     ).to(tl.float32)
     delta = tl.sum(o * do, axis=1)
-    # write-back
-    tl.store(Delta + off_hz * Q_CTX + off_m, delta, mask=mask)
+    # write-back - no mask needed, output is padded
+    tl.store(Delta + off_hz * Q_CTX + off_m, delta)
 
 
 # The main inner-loop logic for computing dK and dV.
@@ -384,7 +377,8 @@ def _attn_bwd_dkdv(
     # BLOCK_M1: 32
     # BLOCK_N1: 128
     offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < KV_CTX  # (BLOCK_N1, )
+    # Avoid standalone boolean mask - compute comparison inline at use sites
+    # offs_n_mask = offs_n < KV_CTX  # (BLOCK_N1, )
 
     offs_k = tl.arange(0, BLOCK_DMODEL)  # (BLOCK_DMODEL, )
 
@@ -394,7 +388,6 @@ def _attn_bwd_dkdv(
     step_m = BLOCK_M1
     for blk_idx in range(num_steps):
         offs_m = curr_m + tl.arange(0, BLOCK_M1)  # (BLOCK_M1, )
-        offs_m_mask = offs_m < Q_CTX  # (BLOCK_M1, )
 
         qT_ptrs = (
             Q + offs_m[None, :] * stride_tok + offs_k[:, None] * stride_d
@@ -403,48 +396,37 @@ def _attn_bwd_dkdv(
             DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
         )  # (BLOCK_M1, BLOCK_DMODEL)
 
-        qT = tl.load(
-            qT_ptrs, mask=offs_m_mask[None, :], other=0.0
-        )  # (BLOCK_DMODEL, BLOCK_M1)
+        # No mask in tl.load - data is padded to avoid out-of-bounds access
+        qT = tl.load(qT_ptrs)  # (BLOCK_DMODEL, BLOCK_M1)
 
         # Load m before computing qk to reduce pipeline stall.
-        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
+        m = tl.load(M + offs_m)  # (BLOCK_M1, )
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
-        qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
+        qkT = tl.dot(key.to(tl.float32), qT.to(tl.float32))  # (BLOCK_N1, BLOCK_M1)
         m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
-        m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
         pT = tl.math.exp2(qkT - m)
-        # pT = tl.math.exp2(qkT - m[None, :])
 
-        mask = (offs_m < Q_CTX)[None, :] & (offs_n < KV_CTX)[
-            :, None
-        ]  # (BLOCK_N1, BLOCK_M1)
-        # Autoregressive masking.
+        # Only apply causal mask if MASK is set (no boundary check - data is padded)
         if MASK:
-            mask &= offs_m[None, :] >= offs_n[:, None]
-        pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
+            causal_mask = offs_m[None, :] >= offs_n[:, None]
+            pT = tl.where(causal_mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
 
-        do = tl.load(do_ptrs)
-        # do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0) # (BLOCK_M1, BLOCK_DMODEL)
+        do = tl.load(do_ptrs)  # No mask in tl.load - data is padded
 
         # Compute dV.
-        dv += tl.dot(pT, do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
+        dv += tl.dot(pT.to(tl.float32), do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
         # D (= delta) is pre-divided by ds_scale.
-        Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)  # (BLOCK_M1, )
+        Di = tl.load(D + offs_m)  # (BLOCK_M1, )
 
         # Compute dP and dS.
-        dpT = tl.dot(value, tl.trans(do)).to(
+        dpT = tl.dot(value.to(tl.float32), tl.trans(do.to(tl.float32))).to(
             tl.float32
         )  # (BLOCK_N1, BLOCK_DMODEL) @ (BLOCK_M1, BLOCK_DMODEL).T -> (BLOCK_N1, BLOCK_M1)
-        dsT = pT * (dpT - Di[None, :])  # (BLOCK_N1, BLOCK_M1)
-        dsT = dsT.to(qT.dtype)
-        qT = tl.where(offs_m_mask[None, :], qT, 0.0)  # (BLOCK_DMODEL, BLOCK_M1)
-        dsT = tl.where(
-            offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0
-        )  # (BLOCK_N1, BLOCK_M1)
+        dsT = pT * (dpT - Di[None, :])  # (BLOCK_N1, BLOCK_M1), fp32
+        dsT = dsT.to(qT.dtype)  # convert to fp16/bf16
         dk += tl.dot(
-            dsT, tl.trans(qT)
+            dsT.to(tl.float32), tl.trans(qT.to(tl.float32))
         )  # (BLOCK_N1, BLOCK_M1) @ (BLOCK_DMODEL, BLOCK_M1).T -> (BLOCK_N1, BLOCK_DMODEL)
         # Increment pointers.
         curr_m += step_m
@@ -477,40 +459,36 @@ def _attn_bwd_dq(
     MASK: tl.constexpr,
 ):
     offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < Q_CTX
 
     offs_k = tl.arange(0, BLOCK_DMODEL)
     # D (= delta) is pre-divided by ds_scale.
-    Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)
+    # No mask in tl.load - data is padded to avoid out-of-bounds access
+    Di = tl.load(D + offs_m)  # (BLOCK_M2, )
     # BLOCK_M2 must be a multiple of BLOCK_N2, otherwise the code wouldn't work.
     tl.static_assert(BLOCK_M2 % BLOCK_N2 == 0)
     curr_n = start_n
     step_n = BLOCK_N2
     for blk_idx in range(num_steps):
         offs_n = curr_n + tl.arange(0, BLOCK_N2)
-        offs_n_mask = offs_n < KV_CTX
 
         kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
         vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
 
-        kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        qk = tl.dot(query, kT)
+        kT = tl.load(kT_ptrs)
+        vT = tl.load(vT_ptrs)
+        qk = tl.dot(query.to(tl.float32), kT.to(tl.float32))
         p = tl.math.exp2(qk - m)
-        mask = (offs_m < Q_CTX)[:, None] & (offs_n < KV_CTX)[None, :]
-        # Autoregressive masking.
         if MASK:
-            # mask = (offs_m[:, None] >= offs_n[None, :])
-            # mask = (offs_m[:, None] >= offs_n[None, :]) & (offs_m < N_CTX)[:, None] & (offs_n < N_CTX)[None, :]
-            mask &= offs_m[:, None] >= offs_n[None, :]
-        p = tl.where(mask, p, 0.0)
+            causal_mask = offs_m[:, None] >= offs_n[None, :]
+            p = tl.where(causal_mask, p, 0.0)
+
         # Compute dP and dS.
-        dp = tl.dot(do, vT).to(tl.float32)
+        dp = tl.dot(do.to(tl.float32), vT.to(tl.float32)).to(tl.float32)
         ds = p * (dp - Di[:, None])
-        ds = tl.where(mask, ds, 0.0).to(kT.dtype)
+        ds = ds.to(kT.dtype)
         # Compute dQ.
         # NOTE: We need to de-scale dq in the end, because kT was pre-scaled.
-        dq += tl.dot(ds, tl.trans(kT))
+        dq += tl.dot(ds.to(tl.float32), tl.trans(kT.to(tl.float32)))
         # Increment pointers.
         curr_n += step_n
     return dq
@@ -546,6 +524,7 @@ def _attn_bwd(
     BLOCK_N2: tl.constexpr,  #
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,  # Whether to use causal masking
 ):
     tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
 
@@ -580,22 +559,12 @@ def _attn_bwd(
 
     MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
     offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < KV_CTX
 
     dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
     dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
 
-    # load K and V: they stay in SRAM throughout the inner loop.
-    key = tl.load(
-        K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
-    value = tl.load(
-        V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
+    key = tl.load(K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d)
+    value = tl.load(V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d)
 
     num_steps = BLOCK_N1 // MASK_BLOCK_M1
 
@@ -620,7 +589,7 @@ def _attn_bwd(
         start_n,
         start_m,
         num_steps,  #
-        MASK=True,  #
+        MASK=IS_CAUSAL,
     )
 
     # Compute dK and dV for non-masked blocks.
@@ -650,17 +619,17 @@ def _attn_bwd(
             start_n,
             start_m,
             num_steps,  #
-            MASK=False,  #
+            MASK=False,
         )
     # tl.device_print("dv: ", dv)
 
     dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+    tl.store(dv_ptrs, dv)
 
     # Write back dK.
     dk *= sm_scale
     dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
+    tl.store(dk_ptrs, dk)
 
     # THIS BLOCK DOES DQ:
     MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
@@ -669,21 +638,12 @@ def _attn_bwd(
     num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
     offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < Q_CTX
 
-    query = tl.load(
-        Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
+    query = tl.load(Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d)
     dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
-    do = tl.load(
-        DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
+    do = tl.load(DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d)
 
-    m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
+    m = tl.load(M + offs_m)
     m = m[:, None]
 
     # Stage 1 - Compute dQ for masked (diagonal) blocks.
@@ -712,7 +672,7 @@ def _attn_bwd(
             start_m,
             start_n,
             num_steps,  #
-            MASK=True,  #
+            MASK=IS_CAUSAL,  #
         )
 
     # Stage 2 - non-masked blocks
@@ -744,9 +704,7 @@ def _attn_bwd(
     # Write back dQ.
     dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
     dq *= LN2
-    # tl.store(dq_ptrs, dq)
-
-    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
+    tl.store(dq_ptrs, dq)
 
 
 def scaled_dot_product_attention_forward(
@@ -798,6 +756,7 @@ def scaled_dot_product_attention_backward(
     else:
         sm_scale = scale
 
+    do = do.contiguous()
     assert do.is_contiguous()
     assert (
         query.is_contiguous()
@@ -816,26 +775,44 @@ def scaled_dot_product_attention_backward(
     NUM_WARPS, NUM_STAGES = 4, 1
     BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
     BLK_SLICE_FACTOR = 2
-    # RCP_LN2 = 1.4426950408889634  # = 1.0 / ln(2)
 
-    RCP_LN2 = 1.0 / math.log(2)
+    ORIG_Q_CTX = Q_CTX
+    ORIG_KV_CTX = KV_CTX
 
-    arg_k = key
-    arg_k = arg_k * (sm_scale * RCP_LN2)
-    # PRE_BLOCK = 128
     PRE_BLOCK = 256
 
-    # PRE_BLOCK = 32
-    # assert N_CTX % PRE_BLOCK == 0
-    # pre_grid = (N_CTX // PRE_BLOCK, BATCH * Q_HEAD)
-    pre_grid = (triton.cdiv(Q_CTX, PRE_BLOCK), BATCH * Q_HEAD)
+    PAD_BLOCK = max(BLOCK_N1, BLOCK_M1, BLOCK_M2, PRE_BLOCK)  # 256
+    PADDED_Q_CTX = triton.cdiv(Q_CTX, PAD_BLOCK) * PAD_BLOCK
+    PADDED_KV_CTX = triton.cdiv(KV_CTX, PAD_BLOCK) * PAD_BLOCK
+
+    q_pad_size = PADDED_Q_CTX - Q_CTX
+    kv_pad_size = PADDED_KV_CTX - KV_CTX
+
+    if kv_pad_size > 0:
+        key = torch.nn.functional.pad(key, (0, 0, 0, kv_pad_size), value=0.0)
+        value = torch.nn.functional.pad(value, (0, 0, 0, kv_pad_size), value=0.0)
+        KV_CTX = PADDED_KV_CTX
+
+    if q_pad_size > 0:
+        query = torch.nn.functional.pad(query, (0, 0, 0, q_pad_size), value=0.0)
+        o = torch.nn.functional.pad(o, (0, 0, 0, q_pad_size), value=0.0)
+        do = torch.nn.functional.pad(do, (0, 0, 0, q_pad_size), value=0.0)
+        M = torch.nn.functional.pad(M, (0, q_pad_size), value=1e4)
+        Q_CTX = PADDED_Q_CTX
+
+    arg_k = key
+
+    pre_grid = (Q_CTX // PRE_BLOCK, BATCH * Q_HEAD)
 
     delta = torch.empty_like(M)
 
-    # NOTE that dk & dv always have the same number of heads as q
-    dq = torch.empty_like(query).contiguous()
-    dk = torch.empty((BATCH, Q_HEAD, KV_CTX, HEAD_DIM_K)).to(key.device).contiguous()
-    dv = torch.empty((BATCH, Q_HEAD, KV_CTX, HEAD_DIM_V)).to(value.device).contiguous()
+    dq = torch.zeros_like(query).contiguous()
+    dk = torch.zeros(
+        (BATCH, KV_HEAD, KV_CTX, HEAD_DIM_K), dtype=key.dtype, device=key.device
+    ).contiguous()
+    dv = torch.zeros(
+        (BATCH, KV_HEAD, KV_CTX, HEAD_DIM_V), dtype=value.dtype, device=value.device
+    ).contiguous()
 
     _attn_bwd_preprocess[pre_grid](
         o,
@@ -880,15 +857,16 @@ def scaled_dot_product_attention_backward(
         BLOCK_N2=BLOCK_N2,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
+        IS_CAUSAL=is_causal,  #
         num_warps=NUM_WARPS,  #
         num_stages=NUM_STAGES,  #
     )
 
-    if group_head > 1:
-        dk = dk.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K)
-        dv = dv.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V)
-        dk = dk.sum(dim=2)
-        dv = dv.sum(dim=2)
+    if q_pad_size > 0:
+        dq = dq[:, :, :ORIG_Q_CTX, :]
+    if kv_pad_size > 0:
+        dk = dk[:, :, :ORIG_KV_CTX, :]
+        dv = dv[:, :, :ORIG_KV_CTX, :]
 
     return dq, dk, dv
 
