@@ -66,6 +66,7 @@ forward_operations = [
     ("special_i0e", torch.ops.aten.special_i0e, FLOAT_DTYPES),
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     ("log", torch.log, FLOAT_DTYPES),
+    ("log10", torch.log10, FLOAT_DTYPES),
     ("special_i1", torch.special.i1, FLOAT_DTYPES),
     ("logit", lambda a: torch.logit(a, eps=1e-6), FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
@@ -143,6 +144,7 @@ forward_inplace_operations = [
     ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
     ("square_", torch.square_, FLOAT_DTYPES),
+    ("log10_", torch.log10_, FLOAT_DTYPES),
     # Activation operations
     ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
@@ -206,6 +208,16 @@ def test_cosh_out_perf():
     bench = UnaryPointwiseOutBenchmark(
         op_name="cosh_out",
         torch_op=torch.cosh,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.log10
+def test_log10_out_perf():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="log10_out",
+        torch_op=torch.log10,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
