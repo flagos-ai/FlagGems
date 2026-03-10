@@ -5,6 +5,7 @@ on:
 
   push:
     branches: [ "master" ]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
   pull_request:
     branches: [ "master" ]
@@ -16,7 +17,7 @@ jobs:
     outputs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
       pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
-      labels: ${{ steps.get-labels.outputs.result }}
+      labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
     steps:
       - id: changed-files
         uses: tj-actions/changed-files@v47
@@ -44,7 +45,7 @@ jobs:
             // Determine if the event is a pull request
             const isPullRequest = context.eventName === 'pull_request';
             if (!isPullRequest) {
-              return "[]";
+              return "";
             }
 
             const prNumber = context.payload.pull_request.number;
@@ -59,17 +60,17 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"documentation"')
+    if: contains(needs.preprocess.outputs.labels, 'documentation')
     uses: ./.github/workflows/mkdocs.yaml
 
   cpp-op:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"ops/cpp"')
+    if: contains(needs.preprocess.outputs.labels, 'ops/cpp')
     uses: ./.github/workflows/cpp-op-test.yaml
 
   python-op:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"tests"')
+    if: contains(needs.preprocess.outputs.labels, 'tests')
     concurrency:
       group: python-op-${{ needs.preprocess.outputs.pr_id }}
       cancel-in-progress: true
@@ -86,7 +87,7 @@ jobs:
 
   examples:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"examples"')
+    if: contains(needs.preprocess.outputs.labels, 'examples')
     concurrency:
       group: examples-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -103,17 +104,17 @@ jobs:
 
   backend-nvidia:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"vendor/NVIDIA"')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
       runner_label: hopper
       gpu_check_script: tools/gpu_check.sh
-      test_script: tools/run_backend_tests.sh
+      test_script: tools/run_backend_tests_nvidia.sh
 
   backend-ascend:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"vendor/Ascend"')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
@@ -123,7 +124,7 @@ jobs:
 
   backend-iluvatar:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"vendor/Iluvatar"')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Iluvatar')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: iluvatar
@@ -133,7 +134,7 @@ jobs:
 
   backend-metax:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"vendor/MetaX"')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/MetaX')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
@@ -142,7 +143,7 @@ jobs:
 
   backend-moore:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"vendor/MooreThreads"')
+    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: moore
@@ -154,7 +155,7 @@ jobs:
   # test-op workflow should be fine.
   alpha-ops:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, '"ops/alpha"')
+    if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
