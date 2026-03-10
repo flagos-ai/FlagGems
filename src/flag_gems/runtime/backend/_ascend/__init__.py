@@ -26,10 +26,12 @@ vendor_info = VendorInfoBase(
 
 CUSTOMIZED_UNUSED_OPS = (
     "contiguous",
-    "sort",
-    "sort_stable",
     "copy_",
     "_to_copy",
+    "cumsum",
+    "sort",
+    "sort_stable",
+    "topk",
 )
 
 

@@ -9,6 +9,7 @@ from .argmin import argmin
 from .bmm import bmm
 from .cat import cat
 from .count_nonzero import count_nonzero
+from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -75,6 +76,7 @@ __all__ = [
     "amax",
     "argmax",
     "bmm",
+    "cummin",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",

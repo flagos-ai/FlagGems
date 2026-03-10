@@ -224,9 +224,6 @@ _index_add_func = IndexAddFunction()
 
 def index_add(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_ASCEND INDEX ADD")
-    assert ((0 <= index).to(torch.int8) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.int8, device=inp.device)
-    ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.numel() == src.size(
         dim
