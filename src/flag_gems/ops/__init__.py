@@ -220,6 +220,7 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.var_mean import var_mean
@@ -528,6 +529,7 @@ __all__ = [
     "true_divide_",
     "true_divide_out",
     "uniform_",
+    "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "var_mean",

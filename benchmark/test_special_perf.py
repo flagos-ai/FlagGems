@@ -473,6 +473,30 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
+@pytest.mark.upsample_linear1d
+@pytest.mark.parametrize("align_corners", [False, True])
+def test_perf_upsample_linear1d(align_corners):
+    def upsample_linear1d_input_fn(shape, dtype, device):
+        batch, channel, height, width = shape
+        length = height * width
+        input = torch.randn((batch, channel, length), device=device, dtype=dtype)
+        scale_factors = 2
+        output_size = int(length * scale_factors)
+        yield {
+            "input": input,
+            "output_size": (output_size,),
+            "align_corners": align_corners,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_linear1d_input_fn,
+        op_name=f"upsample_linear1d_align_{align_corners}",
+        torch_op=torch._C._nn.upsample_linear1d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.upsample_nearest1d
 def test_perf_upsample_nearest1d():
     def upsample_nearest1d_input_fn(shape, dtype, device):
