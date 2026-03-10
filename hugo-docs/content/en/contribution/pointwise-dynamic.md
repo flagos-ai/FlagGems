@@ -1,4 +1,8 @@
-# Pointwise Dynamic
+---
+title: Pointwise Dynamic Operators
+weight: 30
+---
+# Pointwise Dynamic Operators
 
 ## Pointwise operations
 
@@ -176,6 +180,10 @@ The promotion method (an enum or string) denotes the method of type promotion.
 
 - `DEFAULT` is the default rule for type promotion, which is suitable for most numeric operations;
 - `NO_OPMATH` means copy data type as-is, which is suitable for non-numeric operation, like data-copy.
+- `INT_TO_FLOAT` promotes integer to float.
+- `ALWAYS_BOOL` always promote to boolean value.
+- `COMPLEX_TO_FLOAT` promotes a complex number to float.
+- `BOOL_TO_LONG` promotes a boolean value to long integer.
 
 ```python
 class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
@@ -217,7 +225,7 @@ def polar_kernel(abs, angle):
     return real, imag
 ```
 
-## Use PointwiseDynamicFunction
+## Use `PointwiseDynamicFunction`
 
 ### Basic
 
@@ -231,7 +239,7 @@ we can use it to implement inplace-operations.
 For all `PointwiseDynamicFunction`s, you can pass output parameters to it using keyword arguments.
 To discriminate between input arguments and output arguments, we follow a simple rule that
 all input arguments must be passed by position and all output arguments must be passed
-using keyword arguments..
+using keyword arguments.
 
 The output parameters are named as `out{output_index}`.
 Since the decorated function does not have name for return values,
