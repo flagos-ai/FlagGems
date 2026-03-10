@@ -410,6 +410,7 @@ class Benchmark:
                                         self.torch_op, *args, **kwargs
                                     )
                             else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_ in do_bench's clear_cache
                                 with flag_gems.use_gems(exclude=["zero_"]):
                                     metric.latency = self.get_latency(
                                         self.torch_op, *args, **kwargs
