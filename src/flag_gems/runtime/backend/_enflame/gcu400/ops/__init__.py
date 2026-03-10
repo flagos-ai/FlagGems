@@ -62,6 +62,7 @@ from .full import full
 from .full_like import full_like
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
+from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .index_add import index_add
 from .index_select import index_select
@@ -317,4 +318,6 @@ __all__ = [
     "ones",
     "ones_like",
     "zeros_like",
+    "group_norm",
+    "group_norm_backward",
 ]
