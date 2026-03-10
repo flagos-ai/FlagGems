@@ -205,7 +205,6 @@ def weight_bias_backward_kernel(
 
 
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
-    print(f"GEMS GROUPNORM FORWARD: {input.shape}, {weight.shape}, {bias.shape}, {N}, {C}, {HxW}, {group}, {eps}")
     logger.debug("GEMS GROUPNORM FORWARD")
 
     group_size = triton.cdiv(C, group)
