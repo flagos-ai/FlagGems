@@ -9,11 +9,11 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   CHANGED_FILES=$(find tests -name "test*.py")
   FAIL_EARLY=""
   echo "TIMESTAMP=${PR_ID}"
-  SUFFIX="all"
+  SUFFIX=""
 else
   FAIL_EARLY="-x"
   echo "PR_ID=${PR_ID}"
-  SUFFIX="${GITHUB_SHA::7}"
+  SUFFIX="-${GITHUB_SHA::7}"
 fi
 
 # Test cases that needs to run quick cpu tests
@@ -30,7 +30,7 @@ QUICK_CPU_TESTS=(
   "tests/test_unary_pointwise_ops.py"
 )
 
-ID_SHA="${PR_ID}-${SUFFIX::7}"
+
 
 TEST_CASES=()
 TEST_CASES_CPU=()
@@ -59,12 +59,27 @@ if [ ${#TEST_CASES[@]} -eq 0 ]; then
   exit 0
 fi
 
+# Clear existing coverage data if any
+coverage erase
+
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
-coverage run --data-file=${ID_SHA}-op -m pytest -s ${FAIL_EARLY} ${TEST_CASES[@]}
+coverage run -m pytest -s ${FAIL_EARLY} ${TEST_CASES[@]}
 
 # Run quick-cpu test if necessary
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run --data-file=${ID_SHA}-op -m pytest -s ${FAIL_EARLY} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
+  coverage run -m pytest -s ${FAIL_EARLY} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
 fi
+
+# Process coverage data only when full-range testing
+# Coverage data HTML dumped to `htmlcov/` by default
+# if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  coverage combine
+  coverage html
+  rm -fr coverage
+  mkdir coverage
+  mv htmlcov coverage/
+  echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
+  ls coverage
+# fi
