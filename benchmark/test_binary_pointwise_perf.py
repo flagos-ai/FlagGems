@@ -39,6 +39,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             op,
             dtype,
             marks=getattr(pytest.mark, name, None),
+            id=name,
         )
         for name, op, dtype in [
             # Arithmetic operations
@@ -86,6 +87,7 @@ def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
             op,
             dtype,
             marks=getattr(pytest.mark, name, None),
+            id=name,
         )
         for name, op, dtype in [
             # Arithmetic operations

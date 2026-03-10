@@ -26,24 +26,28 @@ def normal__input_fn(shape, cur_dtype, device):
             torch.normal,
             normal_input_fn,
             marks=pytest.mark.normal,
+            id="normal",
         ),
         pytest.param(
             "normal_",
             torch.Tensor.normal_,
             normal__input_fn,
             marks=pytest.mark.normal_,
+            id="normal_",
         ),
         pytest.param(
             "uniform_",
             torch.Tensor.uniform_,
             unary_input_fn,
             marks=pytest.mark.uniform_,
+            id="uniform_",
         ),
         pytest.param(
             "exponential_",
             torch.Tensor.exponential_,
             unary_input_fn,
             marks=pytest.mark.exponential_,
+            id="exponential_",
         ),
     ],
 )

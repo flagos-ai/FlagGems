@@ -23,7 +23,6 @@ class AttentionBenchmark(GenericBenchmark):
         # (batch, num_heads, seq_len, head_size).
         return None
 
-
 def torch_flash_attention_forward(
     q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
 ):
@@ -267,7 +266,6 @@ def test_perf_flash_attention_forward():
     )
     bench.set_gems(gems_flash_attention_forward)
     bench.run()
-
 
 # @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 # @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")

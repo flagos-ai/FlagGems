@@ -88,6 +88,7 @@ forward_operations = [
             op,
             dtype,
             marks=getattr(pytest.mark, name, None),
+            id=name,
         )
         for name, op, dtype in forward_operations
     ],
@@ -139,6 +140,7 @@ forward_inplace_operations = [
             op,
             dtype,
             marks=getattr(pytest.mark, name, None),
+            id=name,
         )
         for name, op, dtype in forward_inplace_operations
     ],
@@ -168,6 +170,7 @@ backward_operations = [
             op,
             dtype,
             marks=getattr(pytest.mark, name, None),
+            id=name,
         )
         for name, op, dtype in backward_operations
     ],

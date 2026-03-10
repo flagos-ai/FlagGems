@@ -56,6 +56,7 @@ def hstack_vstack_input_fn(shape, dtype, device):
             stack_cat_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
             marks=pytest.mark.cat,
+            id="cat",
         ),
         pytest.param(
             "stack",
@@ -63,6 +64,7 @@ def hstack_vstack_input_fn(shape, dtype, device):
             stack_cat_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.stack,
+            id="stack",
         ),
         pytest.param(
             "hstack",
@@ -70,6 +72,7 @@ def hstack_vstack_input_fn(shape, dtype, device):
             hstack_vstack_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.hstack,
+            id="hstack",
         ),
         pytest.param(
             "vstack",
@@ -77,6 +80,7 @@ def hstack_vstack_input_fn(shape, dtype, device):
             hstack_vstack_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.vstack,
+            id="vstack",
         ),
     ],
 )
@@ -161,7 +165,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
     "op_name, torch_op, input_fn, dtypes",
     [
         pytest.param(
-            "tile", torch.tile, tile_input_fn, FLOAT_DTYPES, marks=pytest.mark.tile
+            "tile", torch.tile, tile_input_fn, FLOAT_DTYPES, marks=pytest.mark.tile, id="tile"
         ),
         pytest.param(
             "repeat",
@@ -169,6 +173,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
             repeat_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.repeat,
+            id="repeat",
         ),
         pytest.param(
             "repeat_interleave.self_int",
@@ -176,6 +181,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
             repeat_interleave_self_int_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.repeat_interleave,
+            id="repeat_interleave_self_int",
         ),
         pytest.param(
             "repeat_interleave.self_tensor",
@@ -183,6 +189,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
             repeat_interleave_self_tensor_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.repeat_interleave,
+            id="repeat_interleave_self_tensor",
         ),
         pytest.param(
             "repeat_interleave.tensor",
@@ -190,6 +197,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
             repeat_interleave_tensor_input_fn,
             [torch.int32],
             marks=pytest.mark.repeat_interleave,
+            id="repeat_interleave_tensor",
         ),
     ],
 )

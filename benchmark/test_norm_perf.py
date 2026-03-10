@@ -106,24 +106,28 @@ def batchnorm_input_fn(shape, dtype, device):
             torch.nn.functional.group_norm,
             groupnorm_input_fn,
             marks=pytest.mark.group_norm,
+            id="group_norm",
         ),
         pytest.param(
             "layer_norm",
             torch.layer_norm,
             layernorm_input_fn,
             marks=pytest.mark.layer_norm,
+            id="layer_norm",
         ),
         pytest.param(
             "instance_norm",
             torch.instance_norm,
             instancenorm_input_fn,
             marks=pytest.mark.instance_norm,
+            id="instance_norm",
         ),
         pytest.param(
             "batch_norm",
             torch.batch_norm,
             batchnorm_input_fn,
             marks=pytest.mark.batch_norm,
+            id="batch_norm",
         ),
     ],
 )
@@ -226,7 +230,7 @@ norm_operations = [
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
-        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
+        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None), id=op)
         for op, fn, input_fn in norm_operations
     ],
 )
