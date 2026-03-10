@@ -33,7 +33,7 @@ device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 if device == "musa":
     torch.backends.mudnn.allow_tf32 = False
-elif device == "npu":
+elif device == "npu" or device == "gcu":
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
 else:
