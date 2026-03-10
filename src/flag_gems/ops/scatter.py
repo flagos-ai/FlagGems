@@ -100,6 +100,8 @@ def generate_scatter_kernel(
             # reduce options
             code.writeline("IS_ADD: tl.constexpr,")
             code.writeline("IS_MUL: tl.constexpr,")
+            code.writeline("IS_MAX: tl.constexpr,")
+            code.writeline("IS_MIN: tl.constexpr,")
             code.writeline("BLOCK: tl.constexpr,")
             code.writeline("LOOP: tl.constexpr,")
             code.writeline("INT32_OFFSET: tl.constexpr")
@@ -180,6 +182,16 @@ def generate_scatter_kernel(
                     code.writeline("stop |= cur_inp == cas_res")
                     code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
 
+            code.writeline("elif IS_MAX: ")
+            with code.indent():
+                code.writeline(
+                    "tl.atomic_max(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                )
+            code.writeline("elif IS_MIN: ")
+            with code.indent():
+                code.writeline(
+                    "tl.atomic_min(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                )
             code.writeline("else: ")
             with code.indent():
                 code.writeline("tl.store(out + inp_offsets, cur_src, mask=mask)")
@@ -228,6 +240,8 @@ def generate_destination_passing_wrapper(
 
         code.writeline('IS_ADD = reduce == "add"')
         code.writeline('IS_MUL = reduce == "multiply"')
+        code.writeline('IS_MAX = reduce in ("amax", "max")')
+        code.writeline('IS_MIN = reduce in ("amin", "min")')
         code.writeline("int32_offset = int32_offset or True")
 
         # kernel launch
@@ -260,6 +274,8 @@ def generate_destination_passing_wrapper(
                 # reduce options
                 code.writeline("IS_ADD,")
                 code.writeline("IS_MUL,")
+                code.writeline("IS_MAX,")
+                code.writeline("IS_MIN,")
                 code.writeline("INT32_OFFSET=int32_offset,")
         code.writeline(")")
         code.writeline("return out")
