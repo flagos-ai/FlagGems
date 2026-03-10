@@ -1,26 +1,3 @@
-"""
-Fused MoE Triton kernel for Mixture of Experts computation.
-
-Ported from vLLM's fused_moe implementation:
-  vllm/model_executor/layers/fused_moe/fused_moe.py
-
-This module provides:
-  - fused_moe_kernel: Triton JIT kernel that performs tiled GEMM with
-    expert-based indirect addressing.
-  - invoke_fused_moe_triton_kernel: Python-side launcher that sets up grid,
-    strides, and constexpr parameters, then launches the kernel.
-  - fused_moe: High-level API that runs the complete MoE forward pipeline:
-    moe_align_block_size → GEMM1 → activation → GEMM2 → moe_sum.
-
-Supported quantization modes (via constexpr flags):
-  - bf16/fp16/fp32 (no quantization)
-  - fp8_w8a8 (per-tensor, per-channel, block-wise)
-  - int8_w8a8 (per-tensor, per-channel, block-wise)
-
-NOTE: WNA16 (int4/int8 weight-only) kernels are NOT included here.
-      Only the general-purpose fused_moe_kernel is ported.
-"""
-
 import logging
 from typing import Any, Optional
 
@@ -35,9 +12,6 @@ from flag_gems.fused.silu_and_mul import silu_and_mul_kernel
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Triton JIT helper: write zeros when expert is not on this rank (EP)
-# ---------------------------------------------------------------------------
 @triton.jit
 def write_zeros_to_output(
     c_ptr,
@@ -58,9 +32,6 @@ def write_zeros_to_output(
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
-# ---------------------------------------------------------------------------
-# Main Triton JIT kernel: fused MoE GEMM with expert routing
-# ---------------------------------------------------------------------------
 @triton.jit
 def fused_moe_kernel(
     # Pointers to matrices
@@ -243,9 +214,6 @@ def fused_moe_kernel(
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
-# ---------------------------------------------------------------------------
-# Python-side launcher
-# ---------------------------------------------------------------------------
 def get_default_config(
     M: int,
     E: int,
@@ -427,9 +395,6 @@ def invoke_fused_moe_triton_kernel(
     )
 
 
-# ---------------------------------------------------------------------------
-# High-level fused MoE forward
-# ---------------------------------------------------------------------------
 def _apply_silu_and_mul(out: torch.Tensor, inp: torch.Tensor) -> None:
     """Apply SiLU-and-Mul activation: out = SiLU(inp[:, :N]) * inp[:, N:]."""
     N = inp.shape[-1] // 2

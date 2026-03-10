@@ -235,11 +235,6 @@ def test_cutlass_scaled_mm(p):
     torch.testing.assert_close(c, output_ref, rtol=rtol, atol=atol)
 
 
-# =====================================================================
-# Fused MoE (fused_experts) correctness tests
-# =====================================================================
-
-
 FUSED_MOE_CONFIGS = [
     # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
     (1, 8, 128, 256, 2),

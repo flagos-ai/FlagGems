@@ -241,10 +241,6 @@ def test_cutlass_scaled_mm_benchmark():
     bench.run()
 
 
-# =====================================================================
-# Fused MoE (fused_experts) benchmark: FlagGems vs vLLM
-# =====================================================================
-
 try:
     from vllm.model_executor.layers.fused_moe.fused_moe import (
         fused_experts_impl as vllm_fused_experts_impl,
