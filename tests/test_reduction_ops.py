@@ -1779,6 +1779,60 @@ def test_index_put__error_all_none(dtype):
         flag_gems.index_put_(inp, indices, values, accumulate=False)
 
 
+# Format: (input_shape, indices_config)
+# 0 in indices_config means a Tensor, 1 in indices_config means None
+MIXED_INDEX_SHAPES = [
+    ((1024, 1024), (0, 1)),
+    ((1024, 1024), (1, 0)),
+    ((32, 32, 32), (0, 0, 1)),
+    ((32, 32, 32), (0, 1, 0)),
+    ((32, 32, 32), (1, 0, 0)),
+    ((64, 64, 64), (1, 0, 1)),
+    ((12, 12, 12, 12), (1, 0, 0, 0)),
+    ((12, 12, 12, 12), (0, 1, 0, 0)),
+    ((16, 16, 16, 16), (1, 0, 0, 1)),
+    ((16, 16, 16, 16), (0, 1, 1, 0)),
+    ((8, 8, 8, 8), (0, 1, 1, 1)),
+    ((8, 8, 8, 8), (1, 1, 0, 1)),
+]
+
+
+@pytest.mark.index_put
+@pytest.mark.parametrize("input_shape, indices_config", MIXED_INDEX_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
+    accumulate = False
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
+
+    tensor_dims = [
+        input_shape[i] for i, is_none in enumerate(indices_config) if is_none == 0
+    ]
+    min_dim = min(tensor_dims)
+    idx_len = random.randint(3, min(min_dim, 32))
+    unique_pool = torch.randperm(min_dim, device=flag_gems.device)[:idx_len]
+
+    indices, ref_indices = [], []
+    for i, is_none in enumerate(indices_config):
+        if is_none:
+            indices.append(None)
+            ref_indices.append(slice(None))
+        else:
+            indices.append(unique_pool)
+            ref_indices.append(unique_pool.cpu())
+
+    ref_inp = to_reference(inp)
+    target_shape = ref_inp[tuple(ref_indices)].shape
+
+    values = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
+    ref_values = to_reference(values)
+
+    ref_out = ref_inp.clone()
+    ref_out[tuple(ref_indices)] = ref_values
+
+    out = flag_gems.index_put(inp, indices, values, accumulate)
+    gems_assert_close(out, ref_out, dtype)
+
+
 @pytest.mark.index
 @pytest.mark.parametrize("input_shape, indices_shape", INDEX_ACC_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1830,8 +1884,8 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
 @pytest.mark.index
 @pytest.mark.parametrize(
     "input_shape, indices_idx",
-    # 0 in indices_idx means None
-    # 1 in indices_idx means a Tensor
+    # 0 in indices_idx means a Tensor
+    # 1 in indices_idx means None
     [
         ((1024, 1024), (0, 1)),
         ((16, 16, 16), (1, 0, 0)),
