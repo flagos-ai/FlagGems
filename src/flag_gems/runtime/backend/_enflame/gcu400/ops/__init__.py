@@ -34,6 +34,7 @@ from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from .contiguous import contiguous
 from .copy import copy, copy_
 from .cos import cos, cos_
+from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, cumsum_out, normed_cumsum
@@ -137,6 +138,7 @@ from .zeros import zeros, zero_
 from .zeros_like import zeros_like
 
 __all__ = [
+    "count_nonzero",
     "mean_dim",
     "zeros",
     "zero_",
