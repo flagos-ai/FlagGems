@@ -410,10 +410,10 @@ class Benchmark:
                                         self.torch_op, *args, **kwargs
                                     )
                             else:
-                            with flag_gems.use_gems(exclude=["zero_"]):
-                                metric.latency = self.get_latency(
-                                    self.torch_op, *args, **kwargs
-                                )
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
                     if "speedup" in self.to_bench_metrics:
                         metric.speedup = metric.latency_base / metric.latency
                     if "gbps" in self.to_bench_metrics:
