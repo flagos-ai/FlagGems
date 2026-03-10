@@ -59,17 +59,17 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'documentation')
+    if: contains(needs.preprocess.outputs.labels, '"documentation"')
     uses: ./.github/workflows/mkdocs.yaml
 
   cpp-op:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'ops/cpp')
+    if: contains(needs.preprocess.outputs.labels, '"ops/cpp"')
     uses: ./.github/workflows/cpp-op-test.yaml
 
   python-op:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'tests')
+    if: contains(needs.preprocess.outputs.labels, '"tests"')
     concurrency:
       group: python-op-${{ needs.preprocess.outputs.pr_id }}
       cancel-in-progress: true
@@ -86,7 +86,7 @@ jobs:
 
   examples:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'examples')
+    if: contains(needs.preprocess.outputs.labels, '"examples"')
     concurrency:
       group: examples-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -103,17 +103,17 @@ jobs:
 
   backend-nvidia:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/NVIDIA')
+    if: contains(needs.preprocess.outputs.labels, '"vendor/NVIDIA"')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
       runner_label: hopper
       gpu_check_script: tools/gpu_check.sh
-      test_script: tools/run_backend_tests_nvidia.sh
+      test_script: tools/run_backend_tests.sh
 
   backend-ascend:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/Ascend')
+    if: contains(needs.preprocess.outputs.labels, '"vendor/Ascend"')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
@@ -123,7 +123,7 @@ jobs:
 
   backend-iluvatar:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/Iluvatar')
+    if: contains(needs.preprocess.outputs.labels, '"vendor/Iluvatar"')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: iluvatar
@@ -133,20 +133,20 @@ jobs:
 
   backend-metax:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/MetaX')
+    if: contains(needs.preprocess.outputs.labels, '"vendor/MetaX"')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
-      runner_label: metax
+      runner_label: metax_CI
       test_script: tools/run_backend_tests_metax.sh
 
   backend-moore:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'vendor/MooreThreads')
+    if: contains(needs.preprocess.outputs.labels, '"vendor/MooreThreads"')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: moore
-      runner_label: mthreadsCI
+      runner_label: moore_CI
       gpu_check_script: tools/gpu_check_moore.sh
       test_script: tools/run_backend_tests.sh
 
@@ -154,7 +154,7 @@ jobs:
   # test-op workflow should be fine.
   alpha-ops:
     needs: preprocess
-    if: contains(fromJson(needs.preprocess.outputs.labels), 'ops/alpha')
+    if: contains(needs.preprocess.outputs.labels, '"ops/alpha"')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
