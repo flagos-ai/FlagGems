@@ -19,4 +19,3 @@ fi
 
 echo "Unsupported backend vendor: $VENDOR (missing $DISPATCH_SCRIPT)"
 exit 1
-
