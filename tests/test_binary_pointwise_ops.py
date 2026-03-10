@@ -2204,3 +2204,19 @@ def test_accuracy_addcdiv(shape, dtype):
         res_out = torch.addcdiv(res_inp, t1, t2, value=v)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd(shape, dtype):
+    inp1 = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
