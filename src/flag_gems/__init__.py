@@ -347,6 +347,7 @@ _FULL_CONFIG = (
     ("uniform_", uniform_),
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_nearest1d", upsample_nearest1d),
+    ("pixel_shuffle", pixel_shuffle),
     ("upsample_nearest2d", upsample_nearest2d),
     ("var_mean.correction", var_mean),
     ("vdot", vdot),

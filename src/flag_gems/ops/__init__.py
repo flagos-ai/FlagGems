@@ -162,6 +162,7 @@ from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.pad import constant_pad_nd, pad
+from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
@@ -242,6 +243,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "pixel_shuffle",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
