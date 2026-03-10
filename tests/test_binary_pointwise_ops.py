@@ -2096,10 +2096,34 @@ def test_accuracy_masked_fill_(shape, dtype, threshold, value):
     gems_assert_equal(inp, ref_inp)
 
 
-@pytest.mark.fill_
-@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.fill
+@pytest.mark.parametrize("value", [0, 1, 9, 3.14])
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.float64])
+def test_accuracy_fill(value, shape, dtype):
+    # Test fill.Scalar
+    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = to_reference(x, False)
+
+    ref_out = torch.fill(ref_x, value)
+    with flag_gems.use_gems():
+        res_out = torch.fill(x, value)
+    gems_assert_equal(res_out, ref_out)
+
+    # Test fill.Tensor
+    value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
+    ref_value_tensor = to_reference(value_tensor, False)
+    ref_out_tensor = torch.fill(ref_x, ref_value_tensor)
+    with flag_gems.use_gems():
+        res_out_tensor = torch.fill(x, value_tensor)
+
+    gems_assert_equal(res_out_tensor, ref_out_tensor)
+
+
+@pytest.mark.fill_
+@pytest.mark.parametrize("value", [0, 1, 9, 3.14])
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.float64])
 def test_accuracy_fill_(value, shape, dtype):
     # Test fill_.Scalar
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
