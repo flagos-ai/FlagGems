@@ -1,6 +1,10 @@
-# Add a C++ wrapper
+---
+title: Add a C++ Wrapped Operator
+weight: 20
+---
+# Add a C++ Wrapped Operator
 
-To add a c++ wrapper, you need to first build FlagGems with C++ extensions enabled.
+To add a C++ wrapped operator, you need to first build FlagGems with C++ extensions enabled.
 Please refer to [Installation](./installation.md).
 
 ## Write the wrapper
@@ -8,19 +12,24 @@ Please refer to [Installation](./installation.md).
 Follow the following steps to add a new C++ wrapped operator:
 
 - Add a function prototype for the operator in the `include/flag_gems/operators.h` file.
-- Add the operator function implementation in the `lib/op_name.cpp` file.
+- Add the operator function implementation in the `lib/<op_name>.cpp` file.
 - Change the cmakefile `lib/CMakeLists.txt` accordingly.
-- Add python bindings in `src/flag_gems/csrc/cstub.cpp`
+- Add Python bindings in `src/flag_gems/csrc/cstub.cpp`
 - Add the `triton_jit` function in `triton_src`.
-  Currently we use a dedicated directory to store the `triton_jit` functions
-  In the future, we will reuse the `triton_jit` functions in Python code under `flag_gems`.
 
-## Write test case
+  > [!TIP]
+  > **TIP**
+  >
+  > Currently we use a dedicated directory to store the `triton_jit` functions.
+  > In the future, we will reuse the `triton_jit` functions in Python code under `flag_gems`.
+
+## Write test cases
 
 FlagGems uses `ctest` and `googletest` for C++ unit tests.
 After having finished the C++ wrapper, a corresponding C++ test case should be added.
 Add your unit test in `ctests/test_triton_xxx.cpp` and `ctests/CMakeLists.txt`.
-Finally, build your test source and run it with [C++ Tests](./ctest_in_flaggems.md).
+Finally, build your test source and run it with
+[C++ Tests](/FlagGems/zh-cn/testing/ctests/).
 
 ## Create a PR for your code
 
