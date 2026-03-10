@@ -403,8 +403,13 @@ class Benchmark:
                             metric.latency = self.get_latency(
                                 self.gems_op, *args, **kwargs
                             )
-                        else:
+                        elif self.op_name == "zero_":
                             with flag_gems.use_gems():
+                                metric.latency = self.get_latency(
+                                    self.torch_op, *args, **kwargs
+                                )
+                        else:
+                            with flag_gems.use_gems(exclude=["zero_"]):
                                 metric.latency = self.get_latency(
                                     self.torch_op, *args, **kwargs
                                 )
