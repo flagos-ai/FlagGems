@@ -281,7 +281,7 @@ def run_tests(device="cuda"):
     ]
 
     for name, size, num_unique in test_cases:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"测试: {name} (size={size:,}, ~{num_unique:,} unique)")
         print("=" * 60)
 
