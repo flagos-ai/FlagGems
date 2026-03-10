@@ -119,7 +119,7 @@ from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
-from .sort import sort
+from .sort import sort, sort_stable
 from .sub import sub, sub_
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
@@ -142,6 +142,7 @@ __all__ = [
     "zero_",
     "scatter_",
     "sort",
+    "sort_stable",
     "cat",
     "mm",
     "true_divide",
