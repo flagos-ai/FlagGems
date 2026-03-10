@@ -225,6 +225,7 @@ _FULL_CONFIG = (
     ("masked_select", masked_select),
     ("max", max),
     ("max.dim", max_dim),
+    ("median.dim", median_dim),
     ("maximum", maximum),
     ("max_pool2d_with_indices", max_pool2d_with_indices),
     ("max_pool2d_backward", max_pool2d_backward),
