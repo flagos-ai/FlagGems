@@ -216,6 +216,7 @@ special_operations = [
             dtypes,
             input_fn,
             marks=getattr(pytest.mark, op, None),
+            id=op,
         )
         for op, fn, dtypes, input_fn in special_operations
     ],

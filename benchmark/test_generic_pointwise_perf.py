@@ -86,6 +86,7 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             nan_to_num_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.nan_to_num,
+            id="nan_to_num",
         ),
         pytest.param(
             "clamp",
@@ -93,6 +94,7 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             clamp_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.clamp,
+            id="clamp",
         ),
         pytest.param(
             "clamp_min",
@@ -100,6 +102,7 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             clamp_min_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.clamp_min,
+            id="clamp_min",
         ),
         pytest.param(
             "flip",
@@ -107,9 +110,10 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             flip_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
             marks=pytest.mark.flip,
+            id="flip",
         ),
         pytest.param(
-            "where", torch.where, where_input_fn, FLOAT_DTYPES, marks=pytest.mark.where
+            "where", torch.where, where_input_fn, FLOAT_DTYPES, marks=pytest.mark.where, id="where"
         ),
         pytest.param(
             "threshold",
@@ -117,6 +121,7 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             threshold_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.threshold,
+            id="threshold",
         ),
         pytest.param(
             "addcmul",
@@ -124,6 +129,7 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             addcmul_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.addcmul,
+            id="addcmul",
         ),
         pytest.param(
             "addcdiv",
@@ -131,6 +137,7 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             addcmul_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.addcdiv,
+            id="addcdiv",
         ),
     ],
 )
@@ -155,6 +162,7 @@ def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
             clamp_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.clamp_,
+            id="clamp_",
         ),
         pytest.param(
             "clamp_min_",
@@ -162,6 +170,7 @@ def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
             clamp_min_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.clamp_min_,
+            id="clamp_min_",
         ),
     ],
 )
@@ -185,6 +194,7 @@ def test_generic_inplace_pointwise_benchmark(op_name, torch_op, input_fn, dtypes
             unary_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.triu,
+            id="triu",
         ),
     ],
 )
@@ -204,6 +214,7 @@ def test_generic_pointwise_benchmark_exclude_1d(op_name, torch_op, input_fn, dty
             unary_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.triu_,
+            id="triu_",
         ),
     ],
 )

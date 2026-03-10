@@ -160,6 +160,7 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
             addmm_input_fn,
             BlasBenchmark,
             marks=pytest.mark.addmm,
+            id="addmm",
         ),
         pytest.param(
             "bmm",
@@ -167,6 +168,7 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
             bmm_input_fn,
             BlasBenchmark,
             marks=pytest.mark.bmm,
+            id="bmm",
         ),
         pytest.param(
             "mm",
@@ -174,6 +176,7 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
             mm_input_fn,
             BlasBenchmark,
             marks=pytest.mark.mm,
+            id="mm",
         ),
         pytest.param(
             "baddbmm",
@@ -181,6 +184,7 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
             baddbmm_input_fn,
             BaddbmmBenchmark,
             marks=pytest.mark.baddbmm,
+            id="baddbmm",
         ),
     ],
 )
@@ -230,12 +234,14 @@ def outer_input_fn(m, n, cur_dtype, device):
             torch.Tensor.mv,
             mv_input_fn,
             marks=pytest.mark.mv,
+            id="mv",
         ),
         pytest.param(
             "outer",
             torch.Tensor.outer,
             outer_input_fn,
             marks=pytest.mark.outer,
+            id="outer",
         ),
     ],
 )
@@ -278,6 +284,7 @@ def addmv_input_fn(m, n, cur_dtype, device):
             torch.addmv,
             addmv_input_fn,
             marks=pytest.mark.addmv,
+            id="addmv",
         ),
     ],
 )

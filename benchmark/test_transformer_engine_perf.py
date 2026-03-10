@@ -99,6 +99,7 @@ glu_backward_ops = [
             tex_attr,
             dtype,
             marks=getattr(pytest.mark, name, None),
+            id=name,
         )
         for name, tex_attr, dtype in glu_forward_ops
     ],
@@ -133,6 +134,7 @@ def test_tex_glu_forward_perf(op_name, tex_attr_name, dtypes):
             tex_attr,
             dtype,
             marks=getattr(pytest.mark, op_name, None),
+            id=op_name,
         )
         for name, tex_attr, dtype, op_name in glu_backward_ops
     ],

@@ -152,7 +152,7 @@ tensor_constructor_operations = [
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
-        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
+        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None), id=op)
         for op, fn, input_fn in tensor_constructor_operations
     ],
 )
@@ -180,7 +180,7 @@ tensor_constructor_inplace_operations = [
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
-        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
+        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None), id=op)
         for op, fn, input_fn in tensor_constructor_inplace_operations
     ],
 )

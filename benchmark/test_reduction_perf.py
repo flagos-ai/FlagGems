@@ -71,7 +71,7 @@ forward_operations = [
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
     [
-        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
+        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None), id=name)
         for name, op, dtype in forward_operations
     ],
 )
@@ -88,7 +88,7 @@ backward_operations = [
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
     [
-        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
+        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None), id=name)
         for name, op, dtype in backward_operations
     ],
 )
@@ -151,6 +151,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             unary_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.log_softmax,
+            id="log_softmax",
         ),
         pytest.param(
             "nonzero",
@@ -158,6 +159,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             unary_input_fn,
             FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
             marks=pytest.mark.nonzero,
+            id="nonzero",
         ),
         pytest.param(
             "cross_entropy_loss",
@@ -165,6 +167,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.cross_entropy_loss,
+            id="cross_entropy_loss",
         ),
         pytest.param(
             "cumsum",
@@ -172,6 +175,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
             marks=pytest.mark.cumsum,
+            id="cumsum",
         ),
         pytest.param(
             "cummin",
@@ -179,6 +183,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
             marks=pytest.mark.cummin,
+            id="cummin",
         ),
         pytest.param(
             "cummax",
@@ -186,6 +191,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
             marks=pytest.mark.cummax,
+            id="cummax",
         ),
         pytest.param(
             "nll_loss",
@@ -193,6 +199,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             nll_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.nll_loss,
+            id="nll_loss",
         ),
         pytest.param(
             "mse_loss",
@@ -200,6 +207,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             mse_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.mse_loss,
+            id="mse_loss",
         ),
     ],
 )
@@ -483,6 +491,7 @@ def quantile_input_fn(shape, cur_dtype, device):
             quantile_input_fn,
             [torch.float32],
             marks=pytest.mark.quantile,
+            id="quantile",
         )
     ],
 )

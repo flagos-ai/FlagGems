@@ -89,6 +89,7 @@ def index_select_gbps(bench_fn_args, latency):
             index_select_gbps,
             FLOAT_DTYPES,
             marks=pytest.mark.index_select,
+            id="index_select",
         ),
     ],
 )
@@ -139,6 +140,7 @@ def test_perf_masked_scatter_inplace():
             mask_select_gbps,
             FLOAT_DTYPES,
             marks=pytest.mark.masked_select,
+            id="masked_select",
         ),
     ],
 )
