@@ -10,7 +10,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-_MAX_TRITON_MEDIAN_COLS = 8192*2
+_MAX_TRITON_MEDIAN_COLS = 8192 * 2
 _RADIX_BITS_PER_PASS = 4
 
 
@@ -62,17 +62,22 @@ def median_lastdim_kernel(
         masked_bucket = tl.where(active, bucket, num_buckets).to(tl.int32)
         hist_all = masked_bucket.histogram(hist_bins)
         bucket_ids = tl.arange(0, hist_bins)
-        prefix = hist_all.cumsum(0)
+        prefix = tl.cumsum(hist_all, axis=0)
         prefix_before_all = prefix - hist_all
         selected_mask = (
             (bucket_ids < num_buckets)
             & (prefix_before_all <= remaining)
             & (remaining < prefix)
         )
-        selected_bucket = selected_mask.to(tl.int32).argmax(0)
-        prefix_before = tl.where(
-            bucket_ids == selected_bucket, prefix_before_all, tl.zeros_like(prefix_before_all)
-        ).max(0)
+        selected_bucket = tl.argmax(selected_mask.to(tl.int32), axis=0)
+        prefix_before = tl.max(
+            tl.where(
+                bucket_ids == selected_bucket,
+                prefix_before_all,
+                tl.zeros_like(prefix_before_all),
+            ),
+            axis=0,
+        )
 
         remaining = remaining - prefix_before
         active = active & (bucket.to(tl.int32) == selected_bucket)
@@ -84,7 +89,9 @@ def median_lastdim_kernel(
 
     if row_ptr.dtype.element_ty.is_floating():
         first_nan_mask = cols == first_nan
-        first_nan_val = tl.sum(tl.where(first_nan_mask, vals, tl.zeros_like(vals)), axis=0)
+        first_nan_val = tl.sum(
+            tl.where(first_nan_mask, vals, tl.zeros_like(vals)), axis=0
+        )
         selected_val = tl.where(has_nan, first_nan_val, selected_val)
         selected_idx = tl.where(has_nan, first_nan.to(tl.int64), selected_idx)
 
@@ -105,7 +112,7 @@ def median_dim(inp, dim, keepdim=False):
     logger.debug("GEMS MEDIAN.DIM")
 
     if inp.dtype == torch.bool:
-        raise RuntimeError('"median_out" not implemented for \'Bool\'')
+        raise RuntimeError("\"median_out\" not implemented for 'Bool'")
 
     if inp.ndim == 0:
         raise IndexError("Dimension specified as 0 but tensor has no dimensions")
