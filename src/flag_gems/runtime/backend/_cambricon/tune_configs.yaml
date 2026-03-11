@@ -1110,6 +1110,34 @@ sum:
   - 512
   - 1024
 #######################################
+tril:
+- META:
+    M_BLOCK_SIZE: 1
+  num_warps: 1
+  num_stages: 3
+- META:
+    M_BLOCK_SIZE: 4
+  num_warps: 1
+  num_stages: 3
+- META:
+    M_BLOCK_SIZE: 8
+  num_warps: 1
+  num_stages: 3
+- META:
+    M_BLOCK_SIZE: 16
+  num_warps: 1
+  num_stages: 3
+#######################################
+tril_batch:
+- gen: true
+  param_map:
+    META:
+      BATCH_BLOCK_SIZE: 1
+      MN_BLOCK_SIZE: 512
+    num_warps: warps
+  warps:
+  - 1
+#######################################
 triu:
 - META:
     M_BLOCK_SIZE: 1
