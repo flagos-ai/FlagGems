@@ -60,7 +60,7 @@ from .div import (
 from .dropout import dropout
 from .elu import elu
 from .embedding import embedding
-from .eq import eq, eq_scalar
+from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .exp import exp, exp_
 from .exponential_ import exponential_
@@ -247,6 +247,7 @@ __all__ = [
     "remainder",
     "remainder_",
     "elu",
+    "equal",
     "eq_scalar",
     "eq",
     "erf",

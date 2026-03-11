@@ -51,7 +51,7 @@ from .div import (
     trunc_divide_,
 )
 from .elu import elu
-from .eq import eq, eq_scalar
+from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .exp import exp, exp_
 from .eye import eye
@@ -132,6 +132,7 @@ from .unique import (
     sorted_indices_unique_flat,
     sorted_quick_unique_flat,
 )
+from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_nearest2d import upsample_nearest2d
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
@@ -172,6 +173,7 @@ __all__ = [
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "equal",
     "eq_scalar",
     "eq",
     "ge",
@@ -320,4 +322,5 @@ __all__ = [
     "zeros_like",
     "group_norm",
     "group_norm_backward",
+    "_upsample_bicubic2d_aa",
 ]
