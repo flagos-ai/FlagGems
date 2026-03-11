@@ -318,6 +318,8 @@ _FULL_CONFIG = (
     ("softplus", softplus),
     ("sort", sort),
     ("sort.stable", sort_stable),
+    ("special_i0e", special_i0e),
+    ("special_i0e.out", special_i0e_out),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
     ("stack", stack),

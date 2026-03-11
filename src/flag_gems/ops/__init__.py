@@ -204,6 +204,7 @@ from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.softmax import softmax, softmax_backward
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
@@ -501,6 +502,8 @@ __all__ = [
     "softplus",
     "sort",
     "sort_stable",
+    "special_i0e",
+    "special_i0e_out",
     "sqrt",
     "sqrt_",
     "stack",
