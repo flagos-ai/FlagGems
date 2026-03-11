@@ -370,3 +370,24 @@ def test_perf_repetition_penalty():
     )
     bench.set_gems(flag_gems.apply_repetition_penalties)
     bench.run()
+
+
+class PreluBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            x = generate_tensor_input(shape, cur_dtype, self.device)
+            if len(shape) == 1:
+                w = torch.randn((), dtype=cur_dtype, device=self.device)
+            else:
+                w = torch.randn((shape[1],), dtype=cur_dtype, device=self.device)
+            yield x, w
+
+
+@pytest.mark.prelu
+def test_perf_prelu():
+    bench = PreluBenchmark(
+        op_name="prelu",
+        torch_op=torch.ops.aten.prelu,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
