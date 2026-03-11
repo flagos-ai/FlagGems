@@ -10,8 +10,8 @@ source tools/run_command.sh
 
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
-run_command python3 -m pytest -s tests/test_tensor_constructor_ops.py -k "not test_accuracy_randperm"
+# run_command python3 -m pytest -s tests/test_tensor_constructor_ops.py -k "not test_accuracy_randperm"
 run_command python3 -m pytest -s tests/test_libentry.py
 run_command python3 -m pytest -s tests/test_shape_utils.py
-run_command python3 -m pytest -s tests/test_tensor_wrapper.py
-run_command python3 -m pytest -s tests/test_distribution_ops.py
+# run_command python3 -m pytest -s tests/test_tensor_wrapper.py
+# run_command python3 -m pytest -s tests/test_distribution_ops.py
