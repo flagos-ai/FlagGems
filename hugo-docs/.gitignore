@@ -1,2 +1,4 @@
-public/*
-resources/*
+.sass-cache/
+public/
+resources/
+*.swp
