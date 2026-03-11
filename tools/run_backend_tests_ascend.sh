@@ -4,6 +4,8 @@ VENDOR=${1:?"Usage: bash tools/run_backend_tests_ascend.sh <vendor>"}
 export GEMS_VENDOR=$VENDOR
 export TRITON_ALL_BLOCKS_PARALLEL=1
 
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+
 source tools/run_command.sh
 
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
