@@ -12,8 +12,11 @@ from .reciprocal import reciprocal, reciprocal_
 from .rsqrt import rsqrt, rsqrt_
 from .dropout import dropout, dropout_backward
 from .gather import gather, gather_backward
+from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
+from .index_select import index_select
 from .log import log
+from .log_softmax import log_softmax, log_softmax_backward
 from .max import max, max_dim
 from .one_hot import one_hot
 from .min import min, min_dim
@@ -25,8 +28,15 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .repeat import repeat
+from .repeat_interleave import (
+    repeat_interleave_self_int,
+    repeat_interleave_self_tensor,
+    repeat_interleave_tensor,
+)
 from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
+from .tile import tile
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
@@ -73,9 +83,19 @@ __all__ = [
     "batch_norm_backward",
     "gather",
     "gather_backward",
+    "index_add",
+    "index_add_",
     "index_put",
     "index_put_",
+    "index_select",
+    "log_softmax",
+    "log_softmax_backward",
+    "repeat",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "repeat_interleave_tensor",
     "resolve_conj",
+    "tile",
     "one_hot",
 ]
 
