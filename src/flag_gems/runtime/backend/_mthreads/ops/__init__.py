@@ -12,6 +12,7 @@ from .gather import gather, gather_backward
 from .index_put import index_put, index_put_
 from .log import log
 from .max import max, max_dim
+from .one_hot import one_hot
 from .min import min, min_dim
 from .ones import ones
 from .ones_like import ones_like
@@ -67,6 +68,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "resolve_conj",
+    "one_hot",
 ]
 
 if get_device_capability(current_device())[0] >= 3:
