@@ -39,8 +39,18 @@ def get_triton_dtype(dtype):
 
 
 def should_enable_sqmma(a_dtype, b_dtype, M, N, K):
+    # Minimum block sizes for SQMMA
+    MIN_BLOCK_M = 128
+    MIN_BLOCK_N = 128
+    MIN_BLOCK_K = 64
+
+    # Check if dimensions are large enough for TMA
+    # TMA requires dimensions to be at least as large as the minimum block size
+    size_ok = M >= MIN_BLOCK_M and N >= MIN_BLOCK_N and K >= MIN_BLOCK_K
+
     return (
         (os.getenv("MUSA_ENABLE_SQMMA", "0") == "1")
         and (a_dtype in [torch.float16, torch.bfloat16] and a_dtype.itemsize == 2)
+        and size_ok
         and ((M, N, K) not in [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)])
     )
