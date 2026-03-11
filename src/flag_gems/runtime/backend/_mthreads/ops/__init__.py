@@ -72,11 +72,12 @@ __all__ = [
 if get_device_capability(current_device())[0] >= 3:
     from .addmm import addmm
     from .bmm import bmm
-    from .gelu import gelu
+    from .gelu import gelu, gelu_backward
     from .mm import mm
     from .tanh import tanh
 
     __all__ += ["gelu"]
+    __all__ += ["gelu_backward"]
     __all__ += ["tanh"]
     __all__ += ["mm"]
     __all__ += ["addmm"]
