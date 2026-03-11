@@ -7,6 +7,8 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
 from .conv2d import conv2d
+from .reciprocal import reciprocal, reciprocal_
+from .rsqrt import rsqrt, rsqrt_
 from .dropout import dropout, dropout_backward
 from .gather import gather, gather_backward
 from .index_put import index_put, index_put_
@@ -33,6 +35,10 @@ __all__ = [
     "dropout_backward",
     "celu",
     # "celu_",
+    "reciprocal",
+    "reciprocal_",
+    "rsqrt",
+    "rsqrt_",
     "ones",
     "ones_like",
     "randn",
