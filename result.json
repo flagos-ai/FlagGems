@@ -1,1297 +1,289 @@
 {
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype0-shape0]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype0-shape0]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.0,
+            "factor": 2,
             "dtype": "torch.float16",
             "shape": [
                 2,
-                3
+                3,
+                16
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype0-shape1]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype0-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.0,
+            "factor": 2,
             "dtype": "torch.float16",
             "shape": [
-                128,
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype0-shape2]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.float16",
+            "shape": [
+                8,
+                16,
                 256
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype0-shape2]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype1-shape0]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.0,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype1-shape0]": {
-        "params": {
-            "reduction": 0,
-            "margin": 0.0,
+            "factor": 2,
             "dtype": "torch.float32",
             "shape": [
                 2,
-                3
+                3,
+                16
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype1-shape1]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype1-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.0,
+            "factor": 2,
             "dtype": "torch.float32",
             "shape": [
-                128,
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype1-shape2]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.float32",
+            "shape": [
+                8,
+                16,
                 256
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype1-shape2]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype2-shape0]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.0,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype2-shape0]": {
-        "params": {
-            "reduction": 0,
-            "margin": 0.0,
+            "factor": 2,
             "dtype": "torch.bfloat16",
             "shape": [
                 2,
-                3
+                3,
+                16
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype2-shape1]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype2-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.0,
+            "factor": 2,
             "dtype": "torch.bfloat16",
             "shape": [
-                128,
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype2-shape2]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                8,
+                16,
                 256
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.0-dtype2-shape2]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype0-shape0]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype0-shape0]": {
-        "params": {
-            "reduction": 0,
-            "margin": 0.5,
+            "factor": 3,
             "dtype": "torch.float16",
             "shape": [
                 2,
-                3
+                3,
+                16
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype0-shape1]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype0-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
+            "factor": 3,
             "dtype": "torch.float16",
             "shape": [
-                128,
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype0-shape2]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.float16",
+            "shape": [
+                8,
+                16,
                 256
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype0-shape2]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype1-shape0]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype1-shape0]": {
-        "params": {
-            "reduction": 0,
-            "margin": 0.5,
+            "factor": 3,
             "dtype": "torch.float32",
             "shape": [
                 2,
-                3
+                3,
+                16
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype1-shape1]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype1-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
+            "factor": 3,
             "dtype": "torch.float32",
             "shape": [
-                128,
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype1-shape2]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.float32",
+            "shape": [
+                8,
+                16,
                 256
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype1-shape2]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype2-shape0]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype2-shape0]": {
-        "params": {
-            "reduction": 0,
-            "margin": 0.5,
+            "factor": 3,
             "dtype": "torch.bfloat16",
             "shape": [
                 2,
-                3
+                3,
+                16
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype2-shape1]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype2-shape1]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
+            "factor": 3,
             "dtype": "torch.bfloat16",
             "shape": [
-                128,
-                256
+                4,
+                8,
+                64
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-0.5-dtype2-shape2]": {
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype2-shape2]": {
         "params": {
-            "reduction": 0,
-            "margin": 0.5,
+            "factor": 3,
             "dtype": "torch.bfloat16",
             "shape": [
-                1024,
+                8,
+                16,
                 256
             ]
         },
         "result": "passed",
         "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype0-shape0]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype0-shape1]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype0-shape2]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype1-shape0]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype1-shape1]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype1-shape2]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype2-shape0]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype2-shape1]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[0-1.0-dtype2-shape2]": {
-        "params": {
-            "reduction": 0,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype0-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.float16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype0-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.float16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype0-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype1-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.float32",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype1-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.float32",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype1-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype2-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype2-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.0-dtype2-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype0-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype0-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype0-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype1-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float32",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype1-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float32",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype1-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype2-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype2-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-0.5-dtype2-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype0-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype0-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype0-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype1-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype1-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype1-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype2-shape0]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype2-shape1]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[1-1.0-dtype2-shape2]": {
-        "params": {
-            "reduction": 1,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype0-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.float16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype0-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.float16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype0-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype1-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.float32",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype1-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.float32",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype1-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype2-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype2-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.0-dtype2-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype0-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype0-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype0-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype1-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float32",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype1-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float32",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype1-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype2-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype2-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-0.5-dtype2-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 0.5,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype0-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype0-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype0-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype1-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype1-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype1-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.float32",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype2-shape0]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                2,
-                3
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype2-shape1]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                128,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
-        ],
-        "skipped_reason": null
-    },
-    "tests/test_special_ops.py::test_accuracy_margin_ranking_loss[2-1.0-dtype2-shape2]": {
-        "params": {
-            "reduction": 2,
-            "margin": 1.0,
-            "dtype": "torch.bfloat16",
-            "shape": [
-                1024,
-                256
-            ]
-        },
-        "result": "passed",
-        "opname": [
-            "margin_ranking_loss"
+            "upsample_nearest_exact1d"
         ],
         "skipped_reason": null
     }
