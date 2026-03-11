@@ -508,8 +508,8 @@ upsample_bicubic2d_aa:
       BLOCK_X: block_x
       BLOCK_Y: block_y
     num_warps: warps
-  block_x: [256]
-  block_y: [32]
+  block_x: [128]
+  block_y: [16]
   warps: [4]
 
 mv:
