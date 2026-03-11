@@ -832,6 +832,32 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
+@pytest.mark.upsample_linear1d
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_linear1d(dtype, shape, scale, align_corners):
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_i = to_reference(input).to(torch.float32)
+    output_size = [int(ref_i.shape[i + 2] * scale) for i in range(1)]
+
+    ref_out = torch._C._nn.upsample_linear1d(
+        ref_i,
+        output_size=output_size,
+        align_corners=align_corners,
+    ).to(dtype)
+
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_linear1d(
+            input,
+            output_size=output_size,
+            align_corners=align_corners,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.upsample_nearest1d
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
