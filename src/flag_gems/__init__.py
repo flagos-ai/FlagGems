@@ -356,6 +356,8 @@ _FULL_CONFIG = (
     ("where.ScalarSelf", where_scalar_self),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
+    ("zero", zero),
+    ("zero.out", zero_out),
     ("zeros", zeros),
     ("zero_", zero_),
     ("zeros_like", zeros_like),
