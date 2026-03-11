@@ -316,6 +316,7 @@ _FULL_CONFIG = (
     ("sin", sin),
     ("sin_", sin_),
     ("slice_scatter", slice_scatter),
+    ("soft_margin_loss", soft_margin_loss),
     ("softplus", softplus),
     ("sort", sort),
     ("sort.stable", sort_stable),

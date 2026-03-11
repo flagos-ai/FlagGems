@@ -1986,3 +1986,19 @@ def test_accuracy__safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
         act_out = torch.ops.aten._safe_softmax(x, dim, dtype=dtype_arg)
     expected_dtype = dtype_arg if dtype_arg is not None else in_dtype
     gems_assert_close(act_out, ref_out, expected_dtype)
+
+
+@pytest.mark.soft_margin_loss
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+def test_accuracy_soft_margin_loss(shape, dtype, reduction):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = (torch.randint(0, 2, shape, device=flag_gems.device).to(dtype) * 2) - 1
+    ref_inp = to_reference(inp)
+    ref_target = to_reference(target)
+    ref_out = torch.ops.aten.soft_margin_loss(ref_inp, ref_target, reduction)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.soft_margin_loss(inp, target, reduction)
+    gems_assert_close(res_out, ref_out, dtype)
+
