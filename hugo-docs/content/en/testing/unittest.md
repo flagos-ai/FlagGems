@@ -10,13 +10,13 @@ It  leverages Triton's `triton.testing.do_bench` for kernel-level performance ev
 
 ## 1. Accuracy tests for operators
 
-To run reference on specific backend like cuda
+To run unit tests on a specific backend like CUDA:
 
 ```shell
 pytest tests/test_${name}.py
 ```
 
-Run reference on CPU
+The following command runs the tests on CPU:
 
 ```shell
 pytest tests/test_${case}.py --ref cpu

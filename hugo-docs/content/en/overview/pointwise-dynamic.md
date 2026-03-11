@@ -4,9 +4,10 @@ weight: 30
 ---
 # Pointwise Dynamic Operators
 
-## Pointwise operations
+## 1. Pointwise operations
 
-Pointwise operators are trivial to parallelize. Most parallel programming guides begin with pointwise addition
+Pointwise operators are trivial to parallelize.
+Most parallel programming guides begin with pointwise addition
 between 2 contiguous vectors.
 For [`vector_add` in Triton](https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html#sphx-glr-getting-started-tutorials-01-vector-add-py),
 it is simple to implement a task partitioning schema that each CTA reads a contiguous range
@@ -14,7 +15,8 @@ from each input vector and writes to a contiguous range of the output vector.
 
 However, actual use caes for pointwise operators may be more complicated.
 
-- The input tensors might be contiguous: they may be contiguous in memory but not in a row-major order;
+- The input tensors might be contiguous: they may be contiguous in memory
+  but not in a row-major order;
   or they may not be dense; or they may have internal overlapping.
 - The input tensors may have arbitrary and/or different number of dimensions.
   It is not always possible to view them as contiguous vectors of the same shape.
@@ -37,7 +39,7 @@ The result is a decorator `@pointwise_dynamic`.
 It provides a common wrapper for pointwise operator and a mechanism to generate triton kernels
 and corresponding wrappers based on the operation and the input configureations.
 
-## Code generation
+## 2. Code generation
 
 The basic usage of `pointwise_dynamic` is using it to decorate a `triton.jit` function
 that has return value, which is used to map inputs to outputs.
@@ -79,7 +81,7 @@ In addition to kernels, we also generate wrappers for the corresponding kernel.
 The wrapper expect the outputs has the right shape, stride, dtype and device meta data,
 and is ready for the computation.
 
-## Metadata Computation
+## 3. Metadata Computation
 
 Since pointwise operators shares similar logic at meta data computation,
 which has been implemented as a common function used by all `PointwiseDynamicFunction`s.
@@ -108,7 +110,7 @@ dtype and device of theses pre-allocated tensors are respected and checked.
 The metadata computation can also be skipped, but when doing so you should ensure that
 the outputs have correct metadata and are pre-allocated, and you have to provide the rank of the task-space.
 
-## Caching and dispatching
+## 4. Caching and dispatching
 
 The decorator `@pointwise_dynamic` returns a `PointwiseDynamicFunction` object,
 which servers as the proxy to all the decorated function.
@@ -116,9 +118,9 @@ It caches call the generated python modules and dispatches to them.
 
 The dispatch result depends only on the rank of the task-space, rather than the shape of the task-space.
 
-## Use the `@pointwise_dynamic` decorator
+## 5. Use the `@pointwise_dynamic` decorator
 
-### Basic
+### 5.1 Basic
 
 Decorating the pointwise operator function with `pointwise_dynamic` can save the manual handling of
 tensor addressing, tensor read/write, parallel tiling, tensor broadcasting, dynamic dimensions,
@@ -138,7 +140,7 @@ def abs_func(x):
 Since the decorated function does not provide enough information for the code generation,
 we supply other necessary information by passing arguemnts to `pointwise_dynamic`.
 
-### Tensor/Non-Tensor
+### 5.2 Tensor/Non-Tensor
 
 By default, `@pointwise_dynamic` treats each arguemnt as tensor, and generates code to load/store them.
 But it can be configured by passing a list of boolean values to the parameter `is_tensor`
@@ -166,7 +168,7 @@ b = torch.randn(256, device="cuda")
 add_func(a, b, 0.2)
 ```
 
-### Output dtypes
+### 5.3 Output dtypes
 
 For pointwise operators to allocate outputs with correct dtype, `promotion_methods` is required.
 Since the output dtype may be depedent on the input dtypes with some rules,
@@ -197,14 +199,17 @@ class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
 
 Examples：
 
-- `DEFAULT` ：add
-- `NO_OPMATH` ： where, nextafter, cat
-- `INT_TO_FLOAT` ：sin
-- `ALWAYS_BOOL` ：eq
-- `COMPLEX_TO_FLOAT` ：abs
-- `BOOL_TO_LONG` ：pow
+| Promotion Method   | Sample operators              |
+| ------------------ | ----------------------------- |
+| `DEFAULT`          | `add`                         |
+| `NO_OPMATH`        | ` where`、`nextafter`、`cat`  |
+| `INT_TO_FLOAT`     | `sin`                         |
+| `ALWAYS_BOOL`      | `eq`                          |
+| `COMPLEX_TO_FLOAT` | `abs`                         |
+| `BOOL_TO_LONG`     | `pow`                         |
 
-### Number of outputs
+
+### 5.4 Number of outputs
 
 For pointwise operations with multiple output tensors, we need to inform `pointwise_dynamic`
 about the number of outputs so it could generate code to store the output tensors.
@@ -225,14 +230,14 @@ def polar_kernel(abs, angle):
     return real, imag
 ```
 
-## Use `PointwiseDynamicFunction`
+## 6. Use `PointwiseDynamicFunction`
 
-### Basic
+### 6.1 Basic
 
 `PointwiseDynamicFunction` can be called with the same function signature as the decorated function,
 as shown in previous examples.
 
-### In-place Operation & Output arguments
+### 6.2 In-place Operation & Output arguments
 
 Since `@pointwise_dynamic` generates wrappers that take outputs as arguments,
 we can use it to implement inplace-operations.
@@ -274,7 +279,7 @@ def add_(A, B, *, alpha=1, out=None):
 
 Note that in these cases, you have to ensure that the output has the right metadata.
 
-### Manual Instantiation
+### 6.3 Manual Instantiation
 
 For some operations you may want to skip the metadata computation, especially the process
 to reduce the rank of task space, and prepare all inputs and outputs manually.

@@ -42,7 +42,7 @@ in different contexts.
   If you are running your application in a multi-GPU or distributed environment
   such as a distributed inference platform backed by vLLM, you can check how to
   enable *FlagGems* in these environments. You may need to do some environment preparation
-  before enabling FlagGems
+  before enabling FlagGems.
 
 - **[Integration with a popular framework](/FlagGems/usage/frameworks/)**
 
@@ -58,11 +58,11 @@ in different contexts.
 
 - **[Enable pre-tuning for better performance](/FlagGems/usage/tuning/)**
 
-  *FlagGems* provides [`LibTuner`](https://github.com/flagos-ai/FlagGems/blob/master/src/flag_gems/utils/libentry.py#L139),
+  *FlagGems* provides [`LibTuner`](https://github.com/flagos-ai/FlagGems/blob/v4.2.0/src/flag_gems/utils/libentry.py#L206),
   a lightweight enhancement to Triton’s autotuning system.
   It helps mitigate runtime overhead in Triton's default autotuning process.
 
 - **[Using C++ wrapped operators for optimal performance](/FlagGems/usage/cpp/)**
 
-  *FlagGems also provides a growing set of operators which are deeply optimized
+  *FlagGems* also provides a growing set of operators which are deeply optimized
   using C++ language. You may want to give them a try if they are applicable to your scenario.

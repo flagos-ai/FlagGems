@@ -5,7 +5,8 @@ weight: 20
 
 # Platforms Supported
 
-*FlagGems* supports 10+ backends. The currently supported platforms are:
+*FlagGems* supports 10+ backends. The currently supported platforms and
+their capabilities are listed blow:
 
 | Vendor     | Vendor name   | State | float16 | float32 | bfloat16 |
 | ---------- | ------------- | ------| ------- | ------- | -------- |
@@ -27,4 +28,4 @@ weight: 20
 
 - ✅ - supported
 - ☑️  - partially supported
--  🚧 - under development
+- 🚧 - under development
