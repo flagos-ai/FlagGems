@@ -3,6 +3,7 @@ from torch_musa import current_device, get_device_capability
 from .all import all, all_dim, all_dims
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
+from .avg_pool2d import avg_pool2d_backward
 from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
@@ -27,6 +28,7 @@ from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "avg_pool2d_backward",
     "rand",
     "rand_like",
     "dropout",
@@ -74,10 +76,11 @@ if get_device_capability(current_device())[0] >= 3:
     from .bmm import bmm
     from .gelu import gelu
     from .mm import mm
-    from .tanh import tanh
+    from .tanh import tanh, tanh_
 
     __all__ += ["gelu"]
     __all__ += ["tanh"]
+    __all__ += ["tanh_"]
     __all__ += ["mm"]
     __all__ += ["addmm"]
     __all__ += ["bmm"]
