@@ -57,7 +57,7 @@ try:
     from flag_gems.utils.pointwise_dynamic import PointwiseDynamicFunction
 except ImportError as e:
     print(f"Error importing FlagGems: {e}")
-    print(f"Ensure FlagGems is installed or path is correct: {FLAGGEMS_SRC}")
+    print(f"Ensure FlagGems source can be found at: {FLAGGEMS_SRC}")
     sys.exit(1)
 
 
