@@ -1,3 +1,8 @@
+add_executable(test_triton_add test_triton_add.cpp)
+target_link_libraries(test_triton_add
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_add COMMAND test_triton_add)
+
 add_executable(test_triton_pointwise test_triton_pointwise.cpp)
 target_link_libraries(test_triton_pointwise
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
