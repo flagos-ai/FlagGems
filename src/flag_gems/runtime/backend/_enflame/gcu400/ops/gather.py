@@ -36,6 +36,7 @@ def generate_gather_kernel(
     code.newline()
 
     code.writeline("@libentry()")
+    code.writeline("@triton.heuristics({'BLOCK_SIZE_N': lambda args: 12768})")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
@@ -50,38 +51,34 @@ def generate_gather_kernel(
         args += [f"inp_stride{i}, " for i in range(rank)]
         args += [f"index_stride{i}, " for i in range(rank)]
         args += [f"out_stride{i}, " for i in range(rank)]
-        args += ["dim, ", "dim_stride, ", "N, ", "tiles_per_cta, ", "BLOCK_SIZE_N: tl.constexpr, "]
+        args += ["dim, ", "dim_stride, ", "N, ", "BLOCK_SIZE_N: tl.constexpr, "]
         code.writelines(args)
     code.writeline("):")
 
     with code.indent():
         code.writeline("pid = tle.program_id(0)")
-        code.writeline("num_ctas = tl.num_programs(0)")
-        code.writeline("for tile_idx in range(0, tiles_per_cta):")
-        with code.indent():
-            code.writeline("tile_id = pid + tile_idx * num_ctas")
-            code.writeline(
-                "offset = tile_id * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)"
-            )
-            code.newline()
-            code.writeline("cur_offset = offset")
-            for i in range(rank - 1, -1, -1):
-                code.writeline(f"index_idx{i} = cur_offset % index_shape{i}")
-                code.writeline(f"cur_offset = cur_offset // index_shape{i}")
-            code.newline()
-            comp = [f"index_idx{i} * index_stride{i}" for i in range(rank)]
-            code.writeline(f"index_offset = {' + '.join(comp)}")
-            code.writeline("mask = offset < N")
-            code.writeline("cur_index = tl.load(index + index_offset, mask=mask, other=0)")
-            code.newline()
-            comp = [f"index_idx{i} * inp_stride{i}" for i in range(rank)]
-            code.writeline(f"inp_offset = {' + '.join(comp)}")
-            code.writeline("inp_offset += cur_index * dim_stride")
-            code.writeline("cur_inp = tl.load(inp + inp_offset, mask=mask, other=0)")
-            code.newline()
-            comp = [f"index_idx{i} * out_stride{i}" for i in range(rank)]
-            code.writeline(f"out_offset = {' + '.join(comp)}")
-            code.writeline("tl.store(out + out_offset, value=cur_inp, mask=mask)")
+        code.writeline(
+            "offset = pid * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)"
+        )
+        code.newline()
+        code.writeline("cur_offset = offset")
+        for i in range(rank - 1, -1, -1):
+            code.writeline(f"index_idx{i} = cur_offset % index_shape{i}")
+            code.writeline(f"cur_offset = cur_offset // index_shape{i}")
+        code.newline()
+        comp = [f"index_idx{i} * index_stride{i}" for i in range(rank)]
+        code.writeline(f"index_offset = {' + '.join(comp)}")
+        code.writeline("mask = offset < N")
+        code.writeline("cur_index = tl.load(index + index_offset, mask=mask, other=0)")
+        code.newline()
+        comp = [f"index_idx{i} * inp_stride{i}" for i in range(rank)]
+        code.writeline(f"inp_offset = {' + '.join(comp)}")
+        code.writeline("inp_offset += cur_index * dim_stride")
+        code.writeline("cur_inp = tl.load(inp + inp_offset, mask=mask, other=0)")
+        code.newline()
+        comp = [f"index_idx{i} * out_stride{i}" for i in range(rank)]
+        code.writeline(f"out_offset = {' + '.join(comp)}")
+        code.writeline("tl.store(out + out_offset, value=cur_inp, mask=mask)")
 
     code.newline()
     code.newline()
@@ -96,21 +93,13 @@ def generate_gather_wrapper(
 ) -> IndentedBuffer:
     code.writeline(f"def {wrapper_name}(inp, dim, index, out, dim_stride, N):")
     with code.indent():
-        code.writeline("if N == 0:")
-        with code.indent():
-            code.writeline("return out")
         code.writeline("inp_shape = inp.shape")
         code.writeline("inp_stride = inp.stride()")
         code.writeline("index_shape = index.shape")
         code.writeline("index_stride = index.stride()")
         code.writeline("out_shape = out.shape")
         code.writeline("out_stride = out.stride()")
-        code.writeline("BLOCK_SIZE_N = 512")
-        code.writeline("MAX_GRID = 128")
-        code.writeline("num_blocks = triton.cdiv(N, BLOCK_SIZE_N)")
-        code.writeline("grid_size = min(MAX_GRID, num_blocks)")
-        code.writeline("tiles_per_cta = triton.cdiv(num_blocks, grid_size)")
-        code.writeline("grid = (grid_size, )")
+        code.writeline("grid = lambda meta: (triton.cdiv(N, meta['BLOCK_SIZE_N']), )")
         code.writeline(f"{kernel_name}[grid](")
         with code.indent():
             args = [
@@ -128,8 +117,6 @@ def generate_gather_wrapper(
                 "dim, ",
                 "dim_stride, ",
                 "N, ",
-                "tiles_per_cta, ",
-                "BLOCK_SIZE_N=BLOCK_SIZE_N, ",
             ]
             code.writelines(args)
         code.writeline(")")
