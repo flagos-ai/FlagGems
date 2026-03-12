@@ -54,6 +54,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.clone import clone
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
@@ -213,7 +214,7 @@ from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.tile import tile
-from flag_gems.ops.to import to_copy
+from flag_gems.ops.to import to_copy, to_dtype
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
 from flag_gems.ops.triu import triu, triu_
@@ -305,6 +306,7 @@ __all__ = [
     "clamp_min_",
     "clamp_tensor",
     "clamp_tensor_",
+    "clone",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
@@ -522,6 +524,7 @@ __all__ = [
     "threshold_backward",
     "tile",
     "to_copy",
+    "to_dtype",
     "topk",
     "trace",
     "triu",
