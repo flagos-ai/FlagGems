@@ -13,3 +13,12 @@ run_command python3 -m pytest -s tests/test_shape_utils.py
 run_command python3 -m pytest -s tests/test_tensor_wrapper.py
 run_command python3 -m pytest -s tests/test_pointwise_dynamic.py
 run_command python3 -m pytest -s tests/test_distribution_ops.py
+
+# FIXME(moore): Softmax only support float32/float16/bfloat16
+# run_command python3 -m pytest -s tests/test_reduction_ops.py
+# FIXME(moore): BatchNorm supports Float/Half/BFloat16 input dtype
+# run_command python3 -m pytest -s tests/test_norm_ops.py
+# FIXME(moore): RuntimeError: _Map_base::at (missing operators)
+# run_command python3 -m pytest -s tests/test_unary_pointwise_ops.py
+# FIXME(moore): unsupported data type DOUBLE
+# run_command python3 -m pytest -s tests/test_blas_ops.py
