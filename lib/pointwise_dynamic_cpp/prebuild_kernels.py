@@ -161,8 +161,7 @@ def import_op_module(module_path: str):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
-    else:
-        return importlib.import_module(module_path)
+    return importlib.import_module(module_path)
 
 
 def scan_op_directory(op_dir: Path) -> List[str]:
