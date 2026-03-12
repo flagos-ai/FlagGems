@@ -549,18 +549,23 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
     }
 
     // --- 2. Per-input strides + stride_order (for ndim > 0) ---
+    // stride_order is ONLY passed for block-pointer kernels
+    // (is_block_pointer=true, is_1d_tile=false).
+    // 1D-tile and nd-tile-without-bptr kernels do NOT have stride_order params.
+    bool with_stride_order = info->is_block_pointer;
+
     if (ndim > 0) {
       for (size_t i = 0; i < input_views.size(); ++i) {
         auto strides = input_views[i].strides();
         for (int d = 0; d < ndim; ++d) {
           handler.handle_arg(strides[d]);
         }
-        // stride_order for block pointer kernels
-        // For ndim >= 2, compute stride order; for ndim == 1, order is just (0,)
-        auto stride_order =
-            (ndim >= 2) ? compute_stride_order({strides.begin(), strides.end()}) : std::vector<int64_t> {0};
-        for (int d = 0; d < ndim; ++d) {
-          handler.handle_arg(stride_order[d]);
+        if (with_stride_order) {
+          auto stride_order =
+              (ndim >= 2) ? compute_stride_order({strides.begin(), strides.end()}) : std::vector<int64_t> {0};
+          for (int d = 0; d < ndim; ++d) {
+            handler.handle_arg(stride_order[d]);
+          }
         }
       }
 
@@ -570,10 +575,12 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
         for (int d = 0; d < ndim; ++d) {
           handler.handle_arg(strides[d]);
         }
-        auto stride_order =
-            (ndim >= 2) ? compute_stride_order({strides.begin(), strides.end()}) : std::vector<int64_t> {0};
-        for (int d = 0; d < ndim; ++d) {
-          handler.handle_arg(stride_order[d]);
+        if (with_stride_order) {
+          auto stride_order =
+              (ndim >= 2) ? compute_stride_order({strides.begin(), strides.end()}) : std::vector<int64_t> {0};
+          for (int d = 0; d < ndim; ++d) {
+            handler.handle_arg(stride_order[d]);
+          }
         }
       }
 
@@ -586,14 +593,19 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
       handler.handle_arg(num_tasks);      // num_tasks
       handler.handle_arg(tiles_per_cta);  // tiles_per_cta
 
-      // tile_sizes: 1D fast path uses single tile_size; nD uses per-dim
-      if (ndim == 1) {
-        handler.handle_arg(tile_size);  // tile_size (single)
+      // tile_size layout differs between kernel variants:
+      //   1d_tile kernel: single "tile_size: tl.constexpr"
+      //   nd_tile kernel: per-dim "tile_size{d}: tl.constexpr"
+      if (info->is_1d_tile) {
+        handler.handle_arg(tile_size);  // single tile_size
       } else {
-        // For nD, compute per-dim tile sizes using heuristics
-        for (int d = 0; d < ndim; ++d) {
-          int64_t dim_tile = heuristics_for_tile_size(task_shape[d]);
-          handler.handle_arg(dim_tile);  // tile_size{d}
+        if (ndim == 1) {
+          handler.handle_arg(tile_size);  // tile_size0
+        } else {
+          for (int d = 0; d < ndim; ++d) {
+            int64_t dim_tile = heuristics_for_tile_size(task_shape[d]);
+            handler.handle_arg(dim_tile);
+          }
         }
       }
       handler.handle_arg(one_tile_per_cta);  // one_tile_per_cta

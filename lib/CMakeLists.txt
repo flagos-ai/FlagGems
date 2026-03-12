@@ -31,10 +31,6 @@ add_library(operators
             copy.cpp
             accuracy_utils.cpp)
 
-if (TRITON_GE_3P5)
-  target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
-endif()
-
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -45,6 +41,16 @@ target_link_libraries(operators
   PRIVATE TritonJIT::triton_jit)
 add_library(FlagGems::operators ALIAS operators)
 
+
+# ==============================================================================
+# Pointwise dynamic C++ support (experimental feature, disabled by default)
+# ==============================================================================
+option(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP "Build pointwise_dynamic C++ support" OFF)
+if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
+  add_subdirectory(pointwise_dynamic_cpp)
+  # Link operators to pointwise_dynamic for header access
+  target_link_libraries(operators PRIVATE pointwise_dynamic)
+endif()
 
 if (FLAGGEMS_INSTALL)
   include(GNUInstallDirs)
