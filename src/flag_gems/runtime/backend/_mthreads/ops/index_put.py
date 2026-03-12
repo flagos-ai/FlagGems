@@ -50,6 +50,88 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     return code
 
 
+def generate_index_put_kernel_1d(
+    inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
+):
+    """Generate optimized 1D kernel when inp_rank == indices_len (N=1 case)."""
+    code.writeline("@libentry()")
+    code.writeline("@libtuner(")
+    with code.indent():
+        code.writeline('configs=runtime.get_tuned_config("index_put_1d"),')
+        code.writeline('key=["M"],')
+        code.writeline('restore_value=["input_ptr"],')
+        code.writeline('strategy=["align32"],')
+        code.writeline("warmup=5,")
+        code.writeline("rep=10,")
+    code.writeline(")")
+    code.writeline("@triton.jit")
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        args = ["input_ptr,"]
+        args += [f"indices{i}_ptr," for i in range(indices_len)]
+        args += ["values_ptr,"]
+        args += [f"input_shape{i}," for i in range(inp_rank)]
+        for i in range(indices_len):
+            args += [f"indices{i}_shape{j}," for j in range(index_rank)]
+        args += [f"input_stride{i}," for i in range(inp_rank)]
+        for i in range(indices_len):
+            args += [f"indices{i}_stride{j}," for j in range(index_rank)]
+        args += [f"values_stride{i}," for i in range(index_rank)]
+        args += [
+            "M,",
+            "IS_ACCUMULATE: tl.constexpr,",
+            "BLOCK_SIZE: tl.constexpr,",
+        ]
+        code.writelines(args)
+    code.writeline("):")
+
+    with code.indent():
+        code.writeline("pid = tle.program_id(axis=0)")
+        code.writeline("offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
+        code.newline()
+        # Calculate indices for index tensors
+        code.writeline("cur_idx = offset")
+        for i in range(index_rank - 1, -1, -1):
+            code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
+            code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
+        code.newline()
+        code.writeline("mask = offset < M")
+        # Load indices
+        for i in range(indices_len):
+            comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
+            code.writeline(
+                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask, other=0)"
+            )
+        code.newline()
+        # Check index bounds
+        index_mask = [
+            f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
+            for i in range(indices_len)
+        ]
+        code.writeline(f"index_mask = {' & '.join(index_mask)}")
+        code.writeline("mask = mask & index_mask")
+        code.newline()
+        # Calculate offsets
+        comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
+        code.writeline(f"input_offset = {' + '.join(comp)}")
+        comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
+        code.writeline(f"values_offset = {' + '.join(comp)}")
+        code.newline()
+        code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
+        code.writeline("if IS_ACCUMULATE:")
+        with code.indent():
+            code.writeline(
+                "tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)"
+            )
+        code.writeline("else:")
+        with code.indent():
+            code.writeline("tl.store(input_ptr + input_offset, cur_value, mask=mask)")
+
+    code.newline()
+    code.newline()
+    return code
+
+
 def generate_index_put_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
@@ -94,12 +176,9 @@ def generate_index_put_kernel(
         code.writeline(
             "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
         )
-        if inp_rank == indices_len:
-            code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
-        else:
-            code.writeline(
-                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
-            )
+        code.writeline(
+            "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
+        )
         code.newline()
         code.writeline("cur_idx = offset0")
         for i in range(index_rank - 1, -1, -1):
@@ -148,6 +227,48 @@ def generate_index_put_kernel(
         with code.indent():
             code.writeline("tl.store(input_ptr + input_offset, cur_value, mask=mask)")
 
+    code.newline()
+    code.newline()
+    return code
+
+
+def generate_index_put_wrapper_1d(
+    inp_rank,
+    indices_len,
+    index_rank,
+    wrapper_name: str,
+    kernel_name: str,
+    code: IndentedBuffer,
+):
+    """Generate wrapper for 1D kernel (N=1 case)."""
+    code.writeline(f"def {wrapper_name}(input, indices, values, accumulate):")
+    with code.indent():
+        code.writeline("input_shape = input.shape")
+        code.writeline("input_stride = input.stride()")
+        for i in range(indices_len):
+            code.writeline(f"indices{i}_shape = indices[{i}].shape")
+            code.writeline(f"indices{i}_stride = indices[{i}].stride()")
+        code.writeline("values_stride = values.stride()")
+        code.writeline("M = indices[0].numel()")
+        code.newline()
+        code.writeline("grid = lambda meta: (triton.cdiv(M, meta['BLOCK_SIZE']),)")
+        code.newline()
+        code.writeline(f"{kernel_name}[grid](")
+        with code.indent():
+            args = ["input,"]
+            args += [f"indices[{i}]," for i in range(indices_len)]
+            args += ["values,"]
+            args += [f"input_shape[{i}]," for i in range(inp_rank)]
+            for i in range(indices_len):
+                args += [f"indices{i}_shape[{j}]," for j in range(index_rank)]
+            args += [f"input_stride[{i}]," for i in range(inp_rank)]
+            for i in range(indices_len):
+                args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
+            args += [f"values_stride[{i}]," for i in range(index_rank)]
+            args += ["M,", "accumulate==True,"]
+            code.writelines(args)
+        code.writeline(")")
+        code.writeline("return input")
     code.newline()
     code.newline()
     return code
@@ -217,10 +338,20 @@ def generate_code(
         raise ValueError("At least one non-None index tensor is required")
     index_rank = tensor_indices[0].ndim
     code = generate_imports(code)
-    generate_index_put_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
-    generate_index_put_wrapper(
-        inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
-    )
+
+    # Use optimized 1D kernel when inp_rank == indices_len (N=1 case)
+    if inp_rank == indices_len:
+        generate_index_put_kernel_1d(
+            inp_rank, indices_len, index_rank, kernel_name, code
+        )
+        generate_index_put_wrapper_1d(
+            inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
+        )
+    else:
+        generate_index_put_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
+        generate_index_put_wrapper(
+            inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
+        )
     return code
 
 

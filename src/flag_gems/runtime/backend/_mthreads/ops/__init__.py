@@ -1,18 +1,31 @@
 from torch_musa import current_device, get_device_capability
 
+from .abs import abs, abs_
+from .add import add, add_
 from .all import all, all_dim, all_dims
+from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
+from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .batch_norm import batch_norm, batch_norm_backward
-from .celu import celu
+from .celu import celu, celu_
+from .clamp import clamp_min, clamp_min_
 from .conv2d import conv2d
+from .copy import copy, copy_
+from .cos import cos, cos_
+from .diagonal import diagonal_backward
+from .div import div_mode, div_mode_, true_divide, true_divide_
 from .dropout import dropout, dropout_backward
+from .exp import exp, exp_
 from .gather import gather, gather_backward
+from .glu import glu, glu_backward
 from .index_put import index_put, index_put_
 from .log import log
 from .max import max, max_dim
 from .min import min, min_dim
+from .mul import mul, mul_
+from .normal import normal_
 from .ones import ones
 from .ones_like import ones_like
 from .prod import prod, prod_dim
@@ -23,16 +36,27 @@ from .randn_like import randn_like
 from .randperm import randperm
 from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
+from .sqrt import sqrt, sqrt_
+from .sub import sub, sub_
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "abs",
+    "abs_",
+    "add",
+    "add_",
+    "amax",
+    "avg_pool2d",
+    "avg_pool2d_backward",
     "rand",
     "rand_like",
     "dropout",
     "dropout_backward",
     "celu",
-    # "celu_",
+    "celu_",
+    "clamp_min",
+    "clamp_min_",
     "ones",
     "ones_like",
     "randn",
@@ -67,6 +91,26 @@ __all__ = [
     "index_put",
     "index_put_",
     "resolve_conj",
+    "glu",
+    "glu_backward",
+    "normal_",
+    "copy",
+    "copy_",
+    "cos",
+    "cos_",
+    "diagonal_backward",
+    "div_mode",
+    "div_mode_",
+    "exp",
+    "exp_",
+    "mul",
+    "mul_",
+    "sqrt",
+    "sqrt_",
+    "sub",
+    "sub_",
+    "true_divide",
+    "true_divide_",
 ]
 
 if get_device_capability(current_device())[0] >= 3:

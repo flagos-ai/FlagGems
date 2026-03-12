@@ -570,13 +570,24 @@ index_put:
         BLOCK_SIZE0: block_size0
         BLOCK_SIZE1: block_size1
     block_size0:
-      - 1
-      - 2
       - 4
+      - 16
+      - 64
     block_size1:
+      - 512
       - 1024
       - 2048
-      - 4096
+
+index_put_1d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_size
+    block_size:
+      - 128
+      - 256
+      - 512
+      - 1024
 
 index:
   - gen: true
