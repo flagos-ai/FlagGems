@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import torch
 
@@ -7,6 +9,8 @@ from . import base
 
 
 class ScatterReduceBenchmark(base.GenericBenchmark2DOnly):
+    DEFAULT_SHAPE_FILES = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+
     def set_more_metrics(self):
         return ["gbps"]
 

@@ -201,12 +201,16 @@ def test_scatter_reduce_scalar(dim, include_self, reduce, dtype):
 def test_scatter_reduce_noncontiguous(reduce, include_self, dtype):
     dim = 2
     if dtype in utils.INT_DTYPES:
-        inp = torch.randint(-8, 8, (6, 8, 10), device=flag_gems.device).to(
-            dtype
-        ).transpose(0, 1)
-        src = torch.randint(-8, 8, (6, 8, 5), device=flag_gems.device).to(
-            dtype
-        ).transpose(0, 1)
+        inp = (
+            torch.randint(-8, 8, (6, 8, 10), device=flag_gems.device)
+            .to(dtype)
+            .transpose(0, 1)
+        )
+        src = (
+            torch.randint(-8, 8, (6, 8, 5), device=flag_gems.device)
+            .to(dtype)
+            .transpose(0, 1)
+        )
     else:
         inp = torch.randn((6, 8, 10), dtype=dtype, device=flag_gems.device).transpose(
             0, 1
@@ -428,7 +432,9 @@ def test_scatter_reduce_invalid_inputs(case):
         index = torch.zeros((4, 6), dtype=torch.long, device=flag_gems.device)
         args = (inp, 1, index, src, "sum")
 
-    ref_args = tuple(utils.to_reference(arg) if torch.is_tensor(arg) else arg for arg in args)
+    ref_args = tuple(
+        utils.to_reference(arg) if torch.is_tensor(arg) else arg for arg in args
+    )
     with pytest.raises(RuntimeError):
         torch.scatter_reduce(*ref_args)
     with flag_gems.use_gems():
