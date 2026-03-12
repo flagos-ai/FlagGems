@@ -315,7 +315,7 @@ def torch_fused_moe_reference(
 @pytest.mark.fused_moe
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
-def test_accuracy_fused_moe(config, dtype):
+def test_accuracy_fused_moe_vs_ref(config, dtype):
     """Test FlagGems fused_moe against a pure PyTorch reference."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
@@ -349,6 +349,71 @@ def test_accuracy_fused_moe(config, dtype):
 
     # Pure PyTorch reference (no vLLM dependency)
     ref = torch_fused_moe_reference(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+    )
+
+    torch.cuda.synchronize()
+
+    # Fused bf16/fp16 kernels accumulate rounding errors across two GEMMs
+    # and an activation; use tolerances proportional to output magnitude.
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-5)
+
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+try:
+    from vllm.model_executor.layers.fused_moe.fused_moe import (
+        fused_experts_impl as vllm_fused_experts_impl,
+    )
+
+    HAS_VLLM_FUSED_MOE = True
+except ImportError:
+    HAS_VLLM_FUSED_MOE = False
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
+def test_accuracy_fused_moe_vs_vllm(config, dtype):
+    """Test FlagGems fused_moe against a pure PyTorch reference."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+
+    torch.manual_seed(0)
+
+    # Generate inputs with controlled magnitude to avoid numerical blow-up
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1 = torch.randn(
+        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
+    ) * (1.0 / hidden_size**0.5)
+    w2 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
+    ) * (1.0 / intermediate_size**0.5)
+
+    # Generate routing
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    # FlagGems result
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        num_experts=num_experts,
+    )
+
+    # Reference result
+    ref = vllm_fused_experts_impl(
         hidden_states,
         w1,
         w2,
