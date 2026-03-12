@@ -43,7 +43,7 @@ def generate_scatter_kernel(
     code.writeline("def heur_block(args):")
     with code.indent():
         # TODO: tune the block size
-        code.writeline("return 128")
+        code.writeline("return 4096")
     code.newline()
     code.newline()
 

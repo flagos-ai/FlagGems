@@ -60,6 +60,7 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .full_like import full_like
+from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .groupnorm import group_norm, group_norm_backward
@@ -323,4 +324,6 @@ __all__ = [
     "group_norm",
     "group_norm_backward",
     "_upsample_bicubic2d_aa",
+    "gather",
+    "gather_backward",
 ]
