@@ -240,8 +240,9 @@ class KernelGenerator:
         self.fn_module = scalar_fn.__module__
 
     def gen_import_function(self, code: IndentedBuffer):
-        code.writeline("@triton.jit")
+        code.writeline(f'"""Quoted source of {self.fn_name}:')
         code.writemultiline(self.fn.src)
+        code.writeline('"""')
         code.newline()
 
     def gen_decorators(self, code):
