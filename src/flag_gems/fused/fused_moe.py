@@ -7,9 +7,17 @@ import triton.language as tl
 
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
-from flag_gems.fused.silu_and_mul import silu_and_mul_kernel
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def _silu_and_mul_kernel(x, y):
+    x_fp32 = x.to(tl.float32)
+    x_silu = tl.fdiv(x_fp32, (1.0 + tl.exp(-x_fp32)))
+    return x_silu * y
 
 
 @triton.jit
@@ -399,7 +407,7 @@ def _apply_silu_and_mul(out: torch.Tensor, inp: torch.Tensor) -> None:
     """Apply SiLU-and-Mul activation: out = SiLU(inp[:, :N]) * inp[:, N:]."""
     N = inp.shape[-1] // 2
     x, y = inp[:, :N], inp[:, N:]
-    silu_and_mul_kernel(x, y, out0=out)
+    _silu_and_mul_kernel(x, y, out0=out)
 
 
 def fused_experts_impl(
