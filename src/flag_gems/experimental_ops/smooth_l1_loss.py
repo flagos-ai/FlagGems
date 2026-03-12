@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def smooth_l1_elementwise_kernel(
@@ -124,7 +126,7 @@ def _prepare_tensors_for_elementwise(x, y, dtype=None):
     device = x.device
     if x.device != y.device:
         raise ValueError("input and target must be on the same device")
-    if not device.type == "cuda":
+    if not device.type == flag_gems.device:
         return None, None, None, None  # signal fallback
 
     # Broadcast to a common shape
@@ -168,7 +170,7 @@ def smooth_l1_loss_out(*args, **kwargs):
         raise TypeError(f"Unexpected keyword arguments: {list(leftover.keys())}")
 
     # Fallback if not CUDA
-    if x.device.type != "cuda" or y.device.type != "cuda":
+    if x.device.type != flag_gems.device or y.device.type != flag_gems.device:
         res = torch.ops.aten.smooth_l1_loss(x, y, reduction=reduction, beta=beta)
         if out is None:
             return res

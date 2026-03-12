@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def deg2rad_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -41,7 +43,7 @@ def deg2rad_(*args, **kwargs):
     # If not CUDA or not contiguous or unsupported dtype, fallback to PyTorch scalar multiply in-place
     factor = 0.017453292519943295  # pi / 180
     if (
-        (x.device.type != "cuda")
+        (x.device.type != flag_gems.device)
         or (not x.is_contiguous())
         or x.is_complex()
         or (not x.is_floating_point())

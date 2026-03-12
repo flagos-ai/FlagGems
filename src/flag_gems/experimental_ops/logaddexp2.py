@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def logaddexp2_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -63,8 +65,8 @@ def logaddexp2(x, y):
 
     # Fallback for unsupported devices or complex dtype
     if (
-        bx.device.type != "cuda"
-        or by.device.type != "cuda"
+        bx.device.type != flag_gems.device
+        or by.device.type != flag_gems.device
         or bx.device != by.device
         or bx.is_complex()
         or by.is_complex()
@@ -91,9 +93,9 @@ def logaddexp2_out(x, y, out):
 
     # Fallback for unsupported devices or complex dtype
     if (
-        out.device.type != "cuda"
-        or bx.device.type != "cuda"
-        or by.device.type != "cuda"
+        out.device.type != flag_gems.device
+        or bx.device.type != flag_gems.device
+        or by.device.type != flag_gems.device
         or not (bx.device == by.device == out.device)
         or bx.is_complex()
         or by.is_complex()

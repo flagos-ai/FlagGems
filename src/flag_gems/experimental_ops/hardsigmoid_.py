@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def hardsigmoid_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -34,7 +36,7 @@ def hardsigmoid_(*args, **kwargs):
         raise TypeError("hardsigmoid_ expects a torch.Tensor as input.")
     if not x.is_floating_point():
         raise TypeError("hardsigmoid_ only supports floating point tensors.")
-    if x.device.type != "cuda":
+    if x.device.type != flag_gems.device:
         raise RuntimeError("hardsigmoid_ Triton kernel requires a CUDA tensor.")
 
     BLOCK_SIZE = 1024

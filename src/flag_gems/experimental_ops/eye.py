@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def eye_kernel(
@@ -41,7 +43,7 @@ def _eye_impl(n, m=None, dtype=None, device=None, out: torch.Tensor = None):
             dtype = torch.get_default_dtype()
         if device is None:
             device = (
-                torch.device("cuda")
+                torch.device(flag_gems.device)
                 if torch.cuda.is_available()
                 else torch.device("cpu")
             )

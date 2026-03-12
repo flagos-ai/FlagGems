@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def _copy_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -16,7 +18,7 @@ def _copy_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 def lift(x: torch.Tensor):
     if not isinstance(x, torch.Tensor):
         raise TypeError("lift expects a single Tensor argument")
-    if x.device.type != "cuda":
+    if x.device.type != flag_gems.device:
         raise RuntimeError("lift: input tensor must be on a CUDA device")
     out = torch.empty_like(x)
     n_elements = out.numel()
@@ -29,7 +31,7 @@ def lift(x: torch.Tensor):
 def lift_out(x: torch.Tensor, out: torch.Tensor):
     if not isinstance(x, torch.Tensor) or not isinstance(out, torch.Tensor):
         raise TypeError("lift_out expects (Tensor x, Tensor out)")
-    if x.device.type != "cuda" or out.device.type != "cuda":
+    if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
         raise RuntimeError(
             "lift_out: both input and out tensors must be on a CUDA device"
         )

@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def log10_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -31,7 +33,7 @@ def log10_(*args, **kwargs):
         raise TypeError("log10_ expects a torch.Tensor as its first argument.")
     if x.numel() == 0:
         return x
-    if x.device.type != "cuda":
+    if x.device.type != flag_gems.device:
         # Fallback to PyTorch implementation for non-CUDA tensors
         return torch.log10_(x)
     if x.dtype not in (torch.float16, torch.bfloat16, torch.float32):

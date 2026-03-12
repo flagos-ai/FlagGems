@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def _log_softmax_bwd_kernel(
@@ -62,7 +64,8 @@ def _log_softmax_backward_data_impl(
         grad_output.shape == output.shape
     ), "grad_output and output must have the same shape"
     assert (
-        grad_output.device.type == "cuda" and output.device.type == "cuda"
+        grad_output.device.type == flag_gems.device
+        and output.device.type == flag_gems.device
     ), "Inputs must be CUDA tensors"
     assert grad_output.device == output.device, "Inputs must be on the same device"
     assert grad_output.dtype == output.dtype, "Inputs must have the same dtype"

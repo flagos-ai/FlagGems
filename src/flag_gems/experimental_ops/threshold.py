@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def threshold_kernel(
@@ -37,7 +39,7 @@ def _coerce_scalars_for_dtype(dtype, threshold, value):
 
 
 def threshold(input: torch.Tensor, threshold, value):
-    if input.device.type != "cuda":
+    if input.device.type != flag_gems.device:
         raise RuntimeError("This Triton implementation requires CUDA tensors.")
     x = input.contiguous()
     n_elements = x.numel()
@@ -61,7 +63,7 @@ def threshold(input: torch.Tensor, threshold, value):
 
 
 def threshold_out(input: torch.Tensor, threshold, value, out: torch.Tensor):
-    if input.device.type != "cuda" or out.device.type != "cuda":
+    if input.device.type != flag_gems.device or out.device.type != flag_gems.device:
         raise RuntimeError("This Triton implementation requires CUDA tensors.")
     if out.shape != input.shape:
         raise RuntimeError(

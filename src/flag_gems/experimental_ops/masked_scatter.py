@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def _masked_scatter_count_kernel(
@@ -82,7 +84,7 @@ def _launch_masked_scatter(
             raise ValueError("out tensor must be on the same device as input")
 
     device = input_tensor.device
-    if not device.type == "cuda":
+    if not device.type == flag_gems.device:
         raise ValueError("Triton kernels require CUDA tensors")
 
     # Flatten to 1D contiguous views

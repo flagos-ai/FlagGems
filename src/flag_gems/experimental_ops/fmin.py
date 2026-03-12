@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def fmin_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -37,11 +39,11 @@ def _prepare_inputs(a, b, out=None):
         if isinstance(b, torch.Tensor):
             dev = b.device if dev is None else dev
     if dev is None:
-        dev = torch.device("cuda")
+        dev = torch.device(flag_gems.device)
     # Convert to tensors on the target device
     a = _to_tensor(a, device=dev)
     b = _to_tensor(b, device=dev)
-    if a.device.type != "cuda" or b.device.type != "cuda":
+    if a.device.type != flag_gems.device or b.device.type != flag_gems.device:
         raise ValueError(
             "Inputs must be CUDA tensors or convertible to CUDA tensors for Triton kernels."
         )

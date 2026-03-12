@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def xlogy_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -38,7 +40,7 @@ def _prepare_tensors(self, other, out=None):
     else:
         raise ValueError("At least one of the inputs must be a Tensor.")
 
-    if device.type != "cuda":
+    if device.type != flag_gems.device:
         raise ValueError("Triton kernels require CUDA tensors.")
 
     # Type promotion following PyTorch semantics

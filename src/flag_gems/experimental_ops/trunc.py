@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def trunc_kernel(
@@ -57,7 +59,7 @@ def _dtype_code(t: torch.Tensor) -> int:
 
 def _launch_trunc(inp: torch.Tensor, out: torch.Tensor):
     assert inp.numel() == out.numel()
-    assert inp.device.type == "cuda" and out.device.type == "cuda"
+    assert inp.device.type == flag_gems.device and out.device.type == flag_gems.device
     n_elements = inp.numel()
     if n_elements == 0:
         return
@@ -98,7 +100,7 @@ def trunc_out(input: torch.Tensor, out: torch.Tensor):
     assert input.shape == out.shape, "input and out must have the same shape"
     assert input.dtype == out.dtype, "input and out must have the same dtype"
     assert (
-        input.device.type == "cuda" and out.device.type == "cuda"
+        input.device.type == flag_gems.device and out.device.type == flag_gems.device
     ), "Tensors must be on CUDA device"
 
     if input.is_complex():

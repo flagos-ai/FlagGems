@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 MAX_DIMS = 8
 BLOCK_SIZE = 1024
 
@@ -209,7 +211,7 @@ def maximum(a, b):
         dev = a.device
     if torch.is_tensor(b):
         dev = b.device if dev is None else dev
-    if dev is None or dev.type != "cuda":
+    if dev is None or dev.type != flag_gems.device:
         raise ValueError("maximum expects at least one CUDA tensor as input")
 
     # Determine result dtype per PyTorch promotion rules
@@ -235,7 +237,7 @@ def maximum(a, b):
 def maximum_out(a, b, out):
     if not torch.is_tensor(out):
         raise TypeError("out must be a torch.Tensor")
-    if out.device.type != "cuda":
+    if out.device.type != flag_gems.device:
         raise ValueError("out tensor must be on CUDA device")
 
     dev = out.device

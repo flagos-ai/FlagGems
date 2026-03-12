@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def _xlog1py_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -18,7 +20,7 @@ def _xlog1py_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
 def _ensure_cuda_tensor(t):
     if not isinstance(t, torch.Tensor):
         raise TypeError("Expected a torch.Tensor")
-    if t.device.type != "cuda":
+    if t.device.type != flag_gems.device:
         raise ValueError("Tensors must be on CUDA device")
     return t
 

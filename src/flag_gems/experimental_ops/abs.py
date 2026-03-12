@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def _abs_kernel_real(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -32,7 +34,7 @@ def _abs_kernel_complex(rr_ptr, out_ptr, n_complex, BLOCK_SIZE: tl.constexpr):
 def _ensure_cuda_tensor(x: torch.Tensor):
     if not isinstance(x, torch.Tensor):
         raise TypeError("Input must be a torch.Tensor")
-    if x.device.type != "cuda":
+    if x.device.type != flag_gems.device:
         raise ValueError("Tensor must be on CUDA device")
     return x
 

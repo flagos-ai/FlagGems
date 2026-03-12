@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 def _torch_dtype_to_triton(dtype: torch.dtype):
     if dtype == torch.float16:
@@ -93,7 +95,7 @@ def hypot(a: torch.Tensor, b: torch.Tensor):
     device = a.device
     if b.device != device:
         raise ValueError("Input tensors must be on the same device")
-    if device.type != "cuda":
+    if device.type != flag_gems.device:
         raise ValueError("This implementation requires CUDA tensors")
 
     out_shape = torch.broadcast_shapes(a.shape, b.shape)

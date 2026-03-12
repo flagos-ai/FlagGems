@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def addcdiv_kernel(
@@ -46,7 +48,7 @@ def _launch_addcdiv(a, b, c, out, value):
         if value.numel() != 1:
             raise ValueError("value must be a scalar.")
         # move to same device if needed, then to host scalar
-        if value.device.type == "cuda" and value.device != a.device:
+        if value.device.type == flag_gems.device and value.device != a.device:
             raise ValueError(
                 "Scalar tensor 'value' must be on the same device as inputs."
             )
