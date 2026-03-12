@@ -23,6 +23,7 @@ dist/
 CMakeInit.txt
 
 # An auxiliary product of unittests
+*.json
 tests/*.json
 
 
