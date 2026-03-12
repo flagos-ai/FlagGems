@@ -144,7 +144,9 @@ def test_mhc_pre_vs_ref(n, hidden_size, hc_mult):
     """Test Triton mhc_pre against PyTorch CPU reference."""
     data = generate_mhc_pre_data(n, hc_mult, hidden_size)
     post_triton, comb_triton, li_triton = mhc_pre(**data)
-    data_cpu = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
+    data_cpu = {
+        k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in data.items()
+    }
     post_ref, comb_ref, li_ref = mhc_pre_ref(**data_cpu)
 
     torch.testing.assert_close(post_triton.cpu(), post_ref, rtol=1e-2, atol=1e-2)
