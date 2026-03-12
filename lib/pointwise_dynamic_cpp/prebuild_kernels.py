@@ -592,7 +592,7 @@ def generate_runtime_header(ops: Dict[str, List[KernelEntry]]) -> str:
 // pointwise_util.h which is included transitively.
 // ==========================================================================
 
-#include "pointwise_util.h"
+#include "pointwise_prepare_args.h"
 
 namespace pointwise_dynamic {
 
