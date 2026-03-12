@@ -106,6 +106,10 @@ class KernelEntry:
         num_non_tensor_inputs: Number of scalar (non-tensor) inputs.
         num_outputs: Number of output tensors.
         promotion_rules: Dtype-promotion rules for each output.
+        is_1d_tile: Whether the kernel uses the 1D-tile codegen path
+            (no stride_order args, single tile_size constexpr).
+        is_block_pointer: Whether the kernel uses block pointers
+            (stride_order args present in the kernel signature).
     """
 
     op_name: str
@@ -117,6 +121,8 @@ class KernelEntry:
     num_non_tensor_inputs: int
     num_outputs: int
     promotion_rules: List[PromotionRule]
+    is_1d_tile: bool
+    is_block_pointer: bool
 
 
 # ===================================================================
@@ -243,6 +249,10 @@ def prebuild_from_function(
 
     scalar_fn_name = pw_func._scalar_fn.__name__
 
+    # Kernel variant flags (determined by codegen config at build time)
+    is_1d_tile = pw_func.config.prefer_1d_tile
+    is_block_pointer = pw_func.config.prefer_block_pointer and not is_1d_tile
+
     for rank in range(max_rank + 1):
         try:
             kernel_info = pw_func.get_kernel_info(rank)
@@ -257,6 +267,8 @@ def prebuild_from_function(
                 num_non_tensor_inputs=num_non_tensor_inputs,
                 num_outputs=num_outputs,
                 promotion_rules=promotion_rules,
+                is_1d_tile=is_1d_tile,
+                is_block_pointer=is_block_pointer,
             )
             entries.append(entry)
 
@@ -415,6 +427,8 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
         "    int num_non_tensor_inputs;",
         "    int num_outputs;",
         "    std::vector<PromotionRule> promotion_rules;",
+        "    bool is_1d_tile;       // 1D-tile kernel (no stride_order, single tile_size)",
+        "    bool is_block_pointer;  // block-pointer kernel (stride_order present)",
         "};",
         "",
     ]
@@ -435,11 +449,14 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
         lines.append(f'    {{"{op_name}", {{')
         for entry in sorted(op_entries, key=lambda e: e.rank):
             rules_str = _format_promotion_rules_cpp(entry.promotion_rules)
+            is_1d = "true" if entry.is_1d_tile else "false"
+            is_bptr = "true" if entry.is_block_pointer else "false"
             lines.append(
                 f"        {{{entry.rank}, KernelInfo{{"
                 f'"{entry.file_path}", "{entry.kernel_name}", '
                 f"{entry.num_input_tensors}, {entry.num_non_tensor_inputs}, {entry.num_outputs}, "
-                f"{rules_str}"
+                f"{rules_str}, "
+                f"{is_1d}, {is_bptr}"
                 f"}}}},"
             )
         lines.append("    }},")
