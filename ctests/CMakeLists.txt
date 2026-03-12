@@ -1,3 +1,8 @@
+add_executable(test_triton_add test_triton_add.cpp)
+target_link_libraries(test_triton_add
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_add COMMAND test_triton_add)
+
 add_executable(test_triton_pointwise test_triton_pointwise.cpp)
 target_link_libraries(test_triton_pointwise
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
@@ -105,3 +110,8 @@ add_executable(test_triton_copy test_triton_copy.cpp)
 target_link_libraries(test_triton_copy
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_copy COMMAND test_triton_copy)
+
+add_executable(test_pointwise_dynamic test_pointwise_dynamic.cpp)
+target_link_libraries(test_pointwise_dynamic
+  PRIVATE Torch::Torch pointwise_dynamic TritonJIT::triton_jit)
+add_test(NAME test_pointwise_dynamic COMMAND test_pointwise_dynamic)

@@ -9,7 +9,7 @@ TEST(pointwise_op_test, add) {
   torch::Tensor b = torch::randn({10, 10}, device);
 
   torch::Tensor out_torch = a + b;
-  torch::Tensor out_triton = flag_gems::add_tensor(a, b);
+  torch::Tensor out_triton = flag_gems::add_Tensor(a, b);
 
   auto result = flag_gems::accuracy_utils::gems_assert_close(out_triton, out_torch);
   EXPECT_TRUE(result.ok) << result.message;
