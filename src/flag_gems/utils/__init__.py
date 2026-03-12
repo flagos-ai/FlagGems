@@ -1,5 +1,9 @@
 from flag_gems.utils.libentry import libentry, libtuner
-from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
+from flag_gems.utils.pointwise_dynamic import (
+    KernelInfo,
+    PointwiseDynamicFunction,
+    pointwise_dynamic,
+)
 from flag_gems.utils.shape_utils import (
     broadcastable,
     broadcastable_to,
@@ -14,6 +18,8 @@ __all__ = [
     "libentry",
     "libtuner",
     "pointwise_dynamic",
+    "KernelInfo",
+    "PointwiseDynamicFunction",
     "dim_compress",
     "restride_dim",
     "offsetCalculator",
