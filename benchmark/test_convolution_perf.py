@@ -123,6 +123,59 @@ def test_perf_conv2d():
         del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
+class ConvTranspose2DBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        return [
+            # batch, C_in, H_in, W_in, C_out, kH, kW, stride, padding, groups
+            (1, 64, 128, 128, 64, 3, 3, 1, 1, 1),  # large, stride=1 (U-Net style)
+            (1, 64, 64, 64, 32, 3, 3, 2, 1, 1),  # large, stride=2 (upsampling)
+            (4, 32, 32, 32, 32, 3, 3, 2, 1, 1),  # batch=4, stride=2
+            (8, 16, 64, 64, 16, 5, 5, 2, 2, 1),  # 5x5 kernel
+            (16, 32, 16, 16, 64, 3, 3, 2, 1, 1),  # more channels
+            (32, 64, 32, 32, 32, 3, 3, 1, 0, 1),  # no padding
+        ]
+
+
+@pytest.mark.conv_transpose2d
+def test_perf_conv_transpose2d():
+    def conv_transpose2d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_h,
+            input_w,
+            out_c,
+            kernel_h,
+            kernel_w,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_h, input_w)
+        weight_shape = (input_c, out_c // groups, kernel_h, kernel_w)
+        inp = torch.randn(size=input_shape, device=device, dtype=dtype)
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": inp,
+            "weight": weight,
+            "bias": None,
+            "groups": groups,
+            "stride": stride,
+            "padding": padding,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = ConvTranspose2DBenchmark(
+        input_fn=conv_transpose2d_input_fn,
+        op_name="conv_transpose2d",
+        torch_op=torch.nn.functional.conv_transpose2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.conv_transpose2d)
+    bench.run()
+
+
 class Conv3DBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         return None
