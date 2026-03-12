@@ -64,11 +64,12 @@ MHC_POST_CONFIGS = list(
     "n, h", MHC_POST_CONFIGS, ids=[f"n{n}_h{h}" for n, h in MHC_POST_CONFIGS]
 )
 def test_mhc_post_vs_ref(n, h):
-    """Test Triton mhc_post against PyTorch reference."""
+    """Test Triton mhc_post against PyTorch CPU reference."""
     data = generate_mhc_post_data(n, h)
     out_triton = mhc_post(**data)
-    out_ref = mhc_post_ref(**data)
-    torch.testing.assert_close(out_triton, out_ref, rtol=1e-2, atol=1e-2)
+    data_cpu = {k: v.cpu() for k, v in data.items()}
+    out_ref = mhc_post_ref(**data_cpu)
+    torch.testing.assert_close(out_triton.cpu(), out_ref, rtol=1e-2, atol=1e-2)
 
 
 @pytest.mark.mhc_post
@@ -140,14 +141,15 @@ def generate_mhc_pre_data(
     ids=[f"n{n}_h{h}_hc{hc}" for n, h, hc in MHC_PRE_CONFIGS],
 )
 def test_mhc_pre_vs_ref(n, hidden_size, hc_mult):
-    """Test Triton mhc_pre against PyTorch reference."""
+    """Test Triton mhc_pre against PyTorch CPU reference."""
     data = generate_mhc_pre_data(n, hc_mult, hidden_size)
     post_triton, comb_triton, li_triton = mhc_pre(**data)
-    post_ref, comb_ref, li_ref = mhc_pre_ref(**data)
+    data_cpu = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
+    post_ref, comb_ref, li_ref = mhc_pre_ref(**data_cpu)
 
-    torch.testing.assert_close(post_triton, post_ref, rtol=1e-2, atol=1e-2)
-    torch.testing.assert_close(comb_triton, comb_ref, rtol=1e-2, atol=1e-2)
-    torch.testing.assert_close(li_triton, li_ref, rtol=1e-2, atol=1e-2)
+    torch.testing.assert_close(post_triton.cpu(), post_ref, rtol=1e-2, atol=1e-2)
+    torch.testing.assert_close(comb_triton.cpu(), comb_ref, rtol=1e-2, atol=1e-2)
+    torch.testing.assert_close(li_triton.cpu(), li_ref, rtol=1e-2, atol=1e-2)
 
 
 @pytest.mark.mhc_pre
@@ -204,14 +206,14 @@ def generate_mhc_bwd_data(
     ids=[f"seq{s}_ns{ns}_it{it}" for s, ns, it in MHC_BWD_CONFIGS],
 )
 def test_mhc_bwd_vs_ref(seqlen, n_stream, sinkhorn_iters):
-    """Test Triton mhc_bwd against PyTorch reference."""
+    """Test Triton mhc_bwd against PyTorch CPU reference."""
     data = generate_mhc_bwd_data(seqlen, n_stream, sinkhorn_iters)
     R, dR = data["R"], data["dR"]
 
     out_triton = mhc_bwd(R, dR)
-    out_ref = mhc_bwd_ref(R, dR)
+    out_ref = mhc_bwd_ref(R.cpu(), dR.cpu())
 
-    torch.testing.assert_close(out_triton, out_ref, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(out_triton.cpu(), out_ref, rtol=1e-4, atol=1e-4)
 
 
 @pytest.mark.mhc_bwd
