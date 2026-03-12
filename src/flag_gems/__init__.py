@@ -213,6 +213,7 @@ _FULL_CONFIG = (
     ("logical_or", logical_or),
     ("logical_or_", logical_or_),
     ("logical_xor", logical_xor),
+    ("logaddexp", logaddexp),
     ("logspace", logspace),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
