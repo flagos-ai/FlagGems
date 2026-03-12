@@ -217,6 +217,7 @@ from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
 from flag_gems.ops.triu import triu, triu_
+from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -528,6 +529,7 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "unfold_backward",
     "uniform_",
     "upsample_linear1d",
     "upsample_nearest1d",
