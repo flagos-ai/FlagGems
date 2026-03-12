@@ -266,6 +266,7 @@ if not QUICK_MODE:
         (256, 256, 7168, 2048, 8),
     ]
 
+
 def torch_fused_moe_reference(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
