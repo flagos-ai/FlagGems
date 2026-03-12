@@ -346,6 +346,7 @@ _FULL_CONFIG = (
     ("true_divide_.Tensor", true_divide_),
     ("unfold_backward", unfold_backward),
     ("uniform_", uniform_),
+    ("upsample_bicubic2d", upsample_bicubic2d),
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
