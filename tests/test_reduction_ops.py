@@ -958,7 +958,13 @@ def test_accuracy_inplace_scatter_mul(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-SCATTER_REDUCE_DTYPES = [torch.float16, torch.float32, torch.bfloat16, torch.int16, torch.int32]
+SCATTER_REDUCE_DTYPES = [
+    torch.float16,
+    torch.float32,
+    torch.bfloat16,
+    torch.int16,
+    torch.int32,
+]
 SCATTER_REDUCE_REDUCTIONS = ["sum", "prod", "mean", "amax", "amin"]
 
 
@@ -981,20 +987,26 @@ def _make_scatter_reduce_tensors(inp_shape, src_shape, dim, dtype):
     else:
         inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
         src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, inp_shape[dim], src_shape, dtype=torch.long, device=flag_gems.device)
+    index = torch.randint(
+        0, inp_shape[dim], src_shape, dtype=torch.long, device=flag_gems.device
+    )
     return inp, index, src
 
 
 @pytest.mark.scatter_reduce
 @pytest.mark.parametrize(
     "inp_shape, src_shape",
-    [((16, 8, 4), (8, 4, 4))] if QUICK_MODE else [((64, 16, 8), (32, 8, 4)), ((48, 24, 12), (24, 12, 6))],
+    [((16, 8, 4), (8, 4, 4))]
+    if QUICK_MODE
+    else [((64, 16, 8), (32, 8, 4)), ((48, 24, 12), (24, 12, 6))],
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
 @pytest.mark.parametrize("dtype", SCATTER_REDUCE_DTYPES)
-def test_accuracy_scatter_reduce(inp_shape, src_shape, dim, include_self, reduce, dtype):
+def test_accuracy_scatter_reduce(
+    inp_shape, src_shape, dim, include_self, reduce, dtype
+):
     inp, index, src = _make_scatter_reduce_tensors(inp_shape, src_shape, dim, dtype)
     ref_inp = to_reference(inp, upcast=_scatter_reduce_upcast(reduce, dtype))
     ref_index = to_reference(index)
@@ -1020,15 +1032,21 @@ def test_accuracy_scatter_reduce(inp_shape, src_shape, dim, include_self, reduce
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
 @pytest.mark.parametrize("dtype", SCATTER_REDUCE_DTYPES)
-def test_accuracy_scatter_reduce_(inp_shape, src_shape, dim, include_self, reduce, dtype):
+def test_accuracy_scatter_reduce_(
+    inp_shape, src_shape, dim, include_self, reduce, dtype
+):
     inp, index, src = _make_scatter_reduce_tensors(inp_shape, src_shape, dim, dtype)
     ref_inp = to_reference(inp, upcast=_scatter_reduce_upcast(reduce, dtype))
     ref_index = to_reference(index)
     ref_src = to_reference(src, upcast=_scatter_reduce_upcast(reduce, dtype))
 
-    ref_out = ref_inp.scatter_reduce_(dim, ref_index, ref_src, reduce, include_self=include_self)
+    ref_out = ref_inp.scatter_reduce_(
+        dim, ref_index, ref_src, reduce, include_self=include_self
+    )
     with flag_gems.use_gems():
-        res_out = inp.scatter_reduce_(dim, index, src, reduce, include_self=include_self)
+        res_out = inp.scatter_reduce_(
+            dim, index, src, reduce, include_self=include_self
+        )
 
     _assert_scatter_reduce_result(res_out, ref_out, dtype)
 
@@ -1042,7 +1060,9 @@ def test_accuracy_scatter_reduce_(inp_shape, src_shape, dim, include_self, reduc
 @pytest.mark.parametrize("include_self", [True, False])
 @pytest.mark.parametrize("reduce", SCATTER_REDUCE_REDUCTIONS)
 @pytest.mark.parametrize("dtype", SCATTER_REDUCE_DTYPES)
-def test_accuracy_scatter_reduce_out(inp_shape, src_shape, dim, include_self, reduce, dtype):
+def test_accuracy_scatter_reduce_out(
+    inp_shape, src_shape, dim, include_self, reduce, dtype
+):
     inp, index, src = _make_scatter_reduce_tensors(inp_shape, src_shape, dim, dtype)
     ref_inp = to_reference(inp, upcast=_scatter_reduce_upcast(reduce, dtype))
     ref_index = to_reference(index)
@@ -1099,7 +1119,9 @@ def test_accuracy_scatter_reduce_negative_dim(dim, include_self, reduce, dtype):
 @pytest.mark.scatter_reduce
 @pytest.mark.parametrize("dim", [3, -4])
 def test_accuracy_scatter_reduce_invalid_dim(dim):
-    inp, index, src = _make_scatter_reduce_tensors((16, 8, 4), (8, 4, 4), 2, torch.float32)
+    inp, index, src = _make_scatter_reduce_tensors(
+        (16, 8, 4), (8, 4, 4), 2, torch.float32
+    )
     ref_inp = to_reference(inp)
     ref_index = to_reference(index)
     ref_src = to_reference(src)
@@ -1146,12 +1168,26 @@ def test_accuracy_scatter_reduce_scalar(dim, include_self, reduce, dtype):
 def test_accuracy_scatter_reduce_noncontiguous(reduce, include_self, dtype):
     dim = 2
     if dtype in INT_DTYPES:
-        inp = torch.randint(-8, 8, (6, 8, 10), device=flag_gems.device).to(dtype).transpose(0, 1)
-        src = torch.randint(-8, 8, (6, 8, 5), device=flag_gems.device).to(dtype).transpose(0, 1)
+        inp = (
+            torch.randint(-8, 8, (6, 8, 10), device=flag_gems.device)
+            .to(dtype)
+            .transpose(0, 1)
+        )
+        src = (
+            torch.randint(-8, 8, (6, 8, 5), device=flag_gems.device)
+            .to(dtype)
+            .transpose(0, 1)
+        )
     else:
-        inp = torch.randn((6, 8, 10), dtype=dtype, device=flag_gems.device).transpose(0, 1)
-        src = torch.randn((6, 8, 5), dtype=dtype, device=flag_gems.device).transpose(0, 1)
-    index = torch.randint(0, inp.shape[dim], src.shape, dtype=torch.long, device=flag_gems.device)
+        inp = torch.randn((6, 8, 10), dtype=dtype, device=flag_gems.device).transpose(
+            0, 1
+        )
+        src = torch.randn((6, 8, 5), dtype=dtype, device=flag_gems.device).transpose(
+            0, 1
+        )
+    index = torch.randint(
+        0, inp.shape[dim], src.shape, dtype=torch.long, device=flag_gems.device
+    )
     ref_inp = to_reference(inp, upcast=_scatter_reduce_upcast(reduce, dtype))
     ref_index = to_reference(index)
     ref_src = to_reference(src, upcast=_scatter_reduce_upcast(reduce, dtype))
@@ -1230,7 +1266,9 @@ def test_accuracy_scatter_reduce_special_values(reduce, include_self):
         dtype=dtype,
         device=flag_gems.device,
     )
-    index = torch.tensor([[0, 1, 1], [3, 0, 2]], dtype=torch.long, device=flag_gems.device)
+    index = torch.tensor(
+        [[0, 1, 1], [3, 0, 2]], dtype=torch.long, device=flag_gems.device
+    )
 
     ref_inp = to_reference(inp, upcast=_scatter_reduce_upcast(reduce, dtype))
     ref_index = to_reference(index)

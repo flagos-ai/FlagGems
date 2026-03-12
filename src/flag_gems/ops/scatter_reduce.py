@@ -7,7 +7,11 @@ import triton.language as tl
 from flag_gems.ops.scatter import scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
 from flag_gems.utils import libentry
-from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping, restride_dim
+from flag_gems.utils.shape_utils import (
+    MemOverlap,
+    has_internal_overlapping,
+    restride_dim,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +115,9 @@ def _is_same_tensor_view(lhs, rhs):
 def _scatter_reduce_out_requires_temp(inp, out, src):
     if _requires_scatter_reduce_copy(out, src):
         return True
-    return _requires_scatter_reduce_copy(out, inp) and not _is_same_tensor_view(out, inp)
+    return _requires_scatter_reduce_copy(out, inp) and not _is_same_tensor_view(
+        out, inp
+    )
 
 
 def _atomic_accumulator_dtype(dtype, reduce):
@@ -193,7 +199,6 @@ def _reshape_scatter_reduce_prod_fast_tensors(inp, index, src, out):
 
 
 def _scatter_reduce_prod_fast_launch_config(rows, src_cols, dtype):
-
     # Small and medium problems benefit from lower launch overhead. Once the row
     # count gets large, the lighter config under-utilizes the kernel and hurts
     # the wide 4096x4096-style cases, so route those back to a heavier launch.
@@ -250,9 +255,12 @@ def _scatter_reduce_prod_fast_2d_kernel(
 
 
 def _scatter_reduce_prod_fast_path(inp, index, src, include_self, out):
-    flat_inp, flat_index, flat_src, flat_out = _reshape_scatter_reduce_prod_fast_tensors(
-        inp, index, src, out
-    )
+    (
+        flat_inp,
+        flat_index,
+        flat_src,
+        flat_out,
+    ) = _reshape_scatter_reduce_prod_fast_tensors(inp, index, src, out)
     if not include_self:
         _reset_scatter_targets(out, inp.ndim - 1, index, 1)
     block, num_warps = _scatter_reduce_prod_fast_launch_config(
@@ -273,7 +281,9 @@ def _scatter_reduce_prod_fast_path(inp, index, src, include_self, out):
 
 def _scatter_reduce_prod(inp, dim, index, src, include_self):
     if _can_use_scatter_reduce_prod_fast_path(inp, dim, index, src):
-        return _scatter_reduce_prod_fast_path(inp, index, src, include_self, inp.clone())
+        return _scatter_reduce_prod_fast_path(
+            inp, index, src, include_self, inp.clone()
+        )
     return _scatter_reduce_atomic(inp, dim, index, src, "prod", include_self)
 
 
@@ -582,7 +592,9 @@ def _scatter_reduce_atomic_impl(inp, dim, index, src, reduce, include_self, out)
         out.copy_(res)
         return out
 
-    return _scatter_reduce_atomic_kernel_impl(out, dim, index, src, reduce, include_self)
+    return _scatter_reduce_atomic_kernel_impl(
+        out, dim, index, src, reduce, include_self
+    )
 
 
 def _scatter_reduce_atomic(inp, dim, index, src, reduce, include_self):
@@ -616,7 +628,9 @@ def _scatter_reduce_atomic_(inp, dim, index, src, reduce, include_self):
 
 
 def _scatter_reduce_atomic_out(inp, dim, index, src, reduce, include_self, out):
-    if reduce == "prod" and _can_use_scatter_reduce_prod_fast_path(inp, dim, index, src, out):
+    if reduce == "prod" and _can_use_scatter_reduce_prod_fast_path(
+        inp, dim, index, src, out
+    ):
         if _is_same_tensor_view(out, inp):
             return _scatter_reduce_atomic_(out, dim, index, src, reduce, include_self)
         if _scatter_reduce_out_requires_temp(inp, out, src):
