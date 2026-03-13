@@ -1,4 +1,5 @@
 import random
+from typing import Generator
 
 import pytest
 import torch
@@ -1020,3 +1021,37 @@ def test_perf_unfold_backward():
     )
     bench.set_gems(flag_gems.unfold_backward)
     bench.run()
+
+
+class SafeSoftmaxBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp, -1, None
+
+
+@pytest.mark.safe_softmax
+def test_perf__safe_softmax():
+    bench = SafeSoftmaxBenchmark(
+        op_name="_safe_softmax",
+        torch_op=torch.ops.aten._safe_softmax,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.soft_margin_loss
+def test_perf_soft_margin_loss():
+    def soft_margin_loss_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        target = (torch.randint(0, 2, shape, device=device).to(dtype) * 2) - 1
+        yield inp, target
+
+    bench = GenericBenchmark(
+        input_fn=soft_margin_loss_input_fn,
+        op_name="soft_margin_loss",
+        torch_op=torch.ops.aten.soft_margin_loss,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
