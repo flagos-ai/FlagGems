@@ -2049,3 +2049,78 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
     with flag_gems.use_gems():
         res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+@pytest.mark.safe_softmax
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("in_dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", [-1, 0])
+@pytest.mark.parametrize("dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16])
+def test_accuracy__safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+    x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+    if dtype_arg_sel == "none":
+        dtype_arg = None
+    elif dtype_arg_sel == "same":
+        dtype_arg = in_dtype
+    else:
+        dtype_arg = dtype_arg_sel
+    ref_x = to_reference(x)
+    if dtype_arg in (torch.float16, torch.bfloat16):
+        ref_x = ref_x.float()
+        ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=torch.float32)
+        ref_out = ref_out.to(dtype_arg)
+    else:
+        ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=dtype_arg)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten._safe_softmax(x, dim, dtype=dtype_arg)
+    expected_dtype = dtype_arg if dtype_arg is not None else in_dtype
+    gems_assert_close(act_out, ref_out, expected_dtype)
+
+
+@pytest.mark.soft_margin_loss
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+def test_accuracy_soft_margin_loss(shape, dtype, reduction):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = (torch.randint(0, 2, shape, device=flag_gems.device).to(dtype) * 2) - 1
+    ref_inp = to_reference(inp)
+    ref_target = to_reference(target)
+    ref_out = torch.ops.aten.soft_margin_loss(ref_inp, ref_target, reduction)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.soft_margin_loss(inp, target, reduction)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.margin_ranking_loss
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 256)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("margin", [0.0, 0.5, 1.0])
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+def test_accuracy_margin_ranking_loss(shape, dtype, margin, reduction):
+    input1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    input2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = (torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2 - 1).to(dtype)
+    ref_input1 = to_reference(input1)
+    ref_input2 = to_reference(input2)
+    ref_target = to_reference(target)
+    ref_out = torch.ops.aten.margin_ranking_loss(ref_input1, ref_input2, ref_target, margin, reduction)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.margin_ranking_loss(input1, input2, target, margin, reduction)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.upsample_nearest_exact1d
+@pytest.mark.parametrize("shape", [(2, 3, 16), (4, 8, 64), (8, 16, 256)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("factor", [2, 3])
+def test_accuracy__upsample_nearest_exact1d(shape, dtype, factor):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+    out_size = [shape[-1] * factor]
+    ref_out = torch.ops.aten._upsample_nearest_exact1d(ref_x, out_size, None)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._upsample_nearest_exact1d(x, out_size, None)
+    gems_assert_close(res_out, ref_out, dtype)
+
+

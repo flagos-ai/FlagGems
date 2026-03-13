@@ -1,0 +1,290 @@
+{
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype0-shape0]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                16
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype0-shape1]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.float16",
+            "shape": [
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype0-shape2]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.float16",
+            "shape": [
+                8,
+                16,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype1-shape0]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                16
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype1-shape1]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.float32",
+            "shape": [
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype1-shape2]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.float32",
+            "shape": [
+                8,
+                16,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype2-shape0]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                16
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype2-shape1]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[2-dtype2-shape2]": {
+        "params": {
+            "factor": 2,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                8,
+                16,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype0-shape0]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3,
+                16
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype0-shape1]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.float16",
+            "shape": [
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype0-shape2]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.float16",
+            "shape": [
+                8,
+                16,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype1-shape0]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3,
+                16
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype1-shape1]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.float32",
+            "shape": [
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype1-shape2]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.float32",
+            "shape": [
+                8,
+                16,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype2-shape0]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3,
+                16
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype2-shape1]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                4,
+                8,
+                64
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy__upsample_nearest_exact1d[3-dtype2-shape2]": {
+        "params": {
+            "factor": 3,
+            "dtype": "torch.bfloat16",
+            "shape": [
+                8,
+                16,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "upsample_nearest_exact1d"
+        ],
+        "skipped_reason": null
+    }
+}
