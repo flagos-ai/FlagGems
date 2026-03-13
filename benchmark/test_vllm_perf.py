@@ -241,6 +241,7 @@ def test_cutlass_scaled_mm_benchmark():
     bench.run()
 
 
+# ---------------------- fused_moe op test ----------------------
 try:
     from vllm.model_executor.layers.fused_moe.fused_moe import (
         fused_experts_impl as vllm_fused_experts_impl,
@@ -353,11 +354,6 @@ def test_perf_fused_moe_gems_vs_vllm():
     )
     bench.set_gems(_gems_fused_moe_wrapper)
     bench.run()
-
-
-# ---------------------------------------------------------------------------
-# FP8 W8A8 fused MoE benchmark
-# ---------------------------------------------------------------------------
 
 
 class FusedMoEFP8Benchmark(Benchmark):
@@ -509,11 +505,6 @@ def test_perf_fused_moe_fp8_gems_vs_vllm():
     )
     bench.set_gems(_gems_fused_moe_fp8_wrapper)
     bench.run()
-
-
-# ---------------------------------------------------------------------------
-# INT8 W8A8 fused MoE benchmark (per-channel weight, per-token activation)
-# ---------------------------------------------------------------------------
 
 
 class FusedMoEINT8Benchmark(Benchmark):
@@ -671,11 +662,6 @@ def test_perf_fused_moe_int8_gems_vs_vllm():
     )
     bench.set_gems(_gems_fused_moe_int8_wrapper)
     bench.run()
-
-
-# ---------------------------------------------------------------------------
-# INT8 W8A16 fused MoE benchmark (weight-only INT8, FP16 activations)
-# ---------------------------------------------------------------------------
 
 
 class FusedMoEINT8W8A16Benchmark(Benchmark):
@@ -837,11 +823,6 @@ def test_perf_fused_moe_int8_w8a16_gems_vs_vllm():
     )
     bench.set_gems(_gems_fused_moe_int8_w8a16_wrapper)
     bench.run()
-
-
-# ---------------------------------------------------------------------------
-# INT4 W4A16 fused MoE benchmark (weight-only INT4, FP16 activations)
-# ---------------------------------------------------------------------------
 
 
 class FusedMoEINT4W4A16Benchmark(Benchmark):
