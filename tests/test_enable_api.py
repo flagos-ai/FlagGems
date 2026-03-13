@@ -75,7 +75,7 @@ def test_enable_with_exclude(exclude_op, tmp_path):
         assert not present, f"Found excluded op '{op}' in log file: {present}"
 
 
-@pytest.mark.only_enable
+@pytest.mark.enable
 @pytest.mark.parametrize(
     "include_op", [["sum"], ["mul", "sum"], ["bitwise_not", "masked_fill"]]
 )
@@ -94,7 +94,7 @@ def test_only_enable(include_op, tmp_path):
         ), f"Found unexpected op '{op}' in log file. Allowed op: {include_op}"
 
 
-@pytest.mark.only_enable
+@pytest.mark.enable
 def test_only_enable_with_yaml(tmp_path):
     include_ops = ["sum", "mul"]
     yaml_path = tmp_path / "only_enable.yaml"
@@ -116,7 +116,7 @@ def test_only_enable_with_yaml(tmp_path):
     assert not unexpected, f"Found unexpected ops via YAML include: {unexpected}"
 
 
-@pytest.mark.only_enable
+@pytest.mark.enable
 def test_only_enable_default(tmp_path, monkeypatch):
     # Create a mock YAML file with known include ops
     include_ops = ["sum", "mul", "add"]
