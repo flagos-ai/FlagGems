@@ -1,4 +1,5 @@
 import logging
+from math import ceil
 from typing import Any, Optional
 
 import torch
@@ -10,6 +11,181 @@ from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Activation quantization helpers (pure PyTorch, no vLLM / custom-C++ dependency)
+# ---------------------------------------------------------------------------
+
+# Default chunk size for processing tokens in chunks to avoid memory issues
+# with very large batch sizes (mirroring vLLM's VLLM_FUSED_MOE_CHUNK_SIZE).
+_FUSED_MOE_CHUNK_SIZE = 64 * 1024
+
+
+def _fp8_quantize(
+    A: torch.Tensor,
+    A_scale: Optional[torch.Tensor],
+    per_act_token: bool,
+    block_shape: Optional[list[int]] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    FP8 (E4M3) quantization of activations.
+
+    Supports three modes:
+      - per-tensor (A_scale is scalar or None, per_act_token=False, block_shape=None)
+      - per-token  (per_act_token=True, block_shape=None)
+      - block-wise (block_shape=[block_n, block_k])
+    """
+    fp8_dtype = torch.float8_e4m3fn
+    finfo = torch.finfo(fp8_dtype)
+    fp8_max = finfo.max
+    fp8_min = finfo.min
+    eps = 1e-10
+
+    if block_shape is not None:
+        # Block-wise quantization
+        assert not per_act_token
+        assert len(block_shape) == 2
+        block_k = block_shape[1]
+        assert A.size(-1) % block_k == 0
+        # Reshape into groups
+        orig_shape = A.shape
+        A_flat = A.reshape(-1, A.size(-1))
+        M, K = A_flat.shape
+        A_groups = A_flat.reshape(M * (K // block_k), block_k)
+        amax = A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
+        scale = amax / fp8_max
+        A_q = (A_groups.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+        A_q = A_q.reshape(orig_shape)
+        scale = scale.reshape(M, K // block_k)
+        return A_q, scale
+
+    elif per_act_token:
+        # Per-token quantization
+        A_flat = A.reshape(-1, A.size(-1))
+        amax = A_flat.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
+        scale = amax / fp8_max
+        # Apply minimum scaling factor for numerical stability
+        min_scale = torch.tensor(1.0 / (fp8_max * 512.0), dtype=torch.float32,
+                                 device=A.device)
+        scale = scale.clamp(min=min_scale)
+        A_q = (A_flat.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+        A_q = A_q.reshape(A.shape)
+        scale = scale.reshape(A.shape[:-1] + (1,))
+        return A_q, scale
+
+    else:
+        # Per-tensor quantization (static if A_scale provided, dynamic otherwise)
+        if A_scale is not None:
+            scale = A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
+            A_q = (A.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+            return A_q, A_scale
+        else:
+            amax = A.abs().amax().clamp(min=eps).to(torch.float32)
+            scale = amax / fp8_max
+            iscale = 1.0 / scale
+            A_q = (A.float() * iscale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+            return A_q, scale.view(1)
+
+
+def _int8_quantize(
+    A: torch.Tensor,
+    A_scale: Optional[torch.Tensor],
+    per_act_token: bool,
+    block_shape: Optional[list[int]] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    INT8 quantization of activations.
+
+    Supports three modes:
+      - per-token  (per_act_token=True, block_shape=None)
+      - block-wise (block_shape=[block_n, block_k])
+      - per-tensor (static: A_scale provided)
+    """
+    iinfo = torch.iinfo(torch.int8)
+    int8_max = iinfo.max
+    int8_min = iinfo.min
+    eps = 1e-10
+
+    if block_shape is not None:
+        # Block-wise quantization
+        assert not per_act_token
+        assert len(block_shape) == 2
+        block_k = block_shape[1]
+        assert A.size(-1) % block_k == 0
+        orig_shape = A.shape
+        A_flat = A.reshape(-1, A.size(-1))
+        M, K = A_flat.shape
+        A_groups = A_flat.reshape(M * (K // block_k), block_k)
+        amax = A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
+        scale = amax / int8_max
+        A_q = (A_groups.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
+        A_q = A_q.reshape(orig_shape)
+        scale = scale.reshape(M, K // block_k)
+        return A_q, scale
+
+    elif per_act_token:
+        # Per-token quantization
+        A_flat = A.reshape(-1, A.size(-1))
+        amax = A_flat.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
+        scale = amax / int8_max
+        A_q = (A_flat.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
+        A_q = A_q.reshape(A.shape)
+        scale = scale.reshape(A.shape[:-1] + (1,))
+        return A_q, scale
+
+    else:
+        # Per-tensor (static scale only for int8)
+        assert A_scale is not None, "int8 per-tensor quantization requires A_scale"
+        scale = A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
+        A_q = (A.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
+        return A_q, A_scale
+
+
+def moe_kernel_quantize_input(
+    A: torch.Tensor,
+    A_scale: Optional[torch.Tensor],
+    quant_dtype: Optional[torch.dtype],
+    per_act_token_quant: bool,
+    block_shape: Optional[list[int]] = None,
+) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """
+    Quantize the MoE kernel input activations before GEMM.
+
+    Maps the quantization dtype to the appropriate quantizer.
+    Returns (quantized_A, A_scale) if quantization is applied,
+    or (A, A_scale) unchanged when quant_dtype is None.
+    """
+    if quant_dtype is None:
+        return A, A_scale
+    elif quant_dtype == torch.float8_e4m3fn:
+        return _fp8_quantize(A, A_scale, per_act_token_quant, block_shape)
+    elif quant_dtype == torch.int8:
+        return _int8_quantize(A, A_scale, per_act_token_quant, block_shape)
+    else:
+        return A, A_scale
+
+
+def _get_quant_dtype(
+    use_fp8_w8a8: bool = False,
+    use_int8_w8a8: bool = False,
+) -> Optional[torch.dtype]:
+    """Map quantization flags to torch dtype for activation quantization."""
+    if use_fp8_w8a8:
+        return torch.float8_e4m3fn
+    elif use_int8_w8a8:
+        return torch.int8
+    else:
+        return None
+
+
+def _get_config_dtype_str(
+    use_fp8_w8a8: bool = False,
+    dtype: Optional[torch.dtype] = None,
+) -> Optional[str]:
+    """Return dtype string used for kernel config lookup."""
+    if use_fp8_w8a8:
+        return "fp8_w8a8"
+    return None
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -190,8 +366,12 @@ def fused_moe_kernel(
                 )
                 b_scale = tl.load(b_scale_ptrs + offs_ks * stride_bsk)
                 accumulator += tl.dot(a, b) * a_scale[:, None] * b_scale[None, :]
-            else:
+            elif use_fp8_w8a8:
+                # FP8 dot returns float32 natively, can use acc= for fusion
                 accumulator = tl.dot(a, b, acc=accumulator)
+            else:
+                # INT8 dot returns int32; use += to trigger implicit int32→float32 cast
+                accumulator += tl.dot(a, b)
         else:
             # Fused dot-accumulate: on SM90 this maps to WGMMA with
             # in-place accumulation, avoiding a separate add instruction.
@@ -313,8 +493,11 @@ def invoke_fused_moe_triton_kernel(
     compute_type: tl.dtype,
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
+    use_int8_w8a16: bool = False,
+    use_int4_w4a16: bool = False,
     per_channel_quant: bool = False,
     block_shape: Optional[list[int]] = None,
+    B_bias: torch.Tensor | None = None,
 ) -> None:
     """
     Launch the fused_moe_kernel Triton kernel.
@@ -416,14 +599,40 @@ def fused_experts_impl(
     w2: torch.Tensor,
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
-    num_experts: int = -1,
+    inplace: bool = False,
     activation: str = "silu",
+    apply_router_weight_on_input: bool = False,
+    use_fp8_w8a8: bool = False,
+    use_int8_w8a8: bool = False,
+    per_channel_quant: bool = False,
+    global_num_experts: int = -1,
+    w1_scale: Optional[torch.Tensor] = None,
+    w2_scale: Optional[torch.Tensor] = None,
+    a1_scale: Optional[torch.Tensor] = None,
+    a2_scale: Optional[torch.Tensor] = None,
+    block_shape: Optional[list[int]] = None,
+    w1_bias: Optional[torch.Tensor] = None,
+    w2_bias: Optional[torch.Tensor] = None,
+    # Legacy alias (kept for backward compatibility)
+    num_experts: int = -1,
 ) -> torch.Tensor:
     """
-    Complete fused MoE forward pass (bf16/fp16, no quantization).
+    Complete fused MoE forward pass with optional quantization support.
 
     Pipeline:
-        moe_align_block_size → GEMM1(up+gate) → SiLU+Mul → GEMM2(down) → moe_sum
+        [quantize input] → moe_align_block_size → GEMM1(up+gate) → SiLU+Mul
+        → [quantize intermediate] → GEMM2(down) → moe_sum
+
+    Supports:
+      - bf16 / fp16 (default, no quantization)
+      - FP8 W8A8 (use_fp8_w8a8=True): weights and activations in FP8 E4M3
+      - INT8 W8A8 (use_int8_w8a8=True): weights and activations in INT8
+      - Per-tensor, per-token (per_channel_quant), or block-wise (block_shape)
+        quantization scales
+      - apply_router_weight_on_input: multiply router weight on GEMM1 input
+        instead of GEMM2 output
+      - inplace: write output into hidden_states tensor
+      - Chunked processing for large batch sizes
 
     Args:
         hidden_states: [num_tokens, hidden_size]
@@ -431,8 +640,23 @@ def fused_experts_impl(
         w2: [E, hidden_size, intermediate_size]       (down projection)
         topk_weights: [num_tokens, topk]
         topk_ids: [num_tokens, topk]
-        num_experts: Total number of experts (default: inferred from w1)
+        inplace: If True, write output into hidden_states
         activation: Activation function name ("silu")
+        apply_router_weight_on_input: Multiply router weights on GEMM1 (True)
+            or GEMM2 (False, default)
+        use_fp8_w8a8: Enable FP8 weight+activation quantization
+        use_int8_w8a8: Enable INT8 weight+activation quantization
+        per_channel_quant: Use per-token activation quantization (paired with
+            per-channel weight quantization)
+        global_num_experts: Total number of experts (default: inferred from w1)
+        w1_scale: Weight scale for w1 [E, 1, 1] or [E, N//gn, K//gk]
+        w2_scale: Weight scale for w2 [E, 1, 1] or [E, K//gn, D//gk]
+        a1_scale: Activation scale for GEMM1 input (or None for dynamic)
+        a2_scale: Activation scale for GEMM2 input (or None for dynamic)
+        block_shape: [block_n, block_k] for block-wise quantization
+        w1_bias: Bias for w1 (currently unused, reserved)
+        w2_bias: Bias for w2 (currently unused, reserved)
+        num_experts: Legacy alias for global_num_experts
 
     Returns:
         output: [num_tokens, hidden_size]
@@ -442,13 +666,22 @@ def fused_experts_impl(
         activation == "silu"
     ), f"Only 'silu' activation is supported, got {activation}"
 
-    M, K = hidden_states.shape
-    E = w1.shape[0]
-    N = w1.shape[1]  # intermediate_size * 2
+    # Resolve num_experts (legacy alias vs new name)
+    if global_num_experts <= 0:
+        global_num_experts = num_experts
+
+    assert hidden_states.is_contiguous(), "hidden_states must be contiguous"
+    assert hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16]
+    assert hidden_states.size(1) == w1.size(2), (
+        f"Hidden size mismatch {hidden_states.size(1)} != {w1.size(2)}"
+    )
+
+    num_tokens_total, K = hidden_states.shape
+    E, N, _ = w1.shape
     top_k = topk_ids.shape[1]
 
-    if num_experts <= 0:
-        num_experts = E
+    if global_num_experts <= 0:
+        global_num_experts = E
 
     # Determine compute type
     if hidden_states.dtype == torch.bfloat16:
@@ -460,69 +693,141 @@ def fused_experts_impl(
     else:
         raise ValueError(f"Unsupported dtype: {hidden_states.dtype}")
 
-    # Get kernel config
-    config = get_default_config(M, E, w2.shape[1], K, top_k, None)
-
-    # Step 1: Align tokens to experts
-    sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-        topk_ids, config["BLOCK_SIZE_M"], num_experts
+    # Determine quantization dtype (None means no quantization)
+    quant_dtype = _get_quant_dtype(
+        use_fp8_w8a8=use_fp8_w8a8,
+        use_int8_w8a8=use_int8_w8a8,
     )
+
+    # Config dtype string for kernel config lookup
+    config_dtype = _get_config_dtype_str(
+        use_fp8_w8a8=use_fp8_w8a8,
+        dtype=hidden_states.dtype,
+    )
+
+    # Chunk size: process tokens in chunks to avoid memory issues
+    CHUNK_SIZE = _FUSED_MOE_CHUNK_SIZE
+    M = min(num_tokens_total, CHUNK_SIZE)
+
+    # Get kernel config
+    config = get_default_config(M, E, w2.shape[1], K, top_k, config_dtype, block_shape)
 
     # Allocate intermediate buffers
-    # GEMM1 output: [M, topk, N]
-    intermediate_cache1 = torch.empty(
-        (M, top_k, N), dtype=hidden_states.dtype, device=hidden_states.device
+    # Memory optimization: cache1 and cache3 can share storage because
+    # cache3 is only needed after cache1 is consumed by the activation.
+    cache13_size = M * top_k * max(N, K)
+    cache13 = torch.empty(
+        cache13_size, device=hidden_states.device, dtype=hidden_states.dtype
     )
-    # After activation (SiLU+Mul): [M * topk, N // 2]
+    intermediate_cache1 = cache13[: M * top_k * N].view(M, top_k, N)
+    intermediate_cache3 = cache13[: M * top_k * K].view(M, top_k, K)
+
+    # Activation output: SiLU+Mul halves the dimension
+    activation_out_dim = N // 2
     intermediate_cache2 = torch.empty(
-        (M * top_k, N // 2), dtype=hidden_states.dtype, device=hidden_states.device
-    )
-    # GEMM2 output: [M, topk, K]
-    intermediate_cache3 = torch.empty(
-        (M, top_k, K), dtype=hidden_states.dtype, device=hidden_states.device
-    )
-    # Final output: [M, K]
-    output = torch.zeros((M, K), dtype=hidden_states.dtype, device=hidden_states.device)
-
-    # Step 2: GEMM1 — hidden_states @ W1 → intermediate_cache1
-    invoke_fused_moe_triton_kernel(
-        A=hidden_states,
-        B=w1,
-        C=intermediate_cache1,
-        A_scale=None,
-        B_scale=None,
-        topk_weights=None,
-        sorted_token_ids=sorted_token_ids,
-        expert_ids=expert_ids,
-        num_tokens_post_padded=num_tokens_post_padded,
-        mul_routed_weight=False,
-        top_k=top_k,
-        config=config,
-        compute_type=compute_type,
+        (M * top_k, activation_out_dim),
+        device=hidden_states.device,
+        dtype=hidden_states.dtype,
     )
 
-    # Step 3: Activation — SiLU(gate) * up
-    _apply_silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+    # Output buffer
+    out_hidden_states = hidden_states if inplace else torch.empty_like(hidden_states)
 
-    # Step 4: GEMM2 — intermediate @ W2 → intermediate_cache3
-    #         Multiply router weights here
-    invoke_fused_moe_triton_kernel(
-        A=intermediate_cache2,
-        B=w2,
-        C=intermediate_cache3,
-        A_scale=None,
-        B_scale=None,
-        topk_weights=topk_weights,
-        sorted_token_ids=sorted_token_ids,
-        expert_ids=expert_ids,
-        num_tokens_post_padded=num_tokens_post_padded,
-        mul_routed_weight=True,
-        top_k=1,  # After activation, each token-expert pair is independent
-        config=config,
-        compute_type=compute_type,
-    )
+    # Process in chunks
+    for chunk in range((num_tokens_total // CHUNK_SIZE) + 1):
+        begin_chunk_idx = chunk * CHUNK_SIZE
+        end_chunk_idx = min((chunk + 1) * CHUNK_SIZE, num_tokens_total)
+        curr_hidden_states = hidden_states[begin_chunk_idx:end_chunk_idx]
+        tokens_in_chunk = curr_hidden_states.size(0)
 
-    # Step 5: Reduce — sum over topK experts
-    moe_sum(intermediate_cache3, output)
+        if tokens_in_chunk == 0:
+            break
 
-    return output
+        # Adjust caches for last (possibly smaller) chunk
+        if tokens_in_chunk < CHUNK_SIZE and chunk > 0:
+            intermediate_cache1 = intermediate_cache1[:tokens_in_chunk]
+            intermediate_cache2 = intermediate_cache2[: tokens_in_chunk * top_k]
+            intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
+            config = get_default_config(
+                tokens_in_chunk, E, w2.shape[1], K, top_k, config_dtype, block_shape
+            )
+
+        curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
+        curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
+
+        # Step 1: Quantize input activations (no-op if quant_dtype is None)
+        qcurr_hidden_states, a1q_scale = moe_kernel_quantize_input(
+            A=curr_hidden_states,
+            A_scale=a1_scale,
+            quant_dtype=quant_dtype,
+            per_act_token_quant=per_channel_quant,
+            block_shape=block_shape,
+        )
+
+        # Step 2: Align tokens to experts
+        sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
+            curr_topk_ids, config["BLOCK_SIZE_M"], global_num_experts
+        )
+
+        # Step 3: GEMM1 — hidden_states @ W1 → intermediate_cache1
+        invoke_fused_moe_triton_kernel(
+            A=qcurr_hidden_states,
+            B=w1,
+            C=intermediate_cache1,
+            A_scale=a1q_scale,
+            B_scale=w1_scale,
+            topk_weights=curr_topk_weights if apply_router_weight_on_input else None,
+            sorted_token_ids=sorted_token_ids,
+            expert_ids=expert_ids,
+            num_tokens_post_padded=num_tokens_post_padded,
+            mul_routed_weight=apply_router_weight_on_input,
+            top_k=top_k,
+            config=config,
+            compute_type=compute_type,
+            use_fp8_w8a8=use_fp8_w8a8,
+            use_int8_w8a8=use_int8_w8a8,
+            per_channel_quant=per_channel_quant,
+            block_shape=block_shape,
+        )
+
+        # Step 4: Activation — SiLU(gate) * up
+        _apply_silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+
+        # Step 5: Quantize intermediate activations for GEMM2
+        qintermediate_cache2, a2q_scale = moe_kernel_quantize_input(
+            A=intermediate_cache2,
+            A_scale=a2_scale,
+            quant_dtype=quant_dtype,
+            per_act_token_quant=per_channel_quant,
+            block_shape=block_shape,
+        )
+
+        # Step 6: GEMM2 — intermediate @ W2 → intermediate_cache3
+        #         Multiply router weights here (unless applied on input)
+        invoke_fused_moe_triton_kernel(
+            A=qintermediate_cache2,
+            B=w2,
+            C=intermediate_cache3,
+            A_scale=a2q_scale,
+            B_scale=w2_scale,
+            topk_weights=curr_topk_weights if not apply_router_weight_on_input else None,
+            sorted_token_ids=sorted_token_ids,
+            expert_ids=expert_ids,
+            num_tokens_post_padded=num_tokens_post_padded,
+            mul_routed_weight=not apply_router_weight_on_input,
+            top_k=1,  # After activation, each token-expert pair is independent
+            config=config,
+            compute_type=compute_type,
+            use_fp8_w8a8=use_fp8_w8a8,
+            use_int8_w8a8=use_int8_w8a8,
+            per_channel_quant=per_channel_quant,
+            block_shape=block_shape,
+        )
+
+        # Step 7: Reduce — sum over topK experts
+        moe_sum(
+            intermediate_cache3.view(*intermediate_cache3.size()),
+            out_hidden_states[begin_chunk_idx:end_chunk_idx],
+        )
+
+    return out_hidden_states
