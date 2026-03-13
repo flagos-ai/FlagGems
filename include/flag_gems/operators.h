@@ -11,7 +11,16 @@ at::Tensor zeros(at::IntArrayRef size,
                  c10::optional<at::Layout> layout = ::std::nullopt,
                  c10::optional<at::Device> device = ::std::nullopt,
                  c10::optional<bool> pin_memory = ::std::nullopt);
-at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_);
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
+// add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
+at::Tensor add_tensor(const at::Tensor &self, const at::Tensor &other, const at::Scalar &alpha = 1);
+// add.Scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor
+at::Tensor add_scalar(const at::Tensor &self, const at::Scalar &other, const at::Scalar &alpha = 1);
+// add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
+at::Tensor &add_tensor_inplace(at::Tensor &self, const at::Tensor &other, const at::Scalar &alpha = 1);
+// add_.Scalar(Tensor(a!) self, Scalar other, Scalar alpha=1) -> Tensor(a!)
+at::Tensor &add_scalar_inplace(at::Tensor &self, const at::Scalar &other, const at::Scalar &alpha = 1);
+#endif
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
 at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out);
 at::Tensor sum_dim(const at::Tensor &self,

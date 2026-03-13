@@ -11,25 +11,11 @@ source tools/run_command.sh
 
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
-# Tensor constructor ops
-run_command python3 -m pytest -s tests/test_tensor_constructor_ops.py
+DISPATCH_SCRIPT="tools/run_backend_tests_${VENDOR}.sh"
+if [ -f "$DISPATCH_SCRIPT" ]; then
+  bash "$DISPATCH_SCRIPT" "$VENDOR"
+  exit $?
+fi
 
-# Utils
-run_command python3 -m pytest -s tests/test_libentry.py
-run_command python3 -m pytest -s tests/test_shape_utils.py
-run_command python3 -m pytest -s tests/test_tensor_wrapper.py
-
-# Pointwise dynamic ops
-run_command python3 -m pytest -s tests/test_pointwise_dynamic.py
-
-# Distribution ops
-run_command python3 -m pytest -s tests/test_distribution_ops.py
-
-# FIXME(moore): Softmax only support float32/float16/bfloat16
-# run_command python3 -m pytest -s tests/test_reduction_ops.py
-# FIXME(moore): BatchNorm supports Float/Half/BFloat16 input dtype
-# run_command python3 -m pytest -s tests/test_norm_ops.py
-# FIXME(moore): RuntimeError: _Map_base::at (missing operators)
-# run_command python3 -m pytest -s tests/test_unary_pointwise_ops.py
-# FIXME(moore): unsupported data type DOUBLE
-# run_command python3 -m pytest -s tests/test_blas_ops.py
+echo "Unsupported backend vendor: $VENDOR (missing $DISPATCH_SCRIPT)"
+exit 1

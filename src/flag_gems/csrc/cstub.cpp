@@ -10,7 +10,12 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("sum", &flag_gems::sum);
   m.def("max_dim", &flag_gems::max_dim);
   m.def("max", &flag_gems::max);
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
   m.def("add_tensor", &flag_gems::add_tensor);
+  m.def("add_scalar", &flag_gems::add_scalar);
+  m.def("add_tensor_inplace", &flag_gems::add_tensor_inplace);
+  m.def("add_scalar_inplace", &flag_gems::add_scalar_inplace);
+#endif
   m.def("max_dim_max", &flag_gems::max_dim_max);
   m.def("rms_norm", &flag_gems::rms_norm);
   m.def("fused_add_rms_norm", &flag_gems::fused_add_rms_norm);
@@ -56,7 +61,14 @@ TORCH_LIBRARY(flag_gems, m) {
       "(Tensor(a!) values, Tensor(b!) indices)");
   m.def("max.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)");
   m.def("max(Tensor self) -> Tensor");
-  m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
+  m.def("add_tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor", {at::Tag::pt2_compliant_tag});
+  m.def("add_scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor", {at::Tag::pt2_compliant_tag});
+  m.def("add_tensor_inplace(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)",
+        {at::Tag::pt2_compliant_tag});
+  m.def("add_scalar_inplace(Tensor(a!) self, Scalar other, Scalar alpha=1) -> Tensor(a!)",
+        {at::Tag::pt2_compliant_tag});
+#endif
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
   m.def("fused_add_rms_norm(Tensor! input, Tensor! residual, Tensor weight, float epsilon) -> ()");
@@ -144,7 +156,12 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("max.dim_max", TORCH_FN(max_dim_max));
   m.impl("max.dim", TORCH_FN(max_dim));
   m.impl("max", TORCH_FN(max));
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
   m.impl("add_tensor", TORCH_FN(add_tensor));
+  m.impl("add_scalar", TORCH_FN(add_scalar));
+  m.impl("add_tensor_inplace", TORCH_FN(add_tensor_inplace));
+  m.impl("add_scalar_inplace", TORCH_FN(add_scalar_inplace));
+#endif
   // Norm
   m.impl("rms_norm", TORCH_FN(rms_norm));
   m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
