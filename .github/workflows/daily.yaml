@@ -62,7 +62,7 @@ jobs:
 
           bash tools/test-op.sh ${RUN_TAG}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: op-ut-coverage
           path: coverage/
