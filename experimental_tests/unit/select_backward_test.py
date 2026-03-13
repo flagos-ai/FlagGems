@@ -1,15 +1,15 @@
 import os
 import sys
+
 import pytest
 import torch
 
 import flag_gems
-
-from flag_gems.experimental_ops.select_backward import (
-    select_backward as gems_select_backward,
-)
+from flag_gems.experimental_ops.select_backward import \
+    select_backward as gems_select_backward
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+
 
 @pytest.mark.select_backward
 @pytest.mark.parametrize(
@@ -23,16 +23,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
         (3, 7, 11),
         (2, 1, 4),
         (64, 512),
-        (32, 256, 256)
+        (32, 256, 256),
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("dim", [0, 1, -1])
 def test_select_backward_accuracy(shape, dtype, dim):
     device = flag_gems.device
-    
+
     ndim = len(shape)
-        
+
     actual_dim = dim + ndim if dim < 0 else dim
 
     if actual_dim >= ndim:
@@ -44,14 +44,14 @@ def test_select_backward_accuracy(shape, dtype, dim):
     indices_to_test = [0, dim_size // 2]
     if dim_size > 1:
         indices_to_test.append(dim_size - 1)
-    
+
     for index in indices_to_test:
         if x.grad is not None:
             x.grad.zero_()
-            
+
         y = torch.select(x, actual_dim, index)
         grad = torch.randn_like(y)
-        
+
         y.backward(grad)
         ref_grad = x.grad.clone()
 
