@@ -117,6 +117,7 @@ from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
+from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
 from flag_gems.ops.logical_and import logical_and, logical_and_
@@ -393,6 +394,7 @@ __all__ = [
     "lerp_tensor_",
     "linspace",
     "log",
+    "log_normal_",
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
