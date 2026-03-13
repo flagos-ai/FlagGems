@@ -104,7 +104,7 @@ from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
-from flag_gems.ops.index_put import index_put, index_put_
+from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
@@ -243,6 +243,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_index_put_impl_",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
