@@ -61,9 +61,13 @@ jobs:
           COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
           echo "COV_ID=${COV_ID}" > $GITHUB_ENV
           DATE=${COV_ID:0:8}
-          rm -fr docs/coverage/${DATE}*
+
+          rm -fr docs/coverage/${COV_ID}*
           mkdir -p docs/coverage/${COV_ID}
           mv ${{ runner.temp }}/artifacts/htmlcov/* docs/coverage/${COV_ID}/
+
+          mkdir -p docs/test/unit/${COV_ID}
+          mv ${{ runner.temp }}/artifacts/${COV_ID}-summary.md docs/test/unit/${COV_ID}/ut-summary.md
 
       - id: commit-change
         run: |

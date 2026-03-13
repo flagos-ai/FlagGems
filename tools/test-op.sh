@@ -7,11 +7,13 @@ PR_ID=$1
 # Replace "__ALL__" with all tests
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   CHANGED_FILES=$(find tests -name "test*.py")
-  FAIL_EARLY=""
+  # for full-range tests, generate summary report
+  EXTRA_OPTS="--md-report --md-report-output=${PR_ID}-summary.md"
   echo "TIMESTAMP=${PR_ID}"
   SUFFIX=""
 else
-  FAIL_EARLY="-x"
+  # for per-PR test, fail early
+  EXTRA_OPTS="-x"
   echo "PR_ID=${PR_ID}"
   SUFFIX="-${GITHUB_SHA::7}"
 fi
@@ -64,22 +66,22 @@ coverage erase
 
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
-coverage run -m pytest -s ${FAIL_EARLY} ${TEST_CASES[@]}
+coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES[@]}
 
 # Run quick-cpu test if necessary
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run -m pytest -s ${FAIL_EARLY} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
+  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
 fi
 
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default
-# if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   coverage combine
   coverage html
   rm -fr coverage
   mkdir coverage
   mv htmlcov coverage/
   echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
-  ls coverage
-# fi
+  mv ${PR_ID}-summary.md coverage/
+fi
