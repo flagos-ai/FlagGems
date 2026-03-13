@@ -1,3 +1,4 @@
+from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
@@ -132,6 +133,7 @@ from flag_gems.ops.logical_or import logical_or, logical_or_
 from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.lt import lt, lt_scalar
+from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_select import masked_select
@@ -209,6 +211,7 @@ from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from flag_gems.ops.softmax import softmax, softmax_backward
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
@@ -252,6 +255,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_safe_softmax",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
@@ -416,6 +420,7 @@ __all__ = [
     "logspace",
     "lt",
     "lt_scalar",
+    "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -508,6 +513,8 @@ __all__ = [
     "sin",
     "sin_",
     "slice_scatter",
+    "soft_margin_loss",
+    "soft_margin_loss_out",
     "softmax",
     "softmax_backward",
     "softplus",

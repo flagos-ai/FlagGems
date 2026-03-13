@@ -31,6 +31,7 @@ _FULL_CONFIG = (
     ("_flash_attention_forward", flash_attention_forward),
     ("_log_softmax", log_softmax),
     ("_log_softmax_backward_data", log_softmax_backward),
+    ("_safe_softmax", _safe_softmax),
     ("_softmax", softmax),
     ("_softmax_backward_data", softmax_backward),
     (
@@ -218,6 +219,7 @@ _FULL_CONFIG = (
     ("logspace", logspace),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
+    ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
     ("masked_fill_.Scalar", masked_fill_),
@@ -318,6 +320,7 @@ _FULL_CONFIG = (
     ("sin", sin),
     ("sin_", sin_),
     ("slice_scatter", slice_scatter),
+    ("soft_margin_loss", soft_margin_loss),
     ("softplus", softplus),
     ("sort", sort),
     ("sort.stable", sort_stable),
