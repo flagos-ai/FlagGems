@@ -145,6 +145,7 @@ _FULL_CONFIG = (
     ("elu", elu),
     ("elu_", elu_),
     ("elu_backward", elu_backward),
+    ("einsum", einsum),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
     ("eq.Scalar", eq_scalar),

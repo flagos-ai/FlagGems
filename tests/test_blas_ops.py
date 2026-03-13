@@ -475,3 +475,195 @@ def test_accuracy_addr(M, N, dtype):
         res_out = torch.addr(input_tensor, vec1, vec2, alpha=alpha, beta=beta)
 
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+# Einsum test configurations
+EINSUM_SHAPES = {
+    "matmul": [(32, 64, 128), (16, 256, 32)],  # M, K, N
+    "bmm": [(4, 32, 64, 128), (8, 16, 256, 32)],  # B, M, K, N
+    "dot": [64, 256, 1024],  # vector sizes
+    "outer": [(32, 64), (128, 256)],  # M, N
+    "trace": [32, 64, 128],  # square matrix sizes
+    "transpose": [(32, 64), (64, 128, 256)],  # matrix and 3D shapes
+    "sum": [(32, 64, 128)],  # reduction shapes
+}
+
+if QUICK_MODE:
+    EINSUM_SHAPES = {
+        "matmul": [(16, 32, 64)],
+        "bmm": [(2, 16, 32, 64)],
+        "dot": [64],
+        "outer": [(16, 32)],
+        "trace": [32],
+        "transpose": [(16, 32)],
+        "sum": [(16, 32, 64)],
+    }
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("M, K, N", EINSUM_SHAPES["matmul"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_matmul(M, K, N, dtype):
+    """Test einsum matrix multiplication: ij,jk->ik"""
+    inp1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.einsum("ij,jk->ik", ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("ij,jk->ik", inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("B, M, K, N", EINSUM_SHAPES["bmm"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_bmm(B, M, K, N, dtype):
+    """Test einsum batch matrix multiplication: bij,bjk->bik"""
+    inp1 = torch.randn((B, M, K), dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn((B, K, N), dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.einsum("bij,bjk->bik", ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("bij,bjk->bik", inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("size", EINSUM_SHAPES["dot"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_dot(size, dtype):
+    """Test einsum dot product: i,i->"""
+    inp1 = torch.randn(size, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(size, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.einsum("i,i->", ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("i,i->", inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("M, N", EINSUM_SHAPES["outer"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_outer(M, N, dtype):
+    """Test einsum outer product: i,j->ij"""
+    inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(N, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.einsum("i,j->ij", ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("i,j->ij", inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_trace(size, dtype):
+    """Test einsum trace: ii->"""
+    inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.einsum("ii->", ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("ii->", inp)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_diagonal(size, dtype):
+    """Test einsum diagonal extraction: ii->i"""
+    inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.einsum("ii->i", ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("ii->i", inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("shape", EINSUM_SHAPES["transpose"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_transpose(shape, dtype):
+    """Test einsum transpose/permutation"""
+    if len(shape) == 2:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ij->ji", ref_inp)
+        with flag_gems.use_gems():
+            res_out = torch.einsum("ij->ji", inp)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ijk->kji", ref_inp)
+        with flag_gems.use_gems():
+            res_out = torch.einsum("ijk->kji", inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("shape", EINSUM_SHAPES["sum"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_sum_all(shape, dtype):
+    """Test einsum sum all elements: ijk->"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.einsum("ijk->", ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("ijk->", inp)
+
+    reduce_dim = shape[0] * shape[1] * shape[2]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("shape", EINSUM_SHAPES["sum"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_sum_dim(shape, dtype):
+    """Test einsum sum over specific dimension: ijk->j"""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.einsum("ijk->j", ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("ijk->j", inp)
+
+    reduce_dim = shape[0] * shape[2]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.einsum
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_einsum_ellipsis(dtype):
+    """Test einsum with ellipsis for batch operations: ...ij,...jk->...ik"""
+    shape1 = (2, 3, 32, 64)
+    shape2 = (2, 3, 64, 128)
+    inp1 = torch.randn(shape1, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape2, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.einsum("...ij,...jk->...ik", ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.einsum("...ij,...jk->...ik", inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=64)

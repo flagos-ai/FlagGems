@@ -350,3 +350,81 @@ def test_addr_benchmark():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
+
+
+class EinsumMatmulBenchmark(BlasBenchmark):
+    """
+    benchmark for einsum (matrix multiplication pattern)
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for b, m, n, k in self.shapes:
+            inp1 = torch.randn([m, k], dtype=cur_dtype, device=self.device)
+            inp2 = torch.randn([k, n], dtype=cur_dtype, device=self.device)
+            yield inp1, inp2
+
+    def get_tflops(self, op, *args, **kwargs):
+        # For einsum matmul: 2*M*N*K flops
+        A, B = args[0], args[1]
+        total_flops = A.shape[0] * B.shape[1] * A.shape[1] * 2
+        return total_flops
+
+
+def einsum_matmul_op(A, B):
+    """Wrapper for einsum matrix multiplication"""
+    return torch.einsum("ij,jk->ik", A, B)
+
+
+@pytest.mark.einsum
+def test_einsum_matmul_benchmark():
+    bench = EinsumMatmulBenchmark(
+        input_fn=None,
+        op_name="einsum_matmul",
+        torch_op=einsum_matmul_op,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class EinsumBmmBenchmark(BlasBenchmark):
+    """
+    benchmark for einsum (batch matrix multiplication pattern)
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for b, m, n, k in self.shapes:
+            inp1 = torch.randn([b, m, k], dtype=cur_dtype, device=self.device)
+            inp2 = torch.randn([b, k, n], dtype=cur_dtype, device=self.device)
+            yield inp1, inp2
+
+    def get_tflops(self, op, *args, **kwargs):
+        # For einsum bmm: 2*B*M*N*K flops
+        A, B = args[0], args[1]
+        total_flops = A.shape[0] * A.shape[1] * B.shape[2] * A.shape[2] * 2
+        return total_flops
+
+
+def einsum_bmm_op(A, B):
+    """Wrapper for einsum batch matrix multiplication"""
+    return torch.einsum("bij,bjk->bik", A, B)
+
+
+@pytest.mark.einsum
+def test_einsum_bmm_benchmark():
+    bench = EinsumBmmBenchmark(
+        input_fn=None,
+        op_name="einsum_bmm",
+        torch_op=einsum_bmm_op,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
