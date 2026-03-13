@@ -62,6 +62,7 @@ from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.count_nonzero import count_nonzero
+from flag_gems.ops.ctc_loss import _ctc_loss_backward_impl, _ctc_loss_impl, ctc_loss
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
@@ -243,6 +244,8 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "_ctc_loss_backward_impl",
+    "_ctc_loss_impl",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
@@ -315,6 +318,7 @@ __all__ = [
     "cos",
     "cos_",
     "count_nonzero",
+    "ctc_loss",
     "cummax",
     "cummin",
     "cumsum",
