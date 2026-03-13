@@ -586,6 +586,87 @@ def invoke_fused_moe_triton_kernel(
     )
 
 
+def dispatch_fused_moe_kernel(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    A_scale: Optional[torch.Tensor],
+    B_scale: Optional[torch.Tensor],
+    B_zp: Optional[torch.Tensor],
+    topk_weights: Optional[torch.Tensor],
+    sorted_token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    mul_routed_weight: bool,
+    top_k: int,
+    config: dict[str, Any],
+    compute_type: tl.dtype,
+    use_fp8_w8a8: bool,
+    use_int8_w8a8: bool,
+    use_int8_w8a16: bool,
+    use_int4_w4a16: bool,
+    per_channel_quant: bool,
+    block_shape: Optional[list[int]] = None,
+    B_bias: Optional[torch.Tensor] = None,
+) -> None:
+    """
+    Dispatch layer for the fused MoE kernel.
+
+    Routes to the appropriate kernel implementation based on quantization flags.
+    Currently only the generic Triton kernel path is implemented; WNA16 and
+    other specialised paths can be added here in the future.
+
+    Args:
+        A: Input activations [M, K] (possibly quantized)
+        B: Expert weight matrices [E, N, K] (possibly quantized)
+        C: Output buffer [M, topk, N]
+        A_scale: Activation quantization scale (or None)
+        B_scale: Weight quantization scale (or None)
+        B_zp: Weight zero-point (or None, reserved for WNA16)
+        topk_weights: Router weights [M, topk] (or None)
+        sorted_token_ids: From moe_align_block_size
+        expert_ids: From moe_align_block_size
+        num_tokens_post_padded: From moe_align_block_size
+        mul_routed_weight: Whether to multiply router weights in-kernel
+        top_k: Number of top experts per token
+        config: Triton config dict
+        compute_type: Triton dtype for compute
+        use_fp8_w8a8: FP8 weight+activation quantization
+        use_int8_w8a8: INT8 weight+activation quantization
+        use_int8_w8a16: INT8 weight, FP16 activation (reserved)
+        use_int4_w4a16: INT4 weight, FP16 activation (reserved)
+        per_channel_quant: Per-channel quantization mode
+        block_shape: [block_n, block_k] for block-wise quantization
+        B_bias: Bias tensor (or None, reserved)
+    """
+    if False:
+        # TODO: Other precision-specific implementations
+        pass
+    else:
+        invoke_fused_moe_triton_kernel(
+            A,
+            B,
+            C,
+            A_scale,
+            B_scale,
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            mul_routed_weight,
+            top_k,
+            config,
+            compute_type,
+            use_fp8_w8a8,
+            use_int8_w8a8,
+            use_int8_w8a16,
+            use_int4_w4a16,
+            per_channel_quant,
+            block_shape,
+            B_bias,
+        )
+
+
 def _apply_silu_and_mul(out: torch.Tensor, inp: torch.Tensor) -> None:
     """Apply SiLU-and-Mul activation: out = SiLU(inp[:, :N]) * inp[:, N:]."""
     N = inp.shape[-1] // 2
@@ -770,12 +851,13 @@ def fused_experts_impl(
         )
 
         # Step 3: GEMM1 — hidden_states @ W1 → intermediate_cache1
-        invoke_fused_moe_triton_kernel(
+        dispatch_fused_moe_kernel(
             A=qcurr_hidden_states,
             B=w1,
             C=intermediate_cache1,
             A_scale=a1q_scale,
             B_scale=w1_scale,
+            B_zp=None,
             topk_weights=curr_topk_weights if apply_router_weight_on_input else None,
             sorted_token_ids=sorted_token_ids,
             expert_ids=expert_ids,
@@ -786,8 +868,11 @@ def fused_experts_impl(
             compute_type=compute_type,
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
+            use_int8_w8a16=False,
+            use_int4_w4a16=False,
             per_channel_quant=per_channel_quant,
             block_shape=block_shape,
+            B_bias=w1_bias,
         )
 
         # Step 4: Activation — SiLU(gate) * up
@@ -804,12 +889,13 @@ def fused_experts_impl(
 
         # Step 6: GEMM2 — intermediate @ W2 → intermediate_cache3
         #         Multiply router weights here (unless applied on input)
-        invoke_fused_moe_triton_kernel(
+        dispatch_fused_moe_kernel(
             A=qintermediate_cache2,
             B=w2,
             C=intermediate_cache3,
             A_scale=a2q_scale,
             B_scale=w2_scale,
+            B_zp=None,
             topk_weights=curr_topk_weights if not apply_router_weight_on_input else None,
             sorted_token_ids=sorted_token_ids,
             expert_ids=expert_ids,
@@ -820,8 +906,11 @@ def fused_experts_impl(
             compute_type=compute_type,
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
+            use_int8_w8a16=False,
+            use_int4_w4a16=False,
             per_channel_quant=per_channel_quant,
             block_shape=block_shape,
+            B_bias=w2_bias,
         )
 
         # Step 7: Reduce — sum over topK experts
@@ -831,3 +920,100 @@ def fused_experts_impl(
         )
 
     return out_hidden_states
+
+
+def inplace_fused_experts(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    activation: str = "silu",
+    apply_router_weight_on_input: bool = False,
+    use_fp8_w8a8: bool = False,
+    use_int8_w8a8: bool = False,
+    per_channel_quant: bool = False,
+    global_num_experts: int = -1,
+    w1_scale: Optional[torch.Tensor] = None,
+    w2_scale: Optional[torch.Tensor] = None,
+    a1_scale: Optional[torch.Tensor] = None,
+    a2_scale: Optional[torch.Tensor] = None,
+    block_shape: Optional[list[int]] = None,
+    w1_bias: Optional[torch.Tensor] = None,
+    w2_bias: Optional[torch.Tensor] = None,
+) -> None:
+    """
+    In-place fused MoE: writes output directly into ``hidden_states``.
+
+    Same semantics as ``fused_experts_impl(..., inplace=True)``.
+    Returns None (the result is stored in ``hidden_states``).
+    """
+    fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        inplace=True,
+        activation=activation,
+        apply_router_weight_on_input=apply_router_weight_on_input,
+        use_fp8_w8a8=use_fp8_w8a8,
+        use_int8_w8a8=use_int8_w8a8,
+        per_channel_quant=per_channel_quant,
+        global_num_experts=global_num_experts,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        a1_scale=a1_scale,
+        a2_scale=a2_scale,
+        block_shape=block_shape,
+        w1_bias=w1_bias,
+        w2_bias=w2_bias,
+    )
+
+
+def outplace_fused_experts(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    activation: str = "silu",
+    apply_router_weight_on_input: bool = False,
+    use_fp8_w8a8: bool = False,
+    use_int8_w8a8: bool = False,
+    per_channel_quant: bool = False,
+    global_num_experts: int = -1,
+    w1_scale: Optional[torch.Tensor] = None,
+    w2_scale: Optional[torch.Tensor] = None,
+    a1_scale: Optional[torch.Tensor] = None,
+    a2_scale: Optional[torch.Tensor] = None,
+    block_shape: Optional[list[int]] = None,
+    w1_bias: Optional[torch.Tensor] = None,
+    w2_bias: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """
+    Out-of-place fused MoE: allocates and returns a new output tensor.
+
+    Same semantics as ``fused_experts_impl(..., inplace=False)``.
+    """
+    return fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        inplace=False,
+        activation=activation,
+        apply_router_weight_on_input=apply_router_weight_on_input,
+        use_fp8_w8a8=use_fp8_w8a8,
+        use_int8_w8a8=use_int8_w8a8,
+        per_channel_quant=per_channel_quant,
+        global_num_experts=global_num_experts,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        a1_scale=a1_scale,
+        a2_scale=a2_scale,
+        block_shape=block_shape,
+        w1_bias=w1_bias,
+        w2_bias=w2_bias,
+    )
