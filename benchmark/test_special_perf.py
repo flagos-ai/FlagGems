@@ -546,6 +546,40 @@ def test_perf_upsample_nearest2d():
     bench.run()
 
 
+@pytest.mark.upsample_nearest3d
+def test_perf_upsample_nearest3d():
+    def upsample_nearest3d_input_fn(shape, dtype, device):
+        batch, channel, height, width = shape
+        depth = 4
+        width = width // 4
+        new_height = height // depth
+        real_shape = (batch, channel, depth, new_height, width)
+
+        input = torch.randn(size=real_shape, device=device, dtype=dtype)
+        scale_factors = (2.0, 2.0, 2.0)
+        output_size = (
+            int(depth * scale_factors[0]),
+            int(new_height * scale_factors[1]),
+            int(width * scale_factors[2]),
+        )
+
+        yield {
+            "input": input,
+            "output_size": output_size,
+            "scales_d": None,
+            "scales_h": None,
+            "scales_w": None,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_nearest3d_input_fn,
+        op_name="upsample_nearest3d",
+        torch_op=torch._C._nn.upsample_nearest3d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.diag
 def test_perf_diag():
     def diag_input_fn(shape, dtype, device):
