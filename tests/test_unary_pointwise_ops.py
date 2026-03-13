@@ -1325,7 +1325,7 @@ def test_accuracy_log(shape, dtype):
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + COMPLEX_DTYPES)
 def test_accuracy_to_dtype(shape, dtype):
     x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_x = to_reference(x)
@@ -1337,7 +1337,7 @@ def test_accuracy_to_dtype(shape, dtype):
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("target_dtype", ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize("target_dtype", ALL_FLOAT_DTYPES + COMPLEX_DTYPES)
 def test_accuracy_to_copy_dtype_cast(shape, target_dtype):
     src_dtype = torch.float32 if target_dtype != torch.float32 else torch.float16
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
