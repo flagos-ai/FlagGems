@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Optional, Tuple
 
 import torch
@@ -108,3 +109,143 @@ def upsample_nearest2d(
             reciprocal_scale_w,
         )
     return output
+
+
+@triton.autotune(
+    configs=runtime.get_tuned_config("upsample_nearest2d_backward"),
+    key=["N", "C", "IH", "IW"],
+)
+@triton.jit
+def upsample_nearest2d_backward_kernel(
+    grad_output_ptr,
+    grad_input_ptr,
+    N,
+    C,
+    IH,
+    IW,
+    OH,
+    OW,
+    BLOCK_SIZE: tl.constexpr,
+    MAX_REGION_H: tl.constexpr,
+    MAX_REGION_W: tl.constexpr,
+    SAME_H: tl.constexpr,
+    SAME_W: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    nc_stride = tl.num_programs(axis=1)
+    NC = N * C
+    nc_iter = tl.program_id(axis=1)
+
+    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    iw = idx % IW
+    ih = idx // IW
+
+    mask = ih < IH
+
+    if SAME_H:
+        oh_start = ih
+        oh_end = ih + 1
+    else:
+        # Integer ceiling division: ceil(ih * OH / IH) avoids float rounding errors.
+        oh_start = (ih * OH + IH - 1) // IH
+        oh_end = ((ih + 1) * OH + IH - 1) // IH
+        oh_end = tl.minimum(oh_end, OH)
+
+    if SAME_W:
+        ow_start = iw
+        ow_end = iw + 1
+    else:
+        # Integer ceiling division: ceil(iw * OW / IW) avoids float rounding errors.
+        ow_start = (iw * OW + IW - 1) // IW
+        ow_end = ((iw + 1) * OW + IW - 1) // IW
+        ow_end = tl.minimum(ow_end, OW)
+
+    gi_stride = nc_stride * IH * IW
+    go_stride = nc_stride * OH * OW
+    offset_gi = (nc_iter * IH + ih) * IW + iw
+    base_go = nc_iter * OH * OW
+
+    while nc_iter < NC:
+        acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+        for dh in range(MAX_REGION_H):
+            if SAME_H:
+                oh = oh_start
+            else:
+                oh = oh_start + dh
+            for dw in range(MAX_REGION_W):
+                if SAME_W:
+                    ow = ow_start
+                else:
+                    ow = ow_start + dw
+                if SAME_H and SAME_W:
+                    load_mask = mask
+                elif SAME_H:
+                    load_mask = mask & (ow < ow_end)
+                elif SAME_W:
+                    load_mask = mask & (oh < oh_end)
+                else:
+                    load_mask = mask & (oh < oh_end) & (ow < ow_end)
+                go_offset = base_go + oh * OW + ow
+                val = tl.load(
+                    grad_output_ptr + go_offset,
+                    mask=load_mask,
+                    other=0.0,
+                )
+                acc += val.to(tl.float32)
+        tl.store(grad_input_ptr + offset_gi, acc, mask=mask)
+        offset_gi += gi_stride
+        base_go += go_stride
+        nc_iter += nc_stride
+
+
+def upsample_nearest2d_backward(
+    grad_output: torch.Tensor,
+    output_size: Tuple[int, int],
+    input_size: Tuple[int, int, int, int],
+    scales_h: Optional[float] = None,
+    scales_w: Optional[float] = None,
+) -> torch.Tensor:
+    logger.debug("GEMS UPSAMPLE NEAREST2D BACKWARD")
+    assert grad_output.device.type == device
+    N, C, IH, IW = input_size
+    OH, OW = output_size
+
+    if scales_h is not None:
+        scale_h_val = scales_h
+    else:
+        scale_h_val = OH / IH
+    if scales_w is not None:
+        scale_w_val = scales_w
+    else:
+        scale_w_val = OW / IW
+
+    SAME_H = OH == IH
+    SAME_W = OW == IW
+    MAX_REGION_H = 1 if SAME_H else math.ceil(scale_h_val) + 1
+    MAX_REGION_W = 1 if SAME_W else math.ceil(scale_w_val) + 1
+
+    grad_input = torch.empty(
+        (N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype
+    )
+    total_threads = IH * IW
+    grid = lambda META: (
+        triton.cdiv(total_threads, META["BLOCK_SIZE"]),
+        triton.cdiv(N * C, 4),
+    )
+
+    with torch_device_fn.device(grad_output.device):
+        upsample_nearest2d_backward_kernel[grid](
+            grad_output,
+            grad_input,
+            N,
+            C,
+            IH,
+            IW,
+            OH,
+            OW,
+            MAX_REGION_H=MAX_REGION_H,
+            MAX_REGION_W=MAX_REGION_W,
+            SAME_H=SAME_H,
+            SAME_W=SAME_W,
+        )
+    return grad_input

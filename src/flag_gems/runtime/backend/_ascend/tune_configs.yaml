@@ -379,6 +379,13 @@ upsample_nearest2d:
       BLOCK_SIZE: block_n
   block_n: [1024, 2048]
 
+upsample_nearest2d_backward:
+- gen : true
+  param_map:
+    META:
+      BLOCK_SIZE: block_n
+  block_n: [1024, 2048]
+
 upsample_bicubic2d_aa:
 - gen : true
   param_map:
