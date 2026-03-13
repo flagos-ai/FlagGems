@@ -639,9 +639,36 @@ def dispatch_fused_moe_kernel(
         block_shape: [block_n, block_k] for block-wise quantization
         B_bias: Bias tensor (or None, reserved)
     """
-    if False:
-        # TODO: Other precision-specific implementations
-        pass
+    if use_int8_w8a16 or use_int4_w4a16:
+        # Weight-only quantization: dequantize B to activation dtype so the
+        # Triton kernel sees homogeneous FP types (no quantized dot needed).
+        # B: [E, N, K] int8,  B_scale: [E, N] (per-channel)
+        #   → B_deq[e, n, k] = B[e, n, k] * B_scale[e, n]
+        # Dequantize directly to activation dtype to avoid a large fp32 copy.
+        B = B.to(A.dtype) * B_scale.unsqueeze(-1).to(A.dtype)
+        # After dequantization, call the kernel without quantization flags
+        invoke_fused_moe_triton_kernel(
+            A,
+            B,
+            C,
+            None,   # A_scale
+            None,   # B_scale
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            mul_routed_weight,
+            top_k,
+            config,
+            compute_type,
+            use_fp8_w8a8=False,
+            use_int8_w8a8=False,
+            use_int8_w8a16=False,
+            use_int4_w4a16=False,
+            per_channel_quant=False,
+            block_shape=None,
+            B_bias=B_bias,
+        )
     else:
         invoke_fused_moe_triton_kernel(
             A,
@@ -685,6 +712,8 @@ def fused_experts_impl(
     apply_router_weight_on_input: bool = False,
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
+    use_int8_w8a16: bool = False,
+    use_int4_w4a16: bool = False,
     per_channel_quant: bool = False,
     global_num_experts: int = -1,
     w1_scale: Optional[torch.Tensor] = None,
@@ -708,6 +737,8 @@ def fused_experts_impl(
       - bf16 / fp16 (default, no quantization)
       - FP8 W8A8 (use_fp8_w8a8=True): weights and activations in FP8 E4M3
       - INT8 W8A8 (use_int8_w8a8=True): weights and activations in INT8
+      - INT8 W8A16 (use_int8_w8a16=True): INT8 weights, FP16 activations
+      - INT4 W4A16 (use_int4_w4a16=True): INT4 weights, FP16 activations
       - Per-tensor, per-token (per_channel_quant), or block-wise (block_shape)
         quantization scales
       - apply_router_weight_on_input: multiply router weight on GEMM1 input
@@ -727,6 +758,8 @@ def fused_experts_impl(
             or GEMM2 (False, default)
         use_fp8_w8a8: Enable FP8 weight+activation quantization
         use_int8_w8a8: Enable INT8 weight+activation quantization
+        use_int8_w8a16: Enable INT8 weight, FP16 activation quantization
+        use_int4_w4a16: Enable INT4 weight, FP16 activation quantization
         per_channel_quant: Use per-token activation quantization (paired with
             per-channel weight quantization)
         global_num_experts: Total number of experts (default: inferred from w1)
@@ -868,8 +901,8 @@ def fused_experts_impl(
             compute_type=compute_type,
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
-            use_int8_w8a16=False,
-            use_int4_w4a16=False,
+            use_int8_w8a16=use_int8_w8a16,
+            use_int4_w4a16=use_int4_w4a16,
             per_channel_quant=per_channel_quant,
             block_shape=block_shape,
             B_bias=w1_bias,
@@ -906,8 +939,8 @@ def fused_experts_impl(
             compute_type=compute_type,
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
-            use_int8_w8a16=False,
-            use_int4_w4a16=False,
+            use_int8_w8a16=use_int8_w8a16,
+            use_int4_w4a16=use_int4_w4a16,
             per_channel_quant=per_channel_quant,
             block_shape=block_shape,
             B_bias=w2_bias,
@@ -932,6 +965,8 @@ def inplace_fused_experts(
     apply_router_weight_on_input: bool = False,
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
+    use_int8_w8a16: bool = False,
+    use_int4_w4a16: bool = False,
     per_channel_quant: bool = False,
     global_num_experts: int = -1,
     w1_scale: Optional[torch.Tensor] = None,
@@ -959,6 +994,8 @@ def inplace_fused_experts(
         apply_router_weight_on_input=apply_router_weight_on_input,
         use_fp8_w8a8=use_fp8_w8a8,
         use_int8_w8a8=use_int8_w8a8,
+        use_int8_w8a16=use_int8_w8a16,
+        use_int4_w4a16=use_int4_w4a16,
         per_channel_quant=per_channel_quant,
         global_num_experts=global_num_experts,
         w1_scale=w1_scale,
@@ -981,6 +1018,8 @@ def outplace_fused_experts(
     apply_router_weight_on_input: bool = False,
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
+    use_int8_w8a16: bool = False,
+    use_int4_w4a16: bool = False,
     per_channel_quant: bool = False,
     global_num_experts: int = -1,
     w1_scale: Optional[torch.Tensor] = None,
@@ -1007,6 +1046,8 @@ def outplace_fused_experts(
         apply_router_weight_on_input=apply_router_weight_on_input,
         use_fp8_w8a8=use_fp8_w8a8,
         use_int8_w8a8=use_int8_w8a8,
+        use_int8_w8a16=use_int8_w8a16,
+        use_int4_w4a16=use_int4_w4a16,
         per_channel_quant=per_channel_quant,
         global_num_experts=global_num_experts,
         w1_scale=w1_scale,

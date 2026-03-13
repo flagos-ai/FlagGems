@@ -613,6 +613,202 @@ def test_accuracy_fused_moe_int8(config):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
+def _fake_quantize_int8_weight_only(tensor: torch.Tensor):
+    """Simulate INT8 weight-only quantization round-trip (per-channel)."""
+    eps = 1e-10
+    # Per-channel (per output-dim): scale shape [N, 1]
+    amax = tensor.abs().amax(dim=-1, keepdim=True).clamp(min=eps).float()
+    scale = amax / 127.0
+    q = (tensor.float() / scale).round().clamp(-128, 127).to(torch.int8)
+    return q, scale.squeeze(-1)  # q: [N, K], scale: [N]
+
+
+def _fake_quantize_int4_weight_only(tensor: torch.Tensor):
+    """Simulate INT4 weight-only quantization round-trip (per-channel).
+
+    INT4 values are stored in INT8 containers (range [-8, 7]).
+    """
+    eps = 1e-10
+    int4_max = 7
+    int4_min = -8
+    amax = tensor.abs().amax(dim=-1, keepdim=True).clamp(min=eps).float()
+    scale = amax / int4_max
+    q = (tensor.float() / scale).round().clamp(int4_min, int4_max).to(torch.int8)
+    return q, scale.squeeze(-1)
+
+
+def torch_fused_moe_weight_only_reference(
+    hidden_states: torch.Tensor,
+    w1_int: torch.Tensor,
+    w2_int: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+) -> torch.Tensor:
+    """Reference fused MoE for weight-only quantization.
+
+    Weights are dequantized (w_int * scale) then used in FP computation.
+    Activations remain in original precision (no activation quantization).
+    """
+    M, K = hidden_states.shape
+    topk = topk_ids.shape[1]
+    E = w1_int.shape[0]
+    output = torch.zeros(M, K, device=hidden_states.device, dtype=hidden_states.dtype)
+
+    for m in range(M):
+        for j in range(topk):
+            e = topk_ids[m, j].item()
+            weight = topk_weights[m, j]
+            # Dequantize weights
+            w1_deq = w1_int[e].float() * w1_scale[e].unsqueeze(-1).float()
+            w2_deq = w2_int[e].float() * w2_scale[e].unsqueeze(-1).float()
+            # GEMM1
+            z = hidden_states[m].float() @ w1_deq.T
+            # SiLU-and-Mul
+            D = z.shape[-1] // 2
+            gate, up = z[:D], z[D:]
+            s = (gate * torch.sigmoid(gate)) * up
+            # GEMM2
+            r = s @ w2_deq.T
+            output[m] += (weight.float() * r).to(output.dtype)
+
+    return output
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+def test_accuracy_fused_moe_int8_w8a16(config):
+    """Test FlagGems fused_moe with INT8 W8A16 (weight-only) quantization."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    dtype = torch.bfloat16
+
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+
+    # Create INT8 weights per-channel
+    w1_fp32 = torch.randn(
+        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=torch.float32
+    ) * (1.0 / hidden_size**0.5)
+    w2_fp32 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
+    ) * (1.0 / intermediate_size**0.5)
+
+    eps = 1e-10
+    # Per-channel quantization
+    w1_amax = w1_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w1_scale_full = w1_amax / 127.0
+    w1_int8 = (w1_fp32 / w1_scale_full).round().clamp(-128, 127).to(torch.int8)
+    w1_scale = w1_scale_full.squeeze(-1)  # [E, 2D]
+
+    w2_amax = w2_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w2_scale_full = w2_amax / 127.0
+    w2_int8 = (w2_fp32 / w2_scale_full).round().clamp(-128, 127).to(torch.int8)
+    w2_scale = w2_scale_full.squeeze(-1)  # [E, K]
+
+    # Generate routing
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    # FlagGems INT8 W8A16 result
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1_int8,
+        w2_int8,
+        topk_weights,
+        topk_ids,
+        use_int8_w8a16=True,
+        per_channel_quant=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+    )
+
+    # Reference
+    ref = torch_fused_moe_weight_only_reference(
+        hidden_states, w1_int8, w2_int8, w1_scale, w2_scale,
+        topk_weights, topk_ids,
+    )
+
+    torch.cuda.synchronize()
+
+    # Weight-only quantization has less error than W8A8 since activations
+    # are full precision, but still has weight quantization rounding error.
+    rtol = 2e-1
+    atol = max(5e-2, ref.abs().max().item() * 2e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+def test_accuracy_fused_moe_int4_w4a16(config):
+    """Test FlagGems fused_moe with INT4 W4A16 (weight-only) quantization."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    dtype = torch.bfloat16
+
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+
+    # Create INT4 weights stored in INT8 containers, per-channel
+    w1_fp32 = torch.randn(
+        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=torch.float32
+    ) * (1.0 / hidden_size**0.5)
+    w2_fp32 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
+    ) * (1.0 / intermediate_size**0.5)
+
+    eps = 1e-10
+    int4_max = 7
+    int4_min = -8
+
+    w1_amax = w1_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w1_scale_full = w1_amax / int4_max
+    w1_int4 = (w1_fp32 / w1_scale_full).round().clamp(int4_min, int4_max).to(torch.int8)
+    w1_scale = w1_scale_full.squeeze(-1)
+
+    w2_amax = w2_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w2_scale_full = w2_amax / int4_max
+    w2_int4 = (w2_fp32 / w2_scale_full).round().clamp(int4_min, int4_max).to(torch.int8)
+    w2_scale = w2_scale_full.squeeze(-1)
+
+    # Generate routing
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    # FlagGems INT4 W4A16 result
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1_int4,
+        w2_int4,
+        topk_weights,
+        topk_ids,
+        use_int4_w4a16=True,
+        per_channel_quant=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+    )
+
+    # Reference
+    ref = torch_fused_moe_weight_only_reference(
+        hidden_states, w1_int4, w2_int4, w1_scale, w2_scale,
+        topk_weights, topk_ids,
+    )
+
+    torch.cuda.synchronize()
+
+    # INT4 has coarser quantization → wider tolerance
+    rtol = 3e-1
+    atol = max(1e-1, ref.abs().max().item() * 5e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
 @pytest.mark.fused_moe
 @pytest.mark.parametrize(
     "config",
