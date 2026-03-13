@@ -132,6 +132,11 @@ def cumsum_input_fn(shape, cur_dtype, device):
     yield inp, 1
 
 
+def logsumexp_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, 1
+
+
 def mse_loss_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     target = generate_tensor_input(shape, cur_dtype, device)
@@ -151,6 +156,13 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             unary_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.log_softmax,
+        ),
+        pytest.param(
+            "logsumexp",
+            torch.logsumexp,
+            logsumexp_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.logsumexp,
         ),
         pytest.param(
             "nonzero",
