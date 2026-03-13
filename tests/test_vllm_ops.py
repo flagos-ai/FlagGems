@@ -469,7 +469,11 @@ def test_accuracy_fused_moe_fp8(config):
 
     # Create FP8 weights: quantize and store scale
     w1_fp32 = torch.randn(
-        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=torch.float32
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
     ) * (1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
@@ -557,7 +561,11 @@ def test_accuracy_fused_moe_int8(config):
 
     # Create INT8 weights: quantize per-channel (per output column of each expert)
     w1_fp32 = torch.randn(
-        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=torch.float32
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
     ) * (1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
@@ -653,7 +661,6 @@ def torch_fused_moe_weight_only_reference(
     """
     M, K = hidden_states.shape
     topk = topk_ids.shape[1]
-    E = w1_int.shape[0]
     output = torch.zeros(M, K, device=hidden_states.device, dtype=hidden_states.dtype)
 
     for m in range(M):
@@ -690,7 +697,11 @@ def test_accuracy_fused_moe_int8_w8a16(config):
 
     # Create INT8 weights per-channel
     w1_fp32 = torch.randn(
-        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=torch.float32
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
     ) * (1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
@@ -729,8 +740,13 @@ def test_accuracy_fused_moe_int8_w8a16(config):
 
     # Reference
     ref = torch_fused_moe_weight_only_reference(
-        hidden_states, w1_int8, w2_int8, w1_scale, w2_scale,
-        topk_weights, topk_ids,
+        hidden_states,
+        w1_int8,
+        w2_int8,
+        w1_scale,
+        w2_scale,
+        topk_weights,
+        topk_ids,
     )
 
     torch.cuda.synchronize()
@@ -756,7 +772,11 @@ def test_accuracy_fused_moe_int4_w4a16(config):
 
     # Create INT4 weights stored in INT8 containers, per-channel
     w1_fp32 = torch.randn(
-        num_experts, intermediate_size * 2, hidden_size, device=device, dtype=torch.float32
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
     ) * (1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
@@ -797,8 +817,13 @@ def test_accuracy_fused_moe_int4_w4a16(config):
 
     # Reference
     ref = torch_fused_moe_weight_only_reference(
-        hidden_states, w1_int4, w2_int4, w1_scale, w2_scale,
-        topk_weights, topk_ids,
+        hidden_states,
+        w1_int4,
+        w2_int4,
+        w1_scale,
+        w2_scale,
+        topk_weights,
+        topk_ids,
     )
 
     torch.cuda.synchronize()
@@ -919,9 +944,7 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
 
     # Due to SiLU nonlinearity, these will differ, but both should be
     # close to the reference with weight on the respective path.
-    ref = torch_fused_moe_reference(
-        hidden_states, w1, w2, topk_weights, topk_ids
-    )
+    ref = torch_fused_moe_reference(hidden_states, w1, w2, topk_weights, topk_ids)
 
     # The default (weight on output) should match our standard reference
     rtol = 1e-1
@@ -929,7 +952,9 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
     torch.testing.assert_close(result_default, ref, rtol=rtol, atol=atol)
 
     # The apply_on_input result will differ but should be finite and nonzero
-    assert torch.isfinite(result_on_input).all(), "result_on_input has non-finite values"
+    assert torch.isfinite(
+        result_on_input
+    ).all(), "result_on_input has non-finite values"
     assert result_on_input.abs().sum() > 0, "result_on_input is all zeros"
 
 

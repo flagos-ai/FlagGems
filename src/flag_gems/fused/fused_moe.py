@@ -1,5 +1,4 @@
 import logging
-from math import ceil
 from typing import Any, Optional
 
 import torch
@@ -52,7 +51,9 @@ def _fp8_quantize(
         A_flat = A.reshape(-1, A.size(-1))
         M, K = A_flat.shape
         A_groups = A_flat.reshape(M * (K // block_k), block_k)
-        amax = A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
+        amax = (
+            A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
+        )
         scale = amax / fp8_max
         A_q = (A_groups.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
         A_q = A_q.reshape(orig_shape)
@@ -65,8 +66,9 @@ def _fp8_quantize(
         amax = A_flat.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
         scale = amax / fp8_max
         # Apply minimum scaling factor for numerical stability
-        min_scale = torch.tensor(1.0 / (fp8_max * 512.0), dtype=torch.float32,
-                                 device=A.device)
+        min_scale = torch.tensor(
+            1.0 / (fp8_max * 512.0), dtype=torch.float32, device=A.device
+        )
         scale = scale.clamp(min=min_scale)
         A_q = (A_flat.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
         A_q = A_q.reshape(A.shape)
@@ -76,7 +78,9 @@ def _fp8_quantize(
     else:
         # Per-tensor quantization (static if A_scale provided, dynamic otherwise)
         if A_scale is not None:
-            scale = A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
+            scale = (
+                A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
+            )
             A_q = (A.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
             return A_q, A_scale
         else:
@@ -116,9 +120,13 @@ def _int8_quantize(
         A_flat = A.reshape(-1, A.size(-1))
         M, K = A_flat.shape
         A_groups = A_flat.reshape(M * (K // block_k), block_k)
-        amax = A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
+        amax = (
+            A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
+        )
         scale = amax / int8_max
-        A_q = (A_groups.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
+        A_q = (
+            (A_groups.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
+        )
         A_q = A_q.reshape(orig_shape)
         scale = scale.reshape(M, K // block_k)
         return A_q, scale
@@ -651,8 +659,8 @@ def dispatch_fused_moe_kernel(
             A,
             B,
             C,
-            None,   # A_scale
-            None,   # B_scale
+            None,  # A_scale
+            None,  # B_scale
             topk_weights,
             sorted_token_ids,
             expert_ids,
@@ -786,9 +794,9 @@ def fused_experts_impl(
 
     assert hidden_states.is_contiguous(), "hidden_states must be contiguous"
     assert hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16]
-    assert hidden_states.size(1) == w1.size(2), (
-        f"Hidden size mismatch {hidden_states.size(1)} != {w1.size(2)}"
-    )
+    assert hidden_states.size(1) == w1.size(
+        2
+    ), f"Hidden size mismatch {hidden_states.size(1)} != {w1.size(2)}"
 
     num_tokens_total, K = hidden_states.shape
     E, N, _ = w1.shape
@@ -929,7 +937,9 @@ def fused_experts_impl(
             A_scale=a2q_scale,
             B_scale=w2_scale,
             B_zp=None,
-            topk_weights=curr_topk_weights if not apply_router_weight_on_input else None,
+            topk_weights=curr_topk_weights
+            if not apply_router_weight_on_input
+            else None,
             sorted_token_ids=sorted_token_ids,
             expert_ids=expert_ids,
             num_tokens_post_padded=num_tokens_post_padded,

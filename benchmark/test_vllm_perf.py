@@ -404,35 +404,59 @@ class FusedMoEFP8Benchmark(Benchmark):
 
         # Generate FP8 weights one expert at a time to avoid OOM on large E.
         w1_fp8 = torch.empty(
-            num_experts, intermediate_size * 2, hidden_size,
-            device=device, dtype=fp8_dtype,
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=fp8_dtype,
         )
         w2_fp8 = torch.empty(
-            num_experts, hidden_size, intermediate_size,
-            device=device, dtype=fp8_dtype,
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            device=device,
+            dtype=fp8_dtype,
         )
         for e in range(num_experts):
             w1_fp8[e] = to_fp8(
-                torch.randn(intermediate_size * 2, hidden_size,
-                             device=device, dtype=torch.float16)
+                torch.randn(
+                    intermediate_size * 2,
+                    hidden_size,
+                    device=device,
+                    dtype=torch.float16,
+                )
             )
             w2_fp8[e] = to_fp8(
-                torch.randn(hidden_size, intermediate_size,
-                             device=device, dtype=torch.float16)
+                torch.randn(
+                    hidden_size, intermediate_size, device=device, dtype=torch.float16
+                )
             )
 
         # Synthetic per-expert scales (representative of real quantization)
-        w1_scale = torch.rand(num_experts, device=device, dtype=torch.float32) * 0.01 + 0.001
-        w2_scale = torch.rand(num_experts, device=device, dtype=torch.float32) * 0.01 + 0.001
+        w1_scale = (
+            torch.rand(num_experts, device=device, dtype=torch.float32) * 0.01 + 0.001
+        )
+        w2_scale = (
+            torch.rand(num_experts, device=device, dtype=torch.float32) * 0.01 + 0.001
+        )
 
         # Routing
-        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+        gating = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
 
-        yield (hidden_states, w1_fp8, w2_fp8, topk_weights, topk_ids,
-               w1_scale, w2_scale)
+        yield (
+            hidden_states,
+            w1_fp8,
+            w2_fp8,
+            topk_weights,
+            topk_ids,
+            w1_scale,
+            w2_scale,
+        )
 
 
 def _vllm_fused_moe_fp8_wrapper(
@@ -535,39 +559,67 @@ class FusedMoEINT8Benchmark(Benchmark):
 
         # Generate INT8 weights one expert at a time to avoid OOM on large E.
         w1_int8 = torch.empty(
-            num_experts, intermediate_size * 2, hidden_size,
-            device=device, dtype=torch.int8,
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=torch.int8,
         )
         w2_int8 = torch.empty(
-            num_experts, hidden_size, intermediate_size,
-            device=device, dtype=torch.int8,
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            device=device,
+            dtype=torch.int8,
         )
         for e in range(num_experts):
             w1_int8[e] = to_int8(
-                torch.randn(intermediate_size * 2, hidden_size,
-                             device=device, dtype=torch.float16) * 50
+                torch.randn(
+                    intermediate_size * 2,
+                    hidden_size,
+                    device=device,
+                    dtype=torch.float16,
+                )
+                * 50
             )
             w2_int8[e] = to_int8(
-                torch.randn(hidden_size, intermediate_size,
-                             device=device, dtype=torch.float16) * 50
+                torch.randn(
+                    hidden_size, intermediate_size, device=device, dtype=torch.float16
+                )
+                * 50
             )
 
         # Synthetic per-channel scales [E, output_dim]
-        w1_scale = torch.rand(
-            num_experts, intermediate_size * 2, device=device, dtype=torch.float32
-        ) * 0.01 + 0.001
-        w2_scale = torch.rand(
-            num_experts, hidden_size, device=device, dtype=torch.float32
-        ) * 0.01 + 0.001
+        w1_scale = (
+            torch.rand(
+                num_experts, intermediate_size * 2, device=device, dtype=torch.float32
+            )
+            * 0.01
+            + 0.001
+        )
+        w2_scale = (
+            torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32)
+            * 0.01
+            + 0.001
+        )
 
         # Routing
-        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+        gating = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
 
-        yield (hidden_states, w1_int8, w2_int8, topk_weights, topk_ids,
-               w1_scale, w2_scale)
+        yield (
+            hidden_states,
+            w1_int8,
+            w2_int8,
+            topk_weights,
+            topk_ids,
+            w1_scale,
+            w2_scale,
+        )
 
 
 def _vllm_fused_moe_int8_wrapper(
@@ -668,39 +720,67 @@ class FusedMoEINT8W8A16Benchmark(Benchmark):
 
         # Generate INT8 weights one expert at a time to avoid OOM on large E.
         w1_int8 = torch.empty(
-            num_experts, intermediate_size * 2, hidden_size,
-            device=device, dtype=torch.int8,
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=torch.int8,
         )
         w2_int8 = torch.empty(
-            num_experts, hidden_size, intermediate_size,
-            device=device, dtype=torch.int8,
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            device=device,
+            dtype=torch.int8,
         )
         for e in range(num_experts):
             w1_int8[e] = to_int8(
-                torch.randn(intermediate_size * 2, hidden_size,
-                             device=device, dtype=torch.float16) * 50
+                torch.randn(
+                    intermediate_size * 2,
+                    hidden_size,
+                    device=device,
+                    dtype=torch.float16,
+                )
+                * 50
             )
             w2_int8[e] = to_int8(
-                torch.randn(hidden_size, intermediate_size,
-                             device=device, dtype=torch.float16) * 50
+                torch.randn(
+                    hidden_size, intermediate_size, device=device, dtype=torch.float16
+                )
+                * 50
             )
 
         # Per-channel scales [E, output_dim]
-        w1_scale = torch.rand(
-            num_experts, intermediate_size * 2, device=device, dtype=torch.float32
-        ) * 0.01 + 0.001
-        w2_scale = torch.rand(
-            num_experts, hidden_size, device=device, dtype=torch.float32
-        ) * 0.01 + 0.001
+        w1_scale = (
+            torch.rand(
+                num_experts, intermediate_size * 2, device=device, dtype=torch.float32
+            )
+            * 0.01
+            + 0.001
+        )
+        w2_scale = (
+            torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32)
+            * 0.01
+            + 0.001
+        )
 
         # Routing
-        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+        gating = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
 
-        yield (hidden_states, w1_int8, w2_int8, topk_weights, topk_ids,
-               w1_scale, w2_scale)
+        yield (
+            hidden_states,
+            w1_int8,
+            w2_int8,
+            topk_weights,
+            topk_ids,
+            w1_scale,
+            w2_scale,
+        )
 
 
 def _vllm_fused_moe_int8_w8a16_wrapper(
@@ -806,41 +886,66 @@ class FusedMoEINT4W4A16Benchmark(Benchmark):
 
         # Generate INT4 weights (stored in INT8) one expert at a time.
         w1_int4 = torch.empty(
-            num_experts, intermediate_size * 2, hidden_size,
-            device=device, dtype=torch.int8,
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=torch.int8,
         )
         w2_int4 = torch.empty(
-            num_experts, hidden_size, intermediate_size,
-            device=device, dtype=torch.int8,
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            device=device,
+            dtype=torch.int8,
         )
         for e in range(num_experts):
             w1_int4[e] = torch.randint(
-                -8, 8,
+                -8,
+                8,
                 (intermediate_size * 2, hidden_size),
-                device=device, dtype=torch.int8,
+                device=device,
+                dtype=torch.int8,
             )
             w2_int4[e] = torch.randint(
-                -8, 8,
+                -8,
+                8,
                 (hidden_size, intermediate_size),
-                device=device, dtype=torch.int8,
+                device=device,
+                dtype=torch.int8,
             )
 
         # Per-channel scales [E, output_dim]
-        w1_scale = torch.rand(
-            num_experts, intermediate_size * 2, device=device, dtype=torch.float32
-        ) * 0.01 + 0.001
-        w2_scale = torch.rand(
-            num_experts, hidden_size, device=device, dtype=torch.float32
-        ) * 0.01 + 0.001
+        w1_scale = (
+            torch.rand(
+                num_experts, intermediate_size * 2, device=device, dtype=torch.float32
+            )
+            * 0.01
+            + 0.001
+        )
+        w2_scale = (
+            torch.rand(num_experts, hidden_size, device=device, dtype=torch.float32)
+            * 0.01
+            + 0.001
+        )
 
         # Routing
-        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+        gating = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
 
-        yield (hidden_states, w1_int4, w2_int4, topk_weights, topk_ids,
-               w1_scale, w2_scale)
+        yield (
+            hidden_states,
+            w1_int4,
+            w2_int4,
+            topk_weights,
+            topk_ids,
+            w1_scale,
+            w2_scale,
+        )
 
 
 def _vllm_fused_moe_int4_w4a16_wrapper(
