@@ -13,6 +13,7 @@ from .accuracy_utils import (
     DISTRIBUTION_SHAPES,
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
+    gems_assert_close,
     gems_assert_equal,
     to_reference,
 )
@@ -326,3 +327,33 @@ def test_accuracy_one_hot():
 
     with pytest.raises(RuntimeError):
         gems_one_hot(torch.tensor([3, 4, 1, 0], dtype=torch.long, device=device), -2)
+
+
+@pytest.mark.zero
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_zero(shape, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+    act_x = x.clone()
+
+    ref_out = torch.ops.aten.zero(ref_x)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.zero(act_x)
+
+    gems_assert_close(act_out, ref_out, dtype)
+
+
+@pytest.mark.zero
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_zero_out(shape, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+    act_x = x.clone()
+
+    ref_out = torch.ops.aten.zero.out(ref_x, out=ref_x)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.zero.out(act_x, out=act_x)
+
+    gems_assert_close(act_out, ref_out, dtype)
