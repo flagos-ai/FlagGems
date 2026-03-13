@@ -49,6 +49,7 @@ _FULL_CONFIG = (
     ("add_.Tensor", add_),
     ("addcdiv", addcdiv),
     ("addcmul", addcmul),
+    ("addcmul.out", addcmul_out),
     ("addmv", addmv),
     ("addmv.out", addmv_out),
     ("addmm", addmm),

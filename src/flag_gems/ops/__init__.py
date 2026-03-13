@@ -2,7 +2,7 @@ from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
-from flag_gems.ops.addcmul import addcmul
+from flag_gems.ops.addcmul import addcmul, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_out
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
@@ -261,6 +261,7 @@ __all__ = [
     "add_",
     "addcdiv",
     "addcmul",
+    "addcmul_out",
     "addmm",
     "addmm_out",
     "addmv",
