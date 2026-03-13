@@ -90,7 +90,14 @@ from flag_gems.ops.exp2 import exp2, exp2_
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
-from flag_gems.ops.fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
+from flag_gems.ops.fill import (
+    fill_scalar,
+    fill_scalar_,
+    fill_scalar_out,
+    fill_tensor,
+    fill_tensor_,
+    fill_tensor_out,
+)
 from flag_gems.ops.flip import flip
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
@@ -189,6 +196,7 @@ from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
+from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -224,6 +232,7 @@ from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
+from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
@@ -347,8 +356,10 @@ __all__ = [
     "eye_m",
     "fill_scalar",
     "fill_scalar_",
+    "fill_scalar_out",
     "fill_tensor",
     "fill_tensor_",
+    "fill_tensor_out",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
@@ -471,6 +482,7 @@ __all__ = [
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
+    "replication_pad3d",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -534,6 +546,7 @@ __all__ = [
     "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
+    "upsample_nearest3d",
     "var_mean",
     "vdot",
     "vector_norm",
