@@ -310,6 +310,16 @@ def test_bitwise_right_shift_perf():
     bench.run()
 
 
+@pytest.mark.rshift
+def test_rshift_perf():
+    bench = BinaryPointwiseBenchmark(
+        op_name="rshift",
+        torch_op=lambda a, b: a >> b,
+        dtypes=INT_DTYPES,
+    )
+    bench.run()
+
+
 class RepetitionPenaltyBenchmark(Benchmark):
     def __init__(self, op_name, torch_op, dtypes):
         super().__init__(op_name, torch_op, dtypes)

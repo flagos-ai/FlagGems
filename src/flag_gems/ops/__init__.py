@@ -1,3 +1,9 @@
+from flag_gems.ops.__rshift__ import (
+    rshift_scalar,
+    rshift_scalar_,
+    rshift_tensor,
+    rshift_tensor_,
+)
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
@@ -476,6 +482,10 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "rshift_scalar",
+    "rshift_scalar_",
+    "rshift_tensor",
+    "rshift_tensor_",
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
