@@ -43,6 +43,19 @@ def fill_input_fn(shape, dtype, device):
     yield input, 3.14159,
 
 
+def fill_scalar_out_input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    out = torch.empty_like(input)
+    yield input, 3.14159, {"out": out}
+
+
+def fill_tensor_out_input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    value = torch.tensor(3.14159, dtype=dtype, device=device)
+    out = torch.empty_like(input)
+    yield input, value, {"out": out}
+
+
 def zero__input_fn(shape, dtype, device):
     input = torch.empty(shape, dtype=dtype, device=device)
     yield input,
@@ -135,6 +148,8 @@ tensor_constructor_operations = [
     ("zeros_like", torch.zeros_like, unary_input_fn),
     # tensor constructor with given value
     ("fill", torch.fill, fill_input_fn),
+    ("fill_scalar_out", torch.ops.aten.fill.Scalar_out, fill_scalar_out_input_fn),
+    ("fill_tensor_out", torch.ops.aten.fill.Tensor_out, fill_tensor_out_input_fn),
     ("masked_fill", torch.masked_fill, masked_fill_input_fn),
     ("full", torch.full, full_input_fn),
     ("full_like", torch.full_like, full_like_input_fn),
