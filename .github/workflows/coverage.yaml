@@ -16,7 +16,6 @@ on:
       - completed
 jobs:
   publish-coverage:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
       pull-requests: write
