@@ -1,0 +1,48 @@
+# op_black_list.yaml
+# Description: List of operators unsupported (FALSE) in the current environment
+# test based: 2026-03-03
+# Source: Operator Compatibility Test Table
+
+unsupported_operators:
+  - name: acos
+    reason: "All dtypes failed"
+
+  - name: conv1d
+    reason: "All dtypes failed"
+
+  - name: geglu
+    reason: "All dtypes failed"
+
+  - name: grouped_topk
+    reason: "All dtypes failed"
+
+  - name: masked_scatter
+    reason: "All dtypes failed"
+
+  - name: masked_scatter_
+    reason: "All dtypes failed"
+
+  - name: moe_sum
+    reason: "All dtypes failed"
+
+  - name: nll_loss2d
+    reason: "All dtypes failed"
+
+  - name: per_token_group_quant_fp8
+    reason: "All dtypes failed"
+
+  - name: reglu
+    reason: "All dtypes failed"
+
+  - name: scaled_softmax
+    reason: "All dtypes failed"
+
+  - name: swiglu
+    reason: "All dtypes failed"
+
+  - name: topk_softmax
+    reason: "All dtypes failed"
+
+summary:
+  total_unsupported: 13
+  note: "Testing is currently not required."
