@@ -584,6 +584,70 @@ vstack:
       - 1024
       - 2048
       - 4096
+tril:
+  - gen: true
+    param_map:
+      META:
+        M_BLOCK_SIZE: 1
+        N_BLOCK_SIZE: 2048
+      num_warps: warps
+    warps:
+      - 4
+      - 8
+  - gen: true
+    param_map:
+      META:
+        M_BLOCK_SIZE: 4
+        N_BLOCK_SIZE: 1024
+      num_warps: warps
+    warps:
+      - 4
+  - gen: true
+    param_map:
+      META:
+        M_BLOCK_SIZE: 8
+        N_BLOCK_SIZE: 512
+      num_warps: warps
+    warps:
+      - 4
+  - gen: true
+    param_map:
+      META:
+        M_BLOCK_SIZE: 16
+        N_BLOCK_SIZE: 256
+      num_warps: warps
+    warps:
+      - 4
+  - gen: true
+    param_map:
+      META:
+        M_BLOCK_SIZE: 32
+        N_BLOCK_SIZE: 128
+      num_warps: warps
+    warps:
+      - 4
+  - gen: true
+    param_map:
+      META:
+        M_BLOCK_SIZE: 64
+        N_BLOCK_SIZE: 64
+      num_warps: warps
+    warps:
+      - 4
+tril_batch:
+  - gen: true
+    param_map:
+      META:
+        BATCH_BLOCK_SIZE: 1
+        MN_BLOCK_SIZE: 512
+      num_warps: warps
+    warps:
+      - 1
+      - 2
+      - 4
+      - 8
+      - 16
+      - 32
 triu:
   - gen: true
     param_map:
