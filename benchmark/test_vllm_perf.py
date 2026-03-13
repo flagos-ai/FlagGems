@@ -349,7 +349,7 @@ def test_perf_fused_moe_gems_vs_vllm():
     bench = FusedMoEBenchmark(
         op_name="fused_moe_gems_vs_vllm",
         torch_op=_vllm_fused_moe_wrapper,
-        dtypes=[torch.bfloat16],
+        dtypes=[torch.bfloat16, torch.float16],
     )
     bench.set_gems(_gems_fused_moe_wrapper)
     bench.run()

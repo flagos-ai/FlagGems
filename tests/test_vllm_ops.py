@@ -344,7 +344,6 @@ def test_accuracy_fused_moe_vs_ref(config, dtype):
         w2,
         topk_weights,
         topk_ids,
-        num_experts=num_experts,
     )
 
     # Pure PyTorch reference (no vLLM dependency)
@@ -1001,7 +1000,6 @@ def test_accuracy_fused_moe_vs_vllm(config, dtype):
         w2,
         topk_weights,
         topk_ids,
-        num_experts=num_experts,
     )
 
     # Reference result
