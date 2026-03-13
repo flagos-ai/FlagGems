@@ -298,6 +298,8 @@ _FULL_CONFIG = (
     ("rms_norm", rms_norm),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
+    ("rsub.Scalar", rsub_scalar),
+    ("rsub.Tensor", rsub_tensor),
     ("scaled_softmax_backward", scaled_softmax_backward),
     ("scaled_softmax_forward", scaled_softmax_forward),
     ("scatter.reduce", scatter),
