@@ -54,6 +54,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
@@ -319,6 +320,7 @@ __all__ = [
     "cummin",
     "cumsum",
     "cumsum_out",
+    "conj_physical",
     "diag",
     "diag_embed",
     "diagonal_backward",

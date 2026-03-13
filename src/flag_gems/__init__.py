@@ -121,6 +121,7 @@ _FULL_CONFIG = (
     ("cummin", cummin),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
+    ("conj_physical", conj_physical),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
