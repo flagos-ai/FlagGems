@@ -68,6 +68,8 @@ _FULL_CONFIG = (
     ("arange.start_step", arange_start),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("asinh", asinh),
+    ("asinh_", asinh_),
     ("atan", atan),
     ("atan_", atan_),
     ("avg_pool2d", avg_pool2d),
