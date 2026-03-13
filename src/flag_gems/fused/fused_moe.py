@@ -1,3 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+#
+# Adapted from the vLLM project (https://github.com/vllm-project/vllm).
+# Source files under vllm/model_executor/layers/:
+#   fused_moe/fused_moe.py      – Triton kernels, dispatch, fused_experts_impl
+#   fused_moe/activation.py     – MoEActivation enum, apply_moe_activation
+#   fused_moe/utils.py          – _fp8_quantize, _int8_quantize, moe_kernel_quantize_input
+#   fused_moe/config.py         – _get_config_dtype_str
+#   quantization/utils/mxfp4_utils.py   – dequant_mxfp4
+#   quantization/utils/mxfp6_utils.py   – dequant_mxfp6
+#   quantization/utils/ocp_mx_utils.py  – OCP_MX_BLOCK_SIZE
+
+
 import functools
 import logging
 from enum import Enum
