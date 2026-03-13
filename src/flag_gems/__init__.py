@@ -107,6 +107,7 @@ _FULL_CONFIG = (
     ("conv1d.padding", conv1d),
     ("conv2d", conv2d),
     ("conv2d.padding", conv2d),
+    ("conv_transpose2d.input", conv_transpose2d),
     ("conv3d", conv3d),
     ("conv3d.padding", conv3d),
     (
