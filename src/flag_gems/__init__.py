@@ -117,6 +117,8 @@ _FULL_CONFIG = (
     ("cos", cos),
     ("cos_", cos_),
     ("count_nonzero", count_nonzero),
+    ("ctc_loss.IntList", ctc_loss),
+    ("ctc_loss.Tensor", ctc_loss),
     ("cummax", cummax),
     ("cummin", cummin),
     ("cumsum", cumsum),
