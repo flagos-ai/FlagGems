@@ -6,7 +6,7 @@
 unsupported_operators:
   - name: grouped_topk
     reason: "All dtypes failed"
-    
+
   - name: topk_softmax
     reason: "vllm not supported"
 
