@@ -1197,3 +1197,318 @@ gated_activation:
       - 8
     block_n:
       - 1024
+# Shared memory tiling kernel for large tensors
+# Optimized for memory bandwidth by caching input tiles# Grid sample operator configurations
+grid_sample_2d_nearest:
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+    num_stages: 4
+grid_sample_2d_bilinear:
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+    num_stages: 4
+grid_sample_2d_bicubic:
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+    num_stages: 4
+grid_sample_3d_nearest:
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 16
+    num_stages: 2
+grid_sample_3d_trilinear:
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 16
+    num_stages: 2
+
+# Tiled grid sample kernels for medium-to-large inputs (multi-dimensional blocking)
+grid_sample_2d_nearest_tiled:
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 16
+    num_warps: 4
+    num_stages: 4
+grid_sample_2d_bilinear_tiled:
+  - META:
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 4
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_H: 4
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 4
+  # Large tile configs for 128x128+ outputs
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 64
+    num_warps: 32
+    num_stages: 2
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 3
+
+grid_sample_3d_nearest_tiled:
+  # Small cubes - low register pressure
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 4
+  # Medium cubes - balanced
+  - META:
+      BLOCK_D: 16
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_warps: 8
+    num_stages: 3
+  # Rectangular blocks (D-dominant)
+  - META:
+      BLOCK_D: 16
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 4
+    num_stages: 4
+  # Rectangular (H-dominant)
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 16
+      BLOCK_W: 8
+    num_warps: 8
+    num_stages: 3
+  # Rectangular (W-dominant)
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 8
+      BLOCK_W: 16
+    num_warps: 8
+    num_stages: 3
+  # Large cubes (for very large outputs)
+  - META:
+      BLOCK_D: 32
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 2
+  # Rectangular large tiles
+  - META:
+      BLOCK_D: 32
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_warps: 16
+    num_stages: 2
+  - META:
+      BLOCK_D: 16
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_warps: 16
+    num_stages: 2
+  - META:
+      BLOCK_D: 16
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 2
+
+grid_sample_3d_trilinear_tiled:
+  # Very small cubes - trilinear has 8x memory load
+  - META:
+      BLOCK_D: 2
+      BLOCK_H: 2
+      BLOCK_W: 2
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 4
+    num_stages: 4
+  # Small cubes
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 8
+    num_stages: 3
+  # Rectangular blocks (D-dominant)
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 4
+      BLOCK_W: 4
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 2
+      BLOCK_W: 2
+    num_warps: 2
+    num_stages: 4
+  # Rectangular (H-dominant)
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 8
+      BLOCK_W: 4
+    num_warps: 4
+    num_stages: 4
+  # Rectangular (W-dominant)
+  - META:
+      BLOCK_D: 4
+      BLOCK_H: 4
+      BLOCK_W: 8
+    num_warps: 4
+    num_stages: 4
+  # Medium cubes
+  - META:
+      BLOCK_D: 16
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_warps: 16
+    num_stages: 2
+  # Rectangular medium tiles
+  - META:
+      BLOCK_D: 16
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 16
+      BLOCK_W: 8
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_D: 8
+      BLOCK_H: 8
+      BLOCK_W: 16
+    num_warps: 8
+    num_stages: 3
+  # Large cubes (only for very large outputs)
+  - META:
+      BLOCK_D: 32
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 32
+    num_stages: 2
