@@ -49,6 +49,15 @@ def clamp_input_fn(shape, cur_dtype, device):
         yield inp1, None, 3.14
 
 
+def clip_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, -0.5, 0.5
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # None situation
+        yield inp, None, 0.5
+        yield inp, -0.5, None
+
+
 def clamp_min_input_fn(shape, cur_dtype, device):
     inp1 = generate_tensor_input(shape, cur_dtype, device)
     inp2 = generate_tensor_input(shape, cur_dtype, device)
@@ -100,6 +109,13 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             clamp_min_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.clamp_min,
+        ),
+        pytest.param(
+            "clip",
+            torch.clip,
+            clip_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.clip,
         ),
         pytest.param(
             "flip",
@@ -162,6 +178,13 @@ def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
             clamp_min_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.clamp_min_,
+        ),
+        pytest.param(
+            "clip_",
+            torch.clip_,
+            clip_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.clip_,
         ),
     ],
 )
