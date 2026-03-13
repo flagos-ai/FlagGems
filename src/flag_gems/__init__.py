@@ -349,6 +349,7 @@ _FULL_CONFIG = (
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
+    ("upsample_nearest2d_backward", upsample_nearest2d_backward),
     ("var_mean.correction", var_mean),
     ("vdot", vdot),
     ("vstack", vstack),
