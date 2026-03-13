@@ -170,6 +170,23 @@ UnaryPointwiseBenchmark:
     - [1024, 1024, 1024]
   shape_desc: "(B), M, N"
 
+grid_sampler_2d:
+  shapes:
+    - [1, 3, 128, 128]
+    - [1, 3, 512, 512]
+    - [4, 16, 128, 128]
+    - [8, 32, 64, 64]
+    - [2, 64, 256, 256]
+  shape_desc: "N, C, H, W"
+
+grid_sampler_3d:
+  shapes:
+    - [1, 3, 16, 32, 32]
+    - [1, 3, 16, 64, 64]
+    - [2, 8, 16, 32, 32]
+    - [4, 16, 8, 32, 32]
+  shape_desc: "N, C, D, H, W"
+
 # the default shapes info
 Benchmark:
   shapes:
