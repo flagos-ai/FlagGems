@@ -20,6 +20,22 @@ at::Tensor add_scalar(const at::Tensor &self, const at::Scalar &other, const at:
 at::Tensor &add_tensor_inplace(at::Tensor &self, const at::Tensor &other, const at::Scalar &alpha = 1);
 // add_.Scalar(Tensor(a!) self, Scalar other, Scalar alpha=1) -> Tensor(a!)
 at::Tensor &add_scalar_inplace(at::Tensor &self, const at::Scalar &other, const at::Scalar &alpha = 1);
+
+at::Tensor true_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor true_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor trunc_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div(const at::Tensor &a, const at::Tensor &b);
+at::Tensor floor_div_(at::Tensor &a, const at::Tensor &b);
+at::Tensor div_mode(const at::Tensor &a,
+                    const at::Tensor &b,
+                    const c10::optional<std::string> &rounding_mode);
+at::Tensor div_mode_(at::Tensor &a, const at::Tensor &b, const c10::optional<std::string> &rounding_mode);
+at::Tensor remainder_tt(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
+at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
+at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
+at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
 #endif
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
 at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out);
@@ -80,21 +96,6 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
                               bool scale_grad_by_freq = false,
                               bool sparse = false);
 at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim = std::nullopt, bool keepdim = false);
-at::Tensor true_div(const at::Tensor &a, const at::Tensor &b);
-at::Tensor true_div_(at::Tensor &a, const at::Tensor &b);
-at::Tensor trunc_div(const at::Tensor &a, const at::Tensor &b);
-at::Tensor trunc_div_(at::Tensor &a, const at::Tensor &b);
-at::Tensor floor_div(const at::Tensor &a, const at::Tensor &b);
-at::Tensor floor_div_(at::Tensor &a, const at::Tensor &b);
-at::Tensor div_mode(const at::Tensor &a,
-                    const at::Tensor &b,
-                    const c10::optional<std::string> &rounding_mode);
-at::Tensor div_mode_(at::Tensor &a, const at::Tensor &b, const c10::optional<std::string> &rounding_mode);
-at::Tensor remainder_tt(const at::Tensor &a, const at::Tensor &b);
-at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
-at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
-at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
-at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
 std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor &self, int64_t dim = -1, bool descending = false);
 std::tuple<at::Tensor, at::Tensor> sort_stable(const at::Tensor &inp,
                                                c10::optional<bool> stable,

@@ -22,7 +22,7 @@ Usage
 Specify op modules explicitly::
 
     python prebuild_kernels.py \\
-        --op-files flag_gems.ops.abs,flag_gems.ops.add \\
+        --op-files flag_gems.ops.abs flag_gems.ops.add \\
         --max-rank 6 \\
         --output-dir build/pointwise_kernels
 
@@ -641,8 +641,9 @@ def main():
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument(
         "--op-files",
+        nargs="+",
         type=str,
-        help="Comma-separated module paths (e.g. flag_gems.ops.abs,flag_gems.ops.add)",
+        help="Module paths (e.g. flag_gems.ops.abs flag_gems.ops.add)",
     )
     input_group.add_argument(
         "--op-dir",
@@ -674,7 +675,7 @@ def main():
 
     # Determine which modules to process
     if args.op_files:
-        modules_to_process = [m.strip() for m in args.op_files.split(",")]
+        modules_to_process = [m.strip() for m in args.op_files]
         print(f"Processing specified modules: {modules_to_process}")
     elif args.op_dir:
         op_dir = Path(args.op_dir)
