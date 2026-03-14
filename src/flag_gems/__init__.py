@@ -269,6 +269,7 @@ _FULL_CONFIG = (
     ("one_hot", one_hot),
     ("pad", pad),
     ("polar", polar),
+    ("prelu", prelu),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),
     ("pow.Tensor_Tensor", pow_tensor_tensor),
