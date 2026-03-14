@@ -250,7 +250,10 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops.conv_transpose2d import conv_transpose2d
+
 __all__ = [
+    "conv_transpose2d",
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",
