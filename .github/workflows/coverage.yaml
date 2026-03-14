@@ -34,12 +34,14 @@ jobs:
             } else {
               run_id = context.payload.workflow_run.id;
             }
+            console.log(`Fetch artifact for ${run_id}`);
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
                owner: context.repo.owner,
                repo: context.repo.repo,
                run_id: run_id,
             });
             let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              console.log(`Artifacts: ${artifact.name}`);
               return artifact.name == 'op-ut-coverage';
             })[0];
 
