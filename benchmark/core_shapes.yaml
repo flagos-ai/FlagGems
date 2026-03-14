@@ -170,6 +170,33 @@ UnaryPointwiseBenchmark:
     - [1024, 1024, 1024]
   shape_desc: "(B), M, N"
 
+asinh:
+  shapes:
+    - [65536]
+    - [64, 64]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
+asinh_:
+  shapes:
+    - [65536]
+    - [64, 64]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
+asinh.out:
+  shapes:
+    - [65536]
+    - [64, 64]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
 # the default shapes info
 Benchmark:
   shapes:

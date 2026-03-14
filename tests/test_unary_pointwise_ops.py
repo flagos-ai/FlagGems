@@ -72,6 +72,193 @@ def test_accuracy_acos(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, True)
 
 
+def _make_asinh_input(shape, dtype):
+    if dtype in BOOL_TYPES:
+        return torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
+    if dtype in ALL_INT_DTYPES:
+        return torch.randint(-17, 17, size=shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    if dtype in COMPLEX_DTYPES:
+        real = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+        imag = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+        return torch.complex(real, imag).to(dtype)
+    return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
+def test_accuracy_asinh(shape, dtype):
+    inp = _make_asinh_input(shape, dtype)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, res_out.dtype, equal_nan=True)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_accuracy_asinh_complex(dtype):
+    inp = _make_asinh_input((37,), dtype)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.inplace
+@pytest.mark.asinh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_(shape, dtype):
+    inp = _make_asinh_input(shape, dtype)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.asinh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.inplace
+@pytest.mark.asinh_
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_accuracy_asinh_complex_(dtype):
+    inp = _make_asinh_input((37,), dtype)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.asinh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_out(shape, dtype):
+    inp = _make_asinh_input(shape, dtype)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.asinh(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.empty_like(inp)
+        torch.asinh(inp, out=res_out)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_asinh_out_promoted_input(dtype):
+    inp = _make_asinh_input((97,), torch.int32)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.empty(inp.shape, dtype=dtype, device=ref_inp.device)
+    torch.asinh(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.empty(inp.shape, dtype=dtype, device=inp.device)
+        torch.asinh(inp, out=res_out)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_special_values(dtype):
+    inp = torch.tensor(
+        [0.0, -0.0, 1.5, -2.5, float("inf"), -float("inf"), float("nan")],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_empty(dtype):
+    inp = torch.empty((0, 7), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_noncontiguous(dtype):
+    base = torch.randn((3, 5, 7), dtype=dtype, device=flag_gems.device)
+    inp = base.transpose(1, 2)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.asinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_asinh_odd_property(dtype):
+    inp = torch.randn((257,), dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        pos = torch.asinh(inp)
+        neg = torch.asinh(-inp)
+
+    ref_neg = to_reference(-pos, True)
+    gems_assert_close(neg, ref_neg, dtype, equal_nan=True)
+
+
+@pytest.mark.inplace
+@pytest.mark.asinh_
+@pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
+def test_accuracy_asinh__invalid_input_dtype(dtype):
+    inp = _make_asinh_input((31,), dtype)
+    ref_inp = to_reference(inp.clone())
+
+    with pytest.raises(RuntimeError):
+        torch.asinh_(ref_inp)
+    with flag_gems.use_gems():
+        with pytest.raises(RuntimeError):
+            torch.asinh_(inp)
+
+
+@pytest.mark.asinh
+@pytest.mark.parametrize("input_dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
+@pytest.mark.parametrize("out_dtype", INT_DTYPES + BOOL_TYPES)
+def test_accuracy_asinh_out_invalid_output_dtype(input_dtype, out_dtype):
+    inp = _make_asinh_input((31,), input_dtype)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.empty((31,), dtype=out_dtype, device=ref_inp.device)
+    with pytest.raises(RuntimeError):
+        torch.asinh(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.empty((31,), dtype=out_dtype, device=inp.device)
+        with pytest.raises(RuntimeError):
+            torch.asinh(inp, out=res_out)
+
+
 @pytest.mark.angle
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
