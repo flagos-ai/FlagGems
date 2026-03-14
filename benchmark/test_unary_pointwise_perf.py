@@ -52,6 +52,7 @@ forward_operations = [
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     ("log", torch.log, FLOAT_DTYPES),
+    ("log10", torch.log10, FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
     # Dropout
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
@@ -128,6 +129,7 @@ forward_inplace_operations = [
     ("atan_", torch.atan_, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
+    ("log10_", torch.log10_, FLOAT_DTYPES),
 ]
 
 
