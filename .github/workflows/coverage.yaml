@@ -30,7 +30,7 @@ jobs:
         with:
           script: |
             if (context.eventName === 'workflow_dispatch') {
-              run_id = github.event.inputs.run_id;
+              run_id = context.payload.inputs.run_id;
             } else {
               run_id = context.payload.workflow_run.id;
             }
