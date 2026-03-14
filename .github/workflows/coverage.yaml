@@ -29,6 +29,7 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
+            console.log(context.payload.workflow_run);
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
                owner: context.repo.owner,
                repo: context.repo.repo,
@@ -37,6 +38,7 @@ jobs:
             let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
               return artifact.name == "op-ut-coverage"
             })[0];
+            console.log(matchArtifact);
             let download = await github.rest.actions.downloadArtifact({
                owner: context.repo.owner,
                repo: context.repo.repo,
