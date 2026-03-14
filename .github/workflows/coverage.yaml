@@ -31,10 +31,9 @@ jobs:
               return artifact.name == "op-ut-coverage"
             })[0];
 
-            const core = require('@actions/core');
             // There could be a case that no coverage data were generated.
             if (matchArtifact === undefined) {
-              core.setOutput('has_data', 'N');
+              return "NO_DATA";
             } else {
               let download = await github.rest.actions.downloadArtifact({
                  owner: context.repo.owner,
@@ -49,15 +48,15 @@ jobs:
                 fs.mkdirSync(temp);
               }
               fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
-              core.setOutput('has_data', 'Y');
+              return "HAS_DATA";
             }
 
       - id: nnzip-artifact
-        if: ${{ steps.download.outputs.has_data == 'Y' }}
+        if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
         run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
 
       - id: prepare-changes
-        if: ${{ steps.download.outputs.has_data == 'Y' }}
+        if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
         shell: bash
         run: |
           COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
@@ -72,7 +71,7 @@ jobs:
           mv ${{ runner.temp }}/artifacts/${COV_ID}-summary.md docs/test/unit/${COV_ID}/ut-summary.md
 
       - id: commit-change
-        if: ${{ steps.download.outputs.has_data == 'Y' }}
+        if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -80,7 +79,7 @@ jobs:
           git commit -a -m "Add coverage data for ${COV_ID}"
 
       - id: push-change
-        if: ${{ steps.download.outputs.has_data == 'Y' }}
+        if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
         uses: ad-m/github-push-action@master
         with:
           branch: gh-pages
