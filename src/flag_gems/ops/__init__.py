@@ -250,7 +250,12 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward
+
 __all__ = [
+    "leaky_relu",
+    "leaky_relu_",
+    "leaky_relu_backward",
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",
