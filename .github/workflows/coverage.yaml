@@ -28,6 +28,7 @@ jobs:
       - id: download
         uses: actions/github-script@v8
         with:
+          result-encoding: string
           script: |
             if (context.eventName === 'workflow_dispatch') {
               run_id = context.payload.inputs.run_id;
@@ -41,14 +42,14 @@ jobs:
                run_id: run_id,
             });
             let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-              console.log(`Artifacts: ${artifact.name}`);
-              return artifact.name == 'op-ut-coverage';
+              return artifact.name == "op-ut-coverage";
             })[0];
 
             // There could be a case that no coverage data were generated.
             if (matchArtifact === undefined) {
-              return 'NO_DATA';
+              return "NO_DATA";
             } else {
+              console.log(`Found artifact ${matchArtifact.id}`);
               let download = await github.rest.actions.downloadArtifact({
                  owner: context.repo.owner,
                  repo: context.repo.repo,
@@ -62,7 +63,7 @@ jobs:
                 fs.mkdirSync(temp);
               }
               fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
-              return 'HAS_DATA';
+              return "HAS_DATA";
             }
 
       - id: nnzip-artifact
