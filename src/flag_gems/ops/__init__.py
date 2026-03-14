@@ -173,6 +173,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
 )
+from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.polar import polar
 from flag_gems.ops.pow import (
     pow_scalar,
@@ -252,6 +253,7 @@ from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "pixel_shuffle",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "abs",
