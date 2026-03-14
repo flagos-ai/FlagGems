@@ -39,10 +39,19 @@ class UnaryPointwiseBenchmark(Benchmark):
         return torch.tensor(shape).prod().item()
 
 
+class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty_like(inp)
+            yield inp, {"out": out}
+
+
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
     ("ceil", torch.ceil, FLOAT_DTYPES),
     ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
+    ("asinh", torch.asinh, FLOAT_DTYPES),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
     ("exp2", torch.exp2, FLOAT_DTYPES),
@@ -106,6 +115,7 @@ forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
     ("ceil_", torch.ceil_, FLOAT_DTYPES),
     # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
+    ("asinh_", torch.asinh_, FLOAT_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
@@ -151,6 +161,16 @@ def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
             )
     bench = UnaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
+    bench.run()
+
+
+@pytest.mark.asinh
+def test_asinh_out_perf():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="asinh.out",
+        torch_op=torch.asinh,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 
