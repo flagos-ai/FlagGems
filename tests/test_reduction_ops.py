@@ -22,7 +22,7 @@ from .accuracy_utils import (
     init_seed,
     to_reference,
 )
-from .conftest import QUICK_MODE
+from .conftest import QUICK_MODE, TO_CPU
 
 # Make sure every thread has same seed.
 random.seed(time.time() // 100)
@@ -145,6 +145,132 @@ def test_accuracy_argmin(shape, dim, keepdim, dtype):
         res_out = torch.argmin(inp, dim=dim, keepdim=keepdim)
 
     gems_assert_equal(res_out, ref_out)
+
+
+MEDIAN_SHAPES = [(7,), (8,), (4, 7), (7, 4), (3, 5, 7), (2, 0, 4), (0, 3)]
+
+
+def _assert_median_dim_indices(res_indices, ref_indices):
+    # torch.median(input, dim=...) documents device-specific index semantics when the
+    # median value is not unique. In quick-cpu mode we compare a GPU FlagGems result
+    # against a CPU torch reference, so strict index equality is not a valid check.
+    if TO_CPU:
+        return
+    gems_assert_equal(res_indices, ref_indices)
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("shape", MEDIAN_SHAPES)
+@pytest.mark.parametrize("dim", [0, -1, 1])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_median_dim(shape, dim, keepdim, dtype):
+    rank = len(shape)
+    if rank == 0:
+        pytest.skip("median.dim requires a dimension")
+    if dim >= rank or dim < -rank:
+        pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+
+    reduced_dim = dim % rank
+    if any(size == 0 for size in shape):
+        if shape[reduced_dim] == 0:
+            with pytest.raises(IndexError):
+                with flag_gems.use_gems():
+                    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+                    torch.median(inp, dim=dim, keepdim=keepdim)
+            return
+        inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(-16, 16, shape, device=flag_gems.device).to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.median(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp, dim=dim, keepdim=keepdim)
+
+    gems_assert_close(res_out.values, ref_out.values, dtype, equal_nan=True)
+    _assert_median_dim_indices(res_out.indices, ref_out.indices)
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_accuracy_median_dim_tie_break(keepdim):
+    inp = torch.tensor(
+        [[1.0, 4.0, 2.0, 3.0], [2.0, 1.0, 2.0, 3.0], [2.0, 2.0, 2.0, 2.0]],
+        device=flag_gems.device,
+    )
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.median(ref_inp, dim=1, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp, dim=1, keepdim=keepdim)
+
+    gems_assert_close(res_out.values, ref_out.values, inp.dtype)
+    _assert_median_dim_indices(res_out.indices, ref_out.indices)
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_median_dim_with_nan(dtype, keepdim):
+    inp = torch.tensor(
+        [[1.0, float("nan"), 2.0], [float("nan"), 1.0, 2.0]],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.median(ref_inp, dim=1, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp, dim=1, keepdim=keepdim)
+
+    gems_assert_close(res_out.values, ref_out.values, dtype, equal_nan=True)
+    _assert_median_dim_indices(res_out.indices, ref_out.indices)
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_median_dim_special_values(dtype, keepdim):
+    inp = torch.tensor(
+        [
+            [0.0, -0.0, 1.0, -1.0, float("inf"), -float("inf"), 2.0],
+            [3.0, -5.0, 7.0, 7.0, -2.0, 0.0, 4.0],
+        ],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.median(ref_inp, dim=1, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp, dim=1, keepdim=keepdim)
+
+    gems_assert_close(res_out.values, ref_out.values, dtype, equal_nan=True)
+    _assert_median_dim_indices(res_out.indices, ref_out.indices)
+
+
+@pytest.mark.median
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_median_dim_noncontiguous(dtype, keepdim):
+    base_shape = (3, 5, 7)
+    if dtype in INT_DTYPES:
+        base = torch.randint(-16, 16, base_shape, device=flag_gems.device).to(dtype)
+    else:
+        base = torch.randn(base_shape, dtype=dtype, device=flag_gems.device)
+    inp = base.transpose(1, 2)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.median(ref_inp, dim=1, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.median(inp, dim=1, keepdim=keepdim)
+
+    gems_assert_close(res_out.values, ref_out.values, dtype, equal_nan=True)
+    _assert_median_dim_indices(res_out.indices, ref_out.indices)
 
 
 @pytest.mark.cross_entropy_loss

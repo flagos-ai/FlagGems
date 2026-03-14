@@ -51,6 +51,14 @@ class UnaryReductionBenchmark(Benchmark):
                 yield inp,
 
 
+class MedianDimBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            dim = inp.ndim - 1
+            yield inp, dim, {"keepdim": False}
+
+
 forward_operations = [
     ("all", torch.all, FLOAT_DTYPES),
     ("any", torch.any, FLOAT_DTYPES),
@@ -77,6 +85,16 @@ forward_operations = [
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+    bench.run()
+
+
+@pytest.mark.median
+def test_perf_median_dim():
+    bench = MedianDimBenchmark(
+        op_name="median_dim",
+        torch_op=torch.median,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
+    )
     bench.run()
 
 
