@@ -1,11 +1,4 @@
 # Note this *workflow_run* workflow runs on the default branch.
-# - The GITHUB_TOKEN is more powerful than the one used in the "PR-from-fork" context
-# - It can access PAT tokens, thus more powerful than *triggered* workflow,
-#   although a PAT may not be required.
-
-# XXX: This workflow is a place-holder. It is not gonna be triggered now
-# because we don't have a workflow named 'unit-test'.
-
 name: coverage
 
 on:
@@ -29,7 +22,6 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            console.log(context.payload.workflow_run);
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
                owner: context.repo.owner,
                repo: context.repo.repo,
@@ -38,25 +30,33 @@ jobs:
             let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
               return artifact.name == "op-ut-coverage"
             })[0];
-            console.log(matchArtifact);
-            let download = await github.rest.actions.downloadArtifact({
-               owner: context.repo.owner,
-               repo: context.repo.repo,
-               artifact_id: matchArtifact.id,
-               archive_format: 'zip',
-            });
-            const fs = require('fs');
-            const path = require('path');
-            const temp = '${{ runner.temp }}/artifacts';
-            if (!fs.existsSync(temp)){
-              fs.mkdirSync(temp);
+
+            // There could be a case that no coverage data were generated.
+            if (matchArtifact === undefined) {
+              return "NO_DATA";
+            } else {
+              let download = await github.rest.actions.downloadArtifact({
+                 owner: context.repo.owner,
+                 repo: context.repo.repo,
+                 artifact_id: matchArtifact.id,
+                 archive_format: 'zip',
+              });
+              const fs = require('fs');
+              const path = require('path');
+              const temp = '${{ runner.temp }}/artifacts';
+              if (!fs.existsSync(temp)){
+                fs.mkdirSync(temp);
+              }
+              fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
+              return "HAS_DATA";
             }
-            fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
 
       - id: nnzip-artifact
+        if: steps.download-coverage-data.outputs.result == "HAS_DATA"
         run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
 
       - id: prepare-changes
+        if: steps.download-coverage-data.outputs.result == "HAS_DATA"
         shell: bash
         run: |
           COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
@@ -71,6 +71,7 @@ jobs:
           mv ${{ runner.temp }}/artifacts/${COV_ID}-summary.md docs/test/unit/${COV_ID}/ut-summary.md
 
       - id: commit-change
+        if: steps.download-coverage-data.outputs.result == "HAS_DATA"
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -78,6 +79,7 @@ jobs:
           git commit -a -m "Add coverage data for ${COV_ID}"
 
       - id: push-change
+        if: steps.download-coverage-data.outputs.result == "HAS_DATA"
         uses: ad-m/github-push-action@master
         with:
           branch: gh-pages
