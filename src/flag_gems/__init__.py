@@ -147,6 +147,7 @@ _FULL_CONFIG = (
     ("elu_backward", elu_backward),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
+    ("embedding_dense_backward", embedding_dense_backward),
     ("eq.Scalar", eq_scalar),
     ("eq.Tensor", eq),
     ("equal", equal),
