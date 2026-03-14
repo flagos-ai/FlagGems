@@ -22,12 +22,14 @@ exp = tl_extra_shim.exp
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_SIZE": 256, "VEC": 4}, num_warps=4, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 256, "VEC": 2}, num_warps=4, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 512, "VEC": 2}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 512, "VEC": 4}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 1024, "VEC": 1}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 1024, "VEC": 2}, num_warps=8, num_stages=2),
+        triton.Config({"BLOCK_SIZE": 256}, num_warps=4, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 512}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 1024}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 2048}, num_warps=16, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 4096}, num_warps=16, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 4096}, num_warps=32, num_stages=1),
     ],
     key=["n_elements", "dtype_size"],
 )
@@ -38,31 +40,33 @@ def celu_kernel_alpha1(
     n_elements,
     dtype_size,  # used for autotune key
     BLOCK_SIZE: tl.constexpr,
-    VEC: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    BLOCK_ELEMS: tl.constexpr = BLOCK_SIZE * VEC
-    offsets = (pid * BLOCK_ELEMS + tl.arange(0, BLOCK_ELEMS)).to(tl.int64)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
 
     x_compute = x.to(tl.float32)
-    neg_mask = x_compute <= 0
-    exp_val = exp(tl.where(neg_mask, x_compute, 0.0))
-    neg = exp_val - 1.0
-    out = tl.where(neg_mask, neg, x_compute).to(x.dtype)
+    # CELU: max(0, x) + min(0, exp(x) - 1) when alpha=1
+    # Using branchless computation
+    pos_part = tl.maximum(x_compute, 0.0)
+    neg_part = tl.minimum(exp(x_compute) - 1.0, 0.0)
+    out = (pos_part + neg_part).to(x.dtype)
 
     tl.store(out_ptr + offsets, out, mask=mask)
 
 
+@libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_SIZE": 256, "VEC": 4}, num_warps=4, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 256, "VEC": 2}, num_warps=4, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 512, "VEC": 2}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 512, "VEC": 4}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 1024, "VEC": 1}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 1024, "VEC": 2}, num_warps=8, num_stages=2),
+        triton.Config({"BLOCK_SIZE": 256}, num_warps=4, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 512}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 1024}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 2048}, num_warps=16, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 4096}, num_warps=16, num_stages=1),
+        triton.Config({"BLOCK_SIZE": 4096}, num_warps=32, num_stages=1),
     ],
     key=["n_elements", "dtype_size"],
 )
@@ -74,23 +78,68 @@ def celu_kernel(
     alpha,
     dtype_size,  # used for autotune key
     BLOCK_SIZE: tl.constexpr,
-    VEC: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    BLOCK_ELEMS: tl.constexpr = BLOCK_SIZE * VEC
-    offsets = (pid * BLOCK_ELEMS + tl.arange(0, BLOCK_ELEMS)).to(tl.int64)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
 
     x_compute = x.to(tl.float32)
     alpha_val = tl.full((1,), alpha, tl.float32)
     inv_alpha = 1.0 / alpha_val
-    neg_mask = x_compute <= 0
-    exp_val = exp(tl.where(neg_mask, x_compute * inv_alpha, 0.0))
-    neg = alpha_val * (exp_val - 1.0)
-    out = tl.where(neg_mask, neg, x_compute).to(x.dtype)
+    # CELU: max(0, x) + min(0, alpha * (exp(x/alpha) - 1))
+    # Using branchless computation
+    pos_part = tl.maximum(x_compute, 0.0)
+    neg_part = tl.minimum(alpha_val * (exp(x_compute * inv_alpha) - 1.0), 0.0)
+    out = (pos_part + neg_part).to(x.dtype)
 
     tl.store(out_ptr + offsets, out, mask=mask)
+
+
+# Inplace kernel without autotune to avoid data corruption during tuning
+@libentry()
+@triton.jit
+def celu_inplace_kernel_alpha1(
+    x_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+
+    x_compute = x.to(tl.float32)
+    # CELU: max(0, x) + min(0, exp(x) - 1) when alpha=1
+    pos_part = tl.maximum(x_compute, 0.0)
+    neg_part = tl.minimum(exp(x_compute) - 1.0, 0.0)
+    out = (pos_part + neg_part).to(x.dtype)
+
+    tl.store(x_ptr + offsets, out, mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["alpha"])
+def celu_inplace_kernel(
+    x_ptr,
+    n_elements,
+    alpha,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+
+    x_compute = x.to(tl.float32)
+    alpha_val = tl.full((1,), alpha, tl.float32)
+    inv_alpha = 1.0 / alpha_val
+    # CELU: max(0, x) + min(0, alpha * (exp(x/alpha) - 1))
+    pos_part = tl.maximum(x_compute, 0.0)
+    neg_part = tl.minimum(alpha_val * (exp(x_compute * inv_alpha) - 1.0), 0.0)
+    out = (pos_part + neg_part).to(x.dtype)
+
+    tl.store(x_ptr + offsets, out, mask=mask)
 
 
 def _use_triton_kernel(
@@ -118,13 +167,48 @@ def _launch_celu(A: torch.Tensor, out: torch.Tensor, alpha_value: float):
     out_flat = out.view(-1)
     n_elements = out_flat.numel()
     dtype_size = out_flat.element_size()
-    grid = lambda META: (triton.cdiv(n_elements, META["BLOCK_SIZE"] * META["VEC"]),)
+    grid = lambda META: (triton.cdiv(n_elements, META["BLOCK_SIZE"]),)
     with torch_device_fn.device(out.device):
         if alpha_value == 1.0:
             celu_kernel_alpha1[grid](x_flat, out_flat, n_elements, dtype_size)
         else:
             celu_kernel[grid](x_flat, out_flat, n_elements, alpha_value, dtype_size)
     return out
+
+
+def _get_inplace_config(n_elements: int):
+    """Select optimal BLOCK_SIZE and num_warps based on tensor size."""
+    if n_elements <= 1024:
+        return 256, 4
+    elif n_elements <= 65536:
+        return 512, 8
+    elif n_elements <= 1048576:  # 1M
+        return 1024, 8
+    elif n_elements <= 16777216:  # 16M
+        return 2048, 16
+    else:
+        return 4096, 32
+
+
+def _launch_celu_inplace(A: torch.Tensor, alpha_value: float):
+    x_flat = A.view(-1)
+    n_elements = x_flat.numel()
+    BLOCK_SIZE, num_warps = _get_inplace_config(n_elements)
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    with torch_device_fn.device(A.device):
+        if alpha_value == 1.0:
+            celu_inplace_kernel_alpha1[grid](
+                x_flat, n_elements, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
+            )
+        else:
+            celu_inplace_kernel[grid](
+                x_flat,
+                n_elements,
+                alpha_value,
+                BLOCK_SIZE=BLOCK_SIZE,
+                num_warps=num_warps,
+            )
+    return A
 
 
 def celu(A, alpha=1.0):
@@ -143,4 +227,4 @@ def celu_(A, alpha=1.0):
     if not use_triton:
         return default_celu_(A, alpha=alpha)
 
-    return _launch_celu(A, A, alpha_value)
+    return _launch_celu_inplace(A, alpha_value)
