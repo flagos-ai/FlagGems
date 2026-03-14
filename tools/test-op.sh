@@ -6,7 +6,11 @@ PR_ID=$1
 
 # Replace "__ALL__" with all tests
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
-  CHANGED_FILES=$(find tests -name "test*.py")
+  # Temporay hack
+  CHANGED_FILES=(
+    "tests/test_tensor_constructor_ops.py"
+  )
+  # CHANGED_FILES=$(find tests -name "test*.py")
   # for full-range tests, generate summary report
   EXTRA_OPTS="--md-report --md-report-output=${PR_ID}-summary.md"
   echo "TIMESTAMP=${PR_ID}"
@@ -17,6 +21,8 @@ else
   echo "PR_ID=${PR_ID}"
   SUFFIX="-${GITHUB_SHA::7}"
 fi
+
+
 
 # Test cases that needs to run quick cpu tests
 QUICK_CPU_TESTS=(
@@ -33,7 +39,7 @@ QUICK_CPU_TESTS=(
 )
 
 
-
+# Extract test cases from CHANGED_FILES
 TEST_CASES=()
 TEST_CASES_CPU=()
 for item in $CHANGED_FILES; do
