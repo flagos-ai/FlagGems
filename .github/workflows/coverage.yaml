@@ -2,6 +2,13 @@
 name: coverage
 
 on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'The workflow run ID'
+        required: true
+        type: string
+
   workflow_run:
     workflows:
       - daily
@@ -22,18 +29,23 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
+            if (context.eventName === 'workflow_dispatch') {
+              run_id = github.event.inputs.run_id;
+            } else {
+              run_id = context.payload.workflow_run.id;
+            }
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
                owner: context.repo.owner,
                repo: context.repo.repo,
-               run_id: context.payload.workflow_run.id,
+               run_id: run_id,
             });
             let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-              return artifact.name == "op-ut-coverage"
+              return artifact.name == 'op-ut-coverage';
             })[0];
 
             // There could be a case that no coverage data were generated.
             if (matchArtifact === undefined) {
-              return "NO_DATA";
+              return 'NO_DATA';
             } else {
               let download = await github.rest.actions.downloadArtifact({
                  owner: context.repo.owner,
@@ -48,7 +60,7 @@ jobs:
                 fs.mkdirSync(temp);
               }
               fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
-              return "HAS_DATA";
+              return 'HAS_DATA';
             }
 
       - id: nnzip-artifact
