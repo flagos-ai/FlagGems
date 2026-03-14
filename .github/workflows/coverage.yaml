@@ -68,7 +68,7 @@ jobs:
           mv ${{ runner.temp }}/artifacts/htmlcov/* docs/coverage/${COV_ID}/
 
           mkdir -p docs/test/unit/${COV_ID}
-          mv ${{ runner.temp }}/artifacts/${COV_ID}-summary.md docs/test/unit/${COV_ID}/ut-summary.md
+          mv ${{ runner.temp }}/artifacts/ut-summary.md docs/test/unit/${COV_ID}/
 
       - id: commit-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}

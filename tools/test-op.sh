@@ -13,7 +13,9 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   # Replace "__ALL__" with all tests
   CHANGED_FILES=$(find tests -name "test*.py")
   # add options to generate summary report
-  EXTRA_OPTS="--md-report --md-report-output=${PR_ID}-summary.md"
+  EXTRA_OPTS="--md-report"
+  EXTRA_OPTS+=" --md-report-verbose=1"
+  EXTRA_OPTS+=" --md-report-output=${PR_ID}-summary.md"
   SUFFIX=""
   COLLECT_COVERAGE="yes"
 else
@@ -35,7 +37,6 @@ QUICK_CPU_TESTS=(
   "tests/test_tensor_constructor_ops.py"
   "tests/test_unary_pointwise_ops.py"
 )
-
 
 # Extract test cases from CHANGED_FILES
 TEST_CASES=()
@@ -88,5 +89,5 @@ if [ -n "$COLLECT_COVERAGE" ]; then
   mkdir coverage
   mv htmlcov coverage/
   echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
-  mv ${PR_ID}-summary.md coverage/
+  mv ${PR_ID}-summary.md coverage/ut-summary.md
 fi
