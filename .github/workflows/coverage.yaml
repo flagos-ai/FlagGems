@@ -53,11 +53,11 @@ jobs:
             }
 
       - id: nnzip-artifact
-        if: ${{ steps.download.outputs.has_data == "Y" }}
+        if: ${{ steps.download.outputs.has_data == 'Y' }}
         run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
 
       - id: prepare-changes
-        if: ${{ steps.download.outputs.has_data == "Y" }}
+        if: ${{ steps.download.outputs.has_data == 'Y' }}
         shell: bash
         run: |
           COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
@@ -72,7 +72,7 @@ jobs:
           mv ${{ runner.temp }}/artifacts/${COV_ID}-summary.md docs/test/unit/${COV_ID}/ut-summary.md
 
       - id: commit-change
-        if: ${{ steps.download.outputs.has_data == "Y" }}
+        if: ${{ steps.download.outputs.has_data == 'Y' }}
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -80,7 +80,7 @@ jobs:
           git commit -a -m "Add coverage data for ${COV_ID}"
 
       - id: push-change
-        if: ${{ steps.download.outputs.has_data == "Y" }}
+        if: ${{ steps.download.outputs.has_data == 'Y' }}
         uses: ad-m/github-push-action@master
         with:
           branch: gh-pages
