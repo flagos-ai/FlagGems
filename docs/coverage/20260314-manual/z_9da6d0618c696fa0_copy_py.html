@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for src/flag_gems/ops/copy.py: 65%</title>
+    <title>Coverage for src/flag_gems/ops/copy.py: 68%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>src/flag_gems/ops/copy.py</b>:
-            <span class="pc_cov">65%</span>
+            <span class="pc_cov">68%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">60 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">39<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">21<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">41<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">19<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_9da6d0618c696fa0_cos_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.9">coverage.py v7.6.9</a>,
-            created at 2026-03-14 13:07 +0800
+            created at 2026-03-14 21:36 +0800
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -111,13 +111,13 @@
     <p class="run"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t">    <span class="key">if</span> <span class="nam">src</span><span class="op">.</span><span class="nam">is_complex</span><span class="op">(</span><span class="op">)</span> <span class="key">or</span> <span class="nam">dst</span><span class="op">.</span><span class="nam">is_complex</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">        <span class="com"># Preserve PyTorch's behaviour of warning when casting complex to real</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t">        <span class="com"># by forcing the redispatch path, which issues the warning internally.</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">        <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">        <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t">    <span class="key">return</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t"><span class="key">def</span> <span class="nam">_expand_like</span><span class="op">(</span><span class="nam">src</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="nam">target_shape</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Size</span><span class="op">)</span> <span class="op">-></span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t">    <span class="key">if</span> <span class="nam">src</span><span class="op">.</span><span class="nam">shape</span> <span class="op">==</span> <span class="nam">target_shape</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t">        <span class="key">return</span> <span class="nam">src</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t">        <span class="key">return</span> <span class="nam">src</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t39" href="#t39">39</a></span><span class="t">    <span class="key">return</span> <span class="nam">src</span><span class="op">.</span><span class="nam">expand</span><span class="op">(</span><span class="nam">target_shape</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t40" href="#t40">40</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t41" href="#t41">41</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -203,7 +203,7 @@
             <a class="nav" href="z_9da6d0618c696fa0_cos_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.9">coverage.py v7.6.9</a>,
-            created at 2026-03-14 13:07 +0800
+            created at 2026-03-14 21:36 +0800
         </p>
     </div>
 </footer>

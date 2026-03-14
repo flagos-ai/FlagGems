@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for src/flag_gems/ops/gt.py: 68%</title>
+    <title>Coverage for src/flag_gems/ops/gt.py: 89%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>src/flag_gems/ops/gt.py</b>:
-            <span class="pc_cov">68%</span>
+            <span class="pc_cov">89%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">19 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">13<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">6<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">17<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">2<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_9da6d0618c696fa0_hstack_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.9">coverage.py v7.6.9</a>,
-            created at 2026-03-14 13:07 +0800
+            created at 2026-03-14 21:36 +0800
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -97,8 +97,8 @@
     <p class="pln"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t"><span class="key">def</span> <span class="nam">gt</span><span class="op">(</span><span class="nam">A</span><span class="op">,</span> <span class="nam">B</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t">    <span class="nam">logger</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span><span class="str">"GEMS GT"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t">    <span class="key">return</span> <span class="nam">gt_func</span><span class="op">(</span><span class="nam">A</span><span class="op">,</span> <span class="nam">B</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t">    <span class="nam">logger</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span><span class="str">"GEMS GT"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t">    <span class="key">return</span> <span class="nam">gt_func</span><span class="op">(</span><span class="nam">A</span><span class="op">,</span> <span class="nam">B</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t20" href="#t20">20</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t21" href="#t21">21</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t22" href="#t22">22</a></span><span class="t"><span class="op">@</span><span class="nam">pointwise_dynamic</span><span class="op">(</span><span class="nam">is_tensor</span><span class="op">=</span><span class="op">[</span><span class="key">True</span><span class="op">,</span> <span class="key">False</span><span class="op">]</span><span class="op">,</span> <span class="nam">promotion_methods</span><span class="op">=</span><span class="op">[</span><span class="op">(</span><span class="num">0</span><span class="op">,</span> <span class="num">1</span><span class="op">,</span> <span class="str">"ALWAYS_BOOL"</span><span class="op">)</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -108,8 +108,8 @@
     <p class="pln"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t28" href="#t28">28</a></span><span class="t"><span class="key">def</span> <span class="nam">gt_scalar</span><span class="op">(</span><span class="nam">A</span><span class="op">,</span> <span class="nam">B</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t">    <span class="nam">logger</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span><span class="str">"GEMS GT SCALAR"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">    <span class="key">return</span> <span class="nam">gt_func_scalar</span><span class="op">(</span><span class="nam">A</span><span class="op">,</span> <span class="nam">B</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t">    <span class="nam">logger</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span><span class="str">"GEMS GT SCALAR"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">    <span class="key">return</span> <span class="nam">gt_func_scalar</span><span class="op">(</span><span class="nam">A</span><span class="op">,</span> <span class="nam">B</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -119,7 +119,7 @@
             <a class="nav" href="z_9da6d0618c696fa0_hstack_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.9">coverage.py v7.6.9</a>,
-            created at 2026-03-14 13:07 +0800
+            created at 2026-03-14 21:36 +0800
         </p>
     </div>
 </footer>

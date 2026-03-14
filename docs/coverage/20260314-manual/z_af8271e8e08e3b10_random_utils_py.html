@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for src/flag_gems/utils/random_utils.py: 38%</title>
+    <title>Coverage for src/flag_gems/utils/random_utils.py: 52%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>src/flag_gems/utils/random_utils.py</b>:
-            <span class="pc_cov">38%</span>
+            <span class="pc_cov">52%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">60 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">23<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">37<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">31<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">29<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_af8271e8e08e3b10_shape_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.9">coverage.py v7.6.9</a>,
-            created at 2026-03-14 13:07 +0800
+            created at 2026-03-14 21:36 +0800
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -137,14 +137,14 @@
     <p class="pln"><span class="n"><a id="t55" href="#t55">55</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t57" href="#t57">57</a></span><span class="t"><span class="key">def</span> <span class="nam">set_philox_state</span><span class="op">(</span><span class="nam">seed</span><span class="op">,</span> <span class="nam">offset</span><span class="op">,</span> <span class="nam">device</span><span class="op">=</span><span class="key">None</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t">    <span class="key">assert</span> <span class="nam">offset</span> <span class="op">%</span> <span class="num">4</span> <span class="op">==</span> <span class="num">0</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t">    <span class="nam">device</span> <span class="op">=</span> <span class="nam">device</span> <span class="key">or</span> <span class="nam">torch_device_fn</span><span class="op">.</span><span class="nam">current_device</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t60" href="#t60">60</a></span><span class="t">    <span class="nam">gen</span> <span class="op">=</span> <span class="nam">torch_device_fn</span><span class="op">.</span><span class="nam">default_generators</span><span class="op">[</span><span class="nam">device</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t">    <span class="nam">state_copy</span> <span class="op">=</span> <span class="nam">gen</span><span class="op">.</span><span class="nam">get_state</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t">    <span class="nam">state_copy</span><span class="op">.</span><span class="nam">view</span><span class="op">(</span><span class="nam">torch</span><span class="op">.</span><span class="nam">int64</span><span class="op">)</span><span class="op">[</span><span class="num">0</span><span class="op">]</span> <span class="op">=</span> <span class="nam">seed</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t">    <span class="nam">state_copy</span><span class="op">.</span><span class="nam">view</span><span class="op">(</span><span class="nam">torch</span><span class="op">.</span><span class="nam">int64</span><span class="op">)</span><span class="op">[</span><span class="num">1</span><span class="op">]</span> <span class="op">=</span> <span class="nam">offset</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t">    <span class="nam">gen</span><span class="op">.</span><span class="nam">set_state</span><span class="op">(</span><span class="nam">state_copy</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t">    <span class="key">return</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t">    <span class="key">assert</span> <span class="nam">offset</span> <span class="op">%</span> <span class="num">4</span> <span class="op">==</span> <span class="num">0</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t">    <span class="nam">device</span> <span class="op">=</span> <span class="nam">device</span> <span class="key">or</span> <span class="nam">torch_device_fn</span><span class="op">.</span><span class="nam">current_device</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t60" href="#t60">60</a></span><span class="t">    <span class="nam">gen</span> <span class="op">=</span> <span class="nam">torch_device_fn</span><span class="op">.</span><span class="nam">default_generators</span><span class="op">[</span><span class="nam">device</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t">    <span class="nam">state_copy</span> <span class="op">=</span> <span class="nam">gen</span><span class="op">.</span><span class="nam">get_state</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t">    <span class="nam">state_copy</span><span class="op">.</span><span class="nam">view</span><span class="op">(</span><span class="nam">torch</span><span class="op">.</span><span class="nam">int64</span><span class="op">)</span><span class="op">[</span><span class="num">0</span><span class="op">]</span> <span class="op">=</span> <span class="nam">seed</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t">    <span class="nam">state_copy</span><span class="op">.</span><span class="nam">view</span><span class="op">(</span><span class="nam">torch</span><span class="op">.</span><span class="nam">int64</span><span class="op">)</span><span class="op">[</span><span class="num">1</span><span class="op">]</span> <span class="op">=</span> <span class="nam">offset</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t">    <span class="nam">gen</span><span class="op">.</span><span class="nam">set_state</span><span class="op">(</span><span class="nam">state_copy</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t">    <span class="key">return</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t66" href="#t66">66</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t68" href="#t68">68</a></span><span class="t"><span class="key">def</span> <span class="nam">per_thread_offset</span><span class="op">(</span><span class="nam">N</span><span class="op">,</span> <span class="nam">num_blocks</span><span class="op">,</span> <span class="nam">num_warps</span><span class="op">,</span> <span class="nam">warp_threads</span><span class="op">=</span><span class="num">32</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -178,7 +178,7 @@
             <a class="nav" href="z_af8271e8e08e3b10_shape_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.9">coverage.py v7.6.9</a>,
-            created at 2026-03-14 13:07 +0800
+            created at 2026-03-14 21:36 +0800
         </p>
     </div>
 </footer>

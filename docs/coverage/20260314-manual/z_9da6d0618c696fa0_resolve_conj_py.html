@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for src/flag_gems/ops/resolve_conj.py: 13%</title>
+    <title>Coverage for src/flag_gems/ops/resolve_conj.py: 16%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>src/flag_gems/ops/resolve_conj.py</b>:
-            <span class="pc_cov">13%</span>
+            <span class="pc_cov">16%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">102 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">13<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">89<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">16<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">86<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_9da6d0618c696fa0_resolve_neg_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.9">coverage.py v7.6.9</a>,
-            created at 2026-03-14 13:07 +0800
+            created at 2026-03-14 21:36 +0800
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -319,14 +319,14 @@
     <p class="pln"><span class="n"><a id="t237" href="#t237">237</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t238" href="#t238">238</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t239" href="#t239">239</a></span><span class="t"><span class="key">def</span> <span class="nam">resolve_conj</span><span class="op">(</span><span class="nam">A</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t240" href="#t240">240</a></span><span class="t">    <span class="nam">logger</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span><span class="str">"GEMS RESOLVE_CONJ"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t241" href="#t241">241</a></span><span class="t">    <span class="key">if</span> <span class="nam">A</span><span class="op">.</span><span class="nam">is_conj</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t240" href="#t240">240</a></span><span class="t">    <span class="nam">logger</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span><span class="str">"GEMS RESOLVE_CONJ"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t241" href="#t241">241</a></span><span class="t">    <span class="key">if</span> <span class="nam">A</span><span class="op">.</span><span class="nam">is_conj</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t242" href="#t242">242</a></span><span class="t">        <span class="key">if</span> <span class="nam">len</span><span class="op">(</span><span class="nam">A</span><span class="op">.</span><span class="nam">shape</span><span class="op">)</span> <span class="key">in</span> <span class="op">(</span><span class="num">2</span><span class="op">,</span> <span class="num">3</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t243" href="#t243">243</a></span><span class="t">            <span class="key">return</span> <span class="nam">resolve_conj_triton</span><span class="op">(</span><span class="nam">A</span><span class="op">,</span> <span class="nam">is_conj</span><span class="op">=</span><span class="key">True</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t244" href="#t244">244</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t245" href="#t245">245</a></span><span class="t">            <span class="key">return</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">complex</span><span class="op">(</span><span class="nam">A</span><span class="op">.</span><span class="nam">real</span><span class="op">,</span> <span class="nam">A</span><span class="op">.</span><span class="nam">imag</span><span class="op">.</span><span class="nam">neg</span><span class="op">(</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t246" href="#t246">246</a></span><span class="t">    <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t247" href="#t247">247</a></span><span class="t">        <span class="key">return</span> <span class="nam">A</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t247" href="#t247">247</a></span><span class="t">        <span class="key">return</span> <span class="nam">A</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -336,7 +336,7 @@
             <a class="nav" href="z_9da6d0618c696fa0_resolve_neg_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.6.9">coverage.py v7.6.9</a>,
-            created at 2026-03-14 13:07 +0800
+            created at 2026-03-14 21:36 +0800
         </p>
     </div>
 </footer>
