@@ -21,6 +21,7 @@ jobs:
       - id: download-coverage-data
         uses: actions/github-script@v8
         with:
+          result-encoding: string
           script: |
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
                owner: context.repo.owner,
