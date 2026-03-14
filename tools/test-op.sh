@@ -82,7 +82,7 @@ fi
 
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default
-if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+# if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   coverage combine
   coverage html
   rm -fr coverage
@@ -90,4 +90,4 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   mv htmlcov coverage/
   echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
   mv ${PR_ID}-summary.md coverage/
-fi
+# fi
