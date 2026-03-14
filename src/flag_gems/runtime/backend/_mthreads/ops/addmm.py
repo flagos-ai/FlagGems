@@ -17,10 +17,17 @@ logger = logging.getLogger(
 )
 
 
+@triton.jit
+def prev_multiple_of(a, b):
+    # the largest x<a that x%b ==0
+    return tl.cdiv(a, b) * b - b
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
+    strategy=["align32", "align32", "align32"],
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
@@ -44,42 +51,72 @@ def addmm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
-    pid_n = tle.program_id(1)
+    # Program ID with swizzling for better L2 cache utilization
+    pid = tle.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
 
-    offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    offs_k = tl.arange(0, BLOCK_SIZE_K)
-    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    # Re-order program ID for better L2 performance
+    width = GROUP_SIZE_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_SIZE_M, GROUP_SIZE_M)
+    pid_m = group_id * GROUP_SIZE_M + (pid % group_size)
+    pid_n = (pid % width) // (group_size)
 
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(
-            a_ptrs,
-            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
-            other=0.0,
-        )
-        b = tl.load(
-            b_ptrs,
-            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
-            other=0.0,
-        )
-        accumulator += tl.dot(a, b, allow_tf32=False)
-        a_ptrs += BLOCK_SIZE_K * stride_ak
-        b_ptrs += BLOCK_SIZE_K * stride_bk
+    # Compute block offsets
+    rm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    rn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
 
-    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
-    bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+    # Use memory hints for better access
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_SIZE_M), BLOCK_SIZE_M).to(tl.int64)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_SIZE_N), BLOCK_SIZE_N).to(tl.int64)
+    rm = rm.to(tl.int64)
+    rn = rn.to(tl.int64)
 
-    accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(bias.dtype)
-    tl.store(c_ptrs, c, mask=c_mask)
+    # Compute previous multiple of BLOCK_SIZE_K for loop peeling
+    prev_multiple = prev_multiple_of(K, BLOCK_SIZE_K)
+
+    # Initialize accumulator
+    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
+    # Main loop: iterate over K dimension
+    for start_k in range(0, prev_multiple, BLOCK_SIZE_K):
+        rk = (start_k + tl.arange(0, BLOCK_SIZE_K)).to(tl.int64)
+        a = tl.load(a_ptr + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
+        b = tl.load(b_ptr + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    # Loop peeling: handle remaining K elements
+    rk = (prev_multiple + tl.arange(0, BLOCK_SIZE_K)).to(tl.int64)
+    mask_k = rk < K
+    a = tl.load(
+        a_ptr + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
+        mask=mask_k[None, :],
+        other=0.0,
+    )
+    b = tl.load(
+        b_ptr + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn),
+        mask=mask_k[:, None],
+        other=0.0,
+    )
+    acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    # Load bias
+    rm = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)).to(tl.int64)
+    rn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)).to(tl.int64)
+    mask = (rm < M)[:, None] & (rn < N)[None, :]
+    i_ptrs = i_ptr + (rm[:, None] * stride_im + rn[None, :] * stride_in)
+    bias = tl.load(i_ptrs, mask=mask, other=0.0)
+
+    # Apply alpha and beta
+    acc = acc * alpha + bias * beta
+
+    # Store result
+    c_ptrs = c_ptr + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+    c = acc.to(bias.dtype)
+    tl.store(c_ptrs, c, mask=mask)
 
 
 def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
@@ -91,14 +128,18 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
     M, K = mat1.shape
     _, N = mat2.shape
 
-    mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape).contiguous()
+    # Handle non-contiguous inputs
+    if mat1.stride(0) > 1 and mat1.stride(1) > 1:
+        mat1 = mat1.contiguous()
+    if mat2.stride(0) > 1 and mat2.stride(1) > 1:
+        mat2 = mat2.contiguous()
 
+    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    bias = bias.broadcast_to(out.shape)
+
+    # Use 1D grid with GROUP_SIZE_M for better L2 cache utilization
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]),
-        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
     with torch_device_fn.device(mat1.device):
         addmm_kernel[grid](
@@ -119,6 +160,7 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
             bias.stride(1),
             out.stride(0),
             out.stride(1),
+            GROUP_SIZE_M=8,
         )
     return out
 
@@ -135,6 +177,7 @@ def addmm_sqmma_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
     alpha: tl.constexpr,
     beta: tl.constexpr,
     ab_type: tl.constexpr,
@@ -142,16 +185,28 @@ def addmm_sqmma_kernel(
     is_transpose_a: tl.constexpr = False,
     is_transpose_b: tl.constexpr = False,
 ):
-    pid = tl.program_id(axis=0)
-    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
-    pid_m = pid % num_pid_m
-    pid_n = pid // num_pid_m
+    pid = tle.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
+
+    # Re-order program ID for better L2 performance
+    width = GROUP_SIZE_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_SIZE_M, GROUP_SIZE_M)
+    pid_m = group_id * GROUP_SIZE_M + (pid % group_size)
+    pid_n = (pid % width) // (group_size)
+
     offs_am = pid_m * BLOCK_SIZE_M
     offs_bn = pid_n * BLOCK_SIZE_N
     offs_k = 0
+    offs_am = offs_am.to(tl.int32)
+    offs_bn = offs_bn.to(tl.int32)
+    offs_k = offs_k.to(tl.int32)
+
     input_type = ab_type
     output_type = c_type
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl._experimental_descriptor_load(
             a_desc_ptr,
@@ -169,6 +224,7 @@ def addmm_sqmma_kernel(
         )
         accumulator = tl.dot(a, b, acc=accumulator)
         offs_k += BLOCK_SIZE_K
+
     bias = tl._experimental_descriptor_load(
         bias_desc_ptr, [offs_am, offs_bn], [BLOCK_SIZE_M, BLOCK_SIZE_N], input_type
     )
@@ -232,6 +288,8 @@ def addmm_sqmma(
     desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
     desc_bias = create_tma_device_descriptor(Bias, BLOCK_M, BLOCK_N, device)
     desc_c = create_tma_device_descriptor(C, BLOCK_M, BLOCK_N, device)
+
+    GROUP_M = 8
     addmm_sqmma_kernel[(triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1, 1)](
         desc_a,
         desc_b,
@@ -243,6 +301,7 @@ def addmm_sqmma(
         BLOCK_M,
         BLOCK_N,
         BLOCK_K,
+        GROUP_M,
         alpha,
         beta,
         get_triton_type(ab_type),
