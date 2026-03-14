@@ -18,6 +18,7 @@ from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
     flash_attn_varlen_func,
+    flash_attn_varlen_opt_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,

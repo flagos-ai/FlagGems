@@ -928,6 +928,7 @@ def ref_paged_attn(
 @pytest.mark.parametrize("alibi", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("num_blocks", [32768, 2048])
+@pytest.mark.parametrize("optimize_init", [False, True])
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
     seq_lens: List[Tuple[int, int]],
@@ -939,6 +940,7 @@ def test_flash_attn_varlen_func(
     alibi: bool,
     soft_cap: Optional[float],
     num_blocks: int,
+    optimize_init: bool,
 ) -> None:
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
@@ -1017,22 +1019,36 @@ def test_flash_attn_varlen_func(
                 fa_version=2,
             )
         else:
-            output = flag_gems.ops.flash_attn_varlen_func(
-                q=query,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_query_lens,
-                seqused_k=seqused_k,
-                max_seqlen_q=max_query_len,
-                max_seqlen_k=max_kv_len,
-                softmax_scale=scale,
-                causal=causal,
-                window_size=window_size,
-                block_table=block_tables,
-                softcap=soft_cap if soft_cap is not None else 0,
-                alibi_slopes=alibi_slopes,
-                fa_version=2,
-            )
+            if optimize_init is not None:
+                output = flag_gems.ops.flash_attn_varlen_opt_func(
+                    q=query,
+                    k=key_cache,
+                    v=value_cache,
+                    cu_seqlens_q=cu_query_lens,
+                    seqused_k=seqused_k,
+                    max_seqlen_q=max_query_len,
+                    max_seqlen_k=max_kv_len,
+                    softmax_scale=scale,
+                    causal=causal,
+                    window_size=window_size,
+                    block_table=block_tables,
+                    softcap=soft_cap if soft_cap is not None else 0,
+                    alibi_slopes=alibi_slopes,
+                    fa_version=2,
+                )
+            else:
+                output = flag_gems.ops.flash_attn_varlen_func(
+                    q=query,
+                    k=key_cache,
+                    v=value_cache,
+                    cu_seqlens_q=cu_query_lens,
+                    seqused_k=seqused_k,
+                    max_seqlen_q=max_query_len,
+                    max_seqlen_k=max_kv_len,
+                    softmax_scale=scale,
+                    causal=causal,
+                    window_size=window_size,
+                )
 
         ref_output = ref_paged_attn(
             query=query,
