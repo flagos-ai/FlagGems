@@ -250,7 +250,10 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops.pixel_shuffle import pixel_shuffle
+
 __all__ = [
+    "pixel_shuffle",
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",
