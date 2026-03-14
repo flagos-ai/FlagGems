@@ -13,6 +13,8 @@ from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
+from .leaky_relu import leaky_relu
+from .leaky_relu_ import leaky_relu_
 
 __version__ = "4.2.1.rc.0"
 device = runtime.device.name
@@ -218,6 +220,8 @@ _FULL_CONFIG = (
     ("logspace", logspace),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
+    ("leaky_relu", leaky_relu),
+    ("leaky_relu_", leaky_relu_),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
     ("masked_fill_.Scalar", masked_fill_),

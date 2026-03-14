@@ -14,15 +14,7 @@ from benchmark.performance_utils import GenericBenchmark  # noqa: E402
 
 # Add parent directory to path to import flag_gems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-try:
-    from tests.accuracy_utils import TO_CPU, gems_assert_close
-except ImportError:
-    # Fallback values when running outside pytest
-    TO_CPU = False  # fallback
-
-    def gems_assert_close(res, ref, dtype, **kwargs):
-        # Simple fallback comparison
-        torch.testing.assert_close(res, ref, **kwargs)
+from flag_gems.testing import gems_assert_close
 
 
 def to_reference(inp, upcast=False):
@@ -51,6 +43,12 @@ def test_perf_aten_leaky_relu():
         for negative_slope in [0.0, 0.01, 0.2]:
             yield input_tensor, negative_slope
 
+    test_x = torch.randn((1024, 1024), dtype=torch.float16, device="cuda")
+    with flag_gems.use_gems():
+        actual = torch.nn.functional.leaky_relu(test_x, negative_slope=0.01)
+    expected = torch.nn.functional.leaky_relu(test_x, negative_slope=0.01)
+    gems_assert_close(actual, expected, torch.float16)
+    
     # Initialize benchmark
     bench = GenericBenchmark(
         input_fn=leaky_relu_input_fn,
