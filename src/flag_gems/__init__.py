@@ -317,6 +317,7 @@ _FULL_CONFIG = (
     ("silu_backward", silu_backward),
     ("sin", sin),
     ("sin_", sin_),
+    ("slice_backward", slice_backward),
     ("slice_scatter", slice_scatter),
     ("softplus", softplus),
     ("sort", sort),
