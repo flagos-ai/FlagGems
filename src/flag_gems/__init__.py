@@ -363,6 +363,7 @@ _FULL_CONFIG = (
     ("zeros", zeros),
     ("zero_", zero_),
     ("zeros_like", zeros_like),
+    ("ctc_loss", ctc_loss),
 )
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup

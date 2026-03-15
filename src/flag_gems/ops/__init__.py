@@ -250,7 +250,10 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops.ctc_loss import ctc_loss
+
 __all__ = [
+    "ctc_loss",
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",
