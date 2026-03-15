@@ -1,5 +1,6 @@
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.acos import acos
+from flag_gems.ops.asinh import asinh
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
@@ -61,6 +62,8 @@ from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
+from flag_gems.ops.cosh import cosh
+
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -124,6 +127,7 @@ from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
+from flag_gems.ops.log10 import log10
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
 from flag_gems.ops.logical_and import logical_and, logical_and_
@@ -190,6 +194,7 @@ from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.relu import relu, relu_
+from flag_gems.ops.leaky_relu import leaky_relu
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
