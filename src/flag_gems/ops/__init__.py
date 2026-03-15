@@ -250,7 +250,11 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from flag_gems.ops.max_pool3d import max_pool3d_with_indices, max_pool3d_backward
+
 __all__ = [
+    "max_pool3d_with_indices",
+    "max_pool3d_backward",
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",

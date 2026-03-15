@@ -363,6 +363,8 @@ _FULL_CONFIG = (
     ("zeros", zeros),
     ("zero_", zero_),
     ("zeros_like", zeros_like),
+    ("max_pool3d_with_indices", max_pool3d_with_indices),
+    ("max_pool3d_backward", max_pool3d_backward),
 )
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
