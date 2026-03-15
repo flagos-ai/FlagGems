@@ -363,6 +363,7 @@ _FULL_CONFIG = (
     ("zeros", zeros),
     ("zero_", zero_),
     ("zeros_like", zeros_like),
+    ("grid_sampler_2d", grid_sample),
 )
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
