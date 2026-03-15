@@ -1242,3 +1242,25 @@ gated_activation:
       - 8
     block_n:
       - 1024
+
+leaky_relu_f:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_m
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
+      - 32768
+    warps:
+      - 4
+      - 8
+      - 16
+    stages:
+      - 1
+      - 2

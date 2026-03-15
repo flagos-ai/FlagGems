@@ -136,6 +136,7 @@ forward_inplace_operations = [
     ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("sgn_", lambda a: a.sgn_(), FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
+    ("leaky_relu", torch.nn.functional.leaky_relu, FLOAT_DTYPES),
     # Trigonometric operations
     ("cos_", torch.cos_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
@@ -440,5 +441,29 @@ def test_perf_prelu():
         op_name="prelu",
         torch_op=torch.ops.aten.prelu,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class LeakyReluBackwardBenchmark(Benchmark):
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return special_shapes_2d + sp_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = generate_tensor_input(shape, cur_dtype, self.device)
+            inp2 = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp1, inp2, 0.01, False
+
+
+@pytest.mark.leaky_relu_backward
+def test_leaky_relu_backward_perf():
+    bench = LeakyReluBackwardBenchmark(
+        op_name="LeakyReluBackwardBenchmark",
+        torch_op=torch.ops.aten.leaky_relu_backward,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
