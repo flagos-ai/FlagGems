@@ -341,6 +341,8 @@ _FULL_CONFIG = (
     ("tile", tile),
     ("topk", topk),
     ("trace", trace),
+    ("tril", tril),
+    ("tril_", tril_),
     ("triu", triu),
     ("triu_", triu_),
     ("true_divide.Scalar", true_divide),
