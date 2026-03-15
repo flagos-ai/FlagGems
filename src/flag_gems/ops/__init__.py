@@ -252,11 +252,8 @@ from flag_gems.ops.zeros_like import zeros_like
 
 from flag_gems.ops.log10 import log10, log10_
 
-from flag_gems.ops.log10 import log10, log10_
 
 __all__ = [
-    "log10",
-    "log10_",
     "log10",
     "log10_",
     "_conv_depthwise2d",
