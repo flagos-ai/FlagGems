@@ -3,14 +3,11 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("leaky_relu_f"),
-    key=["n_elements"],
-)
+@triton.heuristics(runtime.get_heuristic_config("leaky_relu_bwd"))
 @triton.jit
 def leaky_relu_fwd_kernel(
     x_ptr,
@@ -46,10 +43,7 @@ def leaky_relu(
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("leaky_relu_f"),
-    key=["n_elements"],
-)
+@triton.heuristics(runtime.get_heuristic_config("leaky_relu_bwd"))
 @triton.jit
 def leaky_relu_bwd_kernel(
     grad_out_ptr,

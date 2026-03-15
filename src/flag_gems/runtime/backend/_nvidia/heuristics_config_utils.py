@@ -393,6 +393,42 @@ def mean_heur_one_tile_per_cta(args):
     return args["TILE_N"] >= args["N"]
 
 
+def leaky_relu_bwd_heur_block(args):
+    n = args["n_elements"]
+    if n >= 1048576:
+        return 16384
+    elif n >= 262144:
+        return 4096
+    elif n >= 65536:
+        return 1024
+    elif n >= 16384:
+        return 256
+    else:
+        return 128
+
+
+def leaky_relu_bwd_heur_num_warps(args):
+    n = args["n_elements"]
+    if n >= 1048576:
+        return 16
+    elif n >= 262144:
+        return 8
+    elif n >= 65536:
+        return 4
+    elif n >= 16384:
+        return 2
+    else:
+        return 1
+
+
+def leaky_relu_bwd_heur_num_stages(args):
+    n = args["n_elements"]
+    if n >= 262144:
+        return 2
+    else:
+        return 1
+
+
 HEURISTICS_CONFIGS = {
     "argmax_non_inner": {
         "TILE_K": argmax_heur_tile_k,
@@ -527,5 +563,10 @@ HEURISTICS_CONFIGS = {
     "elementwise_generic": {
         "BLOCK_SIZE": simple_elementwise_blocksize_heur,
         "num_warps": lambda args: 8,
+    },
+    "leaky_relu_bwd": {
+        "BLOCK_SIZE": leaky_relu_bwd_heur_block,
+        "num_warps": leaky_relu_bwd_heur_num_warps,
+        "num_stages": leaky_relu_bwd_heur_num_stages,
     },
 }
