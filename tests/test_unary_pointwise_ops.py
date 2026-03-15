@@ -1769,3 +1769,46 @@ def test_accuracy_ceil_out(shape, dtype):
         torch.ceil(inp, out=out)
 
     gems_assert_equal(out, ref_out)
+
+
+NEGATIVE_SLOPE = [
+    0.02,
+    0.03,
+    0.04,
+    0.05,
+]
+INPLACE = [False, True]
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("negative_slope", NEGATIVE_SLOPE)
+@pytest.mark.parametrize("inplace", INPLACE)
+def test_accuracy_leaky_relu(shape, dtype, negative_slope, inplace):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope, inplace)
+    with flag_gems.use_gems():
+        out = flag_gems.leaky_relu(inp, negative_slope, inplace)
+    gems_assert_equal(out, ref_out)
+
+
+@pytest.mark.leaky_relu_backward
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("negative_slope", NEGATIVE_SLOPE)
+@pytest.mark.parametrize("self_is_result", INPLACE)
+def test_accuracy_leaky_relu_backward(shape, dtype, negative_slope, self_is_result):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_grad_output = to_reference(grad_output)
+    ref_grad_input = torch.ops.aten.leaky_relu_backward(
+        ref_grad_output, ref_inp, negative_slope, self_is_result
+    )
+    with flag_gems.use_gems():
+        grad_input = flag_gems.leaky_relu_backward(
+            grad_output, inp, negative_slope, self_is_result
+        )
+    gems_assert_equal(grad_input, ref_grad_input)
