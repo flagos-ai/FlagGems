@@ -36,6 +36,11 @@ at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
 at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
 at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
 at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
+
+at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
+at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
+at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
+at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
 #endif
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
 at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out);
@@ -101,14 +106,6 @@ std::tuple<at::Tensor, at::Tensor> sort_stable(const at::Tensor &inp,
                                                c10::optional<bool> stable,
                                                int64_t dim = -1,
                                                bool descending = false);
-
-at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
-
-at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
-
-at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
-
-at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
 
 at::Tensor softmax(const at::Tensor &input, int64_t dim, bool half_to_float);
 

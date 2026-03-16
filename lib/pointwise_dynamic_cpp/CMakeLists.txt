@@ -5,7 +5,7 @@
 set(POINTWISE_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 # Operations to generate (full module paths)
-set(POINTWISE_OP_FILES "flag_gems.ops.add" "flag_gems.ops.div"
+set(POINTWISE_OP_FILES "flag_gems.ops.add" "flag_gems.ops.div" "flag_gems.ops.fill"
     CACHE STRING "Space-separated list of op module paths" FORCE)
 
 # Maximum tensor rank
