@@ -1901,18 +1901,18 @@ def torch_moe_align_block_size(
         num_expert_tokens = expert_tokens.shape[0]
 
         if num_expert_tokens > 0:
-            in_sorted_token_ids[current_pos : current_pos + num_expert_tokens] = (
-                expert_tokens
-            )
+            in_sorted_token_ids[
+                current_pos : current_pos + num_expert_tokens
+            ] = expert_tokens
 
             expert_blocks_needed = expert_padded_counts[expert_id] // block_size
 
             expert_id_new = expert_id
             if expert_map is not None:
                 expert_id_new = expert_map[expert_id]
-            expert_ids[current_block : current_block + expert_blocks_needed] = (
-                expert_id_new
-            )
+            expert_ids[
+                current_block : current_block + expert_blocks_needed
+            ] = expert_id_new
 
             current_pos += expert_padded_counts[expert_id]
             current_block += expert_blocks_needed
