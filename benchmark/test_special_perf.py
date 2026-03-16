@@ -1,4 +1,5 @@
 import random
+from typing import Generator
 
 import pytest
 import torch
@@ -1019,4 +1020,21 @@ def test_perf_unfold_backward():
         dtypes=[torch.float16, torch.float32, torch.bfloat16],
     )
     bench.set_gems(flag_gems.unfold_backward)
+    bench.run()
+
+
+class SafeSoftmaxBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp, -1, None
+
+
+@pytest.mark.safe_softmax
+def test_perf__safe_softmax():
+    bench = SafeSoftmaxBenchmark(
+        op_name="_safe_softmax",
+        torch_op=torch.ops.aten._safe_softmax,
+        dtypes=FLOAT_DTYPES,
+    )
     bench.run()

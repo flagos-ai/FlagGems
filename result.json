@@ -1,0 +1,254 @@
+{
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype0-shape0]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype0-shape1]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype0-shape2]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype1-shape0]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype1-shape1]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype1-shape2]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype2-shape0]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype2-shape1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy[dtype2-shape2]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype0-shape0]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype0-shape1]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype0-shape2]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype1-shape0]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype1-shape1]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype1-shape2]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype2-shape0]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                2,
+                3
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype2-shape1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                128,
+                256
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_special_ops.py::test_accuracy_t_copy_out[dtype2-shape2]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                512,
+                512
+            ]
+        },
+        "result": "passed",
+        "opname": [
+            "t_copy"
+        ],
+        "skipped_reason": null
+    }
+}
