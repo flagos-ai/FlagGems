@@ -665,6 +665,15 @@ upsample_nearest2d:
     block_n: [1024, 2048]
     warps: [4, 8]
 
+upsample_nearest3d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_n
+      num_warps: warps
+    block_n: [1024, 2048]
+    warps: [4, 8]
+
 upsample_bicubic2d_aa:
   - gen: true
     param_map:
@@ -727,6 +736,23 @@ randperm:
       - 4
       - 8
       - 16
+replication_pad3d:
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 64
+    num_warps: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 4
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 16
+    num_warps: 4
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 128
+    num_warps: 8
 vstack:
   - gen: true
     param_map:

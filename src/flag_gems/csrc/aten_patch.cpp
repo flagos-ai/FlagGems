@@ -9,8 +9,9 @@ std::vector<std::string> get_registered_ops() {
   return registered_ops;
 }
 
-// TODO: use pytorch's argparse utilities to generate CPython bindings, since it is more efficient than
-// bindings provided by torch library, since it is in a boxed fashion
+// TODO: use pytorch's argparse utilities to generate CPython bindings,
+// since it is more efficient than bindings provided by torch library,
+// since it is in a boxed fashion
 PYBIND11_MODULE(aten_patch, m) {
   m.def("get_registered_ops", &get_registered_ops);
 }
@@ -31,6 +32,12 @@ TORCH_LIBRARY_IMPL(aten, CUDA, m) {
   // REGISTER_AND_LOG("bmm", bmm);
   // REGISTER_AND_LOG("mm", mm_tensor);
   // REGISTER_AND_LOG("mm.out", mm_out_tensor);
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
+  REGISTER_AND_LOG("add.Tensor", add_tensor);
+  REGISTER_AND_LOG("add_.Tensor", add_tensor_inplace);
+  REGISTER_AND_LOG("add.Scalar", add_scalar);
+  REGISTER_AND_LOG("add_.Scalar", add_scalar_inplace);
+#endif
   REGISTER_AND_LOG("max.dim_max", max_dim_max);
   REGISTER_AND_LOG("max.dim", max_dim);
   REGISTER_AND_LOG("max", max);
