@@ -1,0 +1,266 @@
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
+
+# Autotune configs: multiple M_BLOCK_SIZE options reduce kernel-launch overhead
+# for small matrices while large N_BLOCK_SIZE keeps bandwidth high for big ones.
+_tril_configs = [
+    triton.Config({"M_BLOCK_SIZE": 1, "N_BLOCK_SIZE": 2048}, num_warps=8),
+    triton.Config({"M_BLOCK_SIZE": 1, "N_BLOCK_SIZE": 2048}, num_warps=16),
+    triton.Config({"M_BLOCK_SIZE": 8, "N_BLOCK_SIZE": 512}, num_warps=8),
+    triton.Config({"M_BLOCK_SIZE": 16, "N_BLOCK_SIZE": 512}, num_warps=8),
+    triton.Config({"M_BLOCK_SIZE": 32, "N_BLOCK_SIZE": 512}, num_warps=8),
+    triton.Config({"M_BLOCK_SIZE": 32, "N_BLOCK_SIZE": 512}, num_warps=16),
+    triton.Config({"M_BLOCK_SIZE": 32, "N_BLOCK_SIZE": 1024}, num_warps=8),
+    triton.Config({"M_BLOCK_SIZE": 64, "N_BLOCK_SIZE": 512}, num_warps=16),
+    triton.Config({"M_BLOCK_SIZE": 64, "N_BLOCK_SIZE": 1024}, num_warps=16),
+]
+
+_tril_batch_configs = [
+    triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=4),
+    triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=8),
+    triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 1024}, num_warps=8),
+    triton.Config({"BATCH_BLOCK_SIZE": 4, "MN_BLOCK_SIZE": 512}, num_warps=4),
+    triton.Config({"BATCH_BLOCK_SIZE": 4, "MN_BLOCK_SIZE": 512}, num_warps=8),
+    triton.Config({"BATCH_BLOCK_SIZE": 8, "MN_BLOCK_SIZE": 256}, num_warps=4),
+    triton.Config({"BATCH_BLOCK_SIZE": 8, "MN_BLOCK_SIZE": 512}, num_warps=8),
+]
+
+
+@libentry()
+@triton.autotune(configs=_tril_configs, key=["M", "N"])
+@triton.jit(do_not_specialize=["diagonal"])
+def tril_kernel(
+    X,
+    Y,
+    M,
+    N,
+    diagonal,
+    M_BLOCK_SIZE: tl.constexpr,
+    N_BLOCK_SIZE: tl.constexpr,
+):
+    # Y must be pre-zeroed. Only copies lower-triangle elements from X to Y,
+    # saving ~50 % write bandwidth vs a full read-modify-write.
+    pid = tle.program_id(0)
+    row = pid * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)[:, None]
+    m_mask = row < M
+    X += row * N
+    Y += row * N
+
+    for n_offset in range(0, N, N_BLOCK_SIZE):
+        cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
+        lower_mask = cols <= row + diagonal
+        mask = m_mask & (cols < N) & lower_mask
+        x = tl.load(X + cols, mask=mask, other=0)
+        tl.store(Y + cols, x, mask=mask)
+
+
+@libentry()
+@triton.autotune(
+    configs=_tril_batch_configs,
+    key=["batch", "MN", "N", "diagonal"],
+)
+@triton.jit(do_not_specialize=["diagonal"])
+def tril_batch_kernel(
+    X,
+    Y,
+    batch,
+    MN,
+    N,
+    diagonal,
+    BATCH_BLOCK_SIZE: tl.constexpr,
+    MN_BLOCK_SIZE: tl.constexpr,
+):
+    # Y must be pre-zeroed. Only copies lower-triangle elements.
+    batch_id = tle.program_id(0)
+    mn_id = tle.program_id(1)
+    row = batch_id * BATCH_BLOCK_SIZE + tl.arange(0, BATCH_BLOCK_SIZE)[:, None]
+    batch_mask = row < batch
+    X += row * MN
+    Y += row * MN
+
+    cols = mn_id * MN_BLOCK_SIZE + tl.arange(0, MN_BLOCK_SIZE)[None, :]
+    mn_mask = cols < MN
+    m = cols // N
+    n = cols % N
+    lower_mask = n <= m + diagonal
+    mask = batch_mask & mn_mask & lower_mask
+    x = tl.load(X + cols, mask=mask, other=0)
+    tl.store(Y + cols, x, mask=mask)
+
+
+@libentry()
+@triton.autotune(configs=_tril_configs, key=["M", "N"])
+@triton.jit(do_not_specialize=["diagonal"])
+def tril_inplace_kernel(
+    Y,
+    M,
+    N,
+    diagonal,
+    M_BLOCK_SIZE: tl.constexpr,
+    N_BLOCK_SIZE: tl.constexpr,
+):
+    # Zeros only the upper triangle. No loads — pure write-only pass,
+    # saving ~75 % total bandwidth vs a full read+write over the whole matrix.
+    pid = tle.program_id(0)
+    row = pid * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)[:, None]
+    m_mask = row < M
+    Y += row * N
+
+    for n_offset in range(0, N, N_BLOCK_SIZE):
+        cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
+        upper_mask = cols > row + diagonal
+        mask = m_mask & (cols < N) & upper_mask
+        tl.store(Y + cols, 0, mask=mask)
+
+
+@libentry()
+@triton.autotune(
+    configs=_tril_batch_configs,
+    key=["batch", "MN", "N", "diagonal"],
+)
+@triton.jit(do_not_specialize=["diagonal"])
+def tril_batch_inplace_kernel(
+    Y,
+    batch,
+    MN,
+    N,
+    diagonal,
+    BATCH_BLOCK_SIZE: tl.constexpr,
+    MN_BLOCK_SIZE: tl.constexpr,
+):
+    # Zeros only the upper triangle. No loads.
+    batch_id = tle.program_id(0)
+    mn_id = tle.program_id(1)
+    row = batch_id * BATCH_BLOCK_SIZE + tl.arange(0, BATCH_BLOCK_SIZE)[:, None]
+    batch_mask = row < batch
+    Y += row * MN
+
+    cols = mn_id * MN_BLOCK_SIZE + tl.arange(0, MN_BLOCK_SIZE)[None, :]
+    mn_mask = cols < MN
+    m = cols // N
+    n = cols % N
+    upper_mask = n > m + diagonal
+    mask = batch_mask & mn_mask & upper_mask
+    tl.store(Y + cols, 0, mask=mask)
+
+
+def _check_batch_contiguous(tensor, allow_zero_stride=True):
+    if tensor.is_contiguous():
+        return True, tensor
+
+    dims = tensor.dim()
+
+    if dims >= 2:
+        n = tensor.size(-1)
+        stride_row, stride_col = tensor.stride(-2), tensor.stride(-1)
+
+        if not (stride_col == 1 and stride_row == n):
+            return False, tensor.contiguous()
+
+    if allow_zero_stride and dims <= 3:
+        return True, tensor
+
+    expected_stride = tensor.size(-1) * tensor.size(-2)
+    for i in range(dims - 3, -1, -1):
+        if (
+            allow_zero_stride
+            and i == 0
+            and (tensor.stride(i) == 0 or tensor.size(i) == 1)
+        ):
+            continue
+
+        if tensor.stride(i) != expected_stride:
+            return False, tensor.contiguous()
+
+        expected_stride *= tensor.size(i)
+
+    return True, tensor
+
+
+def tril(A, diagonal=0):
+    logger.debug("GEMS TRIL")
+
+    assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
+
+    can_use_directly, A_input = _check_batch_contiguous(A, allow_zero_stride=False)
+
+    # Pre-zero the output so the kernel only needs to write the lower triangle.
+    out = torch.zeros(A.shape, dtype=A.dtype, device=A.device)
+
+    M, N = A_input.shape[-2:]
+
+    with torch_device_fn.device(A_input.device):
+        if len(A_input.shape) == 2:
+            grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+            tril_kernel[grid](A_input, out, M, N, diagonal)
+        else:
+            batch = int(torch.numel(A_input) / M / N)
+            B = A_input.view(batch, -1)
+            grid = lambda meta: (
+                triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+            )
+            tril_batch_kernel[grid](B, out, batch, M * N, N, diagonal)
+            out = out.view(A.shape)
+
+    return out
+
+
+def tril_(A, diagonal=0):
+    logger.debug("GEMS TRIL_ (inplace)")
+
+    assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
+    diagonal = int(diagonal)
+    M, N = A.shape[-2:]
+
+    can_use_directly, A_to_use = _check_batch_contiguous(A, allow_zero_stride=True)
+
+    if not can_use_directly:
+        logger.debug(
+            "Input tensor does not satisfy contiguity requirements, "
+            "using temporary tensor for computation"
+        )
+
+        # Use pre-zeroed buffer and copy only the lower triangle.
+        result_temp = torch.zeros_like(A_to_use, memory_format=torch.contiguous_format)
+
+        with torch_device_fn.device(A.device):
+            if len(A.shape) == 2:
+                grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+                tril_kernel[grid](A_to_use, result_temp, M, N, diagonal)
+            else:
+                batch = int(torch.numel(A) / M / N)
+                B = A_to_use.view(batch, -1)
+                result_temp_flat = result_temp.view(batch, -1)
+                grid = lambda meta: (
+                    triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                    triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+                )
+                tril_batch_kernel[grid](B, result_temp_flat, batch, M * N, N, diagonal)
+
+        A.copy_(result_temp)
+    else:
+        # Contiguous in-place: only zero the upper triangle — no reads needed.
+        with torch_device_fn.device(A.device):
+            if len(A.shape) == 2:
+                grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
+                tril_inplace_kernel[grid](A, M, N, diagonal)
+            else:
+                batch = int(torch.numel(A) / M / N)
+                B = A.view(batch, -1)
+                grid = lambda meta: (
+                    triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                    triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+                )
+                tril_batch_inplace_kernel[grid](B, batch, M * N, N, diagonal)
+
+    return A
