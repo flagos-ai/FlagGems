@@ -6,10 +6,10 @@
 import torch
 
 from flag_gems.fused.FLA.chunk_delta_h import chunk_gated_delta_rule_fwd_h
+from flag_gems.fused.FLA.chunk_o import chunk_fwd_o
 from flag_gems.fused.FLA.fused_cumsum_kkt_solve_tril import (
     chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril,
 )
-from flag_gems.fused.FLA.chunk_o import chunk_fwd_o
 from flag_gems.fused.FLA.utils import SUPPRESS_LEVEL
 from flag_gems.fused.FLA.wy_fast import recompute_w_u_fwd
 
