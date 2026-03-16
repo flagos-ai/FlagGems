@@ -31,6 +31,11 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("true_divide_.Tensor", &flag_gems::true_div_);
   m.def("remainder.Tensor", &flag_gems::remainder);
   m.def("remainder_.Tensor", &flag_gems::remainder_);
+  // fill
+  m.def("fill.Scalar", &flag_gems::fill_scalar);
+  m.def("fill.Tensor", &flag_gems::fill_tensor);
+  m.def("fill_.Scalar", &flag_gems::fill_scalar_);
+  m.def("fill_.Tensor", &flag_gems::fill_tensor_);
 #endif
   m.def("max_dim_max", &flag_gems::max_dim_max);
   m.def("rms_norm", &flag_gems::rms_norm);
@@ -86,6 +91,11 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("true_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
   m.def("remainder.Tensor(Tensor self, Tensor other) -> Tensor");
   m.def("remainder_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  // fill
+  m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
+  m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
+  m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
+  m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
 #endif
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
@@ -115,10 +125,6 @@ TORCH_LIBRARY(flag_gems, m) {
       "sort.stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False) -> (Tensor values, "
       "Tensor indices)");
 
-  m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
-  m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
-  m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
-  m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
   m.def("softmax(Tensor input, int dim, bool half_to_float=False) -> Tensor");
   m.def("softmax_backward(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor");
   m.def(
@@ -193,6 +199,11 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("remainder.Tensor", TORCH_FN(remainder));
   m.impl("remainder_.Tensor", TORCH_FN(remainder_));
   m.impl("remainder.Scalar_Tensor", TORCH_FN(remainder));
+  // fill
+  m.impl("fill.Scalar", TORCH_FN(fill_scalar));
+  m.impl("fill.Tensor", TORCH_FN(fill_tensor));
+  m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
+  m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
 #endif
   // Norm
   m.impl("rms_norm", TORCH_FN(rms_norm));
@@ -212,10 +223,6 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("sort", TORCH_FN(sort));
   m.impl("sort.stable", TORCH_FN(sort_stable));
 
-  m.impl("fill.Scalar", TORCH_FN(fill_scalar));
-  m.impl("fill.Tensor", TORCH_FN(fill_tensor));
-  m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
-  m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
   m.impl("softmax", TORCH_FN(softmax));
   m.impl("softmax_backward", TORCH_FN(softmax_backward));
   m.impl("reshape_and_cache_flash", TORCH_FN(reshape_and_cache_flash));

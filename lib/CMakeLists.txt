@@ -21,7 +21,6 @@ add_library(operators
             softmax.cpp
             sort.cpp
 	          exponential_.cpp
-            fill.cpp
             reshape_and_cache_flash.cpp
             flash_attn_varlen_func.cpp
             rwkv_mm_sparsity.cpp
@@ -50,7 +49,7 @@ add_library(FlagGems::operators ALIAS operators)
 option(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP "Build pointwise_dynamic C++ support" OFF)
 if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
   add_subdirectory(pointwise_dynamic_cpp)
-  target_sources(operators PRIVATE add.cpp div.cpp)
+  target_sources(operators PRIVATE add.cpp div.cpp fill.cpp)
   target_link_libraries(operators PRIVATE pointwise_dynamic)
   target_compile_definitions(operators PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
 endif()
