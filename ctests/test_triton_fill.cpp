@@ -1,7 +1,6 @@
-#include "c10/cuda/CUDAFunctions.h"
+#include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
-#include "gtest/gtest.h"
 #include "torch/torch.h"
 
 TEST(FillTest, ScalarFill) {
