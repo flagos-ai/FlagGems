@@ -106,6 +106,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .randn_like import randn_like
 from .reciprocal import reciprocal, reciprocal_
 from .relu import relu, relu_
 from .repeat_interleave import (
@@ -326,4 +327,5 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "gather",
     "gather_backward",
+    "randn_like",
 ]
