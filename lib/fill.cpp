@@ -32,8 +32,7 @@ at::Tensor& fill_tensor_(at::Tensor& input, const at::Tensor& value) {
 }  // namespace flag_gems
 
 // NOTE:
-// Deprecated for now. Kept as a safety fallback in case the new implementation
-// exposes bugs. Will be removed once the new path is proven stable in production.
+// Deprecated and scheduled for removal in v4.4.
 /***
 at::Tensor fill_scalar(const at::Tensor& input, const c10::Scalar& value) {
   at::Tensor out = at::empty_like(input);
