@@ -2355,6 +2355,17 @@ def test_accuracy_lift_fresh_copy(shape, dtype):
     ref_out = torch.ops.aten.lift_fresh_copy(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.ops.aten.lift_fresh_copy(inp)
+@pytest.mark.upsample_nearest_exact1d
+@pytest.mark.parametrize("shape", [(2, 3, 16), (4, 8, 64), (8, 16, 256)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("factor", [2, 3])
+def test_accuracy__upsample_nearest_exact1d(shape, dtype, factor):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+    out_size = [shape[-1] * factor]
+    ref_out = torch.ops.aten._upsample_nearest_exact1d(ref_x, out_size, None)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._upsample_nearest_exact1d(x, out_size, None)
     gems_assert_close(res_out, ref_out, dtype)
 
 
