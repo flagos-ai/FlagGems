@@ -1901,18 +1901,18 @@ def torch_moe_align_block_size(
         num_expert_tokens = expert_tokens.shape[0]
 
         if num_expert_tokens > 0:
-            in_sorted_token_ids[
-                current_pos : current_pos + num_expert_tokens
-            ] = expert_tokens
+            in_sorted_token_ids[current_pos : current_pos + num_expert_tokens] = (
+                expert_tokens
+            )
 
             expert_blocks_needed = expert_padded_counts[expert_id] // block_size
 
             expert_id_new = expert_id
             if expert_map is not None:
                 expert_id_new = expert_map[expert_id]
-            expert_ids[
-                current_block : current_block + expert_blocks_needed
-            ] = expert_id_new
+            expert_ids[current_block : current_block + expert_blocks_needed] = (
+                expert_id_new
+            )
 
             current_pos += expert_padded_counts[expert_id]
             current_block += expert_blocks_needed
@@ -2324,13 +2324,19 @@ def test_accuracy_lift_fresh_copy(shape, dtype):
 def test_accuracy_margin_ranking_loss(shape, dtype, margin, reduction):
     input1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     input2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    target = (torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2 - 1).to(dtype)
+    target = (
+        torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2 - 1
+    ).to(dtype)
     ref_input1 = to_reference(input1)
     ref_input2 = to_reference(input2)
     ref_target = to_reference(target)
-    ref_out = torch.ops.aten.margin_ranking_loss(ref_input1, ref_input2, ref_target, margin, reduction)
+    ref_out = torch.ops.aten.margin_ranking_loss(
+        ref_input1, ref_input2, ref_target, margin, reduction
+    )
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.margin_ranking_loss(input1, input2, target, margin, reduction)
+        res_out = torch.ops.aten.margin_ranking_loss(
+            input1, input2, target, margin, reduction
+        )
     gems_assert_close(res_out, ref_out, dtype)
 
 
