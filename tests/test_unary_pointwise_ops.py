@@ -1848,3 +1848,15 @@ def test_accuracy_prelu(shape, dtype, weight_kind):
         res_out = torch.ops.aten.prelu(x, w)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.i0_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_i0_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.ops.aten.i0_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.i0_(inp)
+    gems_assert_close(res_out, ref_out, dtype)

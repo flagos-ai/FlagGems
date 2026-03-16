@@ -196,6 +196,7 @@ _FULL_CONFIG = (
     ("index_add_", index_add_),
     ("index_put", index_put),
     ("index_put_", index_put_),
+    ("i0_", i0_),
     ("index_select", index_select),
     ("isclose", isclose),
     ("isfinite", isfinite),
