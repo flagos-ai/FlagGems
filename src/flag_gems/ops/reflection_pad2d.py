@@ -55,9 +55,7 @@ def _reflection_pad2d_kernel(
 
 
 @triton.jit
-def _copy_tensor_kernel(
-    in_ptr, out_ptr, B, H, W, BLOCK_HW: tl.constexpr
-):
+def _copy_tensor_kernel(in_ptr, out_ptr, B, H, W, BLOCK_HW: tl.constexpr):
     pid_b = tl.program_id(axis=0)
     pid_n = tl.program_id(axis=1)
 
@@ -72,16 +70,12 @@ def _copy_tensor_kernel(
 def _launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = None):
     # Validate padding format
     if not isinstance(padding, (list, tuple)):
-        raise ValueError(
-            "padding must be a sequence"
-        )
+        raise ValueError("padding must be a sequence")
     if len(padding) != 4:
         raise ValueError(
             "padding must be a sequence of length 4: (pad_left, pad_right, pad_top, pad_bottom)"
         )
-    pad_left, pad_right, pad_top, pad_bottom = [
-        int(p) for p in padding
-    ]
+    pad_left, pad_right, pad_top, pad_bottom = [int(p) for p in padding]
 
     # Validate padding values
     if pad_left < 0 or pad_right < 0 or pad_top < 0 or pad_bottom < 0:
