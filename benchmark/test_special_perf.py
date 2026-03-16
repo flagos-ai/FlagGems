@@ -1127,6 +1127,18 @@ def test_perf_lift_fresh_copy():
         ),
         op_name="lift_fresh_copy",
         torch_op=torch.ops.aten.lift_fresh_copy,
+class SafeSoftmaxBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp, -1, None
+
+
+@pytest.mark.safe_softmax
+def test_perf__safe_softmax():
+    bench = SafeSoftmaxBenchmark(
+        op_name="_safe_softmax",
+        torch_op=torch.ops.aten._safe_softmax,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
