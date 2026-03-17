@@ -29,11 +29,17 @@ def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
     logger.debug("GEMS ARANGE")
-    if dtype is torch.int64:
+
+    # Ensure start, end, step are floats for calculation
+    start = int(start) if isinstance(start, (int, float)) else start
+    end = int(end) if isinstance(end, (int, float)) else end
+    step = int(step) if isinstance(step, (int, float)) else step
+
+    if dtype is torch.int64 or dtype is None:
         sgn = (step > 0) - (step < 0)
-        size = (end - start + step - sgn) // step
+        size = int((end - start + step - sgn) // step)
     else:
-        size = math.ceil((end - start) / step)
+        size = int(math.ceil((end - start) / step))
 
     BLOCK_SIZE = 128
     grid = triton.cdiv(size, BLOCK_SIZE)

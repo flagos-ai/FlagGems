@@ -297,6 +297,76 @@ def test_accuracy_conv2d_padding(
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
+# Test for stride > 1 with padding='same'
+SHAPE_CONV2D_STRIDE_SAME = [
+    ((1, 3, 32, 32), (8, 3, 3, 3), 1),
+    ((2, 3, 64, 64), (16, 3, 3, 3), 1),
+    ((1, 8, 16, 16), (8, 8, 3, 3), 1),
+]
+
+
+@pytest.mark.parametrize("shape, kernel, groups", SHAPE_CONV2D_STRIDE_SAME)
+@pytest.mark.parametrize("stride", [2, 3])
+@pytest.mark.parametrize("padding", ["same"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dilation", [1])
+@pytest.mark.parametrize("bias", [False])
+def test_accuracy_conv2d_stride_same(
+    shape, kernel, stride, padding, groups, dtype, dilation, bias
+):
+    """Test conv2d with stride > 1 and padding='same'."""
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+    torch.backends.cudnn.allow_tf32 = False
+    weight = torch.randn(
+        kernel, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    bias = None
+    ref_weight = to_reference(weight, True)
+    ref_out = torch.nn.functional.conv2d(
+        ref_inp,
+        ref_weight,
+        bias=bias,
+        groups=groups,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+    ).to(dtype)
+
+    res_out = flag_gems.conv2d(
+        inp,
+        weight,
+        bias=bias,
+        groups=groups,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(ref_out).to(flag_gems.device)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad, ref_weight_grad) = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight), ref_grad
+    )
+    (res_in_grad, res_weight_grad) = torch.autograd.grad(
+        res_out, (inp, weight), out_grad
+    )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=weight.shape[2])
+    gems_assert_close(
+        res_weight_grad, ref_weight_grad, dtype, reduce_dim=weight.shape[0]
+    )
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
+
 SHAPE_CONV3D = [
     ((1, 2, 5, 5, 5), (1, 2, 3, 3, 3), 1),
     ((2, 3, 9, 9, 9), (1, 3, 3, 3, 3), 1),

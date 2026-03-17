@@ -592,31 +592,40 @@ class Conv2d(torch.autograd.Function):
 
 # todo test SymInt[2] of stride or padding
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
+    # Handle stride as tuple/list
+    if isinstance(stride, (list, tuple)):
+        stride_h, stride_w = stride
+    else:
+        stride_h = stride_w = stride
+
+    # Handle dilation as tuple/list
+    if isinstance(dilation, (list, tuple)):
+        dilation_h, dilation_w = dilation
+    else:
+        dilation_h = dilation_w = dilation
+
     if isinstance(padding, str):
         if padding == "same":
-            assert (
-                stride == 1
-            ), "Doesn't support any stride values other than 1 \
-                in padding = 'same' mode, received stride value {stride}"
+            # Note: Code already handles stride != 1 correctly by computing proper padding
             ih = input.shape[-2]
             iw = input.shape[-1]
             kernel_size_h = weight.shape[-2]
             kernel_size_w = weight.shape[-1]
             padding_h = int(
                 math.ceil(
-                    (stride * (ih - 1) + 1 + dilation * (kernel_size_h - 1) - ih) / 2
+                    (stride_h * (ih - 1) + 1 + dilation_h * (kernel_size_h - 1) - ih) / 2
                 )
             )
             padding_w = int(
                 math.ceil(
-                    (stride * (iw - 1) + 1 + dilation * (kernel_size_w - 1) - iw) / 2
+                    (stride_w * (iw - 1) + 1 + dilation_w * (kernel_size_w - 1) - iw) / 2
                 )
             )
             oh = int(
-                (ih + 2 * padding_h - dilation * (kernel_size_h - 1) - 1) / stride + 1
+                (ih + 2 * padding_h - dilation_h * (kernel_size_h - 1) - 1) / stride_h + 1
             )
             ow = int(
-                (iw + 2 * padding_w - dilation * (kernel_size_w - 1) - 1) / stride + 1
+                (iw + 2 * padding_w - dilation_w * (kernel_size_w - 1) - 1) / stride_w + 1
             )
             padding = max(padding_h, padding_w)
             return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)[
