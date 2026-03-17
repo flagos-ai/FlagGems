@@ -579,6 +579,9 @@ def test_sdpa_nonsquare_qk(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "mthreads", reason="Unsupported in CPU mode"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame", reason="Unsupported in CPU mode"
+)
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -772,6 +775,7 @@ def test_flash_splitkv(
     flag_gems.vendor_name == "mthreads", reason="Unsupported in CPU mode"
 )
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="Unsupported in CPU mode")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
