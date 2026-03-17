@@ -582,7 +582,7 @@ __all__ = [
     "where_self_out",
     "zero",
     "zero_out",
-    "zeros",
     "zero_",
+    "zeros",
     "zeros_like",
 ]
