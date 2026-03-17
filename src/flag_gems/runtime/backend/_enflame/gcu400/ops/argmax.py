@@ -127,11 +127,18 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 block_size,
             )
             argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
-        return out
+        return out.to(torch.int32).to(torch.int64)
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         shape = inp.shape
         dim = dim % inp.ndim
+        if inp.numel() == 0:
+            out_shape = list(shape)
+            if keepdim:
+                out_shape[dim] = 1
+            else:
+                del out_shape[dim]
+            return torch.zeros(out_shape, dtype=torch.int64, device=inp.device).to(torch.int64)
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
