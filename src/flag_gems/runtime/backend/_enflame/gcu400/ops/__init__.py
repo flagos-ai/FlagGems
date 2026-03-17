@@ -136,6 +136,7 @@ from .unique import (
     sorted_quick_unique_flat,
 )
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
@@ -247,6 +248,7 @@ __all__ = [
     "simple_unique_flat",
     "_unique2",
     "upsample_nearest2d",
+    "upsample_nearest1d",
     "max",
     "max_dim",
     "rms_norm",
