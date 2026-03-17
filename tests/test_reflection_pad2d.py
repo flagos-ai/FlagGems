@@ -7,9 +7,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.reflection_pad2d import (
-    reflection_pad2d as gems_reflection_pad2d,
-)
+from flag_gems.ops.reflection_pad2d import reflection_pad2d as gems_reflection_pad2d
 from flag_gems.ops.reflection_pad2d import (
     reflection_pad2d_out as gems_reflection_pad2d_out,
 )
