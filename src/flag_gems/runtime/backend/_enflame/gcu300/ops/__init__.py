@@ -145,6 +145,7 @@ from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
+from .softmax import softmax, softmax_backward
 from .sort import sort, sort_stable
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
@@ -392,4 +393,6 @@ __all__ = [
     "vector_norm",
     "triu",
     "_upsample_bicubic2d_aa",
+    "softmax",
+    "softmax_backward",
 ]
