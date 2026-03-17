@@ -1323,6 +1323,59 @@ def test_accuracy_log(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.log10
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.log10(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.log10(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.log10
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_boundary_cases(dtype):
+    # Test zero value
+    zero_tensor = torch.tensor(0.0, dtype=dtype, device=flag_gems.device)
+    ref_zero = to_reference(zero_tensor, True)
+    with flag_gems.use_gems():
+        res_zero = torch.log10(zero_tensor)
+    ref_zero_out = torch.log10(ref_zero)
+    gems_assert_close(res_zero, ref_zero_out, dtype)
+
+    # Test one value
+    one_tensor = torch.tensor(1.0, dtype=dtype, device=flag_gems.device)
+    ref_one = to_reference(one_tensor, True)
+    with flag_gems.use_gems():
+        res_one = torch.log10(one_tensor)
+    ref_one_out = torch.log10(ref_one)
+    gems_assert_close(res_one, ref_one_out, dtype)
+
+    # Test ten value
+    ten_tensor = torch.tensor(10.0, dtype=dtype, device=flag_gems.device)
+    ref_ten = to_reference(ten_tensor, True)
+    with flag_gems.use_gems():
+        res_ten = torch.log10(ten_tensor)
+    ref_ten_out = torch.log10(ref_ten)
+    gems_assert_close(res_ten, ref_ten_out, dtype)
+
+
+@pytest.mark.log10
+def test_accuracy_log10_empty_tensor():
+    # Test empty tensor
+    empty_tensor = torch.tensor([], dtype=torch.float32, device=flag_gems.device)
+    ref_empty = to_reference(empty_tensor, True)
+    with flag_gems.use_gems():
+        res_empty = torch.log10(empty_tensor)
+    ref_empty_out = torch.log10(ref_empty)
+    gems_assert_equal(res_empty, ref_empty_out)
+
+
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + COMPLEX_DTYPES)
