@@ -4,6 +4,7 @@ from .add import add, add_
 from .angle import angle
 from .arange import arange, arange_start
 from .argmax import argmax
+from .argmin import argmin
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -142,6 +143,7 @@ from .zeros import zeros, zero_
 from .zeros_like import zeros_like
 
 __all__ = [
+    "argmin",
     "count_nonzero",
     "mean_dim",
     "zeros",
