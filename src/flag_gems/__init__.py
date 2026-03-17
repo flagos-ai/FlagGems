@@ -356,8 +356,6 @@ _FULL_CONFIG = (
     ("var_mean.correction", var_mean),
     ("vdot", vdot),
     ("vstack", vstack),
-    ("where.ScalarOther", where_scalar_other),
-    ("where.ScalarSelf", where_scalar_self),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
     ("zeros", zeros),
