@@ -18,6 +18,10 @@
   <a href="https://www.facebook.com/FlagOSCommunity" target="_blank">
     <img src="./docs/assets/Facebook.png" alt="X" width="32" height="32" />
   </a>
+
+  <a href="https://discord.com/invite/ubqGuFMTNE" target="_blank">
+    <img src="./docs/assets/discord.png" alt="X" width="32" height="32" />
+  </a>
 </div>
 
 
