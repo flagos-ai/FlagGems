@@ -139,28 +139,28 @@ mm:
   num_stages: 3
   num_warps: 4
 - META:
-    BLOCK_M: 256
-    BLOCK_N: 512
-    BLOCK_K: 256
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 128
     SPLIT_K: 1
   num_stages: 3
   num_warps: 2
 - META:
-    BLOCK_M: 256
-    BLOCK_N: 256
-    BLOCK_K: 256
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 128
     SPLIT_K: 1
   num_stages: 3
   num_warps: 4
 - META:
     BLOCK_M: 128
-    BLOCK_N: 256
+    BLOCK_N: 128
     BLOCK_K: 256
     SPLIT_K: 1
   num_stages: 3
   num_warps: 4
 - META:
-    BLOCK_M: 128
+    BLOCK_M: 64
     BLOCK_N: 128
     BLOCK_K: 128
     SPLIT_K: 1
