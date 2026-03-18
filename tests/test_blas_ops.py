@@ -8,8 +8,7 @@ import torch
 import flag_gems
 
 from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
-from .accuracy_utils import (SCALARS, UT_SHAPES_1D, gems_assert_close,
-                             to_reference)
+from .accuracy_utils import SCALARS, UT_SHAPES_1D, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
 if QUICK_MODE:
@@ -249,10 +248,10 @@ def test_accuracy_baddbmm_backward(M, N, K, scalar, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
 
-    ref_in_bias, ref_in_grad1, ref_in_grad2 = torch.autograd.grad(
+    (ref_in_bias, ref_in_grad1, ref_in_grad2) = torch.autograd.grad(
         ref_out, (ref_bias, ref_mat1, ref_mat2), ref_grad
     )
-    res_in_bias, res_in_grad1, res_in_grad2 = torch.autograd.grad(
+    (res_in_bias, res_in_grad1, res_in_grad2) = torch.autograd.grad(
         res_out, (bias, mat1, mat2), out_grad
     )
 
