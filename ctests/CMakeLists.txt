@@ -1,7 +1,10 @@
-add_executable(test_triton_pointwise test_triton_pointwise.cpp)
-target_link_libraries(test_triton_pointwise
-  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
-add_test(NAME test_triton_pointwise COMMAND test_triton_pointwise)
+if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
+  add_executable(test_triton_add test_triton_add.cpp)
+  target_link_libraries(test_triton_add
+    PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+  target_compile_definitions(test_triton_add PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
+  add_test(NAME test_triton_add COMMAND test_triton_add)
+endif()
 
 add_executable(test_triton_reduction test_triton_reduction.cpp)
 target_link_libraries(test_triton_reduction
