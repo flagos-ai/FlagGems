@@ -9,7 +9,7 @@
 # - running all SVT tests where selected models are launched for E2E tests.
 #
 # TODO(Qiming): Enable daily tests for benchmark and all backends
-#
+
 name: daily
 
 on:
@@ -25,10 +25,12 @@ jobs:
       - datetime: ${{ steps.get-date.outputs.CURRENT_DATE }}
     steps:
       - id: get-date
+        shell: bash
         run: |
           echo "CURRENT_DATE=$(date +'%Y-%m-%d-%H%M%S')" >> $GITHUB_ENV
 
   cpp-op:
+    needs: prepare
     runs-on: cpp
     uses: ./.github/workflows/cpp-op-test.yaml
 
