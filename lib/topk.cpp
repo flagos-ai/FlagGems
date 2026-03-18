@@ -3,7 +3,7 @@
 
 #include <iostream>
 #include <tuple>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -43,8 +43,8 @@ std::tuple<at::Tensor, at::Tensor> topk(
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "topk.py"),
                                       "topk_stage2_kernel");
   c10::DeviceGuard guard(stage1_out.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
   /*
   def topk_stage1_kernel(y_ptr,
                          index_ptr,

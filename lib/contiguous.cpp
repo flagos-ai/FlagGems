@@ -2,7 +2,7 @@
 #include "flag_gems/utils.h"
 
 #include <iostream>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -30,9 +30,9 @@ at::Tensor contiguous(const at::Tensor &self, at::MemoryFormat memory_format) {
   at::Tensor out_strides = torch::tensor(out.strides(), options);
   const unsigned int num_blocks = (n + tile_size - 1) / tile_size;
 
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   c10::DeviceGuard guard(out.device());
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
   f(raw_stream,
     num_blocks,
     1,
