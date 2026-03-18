@@ -5,15 +5,16 @@ weight: 30
 <!--
 # Pointwise Dynamic Operators
 
-## Pointwise Operations
+## 1. Pointwise Operations
 -->
 # 关于逐点动态算子
 
-## 逐点操作 {#pointwise-operations}
+## 1. 逐点操作 {#pointwise-operations}
 
 <!--
 Pointwise operators are trivial to parallelize.
-Most parallel programming guides begin with pointwise addition between 2 contiguous vectors.
+Most parallel programming guides begin with pointwise addition
+between 2 contiguous vectors.
 For [`vector_add` in Triton](https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html#sphx-glr-getting-started-tutorials-01-vector-add-py),
 it is simple to implement a task partitioning schema that each CTA reads a contiguous range
 from each input vector and writes to a contiguous range of the output vector.
@@ -27,7 +28,8 @@ from each input vector and writes to a contiguous range of the output vector.
 <!--
 However, actual use caes for pointwise operators may be more complicated.
 
-- The input tensors might be contiguous: they may be contiguous in memory but not in a row-major order;
+- The input tensors might be contiguous: they may be contiguous in memory
+  but not in a row-major order;
   or they may not be dense; or they may have internal overlapping.
 - The input tensors may have arbitrary and/or different number of dimensions.
   It is not always possible to view them as contiguous vectors of the same shape.
@@ -55,7 +57,7 @@ The principles of our design are:
   or as a template-based code generation mechanism, to reduce boilerplate code.
 - The common internal facilities should be configurable for adaption of different backends.
 -->
-FlagGems 给出的解决方案是基于代码生成来解决这类问题。方案设计的原理包括：
+*FlagGems* 给出的解决方案是基于代码生成来解决这类问题。方案设计的原理包括：
 
 - 逐点运算通常是访存密集类型的计算，因此应该避免通过复制张量来使之成为连续向量。
 - 逐点算子要支持任意秩（rank）、大小（size）、步长（stride）的张量，
@@ -74,7 +76,7 @@ and corresponding wrappers based on the operation and the input configurations.
 基于操作和输入的配置来构造不同的封装层。
 
 <!--
-## Code generation
+## 2. Code generation
 
 The basic usage of `@pointwise_dynamic` is using it to decorate a `triton.jit` function
 that has return value, which is used to map inputs to outputs.
@@ -83,7 +85,7 @@ a function that can be called from device.
 We generate a Triton JIT function to call it, which acts like a CUDA kernel
 (a function with `__global__` declaration specifier) that loads and stores data at global memory.
 -->
-## 代码生成  {#code-generation}
+## 2. 代码生成  {#code-generation}
 
 `@pointwise_dynamic` 的基本用法是用来修饰一个带有返回值的 `triton.jit` 函数，
 修饰符的作用是在输入与输出之间建立映射关系。
@@ -158,13 +160,13 @@ and is ready for the computation.
 这样的输出可以继续参与计算。
 
 <!--
-## Metadata Computation
+## 3. Metadata Computation
 
 Since pointwise operators shares similar logic at metadata computation,
 which has been implemented as a common function used by all `PointwiseDynamicFunction`s.
 It involes:
 -->
-## 元数据计算  {#metadata-computation}
+## 3. 元数据计算  {#metadata-computation}
 
 由于逐点算子在元数据计算方面执行类似的逻辑，因此我们将它实现为一个可被所有
 `PointwiseDynamicFunction` 调用的公共函数。这一函数的主要任务是：
@@ -211,7 +213,7 @@ the outputs have correct metadata and are pre-allocated, and you have to provide
 并且已经预分配，并且你必须提供任务空间的秩。
 
 <!--
-## Caching and dispatching
+## 4. Caching and dispatching
 
 The decorator `@pointwise_dynamic` returns a `PointwiseDynamicFunction` object,
 which servers as the proxy to all the decorated function.
@@ -219,7 +221,7 @@ It caches all the generated python modules and dispatches to them.
 
 The dispatch result depends only on the rank of the task-space, rather than the shape of the task-space.
 -->
-## 缓存和派发 {#caching-and-dispatching}
+## 4. 缓存和派发 {#caching-and-dispatching}
 
 修饰符 `@pointwise_dynamic` 会返回一个 `PointwiseDynamicFunction` 对象，
 这一对象会为所有被修饰的函数扮演代理中介的角色。
@@ -228,13 +230,13 @@ The dispatch result depends only on the rank of the task-space, rather than the 
 派发的结果仅仅取决于任务空间的秩，而不是任务空间的形状。
 
 <!--
-## Use the `pointwise_dynamic` decorator
+## 5. Use the `pointwise_dynamic` decorator
 
-### Basic
+### 5.1 Basic
 -->
-## `pointwise_dynamic` 修饰符的使用
+## 5. `pointwise_dynamic` 修饰符的使用
 
-### 基础用法
+### 5.1 基础用法
 
 <!--
 Decorating the pointwise operator function with `pointwise_dynamic` can save the manual handling of
@@ -267,13 +269,13 @@ we supply other necessary information by passing arguemnts to `pointwise_dynamic
 传递参数来提供必要的信息。
 
 <!--
-### Tensor/Non-Tensor
+### 5.2 Tensor/Non-Tensor
 
 By default, `@pointwise_dynamic` treats each argument as a tensor, and generates code to load/store them.
 But it can be configured by passing a list of boolean values to the parameter `is_tensor`
 to indicate whether the corresponding argument is tensor or nor.
 -->
-### 张量与非张量
+### 5.2 张量与非张量
 
 默认情况下，`@pointwise_dynamic` 会将每个参数都视为一个张量，并生成读写操作的代码。
 不过你也可以通过为参数 `is_tensor` 传递一个布尔值列表来进行配置，
@@ -311,13 +313,13 @@ add_func(a, b, 0.2)
 ```
 
 <!--
-### Output dtypes
+### 5.3 Output dtypes
 
 For pointwise operators to allocate outputs with correct dtype, `promotion_methods` is required.
 Since the output dtype may be depedent on the input dtypes with some rules,
 specifying the rule is more expressive than providing output dtypes directly.
 -->
-### 输出数据类型  {#output-dtypes}
+### 5.3 输出数据类型  {#output-dtypes}
 
 为了让逐点算子能够正确地根据数据类型来为输出参数分配空间，需要指定 `promotion_methods` 参数。
 由于算子可能会依据某种规则来基于输入数据类型来决定输出的数据类型，
@@ -362,7 +364,7 @@ class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
     BOOL_TO_LONG = (5,)
 ```
 
-类型提升示例
+类型提升示例：
 
 | 提升方法           | 算子示例                      |
 | ------------------ | ----------------------------- |
@@ -374,13 +376,13 @@ class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
 | `BOOL_TO_LONG`     | `pow`                         |
 
 <!--
-### Number of outputs
+### 5.4 Number of outputs
 
 For pointwise operations with multiple output tensors, we need to inform `pointwise_dynamic`
 about the number of outputs so it could generate code to store the output tensors.
 For number of inputs, it can be inferred from the length of `is_tensor` of `dtypes`.
 -->
-### 输出参数个数  {#number-of-outputs}
+### 5.4 输出参数个数  {#number-of-outputs}
 
 对于需要输出多个张量的逐点运算而言，我们需要通知 `pointwise_dynamic` 输出参数个数，
 这样修饰符逻辑才能生成用来保存输出张量的代码。
@@ -402,13 +404,13 @@ def polar_kernel(abs, angle):
 ```
 
 <!--
-## Use PointwiseDynamicFunction
+## 6. Use PointwiseDynamicFunction
 
-### Basic
+### 6.1 Basic
 -->
-## 使用 `PointwiseDynamicFunction`
+## 6 使用 `PointwiseDynamicFunction`
 
-### 基本用法
+### 6.1 基本用法
 
 <!--
 `PointwiseDynamicFunction` can be called with the same function signature as the decorated function,
@@ -418,7 +420,7 @@ as shown in previous examples.
 正如前面的示例所展示的那样。
 
 <!--
-### In-place Operation & Output arguments
+### 6.2 In-place Operation & Output arguments
 
 Since `@pointwise_dynamic` generates wrappers that take outputs as arguments,
 we can use it to implement inplace-operations.
@@ -427,7 +429,7 @@ To discriminate between input arguments and output arguments, we follow a simple
 all input arguments must be passed by position and all output arguments must be passed
 using keyword arguments.
 -->
-### 原地操作与输出参数
+### 6.2 原地操作与输出参数
 
 由于 `@pointwise_dynamic` 修饰符会生成封装逻辑，将算子的输出作为参数，
 我们可以用它来实现原地（in-place）计算操作。
@@ -484,14 +486,14 @@ Note that in these cases, you have to ensure that the output has the right metad
 注意，在这里，你必须确保输出参数具有正确的元数据。
 
 <!--
-### Manual Instantiation
+### 6.3 Manual Instantiation
 
 For some operations you may want to skip the metadata computation, especially the process
 to reduce the rank of task space, and prepare all inputs and outputs manually.
 You can call the `instantiate()` method of `PointwiseDynamicFunction` with a specific task rank
 to get a specific cached function and call it directly.
 -->
-### 手动实例化 {#manual-instantiation}
+### 6.3 手动实例化 {#manual-instantiation}
 
 对于某些操作，你可能想要跳过元数据计算这一步，尤其是处理过程会缩减任务空间的秩时。
 这时你希望手动准备所有输入和输出。

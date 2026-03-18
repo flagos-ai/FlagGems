@@ -5,20 +5,20 @@ weight: 40
 
 # Adding a New Backend
 
-## Introduction
+## 1. Introduction
 
 The `flag_gems` accelerated operators library from the *FlagGems* project can be used on multiple backends.
 If you are a chip vendor and wish to contribute backend-specific optimizations for your hardware,
 you can use this documentation to integrate the optimizations into *FlagGems*..
 
-## Create a backend directory
+## 2. Create a backend directory
 
 All vendor-specific optimization code reside in the `src/flag_gems/runtime/backend` directory.
 You can start by creating a folder for identification under this directory,
-following the naming pattern `<_vendo-rname>`. As an example, all NVIDIA-specific customization
+following the naming pattern `<_vendor-name>`. As an example, all NVIDIA-specific customization
 can be found at `src/flag_gems/runtime/backend/_nvidia`.
 
-## Intialize the directory
+## 3. Initialize the directory
 
 Create the necessary files, including but not limited to the `__init__.py` file,
 the `heuristics_config_utils.py` file, the `tune_configs.yaml` file , as well as a folder named  `ops`.
@@ -35,7 +35,7 @@ The expected directory layout is shown in the following example:
 └── tune_configs.yaml
 ```
 
-### About `__init__.py` file
+### 3.1 About `__init__.py` file
 
 An easy way to to create this file is to copy one from existing vendors
 (say `src/flag_gems/runtime/backend/_nvidia/__init__.py`).
@@ -59,19 +59,19 @@ The important properties for `VendorInfoBase` are:
 - `dispatch_key`: an optional property for registering operators to `torch.library.Library`
   in PyTorch, e.g. `PrivateUse1`.
 
-### The `heuristics_config_utils.py` file
+### 3.2 The `heuristics_config_utils.py` file
 
 In the `heuristics_config_utils.py` file, You will configure the `triton.heuristics` parameters.
 You can  refer to `src/flag_gems/runtime/backend/_nvidia/heuristics_config_utils.py`
 for an example.
 
-### The `tune_configs.yaml` file
+### 3.3 The `tune_configs.yaml` file
 
 In the `tune_configs.yaml` file, you can customize `triton.autotune` parameters.
 Similarly, you can refer to `src/flag_gems/runtime/backend/_nvidia/tune_configs.yaml`
 for an example.
 
-### The `ops` directory
+### 3.4 The `ops` directory
 
 The `ops` directory is where vendor-customized operator implementations are stored.
 For instance, if you want to create a custom `add` operator, you will place the implementation

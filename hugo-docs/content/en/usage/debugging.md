@@ -24,7 +24,7 @@ flag_gems.enable(
 )
 ```
 
-When your program has completed executtion, you can inspect the log file
+When your program has completed execution, you can inspect the log file
 (e.g., `./gems_debug.log`) to check the list of operators that have been invoked
 (aka. accelerated) through `flag_gems`.
 

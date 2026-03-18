@@ -9,7 +9,7 @@ weight: 30
 
 *FlagGems* can be installed either as a pure python package
 or a package with C-extensions for better runtime performance.
-See [installation](./installation/) for some detailed guidance
+See [installation](/FlagGems/getting-started//install/) for some detailed guidance
 on different installation options.
 
 ## 2. Verify the installation
@@ -29,7 +29,7 @@ python -c "import torch; print(torch.__version__)"
 If you are using a [non-NVIDIA platform](/FlagGems/usage/non-nvidia/),
 you may have a PyTorch plugin that is provided by the backend vendor.
 You can perform a similar verification against this plugin.
-For example, on a MooreThreads platform, you can verify if the plugin
+For example, on a MooreThreads GPU platform, you can verify if the plugin
 works using the following command:
 
 ```shell

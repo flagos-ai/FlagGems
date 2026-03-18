@@ -6,7 +6,9 @@ bookCollapseSection: true
 
 [<img width="2182" height="602" alt="github+banner-20260130" src="/FlagGems/images/banner-20260130.png" />](https://flagos.io/)
 
-## About
+# FlagGems Overview
+
+## About FlagGems
 
 *FlagGems* is a high-performance general operator library implemented
 in the [Triton](https://github.com/openai/triton) language.

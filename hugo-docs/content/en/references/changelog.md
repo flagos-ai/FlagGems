@@ -232,10 +232,8 @@ weight: 90
   `stack`,
   `vstack`,
   `where_out` (*stable*),
-- Added pointwise operators:
-  `clamp_`,
-  `diagonal_backward`,
-  `sigmoid_`,
+- Added linear algebra operators:
+  `diagonal_backward`
 - Added convolution operators:
   `_conv_depthwise2d`,
 - Added neural network operators:
@@ -252,6 +250,7 @@ weight: 90
   `scaled_dot_product_attention`,
   `scaled_dot_product_attention_backward`,
   `scaled_dot_product_attention_forward`,
+  `sigmoid_`,
   `silu_`,
   `upsample_nearest2d`,
   `weight_norm_interface`,
@@ -261,6 +260,7 @@ weight: 90
   `bitwise_and_`,
   `bitwise_not_`,
   `bitwise_or_`,
+  `clamp_`,
   `cos_`,
   `div_mode_`,
   `exp_`,
@@ -334,6 +334,7 @@ weight: 90
   `rand_like`,
   `randn`,
   `randn_like`,
+  `topk`,
   `uniform_`
 - Added science operators:
   `erf`,
@@ -347,7 +348,7 @@ weight: 90
 - Added BLAS operators:
   `mv`,
   `outer`
-- Added pointwise operators:
+- Added math operators:
   `bitwise_and`,
   `bitwise_not`,
   `bitwise_or`,
@@ -383,7 +384,7 @@ weight: 90
   `sum`,
   `var_mean`,
   `vector_norm`,
-- Added fused operators:
+- Added neural network operators:
   `apply_rotary_position_embedding`,
   `fused_add_rms_norm`,
   `gelu_and_mul`,
@@ -400,7 +401,7 @@ weight: 90
   `addmm`,
   `bmm`,
   `mm`
-- Added pointwise operators:
+- Added math operators:
   `abs`,
   `add`,
   `div`,

@@ -8,29 +8,31 @@ weight: 10
 ## Rich Collection of Operators
 
 FlagGems features a large collection of PyTorch compatible operators.
-Operators will be implemented according to [operator list](./operators.md).
+Refer to [operator supported](/FlagGems/references/operators/) and
+[experimental operators](/FlagGems/references/experimental/)
+for list of formally supported operators and experimental operators.
 
 ## Hand-optimized Performance for Selected Operators
 
 The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode.
 The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
 
-![Operator Speedup](./assets/speedup-20251225.png)
+![Operator Speedup](/FlagGems/images/speedup-20251225.png)
 
 ## Eager-mode ready, independent of `torch.compile`
 
-> TBD
+> TODO: contents
 
 ## Automatic Code Generation
 
-FlagGems provides an automatic code generation mechanism that enables developers
+*FlagGems* provides an automatic code generation mechanism that enables developers
 to easily generate both pointwise and fused operators.
 The auto-generation system supports a variety of requirements, including standard
 element-wise computations, non-tensor parameters, and specifying output data types.
-For more details, please refer to the [pointwise dynamic](/FlagGems/contribution/pointwise_dynamic/)
+For more details, please refer to the [pointwise dynamic](/FlagGems/overview/pointwise-dynamic/)
 documentation.
 
-## Function-level Kernel Dispatching
+## Function-level kernel dispatching
 
 FlagGems introduces `LibEntry`, which independently manages the kernel cache and
 bypasses the runtime of `Autotuner`, `Heuristics`, and `JitFunction`.

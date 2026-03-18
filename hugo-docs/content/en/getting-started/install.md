@@ -72,8 +72,8 @@ pip install -r flag_tree_requirements/requirements_nvidia.txt
 > **Tips**
 >
 > - For [non-NVIDIA platforms](/FlagGems/usage/non-nvidia/), you
->  **have to** use different `requirements_<backend>.txt` under
->  the `flag_tree_requirements/` directory.
+>   **have to** use different `requirements_<backend>.txt` under
+>   the `flag_tree_requirements/` directory.
 > - There are on-going efforts to simplify this step. Stay tuned.
 
 ### 3.3. Prepare the build dependencies
@@ -99,7 +99,7 @@ FlagGems can be installed either a pure Python package or a package with C++ ext
 The C++ extensions are  still an experimental feature, so please make sure
 you have conducted some assessments before using them in production environments.
 
-### 3.4.1 Install with C++ extension
+#### 3.4.1 Install with C++ extension
 
 If you are NOT enabling the C++ wrapped operators, you can skip to the next step.
 
@@ -127,7 +127,7 @@ check the following sections:
 - [build isolation](#build-isolation)
 - [installing libtriton_jit](#libtriton-jit)
 
-### 3.4.2 Install the Python package only
+#### 3.4.2 Install the Python package only
 
 You can install *flag_gems* as a pure Python package.
 If you are using *FlagGems* as is with no intent to customize it,
@@ -198,12 +198,15 @@ install the required packages.
 
 ### 4.3 About CMake options  {#cmake-options}
 
+As mentioned before, you can enable the C++ extensions when building/installing
+`flag_gems` by passing arguments to CMake via the `SKBUILD_CMAKE_ARGS` or
+the `CMAKE_ARGS` environment variable.
 Note that, for the environment variable `SKBUILD_CMAKE_ARGS`, multiple options
 are separated by semicolons (`;`), whereas for `CMAKE_ARGS`, they are separated by spaces.
 This relates to the difference between `scikit-build-core` and its predecessor,
 `scikit-build`.
 
-The options for configuring FlagGems are listed below:
+The CMake options for configuring `flag_gems` are listed below:
 
 <table>
 <thead>
@@ -214,12 +217,12 @@ The options for configuring FlagGems are listed below:
 <tbody>
 <tr>
   <td><code>FLAGGEMS_USE_EXTERNAL_TRITON_JIT</code></td>
-  <td>Whether to use external Triton JIT library</td>
+  <td>Whether to use external <a href="#libtriton-jit">Triton JIT library</a>.</td>
   <td><code>OFF</code></td>
 </tr>
 <tr>                                      |
   <td><code>FLAGGEMS_USE_EXTERNAL_PYBIND11</code></td>
-  <td>Whether to use external `pybind11` library</td>
+  <td>Whether to use external `pybind11` library.</td>
   <td><code>ON</code></td>
 </tr>
 <tr>                                      |
@@ -229,7 +232,7 @@ The options for configuring FlagGems are listed below:
 </tr>
 <tr>
   <td><code>FLAGGEMS_BUILD_CTESTS</code></td>
-  <td>Whether to build C++ unit tests</td>
+  <td>Whether to build C++ unit tests.</td>
   <td>same as <code>FLAGGEMS_BUILD_C_EXTENSIONS</code></td>
 </tr>
 <tr>
@@ -258,7 +261,7 @@ Some commonly used environemnt variables for configuring `scikit-build-core` inl
 The C++ extension of FlagGems depends on [TritonJIT](https://github.com/flagos-ai/libtriton_jit/),
 which is a library that implements a Triton JIT runtime in C++
 and enables calling Triton JIT functions from C++ code.
-If you are building *FlagGems* with an external TritonJIT,
+If you are building/inistalling `flag_gems` with an external TritonJIT,
 you should build and install it as a precondition and then
 pass the option `-DTritonJIT_ROOT=<install path>` to CMake.
 

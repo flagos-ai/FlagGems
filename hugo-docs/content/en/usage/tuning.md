@@ -3,7 +3,7 @@ title: Pre-Tuning
 weight: 85
 ---
 
-# Achieving Optimal Performance with Gems
+# Achieving Optimal Performance with FlagGems
 
 While *FlagGems* kernels are designed for high performance usage scenarios,
 achieving optimal end-to-end speed in full model deployments still demands
@@ -20,7 +20,6 @@ To address them, we provide two complementary optimization paths designed to ens
 
 ## Pre-tuning model shapes for inference scenarios
 
-<!--LibTuner intro-->
 *FlagGems* provides [`LibTuner`](https://github.com/flagos-ai/FlagGems/blob/v4.2.0/src/flag_gems/utils/libentry.py#L206),
 a lightweight enhancement to the auto-tuning system in Triton.
 `LibTuner` introduces a **persistent, per-device tuning cache** that
@@ -62,5 +61,5 @@ To proactively warm up your system in order to populate the tuning cache:
 >   If *FlagGems*  is enabled, this flag also triggers `LibTuner`-based pre-tuning implicitly.
 
 For more details (e.g. customizing your tuning cache path and settings),
-refer to the [`examples/pretune.py`](https://github.com/flagos-ai/FlagGems/blob/master/examples/pretune.py)
+refer to the [`examples/pretune.py`](https://github.com/flagos-ai/FlagGems/blob/v4.2.0/examples/pretune.py)
 as an example.

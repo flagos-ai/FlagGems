@@ -13,8 +13,8 @@ Currently, continuous integration checks include three jobs.
 
 ## 1. Code Format Check
 
-Using pre-commit git hooks with FlagGems, you can format source Python code
-and perform basic code pre-checks when calling the git commit command.
+Using `pre-commit` git hooks with FlagGems, you can format source Python code
+and perform basic code pre-checks when calling the `git commit` command.
 
 ```shell
 pip install pre-commit
@@ -33,7 +33,7 @@ so that we can run the unit test function of the specified OP through `pytest -m
 A unit test function can be decorated with multiple custom marks.
 
 If you are adding a C++ wrapped operator, you should add a corresponding *ctest* as well.
-See [Add a C++ wrapper](./cpp-wrapper/) for more details.
+See [Add a C++ wrapper](/FlagGems/contribution/cpp-wrapper/) for more details.
 
 ### Model test
 

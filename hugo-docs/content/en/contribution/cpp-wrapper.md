@@ -5,7 +5,7 @@ weight: 20
 # Add a C++ Wrapped Operator
 
 To add a C++ wrapped operator, you need to first build FlagGems with C++ extensions enabled.
-Please refer to [installation](/FlagGems/getting-started//installation/) section
+Please refer to [installation](/FlagGems/getting-started/install/) section
 for detailed instructions on setting up `flag_gems` with C++ extensions enabled.
 
 ## 1. Write the wrapper
@@ -41,7 +41,7 @@ you can run the ctest in the dir `FlagGems/build/cpython-3xx` with the following
 ctest .
 ```
 
-This will run all the test files under `ctests/`
+This will run all the test files under `ctests/`.
 You can also use the following command to run a specific test with log info:
 
 ```shell
