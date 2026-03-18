@@ -9,30 +9,35 @@ In real-world LLM deployment scenarios, multi-GPU or multi-node setups are often
 to support large model sizes and high-throughput inference.
 *FlagGems* supports these scenarios by accelerating operator execution across multiple GPUs.
 
-## Single-Node vs Multi-Node Usage
+## 1. Single-node vs multi-node usage
 
-For **single-node deployments**, the integration is straightforward. You can import `flag_gems`
-and invoke `flag_gems.enable()` at the beginning of your script.
-This enables acceleration without requiring any additional changes.
+For **single-node deployments**, the [enablement of FlagGems](/FlagGems/usage/basic/)
+is straightforward. You can import `flag_gems` and invoke `flag_gems.enable()`
+at the beginning of your program or use the context manager when apprpriate.
+The *FlagGems* acceleration is then enabled without requiring any additional changes
+to your code.
 
-In **multi-node deployments**, however, this approach is insufficient.
+In **multi-node deployments**, however, the simple approach above is insufficient.
 Distributed inference frameworks (like vLLM) spawn multiple worker processes across nodes,
 where every process must initialize `flag_gems` individually.
 If the activation occurs only in the launch script on one node, worker processes
-on other nodes will fall back to the default implementation which is not accelerated.
+on other nodes will fall back to the default implementations which are not accelerated.
 
-## Integration Example: vLLM + DeepSeek
+## 2. Example: integration with vLLM and DeepSeek
 
 To enable *FlagGems* in a distributed vLLM + DeepSeek deployment:
 
-1. **Baseline Verification**
+{{% steps %}}
 
-   Before integrating *FlagGems*, verify that the model can load and serve correctly without it.
+1. **Baseline verification**
+
+   Before conducting this experiment, please verify that the model can load
+   and serve correctly without integrating *FlagGems*.
    For example, loading a model like `Deepseek-R1` typically requires **at least two H100 GPUs**
    and it can take **up to 20 minutes** to initialize, depending on the checkpoint size and
-   the system I/O performance.
+   the system I/O bandwidth and latency.
 
-1. **Inject `flag_gems` into vLLM Worker Code**
+1. **Inject `flag_gems` into vLLM worker code**
 
    Locate the appropriate model runner script depending on your vLLM version:
 
@@ -51,20 +56,21 @@ To enable *FlagGems* in a distributed vLLM + DeepSeek deployment:
            flag_gems.apply_gems_patches_to_vllm(verbose=True)
            logger.info("Successfully enabled flag_gems as default ops implementation.")
        except ImportError:
-           logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
+           logger.warning("Failed to import 'flag_gems', falling back to default implementation.")
        except Exception as e:
-           logger.warning(f"Failed to enable 'flag_gems': {e}. Falling back to default implementation.")
+           logger.warning(f"Failed to enable 'flag_gems': {e}, falling back to default implementation.")
    ```
 
-1. **Set Environment Variables on All Nodes**
+1. **Set environment variables on all nodes**
 
-   Before launching the service, ensure all nodes have the following environment variable set:
+   Before launching the service, ensure the following environment variable is set
+   on all nodes:
 
    ```shell
    export USE_FLAGGEMS=1
    ```
 
-1. **Start Distributed Inference and Verify**
+1. **Start distributed inference and verify**
 
    Launch the service and check the startup logs on each node for messages
    indicating that operators have been overridden.
@@ -74,9 +80,11 @@ To enable *FlagGems* in a distributed vLLM + DeepSeek deployment:
    operator: aten::add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
      registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
    dispatch key: CUDA
-   previous kernel: registered at /pytorch/aten/src/ATen/LegacyBatchingRegistrations.cpp:1079
-        new kernel: registered at /dev/null:488 (Triggered internally at /pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:154.)
+   previous kernel: registered at /pytorch/aten/src/ATen/....
+        new kernel: registered at /dev/null:488 (Triggered internally at ....)
    self.m.impl(
    ```
 
    This confirms that `flag_gems` has been successfully enabled across all nodes.
+
+{{% /steps %}}

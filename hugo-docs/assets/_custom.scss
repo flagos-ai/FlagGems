@@ -1,3 +1,29 @@
-.book-menu > nav > ul > li > a {
-  font-weight: bolder;
+/* Custom styles for readability */
+
+h1 {
+  font-weight: 600 !important;
 }
+
+h2 {
+  font-weight: 500 !important;
+}
+
+
+.book-menu {
+  a.active {
+    font-weight: bolder;
+  }
+}
+
+.markdown {
+  td {
+    code {
+      border: none;
+      background: inherit;
+      color: #3388aa;
+    }
+  }
+}
+
+// @import "plugins/numbered";
+// @import "plugins/scrollbars";

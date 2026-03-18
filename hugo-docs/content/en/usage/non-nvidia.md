@@ -5,64 +5,74 @@ weight: 50
 
 # Running FlagGems on Non-NVIDIA Hardware
 
-## Supported Platforms
+## 1. Supported platforms
 
-FlagGems supports a range of AI chips beyond NVIDIA.
+FlagGems supports a range of AI chips/platforms beyond NVIDIA.
 For an up-to-date list of validated platforms, please refer to
-[Supported Platforms](./features.md#platforms-supported)
+[Supported Platforms](/FlagGems/overview//features/#platforms-supported)
 
-## Unified Usage Interface
+## 2. Unified usage interface
 
 Regardless of the underlying hardware, the usage of `flag_gems` remains exactly the same.
 There is no need to modify application code when switching from NVIDIA to non-NVIDIA platforms.
 
-Once you call `import flag_gems` and enable acceleration via `flag_gems.enable()`,
-operator dispatch will be automatically routed to the correct backend.
+Once you have imported `flag_gems` into your code and
+[enabled *FlagGems* acceleration](/FlagGems/usage/basic/#enabling-flaggems),
+the operator dispatch mechanism will automatically route operator invocations
+to the correct implementation for the backend.
 This provides a consistent developer experience across different environments.
 
-## Backend Requirements
+## 3. Platform requirements
 
-Although the usage pattern is unchanged, there are some prerequisites when running *FlagGems* on non-NVIDIA platforms.
-The **PyTorch** and the **Triton compiler** have to be installed and properly configured on the target platform.
+Although the usage pattern remains unchanged, there are some prerequisites
+when running *FlagGems* on non-NVIDIA platforms.
+The *PyTorch* and the *Triton* compiler have to be installed and
+properly configured on the target platform.
 
 There are two common ways to obtain compatible builds:
 
 1. **Consult your hardware vendor**
 
-   Hardware vendors typically maintain custom builds of PyTorch and Triton tailored to their chips.
-   Contact the vendor to request the appropriate versions.
+   Some platforms may require additional setup or patching.
+   Hardware vendors typically maintain custom builds of *PyTorch* and *Triton* customized
+   or tailored to their chips. Contact the vendor to request the appropriate versions.
 
 2. **Explore the FlagTree project**
 
-   The [FlagTree](https://github.com/flagos-ai/flagtree) project offers a unified Triton compiler
-   that supports a range of AI chips, including NVIDIA and non-NVIDIA platforms.
+   The [FlagTree](https://github.com/flagos-ai/FlagTree) project offers a unified Triton compiler
+   that supports a wide range of AI chips, including NVIDIA and non-NVIDIA platforms.
    It consolidates vendor-specific patches and enhancements into a shared, open-source backend,
    simplifying compiler maintenance and enabling multi-platform compatibility.
 
-   > [!Note]
-   > FlagTree provides Triton only. A matching PyTorch build is still required separately.
+   Note that *FlagTree* only provides a compiler framework at the Triton language layer.
+   A matching PyTorch build is still required separately.
 
-> [!Note]
-> Some platforms may require additional setup or patching.
+## 4. Backend auto-detection and manual setting
 
-## Backend Auto-Detection and Manual Setting
-
-By default, *FlagGems* automatically detects the current hardware backend at runtime
+By default, *FlagGems* automatically detects the current hardware backend during runtime
 and selects the corresponding implementation.
-In most cases, no manual configuration is required, and everything works out of the box.
+In most cases, no manual configuration is required because everything just works
+out of the box.
 
-However, if auto-detection fails or there are compatibility issues in your environment,
-you can manually set the target backend to ensure correct runtime behavior.
+If the builtin auto-detection mechanism fails or there are compatibility issues
+in your environment, you can manually set the target backend to ensure correct runtime behaviors.
 To do this, set the following environment variable before running your code:
 
 ```shell
-export GEMS_VENDOR=<your_vendor_name>
+export GEMS_VENDOR=<vendor_name>
 ```
 
-> ⚠️  This setting should match the actual hardware platform.
+For the list of valid `vendor_name`s, please check the
+[supported platforms](/FlagGems/overview/features/#platforms-supported) documentation
+for details.
+
+> [!WARNING]
+> **Warning**
+>
+> This setting should match the actual hardware platform.
 > Manually setting an incorrect backend may result in runtime errors.
 
-You can verify the active backend at runtime using:
+You can verify the active backend at runtime by checking `flag_gems.vendor_name`:
 
 ```python
 import flag_gems

@@ -20,7 +20,7 @@ caches:
     dir: :cacheDir/images
     maxAge: -1
   modules:
-    dir: :cacheDir/moduels
+    dir: :cacheDir/modules
     maxAge: -1
 
 markup:
@@ -43,17 +43,13 @@ markup:
     lineNos: false
     lineNumbersInTable: true
     noClasses: true
-    style: emacs
+    style: github-dark
     tabWidth: 4
+
   tableOfContents:
     endLevel: 3
     ordered: false
-    startLevel: 2
-
-params:
-  copyright_flagos: The FlagOS contributors
-  BookSection: '*'
-  BookSearch: false   # search is using flexsearch, enable later
+    startLevel: 1
 
 menus:
   main:
@@ -66,7 +62,13 @@ menus:
     - name: Installation
       pageRef: /install
       weight: 30
-
+  after:
+    - name: "Github"
+      url: "https://github.com/flagos-ai/FlagGems"
+      weight: 10
+    - name: "FlagOS"
+      url: "https://flagos.io/"
+      weight: 20
 
 # Language definitions.
 languages:
@@ -90,3 +92,17 @@ module:
       target: i18n
     - source: i18n/zh-cn
       target: i18n
+
+# outputFormats:
+#   coverage:
+#     mediateType: text/html
+#     isHTML: true
+#     path: coverage
+
+params:
+  copyright_flagos: The FlagOS contributors
+  BookSection: '*'
+  BookSearch: false   # search is using flexsearch, enable later
+  BookTheme: "auto"
+  BookToC: true
+  BookLastChangeLink: 'https://github.com/flagos-ai/FlagGems/commit/{{ .GitInfo.Hash }}'

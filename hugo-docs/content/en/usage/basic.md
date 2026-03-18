@@ -1,52 +1,55 @@
 ---
-title: Basic usage
+title: Enabling FlagGems
 weight: 20
 ---
 
-# Basic Usage
+# Enabling FlagGems
 
-To use the *FlagGems* operator library, import `flag_gems` and enable acceleration
-before running your program. You can enable it globally, selectively, or temporarily.
+To use the operators from the *FlagGems* operator library, import `flag_gems` and enable acceleration
+before running your program. You can enable it globally or for a specific code block.
+Besides these, you can invoke operators from the `flag_gems.ops` package directly.
 
-## Option 1: Global Enablement
+## 1. Global Enablement
 
-To apply *FlagGems* optimizations across your entire script or your interactive session:
+To apply *FlagGems* optimizations across your entire program or your interaction session:
 
 ```python
 import flag_gems
 
-# Enable all FlagGems operators globally
+# Enable FlagGems operators globally
 flag_gems.enable()
 ```
 
 Once enabled, all supported operators in your code will be replaced automatically
 by the optimized *FlagGems* implementations — no further changes needed.
-
-## Option 2: Selective Enablement
-
-To enable only specific operators and skip the rest:
+This means the supported `torch.*` / `torch.nn.functional.*` calls will be dispatched
+to FlagGems implementations automatically. For example:
 
 ```python
+import torch
 import flag_gems
 
-# Enable only selected ops
-flag_gems.only_enable(include=["rms_norm", "softmax"])
+flag_gems.enable()
+
+x = torch.randn(4096, 4096, device=flag_gems.device, dtype=torch.float16)
+y = torch.mm(x, x)
 ```
 
-This is useful when you want to accelerate only a subset of operators.
+## 2. Scoped Enablement
 
-## Option 3: Scoped Enablement
-
-For finer controls, you can enable *FlagGems* only within a specific code block
-using a context manager:
+When needed, you can enable *FlagGems* only within a specific code block
+using a `with...` statement:
 
 ```python
 import flag_gems
+import torch
 
-# Enable flag_gems temporarily
+# Enable flag_gems for specific operations
 with flag_gems.use_gems():
+
     # Code inside this block will use FlagGems-accelerated operators
-    ...
+    x = torch.randn(4096, 4096, device=flag_gems.device, dtype=torch.float16)
+    y = torch.mm(x, x)
 ```
 
 This scoped usage is useful when you want to:
@@ -55,19 +58,51 @@ This scoped usage is useful when you want to:
 - compare correctness between implementations, or
 - apply acceleration selectively in complex workflows.
 
-You can also use selective enablement in a context manager:
+## 3. Direct invocation
+
+You can bypass the PyTorch dispatch process and directly invoke operators from
+the `flag_gems.ops` package.
 
 ```python
-# Enable only specific ops in the scope
-with flag_gems.use_gems(include=["sum", "add"]):
-    # Only sum and add will be accelerated
-    ...
+import torch
+from flag_gems import ops
+import flag_gems
 
-# Or exclude specific ops
-with flag_gems.use_gems(exclude=["mul", "div"]):
-    # All operators except mul and div will be accelerated
-    ...
+a = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
+b = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
+c = ops.mm(a, b)
 ```
 
-Note: The `include` parameter has higher priority than `exclude`.
-If both are provided, `exclude` is ignored.
+## 4. Query Registered Operators
+
+After having enabled *FlagGems*, you can check the operators registered:
+
+```python
+import flag_gems
+
+flag_gems.enable()
+
+# Get list of registered function names
+registered_funcs = flag_gems.all_registered_ops()
+print("Registered functions:", registered_funcs)
+
+# Get list of registered operator keys
+registered_keys = flag_gems.all_registered_keys()
+print("Registered keys:", registered_keys)
+```
+
+This is useful for debugging or verifying which operators are active.
+
+## 5. Advanced Usage
+
+For advanced usage scenarios, check the following related documentation:
+
+- [Selective enablement](/FlagGems/usage/selective/)
+- [Using experimental operators](/FlagGems/usage/experimental/)
+- [Enabling logging](/FlagGems/usage/debugging/) for debugging
+- [Using FlagGems on non-NVIDIA hardware](/FlagGems/usage/non-nvidia/)
+- [Using FlagGems in a multi-GPU or distributed environment](/FlagGems/usage/distributed/)
+- [Integrating FlagGems with a popular framework](/FlagGems/usage/frameworks/)
+- [Building your own models using FlagGems modules](/FlagGems/usage/modules/)
+- [Enable pre-tuning for better performance](/FlagGems/usage/tuning/)
+- [Using C++ wrapped operators for optimal performance](/FlagGems/usage/cpp/)
