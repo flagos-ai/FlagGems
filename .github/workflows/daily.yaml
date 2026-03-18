@@ -16,7 +16,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: '3 0 * * *'
+    # Note that the time is in UTC, so we want this to start at 00:03+8:00
+    - cron: '3 16 * * *'
 
 jobs:
   prepare:
