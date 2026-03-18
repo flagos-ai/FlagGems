@@ -1,9 +1,14 @@
 ---
-title: Operators supported
+title: 支持的算子
 weight: 10
 ---
 
+<!--
 # Operator List
+-->
+# 算子列表
+
+<!--TODO(Qiming): generate this list/table dynamically.-->
 
 - abs
 - abs\_
