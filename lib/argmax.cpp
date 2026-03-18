@@ -3,7 +3,7 @@
 
 #include <iostream>
 #include "ATen/WrapDimUtils.h"
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -36,9 +36,10 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
                                         "argmax_kernel_2");
 
     c10::DeviceGuard guard(self.device());
-    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
-    f1(stream,
+    f1(raw_stream,
        mid_size,
        1,
        1,
@@ -50,7 +51,7 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
        M,
        block_size);
 
-    f2(stream,
+    f2(raw_stream,
        1,
        1,
        1,
@@ -103,8 +104,9 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
         TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
                                         "argmax_kernel_non_inner");
     c10::DeviceGuard guard(self.device());
-    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    f(stream,
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
+    f(raw_stream,
       grid_x,
       grid_y,
       1,
@@ -125,8 +127,9 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
         TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
                                         "argmax_kernel_inner");
     c10::DeviceGuard guard(self.device());
-    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    f(stream, grid_x, 1, 1, num_warps, num_stages, contiguous_self, out, M, N, tile_n, ONE_TILE_PER_CTA);
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
+    f(raw_stream, grid_x, 1, 1, num_warps, num_stages, contiguous_self, out, M, N, tile_n, ONE_TILE_PER_CTA);
   }
 
   return out;
