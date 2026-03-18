@@ -31,9 +31,9 @@ on:
 # mitigate the network connection problems. However, this may not work
 # if the PR is triggered from a forked repository because in that case
 # GitHub doesn't allow the workflow to access any secrets.
-env:
-  http_proxy: ${{ secrets.HTTP_PROXY }}
-  https_proxy: ${{ secrets.HTTPS_PROXY }}
+# env:
+#  http_proxy: ${{ secrets.HTTP_PROXY }}
+#  https_proxy: ${{ secrets.HTTPS_PROXY }}
 
 jobs:
   test:

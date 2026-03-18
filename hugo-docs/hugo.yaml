@@ -1,0 +1,92 @@
+baseURL: https://flagos-ai.github.io/FlagGems/
+title: FlagGems
+languageCode: en-us
+theme:
+  - hugo-book
+
+# Language settings
+contentDir: content/en
+defaultContentLanguage: en
+defaultContentLanguageInSubdir: false
+
+# Adopt a global timezone
+timeZone: UTC
+
+enableGitInfo: true
+
+# Caches
+caches:
+  images:
+    dir: :cacheDir/images
+    maxAge: -1
+  modules:
+    dir: :cacheDir/moduels
+    maxAge: -1
+
+markup:
+  goldmark:
+    extensions:
+      definitionList: true
+      table: true
+      typographer: false
+    parser:
+      attribute: true
+      autoHeadingID: true
+      autoHeadingIDType: blackfriday
+    renderer:
+      unsafe: true
+  highlight:
+    codeFences: true
+    guessSyntax: false
+    hl_Lines: ""
+    lineNoStart: 1
+    lineNos: false
+    lineNumbersInTable: true
+    noClasses: true
+    style: emacs
+    tabWidth: 4
+  tableOfContents:
+    endLevel: 3
+    ordered: false
+    startLevel: 2
+
+params:
+  copyright_flagos: The FlagOS contributors
+  BookSection: '*'
+  BookSearch: false   # search is using flexsearch, enable later
+
+menus:
+  main:
+    - name: Home
+      pageRef: /
+      weight: 10
+    - name: Features
+      pageRef: /features
+      weight: 20
+    - name: Installation
+      pageRef: /install
+      weight: 30
+
+
+# Language definitions.
+languages:
+  en:
+    title: FlagGems
+    languageName: English
+    contentDir: content/en
+    weight: 1
+    languagedirection: ltr
+
+  zh-cn:
+    title: FlagGems
+    languageName: 简体中文（Simplified Chinese）
+    weight: 2
+    contentDir: content/zh-cn
+    languagedirection: ltr
+
+module:
+  mounts:
+    - source: i18n/en
+      target: i18n
+    - source: i18n/zh-cn
+      target: i18n

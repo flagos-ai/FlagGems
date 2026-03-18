@@ -1,0 +1,4 @@
+[gerrit]
+host=in-gerrit.tsingmicro.xyz
+port=29418
+project=software-ecosystem/flaggems
