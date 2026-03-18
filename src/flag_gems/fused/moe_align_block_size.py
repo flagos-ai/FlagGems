@@ -10,10 +10,12 @@ from flag_gems.utils import libentry, libtuner
 
 try:
     import triton.experimental.tle.language as tle
+    import triton.experimental.tle.language.gpu as tleg
 
     HAS_TLE = True
 except ImportError:
     tle = None
+    tleg = None
     HAS_TLE = False
 
 

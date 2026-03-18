@@ -161,7 +161,7 @@ This document lists all experimental operators in FlagGems that have achieved an
 | 141 | `log10_`                      | **0.81x** ⚡  | Math       |
 | 142 | `rmsnorm`                     | **special** ⚡ | Normalization |
 
-## Legend
+**Legend**:
 
 - 🏆 **Outstanding**: Speedup ≥ 2.0x
 - ✅ **Excellent**: Speedup ≥ 1.5x
