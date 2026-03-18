@@ -58,13 +58,13 @@ jobs:
           fi
 
           # Save RUN_TAG for next step to use
-          echo "RUN_TAG=${{ RUN_TAG }}" >> $GITHUB_ENV
+          echo "RUN_TAG=${RUN_TAG}" >> $GITHUB_ENV
 
-          bash tools/test-op.sh ${{ RUN_TAG }}
+          bash tools/test-op.sh ${RUN_TAG}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ RUN_TAG }}
+          name: coverage-${RUN_TAG}
           path: coverage
 
   examples:
@@ -89,7 +89,7 @@ jobs:
           else
              PR_ID="${{ needs.prepare.outputs.datetime}}"
           fi
-          bash tools/test-examples.sh ${{ PR_ID }}
+          bash tools/test-examples.sh ${PR_ID}
 
 #   coverage:
 #     steps:
