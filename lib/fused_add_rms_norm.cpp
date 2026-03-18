@@ -1,5 +1,5 @@
 #include <iostream>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "triton_jit/triton_jit_function.h"
@@ -28,8 +28,8 @@ void fused_add_rms_norm(at::Tensor& input, at::Tensor& residual, const at::Tenso
 
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
   c10::DeviceGuard guard(input.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   /* siguature info
 def fused_add_rms_norm_kernel(

@@ -2,7 +2,7 @@
 #include "flag_gems/utils.h"
 
 #include <iostream>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "torch/torch.h"
 #include "triton_jit/triton_jit_function.h"
 
@@ -40,8 +40,8 @@ using namespace triton_jit;
   ):
   */
   c10::DeviceGuard guard(out_value.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   f(raw_stream,
     num_blocks,
@@ -87,8 +87,8 @@ using namespace triton_jit;
   ):
   */
   c10::DeviceGuard guard(out_value.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   f(raw_stream,
     num_blocks,
@@ -126,8 +126,8 @@ at::Tensor max(const at::Tensor &self) {
   const int num_warps = 8;
   const int num_stages = 2;
   c10::DeviceGuard guard(out.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
   // def max_kernel_1(inp,mid,M,BLOCK_SIZE: tl.constexpr)
   max_kernel_1(raw_stream, mid_size, 1, 1, num_warps, num_stages, self, mid, M, block_size);
   // def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
