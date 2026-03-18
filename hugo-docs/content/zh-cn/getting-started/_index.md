@@ -4,84 +4,157 @@ weight: 30
 ---
 
 <!--
-# Get Start With FlagGems
+# Get Started With FlagGems
 
-## Introduction
+## 1. Install FlagGems
 -->
 # 开始使用 FlagGems
 
-## 介绍
+## 1. 安装 FlagGems {#install-flaggems}
 
-FlagGems is a high-performance general operator library implemented in Triton language.
-It aims to provide a suite of kernel functions to accelerate LLM training and inference.
+<!--
+*FlagGems* can be installed either as a pure python package
+or a package with C-extensions for better runtime performance.
+See [installation](/FlagGems/getting-started/installation/) for some detailed guidance
+on different installation options.
+-->
+*FlagGems* 可以以纯 Python 包的形式安装，也可以附带 C++ 扩展特性来安装，
+以实现更好的运行时性能。你可以参阅[安装指南](/FlagGems/getting-started/installation)
+的说明，了解不同安装方式、选项的详细指令。
 
-By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition,
-allowing users to switch to the Triton function library without the need to modify their model code.
-FlagGems is supported by the [FlagTree compiler](https://github.com/flagos-ai/flagtree/)
-for different AI chipsets, and OpenAI Triton compiler (for NVIDIA and AMD).
+<!--
+## 2. Verify the installation
 
-## Quick Installation
+After having installed the `flag_gems` package and its dependencies,
+you may want to verify if they work as expected.
+-->
+## 2. 检查安装状态
 
-FlagGems can be installed either as a pure python package or a package with C-extensions
-for better runtime performance.
-By default, it does not build the C extensions, See [installation](./installation.md) for
-guidance on using the C++ runtime.
+在安装了 `flag_gems` 包及其所依赖的其他软件包之后，
+你可能希望检查这些软件包是否能够正常工作。
 
-### Install Build Dependencies
+<!--
+### 2.1 Verify PyTorch environment
 
-```shell
-pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
-```
+The first thing you want to check is that you can import
+`torch` in your working environment:
+-->
+### 2.1 检查 PyTorch 环境
 
-### Installation
-
-Clone the repo to your local environment:
-
-```shell
-git clone https://github.com/flagos-ai/FlagGems.git
-```
-
-Then use the following command to trigger an installation:
-
-```shell
-cd FlagGems
-# If you want to use the native Triton instead of FlagTree, please skip this step.
-# Other backends: replace with requirements_backendxxx.txt
-pip install -r flag_tree_requirements/requirements_nvidia.txt
-pip install --no-build-isolation .
-```
-
-You can also make an editble install using the following command:
+你要执行的第一项检查是确认能够在你的工作环境中导入 `torch` 软件包：
 
 ```shell
-cd FlagGems
-pip install --no-build-isolation -e .
+python -c "import torch; print(torch.__version__)"
 ```
 
-In addition to this, you can build a wheel for install.
+<!--
+If you are using a [non-NVIDIA platform](/FlagGems/usage/non-nvidia/),
+you may have a PyTorch plugin that is provided by the backend vendor.
+You can perform a similar verification against this plugin.
+For example, on a MooreThreads GPU platform, you can verify if the plugin
+works using the following command:
+-->
+如果你所使用的是一个[非 NVIDIA 的平台](/FlagGems/usage/non-nvidia/)，
+你可能需要安装一个由后端硬件厂商所提供的 PyTorch 插件。
+你也可以针对这一插件执行类似的验证操作。
+例如，在一个使用摩尔线程 GPU 的平台上，你可以使用下面的命令来检查
+是否插件能够正常工作：
 
 ```shell
-pip install -U build
-git clone https://github.com/flagos-ai/FlagGems.git
-cd FlagGems
-python -m build --no-isolation --wheel .
+python -c "import torch_musa; print(torch_musa.__version__)"
 ```
 
-## How To Use Gems
+<!--
+### 2.2 Verify the Triton setup
 
-### Import
+The next verification is against the `triton` package.
+You can check if `triton` is working as expected using the following
+command:
+-->
+### 2.2 检查 Triton 安装
+
+接下来的一项检查是针对 `triton` 软件包的。
+你可以使用下面的命令来检查 `triton` 包是否可以正常使用。
+
+```shell
+python -c "import torch, triton; print(triton.__version__)"
+```
+
+<!--
+Note that if you are using a [non-NVIDIA platform](/FlagGems/usage/non-nvidia/),
+you have to consult your platform vendor to see if they have
+a customized version.
+-->
+如果你所使用的是一个[非 NVIDIA 的平台](/FlagGems/usage/non-nvidia/)，
+你可能需要咨询的平台供应商，了解他们是否提供了一个定制版本。
+
+<!--
+> [!WARNING]
+> **Warning**
+>
+> Usually, the vendor-customized version of `triton` has the same name
+> with the upstream package. Please **double confirm** that you are using
+> the correct package before proceeding.
+-->
+> [!WARNING]
+> **警告**
+>
+> 通常，厂商定制的 `triton` 软件包与上游社区获得的软件包同名。
+> 在进入下一步之前，你需要**反复确认**自己所使用的包是正确的版本。
+
+<!--
+### 2.3 Verify the FlagGems installation
+
+You can do a similar verification for the `flag_gems` package,
+using the following command:
+-->
+### 2.3 检查 FlagGems 的安装
+
+针对 `flag_gems` 包，你也可以使用下面的命令执行类似的检查：
+
+```shell
+python -c "import flag_gems; print(flag_gems.__version__)"
+```
+
+<!--
+## 3. Start using FlagGems
+
+You can enable the accelerated operators from `flag_gems` in many ways.
+The following code snippet enables `flag_gems` globally:
+-->
+## 3. 开始使用 FlagGems
+
+你可以用多种不同方式来启用 `flag_gems` 所提供的加速算子。
+下面的代码段在全局范围内启用 `flag_gems`：
 
 ```python
-# Enable flag_gems permanently
 import flag_gems
+
 flag_gems.enable()
 
-# Or Enable flag_gems temporarily
-with flag_gems.use_gems():
-    pass
+# 你自己的代码 ...
 ```
 
+<!--
+You can also enable `flag_gems` in a specific context for a certain
+section of your code, as shown below:
+-->
+你也可以针对自己代码中的某一部分，在特定的上下文中启用 `flag_gems`，
+如下例所示：
+
+```python
+# 你的代码 ...
+
+# 在特定上下文中启用 flag_gems
+with flag_gems.use_gems():
+    # 在上下文中使用加速的算子
+    # ...
+```
+
+<!--
 For example:
+-->
+例如：
 
 ```python
 import torch
@@ -94,20 +167,9 @@ with flag_gems.use_gems():
     C = torch.mm(A, B)
 ```
 
-## How To Use Experimental Gems
-
-The `experimental_ops` module provides a space for new operators that are not yet ready for production release.
-Operators in this module are accessible via `flag_gems.experimental_ops.*`.
-These operators follow the same development patterns as the core operators.
-
-```python
-import flag_gems
-
-# Global enablement
-flag_gems.enable()
-result = flag_gems.experimental_ops.rmsnorm(*args)
-
-# Or scoped usage
-with flag_gems.use_gems():
-    result = flag_gems.experimental_ops.rmsnorm(*args)
-```
+<!--
+Check the [](/FlagGems/usage/) section for more detailed
+documentation on the various usage patterns about *FlagGems*.
+-->
+你可以查阅[使用指南](/FlagGems/zh-cn/usage/)一节中的详细文档，
+了解 *FlagGems* 的多种使用模式。

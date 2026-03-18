@@ -15,8 +15,7 @@ directory in the source code repository.
 ## 1. Hugging Face Transformers
 
 Integration with Hugging Face's [`transformers` library](https://github.com/huggingface/transformers)
-is straightforward. You can follow the basic usage patterns
-introduced in previous sections.
+is straightforward.
 
 During inference, you can activate the *FlagGems* acceleration
 without modifying the model or the tokenizer logic.

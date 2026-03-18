@@ -3,21 +3,39 @@ title: 实验性算子
 weight: 20
 ---
 
+<!--
 # FlagGems Experimental Operators
 
-This document lists all experimental operators in FlagGems that have achieved an average speedup of 0.8x or higher compared to PyTorch implementations.
+This document lists all experimental operators in FlagGems that have achieved
+an average speedup of 0.8x or higher compared to PyTorch implementations.
+-->
+# FlagGems 实验性算子
 
+本节列举 *FlagGems* 中的实验性算子。这些算子与 PyTorch 的原生实现相比，
+能够达到平均 0.8 倍或更高的性能。
+
+<!--
 ## Performance Overview
 
 - **Total Operators**: 142
 - **Average Speedup Range**: 0.81x - 7.23x
 - **Test Environment**: Hopper GPU
 - **Filtering Criteria**: Average speedup ≥ 0.8x
+-->
+## 性能数据概览
 
+- **算子总数**：142
+- **平均加速比范围**：0.81x - 7.23x
+- **测试环境**：Hopper GPU
+- **过滤条件**：平均加速比 ≥ 0.8x
+
+<!--
 ## Operators by Performance
+-->
+## 按性能排列的算子列表
 
-| Rank | Operator                      | Avg Speedup    | Category   |
-|------|-------------------------------|----------------|------------|
+| 序号| 算子                          | 平均加速比    | 分类       |
+|-----|-------------------------------|---------------|------------|
 |   1 | `_safe_softmax`               | **7.23x** 🏆  | Internal   |
 |   2 | `digamma_`                    | **2.41x** 🏆  | Math       |
 |   3 | `zero`                        | **1.85x** ✅  | Other      |
@@ -161,31 +179,50 @@ This document lists all experimental operators in FlagGems that have achieved an
 | 141 | `log10_`                      | **0.81x** ⚡  | Math       |
 | 142 | `rmsnorm`                     | **special** ⚡ | Normalization |
 
-## Legend
+<!--
+**Legend**:
 
 - 🏆 **Outstanding**: Speedup ≥ 2.0x
 - ✅ **Excellent**: Speedup ≥ 1.5x
 - 📈 **Good**: Speedup ≥ 1.0x
 - ⚡ **Decent**: Speedup ≥ 0.8x
+-->
+**图例**：
 
+- 🏆 **卓越**：加速比 ≥ 2.0x
+- ✅ **优秀**：加速比 ≥ 1.5x
+- 📈 **良好**：加速比 ≥ 1.0x
+- ⚡ **合格**：加速比 ≥ 0.8x
+
+<!--
 ## Categories
+-->
+## 算子分类说明
 
-- **Activation**: Activation functions (ReLU, GELU, Sigmoid, etc.)
-- **Arithmetic**: Basic arithmetic operations (add, mul, div, etc.)
-- **Comparison**: Comparison operations (eq, ne, gt, lt, etc.)
-- **Internal**: Internal/utility operations
-- **Linear Algebra**: Matrix operations (matmul, mv, etc.)
-- **Loss**: Loss functions (MSE, Cross-Entropy, etc.)
-- **Math**: Mathematical functions (sin, cos, exp, log, etc.)
-- **NLP**: Natural language processing operations
-- **Other**: Miscellaneous operations
-- **Padding**: Padding operations (reflection_pad, replication_pad, etc.)
-- **Shape**: Shape manipulation operations
-- **Vision**: Computer vision operations
+- **Activation**: 激活函数 (ReLU, GELU, Sigmoid, etc.)
+- **Arithmetic**: 基本算术操作 (add, mul, div, etc.)
+- **Comparison**: 比较操作 (eq, ne, gt, lt, etc.)
+- **Internal**: 内部、工具操作
+- **Linear Algebra**: 矩阵操作 (matmul, mv, etc.)
+- **Loss**: 损失函数计算 (MSE, Cross-Entropy, etc.)
+- **Math**: 数学函数 (sin, cos, exp, log, etc.)
+- **NLP**: 自然语言处理
+- **Other**: 杂项
+- **Padding**: 数据补齐操作 (reflection_pad, replication_pad, etc.)
+- **Shape**: 形状操控操作
+- **Vision**: 计算机视觉操作
 
+<!--
 ## Notes
 
 - All operators have passed accuracy tests
 - Performance measured on Hopper GPU with various input shapes
 - Speedup calculated as: `PyTorch_time / FlagGems_time`
 - Higher values indicate better performance
+-->
+## 说明
+
+- 所有算子均通过正确性测试
+- 性能数据采用多种不同输入形状在 Hopper GPU 上采集
+- 加速比计算方式： `PyTorch_time / FlagGems_time`
+- 数值较大意味着性能较好

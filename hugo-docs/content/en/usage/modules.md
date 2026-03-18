@@ -3,7 +3,7 @@ title: FlagGems modules
 weight: 80
 ---
 
-# Building Custom Models Using Gems Operators
+# Building Custom Models Using FlagGems modules
 
 In some scenarios, users may want to build their own models from scratch
 or to adapt existing ones to better suit their specific use cases.
