@@ -18,6 +18,7 @@ UNSUPPORT_FP64 = [
     vendors.ASCEND,
     vendors.TSINGMICRO,
     vendors.SUNRISE,
+    vendors.ENFLAME,
 ]
 UNSUPPORT_BF16 = [
     vendors.AIPU,
@@ -27,6 +28,7 @@ UNSUPPORT_INT64 = [
     vendors.AIPU,
     vendors.TSINGMICRO,
     vendors.SUNRISE,
+    vendors.ENFLAME,
 ]
 
 
@@ -86,6 +88,7 @@ class DeviceDetector(object):
             "iluvatar": "corex",
             "ascend": "npu",
             "sunrise": "ptpu",
+            "enflame": "gcu",
         }
         for vendor_name, flag in cmd.items():
             if hasattr(torch, flag):
