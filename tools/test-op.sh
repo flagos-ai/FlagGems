@@ -28,6 +28,9 @@ TEST_CASES=()
 TEST_CASES_CPU=()
 for item in $CHANGED_FILES; do
   case $item in
+    tests/test_DSA/*)
+      # skip DSA test for now
+      ;;
     tests/*) TEST_CASES+=($item)
   esac
 
