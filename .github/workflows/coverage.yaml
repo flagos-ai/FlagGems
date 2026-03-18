@@ -21,7 +21,6 @@ jobs:
       - id: download
         uses: actions/github-script@v8
         with:
-          result-encoding: string
           script: |
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
                owner: context.repo.owner,
@@ -32,9 +31,10 @@ jobs:
               return artifact.name == "op-ut-coverage"
             })[0];
 
+            const core = require('@actions/core');
             // There could be a case that no coverage data were generated.
             if (matchArtifact === undefined) {
-              return "NO_DATA";
+              core.setOutput('has_data', 'N');
             } else {
               let download = await github.rest.actions.downloadArtifact({
                  owner: context.repo.owner,
@@ -49,15 +49,15 @@ jobs:
                 fs.mkdirSync(temp);
               }
               fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
-              return "HAS_DATA";
+              core.setOutput('has_data', 'Y');
             }
 
       - id: nnzip-artifact
-        if: ${{ steps.download.outputs.result == "HAS_DATA" }}
+        if: ${{ steps.download.outputs.has_data == "Y" }}
         run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
 
       - id: prepare-changes
-        if: ${{ steps.download.outputs.result == "HAS_DATA" }}
+        if: ${{ steps.download.outputs.has_data == "Y" }}
         shell: bash
         run: |
           COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
@@ -72,7 +72,7 @@ jobs:
           mv ${{ runner.temp }}/artifacts/${COV_ID}-summary.md docs/test/unit/${COV_ID}/ut-summary.md
 
       - id: commit-change
-        if: ${{ steps.download.outputs.result == "HAS_DATA" }}
+        if: ${{ steps.download.outputs.has_data == "Y" }}
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -80,7 +80,7 @@ jobs:
           git commit -a -m "Add coverage data for ${COV_ID}"
 
       - id: push-change
-        if: ${{ steps.download.outputs.result == "HAS_DATA" }}
+        if: ${{ steps.download.outputs.has_data == "Y" }}
         uses: ad-m/github-push-action@master
         with:
           branch: gh-pages
