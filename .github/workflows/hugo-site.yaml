@@ -2,7 +2,7 @@ name: Build and deploy
 on:
   push:
     branches:
-      - main
+      - gh-pages
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,6 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: gh-pages
           submodules: recursive
           fetch-depth: 0
       - name: Setup Go
