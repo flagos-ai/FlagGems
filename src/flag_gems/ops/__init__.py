@@ -217,6 +217,7 @@ from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
+from flag_gems.ops.svd import svd
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.threshold import threshold, threshold_backward
@@ -251,6 +252,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "svd",
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",
