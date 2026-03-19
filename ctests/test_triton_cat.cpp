@@ -1,10 +1,11 @@
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "gtest/gtest.h"
 #include "torch/torch.h"
 
 TEST(TritonCatTest, basictest) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t1 = torch::randn({2, 3}, device);
   torch::Tensor t2 = torch::randn({4, 3}, device);
   torch::Tensor ref_t1 = flag_gems::accuracy_utils::to_reference(t1);
@@ -18,7 +19,7 @@ TEST(TritonCatTest, basictest) {
 }
 
 TEST(TritonCatTest, 2dimtest) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t1 = torch::randn({3, 2}, device);
   torch::Tensor t2 = torch::randn({3, 4}, device);
   torch::Tensor ref_t1 = flag_gems::accuracy_utils::to_reference(t1);
@@ -36,7 +37,7 @@ TEST(TritonCatTest, 2dimtest) {
 }
 
 TEST(TritonCatTest, 3dimtest) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   torch::Tensor t1 = torch::randn({3, 2, 4}, device);
   torch::Tensor t2 = torch::randn({3, 5, 4}, device);
@@ -53,7 +54,7 @@ TEST(TritonCatTest, 3dimtest) {
 }
 
 TEST(TritonCatTest, 4dimtest) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto options = torch::TensorOptions().device(device).dtype(torch::kFloat32);
 
   torch::Tensor t1 = torch::randn({2, 3, 4, 5}, options);
@@ -71,7 +72,7 @@ TEST(TritonCatTest, 4dimtest) {
 }
 
 TEST(TritonCatTest, IntegerConcatenation) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto options = torch::TensorOptions().device(device).dtype(torch::kInt32);
 
   torch::Tensor t1 = torch::randint(0, 100, {2, 3, 4}, options);
@@ -88,7 +89,7 @@ TEST(TritonCatTest, IntegerConcatenation) {
 }
 
 TEST(TritonCatTest, EmptyTensorConcatenation) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto options = torch::TensorOptions().device(device).dtype(torch::kFloat32);
 
   torch::Tensor t1 = torch::randn({0, 3}, options);
@@ -116,7 +117,7 @@ TEST(TritonCatTest, EmptyTensorConcatenation) {
 }
 
 TEST(TritonCatTest, 3tensorcat) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto options = torch::TensorOptions().device(device).dtype(torch::kFloat32);
 
   torch::Tensor t1 = torch::randn({2, 3}, options);
@@ -137,7 +138,7 @@ TEST(TritonCatTest, 3tensorcat) {
 }
 
 TEST(TritonCatTest, HandlesNonContiguousInput) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto options = torch::TensorOptions().device(device).dtype(torch::kFloat32);
 
   torch::Tensor t_base = torch::randn({2, 3, 4}, options);

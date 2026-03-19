@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(BmmTest, bmm) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   const int B = 5, M = 256, K = 64, N = 128;
 
   torch::Tensor batch1 = torch::randn({B, M, K}, device);

@@ -1,4 +1,3 @@
-#include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cmath>
@@ -6,6 +5,7 @@
 #include <iostream>
 #include <vector>
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 double calculate_ks_statistic(const std::vector<double>& samples, double lambda) {
   size_t n = samples.size();
@@ -50,7 +50,7 @@ void RunExponentialTest(torch::ScalarType dtype) {
   const double alpha = 0.05;
 
   for (double lambda : lambda_values) {
-    torch::Tensor x = torch::empty(shape, torch::dtype(dtype)).to(torch::kCUDA);
+    torch::Tensor x = torch::empty(shape, torch::dtype(dtype)).to(flag_gems::test::default_device());
 
     x = flag_gems::exponential_(x, lambda);
 

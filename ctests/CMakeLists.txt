@@ -23,9 +23,20 @@ target_link_libraries(test_triton_reduction
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_reduction COMMAND test_triton_reduction)
 
-add_executable(test_triton_blas test_triton_blas.cpp)
-target_link_libraries(test_triton_blas PRIVATE Torch::Torch operators gtest gtest_main)
-add_test(NAME test_triton_blas COMMAND test_triton_blas)
+add_executable(test_triton_mm test_triton_mm.cpp)
+target_link_libraries(test_triton_mm
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_mm COMMAND test_triton_mm)
+
+add_executable(test_triton_addmm test_triton_addmm.cpp)
+target_link_libraries(test_triton_addmm
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_addmm COMMAND test_triton_addmm)
+
+add_executable(test_triton_bmm test_triton_bmm.cpp)
+target_link_libraries(test_triton_bmm
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_bmm COMMAND test_triton_bmm)
 
 add_executable(test_triton_norm test_triton_norm.cpp)
 target_link_libraries(test_triton_norm
@@ -56,11 +67,6 @@ add_executable(test_triton_zeros_constructor test_triton_tensor_constructor.cpp)
 target_link_libraries(test_triton_zeros_constructor
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_zeros_constructor COMMAND test_triton_zeros_constructor)
-
-add_executable(test_triton_bmm test_triton_bmm.cpp)
-target_link_libraries(test_triton_bmm
-  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
-add_test(NAME test_triton_bmm COMMAND test_triton_bmm)
 
 add_executable(test_triton_embedding test_triton_embedding.cpp)
 target_link_libraries(test_triton_embedding

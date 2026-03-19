@@ -2,10 +2,11 @@
 #include "c10/util/Logging.h"
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(reduction_op_test, sum) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({32, 1024}, device);
 
   torch::Tensor out_torch = at::sum(a);
@@ -19,7 +20,7 @@ TEST(reduction_op_test, sum) {
 }
 
 TEST(reduction_op_test, sum_dim_to_sum) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({32, 1024}, device);
 
   torch::Tensor out_torch = at::sum(a, {at::IntArrayRef {}}, false, c10::nullopt);
@@ -33,7 +34,7 @@ TEST(reduction_op_test, sum_dim_to_sum) {
 }
 
 TEST(reduction_op_test, sum_dim_inner) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({32, 1024}, device);
 
   torch::Tensor out_torch = at::sum(a, {1});
@@ -47,7 +48,7 @@ TEST(reduction_op_test, sum_dim_inner) {
 }
 
 TEST(reduction_op_test, sum_dim_non_inner) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({32, 1024, 32}, device);
 
   torch::Tensor out_torch = at::sum(a, {1});
@@ -61,7 +62,7 @@ TEST(reduction_op_test, sum_dim_non_inner) {
 }
 
 TEST(reduction_op_test, sum_dim_multi) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({32, 1024, 32}, device);
 
   torch::Tensor out_torch = at::sum(a, {2, 0});
@@ -74,7 +75,7 @@ TEST(reduction_op_test, sum_dim_multi) {
 }
 
 TEST(reduction_op_test, nonzero) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({32, 1024}, device);
   a = a > 0.5;
 
@@ -100,7 +101,7 @@ class MaxDimTest : public ::testing::TestWithParam<MaxDimTestParam> {};
 
 TEST_P(MaxDimTest, max_dim) {
   const MaxDimTestParam param = GetParam();
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   const at::TensorOptions opt = at::TensorOptions().device(device).dtype(param.dtype);
   torch::Tensor input = torch::randn({param.m, param.n}, opt);
   auto out_torch = at::max(input, param.dim_to_keep, param.keepdim);
@@ -137,7 +138,7 @@ INSTANTIATE_TEST_SUITE_P(MaxDimTests,
                                            MaxDimTestParam {32, 1024, false, 1, at::ScalarType::BFloat16}));
 
 TEST(MaxTest, max) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::randn({32, 1024}, device);
   auto out_torch = at::max(input);
   auto out_triton = flag_gems::max(input);
@@ -153,7 +154,7 @@ class MaxDimMaxTest : public ::testing::TestWithParam<MaxDimTestParam> {};
 
 TEST_P(MaxDimMaxTest, max_dim_max) {
   const MaxDimTestParam param = GetParam();
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   const at::TensorOptions opt = at::TensorOptions().device(device).dtype(param.dtype);
   torch::Tensor input = torch::randn({param.m, param.n}, opt);
   auto out_torch = at::max(input, param.dim_to_keep, param.keepdim);
