@@ -10,6 +10,7 @@ from .conv2d import conv2d
 from .dropout import dropout, dropout_backward
 from .gather import gather, gather_backward
 from .index_put import index_put, index_put_
+from .index_select import index_select
 from .log import log
 from .max import max, max_dim
 from .min import min, min_dim
@@ -66,6 +67,7 @@ __all__ = [
     "gather_backward",
     "index_put",
     "index_put_",
+    "index_select",
     "resolve_conj",
 ]
 
