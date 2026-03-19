@@ -11,6 +11,7 @@ from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.addmm import addmm, addmm_out
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
+from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.amax import amax
 from flag_gems.ops.angle import angle
@@ -303,6 +304,8 @@ __all__ = [
     "addmv",
     "addmv_out",
     "addr",
+    "alias_copy",
+    "alias_copy_out",
     "all",
     "all_dim",
     "all_dims",

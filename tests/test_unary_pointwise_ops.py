@@ -1490,6 +1490,15 @@ def test_accuracy_absolute(shape, dtype):
     ref_out = torch.absolute(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.absolute(inp)
+@pytest.mark.alias_copy
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_alias_copy(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.ops.aten.alias_copy(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.alias_copy(inp)
     gems_assert_equal(res_out, ref_out)
 
 

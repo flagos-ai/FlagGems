@@ -60,6 +60,7 @@ _FULL_CONFIG = (
     ("addmm", addmm),
     ("addmm.out", addmm_out),
     ("addr", addr),
+    ("alias_copy", alias_copy),
     ("all", all),
     ("all.dim", all_dim),
     ("all.dims", all_dims),
