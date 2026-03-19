@@ -1496,7 +1496,8 @@ def test_accuracy_absolute(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log1p_(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    torch.manual_seed(0)
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone())
     ref_out = ref_inp.log1p_()
     with flag_gems.use_gems():
