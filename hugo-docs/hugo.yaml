@@ -81,7 +81,7 @@ languages:
 
   zh-cn:
     title: FlagGems
-    languageName: 简体中文（Simplified Chinese）
+    languageName: 简体中文
     weight: 2
     contentDir: content/zh-cn
     languagedirection: ltr
