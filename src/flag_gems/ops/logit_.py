@@ -7,7 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 
 @triton.jit
-def logit__kernel(
+def logit_kernel(
     x_ptr,
     n_elements,
     eps,
@@ -79,7 +79,7 @@ def logit_(*args, **kwargs):
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 
     with torch_device_fn.device(x.device):
-        logit__kernel[grid](
+        logit_kernel[grid](
             buf,
             n_elements,
             eps_value,
