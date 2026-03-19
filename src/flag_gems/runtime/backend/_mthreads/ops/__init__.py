@@ -23,6 +23,11 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .repeat_interleave import (
+    repeat_interleave_self_int,
+    repeat_interleave_self_tensor,
+    repeat_interleave_tensor,
+)
 from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
 from .zeros import zero_, zeros
@@ -48,6 +53,9 @@ __all__ = [
     "arange_start",
     "sort_stable",
     "randperm",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "repeat_interleave_tensor",
     "conv2d",
     "all",
     "all_dim",
