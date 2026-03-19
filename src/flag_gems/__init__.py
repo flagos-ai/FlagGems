@@ -312,6 +312,7 @@ _FULL_CONFIG = (
     ("scatter_add_", scatter_add_),
     ("select_backward", select_backward),
     ("select_scatter", select_scatter),
+    ("sgn_", sgn_),
     ("sigmoid", sigmoid),
     ("sigmoid_", sigmoid_),
     ("sigmoid_backward", sigmoid_backward),

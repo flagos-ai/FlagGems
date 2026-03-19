@@ -120,6 +120,7 @@ forward_inplace_operations = [
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
     ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
+    ("sgn_", lambda a: a.sgn_(), FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
     # Trigonometric operations
     ("cos_", torch.cos_, FLOAT_DTYPES),
