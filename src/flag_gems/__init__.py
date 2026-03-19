@@ -186,6 +186,7 @@ _FULL_CONFIG = (
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
     ("hstack", hstack),
+    ("hypot", hypot),
     ("index.Tensor", index),
     ("index_add", index_add),
     ("index_add_", index_add_),
