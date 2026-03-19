@@ -66,7 +66,7 @@ jobs:
               return "HAS_DATA";
             }
 
-      - id: nnzip-artifact
+      - id: unzip-artifact
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
         run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
 
@@ -78,19 +78,18 @@ jobs:
           echo "COV_ID=${COV_ID}" > $GITHUB_ENV
           DATE=${COV_ID:0:8}
 
-          rm -fr docs/coverage/${COV_ID}*
-          mkdir -p docs/coverage/${COV_ID}
-          mv ${{ runner.temp }}/artifacts/htmlcov/* docs/coverage/${COV_ID}/
+          rm -fr hugo-docs/static/coverage/${COV_ID}*
+          mkdir -p hugo-docs/static/coverage/${COV_ID}
+          mv ${{ runner.temp }}/artifacts/htmlcov/* hugo-docs/coverage/${COV_ID}/
 
-          mkdir -p docs/test/unit/${COV_ID}
-          mv ${{ runner.temp }}/artifacts/ut-summary.md docs/test/unit/${COV_ID}/
+          mv ${{ runner.temp }}/artifacts/ut-summary.md hugo-docs/content/en/references/test/unit/${DATE}-summary
 
       - id: commit-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add docs
+          git add hugo-docs
           git commit -a -m "Add coverage data for ${COV_ID}"
 
       - id: push-change
