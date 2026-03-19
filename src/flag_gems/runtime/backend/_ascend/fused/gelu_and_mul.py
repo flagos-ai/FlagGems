@@ -4,11 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f'flag_gems.runtime._ascend.fused.{__name__.split(".")[-1]}')
 
 # NOTE: On Ascend NPU, the erf function has limited precision.
 # For better accuracy, we use tanh approximation for both "none" and "tanh" modes.
@@ -18,15 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": 65536, "BLOCK_SIZE_SUB": 8192}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 65536, "BLOCK_SIZE_SUB": 4096}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 131072, "BLOCK_SIZE_SUB": 8192}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 131072, "BLOCK_SIZE_SUB": 16384}, num_warps=4),
-    ],
-    key=["N"],
-)
+@triton.autotune(configs=runtime.get_tuned_config("gelu_and_mul"), key=["N"])
 @triton.jit
 def gelu_and_mul_kernel(
     X,
@@ -61,15 +54,7 @@ def gelu_and_mul_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": 65536, "BLOCK_SIZE_SUB": 4096}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 65536, "BLOCK_SIZE_SUB": 2048}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 131072, "BLOCK_SIZE_SUB": 4096}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 131072, "BLOCK_SIZE_SUB": 8192}, num_warps=4),
-    ],
-    key=["N"],
-)
+@triton.autotune(configs=runtime.get_tuned_config("gelu_and_mul_grad"), key=["N"])
 @triton.jit
 def gelu_and_mul_grad_kernel(
     X,

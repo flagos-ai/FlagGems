@@ -4,22 +4,16 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f'flag_gems.runtime._ascend.fused.{__name__.split(".")[-1]}')
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": 32768, "BLOCK_SIZE_SUB": 8192}),
-        triton.Config({"BLOCK_SIZE": 32768, "BLOCK_SIZE_SUB": 4096}),
-        triton.Config({"BLOCK_SIZE": 65536, "BLOCK_SIZE_SUB": 8192}),
-    ],
-    key=["N"],
-)
+@triton.autotune(configs=runtime.get_tuned_config("silu_and_mul"), key=["N"])
 @triton.jit
 def silu_and_mul_kernel(
     X,
@@ -45,14 +39,7 @@ def silu_and_mul_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": 32768, "BLOCK_SIZE_SUB": 4096}),
-        triton.Config({"BLOCK_SIZE": 32768, "BLOCK_SIZE_SUB": 2048}),
-        triton.Config({"BLOCK_SIZE": 65536, "BLOCK_SIZE_SUB": 4096}),
-    ],
-    key=["N"],
-)
+@triton.autotune(configs=runtime.get_tuned_config("silu_and_mul_grad"), key=["N"])
 @triton.jit
 def silu_and_mul_grad_kernel(
     X,
