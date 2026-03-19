@@ -3,6 +3,7 @@
 #include <vector>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 // Test fixture that accepts input shape and weight shape
@@ -11,7 +12,7 @@ class NormOpTest
 };
 TEST_P(NormOpTest, rms_norm) {
   torch::manual_seed(0);
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   // Extract parameters
   auto params = GetParam();
   auto dtype = std::get<0>(params);
@@ -42,7 +43,7 @@ TEST_P(NormOpTest, rms_norm) {
 }
 TEST_P(NormOpTest, fused_add_rms_norm) {
   torch::manual_seed(0);
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   // Extract parameters
   auto params = GetParam();
   auto dtype = std::get<0>(params);

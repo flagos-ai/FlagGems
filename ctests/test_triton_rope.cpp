@@ -4,13 +4,14 @@
 #include <tuple>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 std::tuple<at::Tensor, at::Tensor> get_rope_cos_sin(int64_t max_seq_len,
                                                     int64_t dim,
                                                     c10::ScalarType dtype,
                                                     double base = 10000.0,
-                                                    c10::Device device = at::kCUDA) {
+                                                    c10::Device device = flag_gems::test::default_device()) {
   auto arange_dtype = at::kFloat;
   at::Tensor inv_freq = at::arange(0, dim, 2, at::TensorOptions().dtype(arange_dtype).device(device));
   inv_freq = inv_freq.div(dim).to(at::kFloat);
@@ -100,7 +101,7 @@ TEST_P(RotaryEmbeddingTest, CompareWithReference) {
   auto max_seq_len = std::max(seq_len, 2048);  // Ensure max_seq_len is at least seq_len or 2048
 
   torch::manual_seed(0);
-  torch::Device device(torch::kCUDA, 0);
+  torch::Device device = flag_gems::test::default_device();
 
   int k_heads = std::max(1, q_heads / 2);  // 随便设的一个可变 k_heads
 

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 // ==============================================================================
@@ -9,7 +10,7 @@
 
 class AddTest : public ::testing::Test {
  protected:
-  const torch::Device device {torch::kCUDA, 0};
+  const torch::Device device = flag_gems::test::default_device();
 };
 
 // Basic: same shape, contiguous (fast path)

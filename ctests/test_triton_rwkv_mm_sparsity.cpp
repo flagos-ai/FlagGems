@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(rwkv_op_test, rwkv_mm_sparsity) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   const int n = 16384, d = 4096;
 
   torch::Tensor k = torch::relu(torch::randn({n}, device));

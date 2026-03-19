@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(FillTest, ScalarFill) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::empty({4, 5}, torch::TensorOptions().device(device));
   c10::Scalar val = 3.14;
 
@@ -18,7 +19,7 @@ TEST(FillTest, ScalarFill) {
 }
 
 TEST(FillTest, TensorFill) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::empty({3, 3}, torch::TensorOptions().device(device));
   torch::Tensor val = torch::tensor(7.5, torch::TensorOptions().device(device));
 
@@ -33,7 +34,7 @@ TEST(FillTest, TensorFill) {
 }
 
 TEST(FillTest, ScalarFillInplace) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::empty({2, 2}, torch::TensorOptions().device(device));
   c10::Scalar val = -123;  // Use an integer scalar
 
@@ -47,7 +48,7 @@ TEST(FillTest, ScalarFillInplace) {
 }
 
 TEST(FillTest, TensorFillInplace) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::empty({2, 2}, torch::TensorOptions().device(device));
   torch::Tensor val = torch::tensor(-2.5, torch::TensorOptions().device(device));
 
@@ -62,7 +63,7 @@ TEST(FillTest, TensorFillInplace) {
 }
 
 TEST(FillTest, EmptyTensor) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::empty({0}, torch::TensorOptions().device(device));
   c10::Scalar val = 42;
 
@@ -77,7 +78,7 @@ TEST(FillTest, EmptyTensor) {
 }
 
 TEST(FillTest, DifferentDtypesAndValues) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   auto check_dtype_and_value = [&](auto dtype, const c10::Scalar& val) {
     torch::Tensor t = torch::empty({5, 5}, torch::TensorOptions().device(device).dtype(dtype));

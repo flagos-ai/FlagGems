@@ -3,10 +3,11 @@
 #include <tuple>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "gtest/gtest.h"
 #include "torch/torch.h"
 TEST(TensorSortTest, Basic1DAscending) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor({5.0, 3.0, 1.0, 4.0, 2.0}, device);
   auto [values_ref, indices_ref] = torch::sort(input);
   auto [values_custom, indices_custom] = flag_gems::sort(input);
@@ -20,7 +21,7 @@ TEST(TensorSortTest, Basic1DAscending) {
   EXPECT_TRUE(vc_result.ok) << vc_result.message;
 }
 TEST(TensorSortTest, Basic1DDescending) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor({5.0, 3.0, 1.0, 4.0, 2.0}, device);
   auto [values_ref, indices_ref] = torch::sort(input, 0, true);
   auto [values_custom, indices_custom] = flag_gems::sort(input, 0, true);
@@ -35,7 +36,7 @@ TEST(TensorSortTest, Basic1DDescending) {
 }
 
 TEST(TensorSortTest, Basic2DLastDimAscending) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor(
       {
           {5.0, 3.0, 1.0},
@@ -63,7 +64,7 @@ TEST(TensorSortTest, Basic2DLastDimAscending) {
 }
 
 TEST(TensorSortTest, Basic2DFirstDimDescending) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor(
       {
           {5.0, 3.0, 1.0},
@@ -85,7 +86,7 @@ TEST(TensorSortTest, Basic2DFirstDimDescending) {
 }
 
 TEST(TensorSortTest, 3DTensor) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor(
                             {
                                 {{5, 3}, {1, 4}},
@@ -130,7 +131,7 @@ TEST(TensorSortTest, 3DTensor) {
 }
 
 TEST(TensorSortTest, EmptyTensor) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::empty({0}, torch::dtype(torch::kFloat).device(device));
   auto [values_ref, indices_ref] = torch::sort(input);
   auto [values_custom, indices_custom] = flag_gems::sort(input);
@@ -143,7 +144,7 @@ TEST(TensorSortTest, EmptyTensor) {
 }
 
 TEST(TensorSortTest, SingleElement) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor({42.0}, device);
   auto [values_ref, indices_ref] = torch::sort(input);
   auto [values_custom, indices_custom] = flag_gems::sort(input);
@@ -157,7 +158,7 @@ TEST(TensorSortTest, SingleElement) {
 }
 
 TEST(TensorSortTest, NegativeValues) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor({-5.0, -3.0, -1.0, -4.0, -2.0}, device);
   auto [values_ref, indices_ref] = torch::sort(input);
   auto [values_custom, indices_custom] = flag_gems::sort(input);
@@ -172,7 +173,7 @@ TEST(TensorSortTest, NegativeValues) {
 }
 
 TEST(TensorSortTest, MixedPositiveNegative) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor({5.0, -3.0, 0.0, -4.0, 2.0}, device);
   auto [values_ref, indices_ref] = torch::sort(input);
   auto [values_custom, indices_custom] = flag_gems::sort(input);
@@ -187,7 +188,7 @@ TEST(TensorSortTest, MixedPositiveNegative) {
 }
 
 TEST(TensorSortTest, LargeTensor) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   const int64_t size = 10000;
   torch::Tensor input = torch::randn({size}, device);
   auto [values_ref, indices_ref] = torch::sort(input);
@@ -202,7 +203,7 @@ TEST(TensorSortTest, LargeTensor) {
 }
 
 TEST(TensorSortStableTest, Basic1DAscending) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor input = torch::tensor({5.0, 3.0, 1.0, 4.0, 2.0}, device);
   auto [values_ref, indices_ref] = torch::sort(input, false);
   auto [values_custom, indices_custom] = flag_gems::sort_stable(input, false);

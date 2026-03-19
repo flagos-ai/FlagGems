@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(DivTest, div) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
   torch::Tensor ref_a = flag_gems::accuracy_utils::to_reference(a);
@@ -18,7 +19,7 @@ TEST(DivTest, div) {
 }
 
 TEST(DivTest, true_div_) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({64, 64}, device).clamp_min(1e-3);
   torch::Tensor ref_a = flag_gems::accuracy_utils::to_reference(a);
@@ -33,7 +34,7 @@ TEST(DivTest, true_div_) {
 }
 
 TEST(DivTest, trunc_div) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
   torch::Tensor ref_a = flag_gems::accuracy_utils::to_reference(a);
@@ -47,7 +48,7 @@ TEST(DivTest, trunc_div) {
 }
 
 TEST(DivTest, trunc_div_) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
   torch::Tensor ref_a = flag_gems::accuracy_utils::to_reference(a);
@@ -62,7 +63,7 @@ TEST(DivTest, trunc_div_) {
 }
 
 TEST(DivTest, floor_div) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
@@ -77,7 +78,7 @@ TEST(DivTest, floor_div) {
 }
 
 TEST(DivTest, floor_div_) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   torch::Tensor a = torch::randn({4, 8}, device) * 10;
   torch::Tensor b = torch::randn({1, 8}, device).clamp_min(1e-3);
@@ -92,7 +93,7 @@ TEST(DivTest, floor_div_) {
 }
 
 TEST(DivTest, div_mode) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
@@ -107,7 +108,7 @@ TEST(DivTest, div_mode) {
 }
 
 TEST(DivTest, div_mode_) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
   torch::Tensor ref_a = flag_gems::accuracy_utils::to_reference(a);
@@ -123,7 +124,7 @@ TEST(DivTest, div_mode_) {
 }
 
 TEST(DivTest, remainder) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   torch::Tensor a = torch::randn({32, 32}, device) * 10;
   torch::Tensor b = torch::randn({32, 32}, device).clamp_min(0.5);
@@ -150,7 +151,7 @@ TEST(DivTest, remainder) {
 }
 
 TEST(DivTest, remainder_) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   torch::Tensor a = torch::randn({32, 32}, device) * 10;
   torch::Tensor b = torch::randn({32, 32}, device).clamp_min(0.5);

@@ -123,8 +123,32 @@ namespace backend {
   }
 
   // Get the default torch device for tensors allocated by this backend.
-  inline at::Device getDefaultDevice() {
-    return at::Device(getBackendDeviceType());
+  inline at::Device getDefaultDevice(int index = 0) {
+    return at::Device(getBackendDeviceType(), static_cast<c10::DeviceIndex>(index));
+  }
+
+  // Check if the backend device is available.
+  inline bool isDeviceAvailable() {
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+    return torch::cuda::is_available();
+#elif defined(FLAGGEMS_USE_NPU)
+    return torch::custom_class_available("npu");
+#elif defined(FLAGGEMS_USE_MUSA)
+    return true;
+#else
+    return false;
+#endif
+  }
+
+  // Synchronize the backend device.
+  inline void synchronize() {
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+    torch::cuda::synchronize();
+#elif defined(FLAGGEMS_USE_NPU)
+    // NPU sync if needed
+#elif defined(FLAGGEMS_USE_MUSA)
+    // MUSA sync if needed
+#endif
   }
 
 }  // namespace backend

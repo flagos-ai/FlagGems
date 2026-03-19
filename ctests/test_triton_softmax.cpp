@@ -2,11 +2,12 @@
 #include <pybind11/pybind11.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "gtest/gtest.h"
 #include "torch/torch.h"
 
 TEST(TritonSoftmaxTest, ForwardInnerDim) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto input = torch::randn({4, 16}, device).to(torch::kFloat16);
   int dim = 1;
   int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
@@ -25,7 +26,7 @@ TEST(TritonSoftmaxTest, ForwardInnerDim) {
 }
 
 TEST(TritonSoftmaxTest, ForwardNonInnerDim) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto input = torch::randn({2, 8, 3}, device).to(torch::kFloat16);
   int dim = 1;
   int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
@@ -43,7 +44,7 @@ TEST(TritonSoftmaxTest, ForwardNonInnerDim) {
 }
 
 TEST(TritonSoftmaxTest, ForwardDim0) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto input = torch::randn({5, 10}, device).to(torch::kFloat16);
   int dim = 0;
   int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
@@ -62,7 +63,7 @@ TEST(TritonSoftmaxTest, ForwardDim0) {
 }
 
 TEST(TritonSoftmaxTest, ForwardNegativeDim) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto input = torch::randn({2, 4, 8}, device).to(torch::kFloat16);
   int dim = -1;  // negative dim
   int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
@@ -75,7 +76,7 @@ TEST(TritonSoftmaxTest, ForwardNegativeDim) {
 }
 
 TEST(TritonSoftmaxTest, BackwardInnerDim) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto input = torch::randn({4, 16}, device).to(torch::kFloat32).set_requires_grad(true);
   int dim = 1;
   int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
@@ -99,7 +100,7 @@ TEST(TritonSoftmaxTest, BackwardInnerDim) {
 }
 
 TEST(TritonSoftmaxTest, BackwardNonInnerDim) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto input = torch::randn({2, 8, 3}, device).to(torch::kFloat32).set_requires_grad(true);
   int dim = 1;
   int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
@@ -123,7 +124,7 @@ TEST(TritonSoftmaxTest, BackwardNonInnerDim) {
 }
 
 TEST(TritonSoftmaxTest, BackwardDim0) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto input = torch::randn({5, 10}, device).to(torch::kFloat32).set_requires_grad(true);
   int dim = 0;
   int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
