@@ -60,7 +60,7 @@ add_library(FlagGems::operators ALIAS operators)
 # ==============================================================================
 # Pointwise dynamic C++ support (experimental feature, disabled by default)
 # ==============================================================================
-option(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP "Build pointwise_dynamic C++ support" ON)
+option(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP "Build pointwise_dynamic C++ support" OFF)
 if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
   add_subdirectory(pointwise_dynamic_cpp)
   target_sources(operators PRIVATE add.cpp div.cpp fill.cpp)

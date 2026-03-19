@@ -29,7 +29,7 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # --------------------------- project options ---------------------------
 option(FLAGGEMS_USE_EXTERNAL_TRITON_JIT "whether to use external triton jit library" OFF)
 option(FLAGGEMS_USE_EXTERNAL_PYBIND11 "whether to use external pybind11 library" ON)
-option(FLAGGEMS_BUILD_C_EXTENSIONS "whether to build c extension" ON)
+option(FLAGGEMS_BUILD_C_EXTENSIONS "whether to build c extension" OFF)
 option(FLAGGEMS_BUILD_CTESTS "Whether to build CPP unit tests" ${FLAGGEMS_BUILD_C_EXTENSIONS})
 option(FLAGGEMS_INSTALL "Whether to install the package" ${PROJECT_IS_TOP_LEVEL})
 
