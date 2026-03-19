@@ -122,7 +122,6 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    print(f"a.shape: {a.shape}, a.stride: {a.stride()}, b.shape: {b.shape}, b.stride: {b.stride()}")
     logger.debug("GEMS_TSINGMICRO MM")
     device = a.device
     # handle non-contiguous inputs if necessary
@@ -174,7 +173,6 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
-    print(f"a.shape: {a.shape}, a.stride: {a.stride()}, b.shape: {b.shape}, b.stride: {b.stride()}")
     logger.debug("GEMS_TSINGMICRO MM_OUT")
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
