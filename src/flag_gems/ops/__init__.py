@@ -21,6 +21,7 @@ from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -328,6 +329,7 @@ __all__ = [
     "arctanh_",
     "argmax",
     "argmin",
+    "asinh_",
     "atan",
     "atan_",
     "avg_pool2d",

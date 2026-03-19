@@ -77,6 +77,7 @@ _FULL_CONFIG = (
     ("arcsinh.out", arcsinh_out),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("asinh_", asinh_),
     ("atan", atan),
     ("atan_", atan_),
     ("arctanh_", arctanh_),
