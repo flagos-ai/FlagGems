@@ -3,7 +3,7 @@
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
-TEST(blas_op_test, div) {
+TEST(DivTest, div) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
@@ -17,7 +17,7 @@ TEST(blas_op_test, div) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(blas_op_test, true_div_) {
+TEST(DivTest, true_div_) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({64, 64}, device).clamp_min(1e-3);
@@ -32,7 +32,7 @@ TEST(blas_op_test, true_div_) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(blas_op_test, trunc_div) {
+TEST(DivTest, trunc_div) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
@@ -46,7 +46,7 @@ TEST(blas_op_test, trunc_div) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(blas_op_test, trunc_div_) {
+TEST(DivTest, trunc_div_) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
@@ -61,7 +61,7 @@ TEST(blas_op_test, trunc_div_) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(blas_op_test, floor_div) {
+TEST(DivTest, floor_div) {
   const torch::Device device(torch::kCUDA, 0);
 
   torch::Tensor a = torch::randn({64, 64}, device);
@@ -76,7 +76,7 @@ TEST(blas_op_test, floor_div) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(blas_op_test, floor_div_) {
+TEST(DivTest, floor_div_) {
   const torch::Device device(torch::kCUDA, 0);
 
   torch::Tensor a = torch::randn({4, 8}, device) * 10;
@@ -91,7 +91,7 @@ TEST(blas_op_test, floor_div_) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(blas_op_test, div_mode) {
+TEST(DivTest, div_mode) {
   const torch::Device device(torch::kCUDA, 0);
 
   torch::Tensor a = torch::randn({64, 64}, device);
@@ -106,7 +106,7 @@ TEST(blas_op_test, div_mode) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(blas_op_test, div_mode_) {
+TEST(DivTest, div_mode_) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
@@ -122,7 +122,7 @@ TEST(blas_op_test, div_mode_) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(blas_op_test, remainder) {
+TEST(DivTest, remainder) {
   const torch::Device device(torch::kCUDA, 0);
 
   torch::Tensor a = torch::randn({32, 32}, device) * 10;
@@ -149,7 +149,7 @@ TEST(blas_op_test, remainder) {
   EXPECT_TRUE(out_result.ok) << out_result.message;
 }
 
-TEST(blas_op_test, remainder_) {
+TEST(DivTest, remainder_) {
   const torch::Device device(torch::kCUDA, 0);
 
   torch::Tensor a = torch::randn({32, 32}, device) * 10;
