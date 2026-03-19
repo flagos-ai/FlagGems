@@ -7,7 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 
 @triton.jit
-def digamma__kernel(
+def digamma_kernel(
     x_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
@@ -22,9 +22,11 @@ def digamma__kernel(
 
     pi = 3.1415926535897932384626433832795028841971
 
+    # Reflection for x < 0.5: psi(x) = psi(1 - x) - pi * cot(pi * x)
     reflect_mask = x_f32 < 0.5
     xr = tl.where(reflect_mask, 1.0 - x_f32, x_f32)
 
+    # Use recurrence to shift xr to >= 8 for better asymptotic precision
     s = tl.zeros_like(x_f32)
     y = xr
     for _ in range(8):
@@ -32,6 +34,7 @@ def digamma__kernel(
         s = s - tl.where(m, 1.0 / y, 0.0)
         y = tl.where(m, y + 1.0, y)
 
+    # Asymptotic expansion for digamma at large y
     r = 1.0 / y
     r2 = r * r
     t2 = r2
@@ -47,6 +50,7 @@ def digamma__kernel(
     )
     psi_y = tl.log(y) + s + series
 
+    # Apply reflection if needed
     cot_term = tl.cos(pi * x_f32) / tl.sin(pi * x_f32)
     result = tl.where(reflect_mask, psi_y - pi * cot_term, psi_y)
 
@@ -59,6 +63,7 @@ def digamma_(*args, **kwargs):
     if not isinstance(x, torch.Tensor):
         raise TypeError("digamma_ expects a torch.Tensor as the first argument")
 
+    # Handle non-contiguous tensors by operating on a contiguous copy and copying back
     if not x.is_contiguous():
         y = x.contiguous()
         n_elements = y.numel()
@@ -66,7 +71,7 @@ def digamma_(*args, **kwargs):
             return x
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         with torch_device_fn.device(y.device):
-            digamma__kernel[grid](y, n_elements, BLOCK_SIZE=1024)
+            digamma_kernel[grid](y, n_elements, BLOCK_SIZE=1024)
         x.copy_(y)
         return x
 
@@ -75,5 +80,5 @@ def digamma_(*args, **kwargs):
         return x
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
-        digamma__kernel[grid](x, n_elements, BLOCK_SIZE=1024)
+        digamma_kernel[grid](x, n_elements, BLOCK_SIZE=1024)
     return x
