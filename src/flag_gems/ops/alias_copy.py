@@ -25,9 +25,12 @@ def alias_copy(x: torch.Tensor):
     n_elements = out.numel()
     if n_elements == 0:
         return out
+    # Ensure contiguous memory for efficient linear copy
     src = x.contiguous() if not x.is_contiguous() else x
     if not out.is_contiguous():
         out = out.contiguous()
+    if src.dtype != out.dtype:
+        raise RuntimeError("alias_copy: dtype mismatch between input and output.")
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
         _alias_copy_kernel[grid](src, out, n_elements, BLOCK_SIZE=1024)
