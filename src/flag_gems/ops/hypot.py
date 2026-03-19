@@ -105,7 +105,6 @@ def hypot(a: torch.Tensor, b: torch.Tensor):
 
 
 def hypot_out(a: torch.Tensor, b: torch.Tensor, out: torch.Tensor):
-    device = out.device
     if out.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
         raise ValueError(f"Unsupported out dtype for hypot_out: {out.dtype}")
 
