@@ -136,7 +136,9 @@ def chunk_scaled_dot_kkt_fwd(
     BT = chunk_size
     if cu_seqlens is not None:
         cu_seqlens = cu_seqlens.cpu()
-        chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
+        chunk_indices = (
+            prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
+        )
         chunk_indices = chunk_indices.npu()
         cu_seqlens = cu_seqlens.npu()
     else:

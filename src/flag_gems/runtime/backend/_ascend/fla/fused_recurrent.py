@@ -103,7 +103,9 @@ def fused_recurrent_gated_delta_rule_fwd_kernel(
                 i_t = 0
             p_h0 = (
                 h0
-                + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(tl.int64)
+                + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(
+                    tl.int64
+                )
                 * stride_init_state_token
             )
         else:
@@ -162,7 +164,9 @@ def fused_recurrent_gated_delta_rule_fwd_kernel(
         if INPLACE_FINAL_STATE:
             p_ht = (
                 ht
-                + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(tl.int64)
+                + tl.load(ssm_state_indices + i_n * stride_indices_seq + i_t).to(
+                    tl.int64
+                )
                 * stride_final_state_token
             )
         else:
