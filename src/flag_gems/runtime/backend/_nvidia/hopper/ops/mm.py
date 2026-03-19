@@ -204,8 +204,8 @@ def matmul_tma_set_block_size_hook(nargs):
 
 
 def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
-    if os.environ.get("USE_FLAGTUNE"):
-        print("Using expand configurations for GEMM kernel autotuning")
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        logger.debug("Using expand configurations for matmul kernel autotuning")
         return [
             triton.Config(
                 {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
@@ -234,8 +234,8 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     ]
 
 def gemv_get_configs():
-    if os.environ.get("USE_FLAGTUNE"):
-        print("Using expand configurations for GEMV kernel autotuning")
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        logger.debug("Using expand configurations for gemv kernel autotuning")
         return [
             triton.Config(
                 {"BLOCK_M": BM, "BLOCK_K": BK},
@@ -263,7 +263,7 @@ def gemv_get_configs():
 @libtuner(
     configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=["default", "default", "default", "default", "default", "default"] if os.environ.get("USE_FLAGTUNE") else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=["default", "default", "default", "default", "default", "default"] if os.environ.get("USE_FLAGTUNE") == "1" else ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
 )
