@@ -31,6 +31,8 @@ def special_i1_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     ans_small = x_f32 * p
 
     # Large region: |x| > 3.75
+    # Use asymptotic expansion: I1(x) ~ exp(|x|)/sqrt(|x|) * poly(3.75/|x|)
+    # Coefficients from Cephes
     t = 3.75 / tl.maximum(ax, 1e-20)
     q = -0.00420059
     q = 0.01787654 + t * q
@@ -49,10 +51,17 @@ def special_i1_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     is_small = ax <= 3.75
     ans = tl.where(is_small, ans_small, ans_large)
 
+    # Cast back to input dtype and store
     tl.store(out_ptr + offsets, ans.to(x.dtype), mask=mask)
 
 
 def _launch_special_i1(x: torch.Tensor, out: torch.Tensor):
+    assert x.is_cuda and out.is_cuda, "Tensors must be CUDA tensors"
+    assert (
+        x.numel() == out.numel()
+    ), "Input and output must have the same number of elements"
+    assert x.dtype == out.dtype, "Input and output must have the same dtype"
+
     n_elements = x.numel()
     if n_elements == 0:
         return
