@@ -780,3 +780,79 @@ silu_and_mul_grad:
 - META:
     BLOCK_SIZE: 65536
     BLOCK_SIZE_SUB: 4096
+
+moe_sum:
+# Very small hidden_size configs (128-512) - single block covers all
+- META:
+    BLOCK_SIZE: 512
+    BLOCK_SIZE_SUB: 128
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 512
+    BLOCK_SIZE_SUB: 256
+  multibuffer: true
+# Small hidden_size configs (512-1024)
+- META:
+    BLOCK_SIZE: 1024
+    BLOCK_SIZE_SUB: 256
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 1024
+    BLOCK_SIZE_SUB: 512
+  multibuffer: true
+# Medium-small hidden_size configs (1024-2048)
+- META:
+    BLOCK_SIZE: 2048
+    BLOCK_SIZE_SUB: 256
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 2048
+    BLOCK_SIZE_SUB: 512
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 2048
+    BLOCK_SIZE_SUB: 1024
+  multibuffer: true
+# Medium hidden_size configs (2048-4096) - common LLM sizes
+- META:
+    BLOCK_SIZE: 4096
+    BLOCK_SIZE_SUB: 512
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 4096
+    BLOCK_SIZE_SUB: 1024
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 4096
+    BLOCK_SIZE_SUB: 2048
+  multibuffer: true
+# Large hidden_size configs (8192) - common LLM sizes
+- META:
+    BLOCK_SIZE: 8192
+    BLOCK_SIZE_SUB: 512
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 8192
+    BLOCK_SIZE_SUB: 1024
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 8192
+    BLOCK_SIZE_SUB: 2048
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 8192
+    BLOCK_SIZE_SUB: 4096
+  multibuffer: true
+# Very large hidden_size configs (16384+)
+- META:
+    BLOCK_SIZE: 16384
+    BLOCK_SIZE_SUB: 1024
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 16384
+    BLOCK_SIZE_SUB: 2048
+  multibuffer: true
+- META:
+    BLOCK_SIZE: 16384
+    BLOCK_SIZE_SUB: 4096
+  multibuffer: true
