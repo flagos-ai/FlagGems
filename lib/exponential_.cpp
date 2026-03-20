@@ -1,12 +1,11 @@
 #include <ATen/ATen.h>
 #include <ATen/Generator.h>
 #include <ATen/core/Generator.h>
-#include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <c10/util/Exception.h>
 #include <c10/util/Optional.h>
 #include <torch/torch.h>
 #include <iostream>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "triton_jit/triton_jit_function.h"
@@ -130,8 +129,8 @@ at::Tensor &exponential_(at::Tensor &self, double lambd, c10::optional<at::Gener
   }
 
   c10::DeviceGuard guard(x_.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
   (*f)(raw_stream,
        grid_x,
        /* grid_y = */ 1,

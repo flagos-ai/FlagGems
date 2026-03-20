@@ -1,5 +1,8 @@
 #include "flag_gems/accuracy_utils.h"
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
 #include <c10/cuda/CUDAGuard.h>
+#include <cuda_runtime_api.h>
+#endif
 #include <torch/torch.h>
 #include <sstream>
 
@@ -82,22 +85,31 @@ static std::pair<torch::Tensor, torch::Tensor> _maybe_move_to_cpu(torch::Tensor 
 
   const int64_t required = res.numel() * static_cast<int64_t>(res.element_size());
 
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
   int64_t free_mem = -1;
 
   try {
     size_t free_mem_u = 0, total_mem_u = 0;
     c10::cuda::CUDAGuard device_guard(res.device());
-    cudaMemGetInfo(&free_mem_u, &total_mem_u);
-    free_mem = static_cast<int64_t>(free_mem_u);
+    if (cudaMemGetInfo(&free_mem_u, &total_mem_u) == cudaSuccess) {
+      free_mem = static_cast<int64_t>(free_mem_u);
+    }
   } catch (...) {
     free_mem = -1;
   }
+#endif
 
   constexpr int64_t HUGE_TENSOR_BYTES = int64_t(1) << 30;  // 1 GiB
 
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
   if ((free_mem >= 0 && required >= free_mem) || (required >= HUGE_TENSOR_BYTES)) {
     return {res.cpu(), ref.cpu()};
   }
+#else
+  if (required >= HUGE_TENSOR_BYTES) {
+    return {res.cpu(), ref.cpu()};
+  }
+#endif
 
   return {res, ref};
 }
