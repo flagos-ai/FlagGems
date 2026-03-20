@@ -78,7 +78,7 @@ def _launch_select_backward(grad, input_sizes, dim, index, out=None):
 
     BLOCK = 1024
     n_elements = outer_size * inner_size
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK"]),)
+    grid = (triton.cdiv(n_elements, BLOCK),)
 
     _select_backward_kernel[grid](
         grad_view,
