@@ -1,10 +1,12 @@
 import logging
 import os
+from functools import lru_cache
 from typing import Optional
 
 import torch
 import triton
 import triton.language as tl
+import yaml
 
 from flag_gems import runtime
 from flag_gems.ops.mm_streamk import streamk_mm
@@ -34,17 +36,11 @@ def is_tma_compatible(a, b, N, K):
     Returns:
         bool: True if compatible with TMA's 128-bit alignment requirement
     """
-    return (
-        a.dtype in (torch.float16, torch.bfloat16)
-        and b.dtype in (torch.float16, torch.bfloat16)
-        and N % 8 == 0
-        and K % 8 == 0
-    ) or (
-        a.dtype in (torch.float32,)
-        and b.dtype in (torch.float32,)
-        and N % 4 == 0
-        and K % 4 == 0
-    )
+    return (a.dtype in (torch.float16, torch.bfloat16)
+            and b.dtype in (torch.float16, torch.bfloat16) and N % 8 == 0
+            and K % 8 == 0) or (a.dtype in (torch.float32, )
+                                and b.dtype in (torch.float32, ) and N % 4 == 0
+                                and K % 4 == 0)
 
 
 @triton.jit
@@ -142,8 +138,10 @@ def mm_kernel_general(
         # do matrix multiplication
         rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
         rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(tl.int64)
+        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M),
+                                BLOCK_M).to(tl.int64)
+        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N),
+                                BLOCK_N).to(tl.int64)
         rm = rm.to(tl.int64)
         rn = rn.to(tl.int64)
         prev_multiple = prev_multiple_of(K, BLOCK_K)
@@ -151,8 +149,10 @@ def mm_kernel_general(
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for start_k in range(0, prev_multiple, BLOCK_K):
             rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
-            a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
-            b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
+            a = tl.load(A +
+                        (ram[:, None] * stride_am + rk[None, :] * stride_ak))
+            b = tl.load(B +
+                        (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
             if a.dtype != b.dtype:
                 a = a.to(C.dtype.element_ty)
                 b = b.to(C.dtype.element_ty)
@@ -203,25 +203,106 @@ def matmul_tma_set_block_size_hook(nargs):
     nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
 
 
+def get_expand_config(op):
+    default_strategies = {
+        "matmul":["align32", "align32", "align32", "align32", "align32", "default"],
+        "gemv": ["align32", "align32", "align32", "default"],
+    }
+    op_key_orders = {
+        "matmul": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+        "gemv": ["M", "K", "stride_am", "stride_bk"],
+    }
+    op_meta_map = {
+        "matmul": {
+            "BM": "BLOCK_M",
+            "BN": "BLOCK_N",
+            "BK": "BLOCK_K",
+        },
+        "gemv": {
+            "BM": "BLOCK_M",
+            "BK": "BLOCK_K",
+        },
+    }
+
+    if op not in default_strategies:
+        return -1
+
+    default_strategy = default_strategies[op]
+    config_path = os.path.join(os.path.dirname(__file__), "..",
+                               "mm_hopper_tma_expand.yaml")
+    if not os.path.exists(config_path):
+        return -1
+
+    try:
+        with open(config_path, "r") as file:
+            config = yaml.safe_load(file) or {}
+
+        expand_configs = config.get(op)
+
+        gen_config = None
+        strategy_config = None
+        for single_config in expand_configs:
+            if isinstance(single_config, dict) and "param_map" in single_config:
+                gen_config = single_config
+            if isinstance(single_config, dict) and "strategy" in single_config:
+                strategy_config = single_config.get("strategy")
+
+        param_map = gen_config["param_map"]
+        meta_map = param_map["META"]
+
+        strategy = default_strategy
+        if isinstance(strategy_config, dict):
+            strategy = [
+                strategy_config.get(k, default_strategy[idx])
+                for idx, k in enumerate(op_key_orders[op])
+            ]
+
+        ranges = {}
+        for range_key, meta_key in op_meta_map[op].items():
+            ranges[range_key] = gen_config[meta_map[meta_key]]
+        ranges["s"] = gen_config[param_map["num_stages"]]
+        ranges["w"] = gen_config[param_map["num_warps"]]
+
+        return {
+            "ranges": ranges,
+            "strategy": strategy,
+        }
+    except Exception:
+        return -1
+
+
 def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     if os.environ.get("USE_FLAGTUNE") == "1":
-        logger.debug("Using expand configurations for matmul kernel autotuning")
-        return [
-            triton.Config(
-                {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
-                num_stages=s,
-                num_warps=w,
-                pre_hook=pre_hook,
+        expand_config = get_expand_config("matmul")
+        if expand_config != -1:
+            logger.debug(
+                "Using expand configurations from mm_hopper_tma_expand.yaml for matmul kernel autotuning"
             )
-            for BM in [16, 32, 64, 128, 256]
-            for BN in [16, 32, 64, 128]
-            for BK in [32, 64, 128, 256]
-            for s in [2, 3, 4]
-            for w in [4, 8]
-        ]
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": BM,
+                        "BLOCK_N": BN,
+                        "BLOCK_K": BK
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for BM in ranges["BM"]
+                for BN in ranges["BN"]
+                for BK in ranges["BK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
     return [
         triton.Config(
-            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+            {
+                "BLOCK_M": BM,
+                "BLOCK_N": BN,
+                "BLOCK_K": BK
+            },
             num_stages=s,
             num_warps=w,
             pre_hook=pre_hook,
@@ -233,37 +314,15 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
         for w in [4, 8]
     ]
 
-def gemv_get_configs():
-    if os.environ.get("USE_FLAGTUNE") == "1":
-        logger.debug("Using expand configurations for gemv kernel autotuning")
-        return [
-            triton.Config(
-                {"BLOCK_M": BM, "BLOCK_K": BK},
-                num_stages=s,
-                num_warps=w,
-            )
-            for BM in [8, 16, 32, 64, 128, 256]
-            for BK in [8, 16, 32, 64, 128, 256]
-            for s in [2, 3, 4, 5, 6, 7, 8]
-            for w in [1, 2, 4, 8]
-        ]
-    return [
-        triton.Config(
-            {"BLOCK_M": BM, "BLOCK_K": BK},
-            num_stages=s,
-            num_warps=w,
-        )
-        for BM in [32]
-        for BK in [256]
-        for s in [2, 3, 4]
-        for w in [4, 8]
-    ]
 
 @libentry()
 @libtuner(
     configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=["default", "default", "default", "default", "default", "default"] if os.environ.get("USE_FLAGTUNE") == "1" else ["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=get_expand_config("matmul")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    and get_expand_config("matmul") != -1 else
+    ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
 )
@@ -322,7 +381,10 @@ def mm_kernel_general_host_tma(
         if a_desc.dtype == tl.float16 or a_desc.dtype == tl.bfloat16:
             accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
         else:
-            accumulator = tl.dot(a, b, acc=accumulator, input_precision="tf32x3")
+            accumulator = tl.dot(a,
+                                 b,
+                                 acc=accumulator,
+                                 input_precision="tf32x3")
 
     c = accumulator.to(c_desc.dtype)
     c_desc.store([offset_am, offset_bn], c)
@@ -355,12 +417,10 @@ def general_mm(a, b, c, M, N, K):
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    if hasattr(
-        triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(
+        N, META["BLOCK_N"]), )
+    if hasattr(triton.tools.tensor_descriptor,
+               "TensorDescriptor") and is_tma_compatible(a, b, N, K):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -424,11 +484,46 @@ def general_mm(a, b, c, M, N, K):
             )
     return c
 
+
+def gemv_get_configs():
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        expand_config = get_expand_config("gemv")
+        if expand_config != -1:
+            logger.debug(
+                "Using expand configurations from mm_hopper_tma_expand.yaml for gemv kernel autotuning"
+            )
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": BM,
+                        "BLOCK_K": BK
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                ) 
+                for BM in ranges["BM"] 
+                for BK in ranges["BK"]
+                for s in ranges["s"] 
+                for w in ranges["w"]
+            ]
+    return [
+        triton.Config(
+            {
+                "BLOCK_M": 32,
+                "BLOCK_K": 256
+            },
+        ) 
+    ]
+
 @libentry()
 @libtuner(
     configs=gemv_get_configs(),
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=["default", "default", "default", "default"],
+    strategy=get_expand_config("gemv")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    and get_expand_config("gemv") != -1 else
+    ["align32", "align32", "align32", "default"],
     warmup=5,
     rep=10,
 )
@@ -454,7 +549,7 @@ def gemv_kernel(
     row_mask = row_offset < M
 
     # Accumulator for this block of rows
-    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+    acc = tl.zeros((BLOCK_M, ), dtype=tl.float32)
 
     # Iterate over K dimension
     for k_start in range(0, K, BLOCK_K):
@@ -462,8 +557,11 @@ def gemv_kernel(
         k_mask = k_offset < K
 
         # Load block from matrix A: [BLOCK_M, BLOCK_K]
-        a_ptrs = A + row_offset[:, None] * stride_am + k_offset[None, :] * stride_ak
-        a = tl.load(a_ptrs, mask=row_mask[:, None] & k_mask[None, :], other=0.0)
+        a_ptrs = A + row_offset[:, None] * stride_am + k_offset[
+            None, :] * stride_ak
+        a = tl.load(a_ptrs,
+                    mask=row_mask[:, None] & k_mask[None, :],
+                    other=0.0)
 
         # Load block from vector B: [BLOCK_K]
         b_ptrs = B + k_offset * stride_bk
@@ -486,7 +584,7 @@ def gemv_mm(a, b, c, M, K):
         K,
     )
 
-    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]), )
 
     with torch_device_fn.device(a.device):
         gemv_kernel[grid](
@@ -507,15 +605,10 @@ def streamk_scenario(a, b, M, N, K):
     # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
     # The optimal settings for other devices need to be determined through real testing.
     capability = get_device_capability()
-    return (
-        capability[0] == 8
-        and a.dtype in [torch.float16, torch.bfloat16]
-        and b.dtype in [torch.float16, torch.bfloat16]
-        and a.is_contiguous()
-        and b.is_contiguous()
-        and K > M * 5
-        and K > N * 5
-    )
+    return (capability[0] == 8 and a.dtype in [torch.float16, torch.bfloat16]
+            and b.dtype in [torch.float16, torch.bfloat16]
+            and a.is_contiguous() and b.is_contiguous() and K > M * 5
+            and K > N * 5)
 
 
 def mm(a, b):
