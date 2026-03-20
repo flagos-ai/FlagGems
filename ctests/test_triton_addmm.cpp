@@ -20,9 +20,9 @@ TEST_P(AddmmTest, addmm) {
   const at::Tensor mat1 = at::randn({param.m, param.k}, opt);
   const at::Tensor mat2 = at::randn({param.k, param.n}, opt);
 
-  const at::Tensor ref_bias = flag_gems::accuracy_utils::to_reference(bias, /*upcast=*/true);
-  const at::Tensor ref_mat1 = flag_gems::accuracy_utils::to_reference(mat1, /*upcast=*/true);
-  const at::Tensor ref_mat2 = flag_gems::accuracy_utils::to_reference(mat2, /*upcast=*/true);
+  const at::Tensor ref_bias = flag_gems::accuracy_utils::to_reference(bias, /*upcast=*/false);
+  const at::Tensor ref_mat1 = flag_gems::accuracy_utils::to_reference(mat1, /*upcast=*/false);
+  const at::Tensor ref_mat2 = flag_gems::accuracy_utils::to_reference(mat2, /*upcast=*/false);
 
   at::Tensor out_torch = at::addmm(ref_bias, ref_mat1, ref_mat2);
   at::Tensor out_triton = flag_gems::addmm(bias, mat1, mat2);
