@@ -1,9 +1,9 @@
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
 #include <iostream>
 #include "ATen/WrapDimUtils.h"
-#include "c10/cuda/CUDAStream.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -40,8 +40,8 @@ std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_b
                                       "compute_global_hist_kernel");
 
   c10::DeviceGuard guard(arr.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   at::Tensor global_hist =
       at::zeros({m, n_passes, num_bins}, at::TensorOptions().device(arr.device()).dtype(torch::kInt32));
