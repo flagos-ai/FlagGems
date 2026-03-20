@@ -5,7 +5,7 @@ import triton.language as tl
 
 
 @triton.jit
-def i0_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def i0__kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -60,10 +60,6 @@ def i0_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(x_ptr + offsets, result_cast, mask=mask)
 
 
-# Keep a reference to the Triton kernel before defining the Python wrapper with the same name
-i0__kernel = i0_
-
-
 def i0_(*args, **kwargs):
     x = None
     if len(args) > 0:
@@ -93,5 +89,5 @@ def i0_(*args, **kwargs):
         return x
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    i0__kernel[grid](x, n_elements, BLOCK_SIZE=1024)
+    i0__kernel_[grid](x, n_elements, BLOCK_SIZE=1024)
     return x
