@@ -1,6 +1,7 @@
 from torch_musa import current_device, get_device_capability
 
 from .all import all, all_dim, all_dims
+from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
@@ -11,8 +12,10 @@ from .dropout import dropout, dropout_backward
 from .gather import gather, gather_backward
 from .index_put import index_put, index_put_
 from .log import log
+from .log_softmax import log_softmax, log_softmax_backward
 from .max import max, max_dim
 from .min import min, min_dim
+from .normal import normal_
 from .ones import ones
 from .ones_like import ones_like
 from .prod import prod, prod_dim
@@ -27,6 +30,7 @@ from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "amax",
     "rand",
     "rand_like",
     "dropout",
@@ -41,6 +45,8 @@ __all__ = [
     "zero_",
     "zeros_like",
     "log",
+    "log_softmax",
+    "log_softmax_backward",
     "sort",
     "arange",
     "arange_start",
@@ -67,6 +73,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "resolve_conj",
+    "normal_",
 ]
 
 if get_device_capability(current_device())[0] >= 3:
