@@ -5,7 +5,7 @@ import triton.language as tl
 
 
 @triton.jit
-def i0__kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def i0_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -89,5 +89,5 @@ def i0_(*args, **kwargs):
         return x
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    i0__kernel_[grid](x, n_elements, BLOCK_SIZE=1024)
+    i0_kernel_[grid](x, n_elements, BLOCK_SIZE=1024)
     return x
