@@ -11,8 +11,8 @@ TEST(rwkv_op_test, rwkv_mm_sparsity) {
   torch::Tensor k = torch::relu(torch::randn({n}, device));
   torch::Tensor v = torch::randn({n, d}, device);
 
-  torch::Tensor ref_k = flag_gems::accuracy_utils::to_reference(k, true);
-  torch::Tensor ref_v = flag_gems::accuracy_utils::to_reference(v, true);
+  torch::Tensor ref_k = flag_gems::accuracy_utils::to_reference(k, false);
+  torch::Tensor ref_v = flag_gems::accuracy_utils::to_reference(v, false);
 
   torch::Tensor k2d = ref_k.view({1, n});
   torch::Tensor out_triton = flag_gems::rwkv_mm_sparsity(k, v);
