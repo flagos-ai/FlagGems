@@ -80,9 +80,9 @@ jobs:
 
           rm -fr hugo-docs/static/coverage/${COV_ID}*
           mkdir -p hugo-docs/static/coverage/${COV_ID}
-          mv ${{ runner.temp }}/artifacts/htmlcov/* hugo-docs/coverage/${COV_ID}/
+          mv ${{ runner.temp }}/artifacts/htmlcov/* hugo-docs/static/coverage/${COV_ID}/
 
-          mv ${{ runner.temp }}/artifacts/ut-summary.md hugo-docs/content/en/references/test/unit/${DATE}-summary
+          mv ${{ runner.temp }}/artifacts/ut-summary.md hugo-docs/content/en/references/test/unit/${DATE}-summary.md
 
       - id: commit-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
