@@ -7,7 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 
 @triton.jit
-def digamma_kernel(
+def digamma__kernel_(
     x_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
@@ -71,7 +71,7 @@ def digamma_(*args, **kwargs):
             return x
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         with torch_device_fn.device(y.device):
-            digamma_kernel[grid](y, n_elements, BLOCK_SIZE=1024)
+            digamma__kernel_[grid](y, n_elements, BLOCK_SIZE=1024)
         x.copy_(y)
         return x
 
@@ -80,5 +80,5 @@ def digamma_(*args, **kwargs):
         return x
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
-        digamma_kernel[grid](x, n_elements, BLOCK_SIZE=1024)
+        digamma__kernel_[grid](x, n_elements, BLOCK_SIZE=1024)
     return x
