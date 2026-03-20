@@ -204,19 +204,16 @@ def rand_heur_num_warps(args):
 
 
 def randn_heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
+    bs = triton.next_power_of_2(args["N"] // (16 * 4))
+    if bs > 32768:
+        bs = 32768
+    elif bs < 512:
+        bs = 512
+    return bs
 
 
 def randn_heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
+    return 1
 
 
 def softmax_heur_tile_k(args):

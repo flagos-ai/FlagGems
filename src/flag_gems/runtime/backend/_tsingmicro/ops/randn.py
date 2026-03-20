@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 from flag_gems.utils import libentry, libtuner
-from flag_gems.runtime import device, torch_device_fn
+from flag_gems.runtime import device, torch_device_fn, get_heuristic_config
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
@@ -58,22 +58,20 @@ device_ = device
 logger = logging.getLogger(__name__)
 
 
-
-# @triton.heuristics(runtime.get_heuristic_config("randn"))
 @libentry()
-@libtuner(
-    configs = [
-        triton.Config(kwargs={"BLOCK": 256}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK": 512}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK": 1024}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK": 4096}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK": 16384}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK": 32768}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK": 65536}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK": 131072}, num_stages=1, num_warps=1),
-    ],
-    key=["N"],
-)
+# @libtuner(
+#     configs = [
+#         triton.Config(kwargs={"BLOCK": 256}, num_stages=1, num_warps=1),
+#         triton.Config(kwargs={"BLOCK": 512}, num_stages=1, num_warps=1),
+#         triton.Config(kwargs={"BLOCK": 1024}, num_stages=1, num_warps=1),
+#         triton.Config(kwargs={"BLOCK": 4096}, num_stages=1, num_warps=1),
+#         triton.Config(kwargs={"BLOCK": 16384}, num_stages=1, num_warps=1),
+#         triton.Config(kwargs={"BLOCK": 32768}, num_stages=1, num_warps=1),
+#     ],
+#     key=["N"],
+#     strategy=["log"],
+# )
+@triton.heuristics(get_heuristic_config("randn"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
     out_ptr,
@@ -112,6 +110,7 @@ UNROLL = 4
 
 def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     logger.debug("GEMS_TSINGMICRO RANDN")
+    print("GEMS_TSINGMICRO RANDN")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
