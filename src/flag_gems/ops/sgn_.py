@@ -7,7 +7,7 @@ from flag_gems.runtime import torch_device_fn
 
 
 @triton.jit
-def sgn__kernel(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def sgn__kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -59,5 +59,5 @@ def sgn_(*args, **kwargs):
 
     grid = lambda META: (triton.cdiv(n_elements, META["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
-        sgn__kernel[grid](x, n_elements, BLOCK_SIZE=1024)
+        sgn__kernel_[grid](x, n_elements, BLOCK_SIZE=1024)
     return x
