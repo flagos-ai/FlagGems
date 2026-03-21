@@ -7,8 +7,8 @@ import triton.language as tl
 
 @triton.jit
 def _select_backward_kernel(
-    grad_ptr: tl.pointer_type,
-    out_ptr: tl.pointer_type,
+    grad_ptr,
+    out_ptr,
     outer_size,
     inner_size,
     dim_stride,
