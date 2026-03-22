@@ -138,6 +138,7 @@ weight: 90
   `max`,
   `mm`,
   `nonzero`,
+  `reshape_and_cache`,
   `reshape_and_cache_flash`,
   `rms_norm`,
   `rms_norm_backward`,
