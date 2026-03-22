@@ -1,4 +1,4 @@
-operators:
+ops:
   - name: _conv_depthwise2d
     description: A depthwise convolution for the conv2d neural network function.
     labels:
@@ -38,7 +38,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '1.0'
+      stable: '1.0'
   - name: abs_
     description: The in-place version of `abs()`.
     for:
@@ -49,7 +49,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '2.2'
+      stable: '2.2'
   - name: acos
     description: Returns a new tensor with the arccosine (in radians) of each element in `input`.
     for:
@@ -60,7 +60,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '4.3'
+      stable: '4.3'
   - name: add
     description: |
       Add a scalar or tensor to `self` tensor. If both `alpha` and `other` are specified,
@@ -73,7 +73,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '1.0'
+      stable: '1.0'
     cpp: '4.0'
   - name: add_
     description: The in-place version of `add()`.
@@ -185,7 +185,9 @@ operators:
     stages:
       stable: '2.0'
   - name: all_dim
-    description: For each row of `input` in the given dimension `dim`, returns True if all elements in the row evaluate to True and False otherwise.
+    description: |
+      For each row of `input` in the given dimension `dim`, returns True if all elements
+      in the row evaluate to True and False otherwise.
     for:
       - all.dim
     labels:
@@ -196,7 +198,7 @@ operators:
     stages:
       stable: '2.0'
   - name: all_dims
-    description: TODO
+    description: A variant of `all`.
     for:
       - all.dims
     labels:
@@ -936,6 +938,11 @@ operators:
       - cutlass_scaled_mm_sm_90
     labels:
       - fused
+      - vLLM
+    kind:
+      - LinearAlg
+    stages:
+      beta: '4.3'
   - name: dgeglu
     description: |
       Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
@@ -1004,7 +1011,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '1.0'
+      stable: '1.0'
   - name: div_mode_
     description: The in-place version of `div_mode()`.
     for:
@@ -1051,7 +1058,7 @@ operators:
     kind:
       - NeuralNetwork
     stages:
-      - stable: '1.0'
+      stable: '1.0'
   - name: dropout_backward
     description: The backward case of `dropout()`.
     for:
@@ -1062,7 +1069,7 @@ operators:
     kind:
       - NeuralNetwork
     stages:
-      - stable: '3.0'
+      stable: '3.0'
   - name: dswiglu
     description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation function.
     labels:
@@ -1070,6 +1077,8 @@ operators:
     kind:
       - NeuralNetwork
     exposed: False
+    stages:
+      alpha: '4.3'
   - name: elu
     description: Apply the Exponential Linear Unit (ELU) function element-wise.
     for:
@@ -1193,7 +1202,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '1.0'
+      stable: '1.0'
   - name: exp_
     description: The in-place version of `exp()`.
     for:
@@ -1204,7 +1213,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '2.2'
+      stable: '2.2'
   - name: exp_out
     description: A variant of `exp2()`, with `out` specified.
     for:
@@ -1330,19 +1339,32 @@ operators:
     stages:
       stable: '3.0'
   - name: flash_attn_varlen_func
+    description: |
+      Compute attention for sequences of variable lengths within a single batch.
+      Eliminating the need for padding.
     for:
       - flash_attn_varlen_func
     labels:
-      - attention
       - aten
+      - Attention
+      - FlashAttention
+    kind:
+      - NeuralNetwork
+    stages:
+      stable: '3.1'
     cpp: '4.0'
   - name: flash_mla
     description: A variant of Multi-head Latent Attention (MLA).
     for:
       - triton_mla._forward_decode
     labels:
-      - attention
       - fused
+      - Attention
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      stable: '3.0'
   - name: flip
     description: Reverse the order of an n-D tensor along given axis in dims.
     for:
@@ -1487,7 +1509,7 @@ operators:
     kind:
       - NeuralNetwork
     stages:
-      - stable: '1.0'
+      stable: '1.0'
   - name: gelu_
     description: The in-place version of `gelu()`.
     for:
@@ -1499,7 +1521,7 @@ operators:
     kind:
       - NeuralNetwork
     stages:
-      - stable: '2.2'
+      stable: '2.2'
   - name: gelu_and_mul
     description: An activation function for GeGLU.
     for:
@@ -1523,7 +1545,7 @@ operators:
     kind:
       - NeuralNetwork
     stages:
-      - stable: '3.0'
+      stable: '3.0'
   - name: get_scheduler_metadata
     description: |
       Computes scheduling metadata for attention work partitioning so that
@@ -1584,8 +1606,17 @@ operators:
     stages:
       stable: '3.0'
   - name: grouped_topk
+    description: |
+      A specialized routing mechanism used in Mixture-of-Experts (MoE) models (like DeepSeek-V3/R1)
+      to select top-k experts by first grouping them, rather than selecting globally.
+    for:
+      - _moe_C.grouped_topk
     labels:
       - fused
+    kind:
+      - MoE
+    stages:
+      stable: '4.3'
   - name: gt
     description: Computes that `input` is greater than `other` element-wise.
     for:
@@ -2208,7 +2239,7 @@ operators:
     kind:
       - BLAS
     stages:
-      - stable: '1.0'
+      stable: '1.0'
     cpp: '4.0'
   - name: mm_out
     description: A variant of `mm()` with `out` specified.
@@ -2283,7 +2314,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '1.0'
+      stable: '1.0'
   - name: mul_
     description: The in-place version of `mul()`.
     for:
@@ -2294,7 +2325,7 @@ operators:
     kind:
       - Math
     stages:
-      - stable: '2.2'
+      stable: '2.2'
   - name: multinomial
     description: |
       Returns a tensor where each row contains `num_samples` indices sampled
@@ -2499,10 +2530,14 @@ operators:
       Get the normalized cumulative sum where each step is divided by the total sum
       of the dataset, resulting in values ranging from 0 to 1.
       Internally used by the `multinomial` operator.
+    for:
+      - normed_cumsum
     labels:
       - aten
     kind:
       - Reduction
+    stages:
+      stable: '2.1'
     exposed: false
   - name: one_hot
     description: |
@@ -2978,8 +3013,15 @@ operators:
     stages:
       stable: '2.2'
   - name: rwkv_ka_fusion
+    description: |
+      Merges, aligns, and enhances features from different data sources or spatial directions
+      using the efficient, linear-time RWKV framework.
     labels:
       - fused
+    kind:
+      - RWKV
+    stages:
+      stable: '4.1'
   - name: rwkv_mm_sparsity
     description: Optimized, lossless sparse matrix multiplication in RWKV-7 models.
     labels:
@@ -3416,6 +3458,10 @@ operators:
     description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation function.
     labels:
       - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      stable: '4.3'
   - name: tan
     description: |
       Returns a new tensor with the tangent of the elements in the `input` tensor,
