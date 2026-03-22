@@ -2,13 +2,14 @@
 #include "c10/util/Logging.h"
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 class EmbeddingTest : public ::testing::TestWithParam<
                           std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, bool, torch::ScalarType>> {
 };
 TEST_P(EmbeddingTest, CompareWithPyTorch) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto [EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype] = GetParam();
   auto options = torch::TensorOptions().dtype(dtype).device(device);
   auto indices =
@@ -52,7 +53,7 @@ class EmbeddingBackwardTest
     : public ::testing::TestWithParam<
           std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, bool, torch::ScalarType>> {};
 TEST_P(EmbeddingBackwardTest, FixedValueTest) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto [EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype] = GetParam();
   auto options = torch::TensorOptions().dtype(dtype).device(device);
   auto grad = torch::randn({Batch, M, N}, options);

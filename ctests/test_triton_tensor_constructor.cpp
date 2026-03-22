@@ -2,10 +2,11 @@
 
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 TEST(zeros_op_test, 2d_tensor) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   std::vector<int64_t> shape_0 = {31};
   std::vector<int64_t> shape_1 = {11, 7};
   std::vector<int64_t> shape = {7, 7, 7};

@@ -1,11 +1,10 @@
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/device_info.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
-#include <ATen/cuda/CUDAContext.h>
 #include <iostream>
 #include <tuple>
-#include "c10/cuda/CUDAStream.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -65,8 +64,8 @@ void streamk_mm_tensor(const at::Tensor &a,
 
   // device / stream
   c10::DeviceGuard guard(c.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   if (number_cooperative_tiles > 0) {
     // mini wave handling
@@ -195,6 +194,11 @@ void general_mm_tensor(
   TORCH_CHECK(a.dim() == 2 && b.dim() == 2, "both the tensors must be 2-D");
   TORCH_CHECK(a.dtype() == b.dtype(), "expected a and b to have the same dtype");
 
+  c10::DeviceGuard guard(c.device());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
+
+  // CUDA/other path: use ops/mm.py with mm_kernel_general
   const int BLOCK_M = 64;
   const int BLOCK_N = 128;
   const int BLOCK_K = 64;
@@ -202,17 +206,12 @@ void general_mm_tensor(
   const int num_warps = 4;
   const int GROUP_M = 8;
 
-  // general situation
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
                                       "mm_kernel_general");
 
-  c10::DeviceGuard guard(c.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
-
   unsigned int grid_x = cdiv(M, BLOCK_M) * cdiv(N, BLOCK_N);
-  f(/* CUstream = */ raw_stream,
+  f(/* stream = */ raw_stream,
     /* grid_x = */ grid_x,
     /* grid_y = */ 1,
     /* grid_z = */ 1,

@@ -1,58 +1,65 @@
 ---
-title: Database Backend
+title: Performance Database Backends
 weight: 30
 ---
 
-# LibCache DataBase Backend Setup
+# Performance Datadase Backends
 
-`LibCache` provides a dispatch mechanism for the database used to store benchmark results.
-The dependency library is `sqlalchemy`, so please make sure it's available in the working environment.
+*FlagGems* implements a `LibCache` class for persisting performance benchmark data
+into a database. The `LibCache` interacts with the database backend through
+`sqlalchemy`, a generic database abstraction library.
 
-The way to select corresponding backend is to set the environment variable `FLAGGEMS_DB_URL`.
+The connection to the backend database can be specified using the environment variable
+`FLAGGEMS_DB_URL`. This document shows the configurations for *SQLite3* and *PostgreSQL*,
+but you can experiment with other DBMS in a similar way, if needed.
 
-## SQLite3
+## 1. SQLite3
 
-The default backend available is `SQLite3`.
-Please make sure the relative library `sqlite3` is already installed.
-If you want to store the database file in a specific place, please set the environment variable
-as shown below:
+The default backend is *SQLite3*, an embedded database.
+Please make sure the library `sqlite3` has been installed before running any benchmarks.
+If you want to store the database file in a specific place,
+you can set the environment variable as shown below:
 
 ```shell
-export FLAGGEMS_DB_URL=sqlite:///${db_path}
+export FLAGGEMS_DB_URL=sqlite:///${DB_PATH}
 ```
 
-If you want use it as a in-memory library, or you don't want to maintain or reuse caches
-in your current environment, you can set the environment as
+If you don't want to maintain or reuse the cached data in your current environment,
+you can choose to use SQLLite as an in-memory database. This can be achieved
+by setting the environment variable `FLAGGEMS_DB_URL` as shown below:
 
 ```shell
 export FLAGGEMS_DB_URL=sqlite:///:memory:
 ```
 
-The cache would be only stored in the memory, and when the connection is broken,
-the database would be lost.
+The performance data would be cached in memory during the benchmark session.
+When the session ends, the database would be lost.
 
-## PostgreSQL
+## 2. PostgreSQL
 
-As an embedded database, `SQLite3` doesn't support multi-writers at the same time,
-which could be common in some cases.
-So we also support the users to select `PostgreSQL` as the backend.
-Different from the embedded database, it requires the setup it before using.
-You could refer to the [document](https://documentation.ubuntu.com/server/how-to/databases/install-postgresql/)
-on how to set it up.
-Or you could use a remote database to allow several `FlagGems` instances to connect to it
-at the same time and share benchmark results in this way.
+As an embedded database, *SQLite3* doesn't support multi-writers at the same time.
+However, having multiple writers writing performace data is a common use case.
+For this reason, we also support using *PostgreSQL* as the backend database.
+Different from the embedded database, *PostgreSQL* requires an additional setup
+step before being used. You could refer to the
+[PostgreSQL document](https://documentation.ubuntu.com/server/how-to/databases/install-postgresql/)
+for setup instructions. Note that you have to install the `psycopg` Python
+package before using *PostgreSQL*.
 
-After creating your own database, you could use the following url to set the environment variable
+With a backend database like *PostgreSQL* in place, you can use it as a remote database
+to allow several *FlagGems* instances to connect to it at the same time
+and share benchmark results in this way.
+
+After having created your own database, you could use the following environment
+variable make the URL available to the *FlagGems* benchmarking framework.
 
 ```shell
 export FLAGGEMS_DB_URL=postgresql+psycopg:///${user}:${password}@${host}:${port}/${db}
 ```
 
-If the database in on your local machine, and your current role could allow you to access it directly,
-you can use the following environment variable
+If the database runs on your local machine, and your account has direct access to it,
+you can set the `FLAGGEMS_DB_URL` environment variable as shown below:
 
 ```bash
 export FLAGGEMS_DB_URL=postgresql+psycopg:///${db}
 ```
-
-Before using it, please make sure the related dependency `psycopg` is installed on your machine.

@@ -1,5 +1,5 @@
 #include <iostream>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "triton_jit/triton_jit_function.h"
@@ -7,9 +7,32 @@
 namespace flag_gems {
 using namespace triton_jit;
 
+namespace {
+
+  int get_rms_norm_num_warps(int64_t block_size) {
+#if defined(FLAGGEMS_USE_IX)
+    // Python launches this kernel without forcing num_warps. The previous C++
+    // wrapper hard-coded 8 warps, which is too aggressive for small IX RMSNorm
+    // tiles and leads to obviously incorrect results. Use a conservative
+    // heuristic that matches the default Python behavior more closely.
+    if (block_size < 2048) {
+      return 4;
+    }
+    if (block_size < 4096) {
+      return 8;
+    }
+    return 16;
+#else
+    return 8;
+#endif
+  }
+
+}  // namespace
+
 at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double epsilon) {
   at::Tensor contig_input = input.contiguous();
   at::Tensor contig_weight = weight.contiguous();
+  const float epsilon_val = static_cast<float>(epsilon);
   at::IntArrayRef normalized_shape = contig_weight.sizes();
   int64_t dim = contig_input.ndimension() - normalized_shape.size();
   int64_t M = 1;
@@ -28,8 +51,8 @@ at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double ep
 
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
   c10::DeviceGuard guard(out.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   /* siguature info
   def rms_norm_kernel(
@@ -49,7 +72,7 @@ at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double ep
     M,
     1,
     1,
-    /* num_warps */ 8,
+    /* num_warps */ get_rms_norm_num_warps(BLOCK_SIZE),
     /* num_stages */ 1,
     out,
     inv_rms,
@@ -60,7 +83,7 @@ at::Tensor rms_norm(const at::Tensor& input, const at::Tensor& weight, double ep
     N,
     1,
     N,
-    epsilon,
+    epsilon_val,
     BLOCK_SIZE);
 
   return out;
