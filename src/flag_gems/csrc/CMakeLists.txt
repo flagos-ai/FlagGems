@@ -4,7 +4,7 @@ set_target_properties(c_operators PROPERTIES
   INSTALL_RPATH "${_rpath_portable_origin}/${CMAKE_INSTALL_LIBDIR}"
   CXX_STANDARD 20
   CXX_STANDARD_REQUIRED ON)
-target_compile_options(c_operators PRIVATE -std=c++20)
+target_compile_options(c_operators PRIVATE -std=c++2a)
 
 
 pybind11_add_module(aten_patch aten_patch.cpp)
@@ -13,7 +13,7 @@ set_target_properties(aten_patch PROPERTIES
   INSTALL_RPATH "${_rpath_portable_origin}/${CMAKE_INSTALL_LIBDIR}"
   CXX_STANDARD 20
   CXX_STANDARD_REQUIRED ON)
-target_compile_options(aten_patch PRIVATE -std=c++20)
+target_compile_options(aten_patch PRIVATE -std=c++2a)
 
 # Propagate pointwise_dynamic feature flag to pybind11 modules so that
 # #ifdef FLAGGEMS_POINTWISE_DYNAMIC guards in cstub.cpp / aten_patch.cpp
