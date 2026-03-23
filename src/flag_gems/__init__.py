@@ -261,6 +261,8 @@ _FULL_CONFIG = (
     ("nll_loss_forward", nll_loss_forward),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
+    ("nll_loss_nd_forward", nll_loss_nd_forward),
+    ("nll_loss_nd_backward", nll_loss_nd_backward),
     ("nonzero", nonzero),
     ("normal.float_Tensor", normal_float_tensor),
     ("normal.Tensor_float", normal_tensor_float),
