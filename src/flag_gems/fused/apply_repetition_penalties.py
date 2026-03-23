@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -41,6 +45,7 @@ def _repetition_penalty_kernel(
 
 
 def apply_repetition_penalties(logits, prompt_mask, output_mask, repetition_penalties):
+    logger.debug("GEMS APPLY REPETITION PENALTIES")
     assert logits.is_contiguous(), "logits must be contiguous"
     assert (
         prompt_mask.is_contiguous() and prompt_mask.dtype == torch.bool

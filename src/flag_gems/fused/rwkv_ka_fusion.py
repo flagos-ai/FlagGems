@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -47,6 +51,7 @@ def rwkv_ka_fusion_kernel(
 def rwkv_ka_fusion(
     k: torch.Tensor, kk: torch.Tensor, a: torch.Tensor, ka: torch.Tensor, H: int, N: int
 ):
+    logger.debug("GEMS RWKV KA FUSION")
     if k.dim() == 1:
         T = 1
         C = k.shape[0]

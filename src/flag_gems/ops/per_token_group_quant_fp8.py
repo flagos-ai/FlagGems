@@ -1,3 +1,4 @@
+import logging
 from typing import Optional, Tuple
 
 import torch
@@ -11,6 +12,9 @@ if torch_device_fn.is_available() and get_device_capability() >= (9, 0):
     SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn
 else:
     SUPPORTED_FP8_DTYPE = torch.float32
+
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -102,6 +106,7 @@ def per_token_group_quant_fp8(
     column_major_scales: bool = False,
     scale_ue8m0: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    logger.debug("GEMS PER TOKEN GROUP QUANT FP8")
     # dtype: The dype of output tensor. Note that only `torch.float8_e4m3fn`
     fp8_dtype = SUPPORTED_FP8_DTYPE if dtype is None else dtype
     assert x.shape[-1] % group_size == 0, (
