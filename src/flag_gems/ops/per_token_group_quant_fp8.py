@@ -1,5 +1,5 @@
-from typing import Optional, Tuple
 import logging
+from typing import Optional, Tuple
 
 import torch
 import triton

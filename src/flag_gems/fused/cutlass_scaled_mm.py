@@ -1,6 +1,6 @@
+import logging
 from typing import Callable, Optional
 
-import logging
 import torch
 import triton
 import triton.language as tl
