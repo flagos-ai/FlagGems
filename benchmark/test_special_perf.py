@@ -982,6 +982,29 @@ def test_perf_per_token_group_quant_fp8():
     bench.run()
 
 
+@pytest.mark.upsample_bicubic2d
+@pytest.mark.parametrize("align_corners", [False, True])
+def test_perf_upsample_bicubic2d(align_corners):
+    def upsample_bicubic2d_input_fn(shape, dtype, device):
+        input = torch.randn(shape, device=device, dtype=dtype)
+        scale_factors = [2.0, 2.0]
+        output_size = None
+        yield {
+            "input": input,
+            "output_size": output_size,
+            "align_corners": align_corners,
+            "scale_factors": scale_factors,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_bicubic2d_input_fn,
+        op_name=f"upsample_bicubic2d_align_{align_corners}",
+        torch_op=torch._C._nn.upsample_bicubic2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.unfold
 def test_perf_unfold_backward():
     def unfold_backward_input_fn(config, dtype, device):
