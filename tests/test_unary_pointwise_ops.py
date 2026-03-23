@@ -967,6 +967,21 @@ def test_accuracy_sin_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.inplace
+@pytest.mark.sinh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_sinh_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone())
+
+    ref_out = ref_inp.sinh_()
+    with flag_gems.use_gems():
+        res_out = inp.sinh_()
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.tan
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
