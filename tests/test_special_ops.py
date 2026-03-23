@@ -2128,3 +2128,15 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
     with flag_gems.use_gems():
         res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+@pytest.mark.lift_fresh_copy
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_lift_fresh_copy(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.ops.aten.lift_fresh_copy(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.lift_fresh_copy(inp)
+    gems_assert_close(res_out, ref_out, dtype)

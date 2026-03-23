@@ -1085,3 +1085,16 @@ def test_perf_unfold_backward():
     )
     bench.set_gems(flag_gems.unfold_backward)
     bench.run()
+
+
+@pytest.mark.lift_fresh_copy
+def test_perf_lift_fresh_copy():
+    bench = GenericBenchmark(
+        input_fn=lambda shape, dtype, device: (
+            iter([(torch.randn(shape, dtype=dtype, device=device),)])
+        ),
+        op_name="lift_fresh_copy",
+        torch_op=torch.ops.aten.lift_fresh_copy,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
