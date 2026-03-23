@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def bitwise_right_shift_kernel(a, b):
-    logger.debug("GEMS BITWISE_RIGHT_SHIFT_KERNEL")
     return a >> b
 
 
