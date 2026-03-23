@@ -13,6 +13,7 @@ from .accuracy_utils import (
     ALL_INT_DTYPES,
     BOOL_TYPES,
     FLOAT_DTYPES,
+    COMPLEX_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
     SCALARS,
@@ -1122,6 +1123,46 @@ def test_accuracy_mul(shape, dtype):
         res_out = torch.mul(inp1, inp2)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("complex_dtype", COMPLEX_DTYPES)
+@pytest.mark.parametrize("other_type", [
+    "complex",
+    "float_tensor",
+    "int_tensor",
+    "int_scalar"
+])
+def test_accuracy_mul_complex(shape, complex_dtype, other_type):
+    # inp1: complex tensor
+    inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
+
+    if other_type == "complex":
+        inp2 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
+    elif other_type == "float_tensor":
+        if complex_dtype == torch.complex64:
+            float_dtype = torch.float32
+        elif complex_dtype == torch.complex32:
+            float_dtype = torch.float16
+        else:
+            raise ValueError(f"Unsupported complex_dtype: {complex_dtype}")
+        inp2 = torch.randn(shape, dtype=float_dtype, device=flag_gems.device)
+    elif other_type == "int_tensor":
+        inp2 = torch.randint(10, 20, shape, device=flag_gems.device)
+    elif other_type == "int_scalar":
+        inp2 = 3
+    else:
+        raise ValueError(f"Unknown other_type: {other_type}")
+
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True) if isinstance(inp2, torch.Tensor) else inp2
+
+    ref_out = torch.mul(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.mul(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, complex_dtype)
 
 
 @pytest.mark.mul
