@@ -1335,6 +1335,7 @@ def test_accuracy__functional_sym_constrain_range_for_size(shape, dtype):
         res_out = torch.ops.aten._functional_sym_constrain_range_for_size(
             5, 1, 10, dep_token
         )
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.absolute
