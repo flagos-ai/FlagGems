@@ -833,6 +833,7 @@ def test_accuracy_sgn_(shape, dtype):
     ref_out = ref_inp.sgn_()
     with flag_gems.use_gems():
         res_out = inp.sgn_()
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.selu_

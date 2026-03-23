@@ -211,8 +211,8 @@ from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
 from flag_gems.ops.select_scatter import select_scatter
-from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.selu_ import selu_
+from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
@@ -519,8 +519,8 @@ __all__ = [
     "scatter_",
     "scatter_add_",
     "select_scatter",
-    "sgn_",
     "selu_",
+    "sgn_",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
