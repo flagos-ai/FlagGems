@@ -71,7 +71,7 @@ class Benchmark:
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
-    DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+    DEFAULT_SHAPE_FILES = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
     """
     the base class for the operations benchmark
     """
@@ -161,7 +161,12 @@ class Benchmark:
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Validate user-spicified shapes files
-        import os
+        if shape_file_path is None:
+            shape_file_path = self.DEFAULT_SHAPE_FILES
+        elif not os.path.isabs(shape_file_path):
+            candidate_path = os.path.join(os.path.dirname(__file__), shape_file_path)
+            if os.path.isfile(candidate_path):
+                shape_file_path = candidate_path
 
         if not os.path.isfile(shape_file_path):
             raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")

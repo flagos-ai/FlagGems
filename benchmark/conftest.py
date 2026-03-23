@@ -175,7 +175,11 @@ def pytest_configure(config):
     Config.record_log = config.getoption("--record") == "log"
     if Config.record_log:
         cmd_args = [
-            arg.replace(".py", "").replace("=", "_").replace("/", "_")
+            arg.replace(".py", "")
+            .replace("=", "_")
+            .replace("/", "_")
+            .replace("\\", "_")
+            .replace(":", "_")
             for arg in config.invocation_params.args
         ]
 
