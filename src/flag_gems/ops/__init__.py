@@ -214,6 +214,7 @@ from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinh_ import sinh_
 from flag_gems.ops.slice_scatter import slice_scatter
+from flag_gems.ops.smooth_l1_loss import smooth_l1_loss
 from flag_gems.ops.softmax import softmax, softmax_backward
 from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
@@ -257,6 +258,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "smooth_l1_loss",
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",
