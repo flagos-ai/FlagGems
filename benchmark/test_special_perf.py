@@ -1042,6 +1042,11 @@ def test_perf_upsample_bicubic2d(align_corners):
         input_fn=upsample_bicubic2d_input_fn,
         op_name=f"upsample_bicubic2d_align_{align_corners}",
         torch_op=torch._C._nn.upsample_bicubic2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.replication_pad1d
 def test_perf_replication_pad1d():
     def replication_pad1d_input_fn(config, dtype, device):
