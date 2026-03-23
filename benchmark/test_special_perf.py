@@ -1127,6 +1127,11 @@ def test_perf_lift_fresh_copy():
         ),
         op_name="lift_fresh_copy",
         torch_op=torch.ops.aten.lift_fresh_copy,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 class SafeSoftmaxBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
