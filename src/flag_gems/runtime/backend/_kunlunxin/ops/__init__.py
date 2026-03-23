@@ -141,7 +141,12 @@ from .nllloss import (
     nll_loss_forward,
 )
 from .nonzero import nonzero
-from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
+from .normal import (
+    normal_,
+    normal_float_tensor,
+    normal_tensor_float,
+    normal_tensor_tensor,
+)
 from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
@@ -406,6 +411,7 @@ __all__ = [
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
+    "normal_",
     "normed_cumsum",
     "ones",
     "ones_like",
@@ -438,10 +444,8 @@ __all__ = [
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
-    "rms_norm_forward",
     "rms_norm_backward",
-    "sqrt",
-    "sqrt_",
+    "rms_norm_forward",
     "rsqrt",
     "rsqrt_",
     "rsub",
@@ -468,6 +472,8 @@ __all__ = [
     "softplus",
     "sort",
     "sort_stable",
+    "sqrt",
+    "sqrt_",
     "stack",
     "std",
     "sub",
