@@ -315,8 +315,8 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     if inp.numel() == 0:
         if dtype is None:
             dtype = inp.dtype
-            if dtype is torch.bool:
-                dtype = torch.int64
+        if dtype is torch.bool:
+            dtype = torch.int64
 
         out_shape = list(inp.shape)
         if dim is None:
