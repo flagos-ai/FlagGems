@@ -7,11 +7,10 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
-from flag_gems.ops.zeros import zero_
-
 
 logger = logging.getLogger(__name__)
 
@@ -336,7 +335,9 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                 for d in dims_to_reduce:
                     out_shape[d % inp.ndim] = 1
             else:
-                sorted_dims_to_remove = sorted(dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True)
+                sorted_dims_to_remove = sorted(
+                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
+                )
                 for d in sorted_dims_to_remove:
                     index_to_remove = d % inp.ndim
                     out_shape.pop(index_to_remove)

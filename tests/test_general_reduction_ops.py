@@ -449,11 +449,7 @@ def test_accuracy_sum_without_dim(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
 
-INCLUDE_0_SHAPES = [
-    (1, 0, 128, 512),
-    (4096, 1, 256, 0),
-    (200, 10, 0, 3)
-]
+INCLUDE_0_SHAPES = [(1, 0, 128, 512), (4096, 1, 256, 0), (200, 10, 0, 3)]
 
 
 @pytest.mark.sum

@@ -12,8 +12,8 @@ from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
     ALL_INT_DTYPES,
     BOOL_TYPES,
-    FLOAT_DTYPES,
     COMPLEX_DTYPES,
+    FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
     SCALARS,
@@ -1128,12 +1128,9 @@ def test_accuracy_mul(shape, dtype):
 @pytest.mark.mul
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", COMPLEX_DTYPES)
-@pytest.mark.parametrize("other_type", [
-    "complex",
-    "float_tensor",
-    "int_tensor",
-    "int_scalar"
-])
+@pytest.mark.parametrize(
+    "other_type", ["complex", "float_tensor", "int_tensor", "int_scalar"]
+)
 def test_accuracy_mul_complex(shape, complex_dtype, other_type):
     # inp1: complex tensor
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)

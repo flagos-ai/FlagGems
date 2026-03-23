@@ -3,7 +3,13 @@ from typing import Generator
 import pytest
 import torch
 
-from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES, COMPLEX_DTYPES
+from benchmark.attri_util import (
+    BOOL_DTYPES,
+    COMPLEX_DTYPES,
+    DEFAULT_METRICS,
+    FLOAT_DTYPES,
+    INT_DTYPES,
+)
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 

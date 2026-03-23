@@ -22,13 +22,19 @@ def mul_func_scalar(x, y):
 
 def mul(A, B):
     logger.debug("GEMS MUL")
-    A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(A, complex)
-    B_is_complex = (isinstance(B, torch.Tensor) and B.is_complex()) or isinstance(B, complex)
+    A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
+        A, complex
+    )
+    B_is_complex = (isinstance(B, torch.Tensor) and B.is_complex()) or isinstance(
+        B, complex
+    )
     if A_is_complex or B_is_complex:
         if A_is_complex and B_is_complex:
             A_r, A_i = A.real, A.imag
             B_r, B_i = B.real, B.imag
-            if A_r.dtype == torch.float16:  # complex32 的实虚部是 fp16
+            if (
+                A_r.dtype == torch.float16
+            ):  # complex32's real and imaginary parts are fp16
                 A_r, A_i, B_r, B_i = A_r.float(), A_i.float(), B_r.float(), B_i.float()
             ac = mul(A_r, B_r)
             bd = mul(A_i, B_i)
@@ -40,7 +46,7 @@ def mul(A, B):
             if A_r.dtype == torch.float16:
                 A_r, A_i = A_r.float(), A_i.float()
             out = torch.complex(mul(A_r, B), mul(A_i, B))
-        else: # not A_is_complex and B_is_complex
+        else:  # not A_is_complex and B_is_complex
             B_r, B_i = B.real, B.imag
             if B_r.dtype == torch.float16:
                 B_r, B_i = B_r.float(), B_i.float()
