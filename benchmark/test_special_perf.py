@@ -388,6 +388,48 @@ def test_perf_embedding_backward():
     bench.run()
 
 
+class EmbeddingDenseBackwardBenchmark(GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (32, 2048, 128, 8192),
+            (16, 2048, 256, 16384),
+            (8, 4096, 256, 32768),
+        ]
+
+
+@pytest.mark.skipif(
+    (not torch.cuda.is_available()) or (flag_gems.device != "cuda"),
+    reason="CUDA backend is not available for this benchmark.",
+)
+@pytest.mark.embedding_dense_backward
+def test_perf_embedding_dense_backward():
+    bench = EmbeddingDenseBackwardBenchmark(
+        input_fn=embedding_dense_backward_input_fn,
+        op_name="embedding_dense_backward",
+        torch_op=torch.ops.aten.embedding_dense_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def embedding_dense_backward_input_fn(shape, dtype, device):
+    B, M, D, num_weights = shape
+
+    grad_output = torch.randn((B, M, D), device=device, dtype=dtype)
+    indices = torch.randint(0, num_weights, (B, M), device=device, dtype=torch.long)
+
+    def inject_padding_idx(cur_indices: torch.Tensor, padding_idx: int) -> torch.Tensor:
+        if padding_idx < 0:
+            return cur_indices
+        mask = torch.rand((B, M), device=device) < 0.25
+        return torch.where(mask, torch.full_like(cur_indices, padding_idx), cur_indices)
+
+    test_cases = [(-1, False), (0, True), (5, False)]
+    for padding_idx, scale_grad_by_freq in test_cases:
+        cur_indices = inject_padding_idx(indices, padding_idx)
+        yield grad_output, cur_indices, num_weights, padding_idx, scale_grad_by_freq
+
+
 def lerp_input_fn(shape, dtype, device):
     input = torch.randn(*shape, device=device, dtype=dtype)
     end = input + 10
@@ -982,6 +1024,29 @@ def test_perf_per_token_group_quant_fp8():
     bench.run()
 
 
+@pytest.mark.upsample_bicubic2d
+@pytest.mark.parametrize("align_corners", [False, True])
+def test_perf_upsample_bicubic2d(align_corners):
+    def upsample_bicubic2d_input_fn(shape, dtype, device):
+        input = torch.randn(shape, device=device, dtype=dtype)
+        scale_factors = [2.0, 2.0]
+        output_size = None
+        yield {
+            "input": input,
+            "output_size": output_size,
+            "align_corners": align_corners,
+            "scale_factors": scale_factors,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_bicubic2d_input_fn,
+        op_name=f"upsample_bicubic2d_align_{align_corners}",
+        torch_op=torch._C._nn.upsample_bicubic2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.unfold
 def test_perf_unfold_backward():
     def unfold_backward_input_fn(config, dtype, device):
@@ -1019,4 +1084,17 @@ def test_perf_unfold_backward():
         dtypes=[torch.float16, torch.float32, torch.bfloat16],
     )
     bench.set_gems(flag_gems.unfold_backward)
+    bench.run()
+
+
+@pytest.mark.lift_fresh_copy
+def test_perf_lift_fresh_copy():
+    bench = GenericBenchmark(
+        input_fn=lambda shape, dtype, device: (
+            iter([(torch.randn(shape, dtype=dtype, device=device),)])
+        ),
+        op_name="lift_fresh_copy",
+        torch_op=torch.ops.aten.lift_fresh_copy,
+        dtypes=FLOAT_DTYPES,
+    )
     bench.run()

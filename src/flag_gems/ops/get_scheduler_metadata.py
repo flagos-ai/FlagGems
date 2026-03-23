@@ -591,6 +591,7 @@ def get_scheduler_metadata(
     pack_gqa: Optional[bool] = None,
     sm_margin: int = 0,
 ) -> torch.Tensor:
+    logger.debug("GEMS Get Scheduler Metadata")
     device = seqused_k.device
     dtype = torch.int32
 

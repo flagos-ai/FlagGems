@@ -551,6 +551,53 @@ def test_embedding_backward(
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.embedding_dense_backward
+@pytest.mark.parametrize(
+    "Batch, M, N, embeddingsize",
+    [
+        (2, 4, 8, 16),
+        (4, 8, 32, 64),
+        (1, 3, 64, 128),
+    ],
+)
+@pytest.mark.parametrize(
+    "padding_idx, scale_grad_by_freq", [(-1, False), (0, True), (5, False)]
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("seed", [42])
+def test_embedding_dense_backward(
+    Batch, M, N, embeddingsize, padding_idx, scale_grad_by_freq, dtype, seed
+):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    grad_output = torch.randn((Batch, M, N), device=flag_gems.device, dtype=dtype)
+    indices = torch.randint(
+        0, embeddingsize, (Batch, M), device=flag_gems.device, dtype=torch.long
+    )
+    if padding_idx >= 0 and embeddingsize > 0:
+        mask = torch.rand((Batch, M), device=flag_gems.device) < 0.25
+        indices = torch.where(mask, torch.full_like(indices, padding_idx), indices)
+    num_weights = embeddingsize
+    ref_grad_output = to_reference(grad_output)
+    ref_indices = to_reference(indices)
+    ref_out = torch.ops.aten.embedding_dense_backward(
+        ref_grad_output,
+        ref_indices,
+        num_weights,
+        padding_idx,
+        scale_grad_by_freq,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.embedding_dense_backward(
+            grad_output, indices, num_weights, padding_idx, scale_grad_by_freq
+        )
+    # res_out = torch.ops.aten.embedding_dense_backward(
+    # grad_output, indices, num_weights, padding_idx, scale_grad_by_freq)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.resolve_neg
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
@@ -2002,6 +2049,38 @@ def test_accuracy_moe_align_block_size(
     )
 
 
+@pytest.mark.upsample_bicubic2d
+@pytest.mark.parametrize(
+    "N, C, H, W, outH, outW, align_corners, use_scale",
+    [
+        (1, 1, 8, 8, 16, 16, False, False),
+        (2, 3, 15, 20, 30, 35, True, False),
+        (4, 3, 7, 5, 14, 10, False, True),
+        (1, 16, 32, 24, 48, 36, True, True),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_upsample_bicubic2d(N, C, H, W, outH, outW, align_corners, use_scale, dtype):
+    x = torch.randn((N, C, H, W), dtype=dtype, device=device)
+
+    if use_scale:
+        output_size = None
+        scale_factors = (outH / float(H), outW / float(W))
+    else:
+        output_size = (outH, outW)
+        scale_factors = None
+
+    ref_x = to_reference(x, True)
+    ref_out = torch._C._nn.upsample_bicubic2d(
+        ref_x, output_size, align_corners, scale_factors
+    ).to(dtype=dtype)
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_bicubic2d(
+            ref_x, output_size, align_corners, scale_factors
+        )
+    gems_assert_close(res_out.to(dtype=dtype), ref_out, dtype, reduce_dim=16)
+
+
 @pytest.mark.replication_pad3d
 @pytest.mark.parametrize(
     "shape", [(1, 3, 4, 8, 8), (2, 16, 2, 3, 5), (4, 8, 3, 4, 4), (2, 1, 1, 2, 2)]
@@ -2049,3 +2128,15 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
     with flag_gems.use_gems():
         res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+@pytest.mark.lift_fresh_copy
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_lift_fresh_copy(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.ops.aten.lift_fresh_copy(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.lift_fresh_copy(inp)
+    gems_assert_close(res_out, ref_out, dtype)
