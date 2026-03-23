@@ -43,7 +43,9 @@ def calculate_speedup(pr_result: Dict) -> Optional[float]:
     if not pr_metrics:
         return None
 
-    pr_latencies = [m.get("latency") for m in pr_metrics if m.get("latency") is not None]
+    pr_latencies = [
+        m.get("latency") for m in pr_metrics if m.get("latency") is not None
+    ]
     pr_avg_latency = _avg([float(x) for x in pr_latencies if x is not None])
     if pr_avg_latency is None or pr_avg_latency <= 0:
         return None
@@ -104,7 +106,9 @@ def calculate_normalized_score(benchmark_results: List[Dict]) -> Dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Calculate competition score from benchmark log")
+    parser = argparse.ArgumentParser(
+        description="Calculate competition score from benchmark log"
+    )
     parser.add_argument("--log", type=Path, required=True, help="Benchmark log file")
     parser.add_argument(
         "--output", type=Path, default=Path("score.json"), help="Output score JSON file"

@@ -9,12 +9,9 @@ import pytest
 import torch
 
 import flag_gems
-
 from tests.accuracy_utils import (
     FLOAT_DTYPES,
-    INT_DTYPES,
     POINTWISE_SHAPES,
-    REDUCTION_SHAPES,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -27,6 +24,7 @@ SHAPES_GENERAL = [(1024, 1024), (20, 320, 15), (16, 128, 64, 60)]
 # ============================================================
 # 1. log10
 # ============================================================
+
 
 @pytest.mark.log10
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -45,6 +43,7 @@ def test_accuracy_log10(shape, dtype):
 # ============================================================
 # 2. logaddexp
 # ============================================================
+
 
 @pytest.mark.logaddexp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -66,6 +65,7 @@ def test_accuracy_logaddexp(shape, dtype):
 # 3. cosh
 # ============================================================
 
+
 @pytest.mark.cosh
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -83,6 +83,7 @@ def test_accuracy_cosh(shape, dtype):
 # ============================================================
 # 4. gcd
 # ============================================================
+
 
 @pytest.mark.gcd
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -104,6 +105,7 @@ def test_accuracy_gcd(shape, dtype):
 # 5. tril
 # ============================================================
 
+
 @pytest.mark.tril
 @pytest.mark.parametrize("shape", SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -122,6 +124,7 @@ def test_accuracy_tril(shape, dtype, diagonal):
 # ============================================================
 # 6. roll
 # ============================================================
+
 
 @pytest.mark.roll
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -144,6 +147,7 @@ def test_accuracy_roll(shape, dtype):
 # 7. leaky_relu
 # ============================================================
 
+
 @pytest.mark.leaky_relu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -162,6 +166,7 @@ def test_accuracy_leaky_relu(shape, dtype, negative_slope):
 # ============================================================
 # 8. asinh
 # ============================================================
+
 
 @pytest.mark.asinh
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -236,6 +241,7 @@ def test_accuracy_scatter_reduce(shape, dtype, reduce):
 # 11. median
 # ============================================================
 
+
 @pytest.mark.median
 @pytest.mark.parametrize("shape", SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -254,6 +260,7 @@ def test_accuracy_median(shape, dtype):
 # 12. smooth_l1_loss
 # ============================================================
 
+
 @pytest.mark.smooth_l1_loss
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -264,7 +271,9 @@ def test_accuracy_smooth_l1_loss(shape, dtype, reduction):
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
 
-    ref_out = torch.nn.functional.smooth_l1_loss(ref_inp, ref_target, reduction=reduction)
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction=reduction
+    )
     with flag_gems.use_gems():
         res_out = torch.nn.functional.smooth_l1_loss(inp, target, reduction=reduction)
 
@@ -313,7 +322,9 @@ CONV_TRANSPOSE2D_CONFIGS = [
     "n, c_in, h, w, c_out, k, stride, padding, groups", CONV_TRANSPOSE2D_CONFIGS
 )
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_accuracy_conv_transpose2d(n, c_in, h, w, c_out, k, stride, padding, groups, dtype):
+def test_accuracy_conv_transpose2d(
+    n, c_in, h, w, c_out, k, stride, padding, groups, dtype
+):
     inp = torch.randn((n, c_in, h, w), dtype=dtype, device=flag_gems.device)
     weight = torch.randn(
         (c_in, c_out // groups, k, k), dtype=dtype, device=flag_gems.device
@@ -361,6 +372,7 @@ def test_accuracy_avg_pool3d(shape, dtype, kernel_size):
 # 16. max_pool3d
 # ============================================================
 
+
 @pytest.mark.max_pool3d
 @pytest.mark.parametrize("shape", POOL3D_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -379,6 +391,7 @@ def test_accuracy_max_pool3d(shape, dtype, kernel_size):
 # ============================================================
 # 17. chunk_gated_delta_rule
 # ============================================================
+
 
 @pytest.mark.chunk_gated_delta_rule
 @pytest.mark.skipif(flag_gems.device != "cuda", reason="requires CUDA")
@@ -424,8 +437,18 @@ def test_accuracy_chunk_gated_delta_rule(T):
         pytest.skip("fused_recurrent_gated_delta_rule_fwd not available")
 
     args = (
-        q, k, v, g, beta, scale, initial_state,
-        True, cu_seqlens, ssm_state_indices, None, True,
+        q,
+        k,
+        v,
+        g,
+        beta,
+        scale,
+        initial_state,
+        True,
+        cu_seqlens,
+        ssm_state_indices,
+        None,
+        True,
     )
 
     ref_out = ref_fn(*args)
@@ -481,8 +504,12 @@ CTC_CONFIGS = [
 @pytest.mark.parametrize("T, N, C", CTC_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_accuracy_ctc_loss(T, N, C, dtype):
-    log_probs = torch.randn(T, N, C, dtype=dtype, device=flag_gems.device).log_softmax(2)
-    targets = torch.randint(1, C, (N, T // 2), dtype=torch.long, device=flag_gems.device)
+    log_probs = torch.randn(T, N, C, dtype=dtype, device=flag_gems.device).log_softmax(
+        2
+    )
+    targets = torch.randint(
+        1, C, (N, T // 2), dtype=torch.long, device=flag_gems.device
+    )
     input_lengths = torch.full((N,), T, dtype=torch.long, device=flag_gems.device)
     target_lengths = torch.full((N,), T // 2, dtype=torch.long, device=flag_gems.device)
 
@@ -517,9 +544,13 @@ GRID_SAMPLE_CONFIGS = [
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
 @pytest.mark.parametrize("padding_mode", ["zeros", "border"])
-def test_accuracy_grid_sample(n, c, h_in, w_in, h_out, w_out, dtype, mode, padding_mode):
+def test_accuracy_grid_sample(
+    n, c, h_in, w_in, h_out, w_out, dtype, mode, padding_mode
+):
     inp = torch.randn((n, c, h_in, w_in), dtype=dtype, device=flag_gems.device)
-    grid = torch.rand((n, h_out, w_out, 2), dtype=dtype, device=flag_gems.device) * 2 - 1
+    grid = (
+        torch.rand((n, h_out, w_out, 2), dtype=dtype, device=flag_gems.device) * 2 - 1
+    )
     ref_inp = to_reference(inp, True)
     ref_grid = to_reference(grid, True)
 

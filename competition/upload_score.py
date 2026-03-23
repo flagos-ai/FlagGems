@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 
+import argparse
+import hashlib
+import json
+import logging
 import os
 import sys
-import json
 import time
-import hashlib
-import argparse
-import logging
 
 import requests
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
 # score_details 允许的维度 key 及其满分
 SCORE_DIMENSIONS = {
-    "functional_correctness": 30,   # 功能正确性
-    "performance": 20,              # 性能竞争力
-    "test_coverage": 20,            # 测试用例完备性
-    "adaptability": 10,             # 开源适配性
-    "compatibility": 10,            # 跨平台兼容性
-    "readability": 10,              # 代码可读性
+    "functional_correctness": 30,  # 功能正确性
+    "performance": 20,  # 性能竞争力
+    "test_coverage": 20,  # 测试用例完备性
+    "adaptability": 10,  # 开源适配性
+    "compatibility": 10,  # 跨平台兼容性
+    "readability": 10,  # 代码可读性
 }
 
 
@@ -54,9 +54,7 @@ def validate_score_details(score_details: dict) -> str:
         if not isinstance(value, (int, float)):
             return f"维度 '{key}' 的值必须是数字，当前值: {value}"
         if value < 0 or value > SCORE_DIMENSIONS[key]:
-            return (
-                f"维度 '{key}' 的值超出范围 [0, {SCORE_DIMENSIONS[key]}]，当前值: {value}"
-            )
+            return f"维度 '{key}' 的值超出范围 [0, {SCORE_DIMENSIONS[key]}]，当前值: {value}"
     return ""
 
 
@@ -89,7 +87,7 @@ def upload_score(
     Returns:
         bool: 是否成功
     """
-    url = api_base_url.rstrip('/') + '/api/v1/evaluation/track1-score'
+    url = api_base_url.rstrip("/") + "/api/v1/evaluation/track1-score"
     timestamp = str(int(time.time()))
 
     # 构建请求体
@@ -117,11 +115,13 @@ def upload_score(
 
     try:
         details_str = f", score_details={score_details}" if score_details else ""
-        logger.info(f"上传评分: name={name}, github_id={github_id}, score={score}{details_str}")
+        logger.info(
+            f"上传评分: name={name}, github_id={github_id}, score={score}{details_str}"
+        )
         response = requests.post(url, headers=headers, json=data, timeout=30)
         result = response.json()
 
-        if response.status_code == 200 and result.get('code') == 200:
+        if response.status_code == 200 and result.get("code") == 200:
             logger.info(f"上传成功: {result.get('message')}")
             return True
         else:
@@ -147,8 +147,10 @@ def main():
   readability             代码可读性   满分 10
 
 示例:
-  --score-details '{"functional_correctness": 27, "performance": 18, "test_coverage": 16, "adaptability": 9, "compatibility": 8, "readability": 10}'
-"""
+  --score-details '{"functional_correctness": 27, "performance": 18,
+                    "test_coverage": 16, "adaptability": 9,
+                    "compatibility": 8, "readability": 10}'
+""",
     )
     parser.add_argument("--api-url", help="FlagOS API URL", default=None)
     parser.add_argument("--api-key", help="评测 API Key", default=None)
@@ -159,8 +161,9 @@ def main():
     parser.add_argument("--score", required=True, type=float, help="总分 (0-100)")
     parser.add_argument("--note", default=None, help="备注信息")
     parser.add_argument(
-        "--score-details", default=None,
-        help='分项得分 JSON，如 \'{"functional_correctness": 27, "performance": 18, ...}\''
+        "--score-details",
+        default=None,
+        help='分项得分 JSON，如 \'{"functional_correctness": 27, "performance": 18, ...}\'',
     )
 
     args = parser.parse_args()

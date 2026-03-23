@@ -11,17 +11,8 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from benchmark.performance_utils import (
-    Benchmark,
-    Config,
-    GenericBenchmark,
-    GenericBenchmark2DOnly,
-    GenericBenchmarkExcluse1D,
-    generate_tensor_input,
-    unary_input_fn,
-    vendor_name,
-)
+from benchmark.attri_util import FLOAT_DTYPES
+from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 device = flag_gems.device
 
@@ -29,10 +20,12 @@ device = flag_gems.device
 # 1. log10 — 一元逐点算子
 # ============================================================
 
+
 class Log10Benchmark(Benchmark):
     def set_more_shapes(self):
-        return [(1024, 2**i) for i in range(0, 20, 4)] + \
-               [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return [(1024, 2**i) for i in range(0, 20, 4)] + [
+            (64, 64, 2**i) for i in range(0, 15, 4)
+        ]
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
@@ -54,10 +47,12 @@ def test_perf_log10():
 # 2. logaddexp — 二元逐点算子
 # ============================================================
 
+
 class LogaddexpBenchmark(Benchmark):
     def set_more_shapes(self):
-        return [(1024, 2**i) for i in range(0, 20, 4)] + \
-               [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return [(1024, 2**i) for i in range(0, 20, 4)] + [
+            (64, 64, 2**i) for i in range(0, 15, 4)
+        ]
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
@@ -80,10 +75,12 @@ def test_perf_logaddexp():
 # 3. cosh — 一元逐点算子
 # ============================================================
 
+
 class CoshBenchmark(Benchmark):
     def set_more_shapes(self):
-        return [(1024, 2**i) for i in range(0, 20, 4)] + \
-               [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return [(1024, 2**i) for i in range(0, 20, 4)] + [
+            (64, 64, 2**i) for i in range(0, 15, 4)
+        ]
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
@@ -105,6 +102,7 @@ def test_perf_cosh():
 # 4. gcd — 二元整数算子
 # ============================================================
 
+
 class GcdBenchmark(Benchmark):
     DEFAULT_DTYPES = [torch.int32]
 
@@ -113,8 +111,12 @@ class GcdBenchmark(Benchmark):
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            inp1 = torch.randint(1, 1000, shape, dtype=cur_dtype, device="cpu").to(self.device)
-            inp2 = torch.randint(1, 1000, shape, dtype=cur_dtype, device="cpu").to(self.device)
+            inp1 = torch.randint(1, 1000, shape, dtype=cur_dtype, device="cpu").to(
+                self.device
+            )
+            inp2 = torch.randint(1, 1000, shape, dtype=cur_dtype, device="cpu").to(
+                self.device
+            )
             yield inp1, inp2
 
 
@@ -131,6 +133,7 @@ def test_perf_gcd():
 # ============================================================
 # 5. tril — 矩阵下三角
 # ============================================================
+
 
 class TrilBenchmark(Benchmark):
     def set_more_shapes(self):
@@ -156,10 +159,12 @@ def test_perf_tril():
 # 6. roll — 张量滚动
 # ============================================================
 
+
 class RollBenchmark(Benchmark):
     def set_more_shapes(self):
-        return [(1024, 2**i) for i in range(0, 20, 4)] + \
-               [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return [(1024, 2**i) for i in range(0, 20, 4)] + [
+            (64, 64, 2**i) for i in range(0, 15, 4)
+        ]
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
@@ -183,10 +188,12 @@ def test_perf_roll():
 # 7. leaky_relu — 激活函数
 # ============================================================
 
+
 class LeakyReluBenchmark(Benchmark):
     def set_more_shapes(self):
-        return [(1024, 2**i) for i in range(0, 20, 4)] + \
-               [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return [(1024, 2**i) for i in range(0, 20, 4)] + [
+            (64, 64, 2**i) for i in range(0, 15, 4)
+        ]
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
@@ -208,10 +215,12 @@ def test_perf_leaky_relu():
 # 8. asinh — 一元逐点算子
 # ============================================================
 
+
 class AsinhBenchmark(Benchmark):
     def set_more_shapes(self):
-        return [(1024, 2**i) for i in range(0, 20, 4)] + \
-               [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return [(1024, 2**i) for i in range(0, 20, 4)] + [
+            (64, 64, 2**i) for i in range(0, 15, 4)
+        ]
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
@@ -232,6 +241,7 @@ def test_perf_asinh():
 # ============================================================
 # 9. upsample_nearest2d — 上采样
 # ============================================================
+
 
 class UpsampleNearest2dCompBenchmark(Benchmark):
     def set_more_shapes(self):
@@ -273,6 +283,7 @@ def test_perf_upsample_nearest2d():
 # 10. scatter_reduce — 散射归约
 # ============================================================
 
+
 class ScatterReduceBenchmark(Benchmark):
     def set_more_shapes(self):
         return None
@@ -307,6 +318,7 @@ def test_perf_scatter_reduce():
 # 11. median — 归约算子
 # ============================================================
 
+
 class MedianBenchmark(Benchmark):
     def set_more_shapes(self):
         return [(1024, 2**i) for i in range(0, 20, 4)]
@@ -334,6 +346,7 @@ def test_perf_median():
 # 12. smooth_l1_loss — 损失函数
 # ============================================================
 
+
 class SmoothL1LossBenchmark(Benchmark):
     def set_more_shapes(self):
         return [(1024, 2**i) for i in range(0, 20, 4)]
@@ -359,6 +372,7 @@ def test_perf_smooth_l1_loss():
 # 13. pixel_shuffle — 像素重排
 # ============================================================
 
+
 class PixelShuffleBenchmark(Benchmark):
     def set_more_shapes(self):
         return None
@@ -366,11 +380,11 @@ class PixelShuffleBenchmark(Benchmark):
     def set_shapes(self, shape_file_path=None):
         # (N, C*r^2, H, W) with upscale_factor=r
         self.shapes = [
-            (1, 64, 128, 128, 2),    # C=16 after shuffle
-            (4, 36, 64, 64, 3),      # C=4 after shuffle
-            (8, 16, 256, 256, 2),    # C=4 after shuffle
-            (2, 144, 32, 32, 3),     # C=16 after shuffle
-            (16, 64, 64, 64, 4),     # C=1 after shuffle
+            (1, 64, 128, 128, 2),  # C=16 after shuffle
+            (4, 36, 64, 64, 3),  # C=4 after shuffle
+            (8, 16, 256, 256, 2),  # C=4 after shuffle
+            (2, 144, 32, 32, 3),  # C=16 after shuffle
+            (16, 64, 64, 64, 4),  # C=1 after shuffle
         ]
 
     def get_input_iter(self, cur_dtype) -> Generator:
@@ -393,6 +407,7 @@ def test_perf_pixel_shuffle():
 # ============================================================
 # 14. conv_transpose2d — 转置卷积
 # ============================================================
+
 
 class ConvTranspose2dBenchmark(Benchmark):
     def set_more_shapes(self):
@@ -439,6 +454,7 @@ def test_perf_conv_transpose2d():
 # 15. avg_pool3d — 3D 平均池化
 # ============================================================
 
+
 class AvgPool3dBenchmark(Benchmark):
     def set_more_shapes(self):
         return None
@@ -473,6 +489,7 @@ def test_perf_avg_pool3d():
 # 16. max_pool3d — 3D 最大池化
 # ============================================================
 
+
 class MaxPool3dBenchmark(Benchmark):
     def set_more_shapes(self):
         return None
@@ -506,6 +523,7 @@ def test_perf_max_pool3d():
 # 17. chunk_gated_delta_rule — FLA 算子
 # ============================================================
 
+
 class ChunkGatedDeltaRuleBenchmark(Benchmark):
     DEFAULT_DTYPES = [torch.bfloat16]
 
@@ -514,7 +532,11 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
-            (1,), (64,), (128,), (256,), (512,),
+            (1,),
+            (64,),
+            (128,),
+            (256,),
+            (512,),
         ]
 
     def get_input_iter(self, cur_dtype) -> Generator:
@@ -556,8 +578,18 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
         scale = 0.08838834764831845
 
         return (
-            q, k, v, g, beta, scale, initial_state,
-            True, cu_seqlens, ssm_state_indices, None, True,
+            q,
+            k,
+            v,
+            g,
+            beta,
+            scale,
+            initial_state,
+            True,
+            cu_seqlens,
+            ssm_state_indices,
+            None,
+            True,
         )
 
 
@@ -579,6 +611,7 @@ def test_perf_chunk_gated_delta_rule():
 # ============================================================
 # 18. svd — 奇异值分解
 # ============================================================
+
 
 class SvdBenchmark(Benchmark):
     def set_more_shapes(self):
@@ -614,6 +647,7 @@ def test_perf_svd():
 # 19. ctc_loss — CTC 损失
 # ============================================================
 
+
 class CtcLossBenchmark(Benchmark):
     def set_more_shapes(self):
         return None
@@ -631,10 +665,16 @@ class CtcLossBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             T, N, C = shape
-            log_probs = torch.randn(T, N, C, dtype=cur_dtype, device=self.device).log_softmax(2)
-            targets = torch.randint(1, C, (N, T // 2), dtype=torch.long, device=self.device)
+            log_probs = torch.randn(
+                T, N, C, dtype=cur_dtype, device=self.device
+            ).log_softmax(2)
+            targets = torch.randint(
+                1, C, (N, T // 2), dtype=torch.long, device=self.device
+            )
             input_lengths = torch.full((N,), T, dtype=torch.long, device=self.device)
-            target_lengths = torch.full((N,), T // 2, dtype=torch.long, device=self.device)
+            target_lengths = torch.full(
+                (N,), T // 2, dtype=torch.long, device=self.device
+            )
             yield log_probs, targets, input_lengths, target_lengths
 
 
@@ -651,6 +691,7 @@ def test_perf_ctc_loss():
 # ============================================================
 # 20. grid_sample — 网格采样
 # ============================================================
+
 
 class GridSampleBenchmark(Benchmark):
     def set_more_shapes(self):
@@ -670,7 +711,11 @@ class GridSampleBenchmark(Benchmark):
         for shape in self.shapes:
             n, c, h_in, w_in, h_out, w_out = shape
             inp = torch.randn((n, c, h_in, w_in), dtype=cur_dtype, device=self.device)
-            grid = torch.rand((n, h_out, w_out, 2), dtype=cur_dtype, device=self.device) * 2 - 1
+            grid = (
+                torch.rand((n, h_out, w_out, 2), dtype=cur_dtype, device=self.device)
+                * 2
+                - 1
+            )
             yield inp, grid
 
 
