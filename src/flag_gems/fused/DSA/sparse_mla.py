@@ -78,9 +78,9 @@ def triton_sparse_mla_fwd(
     tq_msk = mask_h[:, None] & mask_td[None, :]
     tq_blk = tl.load(tq_ptr, tq_msk, other=0.0).to(tl.float16)
 
-    max_log = tl.full([BH], float("-inf"), dtype=tl.float16)
-    sum_exp = tl.full([BH], 1.0, dtype=tl.float16)
-    acc = tl.zeros([BH, DP], dtype=tl.float16)
+    max_log = tl.full([BH], float("-inf"), dtype=tl.float32)
+    sum_exp = tl.zeros([BH], dtype=tl.float32)
+    acc = tl.zeros([BH, DP], dtype=tl.float32)  # Use fp32 for accumulator to match vLLM
     qk = tl.zeros([BH, BK], dtype=tl.float16)
 
     log_scale: tl.constexpr = sm_scale * 1.44269504
@@ -95,6 +95,9 @@ def triton_sparse_mla_fwd(
         t_ptr += t_base
         kv_ids = tl.load(t_ptr, t_msk, other=-1)
         mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)
+        # mask_ids = (kv_ids >= 0)
+        # print("kv_ids: ", kv_ids)
+        # print("mask_ids: ", mask_ids)
 
         # if mask_ids.max(0) > 0:
         if ck * BK <= max_col:
@@ -114,29 +117,51 @@ def triton_sparse_mla_fwd(
             qk = tl.dot(tq_blk, tkv_blk, qk, out_dtype=tl.float16) * log_scale
             # qk = tl.dot(tq_blk, tkv_blk, qk, out_dtype=tl.float16) * sm_scale
 
+            # print("qk: ", qk)
+
             qk = tl.where(mask_ids[None, :], qk, float("-inf"))  # [BH, BK]
 
-            new_max = tl.maximum(max_log, tl.max(qk, axis=1))
-            exp_qk = tl.math.exp2(qk - new_max[:, None]).to(tl.float16)
+            # print("mask_ids: ", mask_ids)
+            # print("qk: ", qk)
+
+            new_max = tl.maximum(max_log, tl.max(qk, axis=1))  # Keep as fp32
+
+            exp_qk = tl.math.exp2((qk - new_max[:, None]).to(tl.float32)).to(tl.float16)
+            exp_qk = tl.where(mask_ids[None, :], exp_qk, 0.0)
             # exp_qk = tl.math.exp(qk - new_max[:, None]).to(tl.float16)
-            sum_qk = tl.sum(exp_qk, axis=1)
-            alpha = tl.math.exp2(max_log - new_max).to(tl.float16)
+            sum_qk = tl.sum(exp_qk, axis=1)  # fp16 sum
+            alpha = tl.math.exp2((max_log - new_max))  # Keep alpha as fp32
             # alpha = tl.math.exp(max_log - new_max).to(tl.float16)
-            sum_exp = sum_exp * alpha + sum_qk
-            acc = acc * alpha[:, None]
+            sum_exp = sum_exp * alpha + sum_qk.to(tl.float32)  # Keep sum_exp as fp32
+            # print("qk: ", qk)
+            # print("alpha: ", alpha)
+            acc = acc * alpha[:, None]  # Rescale fp32 accumulator
             acc = tl.dot(
-                exp_qk, kv_blk.trans(), acc, out_dtype=tl.float16
+                exp_qk,
+                kv_blk.trans(),
+                acc,
+                out_dtype=tl.float32,  # Use fp32 accumulator
             )  # [BH, BK] @ [BK, DP] = [BH, DP]
 
-            max_log = new_max.to(tl.float16)
+            max_log = new_max
 
-    out_vals = acc / sum_exp[:, None]
+    # print("acc: ", acc)
+    # print("sum_exp: ", sum_exp)
+    # Match vLLM behavior: when sum_exp == 0, scale = 0 instead of inf
+    # This makes: valid * 0 = 0, NaN * 0 = NaN (instead of valid / 0 = inf, NaN / 0 = NaN)
+    scale = tl.where(sum_exp == 0.0, 0.0, 1.0 / sum_exp)  # Keep as fp32
+    out_vals = (acc * scale[:, None]).to(
+        tl.float16
+    )  # Scale and convert to fp16 for output
     o_ptr = o_base + offs_h[:, None] * stride_oh + offs_od[None, :] * stride_od
     o_msk = mask_h[:, None] & mask_od[None, :]
     # o_msk &= tl.zeros_like(o_msk)
+    # print("out_vals: ", out_vals)
     tl.store(o_ptr, out_vals.to(q_blk.dtype), o_msk)
 
-    fin_log = max_log + tl.math.log2(sum_exp.to(tl.float32))  # return lse / ln2
+    fin_log = tl.where(
+        sum_exp > 0.0, max_log + tl.math.log2(sum_exp), float("-inf")
+    )  # return lse / ln2, keep as fp32
     # fin_log *= 0.69314718
     # fin_log = max_log + tl.math.log(sum_exp.to(tl.float32))
     # fin_log *= 1.44269504 # return lse / ln2
@@ -148,7 +173,7 @@ def triton_sparse_mla_fwd(
 def triton_sparse_mla_fwd_interface(
     q, kv, indices, sm_scale=None, return_p_sum: bool = False, d_v=512
 ):
-    is_causal = True
+    is_causal = False
     assert return_p_sum is False, "This kernel file is for fwd only"
     assert q.is_contiguous() and kv.is_contiguous() and indices.is_contiguous()
     B, SQ, H, DT = q.shape
