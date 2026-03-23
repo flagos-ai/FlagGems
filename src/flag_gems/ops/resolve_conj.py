@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,8 +149,8 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
         Resolved tensor (structure consistent with input)
     """
     # Ensure tensor is on GPU
-    if not x.is_cuda:
-        x = x.cuda()
+    if x.device.type != flag_gems.device:
+        x = x.to(flag_gems.device)
 
     # Check if it is complex type
     is_complex = x.is_complex()
