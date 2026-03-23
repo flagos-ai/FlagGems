@@ -295,6 +295,15 @@ AttentionBenchmark:
     - [4, 32, 4096, 128]
     - [4, 32, 8192, 128]
 
+chunk_gated_delta_rule:
+  shapes:
+    - [64]
+    - [128]
+    - [256]
+    - [512]
+    - [1024]
+  shape_desc: "T"
+
 KronBenchmark:
   shapes:
     - [16, 16]
