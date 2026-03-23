@@ -328,6 +328,7 @@ _FULL_CONFIG = (
     ("sin", sin),
     ("sin_", sin_),
     ("sinh_", sinh_),
+    ("slice_backward", slice_backward),
     ("slice_scatter", slice_scatter),
     ("softplus", softplus),
     ("sort", sort),
