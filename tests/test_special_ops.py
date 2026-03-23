@@ -551,6 +551,53 @@ def test_embedding_backward(
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.embedding_dense_backward
+@pytest.mark.parametrize(
+    "Batch, M, N, embeddingsize",
+    [
+        (2, 4, 8, 16),
+        (4, 8, 32, 64),
+        (1, 3, 64, 128),
+    ],
+)
+@pytest.mark.parametrize(
+    "padding_idx, scale_grad_by_freq", [(-1, False), (0, True), (5, False)]
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("seed", [42])
+def test_embedding_dense_backward(
+    Batch, M, N, embeddingsize, padding_idx, scale_grad_by_freq, dtype, seed
+):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    grad_output = torch.randn((Batch, M, N), device=flag_gems.device, dtype=dtype)
+    indices = torch.randint(
+        0, embeddingsize, (Batch, M), device=flag_gems.device, dtype=torch.long
+    )
+    if padding_idx >= 0 and embeddingsize > 0:
+        mask = torch.rand((Batch, M), device=flag_gems.device) < 0.25
+        indices = torch.where(mask, torch.full_like(indices, padding_idx), indices)
+    num_weights = embeddingsize
+    ref_grad_output = to_reference(grad_output)
+    ref_indices = to_reference(indices)
+    ref_out = torch.ops.aten.embedding_dense_backward(
+        ref_grad_output,
+        ref_indices,
+        num_weights,
+        padding_idx,
+        scale_grad_by_freq,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.embedding_dense_backward(
+            grad_output, indices, num_weights, padding_idx, scale_grad_by_freq
+        )
+    # res_out = torch.ops.aten.embedding_dense_backward(
+    # grad_output, indices, num_weights, padding_idx, scale_grad_by_freq)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.resolve_neg
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
