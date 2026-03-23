@@ -44,6 +44,8 @@ def test_accuracy_abs(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.abs_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -222,6 +224,8 @@ def test_accuracy_bitwisenot(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.bitwise_not_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
@@ -256,6 +260,8 @@ def test_accuracy_cos(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.cos_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -285,6 +291,8 @@ def test_accuracy_exp(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.exp_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -330,6 +338,8 @@ def test_accuracy_exp2(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.exp2_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -634,6 +644,8 @@ def test_accuracy_neg(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.neg_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -663,6 +675,8 @@ def test_accuracy_reciprocal(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.reciprocal_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -694,6 +708,8 @@ def test_accuracy_elu(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.elu_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -761,6 +777,8 @@ def test_accuracy_celu(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.celu_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -794,6 +812,8 @@ def test_accuracy_relu(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.relu_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -851,6 +871,8 @@ def test_accuracy_rsqrt(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.rsqrt_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -939,6 +961,8 @@ def test_accuracy_sigmoid_backward(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.sigmoid_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1006,6 +1030,8 @@ def test_accuracy_silu_backward(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.silu_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1035,6 +1061,8 @@ def test_accuracy_sin(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.sin_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1079,6 +1107,8 @@ def test_accuracy_tan(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.tan_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1125,6 +1155,8 @@ def test_accuracy_tanh_backward(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.tanh_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1308,6 +1340,8 @@ def test_accuracy_erf(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.erf_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1490,6 +1524,8 @@ def test_accuracy_absolute(shape, dtype):
     ref_out = torch.absolute(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.absolute(inp)
+
+
 @pytest.mark.alias_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1588,6 +1624,8 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.copy_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
@@ -1627,6 +1665,8 @@ def test_copy_inplace_same_dtype(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.copy_
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -1649,6 +1689,8 @@ def test_copy_inplace_broadcast():
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.copy_
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -1670,6 +1712,8 @@ def test_copy_inplace_dtype_fallback():
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.copy_
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -1726,6 +1770,8 @@ def test_accuracy_sqrt(shape, dtype):
 
 
 @pytest.mark.sqrt_
+
+
 @pytest.mark.inplace
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
@@ -1953,6 +1999,8 @@ def test_accuracy_ceil(shape, dtype):
 
 
 @pytest.mark.inplace
+
+
 @pytest.mark.ceil_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
