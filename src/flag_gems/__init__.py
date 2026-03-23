@@ -74,6 +74,7 @@ _FULL_CONFIG = (
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("baddbmm", baddbmm),
+    ("bincount", bincount),
     ("bitwise_and.Scalar", bitwise_and_scalar),
     ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
     ("bitwise_and.Tensor", bitwise_and_tensor),
