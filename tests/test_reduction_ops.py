@@ -1984,6 +1984,36 @@ def generate_test_params():
     return params
 
 
+def torch_topk_softmax(
+    topk_weights: torch.Tensor,
+    topk_indices: torch.Tensor,
+    token_expert_indices: torch.Tensor,
+    gating_output: torch.Tensor,
+    renormalize: bool = False,
+) -> None:
+    """PyTorch reference implementation of topk_softmax for Ascend platform."""
+    num_tokens = gating_output.shape[0]
+    k = topk_weights.size(-1)
+
+    # Softmax
+    probs = torch.softmax(gating_output.float(), dim=-1)
+
+    # Top-k selection
+    weights, indices = torch.topk(probs, k, dim=-1)
+
+    topk_weights.copy_(weights)
+    topk_indices.copy_(indices.to(topk_indices.dtype))
+
+    # token_expert_indices computation: ki * num_tokens + row_idx
+    rows = torch.arange(num_tokens, device=gating_output.device)
+    for ki in range(k):
+        token_expert_indices[:, ki] = ki * num_tokens + rows
+
+    # Renormalize
+    if renormalize:
+        topk_weights.div_(topk_weights.sum(dim=-1, keepdim=True) + 1e-8)
+
+
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RuntimeError")
 @pytest.mark.topk_softmax
 @pytest.mark.parametrize("index_dtype", generate_test_params())
@@ -2009,10 +2039,15 @@ def test_topk_softmax(
         # torch musa unsupport uint32
         index_dtype = torch.int64
 
-    try:
-        from vllm._custom_ops import topk_softmax as vllm_topk_softmax
-    except (ImportError, AttributeError):
-        pytest.skip("vLLM topk_softmax not available")
+    # Select reference implementation based on platform
+    if flag_gems.vendor_name == "ascend":
+        ref_topk_softmax = torch_topk_softmax
+    else:
+        try:
+            from vllm._custom_ops import topk_softmax as vllm_topk_softmax
+            ref_topk_softmax = vllm_topk_softmax
+        except (ImportError, AttributeError):
+            pytest.skip("vLLM topk_softmax not available")
 
     torch.manual_seed(42)
     device = flag_gems.device
@@ -2021,21 +2056,21 @@ def test_topk_softmax(
         num_tokens, num_experts, dtype=torch.float32, device=device
     )
 
-    vllm_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
-    vllm_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
-    vllm_token_expert = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
+    ref_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
+    ref_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
+    ref_token_expert = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
 
-    vllm_topk_softmax(
-        vllm_weights,
-        vllm_indices,
-        vllm_token_expert,
+    ref_topk_softmax(
+        ref_weights,
+        ref_indices,
+        ref_token_expert,
         gating_output,
         renormalize,
     )
 
-    gems_weights = torch.empty_like(vllm_weights)
-    gems_indices = torch.empty_like(vllm_indices)
-    gems_token_expert = torch.empty_like(vllm_token_expert)
+    gems_weights = torch.empty_like(ref_weights)
+    gems_indices = torch.empty_like(ref_indices)
+    gems_token_expert = torch.empty_like(ref_token_expert)
 
     topk_softmax(
         gems_weights,
@@ -2046,13 +2081,13 @@ def test_topk_softmax(
     )
 
     assert torch.allclose(
-        gems_weights, vllm_weights, atol=1e-5
+        gems_weights, ref_weights, atol=1e-5
     ), "topk_weights mismatch"
     assert torch.equal(
-        gems_indices.cpu(), vllm_indices.cpu()
+        gems_indices.cpu(), ref_indices.cpu()
     ), "topk_indices mismatch (fp32)"
     assert torch.equal(
-        gems_token_expert.cpu(), vllm_token_expert.cpu()
+        gems_token_expert.cpu(), ref_token_expert.cpu()
     ), "token_expert_indices mismatch"
 
     if renormalize:

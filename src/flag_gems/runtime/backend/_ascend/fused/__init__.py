@@ -5,6 +5,7 @@ from .moe_sum import moe_sum
 from .rotary_embedding import apply_rotary_pos_emb
 from .silu_and_mul import silu_and_mul, silu_and_mul_out
 from .skip_layernorm import skip_layer_norm
+from .topk_softmax import topk_softmax
 
 __all__ = [
     "cross_entropy_loss",
@@ -15,4 +16,5 @@ __all__ = [
     "silu_and_mul",
     "silu_and_mul_out",
     "skip_layer_norm",
+    "topk_softmax",
 ]
