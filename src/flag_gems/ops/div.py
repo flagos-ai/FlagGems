@@ -203,6 +203,7 @@ def floor_divide_(A, B):
 
 
 def div_mode(A, B, rounding_mode=None):
+    logger.debug("GEMS DIV_MODE")
     if rounding_mode is None:
         return true_divide(A, B)
     elif rounding_mode == "trunc":
@@ -215,6 +216,7 @@ def div_mode(A, B, rounding_mode=None):
 
 
 def div_mode_(A, B, rounding_mode=None):
+    logger.debug("GEMS DIV_MODE_")
     if rounding_mode is None:
         return true_divide_(A, B)
     elif rounding_mode == "trunc":

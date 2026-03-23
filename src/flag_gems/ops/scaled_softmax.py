@@ -1,3 +1,5 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -26,6 +28,9 @@ autotune_configs = [
     triton.Config({"BLOCK_Q": 64, "BLOCK_K": 1024}, num_warps=8, num_stages=4),
     triton.Config({"BLOCK_Q": 128, "BLOCK_K": 512}, num_warps=8, num_stages=4),
 ]
+
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -118,6 +123,7 @@ def scaled_softmax_forward_kernel(
 
 
 def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
+    logger.debug("GEMS SCALED SOFTMAX FORWARD")
     assert input_t.dim() == 4, "expected 4D tensor"
     batch_size, attn_heads, query_seq_len, key_seq_len = input_t.shape
     assert input_t.dtype in [
@@ -237,6 +243,7 @@ def scaled_softmax_backward_kernel(
 def scaled_softmax_backward(
     grad_output: torch.Tensor, softmax_results: torch.Tensor, scale_factor: float
 ):
+    logger.debug("GEMS SCALED SOFTMAX BACKWARD")
     assert grad_output.dim() == 4, "expected 4D tensor"
     assert softmax_results.dim() == 4, "expected 4D tensor"
     assert grad_output.dtype in [

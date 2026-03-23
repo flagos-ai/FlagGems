@@ -529,6 +529,7 @@ def moe_align_block_size_triton(
     expert_ids: torch.Tensor,
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
+    logger.debug("GEMS MOE ALIGN BLOCK SIZE")
     numel = topk_ids.numel()
     numel_sorted_token_ids = sorted_token_ids.numel()
     numel_expert_ids = expert_ids.numel()
@@ -674,7 +675,6 @@ def moe_align_block_size(
     expert_map: Optional[torch.Tensor] = None,
     pad_sorted_ids: bool = False,
 ) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
-    logger.debug("GEMS MOE ALIGN BLOCK SIZE")
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
     if pad_sorted_ids:
         max_num_tokens_padded = round_up(max_num_tokens_padded, block_size)
