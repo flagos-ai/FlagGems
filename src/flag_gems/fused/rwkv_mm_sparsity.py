@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -38,6 +42,7 @@ def rwkv_mm_sparsity_kernel(
 
 
 def rwkv_mm_sparsity(k: torch.Tensor, v: torch.Tensor):
+    logger.debug("GEMS RWKV MM SPARSITY")
     assert k.dim() == 1 and v.dim() == 2
     assert k.size(0) == v.size(0)
 

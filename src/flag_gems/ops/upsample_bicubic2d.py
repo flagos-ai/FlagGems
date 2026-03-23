@@ -1,9 +1,12 @@
+import logging
 import math
 from typing import Sequence
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -158,6 +161,7 @@ def upsample_bicubic2d(
     scales_h: float | None = None,
     scales_w: float | None = None,
 ) -> torch.Tensor:
+    logger.debug("GEMS UPSAMPLE BICUBIC2D")
     scale_factors = (scales_h, scales_w)
 
     if input.dim() != 4:
