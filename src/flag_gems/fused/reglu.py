@@ -103,6 +103,7 @@ def reglu_kernel(
 
 
 def reglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
+    logger.debug("GEMS REGLU")
     shape = input_tensor.shape
     if input_tensor.dim() < 1:
         raise ValueError("Input tensor must have at least 1 dimension.")
@@ -145,6 +146,7 @@ def dreglu(
     input_tensor: torch.Tensor,
     quantizer: Optional[Any] = None,
 ) -> torch.Tensor:
+    logger.debug("GEMS DREGLU")
     shape = input_tensor.shape
     if shape[:-1] != grad_output.shape[:-1] or shape[-1] != 2 * grad_output.shape[-1]:
         raise ValueError(
