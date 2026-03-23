@@ -2,13 +2,14 @@
 #include "c10/util/Logging.h"
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 class topktest
     : public ::testing::TestWithParam<std::tuple<int64_t, int64_t, int64_t, bool, torch::ScalarType>> {};
 
 TEST_P(topktest, CompareWithPyTorch) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto [batch_size, hiddensize, topk, largest, dtype] = GetParam();
   auto options = torch::TensorOptions().dtype(dtype).device(device).requires_grad(false);
   torch::Tensor x = torch::arange(0, hiddensize, options).repeat({batch_size, 1});

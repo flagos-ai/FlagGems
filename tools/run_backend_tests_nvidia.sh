@@ -3,11 +3,14 @@
 # TODO(Qiming): Merge this to the generic run_backend_tests.sh file.
 # TODO(Qiming): Make the test cases an input to the script
 
+VENDOR=${1:?"Usage: bash tools/run_backend_tests_nvidia.sh <vendor>"}
+export GEMS_VENDOR=$VENDOR
+
 export CUDA_VISIBLE_DEVICES=6
 # export http_proxy: ${{ secrets.HTTP_PROXY }}
 # export https_proxy: ${{ secrets.HTTPS_PROXY }}
 
-echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
+echo "Running FlagGems tests with GEMS_VENDOR=$GEMS_VENDOR"
 
 # TODO(Qiming): Remove the following conda activations
 source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"

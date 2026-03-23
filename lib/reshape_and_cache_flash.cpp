@@ -1,6 +1,6 @@
 #include <torch/torch.h>
 #include <iostream>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "triton_jit/triton_jit_function.h"
@@ -33,8 +33,8 @@ void reshape_and_cache_flash(const at::Tensor& key,
   const int num_stages = 2;
 
   c10::DeviceGuard guard(key.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = stream.stream();
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   const TritonJITFunction& kernel = TritonJITFunction::get_instance(
       std::string(utils::get_flag_gems_src_path() / "fused" / "reshape_and_cache_flash.py"),

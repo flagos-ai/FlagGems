@@ -40,6 +40,7 @@ class SiluAndMul(torch.autograd.Function):
 
     def backward(ctx, grad_output):
         A, B = ctx.saved_tensors
+        logger.debug("GEMS SILU AND MUL BACKWARD")
         grad_A, grad_B = silu_and_mul_grad_kernel(A, B, grad_output)
         return grad_A, grad_B
 
@@ -49,5 +50,6 @@ def silu_and_mul(A, B):
 
 
 def silu_and_mul_out(A, B, out):
+    logger.debug("GEMS SILU AND MUL OUT")
     silu_and_mul_kernel(A, B, out0=out)
     return out

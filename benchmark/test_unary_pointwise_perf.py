@@ -41,6 +41,7 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
+    ("absolute", torch.absolute, FLOAT_DTYPES),
     ("ceil", torch.ceil, FLOAT_DTYPES),
     ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf", torch.erf, FLOAT_DTYPES),
@@ -73,6 +74,8 @@ forward_operations = [
     ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
+    # Bessel
+    ("i0", torch.i0, FLOAT_DTYPES),
     # Numerical Checks
     ("isinf", torch.isinf, FLOAT_DTYPES),
     ("isnan", torch.isnan, FLOAT_DTYPES),
@@ -119,10 +122,12 @@ forward_inplace_operations = [
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
     ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
+    ("sgn_", lambda a: a.sgn_(), FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
     # Trigonometric operations
     ("cos_", torch.cos_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
+    ("sinh_", lambda a: a.sinh_(), FLOAT_DTYPES),
     ("tan_", torch.tan_, FLOAT_DTYPES),
     ("tanh_", torch.tanh_, FLOAT_DTYPES),
     ("atan_", torch.atan_, FLOAT_DTYPES),
