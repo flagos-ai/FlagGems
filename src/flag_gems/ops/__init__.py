@@ -1,5 +1,6 @@
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.acos import acos
+from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
@@ -272,6 +273,7 @@ __all__ = [
     "atan_",
     "avg_pool2d",
     "avg_pool2d_backward",
+    "adaptive_avg_pool2d",
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
