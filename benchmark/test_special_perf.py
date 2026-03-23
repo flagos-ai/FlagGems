@@ -1237,6 +1237,11 @@ def test_perf_lift_fresh_copy():
         ),
         op_name="lift_fresh_copy",
         torch_op=torch.ops.aten.lift_fresh_copy,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.upsample_nearest_exact1d
 def test_perf__upsample_nearest_exact1d():
     class UpsampleNearestExact1dBenchmark(Benchmark):
