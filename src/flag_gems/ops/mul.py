@@ -61,13 +61,19 @@ def mul(A, B):
         elif A_is_complex and not B_is_complex:
             Ar = torch.view_as_real(A)
             Br = B.unsqueeze(-1) if isinstance(B, torch.Tensor) else B
-            out_real = mul_func(Ar, Br)
+            if isinstance(Br, torch.Tensor):
+                out_real = mul_func(Ar, Br)
+            else:
+                out_real = mul_func_scalar(Ar, Br)
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))
         # 3) A real, B complex
         else:  # not A_is_complex and B_is_complex
             Br = torch.view_as_real(B)
             Ar = A.unsqueeze(-1) if isinstance(A, torch.Tensor) else A
-            out_real = mul_func(Ar, Br)
+            if isinstance(Ar, torch.Tensor):
+                out_real = mul_func(Ar, Br)  # shape broadcasting requires Ar and Br
+            else:
+                out_real = mul_func_scalar(Br, Ar)  # Br is tensor, Ar is scalar
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))
     elif isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return mul_func(A, B)
