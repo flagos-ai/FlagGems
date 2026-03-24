@@ -1954,3 +1954,31 @@ def test_accuracy_i0_(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.ops.aten.i0_(inp)
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.arcsinh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_arcsinh(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.arcsinh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.arcsinh(inp)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.arcsinh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_arcsinh_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.arcsinh(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.empty_like(inp)
+        torch.arcsinh(inp, out=res_out)
+
+    gems_assert_close(res_out, ref_out, dtype)
