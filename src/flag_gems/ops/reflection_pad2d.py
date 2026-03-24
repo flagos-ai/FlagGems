@@ -6,7 +6,7 @@ import triton.language as tl
 
 
 @triton.jit
-def _reflection_pad2d_kernel(
+def reflection_pad2d_kernel(
     in_ptr,
     out_ptr,
     B,
@@ -55,7 +55,7 @@ def _reflection_pad2d_kernel(
 
 
 @triton.jit
-def _copy_tensor_kernel(in_ptr, out_ptr, B, H, W, BLOCK_HW: tl.constexpr):
+def copy_tensor_kernel(in_ptr, out_ptr, B, H, W, BLOCK_HW: tl.constexpr):
     pid_b = tl.program_id(axis=0)
     pid_n = tl.program_id(axis=1)
 
@@ -67,7 +67,7 @@ def _copy_tensor_kernel(in_ptr, out_ptr, B, H, W, BLOCK_HW: tl.constexpr):
     tl.store(out_ptr + base + offs_n, vals, mask=mask)
 
 
-def _launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = None):
+def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = None):
     # Validate padding format
     if not isinstance(padding, (list, tuple)):
         raise ValueError("padding must be a sequence")
@@ -90,9 +90,17 @@ def _launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = N
     x = input.contiguous()
     H_in = int(x.shape[-2])
     W_in = int(x.shape[-1])
-
+    # Validate reflection padding constraints
+    if H_in < 2 or W_in < 2:
+        raise ValueError(
+            "input spatial dimensions must be at least 2 for reflection padding when padding > 0"
+        )
     if H_in <= 0 or W_in <= 0:
         raise ValueError("spatial dimensions must be > 0")
+    if pad_left >= W_in or pad_right >= W_in or pad_top >= H_in or pad_bottom >= H_in:
+        raise ValueError(
+            "padding values must be less than the input spatial dimensions for reflection padding"
+        )
 
     H_out = H_in + pad_top + pad_bottom
     W_out = W_in + pad_left + pad_right
@@ -123,36 +131,22 @@ def _launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = N
 
     # No padding: just copy
     if pad_left == 0 and pad_right == 0 and pad_top == 0 and pad_bottom == 0:
-        if H_out != H_in or W_out != W_in:
-            raise RuntimeError(
-                "Internal error: spatial dimensions should match when no padding"
-            )
         BLOCK_HW = 256
         grid = (B, triton.cdiv(H_in * W_in, BLOCK_HW))
-        _copy_tensor_kernel[grid](x, out, B, H_in, W_in, BLOCK_HW=BLOCK_HW)
+        copy_tensor_kernel[grid](x, out, B, H_in, W_in, BLOCK_HW=BLOCK_HW)
         return out
-
-    # Validate reflection padding constraints
-    if H_in < 2 or W_in < 2:
-        raise ValueError(
-            "input spatial dimensions must be at least 2 for reflection padding when padding > 0"
-        )
-    if pad_left >= W_in or pad_right >= W_in or pad_top >= H_in or pad_bottom >= H_in:
-        raise ValueError(
-            "padding values must be less than the input spatial dimensions for reflection padding"
-        )
 
     BLOCK_HW = 256
     grid = (B, triton.cdiv(H_out * W_out, BLOCK_HW))
-    _reflection_pad2d_kernel[grid](
+    reflection_pad2d_kernel[grid](
         x, out, B, H_in, W_in, pad_left, pad_top, H_out, W_out, BLOCK_HW=BLOCK_HW
     )
     return out
 
 
 def reflection_pad2d(input: torch.Tensor, padding):
-    return _launch_reflection_pad2d(input, padding, out=None)
+    return launch_reflection_pad2d(input, padding, out=None)
 
 
 def reflection_pad2d_out(input: torch.Tensor, padding, out: torch.Tensor):
-    return _launch_reflection_pad2d(input, padding, out=out)
+    return launch_reflection_pad2d(input, padding, out=out)
