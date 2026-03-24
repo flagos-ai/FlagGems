@@ -146,8 +146,8 @@ forward_inplace_operations = [
     ("tanh_", torch.tanh_, FLOAT_DTYPES),
     ("atan_", torch.atan_, FLOAT_DTYPES),
     ("i0_", torch.Tensor.i0_, FLOAT_DTYPES),
-("digamma_", lambda a: a.digamma_(), FLOAT_DTYPES),
-("arctanh_", lambda a: a.arctanh_(), FLOAT_DTYPES),
+    ("digamma_", lambda a: a.digamma_(), FLOAT_DTYPES),
+    ("arctanh_", lambda a: a.arctanh_(), FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
 ]
