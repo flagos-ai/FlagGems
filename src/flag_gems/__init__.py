@@ -358,6 +358,7 @@ _FULL_CONFIG = (
     ("sinh_", sinh_),
     ("slice_backward", slice_backward),
     ("slice_scatter", slice_scatter),
+    ("soft_margin_loss", soft_margin_loss),
     ("softplus", softplus),
     ("sort", sort),
     ("sort.stable", sort_stable),
