@@ -244,6 +244,7 @@ from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
 from flag_gems.ops.topk import topk
 from flag_gems.ops.trace import trace
+from flag_gems.ops.tril import tril, tril_out
 from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.uniform import uniform_
@@ -583,6 +584,8 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "tril",
+    "tril_out",
     "triu",
     "triu_",
     "true_divide",

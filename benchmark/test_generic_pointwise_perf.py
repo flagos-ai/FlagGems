@@ -180,6 +180,13 @@ def test_generic_inplace_pointwise_benchmark(op_name, torch_op, input_fn, dtypes
     "op_name, torch_op, input_fn, dtypes",
     [
         pytest.param(
+            "tril",
+            torch.tril,
+            unary_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.tril,
+        ),
+        pytest.param(
             "triu",
             torch.triu,
             unary_input_fn,
