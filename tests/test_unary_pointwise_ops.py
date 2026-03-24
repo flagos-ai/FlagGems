@@ -1770,6 +1770,19 @@ def test_accuracy_asinh_(shape, dtype):
     ref_out = ref_inp.asinh_()
     with flag_gems.use_gems():
         res_out = inp.asinh_()
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.arcsinh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_arcsinh_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone())
+
+    ref_out = ref_inp.arcsinh_()
+    with flag_gems.use_gems():
+        res_out = inp.arcsinh_()
 
     gems_assert_close(res_out, ref_out, dtype)
 
