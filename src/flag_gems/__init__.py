@@ -302,6 +302,7 @@ _FULL_CONFIG = (
     ("reciprocal_", reciprocal_),
     ("relu", relu),
     ("relu_", relu_),
+    ("relu6", relu6),
     ("remainder.Scalar", remainder),
     ("remainder.Scalar_Tensor", remainder),
     ("remainder.Tensor", remainder),
