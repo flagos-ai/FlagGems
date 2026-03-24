@@ -1773,6 +1773,21 @@ def test_accuracy_atan_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.inplace
+@pytest.mark.arctanh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_arctanh_(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 1.8 - 0.9
+    ref_inp = to_reference(inp.clone())
+
+    ref_out = ref_inp.arctanh_()
+    with flag_gems.use_gems():
+        res_out = inp.arctanh_()
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 DREGU_SHAPES = [
     (),
     (1,),
