@@ -40,6 +40,11 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 
 forward_operations = [
+    (
+        "functional_sym_constrain_range_for_size",
+        torch.ops.aten._functional_sym_constrain_range_for_size,
+        FLOAT_DTYPES,
+    ),
     ("abs", torch.abs, FLOAT_DTYPES),
     ("absolute", torch.absolute, FLOAT_DTYPES),
     ("ceil", torch.ceil, FLOAT_DTYPES),
