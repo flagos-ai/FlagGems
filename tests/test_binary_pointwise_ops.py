@@ -2220,3 +2220,132 @@ def test_accuracy_addcdiv(shape, dtype):
         res_out = torch.addcdiv(res_inp, t1, t2, value=v)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+# ========== logaddexp tests ==========
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_boundary_zeros(dtype):
+    shape = (256,)
+    inp1 = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_boundary_negatives(dtype):
+    shape = (256,)
+    inp1 = -torch.abs(torch.randn(shape, dtype=dtype, device=flag_gems.device))
+    inp2 = -torch.abs(torch.randn(shape, dtype=dtype, device=flag_gems.device))
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_boundary_extremes(dtype):
+    shape = (256,)
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # 混入极值：一个 inf/−inf 配一个有限值
+    inp1[0] = float("inf")
+    inp1[1] = float("-inf")
+    inp2[2] = float("inf")
+    inp2[3] = float("-inf")
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize(
+    "inp1_shape, inp2_shape",
+    [
+        ((1, 256), (256, 256)),
+        ((256, 1), (1, 256)),
+        ((1,), (256,)),
+        ((4, 1, 16), (1, 8, 16)),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_broadcast(inp1_shape, inp2_shape, dtype):
+    inp1 = torch.randn(inp1_shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(inp2_shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_empty_tensor(dtype):
+    inp1 = torch.randn((0,), dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn((0,), dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    assert res_out.shape == ref_out.shape
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_large_diff(dtype):
+    """当两个输入差异很大时，测试数值稳定性"""
+    shape = (256,)
+    inp1 = torch.full(shape, 100.0, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.full(shape, -100.0, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.logaddexp(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
