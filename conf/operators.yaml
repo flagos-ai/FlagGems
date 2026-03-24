@@ -23,7 +23,7 @@ ops:
     kind:
       - Tensor
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: _unique2
     description: Returns the unique elements of the input tensor. This is an internal PyTorch function.
     for:
@@ -57,7 +57,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: abs
     description: |
       Computes the absolute value of each element in `input`.
@@ -232,7 +232,7 @@ ops:
     kind:
       - Tensor
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: alias_copy_out
     description: A variant of `alias_copy()` that assigns the output to the `out` tensor.
     for:
@@ -243,7 +243,7 @@ ops:
     kind:
       - Tensor
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: all
     description: Tests if all elements in input evaluate to True.
     for:
@@ -407,7 +407,18 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
+  - name: arcsinh_
+    description: The in-place version of `arcsinh()`.
+    for:
+      - arcsinh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      beta: '4.3'
   - name: arcsinh_out
     description: A variant of `arcsinh` that allows the output to be assigned to the `out` tensor.
     for:
@@ -418,7 +429,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: arctanh_
     description: |
       Computes the element-wise inverse hyperbolic tangent of a given input tensor.
@@ -431,7 +442,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: argmax
     description: Returns the indices of the maximum value of all elements in the `input` tensor.
     for:
@@ -465,7 +476,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: atan
     description: Returns a new tensor with the arctangent of the elements (in radians) in the `input` tensor.
     for:
@@ -1158,7 +1169,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: dispatch_fused_moe_kernel
     description: |
       Accelerates neural network training by combining token routing (dispatch/all-to-all communication),
@@ -1605,7 +1616,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: floor_divide
     description: Computes `input` divided by `other`, elementwise, and floors the result.
     for:
@@ -1641,7 +1652,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: fmin_out
     description: A variant of `fmin()` that assigns the output to the `out` tensor.
     for:
@@ -1652,7 +1663,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
@@ -1912,12 +1923,13 @@ ops:
     labels:
       - aten
       - pointwise
+      - nn.functional
       - Activation
       - KernelGen
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: hardsigmoid_out
     description: |
       A variant of `hardsigmoid` that supports an output tensor to receive the result.
@@ -1926,12 +1938,13 @@ ops:
     labels:
       - aten
       - pointwise
+      - nn.functional
       - Activation
       - KernelGen
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: hardswish_
     description: |
       Applies the Hard Swish activation function, commonly used in models like MobileNetV3
@@ -1947,7 +1960,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: hstack
     description: |
       Stack tensors in sequence horizontally (column wise). This is equivalent to concatenation
@@ -1999,6 +2012,17 @@ ops:
       - Math
     stages:
       beta: '4.3'
+  - name: i0_
+    description: The inplace version of `i0`.
+    for:
+      - i0_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      beta: '4.3'
   - name: i0_out
     description: A variant of `i0` that assigns the output to the `out` tensor.
     for:
@@ -2010,17 +2034,6 @@ ops:
       - Math
     stages:
       beta: '4.3'
-  - name: i0_
-    description: The inplace version of `i0`.
-    for:
-      - i0_
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      alpha: '4.3'
   - name: index
     description: |
       Extract, access or modify specific elements, slices, or subsets of data within a tensor.
@@ -2355,7 +2368,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: logaddexp
     description: Computes the element-wise logarithm of the sum of the exponentials of two input tensors.
     for:
@@ -2367,7 +2380,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: logaddexp_out
     description: A variant of `logaddexp` that allows the output to be assigned to an `out` tensor.
     for:
@@ -2379,7 +2392,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: logical_and
     description: |
       Computes the element-wise logical AND of the given `input` tensors.
@@ -2462,7 +2475,19 @@ ops:
     kind:
       - LinearAlg
     stages:
-      alpha: '4.3'
+      beta: '4.3'
+  - name: logit_
+    description: The in-place version of `logit()`.
+    for:
+      - logit_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      beta: '4.3'
   - name: logit_out
     description: |
       A variant of `logit` that allows the output to be assigned to another tensor.
@@ -2475,7 +2500,7 @@ ops:
     kind:
       - LinearAlg
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: logspace
     description: |
       Creates a one-dimensional tensor of size `steps` whose values are evenly spaced
@@ -3126,7 +3151,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: pixel_unshuffle_out
     description: A variant of `pixel_unshuffle` that assigns the output to the `out` tensor.
     for:
@@ -3137,7 +3162,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: polar
     description: |
       Constructs a complex tensor whose elements are Cartesian coordinates corresponding to
@@ -3211,6 +3236,24 @@ ops:
       - Math
     stages:
       stable: '2.2'
+  - name: prelu
+    description: |
+      An activation function used in neural networks that improves upon ReLU (Rectified Linear Unit)
+      by allowing the network to learn the slope of negative inputs.
+      It performs an element-wise operation that keeps positive values and scales negative values
+      by a learnable parameter.
+    for:
+      - prelu
+    labels:
+      - aten
+      - Activation
+      - pointwise
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      beta: '4.3'
   - name: prod
     description: Returns the product of all elements in the `input` tensor.
     for:
@@ -3333,7 +3376,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: reflection_pad1d_out
     description: A variant of `reflection_pad1d` that assigns the output to `out` tensor.
     for:
@@ -3345,7 +3388,33 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
+  - name: reflection_pad2d
+    description: |
+      Pads the input 3D or 2D tensor (typically representing signals or sequences)
+      by reflecting the boundary values at the both edges.
+    for:
+      - reflection_pad2d
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      beta: '4.3'
+  - name: reflection_pad2d_out
+    description: A variant of `reflection_pad2d` that assigns the output to `out` tensor.
+    for:
+      - reflection_pad2d.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      beta: '4.3'
   - name: reglu
     description: |
       Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead of the sigmoid function for gating.
@@ -3399,7 +3468,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: remainder
     description: |
       Computes Python’s modulus operation entrywise. The result has the same sign
@@ -3478,9 +3547,9 @@ ops:
       - aten
       - KernelGen
     kind:
-      - NeuralNetwork
+      - Tensor
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: replication_pad1d_out
     description: A variant of `replication_pad1d` that assigns the output to the `out` tensor.
     for:
@@ -3489,9 +3558,9 @@ ops:
       - aten
       - KernelGen
     kind:
-      - NeuralNetwork
+      - Tensor
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: replication_pad3d
     description: Pads the edge of a 3D input tensor by repeating the boundary values.
     for:
@@ -3611,7 +3680,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: rsqrt
     description: Returns a new tensor with the reciprocal of the square-root of each of the elements of `input`.
     for:
@@ -3786,12 +3855,13 @@ ops:
     labels:
       - aten
       - pointwise
+      - nn.functional
       - Activation
       - KernelGen
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: selu_
     description: |
       This is the in-place version of `selu`.
@@ -3805,7 +3875,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: sgn_
     description: |
       Computes the sign of each element in the `self` tensor, element-wise.
@@ -4033,12 +4103,13 @@ ops:
       - softshrink
     labels:
       - aten
+      - nn.functional
       - Activation
       - KernelGen
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: softshrink_out
     description: |
       This is a variant of `softshrink` that supports an output tensor.
@@ -4046,13 +4117,13 @@ ops:
       - softshrink.out
     labels:
       - aten
+      - nn.functional
       - Activation
       - KernelGen
     kind:
       - NeuralNetwork
     stages:
-      alpha: '4.3'
-
+      beta: '4.3'
   - name: sort
     description: Sorts the elements of the `input` tensor along a given dimension in ascending order by value.
     for:
@@ -4098,7 +4169,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: special_i1_out
     description: A variant of `special_i1` that allows the output to be assigned to another tensor.
     for:
@@ -4110,7 +4181,7 @@ ops:
     kind:
       - Math
     stages:
-      alpha: '4.3'
+      beta: '4.3'
   - name: sqrt
     description: Returns a new tensor with the square-root of the elements of `input`.
     for:
@@ -4241,6 +4312,28 @@ ops:
       - NeuralNetwork
     stages:
       stable: '4.3'
+  - name: t_copy
+    description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
+    for:
+      - t_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      beta: '4.3'
+  - name: t_copy_out
+    description: A variant of `t_copy()` that allows the output to be assigned to the `out` tensor.
+    for:
+      - t_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      beta: '4.3'
   - name: tan
     description: |
       Returns a new tensor with the tangent of the elements in the `input` tensor,
@@ -4383,6 +4476,19 @@ ops:
       - Reduction
     stages:
       stable: '4.0'
+  - name: tril
+    description: |
+      Returns the lower triangular part of an input matrix (or a batch of matrices) and
+      sets all other elements to zero.
+    for:
+      - tril
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      beta: '4.3'
   - name: triu
     description: |
       Returns the upper triangular part of a matrix (2-D tensor) or batch of matrices `input`,
@@ -4392,7 +4498,7 @@ ops:
     labels:
       - aten
     kind:
-      - NeuralNetwork
+      - BLAS
     stages:
       stable: '1.0'
   - name: triu_
@@ -4679,16 +4785,6 @@ ops:
     stages:
       alpha: '2.1'
       stable: '2.2'
-  - name: zero_
-    description: Fills `self` tensor with zeros.
-    for:
-      - zero_.Tensor
-    labels:
-      - aten
-    kind:
-      - Tensor
-    stages:
-      stable: '4.3'
   - name: zero
     description: Fills tensor with zeros.
     for:
@@ -4696,6 +4792,16 @@ ops:
     labels:
       - aten
       - KernelGen
+    kind:
+      - Tensor
+    stages:
+      beta: '4.3'
+  - name: zero_
+    description: Fills `self` tensor with zeros.
+    for:
+      - zero_.Tensor
+    labels:
+      - aten
     kind:
       - Tensor
     stages:
@@ -4710,7 +4816,7 @@ ops:
     kind:
       - Tensor
     stages:
-      stable: '4.3'
+      beta: '4.3'
   - name: zeros
     description: |
       Returns a tensor filled with the scalar value 0, with the shape defined by
