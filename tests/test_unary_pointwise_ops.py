@@ -1250,6 +1250,21 @@ def test_accuracy_triu_inplace_noncontiguous(shape, diagonal, dtype):
         ), "triu_ should modify non-contiguous tensor in-place"
 
 
+@pytest.mark.inplace
+@pytest.mark.digamma_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_digamma_(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
+    ref_inp = to_reference(inp.clone())
+
+    ref_out = ref_inp.digamma_()
+    with flag_gems.use_gems():
+        res_out = inp.digamma_()
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.erf
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
