@@ -314,6 +314,8 @@ _FULL_CONFIG = (
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
     ("repeat_interleave.Tensor", repeat_interleave_tensor),
+    ("replication_pad1d", replication_pad1d),
+    ("replication_pad1d.out", replication_pad1d_out),
     ("replication_pad3d", replication_pad3d),
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),

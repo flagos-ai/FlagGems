@@ -482,6 +482,8 @@ def test_apply_rotary_pos_emb(
 
 
 # TODO: failed when EmbeddingSize is small
+
+
 @pytest.mark.embedding
 @pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
@@ -668,6 +670,8 @@ def test_accuracy_resolve_conj(shape, dtype):
 
 
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
+
+
 @pytest.mark.unique
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -1072,6 +1076,8 @@ def test_logspace(start, end, steps, base, dtype, device, pin_memory):
 
 
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+
+
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -1589,6 +1595,8 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
 
 
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
+
+
 @pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize(
@@ -1921,6 +1929,8 @@ def torch_moe_align_block_size(
 
 
 # ref: https://github.com/vllm-project/vllm/blob/main/tests/kernels/moe/test_moe.py
+
+
 @pytest.mark.moe_align_block_size
 @pytest.mark.parametrize("num_experts", [10, 128, 250, 512])
 @pytest.mark.parametrize("block_size", [16, 32, 64])
@@ -2080,6 +2090,49 @@ def test_upsample_bicubic2d(N, C, H, W, outH, outW, align_corners, use_scale, dt
             ref_x, output_size, align_corners, scale_factors
         )
     gems_assert_close(res_out.to(dtype=dtype), ref_out, dtype, reduce_dim=16)
+
+
+@pytest.mark.replication_pad1d
+@pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("padding", [(0, 0), (1, 2), (3, 1)])
+def test_replication_pad1d(shape, dtype, padding):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.ops.aten.replication_pad1d(ref_inp, padding)
+
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.replication_pad1d(inp, padding)
+
+    gems_assert_close(act_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.replication_pad1d
+@pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("padding", [(0, 0), (1, 2), (3, 1)])
+def test_replication_pad1d_out(shape, dtype, padding):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    pl, pr = padding
+    w_out = shape[-1] + pl + pr
+    if len(shape) == 3:
+        N, C, _ = shape
+        out_shape = (N, C, w_out)
+    else:
+        C, _ = shape
+        out_shape = (C, w_out)
+
+    ref_out_buf = torch.empty(out_shape, dtype=ref_inp.dtype, device=ref_inp.device)
+    ref_out = torch.ops.aten.replication_pad1d.out(ref_inp, padding, out=ref_out_buf)
+
+    act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.replication_pad1d.out(inp, padding, out=act_out_buf)
+
+    gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
 @pytest.mark.replication_pad3d
