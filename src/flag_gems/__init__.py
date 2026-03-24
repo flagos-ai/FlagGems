@@ -243,6 +243,7 @@ _FULL_CONFIG = (
     ("logspace", logspace),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
+    ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
     ("masked_fill_.Scalar", masked_fill_),
