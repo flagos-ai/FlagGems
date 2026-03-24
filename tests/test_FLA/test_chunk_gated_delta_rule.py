@@ -130,6 +130,8 @@ def _run_recurrent(inputs):
 
 def _assert_close(actual: torch.Tensor, expected: torch.Tensor, dtype: torch.dtype):
     rtol, atol = DTYPE_TOLERANCES[dtype]
+    actual = actual.to(dtype)
+    expected = expected.to(dtype)
     torch.testing.assert_close(actual.float(), expected.float(), rtol=rtol, atol=atol)
 
 
@@ -270,12 +272,18 @@ def test_chunk_gated_delta_rule_varlen(dtype):
     )
 
     ref_out1, _ = _recurrent_gated_delta_rule_ref(
-        inp1["q_head_first"], inp1["k_head_first"], inp1["v_head_first"],
-        inp1["beta_head_first"], inp1["g_head_first"],
+        inp1["q_head_first"],
+        inp1["k_head_first"],
+        inp1["v_head_first"],
+        inp1["beta_head_first"],
+        inp1["g_head_first"],
     )
     ref_out2, _ = _recurrent_gated_delta_rule_ref(
-        inp2["q_head_first"], inp2["k_head_first"], inp2["v_head_first"],
-        inp2["beta_head_first"], inp2["g_head_first"],
+        inp2["q_head_first"],
+        inp2["k_head_first"],
+        inp2["v_head_first"],
+        inp2["beta_head_first"],
+        inp2["g_head_first"],
     )
     ref_out = torch.cat([ref_out1, ref_out2], dim=2)
 
