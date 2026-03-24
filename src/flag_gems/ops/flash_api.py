@@ -885,6 +885,7 @@ def mha_fwd(
             window_size_left,  # window_size_left,
             window_size_right,  # window_size_right,
             seqlenq_ngroups_swapped,  # seqlenq_ngroups_swapped,
+            False,  # is_paged,
             # alibi
             is_alibi,  #
             alibi_slopes,  # alibi_slopes_ptr,

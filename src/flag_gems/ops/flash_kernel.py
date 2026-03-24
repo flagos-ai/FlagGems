@@ -357,6 +357,7 @@ def flash_fwd_kernel(
     window_size_left: tl.constexpr,
     window_size_right: tl.constexpr,
     seqlenq_ngroups_swapped: tl.constexpr,
+    is_paged: tl.constexpr,
     # alibi
     is_alibi: tl.constexpr,
     alibi_slopes_ptr,
@@ -817,6 +818,7 @@ def flash_fwd_splitkv_kernel(
     window_size_left: tl.constexpr,
     window_size_right: tl.constexpr,
     seqlenq_ngroups_swapped: tl.constexpr,
+    is_paged: tl.constexpr,
     # alibi
     is_alibi: tl.constexpr,
     alibi_slopes_ptr,
