@@ -1365,6 +1365,21 @@ def test_accuracy_log(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.functional_sym_constrain_range_for_size
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy__functional_sym_constrain_range_for_size(shape, dtype):
+    torch.manual_seed(0)
+    dep_token = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_dep = to_reference(dep_token)
+    ref_out = torch.ops.aten._functional_sym_constrain_range_for_size(5, 1, 10, ref_dep)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._functional_sym_constrain_range_for_size(
+            5, 1, 10, dep_token
+        )
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.absolute
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
