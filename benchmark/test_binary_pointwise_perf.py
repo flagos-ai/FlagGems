@@ -77,6 +77,8 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
+            # Log operations
+            ("logaddexp", torch.logaddexp, FLOAT_DTYPES),
         ]
     ],
 )
