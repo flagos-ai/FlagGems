@@ -1146,4 +1146,3 @@ def test_upsample_linear1d_backward_perf(dtype):
     )
 
     bench.run()
-
