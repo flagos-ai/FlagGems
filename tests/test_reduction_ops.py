@@ -630,7 +630,10 @@ def test_accuracy_log_softmax_backward(shape, dtype, dim):
 # TODO: failed at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize(
-    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
+    "shape",
+    [(1, 256)]
+    if QUICK_MODE
+    else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
