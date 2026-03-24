@@ -133,6 +133,14 @@ UPSAMPLE_SHAPES = [
 # 1D upsample uses (N, C, W) shapes derived from the 2D cases above.
 UPSAMPLE_SHAPES_1D = [s[:3] for s in UPSAMPLE_SHAPES]
 
+UPSAMPLE_SHAPES_3D = [
+    (4, 8, 32, 32, 32),
+    (3, 5, 17, 19, 23),
+    (2, 16, 8, 64, 64),
+    (12, 24, 16, 16, 16),
+    (1, 2, 63, 65, 67),
+]
+
 SWIGLU_SPECIAL_SHAPES = (
     [(2, 19, 8)]
     if QUICK_MODE
