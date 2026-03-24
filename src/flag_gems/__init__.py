@@ -374,6 +374,8 @@ _FULL_CONFIG = (
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("special_i1", special_i1),
+    ("special_i0e", special_i0e),
+    ("special_i0e.out", special_i0e_out),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
     ("stack", stack),

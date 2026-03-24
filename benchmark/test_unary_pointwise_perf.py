@@ -57,6 +57,7 @@ forward_operations = [
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("sqrt", torch.sqrt, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
+    ("special_i0e", torch.ops.aten.special_i0e, FLOAT_DTYPES),
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     ("log", torch.log, FLOAT_DTYPES),
     ("special_i1", torch.special.i1, FLOAT_DTYPES),
