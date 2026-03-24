@@ -364,6 +364,8 @@ _FULL_CONFIG = (
     ("slice_scatter", slice_scatter),
     ("soft_margin_loss", soft_margin_loss),
     ("softplus", softplus),
+    ("softshrink", softshrink),
+    ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("special_i1", special_i1),

@@ -72,6 +72,7 @@ forward_operations = [
     ("relu6", torch.nn.functional.relu6, FLOAT_DTYPES),
     ("selu", torch.nn.functional.selu, FLOAT_DTYPES),
     ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
+    ("softshrink", torch.nn.functional.softshrink, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
