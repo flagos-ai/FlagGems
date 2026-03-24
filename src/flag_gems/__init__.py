@@ -197,6 +197,8 @@ _FULL_CONFIG = (
     ("glu_backward", glu_backward),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
+    ("hardsigmoid", hardsigmoid),
+    ("hardsigmoid.out", hardsigmoid_out),
     ("hardswish_", hardswish_),
     ("hstack", hstack),
     ("hypot", hypot),
