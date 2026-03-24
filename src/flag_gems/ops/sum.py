@@ -7,6 +7,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
@@ -310,6 +311,39 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS SUM_DIM")
+    # support dim = 0, which are consistent with PyTorch
+    if inp.numel() == 0:
+        if dtype is None:
+            dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
+
+        out_shape = list(inp.shape)
+        if dim is None:
+            if keepdim:
+                out_shape = [1] * len(out_shape)
+            else:
+                out_shape = []
+        elif isinstance(dim, (list, tuple)) and len(dim) == 0:
+            if keepdim:
+                out_shape = [1] * len(out_shape)
+            else:
+                out_shape = []
+        else:
+            dims_to_reduce = dim if isinstance(dim, (list, tuple)) else [dim]
+            if keepdim:
+                for d in dims_to_reduce:
+                    out_shape[d % inp.ndim] = 1
+            else:
+                sorted_dims_to_remove = sorted(
+                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
+                )
+                for d in sorted_dims_to_remove:
+                    index_to_remove = d % inp.ndim
+                    out_shape.pop(index_to_remove)
+        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+        zero_(out)
+        return out
     return sum_dim_comm(inp, dim, keepdim, dtype=dtype)
 
 
