@@ -291,6 +291,8 @@ _FULL_CONFIG = (
     ("ones_like", ones_like),
     ("one_hot", one_hot),
     ("pad", pad),
+    ("pixel_unshuffle", pixel_unshuffle),
+    ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("polar", polar),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),
