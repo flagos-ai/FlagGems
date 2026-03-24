@@ -2345,6 +2345,7 @@ def test_accuracy_t_copy_out(shape, dtype):
         act_out = torch.ops.aten.t_copy(x, out=act_out_buf)
     gems_assert_close(act_out, ref_out, dtype)
 
+
 @pytest.mark.safe_softmax
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("in_dtype", FLOAT_DTYPES)

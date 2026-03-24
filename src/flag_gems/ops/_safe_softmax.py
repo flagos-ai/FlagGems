@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def _safe_softmax_kernel(input_ptr, output_ptr, n_rows, n_cols, BLOCK_SIZE: tl.constexpr):
+def _safe_softmax_kernel(
+    input_ptr, output_ptr, n_rows, n_cols, BLOCK_SIZE: tl.constexpr
+):
     row_id = tl.program_id(0)
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < n_cols
