@@ -14,6 +14,8 @@
 
 import functools
 import logging
+import json
+import os
 from enum import Enum
 from typing import Any, Optional
 
@@ -22,7 +24,6 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from flag_gems.fused.fused_moe_config import _EMBEDDED_MOE_CONFIGS
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
 from flag_gems.utils import pointwise_dynamic
@@ -32,6 +33,26 @@ logger = logging.getLogger(__name__)
 # OCP MX quantization helpers (requires amd-quark)
 
 OCP_MX_BLOCK_SIZE = 32
+
+
+@functools.lru_cache(maxsize=1)
+def get_embedded_moe_configs():
+    config_path = os.path.join(os.path.dirname(__file__), "..", "utils", "configs", "fused_moe_config.json")
+    if not os.path.exists(config_path):
+        return {}
+    with open(config_path, "r") as f:
+        # JSON keys are strings, values are dicts where keys are M and values are configs
+        data = json.load(f)
+        
+        # We need to convert the innermost keys (which are stringified integers for M) back to integers.
+        # e.g., data["NVIDIA_A100"]["E,N,dtype,blockN,blockK"]["16"] -> data["..."]["..."][16]
+        parsed_data = {}
+        for dev, configs in data.items():
+            parsed_data[dev] = {}
+            for k, m_dict in configs.items():
+                parsed_data[dev][k] = {int(m): v for m, v in m_dict.items()}
+                
+        return parsed_data
 
 
 def dequant_mxfp4(
@@ -92,7 +113,8 @@ def _get_device_name() -> str:
     if "H200" in name.split("_"):
         name = "NVIDIA_H200"
     # H800 has the same SM 9.0 as H100; use H100 configs as fallback.
-    if name in _EMBEDDED_MOE_CONFIGS:
+    embedded_configs = get_embedded_moe_configs()
+    if name in embedded_configs:
         return name
     # Fallback mapping for devices whose tuning profiles are equivalent.
     _FALLBACK = {
@@ -102,7 +124,7 @@ def _get_device_name() -> str:
         "NVIDIA_A100-SXM4-40GB": "NVIDIA_A100-SXM4-40GB",
     }
     fallback = _FALLBACK.get(name)
-    if fallback and fallback in _EMBEDDED_MOE_CONFIGS:
+    if fallback and fallback in embedded_configs:
         logger.info("Device %s not in config table, falling back to %s", name, fallback)
         return fallback
     return name
@@ -122,7 +144,8 @@ def get_moe_configs(
     for the current GPU device. Returns None if no matching config is found.
     """
     device_name = _get_device_name()
-    device_table = _EMBEDDED_MOE_CONFIGS.get(device_name)
+    embedded_configs = get_embedded_moe_configs()
+    device_table = embedded_configs.get(device_name)
     if device_table is None:
         logger.warning(
             "No embedded MoE configs for device %s. Will use default config.",
@@ -132,7 +155,7 @@ def get_moe_configs(
 
     _block_n = block_n if block_n else 0
     _block_k = block_k if block_k else 0
-    key = (E, N, dtype, _block_n, _block_k)
+    key = f"{E},{N},{dtype},{_block_n},{_block_k}"
     configs = device_table.get(key)
     if configs is not None:
         logger.info("Using embedded MoE config for device=%s, key=%s", device_name, key)
