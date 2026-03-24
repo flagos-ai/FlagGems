@@ -191,6 +191,7 @@ _FULL_CONFIG = (
     ("hypot", hypot),
     ("i0", i0),
     ("i0.out", i0_out),
+    ("i0_", i0_),
     ("index.Tensor", index),
     ("index_add", index_add),
     ("index_add_", index_add_),
