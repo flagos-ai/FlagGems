@@ -120,6 +120,7 @@ forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
     ("ceil_", torch.ceil_, FLOAT_DTYPES),
     # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
+    ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),

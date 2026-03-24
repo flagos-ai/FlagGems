@@ -179,6 +179,7 @@ _FULL_CONFIG = (
     ("fill_.Scalar", fill_scalar_),
     ("fill_.Tensor", fill_tensor_),
     ("flip", flip),
+    ("floor_", floor_),
     ("floor_divide", floor_divide),
     ("floor_divide.Scalar", floor_divide),
     ("floor_divide_.Scalar", floor_divide_),
