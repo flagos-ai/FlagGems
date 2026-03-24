@@ -1493,6 +1493,20 @@ def test_accuracy_absolute(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.inplace
+@pytest.mark.log1p_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log1p_(shape, dtype):
+    torch.manual_seed(0)
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone())
+    ref_out = ref_inp.log1p_()
+    with flag_gems.use_gems():
+        res_out = inp.log1p_()
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.alias_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

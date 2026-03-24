@@ -235,6 +235,7 @@ _FULL_CONFIG = (
     ("linspace", linspace),
     ("log", log),
     ("log_sigmoid", log_sigmoid),
+    ("log1p_", log1p_),
     ("logaddexp", logaddexp),
     ("logaddexp.out", logaddexp_out),
     ("logical_and", logical_and),
