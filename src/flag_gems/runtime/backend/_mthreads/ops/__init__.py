@@ -18,6 +18,7 @@ from .log_softmax import log_softmax, log_softmax_backward
 from .max import max, max_dim
 from .min import min, min_dim
 from .normal import normal_
+from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .prod import prod, prod_dim
@@ -26,6 +27,7 @@ from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
+from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
     repeat_interleave_self_tensor,
@@ -33,6 +35,7 @@ from .repeat_interleave import (
 )
 from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
+from .tile import tile
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
@@ -44,6 +47,7 @@ __all__ = [
     "dropout_backward",
     "celu",
     # "celu_",
+    "one_hot",
     "ones",
     "ones_like",
     "randn",
@@ -59,6 +63,7 @@ __all__ = [
     "arange_start",
     "sort_stable",
     "randperm",
+    "repeat",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
@@ -87,6 +92,7 @@ __all__ = [
     "index_select",
     "resolve_conj",
     "normal_",
+    "tile",
 ]
 
 if get_device_capability(current_device())[0] >= 3:

@@ -307,6 +307,22 @@ def upsample_nearest2d_USE_INT32_IDX(args):
     return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)  # INT32 MAX
 
 
+def upsample_nearest3d_SAME_D(args):
+    return args["OD"] == args["ID"]
+
+
+def upsample_nearest3d_SAME_H(args):
+    return args["OH"] == args["IH"]
+
+
+def upsample_nearest3d_SAME_W(args):
+    return args["OW"] == args["IW"]
+
+
+def upsample_nearest3d_USE_INT32_IDX(args):
+    return args["N"] * args["C"] * args["OD"] * args["OH"] * args["OW"] <= (2**31 - 1)
+
+
 def batch_norm_heur_block_m(args):
     return min(2048, triton.next_power_of_2(args["batch_dim"]))
 
@@ -455,6 +471,12 @@ HEURISTICS_CONFIGS = {
         "SAME_H": upsample_nearest2d_SAME_H,
         "SAME_W": upsample_nearest2d_SAME_W,
         "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
+    },
+    "upsample_nearest3d": {
+        "SAME_D": upsample_nearest3d_SAME_D,
+        "SAME_H": upsample_nearest3d_SAME_H,
+        "SAME_W": upsample_nearest3d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest3d_USE_INT32_IDX,
     },
     "var_mean": {
         "BLOCK_N": var_mean_heur_block_n,

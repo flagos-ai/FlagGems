@@ -240,9 +240,8 @@ class KernelGenerator:
         self.fn_module = scalar_fn.__module__
 
     def gen_import_function(self, code: IndentedBuffer):
-        code.writeline(f'"""Quoted source of {self.fn_name}:')
+        code.writeline("@triton.jit")
         code.writemultiline(self.fn.src)
-        code.writeline('"""')
         code.newline()
 
     def gen_decorators(self, code):
@@ -1043,6 +1042,7 @@ class ModuleGenerator:
         config: CodeGenConfig,
     ):
         self.config = config
+        self.scalar_fn = scalar_fn
         self.wrapper_gen = WrapperGenerator(
             function_schema, jit_fn_name, ndim, wrapper_name, config
         )
@@ -1051,7 +1051,87 @@ class ModuleGenerator:
         )
 
     @staticmethod
-    def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    def _collect_jit_deps(scalar_fn):
+        """Collect extra imports and local @triton.jit helper sources.
+
+        Parses the source module where scalar_fn is defined using AST.
+        Returns a tuple of:
+          - extra_imports: dict of module_path -> set of names
+          - local_sources: list of source strings for local @triton.jit
+            functions (those NOT decorated with @pointwise_dynamic)
+        """
+        import ast
+        import inspect
+
+        py_fn = getattr(scalar_fn, "fn", scalar_fn)
+        module_name = getattr(py_fn, "__module__", None)
+        if not module_name:
+            return {}, []
+        try:
+            mod = importlib.import_module(module_name)
+            source_file = inspect.getfile(mod)
+        except (ImportError, TypeError, OSError):
+            return {}, []
+        try:
+            with open(source_file) as f:
+                module_source = f.read()
+            source_lines = module_source.splitlines(keepends=True)
+            tree = ast.parse(module_source)
+        except (OSError, SyntaxError):
+            return {}, []
+
+        # Collect non-standard import-from lines
+        ALREADY_IMPORTED = {
+            "math",
+            "typing",
+            "torch",
+            "triton",
+            "triton.language",
+            "flag_gems.utils.shape_utils",
+            "flag_gems.utils.tensor_wrapper",
+            "flag_gems.utils.libentry",
+            "flag_gems.utils",
+            "flag_gems.runtime",
+            "flag_gems.utils.pointwise_dynamic",
+        }
+        extra_imports = {}
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module in ALREADY_IMPORTED:
+                    continue
+                names = {alias.name for alias in node.names}
+                extra_imports.setdefault(node.module, set()).update(names)
+
+        # Collect local @triton.jit functions (without @pointwise_dynamic)
+        def _has_decorator(func_node, name):
+            for dec in func_node.decorator_list:
+                src = "".join(source_lines[dec.lineno - 1 : dec.end_lineno])
+                if name in src:
+                    return True
+            return False
+
+        def _extract_source(func_node):
+            start = func_node.lineno - 1
+            if func_node.decorator_list:
+                start = func_node.decorator_list[0].lineno - 1
+            end = func_node.end_lineno
+            return "".join(source_lines[start:end])
+
+        local_sources = []
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if not _has_decorator(node, "triton.jit") and not _has_decorator(
+                node, "jit"
+            ):
+                continue
+            if _has_decorator(node, "pointwise_dynamic"):
+                continue
+            local_sources.append(_extract_source(node))
+
+        return extra_imports, local_sources
+
+    def generate_imports(self, code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("import math")
         code.writeline("from typing import Union")
         code.writeline("import torch")
@@ -1067,12 +1147,25 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
+
+        # Generate extra imports and local JIT deps of the scalar function
+        jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
+        for module_path, names in sorted(jit_dep_imports.items()):
+            sorted_names = ", ".join(sorted(names))
+            code.writeline(f"from {module_path} import {sorted_names}")
+
         code.newline()
         code.newline()
+
+        # Emit local @triton.jit helper functions
+        for source in local_jit_sources:
+            for line in source.splitlines():
+                code.writeline(line)
+            code.newline()
+
         return code
 
     def codegen(self, code: IndentedBuffer):
-        # the only runtime determined factor is the rank of the task space
         code = self.generate_imports(code)
         if self.config.prefer_1d_tile:
             code = self.wrapper_gen.codegen_1d_tile(code)
