@@ -22,5 +22,5 @@ def ones_like(
     N = x.numel()
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
     with torch_device_fn.device(x.device):
-        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 32, num_warps=1)
+        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 16, num_warps=1)
     return out
