@@ -331,6 +331,7 @@ _FULL_CONFIG = (
     ("scatter_.src", scatter_),
     ("scatter_add_", scatter_add_),
     ("select_scatter", select_scatter),
+    ("selu_", selu_),
     ("sgn_", sgn_),
     ("sigmoid", sigmoid),
     ("sigmoid_", sigmoid_),
