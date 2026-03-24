@@ -151,6 +151,8 @@ forward_inplace_operations = [
     ("arctanh_", lambda a: a.arctanh_(), FLOAT_DTYPES),
 ("digamma_", lambda a: a.digamma_(), FLOAT_DTYPES),
 ("asinh_", lambda a: a.asinh_(), FLOAT_DTYPES),
+("digamma_", lambda a: a.digamma_(), FLOAT_DTYPES),
+    ("asinh_", lambda a: a.asinh_(), FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
 ]
