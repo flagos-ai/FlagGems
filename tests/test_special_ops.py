@@ -1920,7 +1920,7 @@ def test_accuracy_moe_align_block_size(
         (4, 0, 4, 0),
     ],
 )
-def test_reflection_pad2d_accuracy(shape, dtype, padding):
+def test_reflection_pad2d(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_x = to_reference(x)

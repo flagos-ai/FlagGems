@@ -1,8 +1,11 @@
+import logging
 import math
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -145,8 +148,10 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
 
 
 def reflection_pad2d(input: torch.Tensor, padding):
+    logger.debug("GEMS REFLECTION_PAD2D")
     return launch_reflection_pad2d(input, padding, out=None)
 
 
 def reflection_pad2d_out(input: torch.Tensor, padding, out: torch.Tensor):
+    logger.debug("GEMS REFLECTION_PAD2D_OUT")
     return launch_reflection_pad2d(input, padding, out=out)

@@ -283,6 +283,7 @@ _FULL_CONFIG = (
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad2d", reflection_pad2d),
+    ("reflection_pad2d.out", reflection_pad2d_out),
     ("relu", relu),
     ("relu_", relu_),
     ("remainder.Scalar", remainder),

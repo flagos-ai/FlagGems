@@ -182,7 +182,7 @@ from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
-from flag_gems.ops.reflection_pad2d import reflection_pad2d
+from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
@@ -463,6 +463,7 @@ __all__ = [
     "reciprocal",
     "reciprocal_",
     "reflection_pad2d",
+    "reflection_pad2d_out",
     "relu",
     "relu_",
     "remainder",
