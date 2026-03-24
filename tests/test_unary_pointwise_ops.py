@@ -1392,6 +1392,27 @@ def test_accuracy_absolute(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.rrelu_with_noise_backward
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_rrelu_with_noise_backward(shape, dtype):
+    grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    noise = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    lower, upper = 0.125, 1.0 / 3.0
+    ref_grad = to_reference(grad_output)
+    ref_inp = to_reference(inp)
+    ref_noise = to_reference(noise)
+    ref_out = torch.ops.aten.rrelu_with_noise_backward(
+        ref_grad, ref_inp, ref_noise, lower, upper, True, False
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.rrelu_with_noise_backward(
+            grad_output, inp, noise, lower, upper, True, False
+        )
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + COMPLEX_DTYPES)
