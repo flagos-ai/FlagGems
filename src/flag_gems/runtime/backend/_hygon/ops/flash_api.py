@@ -764,7 +764,7 @@ def mha_fwd(
                         (n_splits, B, H, Q), dtype=torch.float, device=q_device
                     )
                     out_splits = torch.empty(
-                        (n_splits, B, H, Q, D), dtype=torch.float, device=q_device
+                        (n_splits, B * H, Q, D), dtype=torch.float, device=q_device
                     )
                     grid = lambda args: (
                         triton.cdiv(Q, args["BLOCK_M"]),
@@ -774,6 +774,8 @@ def mha_fwd(
                     splitkv_kernel = flash_fwd_splitkv_kernel[grid]
                     params.o_ptr = out_splits
                     params.softmax_lse_ptr = lse_splits
+                    params.o_row_stride = D
+                    params.o_head_stride = Q * D
                     extra_args = {"blocks_per_split": triton.cdiv(n_blocks, n_splits)}
                     kernel = splitkv_kernel(*params.args(), **extra_args)
 
@@ -793,7 +795,7 @@ def mha_fwd(
                         "out_split_stride": out_splits.stride(0),
                         "lse_split_stride": lse_splits.stride(0),
                         "out_b_stride": out.stride(0),
-                        "out_s_stride": out.stride(-3),
+                        "out_s_stride": head_size,
                         "out_h_stride": out.stride(-1),
                         "out_splits_ptr": out_splits,
                         "lse_splits_ptr": lse_splits,
