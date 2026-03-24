@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def margin_ranking_loss(
+def _margin_ranking_loss_kernel(
     x1_ptr, x2_ptr, target_ptr, out_ptr, n_elements, margin, BLOCK_SIZE: tl.constexpr
 ):
     pid = tl.program_id(axis=0)
@@ -28,10 +28,6 @@ def margin_ranking_loss(
     loss = tl.maximum(val, zero)
 
     tl.store(out_ptr + offsets, loss, mask=mask)
-
-
-# Preserve a handle to the Triton kernel before defining the Python wrapper with the same name.
-_margin_ranking_loss_kernel = margin_ranking_loss
 
 
 def margin_ranking_loss(*args, **kwargs):
