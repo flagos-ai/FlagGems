@@ -424,6 +424,7 @@ _FULL_CONFIG = (
     ("zero_", zero_),
     ("zeros", zeros),
     ("zeros_like", zeros_like),
+    ("scatter_reduce.two", scatter_reduce),
 )
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
