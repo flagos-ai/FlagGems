@@ -6,7 +6,13 @@ import torch
 import triton
 
 import flag_gems
-from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.attri_util import (
+    BOOL_DTYPES,
+    COMPLEX_DTYPES,
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    BenchLevel,
+)
 from benchmark.performance_utils import (
     Benchmark,
     Config,
@@ -200,12 +206,29 @@ def resolve_conj_input_fn(shape, dtype, device):
     yield x.conj(),
 
 
+def conj_input_fn(shape, dtype, device):
+    x = torch.randn(size=shape, dtype=dtype, device=device)
+    yield x,
+
+
+def view_as_complex_input_fn(shape, dtype, device):
+    x = torch.randn(size=(*shape, 2), dtype=dtype, device=device)
+    yield x,
+
+
 special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
     # Complex Operations
+    ("conj", torch.conj, COMPLEX_DTYPES, conj_input_fn),
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
+    (
+        "view_as_complex",
+        torch.view_as_complex,
+        [torch.float32],
+        view_as_complex_input_fn,
+    ),
 ]
 
 
