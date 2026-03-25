@@ -344,6 +344,7 @@ MEAN_LARGE_INNERDIM_SHAPES = [
     (1024, 2048, 1024),  # dim=1 → M=1, N=4, K=262144 (well over limit)
 ]
 
+
 @pytest.mark.mean
 @pytest.mark.parametrize("shape", MEAN_LARGE_INNERDIM_SHAPES)
 @pytest.mark.parametrize("dim", [1])
@@ -358,7 +359,6 @@ def test_accuracy_mean_dim_large_innerdim(shape, dim, keepdim, dtype):
         res_out = torch.mean(inp, dim, keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
-
 
 
 @pytest.mark.min
