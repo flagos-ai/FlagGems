@@ -25,9 +25,9 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
-    "scatter_add_",
     "masked_scatter",
     "masked_scatter_",
+    "scatter_add_",
 )
 
 __all__ = ["*"]

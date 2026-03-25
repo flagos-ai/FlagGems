@@ -30,6 +30,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_unique2",
     "addmm",
     "amax",
     "arange",
@@ -63,7 +64,6 @@ __all__ = [
     "resolve_conj",
     "sigmoid",
     "tanh",
-    "_unique2",
     "upsample_nearest2d",
     "zeros",
     "zeros_like",
