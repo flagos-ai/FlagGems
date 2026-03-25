@@ -24,6 +24,7 @@ device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
+CUSTOM_DTYPE_CHOICES = ["fp8"]
 
 
 def emit_record_logger(message: str) -> None:
@@ -120,7 +121,8 @@ def pytest_addoption(parser):
         choices=[
             str(ele).split(".")[-1]
             for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]
-        ],
+        ]
+        + CUSTOM_DTYPE_CHOICES,
         help=(
             "Specify the data types for benchmarks. "
             "If not specified, the dtype items will vary according to the specified operation's category and name."
@@ -176,7 +178,14 @@ def pytest_configure(config):
     Config.repetition = int(iter_value)
 
     types_str = config.getoption("--dtypes")
-    dtypes = [getattr(torch, dtype) for dtype in types_str] if types_str else types_str
+    dtypes = (
+        [
+            dtype if dtype in CUSTOM_DTYPE_CHOICES else getattr(torch, dtype)
+            for dtype in types_str
+        ]
+        if types_str
+        else types_str
+    )
     Config.user_desired_dtypes = dtypes
 
     metrics = config.getoption("--metrics")

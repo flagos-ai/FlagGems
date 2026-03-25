@@ -442,9 +442,25 @@ class Benchmark:
             return []
 
         def estimate_shape_cost(shape):
-            if len(shape) == 4 and self.op_name in {"mm", "addmm", "bmm", "baddbmm"}:
-                _, m, n, k = shape
-                if self.op_name in {"mm", "bmm"}:
+            if self.op_name in {
+                "mm",
+                "addmm",
+                "bmm",
+                "baddbmm",
+                "w8a8_block_fp8_matmul",
+            }:
+                normalized_shape = shape
+                if len(shape) == 3:
+                    normalized_shape = (1, *shape)
+                if len(normalized_shape) == 4:
+                    _, m, n, k = normalized_shape
+                else:
+                    normalized_shape = None
+
+                if normalized_shape is None:
+                    return 1
+
+                if self.op_name in {"mm", "bmm", "w8a8_block_fp8_matmul"}:
                     return m * n * k * 2
                 return m * n * (2 * k + 1)
 
@@ -556,8 +572,10 @@ class Benchmark:
         completed = subprocess.run(cmd, capture_output=True, text=True, env=env)
 
         try:
-            with open(tmp_result_path, "rb") as rf:
-                result_payload = pickle.load(rf)
+            result_payload = None
+            if completed.returncode == 0:
+                with open(tmp_result_path, "rb") as rf:
+                    result_payload = pickle.load(rf)
         finally:
             if os.path.exists(tmp_shape_path):
                 os.remove(tmp_shape_path)
