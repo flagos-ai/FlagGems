@@ -1552,6 +1552,23 @@ def test_accuracy_rrelu_with_noise_backward(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.inplace
+@pytest.mark.logit_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logit_(shape, dtype):
+    torch.manual_seed(0)
+    base = torch.empty(shape, device=flag_gems.device, dtype=torch.float32).uniform_(
+        -4.0, 4.0
+    )
+    inp = torch.sigmoid(base).to(dtype=dtype)
+    ref_inp = to_reference(inp.clone(), True)
+    ref_out = ref_inp.logit_(eps=1e-6)
+    with flag_gems.use_gems():
+        res_out = inp.logit_(eps=1e-6)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.logit
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
