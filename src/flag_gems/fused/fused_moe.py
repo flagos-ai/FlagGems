@@ -13,8 +13,8 @@
 
 
 import functools
-import logging
 import json
+import logging
 import os
 from enum import Enum
 from typing import Any, Optional
@@ -37,13 +37,15 @@ OCP_MX_BLOCK_SIZE = 32
 
 @functools.lru_cache(maxsize=1)
 def get_embedded_moe_configs():
-    config_path = os.path.join(os.path.dirname(__file__), "..", "utils", "configs", "fused_moe_config.json")
+    config_path = os.path.join(
+        os.path.dirname(__file__), "..", "utils", "configs", "fused_moe_config.json"
+    )
     if not os.path.exists(config_path):
         return {}
     with open(config_path, "r") as f:
         # JSON keys are strings, values are dicts where keys are M and values are configs
         data = json.load(f)
-        
+
         # We need to convert the innermost keys (which are stringified integers for M) back to integers.
         # e.g., data["NVIDIA_A100"]["E,N,dtype,blockN,blockK"]["16"] -> data["..."]["..."][16]
         parsed_data = {}
@@ -51,7 +53,7 @@ def get_embedded_moe_configs():
             parsed_data[dev] = {}
             for k, m_dict in configs.items():
                 parsed_data[dev][k] = {int(m): v for m, v in m_dict.items()}
-                
+
         return parsed_data
 
 
@@ -162,7 +164,8 @@ def get_moe_configs(
         return configs
     logger.warning(
         "No embedded MoE config for device=%s, key=%s. Will use default config.",
-        device_name, key,
+        device_name,
+        key,
     )
     return None
 
@@ -1039,8 +1042,6 @@ def fused_moe_kernel(
     c_ptrs = c_ptr + stride_cm * offs_token[:, None] + stride_cn * offs_cn[None, :]
     c_mask = token_mask[:, None] & (offs_cn[None, :] < N)
     tl.store(c_ptrs, accumulator, mask=c_mask)
-
-
 
 
 def invoke_fused_moe_wna16_triton_kernel(
