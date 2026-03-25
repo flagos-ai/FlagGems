@@ -77,6 +77,7 @@ class Benchmark:
     DEFAULT_SHAPES = DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+    SHAPE_CONFIG_KEYS = ()
     """
     the base class for the operations benchmark
     """
@@ -173,26 +174,17 @@ class Benchmark:
         try:
             with open(shape_file_path, "r") as file:
                 yaml_config = yaml.safe_load(file)
-                if self.op_name in yaml_config:
-                    self.shapes = yaml_config[self.op_name].get(
-                        "shapes", self.DEFAULT_SHAPES
-                    )
-                    self.shape_desc = yaml_config[self.op_name].get(
-                        "shape_desc", self.DEFAULT_SHAPE_DESC
-                    )
+                for shape_key in self._get_shape_config_keys():
+                    if shape_key in yaml_config:
+                        self.shapes = yaml_config[shape_key].get(
+                            "shapes", self.DEFAULT_SHAPES
+                        )
+                        self.shape_desc = yaml_config[shape_key].get(
+                            "shape_desc", self.DEFAULT_SHAPE_DESC
+                        )
+                        break
                 else:
-                    for cls in type(self).__mro__:
-                        class_name = cls.__name__
-                        if class_name in yaml_config:
-                            self.shapes = yaml_config[class_name].get(
-                                "shapes", self.DEFAULT_SHAPES
-                            )
-                            self.shape_desc = yaml_config[class_name].get(
-                                "shape_desc", self.DEFAULT_SHAPE_DESC
-                            )
-                            break
-                    else:
-                        self.shapes = self.DEFAULT_SHAPES
+                    self.shapes = self.DEFAULT_SHAPES
 
             self.shapes = [tuple(shape) for shape in self.shapes]
             if vendor_name == "kunlunxin":
@@ -424,17 +416,22 @@ class Benchmark:
         return metrics
 
     def _resolve_shape_config_key(self, yaml_config):
-        if self.op_name in yaml_config:
-            return self.op_name
-        for cls in type(self).__mro__:
-            class_name = cls.__name__
-            if class_name in yaml_config:
-                return class_name
-        yaml_config[self.op_name] = {
+        shape_keys = self._get_shape_config_keys()
+        for shape_key in shape_keys:
+            if shape_key in yaml_config:
+                return shape_key
+
+        preferred_shape_key = shape_keys[0]
+        yaml_config[preferred_shape_key] = {
             "shapes": [list(shape) for shape in self.shapes],
             "shape_desc": self.shape_desc,
         }
-        return self.op_name
+        return preferred_shape_key
+
+    def _get_shape_config_keys(self):
+        shape_keys = list(self.SHAPE_CONFIG_KEYS) + [self.op_name]
+        shape_keys.extend(cls.__name__ for cls in type(self).__mro__)
+        return list(dict.fromkeys(key for key in shape_keys if key))
 
     def _split_shapes_evenly(self, num_buckets: int):
         indexed_shapes = list(enumerate(self.shapes))

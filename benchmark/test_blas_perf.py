@@ -161,15 +161,6 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         yield inp1, inp2
 
 
-W8A8_BLOCK_FP8_MNK_SHAPES = [
-    (64, 128, 128),
-    (128, 256, 512),
-    (1, 4096, 7168),
-    (16, 4096, 7168),
-    (64, 4096, 7168),
-    (83, 7748, 3884),
-    (84, 7168, 3884),
-]
 W8A8_BLOCK_FP8_BLOCK_SIZE = [128, 128]
 
 
@@ -200,6 +191,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
     """
 
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    SHAPE_CONFIG_KEYS = ("mm", "BlasBenchmark")
 
     def __init__(self, *args, block_size=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -209,7 +201,20 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
         self.shape_desc = "M, N, K"
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = W8A8_BLOCK_FP8_MNK_SHAPES[:]
+        super().set_shapes(shape_file_path)
+        normalized_shapes = []
+        for shape in self.shapes:
+            if len(shape) == 4:
+                _, m, n, k = shape
+                normalized_shapes.append((m, n, k))
+            elif len(shape) == 3:
+                normalized_shapes.append(shape)
+            else:
+                raise ValueError(
+                    "w8a8_block_fp8_matmul benchmark expects shapes in (M, N, K) "
+                    "or (B, M, N, K) format."
+                )
+        self.shapes = normalized_shapes
         self.shape_desc = "M, N, K"
 
     def get_input_iter(self, cur_dtype) -> Generator:
