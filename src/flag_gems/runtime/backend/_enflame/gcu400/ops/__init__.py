@@ -55,6 +55,7 @@ from .elu import elu
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .exp import exp, exp_
+from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
@@ -82,6 +83,7 @@ from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
+from .logspace import logspace
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
@@ -96,7 +98,7 @@ from .multinomial import multinomial
 from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
-from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
+from .normal import normal_, normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
@@ -107,6 +109,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .randn import randn
 from .randn_like import randn_like
 from .reciprocal import reciprocal, reciprocal_
 from .relu import relu, relu_
@@ -292,6 +295,7 @@ __all__ = [
     "nan_to_num",
     "neg",
     "neg_",
+    "normal_",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
@@ -332,4 +336,7 @@ __all__ = [
     "gather",
     "gather_backward",
     "randn_like",
+    "randn",
+    "exponential_",
+    "logspace",
 ]

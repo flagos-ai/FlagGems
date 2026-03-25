@@ -5,10 +5,9 @@ import triton
 
 from .randn import randn_kernel
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems.utils.shape_utils import broadcast_shapes, volume
-
-from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 UNROLL = 4
@@ -46,8 +45,9 @@ def transform_func_float_float(val, std, mean):
     return val * std + mean
 
 
-def normal_distribution(shape, device, *, generator=None):
-    out = torch.empty(shape, device=device, dtype=torch.float32)
+def normal_distribution(shape, device, *, generator=None, out=None):
+    if out is None:
+        out = torch.empty(shape, device=device, dtype=torch.float32)
     N = volume(shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
@@ -82,3 +82,12 @@ def normal_float_tensor(mean, std, *, generator=None):
     device = std.device
     out = normal_distribution(shape, device)
     return transform_func_float_tensor(out, std, mean)
+
+
+def normal_(self, mean=0, std=1, *, generator=None):
+    logger.debug("GEMS NORMAL_")
+    shape = self.shape
+    device = self.device
+    self = normal_distribution(shape, device, generator=None, out=self)
+    transform_func_float_float(self, std, mean, out0=self)
+    return self
