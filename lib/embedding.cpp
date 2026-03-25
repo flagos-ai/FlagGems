@@ -3,7 +3,7 @@
 
 #include <iostream>
 #include <tuple>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -30,8 +30,8 @@ at::Tensor embedding(const at::Tensor &weight,
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
                                       "embedding_kernel");
   c10::DeviceGuard guard(output.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
   /*
   def embedding_kernel(
       out_ptr,  # pointer to the output
@@ -79,8 +79,8 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
         TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
                                         "indice_freq_kernel");
     c10::DeviceGuard guard(grad_outputs.device());
-    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    CUstream raw_stream = static_cast<CUstream>(stream.stream());
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
     /*
     def indice_freq_kernel(
         indices_freq,
@@ -105,8 +105,8 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
                                       "embedding_backward_kernel");
   c10::DeviceGuard guard(grad_outputs.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
   /*
   def embedding_backward_kernel(
       grad_in,  # pointer to the gradient input
@@ -135,8 +135,8 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
         TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "embedding.py"),
                                         "embedding_grad_scale_kernel");
     c10::DeviceGuard guard(grad_outputs.device());
-    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    CUstream raw_stream = static_cast<CUstream>(stream.stream());
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
     /*
     def embedding_grad_scale_kernel(
         grad_out,

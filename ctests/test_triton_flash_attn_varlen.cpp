@@ -9,7 +9,9 @@
 #include <optional>
 #include <tuple>
 #include <vector>
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 at::Tensor ref_paged_attn_cpp(const at::Tensor& query,
@@ -165,7 +167,7 @@ class FlashAttnVarlenParamTest : public ::testing::TestWithParam<VarlenParams> {
 
 TEST_P(FlashAttnVarlenParamTest, MatchesReference) {
   torch::manual_seed(1234567890);
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   const std::vector<std::pair<int64_t, int64_t>> seq_lens = {
       {  1, 1328},
@@ -291,7 +293,7 @@ class FlashAttnVarlenSwapQGParamTest : public ::testing::TestWithParam<SwapParam
 
 TEST_P(FlashAttnVarlenSwapQGParamTest, MatchesReference) {
   torch::manual_seed(1234567890);
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
 
   const std::vector<std::pair<int64_t, int64_t>> seq_lens = {
       {1, 1328},
@@ -370,7 +372,6 @@ TEST_P(FlashAttnVarlenSwapQGParamTest, MatchesReference) {
                                              /*attn_bias*/ std::nullopt,
                                              /*sliding_window*/ std::nullopt,
                                              soft_cap_opt);
-
   EXPECT_TRUE(torch::allclose(op_output, ref_output, /*rtol=*/1e-2, /*atol=*/2e-2));
 }
 

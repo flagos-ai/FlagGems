@@ -4,7 +4,7 @@
 
 ### v4.2 (upcoming)
 
-- release targeting 216 operators, aligned with the updated [Operator List](./docs/operators.md)
+- release targeting 216 operators, aligned with the updated [Operator List](./operators.md)
 - additions: `tan`, `tan_`, `baddbmm`, `avg_pool2d`, `clamp_min`, `clamp_min_`, `std`, `trace`, `max_pool2d`, `bitwise_left_shift`, `bitwise_right_shift`
 - the previous `upsample` operator will be split into `upsample_nearest2d` and `upsample_bicubic2d_aa`
 
@@ -28,21 +28,39 @@
 
 ### v2.1
 
-- support Tensor operators: where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
-- support neural network operator: embedding
-- support basic math operators: allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
-- support distribution operators: normal, uniform\_, exponential\_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
-- support science operators: erf, resolve_conj, resolve_neg
+- support Tensor operators:
+  `where`, `arange`, `repeat`, `masked_fill`, `tile`, `unique`,
+  `index_select`, `masked_select`, `ones`, `ones_like`, `zeros`,
+  `zeros_like`, `full`, `full_like`, `flip`, `pad`
+- support neural network operator: `embedding`
+- support basic math operators:
+  `allclose`, `isclose`, `isfinite`, `floor_divide`, `trunc_divide`,
+  `maximum`, `minimum`
+- support distribution operators:
+  `normal`, `uniform_`, `exponential_`, `multinomial`, `nonzero`,
+  `topk`, `rand`, `randn`, `rand_like`, `randn_like`
+- support science operators: `erf`, `resolve_conj`, `resolve_neg`
 
 ### v2.0
 
-- support BLAS operators: mv, outer
-- support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
-- support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
-- support fused operators: fused_add_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+- support BLAS operators: `mv`, `outer`
+- support pointwise operators:
+  `bitwise_and`, `bitwise_not`, `bitwise_or`, `cos`, `clamp`,
+  `eq`, `ge`, `gt`, `isinf`, `isnan`, `le`, `lt`, `ne`, `neg`,
+  `or`, `sin`, `tanh`, `sigmoid`
+- support reduction operators:
+  `all`, `any`, `amax`, `argmax`, `max`, `min`, `prod`, `sum`,
+  `var_mean`, `vector_norm`, `cross_entropy_loss`, `group_norm`,
+  `log_softmax`, `rms_norm`
+- support fused operators:
+  `fused_add_rms_norm`, `skip_layer_norm`, `gelu_and_mul`,
+  `silu_and_mul`, `apply_rotary_position_embedding`
 
 ### v1.0
 
-- support BLAS operators: addmm, bmm, mm
-- support pointwise operators: abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
-- support reduction operators: cumsum, layernorm, mean, softmax
+- support BLAS operators: `addmm`, `bmm`, `mm`
+- support pointwise operators:
+  `abs`, `add`, `div`, `dropout`, `exp`, `gelu`, `mul`, `pow`,
+  `reciprocal`, `relu`, `rsqrt`, `silu`, `sub`, `triu`
+- support reduction operators:
+  `cumsum`, `layernorm`, `mean`, `softmax`

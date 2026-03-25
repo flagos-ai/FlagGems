@@ -36,6 +36,18 @@ def cat(
     if len(A) == 1:
         return A[0]
 
+    # remove torch.Size([0]) tensors
+    device = A[0].device
+    dtype = A[0].dtype
+    A = list(A)
+    for i in range(len(A) - 1, -1, -1):
+        if A[i].shape == torch.Size([0]):
+            A.pop(i)
+    if len(A) == 0:
+        return torch.tensor([], device=device, dtype=dtype)
+    elif len(A) == 1:
+        return A[0]
+
     assert dim >= -A[0].ndim and dim < A[0].ndim, f"Invalid dim: {dim}"
     # Convert negative dim to positive
     dim = dim % A[0].ndim

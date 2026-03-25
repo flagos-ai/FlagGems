@@ -8,7 +8,7 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems." + __name__)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -52,9 +52,6 @@ def generate_index_put_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
     code.writeline("@libentry()")
-    code.writeline(
-        '@triton.autotune(configs=runtime.get_tuned_config("index_put"), key=["M", "N"], restore_value=["input_ptr"])'
-    )
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
@@ -74,8 +71,8 @@ def generate_index_put_kernel(
             "M,",
             "N,",
             "IS_ACCUMULATE: tl.constexpr,",
-            "BLOCK_SIZE0: tl.constexpr,",
-            "BLOCK_SIZE1: tl.constexpr,",
+            "BLOCK_SIZE0: tl.constexpr = 2,",
+            "BLOCK_SIZE1: tl.constexpr = 2048,",
         ]
         code.writelines(args)
     code.writeline("):")

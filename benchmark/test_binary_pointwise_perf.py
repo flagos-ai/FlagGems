@@ -3,7 +3,13 @@ from typing import Generator
 import pytest
 import torch
 
-from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
+from benchmark.attri_util import (
+    BOOL_DTYPES,
+    COMPLEX_DTYPES,
+    DEFAULT_METRICS,
+    FLOAT_DTYPES,
+    INT_DTYPES,
+)
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 
@@ -44,7 +50,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Arithmetic operations
             ("add", torch.add, FLOAT_DTYPES),
             ("div", torch.div, FLOAT_DTYPES),
-            ("mul", torch.mul, FLOAT_DTYPES),
+            ("mul", torch.mul, FLOAT_DTYPES + COMPLEX_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
             ("pow", torch.pow, FLOAT_DTYPES),
             ("polar", torch.polar, [torch.float32]),
@@ -55,6 +61,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
             # Comparison operations
             ("eq", torch.eq, FLOAT_DTYPES),
+            ("equal", torch.equal, FLOAT_DTYPES),
             ("ge", torch.ge, FLOAT_DTYPES),
             ("gt", torch.gt, FLOAT_DTYPES),
             ("le", torch.le, FLOAT_DTYPES),
@@ -63,12 +70,16 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Minimum and maximum operations
             ("maximum", torch.maximum, FLOAT_DTYPES),
             ("minimum", torch.minimum, FLOAT_DTYPES),
+            ("hypot", torch.hypot, FLOAT_DTYPES),
+            ("fmin", torch.fmin, FLOAT_DTYPES),
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
+            # Log operations
+            ("logaddexp", torch.logaddexp, FLOAT_DTYPES),
         ]
     ],
 )
@@ -95,6 +106,8 @@ def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
             ("pow_", lambda a, b: a.pow_(b), FLOAT_DTYPES),
             ("floor_divide_", lambda a, b: a.floor_divide_(b), INT_DTYPES),
             ("remainder_", lambda a, b: a.remainder_(b), INT_DTYPES),
+            ("logical_or_", lambda a, b: a.logical_or_(b), INT_DTYPES + BOOL_DTYPES),
+            ("logical_and_", lambda a, b: a.logical_and_(b), INT_DTYPES + BOOL_DTYPES),
             # Bitwise operations
             ("bitwise_and_", lambda a, b: a.bitwise_and_(b), INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or_", lambda a, b: a.bitwise_or_(b), INT_DTYPES + BOOL_DTYPES),

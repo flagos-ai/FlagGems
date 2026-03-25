@@ -60,6 +60,10 @@ def check_dtype(fill_value, dtype, device):
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
     logger.debug("GEMS FULL")
+    if size == [0]:
+        out = torch.empty(size, device=device, dtype=dtype)
+        return out
+
     if device is None:
         device = torch.device("cpu")
     if dtype is None:

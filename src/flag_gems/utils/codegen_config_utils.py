@@ -39,6 +39,25 @@ def cambricon_heuristics_for_num_warps(tile_size):
     return 1
 
 
+def tsingmicro_heuristics_for_num_warps(tile_size):
+    return 1
+
+
+def sunrise_heuristics_for_num_warps(tile_size):
+    if tile_size < 1024:
+        return 4
+    elif tile_size < 2048:
+        return 8
+    elif tile_size < 4096:
+        return 16
+    else:
+        return 32
+
+
+def enflame_heuristics_for_num_warps(tile_size):
+    return 4
+
+
 @dataclass
 class CodeGenConfig:
     max_tile_size: int
@@ -109,6 +128,20 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
+    vendors.TSINGMICRO: CodeGenConfig(
+        4096,
+        (16, 16, 16),
+        1,
+        True,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
+    vendors.ENFLAME: CodeGenConfig(
+        512 * 8,
+        (12, 1, 1),
+        4,
+        True,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
 }
 
 HEURISTICS_CONFIG = {
@@ -116,6 +149,9 @@ HEURISTICS_CONFIG = {
     vendors.METAX: metax_heuristics_for_num_warps,
     vendors.CAMBRICON: cambricon_heuristics_for_num_warps,
     vendors.HYGON: hygon_heuristics_for_num_warps,
+    vendors.TSINGMICRO: tsingmicro_heuristics_for_num_warps,
+    vendors.SUNRISE: sunrise_heuristics_for_num_warps,
+    vendors.ENFLAME: enflame_heuristics_for_num_warps,
 }
 
 

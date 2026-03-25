@@ -357,6 +357,7 @@ def flash_fwd_kernel(
     window_size_left: tl.constexpr,
     window_size_right: tl.constexpr,
     seqlenq_ngroups_swapped: tl.constexpr,
+    is_paged: tl.constexpr,
     # alibi
     is_alibi: tl.constexpr,
     alibi_slopes_ptr,
@@ -817,6 +818,7 @@ def flash_fwd_splitkv_kernel(
     window_size_left: tl.constexpr,
     window_size_right: tl.constexpr,
     seqlenq_ngroups_swapped: tl.constexpr,
+    is_paged: tl.constexpr,
     # alibi
     is_alibi: tl.constexpr,
     alibi_slopes_ptr,
@@ -1201,15 +1203,19 @@ def load_from_kvcache(
     k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
     v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
     if d == BLOCK_K:
-        bK = tl.load(k_ptr_base + k_offset)
-        bV = tl.load(v_ptr_base + v_offset)
+        bK_mask = virtual_index[None, :] < max_virtual_index[None, :]
+        bV_mask = virtual_index[:, None] < max_virtual_index[:, None]
+        bK = tl.load(k_ptr_base + k_offset, mask=bK_mask, other=0.0)
+        bV = tl.load(v_ptr_base + v_offset, mask=bV_mask, other=0.0)
     else:
-        bK = tl.load(
-            k_ptr_base + k_offset, mask=tl.arange(0, BLOCK_K)[:, None] < d, other=0.0
+        bK_mask = (tl.arange(0, BLOCK_K)[:, None] < d) & (
+            virtual_index[None, :] < max_virtual_index[None, :]
         )
-        bV = tl.load(
-            v_ptr_base + v_offset, mask=tl.arange(0, BLOCK_K)[None, :] < d, other=0.0
+        bV_mask = (tl.arange(0, BLOCK_K)[None, :] < d) & (
+            virtual_index[:, None] < max_virtual_index[:, None]
         )
+        bK = tl.load(k_ptr_base + k_offset, mask=bK_mask, other=0.0)
+        bV = tl.load(v_ptr_base + v_offset, mask=bV_mask, other=0.0)
     return bK, bV
 
 
@@ -1284,6 +1290,7 @@ def flash_varlen_fwd_kernel(
     window_size_left: tl.constexpr,
     window_size_right: tl.constexpr,
     seqlenq_ngroups_swapped: tl.constexpr,
+    is_paged: tl.constexpr,
     # alibi
     is_alibi: tl.constexpr,
     alibi_slopes_ptr,
@@ -1361,7 +1368,8 @@ def flash_varlen_fwd_kernel(
         philox_offset = tl.load(philox_args + 1).to(tl.uint64)
 
     # Locate the page table entry for the current batch element
-    page_table_ptr += bid * page_table_batch_stride
+    if is_paged:
+        page_table_ptr += bid * page_table_batch_stride
     # Calculate the starting offset of q for the current head
     q_row_offset = hid * q_head_stride
     # Calculate the starting offset of k and v for the current head
@@ -1404,18 +1412,42 @@ def flash_varlen_fwd_kernel(
     n_block = n_block_max - 1
     for step in tl.range(0, n_masking_steps):
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-        bK, bV = load_from_kvcache(
-            col_idx,
-            k_len,
-            page_table_ptr,
-            k_ptr_base,
-            v_ptr_base,
-            block_size,
-            d,
-            k_row_stride,
-            BLOCK_K=BLOCK_K,
-            boundary_check=True,
-        )
+        if is_paged:
+            bK, bV = load_from_kvcache(
+                col_idx,
+                k_len,
+                page_table_ptr,
+                k_ptr_base,
+                v_ptr_base,
+                block_size,
+                d,
+                k_row_stride,
+                BLOCK_K=BLOCK_K,
+                boundary_check=True,
+            )
+        else:
+            start_n = n_block * BLOCK_N
+            k_ptr_seq = k_ptr_base + k_bos * k_row_stride
+            v_ptr_seq = v_ptr_base + k_bos * k_row_stride
+            gK = tl.make_block_ptr(
+                base=k_ptr_seq,
+                shape=(k_len, d),
+                strides=(k_row_stride, 1),
+                offsets=(start_n, 0),
+                block_shape=(BLOCK_N, BLOCK_K),
+                order=(0, 1),
+            )
+            gV = tl.make_block_ptr(
+                base=v_ptr_seq,
+                shape=(k_len, d),
+                strides=(k_row_stride, 1),
+                offsets=(start_n, 0),
+                block_shape=(BLOCK_N, BLOCK_K),
+                order=(0, 1),
+            )
+            bK = tl.load(gK, boundary_check=(0, 1))
+            bK = tl.trans(bK)
+            bV = tl.load(gV, boundary_check=(0, 1))
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         S = apply_alibi(
@@ -1476,17 +1508,41 @@ def flash_varlen_fwd_kernel(
         n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1
     ):
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-        bK, bV = load_from_kvcache(
-            col_idx,
-            k_len,
-            page_table_ptr,
-            k_ptr_base,
-            v_ptr_base,
-            block_size,
-            d,
-            k_row_stride,
-            BLOCK_K=BLOCK_K,
-        )
+        if is_paged:
+            bK, bV = load_from_kvcache(
+                col_idx,
+                k_len,
+                page_table_ptr,
+                k_ptr_base,
+                v_ptr_base,
+                block_size,
+                d,
+                k_row_stride,
+                BLOCK_K=BLOCK_K,
+            )
+        else:
+            start_n = n_block * BLOCK_N
+            k_ptr_seq = k_ptr_base + k_bos * k_row_stride
+            v_ptr_seq = v_ptr_base + k_bos * k_row_stride
+            gK = tl.make_block_ptr(
+                base=k_ptr_seq,
+                shape=(k_len, d),
+                strides=(k_row_stride, 1),
+                offsets=(start_n, 0),
+                block_shape=(BLOCK_N, BLOCK_K),
+                order=(0, 1),
+            )
+            gV = tl.make_block_ptr(
+                base=v_ptr_seq,
+                shape=(k_len, d),
+                strides=(k_row_stride, 1),
+                offsets=(start_n, 0),
+                block_shape=(BLOCK_N, BLOCK_K),
+                order=(0, 1),
+            )
+            bK = tl.load(gK)
+            bK = tl.trans(bK)
+            bV = tl.load(gV)
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         S = apply_alibi(

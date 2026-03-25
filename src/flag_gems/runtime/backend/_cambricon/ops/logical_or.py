@@ -8,12 +8,20 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@pointwise_dynamic(
+    is_tensor=[True, True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")]
+)
 @triton.jit
-def logical_or_func(x, y):
+def logical_or_func(x, y, inplace):
     return x.to(tl.int1).logical_or(y.to(tl.int1))
 
 
 def logical_or(A, B):
     logger.debug("GEMS_CAMBRICON LOGICAL_OR")
-    return logical_or_func(A, B)
+    return logical_or_func(A, B, False)
+
+
+def logical_or_(A, B):
+    logger.debug("GEMS_CAMBRICON LOGICAL_OR_")
+    logical_or_func(A, B, True, out0=A)
+    return A

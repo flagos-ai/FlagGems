@@ -1,13 +1,15 @@
 #include <gtest/gtest.h>
 #include "c10/util/Logging.h"
+#include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 class topktest
     : public ::testing::TestWithParam<std::tuple<int64_t, int64_t, int64_t, bool, torch::ScalarType>> {};
 
 TEST_P(topktest, CompareWithPyTorch) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto [batch_size, hiddensize, topk, largest, dtype] = GetParam();
   auto options = torch::TensorOptions().dtype(dtype).device(device).requires_grad(false);
   torch::Tensor x = torch::arange(0, hiddensize, options).repeat({batch_size, 1});
@@ -21,8 +23,11 @@ TEST_P(topktest, CompareWithPyTorch) {
   auto [out_weight_torch, out_index_torch] = at::topk(x, topk, -1, largest, true);
   auto [out_weight_triton, out_index_triton] = flag_gems::topk(x, topk, -1, largest, true);
 
-  EXPECT_TRUE(torch::allclose(out_weight_torch, out_weight_triton));
-  EXPECT_TRUE(torch::equal(out_index_torch, out_index_triton));
+  auto weight_result = flag_gems::accuracy_utils::gems_assert_close(out_weight_triton, out_weight_torch);
+  auto index_result = flag_gems::accuracy_utils::gems_assert_equal(out_index_triton, out_index_torch);
+
+  EXPECT_TRUE(weight_result.ok) << weight_result.message;
+  EXPECT_TRUE(index_result.ok) << index_result.message;
 }
 
 INSTANTIATE_TEST_SUITE_P(special_op_test,

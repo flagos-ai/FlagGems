@@ -1,13 +1,16 @@
 import math
 import os
 import random
+from typing import Generator
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
-from benchmark.attri_util import BenchLevel
+from benchmark.attri_util import FLOAT_DTYPES, BenchLevel
 from benchmark.performance_utils import (
+    Benchmark,
     Config,
     GenericBenchmark,
     SkipVersion,
@@ -40,6 +43,24 @@ def full_like_input_fn(shape, dtype, device):
 def fill_input_fn(shape, dtype, device):
     input = torch.empty(shape, dtype=dtype, device=device)
     yield input, 3.14159,
+
+
+def fill_scalar_out_input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    out = torch.empty_like(input)
+    yield input, 3.14159, {"out": out}
+
+
+def fill_tensor_out_input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    value = torch.tensor(3.14159, dtype=dtype, device=device)
+    out = torch.empty_like(input)
+    yield input, value, {"out": out}
+
+
+def zero__input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    yield input,
 
 
 def arange_input_fn(shape, dtype, device):
@@ -121,6 +142,7 @@ tensor_constructor_operations = [
     ("randn", torch.randn, generic_constructor_input_fn),
     ("ones", torch.ones, generic_constructor_input_fn),
     ("zeros", torch.zeros, generic_constructor_input_fn),
+    ("zero_", torch.zero_, zero__input_fn),
     # generic tensor-like constructor
     ("rand_like", torch.rand_like, unary_input_fn),
     ("randn_like", torch.randn_like, unary_input_fn),
@@ -128,6 +150,8 @@ tensor_constructor_operations = [
     ("zeros_like", torch.zeros_like, unary_input_fn),
     # tensor constructor with given value
     ("fill", torch.fill, fill_input_fn),
+    ("fill_scalar_out", torch.ops.aten.fill.Scalar_out, fill_scalar_out_input_fn),
+    ("fill_tensor_out", torch.ops.aten.fill.Tensor_out, fill_tensor_out_input_fn),
     ("masked_fill", torch.masked_fill, masked_fill_input_fn),
     ("full", torch.full, full_input_fn),
     ("full_like", torch.full_like, full_like_input_fn),
@@ -203,3 +227,53 @@ def test_perf_randperm():
 
     if flag_gems.vendor_name == "mthreads":
         del os.environ["DISABLE_LLVM_OPT"]
+
+
+def one_hot_input_fn(shape, dtype, device):
+    if not isinstance(shape, tuple):
+        return
+    numel = math.prod(shape)
+    if numel == 0:
+        return
+
+    num_classes_list = (
+        [16, 64] if Config.bench_level != BenchLevel.COMPREHENSIVE else [16, 64, 256]
+    )
+    max_output_elems = 100_000_000
+
+    for num_classes in num_classes_list:
+        if numel * num_classes > max_output_elems:
+            continue
+        inp = torch.randint(0, num_classes, shape, device=device, dtype=torch.int64)
+        inp.view(-1)[0] = num_classes - 1
+        yield inp, num_classes
+        yield inp, -1
+
+
+@pytest.mark.one_hot
+def test_perf_one_hot():
+    bench = GenericBenchmark(
+        input_fn=one_hot_input_fn,
+        op_name="one_hot",
+        torch_op=F.one_hot,
+        dtypes=[torch.int64],
+    )
+    bench.run()
+
+
+class ZeroBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
+
+
+@pytest.mark.zero
+def test_perf_zero():
+    bench = ZeroBenchmark(
+        op_name="zero",
+        torch_op=torch.ops.aten.zero,
+        dtypes=FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
