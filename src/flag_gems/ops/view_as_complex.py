@@ -1,8 +1,29 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _view_as_complex_kernel(inp_ptr, out_ptr, n_elem, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elem
+
+    in_real_offsets = offsets * 2
+    in_imag_offsets = in_real_offsets + 1
+    out_real_offsets = offsets * 2
+    out_imag_offsets = out_real_offsets + 1
+
+    real = tl.load(inp_ptr + in_real_offsets, mask=mask)
+    imag = tl.load(inp_ptr + in_imag_offsets, mask=mask)
+    tl.store(out_ptr + out_real_offsets, real, mask=mask)
+    tl.store(out_ptr + out_imag_offsets, imag, mask=mask)
 
 
 def view_as_complex(A: torch.Tensor):
@@ -11,6 +32,21 @@ def view_as_complex(A: torch.Tensor):
         raise RuntimeError(
             "view_as_complex is only supported for float32 and float64 tensors"
         )
-    if A.shape[-1] != 2:
+    if A.ndim < 1 or A.shape[-1] != 2:
         raise RuntimeError("Tensor must have a last dimension of size 2")
-    return torch.complex(A[..., 0], A[..., 1])
+
+    if A.stride(-1) != 1:
+        raise RuntimeError("Tensor must have a last dimension with stride 1")
+
+    out_dtype = torch.complex64 if A.dtype == torch.float32 else torch.complex128
+    out = torch.empty(A.shape[:-1], device=A.device, dtype=out_dtype)
+    n_elem = out.numel()
+    if n_elem == 0:
+        return out
+
+    inp = A.contiguous().view(-1)
+    out_view = out.view(A.dtype).view(-1)
+    grid = lambda meta: (triton.cdiv(n_elem, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(A.device):
+        _view_as_complex_kernel[grid](inp, out_view, n_elem, BLOCK_SIZE=1024)
+    return out

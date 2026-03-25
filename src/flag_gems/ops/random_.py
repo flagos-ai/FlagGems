@@ -2,6 +2,8 @@ import logging
 
 import torch
 
+from flag_gems.ops.uniform import uniform_
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,12 +33,14 @@ def random_(self: torch.Tensor, from_=0, to=None, *, generator=None):
         raise RuntimeError("random_ expects 'from' to be less than 'to'")
 
     if self.dtype == torch.bool:
-        tmp = torch.rand(self.shape, device=self.device, generator=generator)
-        self.copy_(tmp < 0.5)
+        tmp = torch.empty(self.shape, device=self.device, dtype=torch.float32)
+        uniform_(tmp, 0.0, 2.0, generator=generator)
+        tmp.floor_()
+        self.copy_(tmp > 0.0)
         return self
 
     tmp = torch.empty(self.shape, device=self.device, dtype=torch.float32)
-    tmp.uniform_(float(low), float(high), generator=generator)
+    uniform_(tmp, float(low), float(high), generator=generator)
     tmp.floor_()
     tmp.clamp_(min=low, max=high - 1)
     self.copy_(tmp.to(dtype=self.dtype))
