@@ -1,4 +1,10 @@
 {
+    "_FALLBACK": {
+        "NVIDIA_H800": "NVIDIA_H100_80GB_HBM3",
+        "NVIDIA_H800_80GB_HBM3": "NVIDIA_H100_80GB_HBM3",
+        "NVIDIA_A800-SXM4-80GB": "NVIDIA_A800-SXM4-80GB",
+        "NVIDIA_A100-SXM4-40GB": "NVIDIA_A100-SXM4-40GB"
+    },
     "NVIDIA_A100-SXM4-40GB": {
         "8,1792,None,0,0": {
             "1": {

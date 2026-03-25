@@ -41,20 +41,24 @@ def get_embedded_moe_configs():
         os.path.dirname(__file__), "..", "utils", "configs", "fused_moe_config.json"
     )
     if not os.path.exists(config_path):
-        return {}
+        return {}, {}
     with open(config_path, "r") as f:
         # JSON keys are strings, values are dicts where keys are M and values are configs
         data = json.load(f)
+
+        fallback = data.get("_FALLBACK", {})
 
         # We need to convert the innermost keys (which are stringified integers for M) back to integers.
         # e.g., data["NVIDIA_A100"]["E,N,dtype,blockN,blockK"]["16"] -> data["..."]["..."][16]
         parsed_data = {}
         for dev, configs in data.items():
+            if dev == "_FALLBACK":
+                continue
             parsed_data[dev] = {}
             for k, m_dict in configs.items():
                 parsed_data[dev][k] = {int(m): v for m, v in m_dict.items()}
 
-        return parsed_data
+        return parsed_data, fallback
 
 
 def dequant_mxfp4(
@@ -115,17 +119,11 @@ def _get_device_name() -> str:
     if "H200" in name.split("_"):
         name = "NVIDIA_H200"
     # H800 has the same SM 9.0 as H100; use H100 configs as fallback.
-    embedded_configs = get_embedded_moe_configs()
+    embedded_configs, fallback_mapping = get_embedded_moe_configs()
     if name in embedded_configs:
         return name
     # Fallback mapping for devices whose tuning profiles are equivalent.
-    _FALLBACK = {
-        "NVIDIA_H800": "NVIDIA_H100_80GB_HBM3",
-        "NVIDIA_H800_80GB_HBM3": "NVIDIA_H100_80GB_HBM3",
-        "NVIDIA_A800-SXM4-80GB": "NVIDIA_A800-SXM4-80GB",
-        "NVIDIA_A100-SXM4-40GB": "NVIDIA_A100-SXM4-40GB",
-    }
-    fallback = _FALLBACK.get(name)
+    fallback = fallback_mapping.get(name)
     if fallback and fallback in embedded_configs:
         logger.info("Device %s not in config table, falling back to %s", name, fallback)
         return fallback
@@ -146,7 +144,7 @@ def get_moe_configs(
     for the current GPU device. Returns None if no matching config is found.
     """
     device_name = _get_device_name()
-    embedded_configs = get_embedded_moe_configs()
+    embedded_configs, _ = get_embedded_moe_configs()
     device_table = embedded_configs.get(device_name)
     if device_table is None:
         logger.warning(
