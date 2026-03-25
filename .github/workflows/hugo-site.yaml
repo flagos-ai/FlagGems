@@ -80,7 +80,7 @@ jobs:
             hugo-
       - name: Build the site
         run: |
-          cd hugo-docs
+          cd docs
           hugo build \
             --gc \
             --minify \
@@ -95,7 +95,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./hugo-docs/public
+          path: ./docs/public
   deploy:
     environment:
       name: github-pages
