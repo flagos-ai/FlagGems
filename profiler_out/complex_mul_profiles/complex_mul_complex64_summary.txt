@@ -1,0 +1,24 @@
+timestamp=2026-03-26T12:32:03.504517
+dtype=torch.complex64
+shape=(1024, 1024)
+conj_input=True
+trace=/workspace/FlagGems/profiler_out/complex_mul_profiles/complex_mul_complex64_trace.json
+stacks_cuda=/workspace/FlagGems/profiler_out/complex_mul_profiles/complex_mul_complex64_stacks_cuda.txt
+stacks_cpu=/workspace/FlagGems/profiler_out/complex_mul_profiles/complex_mul_complex64_stacks_cpu.txt
+table=/workspace/FlagGems/profiler_out/complex_mul_profiles/complex_mul_complex64_key_averages.txt
+events=/workspace/FlagGems/profiler_out/complex_mul_profiles/complex_mul_complex64_events_full_stacks.txt
+
+[suspicious key averages]
+CALL torch.mul dtype=complex64 iter=0 @ profile_flaggems_complex_mul.py | calls=1    | cpu_self(us)=   135.060 | device_self(us)=     0.000
+aten::mul                                                              | calls=2    | cpu_self(us)=  1190.303 | device_self(us)=    29.600
+aten::copy_                                                            | calls=4    | cpu_self(us)=  1715.401 | device_self(us)=    51.872
+aten::_conj                                                            | calls=4    | cpu_self(us)=     4.581 | device_self(us)=     0.000
+aten::real                                                             | calls=12   | cpu_self(us)=    25.578 | device_self(us)=     0.000
+aten::view_as_real                                                     | calls=28   | cpu_self(us)=    32.600 | device_self(us)=     0.000
+aten::imag                                                             | calls=8    | cpu_self(us)=     8.237 | device_self(us)=     0.000
+CALL torch.mul dtype=complex64 iter=0 @ profile_flaggems_complex_mul.py | calls=1    | cpu_self(us)=     0.000 | device_self(us)=  1758.293
+resolve_conj_kernel_2d_strided                                         | calls=4    | cpu_self(us)=     0.000 | device_self(us)=    26.400
+_copy_kernel_kernel_rank_3                                             | calls=4    | cpu_self(us)=     0.000 | device_self(us)=    25.472
+mul_complex_kernel_kernel_rank_2                                       | calls=2    | cpu_self(us)=     0.000 | device_self(us)=    15.968
+CALL torch.mul dtype=complex64 iter=1 @ profile_flaggems_complex_mul.py | calls=1    | cpu_self(us)=    45.941 | device_self(us)=     0.000
+CALL torch.mul dtype=complex64 iter=1 @ profile_flaggems_complex_mul.py | calls=1    | cpu_self(us)=     0.000 | device_self(us)=  1149.368

@@ -152,6 +152,10 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
     if x.device.type != flag_gems.device:
         x = x.to(flag_gems.device)
 
+    # Read from physical storage to avoid triggering aten conjugation kernels
+    # when x is an unresolved conjugate view.
+    physical_x = x._conj() if x.is_conj() else x
+
     # Check if it is complex type
     is_complex = x.is_complex()
 
@@ -165,19 +169,19 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
     # Output maintains original structure (unchanged), still complex tensor
     output = torch.empty_like(x)
 
-    if x.dtype == torch.complex64:
+    if x.dtype in (torch.complex64, torch.complex128):
         # Input separate real/imaginary parts (avoid view(), get float32 tensor directly with .real/.imag)
-        x_real = x.real  # shape same as x, dtype=float32 (real part separate storage)
+        x_real = physical_x.real  # shape same as x, dtype=float32 (real part separate storage)
         x_img = (
-            x.imag
+            physical_x.imag
         )  # shape same as x, dtype=float32 (imaginary part separate storage)
 
-        # Output still use view() to convert to float32 pointer (only for kernel storage, no change to output structure)
-        output_view = output.view(torch.float32)
+        # Output view uses the corresponding real dtype pointer
+        output_view = output.view(output.real.dtype)
 
         # Get tensor shape and total number of elements
-        shape = x.shape
-        n_elements_total = x.numel()
+        shape = physical_x.shape
+        n_elements_total = physical_x.numel()
 
         # Select kernel based on dimensions
         if len(shape) == 2:
@@ -185,8 +189,8 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
 
             # Use optimized kernel for large 2D tensors
             if rows * cols > 1000000:
-                stride_row = x.stride(0)  # Row stride (complex element unit)
-                stride_col = x.stride(1)  # Column stride (complex element unit)
+                stride_row = physical_x.stride(0)  # Row stride (complex element unit)
+                stride_col = physical_x.stride(1)  # Column stride (complex element unit)
 
                 BLOCK_SIZE_COLS = 128
                 grid_rows = rows
@@ -214,7 +218,7 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
                 )
         elif len(shape) == 3:
             # Use 1D kernel for 3D tensors (flatten processing)
-            n_elements_total = x.numel()
+            n_elements_total = physical_x.numel()
             BLOCK_SIZE = min(1024, n_elements_total)
             grid = (triton.cdiv(n_elements_total, BLOCK_SIZE),)
             resolve_conj_kernel_1d[grid](
@@ -233,9 +237,9 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
     else:
         # Unsupported complex type, fallback to PyTorch implementation
         if is_conj:
-            return torch.conj(x)
+            return torch.complex(physical_x.real, physical_x.imag.neg())
         else:
-            return x.clone()
+            return physical_x.clone()
 
 
 def resolve_conj(A: torch.Tensor):

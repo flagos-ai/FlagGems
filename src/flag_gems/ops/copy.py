@@ -4,6 +4,7 @@ from typing import Optional
 import torch
 import triton
 
+from flag_gems.ops.resolve_conj import resolve_conj_triton
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,15 @@ def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
     if src.shape == target_shape:
         return src
     return src.expand(target_shape)
+
+
+def _to_physical_tensor(tensor: torch.Tensor) -> torch.Tensor:
+    physical = tensor
+    if physical.is_conj():
+        physical = physical._conj()
+    if physical.is_neg():
+        physical = torch._neg_view(physical)
+    return physical
 
 
 def copy(
@@ -74,9 +84,9 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         ):
             return dst
         # Otherwise defer to PyTorch for well-defined semantics on overlapping writes.
-            return torch.ops.aten.copy_.default.redispatch(
-                _FALLBACK_KEYSET, dst, src, non_blocking
-            )
+        return torch.ops.aten.copy_.default.redispatch(
+            _FALLBACK_KEYSET, dst, src, non_blocking
+        )
 
     if src.numel() > 2**31 - 1 or dst.numel() > 2**31 - 1:
         return torch.ops.aten.copy_.default.redispatch(
@@ -87,12 +97,25 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     work_src = src
 
     if dst.dtype.is_complex and src.dtype.is_complex:
-        if dst.is_conj() or src.is_conj() or dst.is_neg() or src.is_neg():
-            return torch.ops.aten.copy_.default.redispatch(
-                _FALLBACK_KEYSET, dst, src, non_blocking
-            )
-        work_dst = torch.view_as_real(dst)
-        work_src = torch.view_as_real(src)
+        dst_is_conj = dst.is_conj()
+        src_is_conj = src.is_conj()
+        dst_is_neg = dst.is_neg()
+        src_is_neg = src.is_neg()
+
+        work_dst = _to_physical_tensor(dst)
+        transformed_src = _to_physical_tensor(src)
+
+        need_conj_transform = src_is_conj ^ dst_is_conj
+        need_neg_transform = src_is_neg ^ dst_is_neg
+
+        if need_conj_transform:
+            transformed_src = resolve_conj_triton(transformed_src, is_conj=True)
+
+        work_dst = torch.view_as_real(work_dst)
+        work_src = torch.view_as_real(transformed_src)
+
+        if need_neg_transform:
+            work_src = -work_src
 
     if not _can_use_triton(work_dst, work_src):
         return torch.ops.aten.copy_.default.redispatch(

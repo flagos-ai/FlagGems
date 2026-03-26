@@ -1,0 +1,914 @@
+[0] name=CALL torch.mul dtype=complex64 iter=0 @ profile_flaggems_complex_mul.py
+  cpu_time_total(us)=3914.915, device_time_total(us)=40.768
+  input_shapes=[]
+  stack: <empty>
+
+[1] name=aten::mul
+  cpu_time_total(us)=3779.855, device_time_total(us)=40.768
+  input_shapes=[[1024, 1024], [1024, 1024]]
+  stack: <empty>
+
+[2] name=aten::clone
+  cpu_time_total(us)=2441.640, device_time_total(us)=12.768
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[3] name=aten::empty_strided
+  cpu_time_total(us)=22.060, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[4] name=aten::copy_
+  cpu_time_total(us)=2399.370, device_time_total(us)=12.768
+  input_shapes=[[1024, 1024], [1024, 1024], []]
+  stack: <empty>
+
+[5] name=aten::_conj
+  cpu_time_total(us)=3.071, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[6] name=aten::alias
+  cpu_time_total(us)=1.719, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[7] name=aten::empty_like
+  cpu_time_total(us)=5.505, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], [], [], [], [], []]
+  stack: <empty>
+
+[8] name=aten::empty_strided
+  cpu_time_total(us)=3.725, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[9] name=aten::real
+  cpu_time_total(us)=27.773, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[10] name=aten::view_as_real
+  cpu_time_total(us)=2.513, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[11] name=aten::select
+  cpu_time_total(us)=13.089, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[12] name=aten::as_strided
+  cpu_time_total(us)=1.569, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[13] name=aten::imag
+  cpu_time_total(us)=3.962, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[14] name=aten::view_as_real
+  cpu_time_total(us)=1.081, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[15] name=aten::select
+  cpu_time_total(us)=1.585, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[16] name=aten::as_strided
+  cpu_time_total(us)=0.339, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[17] name=aten::real
+  cpu_time_total(us)=2.811, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[18] name=aten::view_as_real
+  cpu_time_total(us)=0.922, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[19] name=aten::select
+  cpu_time_total(us)=0.995, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[20] name=aten::as_strided
+  cpu_time_total(us)=0.189, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[21] name=aten::view
+  cpu_time_total(us)=1.709, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[22] name=Activity Buffer Request
+  cpu_time_total(us)=1652.193, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[23] name=cuLaunchKernelEx
+  cpu_time_total(us)=23.479, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[24] name=CALL torch.mul dtype=complex64 iter=0 @ profile_flaggems_complex_mul.py
+  cpu_time_total(us)=0.000, device_time_total(us)=1758.293
+  input_shapes=[]
+  stack: <empty>
+
+[25] name=resolve_conj_kernel_2d_strided
+  cpu_time_total(us)=0.000, device_time_total(us)=6.464
+  input_shapes=[]
+  stack: <empty>
+
+[26] name=aten::view_as_real
+  cpu_time_total(us)=4.161, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[27] name=aten::view_as_real
+  cpu_time_total(us)=0.858, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[28] name=cuLaunchKernelEx
+  cpu_time_total(us)=9.769, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[29] name=_copy_kernel_kernel_rank_3
+  cpu_time_total(us)=0.000, device_time_total(us)=6.304
+  input_shapes=[]
+  stack: <empty>
+
+[30] name=aten::clone
+  cpu_time_total(us)=400.276, device_time_total(us)=12.832
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[31] name=aten::empty_strided
+  cpu_time_total(us)=6.614, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[32] name=aten::copy_
+  cpu_time_total(us)=388.819, device_time_total(us)=12.832
+  input_shapes=[[1024, 1024], [1024, 1024], []]
+  stack: <empty>
+
+[33] name=aten::_conj
+  cpu_time_total(us)=2.223, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[34] name=aten::alias
+  cpu_time_total(us)=0.793, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[35] name=aten::empty_like
+  cpu_time_total(us)=4.512, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], [], [], [], [], []]
+  stack: <empty>
+
+[36] name=aten::empty_strided
+  cpu_time_total(us)=2.821, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[37] name=aten::real
+  cpu_time_total(us)=8.299, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[38] name=aten::view_as_real
+  cpu_time_total(us)=1.288, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[39] name=aten::select
+  cpu_time_total(us)=4.400, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[40] name=aten::as_strided
+  cpu_time_total(us)=1.122, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[41] name=aten::imag
+  cpu_time_total(us)=3.545, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[42] name=aten::view_as_real
+  cpu_time_total(us)=0.873, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[43] name=aten::select
+  cpu_time_total(us)=1.359, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[44] name=aten::as_strided
+  cpu_time_total(us)=0.339, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[45] name=aten::real
+  cpu_time_total(us)=2.789, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[46] name=aten::view_as_real
+  cpu_time_total(us)=0.827, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[47] name=aten::select
+  cpu_time_total(us)=1.108, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[48] name=aten::as_strided
+  cpu_time_total(us)=0.218, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[49] name=aten::view
+  cpu_time_total(us)=1.420, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[50] name=cuLaunchKernelEx
+  cpu_time_total(us)=5.680, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[51] name=resolve_conj_kernel_2d_strided
+  cpu_time_total(us)=0.000, device_time_total(us)=6.496
+  input_shapes=[]
+  stack: <empty>
+
+[52] name=aten::view_as_real
+  cpu_time_total(us)=1.151, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[53] name=aten::view_as_real
+  cpu_time_total(us)=0.880, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[54] name=cuLaunchKernelEx
+  cpu_time_total(us)=4.559, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[55] name=_copy_kernel_kernel_rank_3
+  cpu_time_total(us)=0.000, device_time_total(us)=6.336
+  input_shapes=[]
+  stack: <empty>
+
+[56] name=aten::real
+  cpu_time_total(us)=4.899, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[57] name=aten::view_as_real
+  cpu_time_total(us)=1.278, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[58] name=aten::select
+  cpu_time_total(us)=2.313, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[59] name=aten::as_strided
+  cpu_time_total(us)=0.539, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[60] name=aten::imag
+  cpu_time_total(us)=3.076, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[61] name=aten::view_as_real
+  cpu_time_total(us)=0.817, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[62] name=aten::select
+  cpu_time_total(us)=1.254, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[63] name=aten::as_strided
+  cpu_time_total(us)=0.255, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[64] name=aten::real
+  cpu_time_total(us)=2.821, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[65] name=aten::view_as_real
+  cpu_time_total(us)=0.801, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[66] name=aten::select
+  cpu_time_total(us)=1.248, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[67] name=aten::as_strided
+  cpu_time_total(us)=0.206, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[68] name=aten::imag
+  cpu_time_total(us)=2.630, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[69] name=aten::view_as_real
+  cpu_time_total(us)=0.836, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[70] name=aten::select
+  cpu_time_total(us)=1.021, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[71] name=aten::as_strided
+  cpu_time_total(us)=0.176, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[72] name=aten::promote_types
+  cpu_time_total(us)=0.487, device_time_total(us)=0.000
+  input_shapes=[[], []]
+  stack: <empty>
+
+[73] name=aten::promote_types
+  cpu_time_total(us)=0.068, device_time_total(us)=0.000
+  input_shapes=[[], []]
+  stack: <empty>
+
+[74] name=aten::promote_types
+  cpu_time_total(us)=0.046, device_time_total(us)=0.000
+  input_shapes=[[], []]
+  stack: <empty>
+
+[75] name=aten::empty
+  cpu_time_total(us)=4.729, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[76] name=aten::select
+  cpu_time_total(us)=1.245, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[77] name=aten::as_strided
+  cpu_time_total(us)=0.264, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[78] name=aten::select
+  cpu_time_total(us)=1.115, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[79] name=aten::as_strided
+  cpu_time_total(us)=0.187, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[80] name=cuLaunchKernelEx
+  cpu_time_total(us)=5.770, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[81] name=mul_complex_kernel_kernel_rank_2
+  cpu_time_total(us)=0.000, device_time_total(us)=8.160
+  input_shapes=[]
+  stack: <empty>
+
+[82] name=aten::empty
+  cpu_time_total(us)=185.548, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[83] name=cudaStreamIsCapturing
+  cpu_time_total(us)=1.773, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[84] name=cudaMalloc
+  cpu_time_total(us)=172.586, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[85] name=aten::view
+  cpu_time_total(us)=2.214, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], []]
+  stack: <empty>
+
+[86] name=aten::view
+  cpu_time_total(us)=1.918, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[87] name=aten::view
+  cpu_time_total(us)=0.434, device_time_total(us)=0.000
+  input_shapes=[[1024, 2048], []]
+  stack: <empty>
+
+[88] name=cuLaunchKernelEx
+  cpu_time_total(us)=9.391, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[89] name=_view_as_complex_kernel
+  cpu_time_total(us)=0.000, device_time_total(us)=7.008
+  input_shapes=[]
+  stack: <empty>
+
+[90] name=aten::result_type
+  cpu_time_total(us)=0.857, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], [1024, 1024]]
+  stack: <empty>
+
+[91] name=aten::to
+  cpu_time_total(us)=0.606, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], [], [], [], []]
+  stack: <empty>
+
+[92] name=CALL torch.mul dtype=complex64 iter=1 @ profile_flaggems_complex_mul.py
+  cpu_time_total(us)=1338.996, device_time_total(us)=40.704
+  input_shapes=[]
+  stack: <empty>
+
+[93] name=aten::mul
+  cpu_time_total(us)=1293.055, device_time_total(us)=40.704
+  input_shapes=[[1024, 1024], [1024, 1024]]
+  stack: <empty>
+
+[94] name=aten::clone
+  cpu_time_total(us)=429.093, device_time_total(us)=13.152
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[95] name=aten::empty_strided
+  cpu_time_total(us)=5.821, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[96] name=aten::copy_
+  cpu_time_total(us)=419.127, device_time_total(us)=13.152
+  input_shapes=[[1024, 1024], [1024, 1024], []]
+  stack: <empty>
+
+[97] name=aten::_conj
+  cpu_time_total(us)=2.020, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[98] name=aten::alias
+  cpu_time_total(us)=0.819, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[99] name=aten::empty_like
+  cpu_time_total(us)=4.967, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], [], [], [], [], []]
+  stack: <empty>
+
+[100] name=aten::empty_strided
+  cpu_time_total(us)=3.177, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[101] name=aten::real
+  cpu_time_total(us)=8.386, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[102] name=aten::view_as_real
+  cpu_time_total(us)=1.951, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[103] name=aten::select
+  cpu_time_total(us)=4.394, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[104] name=aten::as_strided
+  cpu_time_total(us)=1.305, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[105] name=aten::imag
+  cpu_time_total(us)=3.473, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[106] name=aten::view_as_real
+  cpu_time_total(us)=0.958, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[107] name=aten::select
+  cpu_time_total(us)=1.284, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[108] name=aten::as_strided
+  cpu_time_total(us)=0.284, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[109] name=aten::real
+  cpu_time_total(us)=2.823, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[110] name=aten::view_as_real
+  cpu_time_total(us)=0.872, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[111] name=aten::select
+  cpu_time_total(us)=1.086, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[112] name=aten::as_strided
+  cpu_time_total(us)=0.174, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[113] name=aten::view
+  cpu_time_total(us)=0.947, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[114] name=cuLaunchKernelEx
+  cpu_time_total(us)=7.776, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[115] name=CALL torch.mul dtype=complex64 iter=1 @ profile_flaggems_complex_mul.py
+  cpu_time_total(us)=0.000, device_time_total(us)=1149.368
+  input_shapes=[]
+  stack: <empty>
+
+[116] name=resolve_conj_kernel_2d_strided
+  cpu_time_total(us)=0.000, device_time_total(us)=6.592
+  input_shapes=[]
+  stack: <empty>
+
+[117] name=aten::view_as_real
+  cpu_time_total(us)=1.221, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[118] name=aten::view_as_real
+  cpu_time_total(us)=0.847, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[119] name=cuLaunchKernelEx
+  cpu_time_total(us)=5.869, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[120] name=_copy_kernel_kernel_rank_3
+  cpu_time_total(us)=0.000, device_time_total(us)=6.560
+  input_shapes=[]
+  stack: <empty>
+
+[121] name=aten::clone
+  cpu_time_total(us)=349.270, device_time_total(us)=13.120
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[122] name=aten::empty_strided
+  cpu_time_total(us)=3.131, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[123] name=aten::copy_
+  cpu_time_total(us)=343.617, device_time_total(us)=13.120
+  input_shapes=[[1024, 1024], [1024, 1024], []]
+  stack: <empty>
+
+[124] name=aten::_conj
+  cpu_time_total(us)=1.047, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[125] name=aten::alias
+  cpu_time_total(us)=0.449, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[126] name=aten::empty_like
+  cpu_time_total(us)=3.844, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], [], [], [], [], []]
+  stack: <empty>
+
+[127] name=aten::empty_strided
+  cpu_time_total(us)=2.398, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[128] name=aten::real
+  cpu_time_total(us)=4.503, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[129] name=aten::view_as_real
+  cpu_time_total(us)=1.087, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[130] name=aten::select
+  cpu_time_total(us)=2.196, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[131] name=aten::as_strided
+  cpu_time_total(us)=0.620, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[132] name=aten::imag
+  cpu_time_total(us)=3.371, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[133] name=aten::view_as_real
+  cpu_time_total(us)=0.928, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[134] name=aten::select
+  cpu_time_total(us)=1.503, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[135] name=aten::as_strided
+  cpu_time_total(us)=0.270, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[136] name=aten::real
+  cpu_time_total(us)=2.713, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[137] name=aten::view_as_real
+  cpu_time_total(us)=0.879, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[138] name=aten::select
+  cpu_time_total(us)=1.051, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[139] name=aten::as_strided
+  cpu_time_total(us)=0.178, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[140] name=aten::view
+  cpu_time_total(us)=0.659, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[141] name=cuLaunchKernelEx
+  cpu_time_total(us)=4.785, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[142] name=resolve_conj_kernel_2d_strided
+  cpu_time_total(us)=0.000, device_time_total(us)=6.848
+  input_shapes=[]
+  stack: <empty>
+
+[143] name=aten::view_as_real
+  cpu_time_total(us)=1.073, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[144] name=aten::view_as_real
+  cpu_time_total(us)=0.839, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[145] name=cuLaunchKernelEx
+  cpu_time_total(us)=4.020, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[146] name=_copy_kernel_kernel_rank_3
+  cpu_time_total(us)=0.000, device_time_total(us)=6.272
+  input_shapes=[]
+  stack: <empty>
+
+[147] name=aten::real
+  cpu_time_total(us)=4.459, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[148] name=aten::view_as_real
+  cpu_time_total(us)=1.130, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[149] name=aten::select
+  cpu_time_total(us)=2.036, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[150] name=aten::as_strided
+  cpu_time_total(us)=0.440, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[151] name=aten::imag
+  cpu_time_total(us)=3.244, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[152] name=aten::view_as_real
+  cpu_time_total(us)=0.884, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[153] name=aten::select
+  cpu_time_total(us)=1.415, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[154] name=aten::as_strided
+  cpu_time_total(us)=0.263, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[155] name=aten::real
+  cpu_time_total(us)=2.673, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[156] name=aten::view_as_real
+  cpu_time_total(us)=0.849, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[157] name=aten::select
+  cpu_time_total(us)=1.058, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[158] name=aten::as_strided
+  cpu_time_total(us)=0.204, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[159] name=aten::imag
+  cpu_time_total(us)=2.420, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[160] name=aten::view_as_real
+  cpu_time_total(us)=0.796, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024]]
+  stack: <empty>
+
+[161] name=aten::select
+  cpu_time_total(us)=0.890, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[162] name=aten::as_strided
+  cpu_time_total(us)=0.163, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[163] name=aten::promote_types
+  cpu_time_total(us)=0.223, device_time_total(us)=0.000
+  input_shapes=[[], []]
+  stack: <empty>
+
+[164] name=aten::promote_types
+  cpu_time_total(us)=0.058, device_time_total(us)=0.000
+  input_shapes=[[], []]
+  stack: <empty>
+
+[165] name=aten::promote_types
+  cpu_time_total(us)=0.050, device_time_total(us)=0.000
+  input_shapes=[[], []]
+  stack: <empty>
+
+[166] name=aten::empty
+  cpu_time_total(us)=3.764, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[167] name=aten::select
+  cpu_time_total(us)=1.198, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[168] name=aten::as_strided
+  cpu_time_total(us)=0.245, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[169] name=aten::select
+  cpu_time_total(us)=1.025, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], []]
+  stack: <empty>
+
+[170] name=aten::as_strided
+  cpu_time_total(us)=0.173, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], [], [], []]
+  stack: <empty>
+
+[171] name=cuLaunchKernelEx
+  cpu_time_total(us)=5.008, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[172] name=mul_complex_kernel_kernel_rank_2
+  cpu_time_total(us)=0.000, device_time_total(us)=7.808
+  input_shapes=[]
+  stack: <empty>
+
+[173] name=aten::empty
+  cpu_time_total(us)=3.514, device_time_total(us)=0.000
+  input_shapes=[[], [], [], [], [], []]
+  stack: <empty>
+
+[174] name=aten::view
+  cpu_time_total(us)=1.108, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024, 2], []]
+  stack: <empty>
+
+[175] name=aten::view
+  cpu_time_total(us)=0.717, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], []]
+  stack: <empty>
+
+[176] name=aten::view
+  cpu_time_total(us)=0.372, device_time_total(us)=0.000
+  input_shapes=[[1024, 2048], []]
+  stack: <empty>
+
+[177] name=cuLaunchKernelEx
+  cpu_time_total(us)=3.742, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[178] name=_view_as_complex_kernel
+  cpu_time_total(us)=0.000, device_time_total(us)=6.624
+  input_shapes=[]
+  stack: <empty>
+
+[179] name=aten::result_type
+  cpu_time_total(us)=0.421, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], [1024, 1024]]
+  stack: <empty>
+
+[180] name=aten::to
+  cpu_time_total(us)=0.478, device_time_total(us)=0.000
+  input_shapes=[[1024, 1024], [], [], [], []]
+  stack: <empty>
+
+[181] name=cudaDeviceSynchronize
+  cpu_time_total(us)=16.376, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>
+
+[182] name=cudaDeviceSynchronize
+  cpu_time_total(us)=6.550, device_time_total(us)=0.000
+  input_shapes=[]
+  stack: <empty>

@@ -1,0 +1,11 @@
+[FAIL] dtype=torch.complex128: RuntimeError: view_as_real doesn't work on unresolved conjugated tensors.  To resolve the conjugate tensor so you can view it as real, use self.resolve_conj(); however, be warned that the resulting tensor will NOT alias the original.
+Traceback (most recent call last):
+  File "/workspace/FlagGems/tools/profile_flaggems_complex_mul.py", line 166, in main
+    run_profile_for_dtype(args, dtype, args.outdir)
+  File "/workspace/FlagGems/tools/profile_flaggems_complex_mul.py", line 76, in run_profile_for_dtype
+    _ = torch.mul(a, b)
+        ^^^^^^^^^^^^^^^
+  File "/workspace/FlagGems/src/flag_gems/ops/copy.py", line 115, in copy_
+    work_src = torch.view_as_real(transformed_src)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: view_as_real doesn't work on unresolved conjugated tensors.  To resolve the conjugate tensor so you can view it as real, use self.resolve_conj(); however, be warned that the resulting tensor will NOT alias the original.
