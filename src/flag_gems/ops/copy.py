@@ -26,9 +26,8 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
         return False
     if dst.is_quantized or src.is_quantized:
         return False
-    if src.is_complex() or dst.is_complex():
-        # Preserve PyTorch's behaviour of warning when casting complex to real
-        # by forcing the redispatch path, which issues the warning internally.
+    if src.dtype.is_complex != dst.dtype.is_complex:
+        # Preserve PyTorch behaviour/warnings for complex<->real casts.
         return False
     return True
 
@@ -75,9 +74,9 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         ):
             return dst
         # Otherwise defer to PyTorch for well-defined semantics on overlapping writes.
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+            return torch.ops.aten.copy_.default.redispatch(
+                _FALLBACK_KEYSET, dst, src, non_blocking
+            )
 
     if src.numel() > 2**31 - 1 or dst.numel() > 2**31 - 1:
         return torch.ops.aten.copy_.default.redispatch(
