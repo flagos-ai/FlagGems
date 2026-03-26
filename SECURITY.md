@@ -6,8 +6,9 @@ If you believe you have found a security vulnerability in FlagGems, please repor
 
 Please do not report security vulnerabilities through public GitHub issues, discussions, or pull requests.
 
-Instead, please send an email to flaggems@baai.ac.cn.
+Instead, please send an email to security@flagos.io.
 
 ---
 
-Please see [PyTorch's Security Policy](https://github.com/pytorch/pytorch/blob/main/SECURITY.md) for more information and recommendations on how to securely interact with models.
+Please see [PyTorch's Security Policy](https://github.com/pytorch/pytorch/blob/main/SECURITY.md)
+for more information and recommendations on how to securely interact with models.
