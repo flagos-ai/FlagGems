@@ -5,31 +5,108 @@ weight: 90
 
 # Change History
 
-## v4.3
+## v5.0
 
 **Release date**: TBD
 
 - Added math operators:
+  `absolute` (_generated_),
   `acos`,
+  `arcsinh` (_generated_),
+  `arcsinh_` (_generated_),
+  `arcsinh.out` (_generated_),
+  `arctanh_` (_generated_),
+  `asinh_` (_generated_),
   `ceil`,
   `ceil_`,
-  `ceil_out`,
+  `ceil.out`,
+  `diagmma_` (_generated_),
   `equal`,
+  `floor_` (_generated_),
+  `fmin` (_generated_),
+  `fmin.out` (_generated_)
+  `hardswish_` (_generated_),
+  `hypot` (_generated_),
+  `i0` (_generated_),
+  `i0_` (_generated_),
+  `i0.out` (_generated_),
+  `log1p_` (_generated_),
+  `logaddexp` (_generated_),
+  `logaddexp.out` (_generated_),
   `logical_and_`,
   `logical_or_`
+  `logit` (_generated_),
+  `logit_` (_generated_),
+  `logit.out` (_generated_),
+  `sgn_` (_generated_),
+  `sinh_` (_generated_),
+  `special_i1` (_generated_),
+  `special_i1.out` (_generated_)
 - Added BLAS operator:
-  `bmm.out`
+  `bmm.out`,
+  `cutlass_scaled_mm_sm_90`,
+  `tril` (_generated_)
+- Added MoE operators:
+  `dispatch_fused_moe_kernel`,
+  `grouped_topk`,
+  `inplace_fused_experts`,
+  `outplace_fused_experts`
 - Added distribution operator:
   `normal_`,
 - Added neural network operators:
+  `_upsample_nearest_exact1d`,
+  `apply_repetition_penalties` (_generated_),
+  `chunk_gated_delta_rule_fwd`,
+  `dswiglu`,
+  `embedding_dense_backward`,
+  `fused_recurrent_gated_delta_rule_fwd`,
+  `hardsigmoid` (_generated_),
+  `hardsigmoid.out` (_generated_),
+  `nll_loss_nd_backward`,
+  `nll_loss_nd_forward`,
   `one_hot`,
+  `pixel_unshuffle` (_generated_),
+  `pixel_unshuffle.out` (_generated_),
+  `prelu` (_generated_),
+  `reflection_pad1d` (_generated_),
+  `reflection_pad1d.out` (_generated_),
+  `reflection_pad2d` (_generated_),
+  `reflection_pad2d.out` (_generated_),
+  `relu6` (_generated_),
+  `swiglu`,
   `triu_`,
+  `unfold_backward`,
+  `upsample_bicubic2d`,
   `upsample_linear1d`,
   `upsample_nearest1d`,
+  `upsample_nearest3d`
 - Added tensor operators:
+  `_functional_sym_constrain_range_for_size` (_generated_),
+  `alias_copy` (_generated_),
+  `alias_copy.out` (_generated_),
+  `fill.Scalar_out`,
+  `fill.Tensor_out`,
+  `lift_fresh_copy` (_generated_),
+  `replication_pad1d` (_generated_),
+  `replication_pad1d.out` (_generated_),
+  `replication_pad3d`,
+  `rrelu_with_noise_backward` (_generated_),
+  `selu` (_generated_),
+  `selu_` (_generated_),
+  `slice_backward` (_generated_),
+  `softshrink` (_generated_),
+  `softshrink.out` (_generated_),
+  `t_copy` (_generated_),
+  `t_copy.out` (_generated_),
   `unfold_backward`,
-  `zero_`
+  `zero` (_generated_),
+  `zero_`,
+  `zero.out` (_generated_)
 - Removed reduction operator `moe_sum`.
+- Added reduction operators:
+  `bincount`
+- Added DSA operators:
+  `spare_mla_fwd`
 
 ## v4.2
 
