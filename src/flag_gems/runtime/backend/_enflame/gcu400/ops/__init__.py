@@ -67,7 +67,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
-from .index_add import index_add
+from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -264,6 +264,7 @@ __all__ = [
     "contiguous",
     "eye_m",
     "index_add",
+    "index_add_",
     "bmm",
     "bmm_out",
     "diag_embed",
