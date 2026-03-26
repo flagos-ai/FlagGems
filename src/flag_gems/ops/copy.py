@@ -83,12 +83,23 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
 
-    if not _can_use_triton(dst, src):
+    work_dst = dst
+    work_src = src
+
+    if dst.dtype.is_complex and src.dtype.is_complex:
+        if dst.is_conj() or src.is_conj() or dst.is_neg() or src.is_neg():
+            return torch.ops.aten.copy_.default.redispatch(
+                _FALLBACK_KEYSET, dst, src, non_blocking
+            )
+        work_dst = torch.view_as_real(dst)
+        work_src = torch.view_as_real(src)
+
+    if not _can_use_triton(work_dst, work_src):
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
 
-    if dst.numel() == 0:
+    if work_dst.numel() == 0:
         # Respect PyTorch behaviour: empty tensors should still validate broadcast.
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
@@ -97,17 +108,17 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     logger.debug("GEMS COPY_")
 
     try:
-        broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)
+        broadcast_shape = torch.broadcast_shapes(work_dst.shape, work_src.shape)
     except RuntimeError as exc:
         raise RuntimeError(str(exc)) from exc
 
-    if torch.Size(broadcast_shape) != dst.shape:
+    if torch.Size(broadcast_shape) != work_dst.shape:
         raise RuntimeError(
-            f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}"
+            f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(work_dst.shape)}"
         )
 
-    expanded_src = _expand_like(src, dst.shape)
+    expanded_src = _expand_like(work_src, work_dst.shape)
 
     overload = _copy_kernel.instantiate(expanded_src.ndim)
-    overload(expanded_src, out0=dst)
+    overload(expanded_src, out0=work_dst)
     return dst
