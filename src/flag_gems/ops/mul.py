@@ -37,15 +37,15 @@ def mul_complex_kernel(ar, ai, br, bi):
 def mul(A, B):
     logger.debug("GEMS MUL")
 
-    if isinstance(A, torch.Tensor) and A.is_complex() and A.is_conj():
+    if isinstance(A, torch.Tensor) and A.dtype.is_complex:
         A = resolve_conj(A)
-    if isinstance(B, torch.Tensor) and B.is_complex() and B.is_conj():
+    if isinstance(B, torch.Tensor) and B.dtype.is_complex:
         B = resolve_conj(B)
 
-    A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
+    A_is_complex = (isinstance(A, torch.Tensor) and A.dtype.is_complex) or isinstance(
         A, complex
     )
-    B_is_complex = (isinstance(B, torch.Tensor) and B.is_complex()) or isinstance(
+    B_is_complex = (isinstance(B, torch.Tensor) and B.dtype.is_complex) or isinstance(
         B, complex
     )
     if A_is_complex or B_is_complex:
