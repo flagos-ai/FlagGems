@@ -49,14 +49,28 @@ def get_embedded_moe_configs():
         fallback = data.get("_FALLBACK", {})
 
         # We need to convert the innermost keys (which are stringified integers for M) back to integers.
-        # e.g., data["NVIDIA_A100"]["E,N,dtype,blockN,blockK"]["16"] -> data["..."]["..."][16]
+        # Ensure we map the lists back to config dicts.
+        keys_order = [
+            "BLOCK_SIZE_M",
+            "BLOCK_SIZE_N",
+            "BLOCK_SIZE_K",
+            "GROUP_SIZE_M",
+            "num_warps",
+            "num_stages",
+        ]
         parsed_data = {}
         for dev, configs in data.items():
             if dev == "_FALLBACK":
                 continue
             parsed_data[dev] = {}
             for k, m_dict in configs.items():
-                parsed_data[dev][k] = {int(m): v for m, v in m_dict.items()}
+                parsed_dict = {}
+                for m, v in m_dict.items():
+                    if isinstance(v, list):
+                        parsed_dict[int(m)] = dict(zip(keys_order, v))
+                    else:
+                        parsed_dict[int(m)] = v
+                parsed_data[dev][k] = parsed_dict
 
         return parsed_data, fallback
 
