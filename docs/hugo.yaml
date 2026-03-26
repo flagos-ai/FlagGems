@@ -92,6 +92,8 @@ module:
       target: i18n
     - source: i18n/zh-cn
       target: i18n
+    - source: ../conf
+      target: data
 
 # outputFormats:
 #   coverage:
