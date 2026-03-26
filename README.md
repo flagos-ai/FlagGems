@@ -60,7 +60,7 @@ Check the [features](https://flagos-ai.github.io/FlagGems/overview/features/) do
 ## Getting Started
 
 - Refer to the [Getting Started](https://flagos-ai.github.io/FlagGems/getting-started/) for a quick start.
-- Refer to the [usage](https://flagos-io.github.io/FlagGems/usage/) documentation for some details on using the software.
+- Refer to the [usage](https://flagos-ai.github.io/FlagGems/usage/) documentation for some details on using the software.
 
 ## Sample models for testing
 
