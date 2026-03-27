@@ -1,0 +1,33 @@
+name: Sync to remote site
+on:
+
+  workflow_dispatch:
+
+  # Note: use 'push' because we want to cover both manual push
+  # and PR merge events.
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    strategy:
+      matrix:
+        include:
+          - job_name: sync-to-gitcode
+            remote: gitcode.com
+            repository: FlagGems
+            branch: master
+          # - job_name: sync-to-gitlink
+          #   remote: gitlink.com
+          #   repository: FlagGems
+          #   branch: master
+    name: ${{ matrix.job_name }}
+    uses: flagos-ai/build-infa/.github/workflows/sync-to-remote.yaml
+    with:
+      remote: ${{ matrix.remote }}
+      repository: ${{ matrix.repository }}
+      branch: ${{ matrix.master }}
