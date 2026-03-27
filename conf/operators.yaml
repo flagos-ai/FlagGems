@@ -7,18 +7,20 @@ ops:
     labels:
       - aten
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
       alpha: '5.0'
   - name: _adaptive_avg_pool3d_out
     description: |
-      Apply a 3D adaptive average pooling over an input signal composed of several input planes.
+      A variant of `_adaptive_avg_pool3d` that assigns the output to the `out` tensor.
     for:
       - _adaptive_avg_pool3d.out
     labels:
       - aten
       - nn.functional
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -48,6 +50,31 @@ ops:
       - Tensor
     stages:
       beta: '5.0'
+  - name: _log_softmax_backward_data
+    description: |
+      Computes the gradient of the input tensor with respect to a `log_softmax` operation
+      during backpropagation.
+    for:
+      - _log_softmax_backward_data
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
+  - name: _log_softmax_backward_data_out
+    description: |
+      A variant of `_log_softmax_backward_data` that assigns the output to the `out` tensor.
+    for:
+      - _log_softmax_backward_data.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
   - name: _unique2
     description: Returns the unique elements of the input tensor. This is an internal PyTorch function.
     for:
