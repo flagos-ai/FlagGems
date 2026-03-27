@@ -31,3 +31,5 @@ jobs:
       remote: ${{ matrix.remote }}
       repository: ${{ matrix.repository }}
       branch: ${{ matrix.master }}
+    secrets:
+      GITCODE_SSH_KEY: ${{ secrets.GITCODE_SSH_KEY }}
