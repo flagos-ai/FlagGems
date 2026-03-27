@@ -30,6 +30,6 @@ jobs:
     with:
       remote: ${{ matrix.remote }}
       repository: ${{ matrix.repository }}
-      branch: ${{ matrix.master }}
+      branch: ${{ matrix.branch }}
     secrets:
       GITCODE_SSH_KEY: ${{ secrets.GITCODE_SSH_KEY }}
