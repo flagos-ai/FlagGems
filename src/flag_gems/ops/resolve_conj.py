@@ -171,7 +171,9 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
 
     if x.dtype in (torch.complex64, torch.complex128):
         # Input separate real/imaginary parts (avoid view(), get float32 tensor directly with .real/.imag)
-        x_real = physical_x.real  # shape same as x, dtype=float32 (real part separate storage)
+        x_real = (
+            physical_x.real
+        )  # shape same as x, dtype=float32 (real part separate storage)
         x_img = (
             physical_x.imag
         )  # shape same as x, dtype=float32 (imaginary part separate storage)
@@ -190,7 +192,9 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
             # Use optimized kernel for large 2D tensors
             if rows * cols > 1000000:
                 stride_row = physical_x.stride(0)  # Row stride (complex element unit)
-                stride_col = physical_x.stride(1)  # Column stride (complex element unit)
+                stride_col = physical_x.stride(
+                    1
+                )  # Column stride (complex element unit)
 
                 BLOCK_SIZE_COLS = 128
                 grid_rows = rows
