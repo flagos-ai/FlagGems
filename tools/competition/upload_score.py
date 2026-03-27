@@ -17,22 +17,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# score_details 允许的维度 key 及其满分
+# Allowed dimension keys and their max scores for score_details
 SCORE_DIMENSIONS = {
-    "functional_correctness": 30,  # 功能正确性
-    "performance": 20,  # 性能竞争力
-    "test_coverage": 20,  # 测试用例完备性
-    "adaptability": 10,  # 开源适配性
-    "compatibility": 10,  # 跨平台兼容性
-    "readability": 10,  # 代码可读性
+    "functional_correctness": 30,  # Functional correctness
+    "performance": 20,  # Performance competitiveness
+    "test_coverage": 20,  # Test case completeness
+    "adaptability": 10,  # Open-source adaptability
+    "compatibility": 10,  # Cross-platform compatibility
+    "readability": 10,  # Code readability
 }
 
 
 def generate_signature(params: dict, api_secret: str) -> str:
-    """生成请求签名 (与 evaluation_client.py 相同算法)
+    """Generate request signature (same algorithm as evaluation_client.py).
 
-    规则：只对标量字段签名，跳过 dict/list 类型字段。
-    签名覆盖身份和操作字段，嵌套详情数据由 API Key + HTTPS 保证安全。
+    Rules: only sign scalar fields, skip dict/list fields.
+    Signature covers identity and operation fields; nested detail data is secured by API Key + HTTPS.
     """
     sorted_keys = sorted(params.keys())
     parts = []
@@ -47,14 +47,14 @@ def generate_signature(params: dict, api_secret: str) -> str:
 
 
 def validate_score_details(score_details: dict) -> str:
-    """校验 score_details 各维度，返回错误信息（空字符串表示通过）"""
+    """Validate score_details dimensions, return error message (empty string means pass)."""
     for key, value in score_details.items():
         if key not in SCORE_DIMENSIONS:
-            return f"未知维度 '{key}'，允许的维度: {', '.join(SCORE_DIMENSIONS.keys())}"
+            return f"Unknown dimension '{key}', allowed dimensions: {', '.join(SCORE_DIMENSIONS.keys())}"
         if not isinstance(value, (int, float)):
-            return f"维度 '{key}' 的值必须是数字，当前值: {value}"
+            return f"Dimension '{key}' value must be a number, got: {value}"
         if value < 0 or value > SCORE_DIMENSIONS[key]:
-            return f"维度 '{key}' 的值超出范围 [0, {SCORE_DIMENSIONS[key]}]，当前值: {value}"
+            return f"Dimension '{key}' value out of range [0, {SCORE_DIMENSIONS[key]}], got: {value}"
     return ""
 
 
@@ -70,27 +70,27 @@ def upload_score(
     score_details: dict = None,
 ) -> bool:
     """
-    上传评分到 FlagOS 平台
+    Upload score to FlagOS platform.
 
     Args:
-        api_base_url: FlagOS API 基础 URL
-        api_key: 评测 API Key
-        api_secret: 评测 API Secret
-        name: 算子名称（需与平台注册名称完全一致）
-        github_id: 选手 GitHub ID
-        github_pr: GitHub PR 链接
-        score: 总分 (0-100)
-        note: 备注信息（可选）
-        score_details: 分项得分（可选），格式:
+        api_base_url: FlagOS API base URL
+        api_key: Evaluation API Key
+        api_secret: Evaluation API Secret
+        name: Operator name (must exactly match the registered name on the platform)
+        github_id: Contestant's GitHub ID
+        github_pr: GitHub PR link
+        score: Total score (0-100)
+        note: Optional note
+        score_details: Optional per-dimension scores, format:
             {"functional_correctness": 27, "performance": 18, ...}
 
     Returns:
-        bool: 是否成功
+        bool: Whether the upload was successful
     """
     url = api_base_url.rstrip("/") + "/api/v1/evaluation/track1-score"
     timestamp = str(int(time.time()))
 
-    # 构建请求体
+    # Build request body
     data = {
         "name": name,
         "github_id": github_id,
@@ -102,7 +102,7 @@ def upload_score(
     if score_details:
         data["score_details"] = score_details
 
-    # 计算签名 (score_details 是 dict，会被签名函数跳过，不影响签名)
+    # Compute signature (score_details is a dict, skipped by the signing function)
     sign_params = {**data, "timestamp": timestamp}
     signature = generate_signature(sign_params, api_secret)
 
@@ -116,79 +116,89 @@ def upload_score(
     try:
         details_str = f", score_details={score_details}" if score_details else ""
         logger.info(
-            f"上传评分: name={name}, github_id={github_id}, score={score}{details_str}"
+            f"Uploading score: name={name}, github_id={github_id}, score={score}{details_str}"
         )
         response = requests.post(url, headers=headers, json=data, timeout=30)
         result = response.json()
 
         if response.status_code == 200 and result.get("code") == 200:
-            logger.info(f"上传成功: {result.get('message')}")
+            logger.info(f"Upload successful: {result.get('message')}")
             return True
         else:
-            logger.error(f"上传失败: {result}")
+            logger.error(f"Upload failed: {result}")
             return False
 
     except requests.RequestException as e:
-        logger.error(f"请求异常: {e}")
+        logger.error(f"Request exception: {e}")
         return False
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="赛道一 CI/CD 评分上传",
+        description="Competition Track 1 CI/CD score upload",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-分项得分维度及满分:
-  functional_correctness  功能正确性   满分 30
-  performance             性能竞争力   满分 20
-  test_coverage           测试用例完备性 满分 20
-  adaptability            开源适配性   满分 10
-  compatibility           跨平台兼容性  满分 10
-  readability             代码可读性   满分 10
+Score dimensions and max scores:
+  functional_correctness  Functional correctness   max 30
+  performance             Performance              max 20
+  test_coverage           Test case completeness   max 20
+  adaptability            Open-source adaptability max 10
+  compatibility           Cross-platform compat.   max 10
+  readability             Code readability         max 10
 
-示例:
+Example:
   --score-details '{"functional_correctness": 27, "performance": 18,
                     "test_coverage": 16, "adaptability": 9,
                     "compatibility": 8, "readability": 10}'
 """,
     )
     parser.add_argument("--api-url", help="FlagOS API URL", default=None)
-    parser.add_argument("--api-key", help="评测 API Key", default=None)
-    parser.add_argument("--api-secret", help="评测 API Secret", default=None)
-    parser.add_argument("--name", required=True, help="算子名称（需与平台注册名称完全一致，区分大小写）")
-    parser.add_argument("--github-id", required=True, help="选手 GitHub 用户名")
-    parser.add_argument("--github-pr", required=True, help="GitHub PR 链接")
-    parser.add_argument("--score", required=True, type=float, help="总分 (0-100)")
-    parser.add_argument("--note", default=None, help="备注信息")
+    parser.add_argument("--api-key", help="Evaluation API Key", default=None)
+    parser.add_argument("--api-secret", help="Evaluation API Secret", default=None)
+    parser.add_argument(
+        "--name",
+        required=True,
+        help="Operator name (must exactly match the registered name, case-sensitive)",
+    )
+    parser.add_argument(
+        "--github-id", required=True, help="Contestant's GitHub username"
+    )
+    parser.add_argument("--github-pr", required=True, help="GitHub PR link")
+    parser.add_argument(
+        "--score", required=True, type=float, help="Total score (0-100)"
+    )
+    parser.add_argument("--note", default=None, help="Optional note")
     parser.add_argument(
         "--score-details",
         default=None,
-        help='分项得分 JSON，如 \'{"functional_correctness": 27, "performance": 18, ...}\'',
+        help='Per-dimension score JSON, e.g. \'{"functional_correctness": 27, "performance": 18, ...}\'',
     )
 
     args = parser.parse_args()
 
-    # 优先使用命令行参数，其次使用环境变量
+    # Prefer CLI args, fall back to environment variables
     api_url = args.api_url or os.environ.get("EVAL_API_BASE_URL", "")
     api_key = args.api_key or os.environ.get("EVAL_API_KEY", "")
     api_secret = args.api_secret or os.environ.get("EVAL_API_SECRET", "")
 
     if not all([api_url, api_key, api_secret]):
-        logger.error("缺少必要参数: api-url, api-key, api-secret (可通过命令行或环境变量提供)")
+        logger.error(
+            "Missing required parameters: api-url, api-key, api-secret (provide via CLI or environment variables)"
+        )
         sys.exit(1)
 
-    # 解析 score_details
+    # Parse score_details
     score_details = None
     if args.score_details:
         try:
             score_details = json.loads(args.score_details)
         except json.JSONDecodeError as e:
-            logger.error(f"--score-details JSON 格式错误: {e}")
+            logger.error(f"--score-details JSON format error: {e}")
             sys.exit(1)
 
         error = validate_score_details(score_details)
         if error:
-            logger.error(f"--score-details 校验失败: {error}")
+            logger.error(f"--score-details validation failed: {error}")
             sys.exit(1)
 
     success = upload_score(

@@ -14,7 +14,7 @@ CODE_ROOT="${CODE_ROOT:-$DEFAULT_CODE_ROOT}"
 CODE_ROOT="$(cd "$CODE_ROOT" && pwd)"
 cd "$CODE_ROOT"
 
-DEFAULT_COMPETITION_ROOT="$CODE_ROOT/competition"
+DEFAULT_COMPETITION_ROOT="$CODE_ROOT/tools/competition"
 COMPETITION_ROOT="${COMPETITION_ROOT:-$DEFAULT_COMPETITION_ROOT}"
 COMPETITION_ROOT="$(cd "$COMPETITION_ROOT" && pwd)"
 
@@ -36,7 +36,18 @@ GITHUB_PR_URL="${GITHUB_PR_URL:-}"
 UPLOAD_SCORE="${UPLOAD_SCORE:-1}"
 
 COMPETITION_REPO_ROOT="$(cd "$COMPETITION_ROOT/.." && pwd)"
-PYTEST_PYTHONPATH="$COMPETITION_REPO_ROOT:$CODE_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
+# Prefer PR code ($CODE_ROOT) on PYTHONPATH even when the authoritative baseline
+# is a full repository checkout.
+PYTEST_PYTHONPATH="$CODE_ROOT:$COMPETITION_REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
+# If the authoritative repo is checked out under CODE_ROOT (e.g. CODE_ROOT/authoritative),
+# use relative paths for pytest arguments to avoid overly long / sensitive log filenames
+# generated from invocation args.
+REL_COMPETITION_REPO_ROOT="$COMPETITION_REPO_ROOT"
+if [[ "$COMPETITION_REPO_ROOT" == "$CODE_ROOT/"* ]]; then
+  REL_COMPETITION_REPO_ROOT="${COMPETITION_REPO_ROOT#"$CODE_ROOT/"}"
+fi
 
 run_competition_py() {
   local script_path="$1"
@@ -54,7 +65,11 @@ resolve_test_spec() {
   fi
 
   if [ -f "$COMPETITION_REPO_ROOT/$file_path" ]; then
-    printf '%s%s\n' "$COMPETITION_REPO_ROOT/$file_path" "$suffix"
+    if [[ "$REL_COMPETITION_REPO_ROOT" != /* ]]; then
+      printf '%s/%s%s\n' "$REL_COMPETITION_REPO_ROOT" "$file_path" "$suffix"
+    else
+      printf '%s%s\n' "$COMPETITION_REPO_ROOT/$file_path" "$suffix"
+    fi
     return
   fi
 
@@ -108,12 +123,33 @@ for TASK_ID in "${TASK_ID_LIST[@]}"; do
 
   LOG_FILE="benchmark_result_pr${PR_ID}_${TASK_ID}.log"
   SCORE_FILE="score_pr${PR_ID}_${TASK_ID}.json"
+  CORRECTNESS_XML="correctness_pr${PR_ID}_${TASK_ID}.xml"
 
   echo ""
   echo "[Task ${TASK_ID}] Running correctness tests"
   echo "Tests: ${CORRECTNESS_TESTS[*]}"
 
-  if ! PYTHONPATH="$PYTEST_PYTHONPATH" pytest -v -x "${CORRECTNESS_TESTS[@]}"; then
+  CORRECTNESS_EXIT=0
+  PYTHONPATH="$PYTEST_PYTHONPATH" pytest -v --junitxml="$CORRECTNESS_XML" "${CORRECTNESS_TESTS[@]}" || CORRECTNESS_EXIT=$?
+
+  # Extract passed/total from junitxml
+  CORRECTNESS_STATS="$(python -c "
+import xml.etree.ElementTree as ET, sys
+try:
+    root = ET.parse('$CORRECTNESS_XML').getroot()
+    tests = int(root.attrib.get('tests', 0))
+    failures = int(root.attrib.get('failures', 0))
+    errors = int(root.attrib.get('errors', 0))
+    skipped = int(root.attrib.get('skipped', 0))
+    passed = tests - failures - errors - skipped
+    print(f'{passed} {tests}')
+except Exception:
+    print('0 0')
+")"
+  read -r CORRECTNESS_PASSED CORRECTNESS_TOTAL <<< "$CORRECTNESS_STATS"
+  echo "[Task ${TASK_ID}] Correctness: ${CORRECTNESS_PASSED}/${CORRECTNESS_TOTAL} passed"
+
+  if [ "$CORRECTNESS_EXIT" -ne 0 ]; then
     echo "Correctness tests failed for task_id=$TASK_ID"
 
     run_competition_py "$COMPETITION_ROOT/calculate_competition_score.py" \
@@ -122,9 +158,11 @@ for TASK_ID in "${TASK_ID_LIST[@]}"; do
       --pr-title "$PR_TITLE" \
       --pr-author "$PR_AUTHOR" \
       --commit-sha "$COMMIT_SHA" \
-      --correctness-failed
+      --correctness-failed \
+      --correctness-passed "$CORRECTNESS_PASSED" \
+      --correctness-total "$CORRECTNESS_TOTAL"
 
-    SCORE="0"
+    SCORE="$(python -c "import json; print(json.load(open(r'$SCORE_FILE', 'r', encoding='utf-8'))['total_score'])")"
   else
     echo "Correctness passed for task_id=$TASK_ID"
 
@@ -157,13 +195,18 @@ for TASK_ID in "${TASK_ID_LIST[@]}"; do
       --pr-id "$PR_ID" \
       --pr-title "$PR_TITLE" \
       --pr-author "$PR_AUTHOR" \
-      --commit-sha "$COMMIT_SHA"
+      --commit-sha "$COMMIT_SHA" \
+      --correctness-passed "$CORRECTNESS_PASSED" \
+      --correctness-total "$CORRECTNESS_TOTAL"
 
-    SCORE="$(python -c "import json; print(json.load(open(r'$SCORE_FILE', 'r', encoding='utf-8'))['performance']['total_score'])")"
+    SCORE="$(python -c "import json; print(json.load(open(r'$SCORE_FILE', 'r', encoding='utf-8'))['total_score'])")"
   fi
 
   echo "[Task ${TASK_ID}] Score file: $SCORE_FILE"
   echo "[Task ${TASK_ID}] Total score: $SCORE"
+
+  # Extract score_details JSON for upload
+  SCORE_DETAILS="$(python -c "import json; print(json.dumps(json.load(open(r'$SCORE_FILE', 'r', encoding='utf-8')).get('score_details', {})))")"
 
   if [ "$UPLOAD_SCORE" = "1" ]; then
     run_competition_py "$COMPETITION_ROOT/upload_score.py" \
@@ -171,6 +214,7 @@ for TASK_ID in "${TASK_ID_LIST[@]}"; do
       --github-id "$GITHUB_ID" \
       --github-pr "$GITHUB_PR_URL" \
       --score "$SCORE" \
+      --score-details "$SCORE_DETAILS" \
       --note "pr_id=$PR_ID task_id=$TASK_ID"
   fi
 done

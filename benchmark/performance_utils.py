@@ -71,7 +71,7 @@ class Benchmark:
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
-    DEFAULT_SHAPE_FILES = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+    DEFAULT_SHAPE_FILES = "core_shapes.yaml"
     """
     the base class for the operations benchmark
     """
@@ -161,12 +161,7 @@ class Benchmark:
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Validate user-spicified shapes files
-        if shape_file_path is None:
-            shape_file_path = self.DEFAULT_SHAPE_FILES
-        elif not os.path.isabs(shape_file_path):
-            candidate_path = os.path.join(os.path.dirname(__file__), shape_file_path)
-            if os.path.isfile(candidate_path):
-                shape_file_path = candidate_path
+        import os
 
         if not os.path.isfile(shape_file_path):
             raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
@@ -409,17 +404,10 @@ class Benchmark:
                                 self.gems_op, *args, **kwargs
                             )
                         else:
-                            if self.op_name == "zero_":
-                                with flag_gems.use_gems():
-                                    metric.latency = self.get_latency(
-                                        self.torch_op, *args, **kwargs
-                                    )
-                            else:
-                                # exclude flaggems' zero_ to avoid the overhead of zero_ in do_bench's clear_cache
-                                with flag_gems.use_gems(exclude=["zero_"]):
-                                    metric.latency = self.get_latency(
-                                        self.torch_op, *args, **kwargs
-                                    )
+                            with flag_gems.use_gems():
+                                metric.latency = self.get_latency(
+                                    self.torch_op, *args, **kwargs
+                                )
                     if "speedup" in self.to_bench_metrics:
                         metric.speedup = metric.latency_base / metric.latency
                     if "gbps" in self.to_bench_metrics:

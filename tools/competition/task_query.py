@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 
-from competition.task_config import find_task, load_tasks
+from tools.competition.task_config import find_task, load_tasks
 
 
 def main() -> int:

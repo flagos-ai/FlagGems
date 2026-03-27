@@ -82,7 +82,7 @@ tasks:
     aliases:
       - upsample_nearest2d
     correctness_tests:
-      - tests/test_competition_ops.py::test_accuracy_upsample_nearest2d
+      - tests/test_special_ops.py::test_upsample_nearest2d
     benchmark_tests:
       - benchmark/test_competition_perf.py::test_perf_upsample_nearest2d
 

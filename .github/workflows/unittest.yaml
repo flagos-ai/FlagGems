@@ -5,7 +5,6 @@ on:
 
   push:
     branches: [ "master" ]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
 
   pull_request:
     branches: [ "master" ]
@@ -58,7 +57,7 @@ jobs:
             // Determine if the event is a pull request
             const isPullRequest = context.eventName === 'pull_request';
             if (!isPullRequest) {
-              return "";
+              return "[]";
             }
 
             const prNumber = context.payload.pull_request.number;
@@ -100,31 +99,24 @@ jobs:
 
   competition:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'competition')
+    if: github.event_name == 'pull_request' && contains(needs.preprocess.outputs.labels, 'competition')
     concurrency:
       group: competition-${{ needs.preprocess.outputs.pr_id }}
       cancel-in-progress: true
     runs-on: jiuding
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: authoritative
       - shell: bash
         run: tools/gpu_check.sh
       - shell: bash
-        env:
-          AUTHORITATIVE_COMPETITION_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'master' }}
         run: |
-          AUTHORITATIVE_ROOT="$RUNNER_TEMP/authoritative-competition-root"
-          rm -rf "$AUTHORITATIVE_ROOT"
-          mkdir -p "$AUTHORITATIVE_ROOT"
-
-          git fetch --no-tags --depth=1 origin "$AUTHORITATIVE_COMPETITION_REF"
-          git archive "origin/$AUTHORITATIVE_COMPETITION_REF" competition tests benchmark | tar -x -C "$AUTHORITATIVE_ROOT"
-
-          test -f "$AUTHORITATIVE_ROOT/competition/tasks.yaml"
-          test -f "$AUTHORITATIVE_ROOT/tests/test_competition_ops.py"
-          test -f "$AUTHORITATIVE_ROOT/benchmark/test_competition_perf.py"
-          echo "Authoritative competition ref: $AUTHORITATIVE_COMPETITION_REF"
-          echo "Authoritative competition root: $AUTHORITATIVE_ROOT/competition"
+          test -f "${{ github.workspace }}/authoritative/tools/competition/tasks.yaml"
+          test -f "${{ github.workspace }}/authoritative/tests/test_competition_ops.py"
+          test -f "${{ github.workspace }}/authoritative/benchmark/test_competition_perf.py"
       - shell: bash
         env:
           PR_TITLE: ${{ needs.preprocess.outputs.pr_title }}
@@ -135,10 +127,10 @@ jobs:
           EVAL_API_BASE_URL: ${{ secrets.EVAL_API_BASE_URL }}
           EVAL_API_KEY: ${{ secrets.EVAL_API_KEY }}
           EVAL_API_SECRET: ${{ secrets.EVAL_API_SECRET }}
-          UPLOAD_SCORE: ${{ (secrets.EVAL_API_BASE_URL != '' && secrets.EVAL_API_KEY != '' && secrets.EVAL_API_SECRET != '') && '1' || '0' }}
-          COMPETITION_ROOT: ${{ runner.temp }}/authoritative-competition-root/competition
+          UPLOAD_SCORE: ${{ (github.event.pull_request.head.repo.full_name == github.repository && secrets.EVAL_API_BASE_URL != '' && secrets.EVAL_API_KEY != '' && secrets.EVAL_API_SECRET != '') && '1' || '0' }}
+          COMPETITION_ROOT: ${{ github.workspace }}/authoritative/tools/competition
         run: |
-          bash competition/test-competition-benchmark.sh ${{ needs.preprocess.outputs.pr_id }}
+          bash tools/competition/test-competition-benchmark.sh ${{ needs.preprocess.outputs.pr_id }}
 
   examples:
     needs: preprocess

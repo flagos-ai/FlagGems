@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from competition.task_config import TaskSpec, load_tasks
+from tools.competition.task_config import TaskSpec, load_tasks
 
 
 def _normalize(s: str) -> str:
