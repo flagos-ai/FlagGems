@@ -1,4 +1,2 @@
---index-url https://resource.flagos.net/repository/flagos-pypi-hosted/simple
---extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
---trusted-host resource.flagos.net pypi.tuna.tsinghua.edu.cn
-flagtree==0.4.0+tsingmicro3.3
+RES="--index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple"
+flagtree==0.5.0+tsingmicro3.3 $RES

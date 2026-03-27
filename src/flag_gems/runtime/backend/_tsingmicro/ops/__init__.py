@@ -11,16 +11,16 @@ from .stack import stack
 from .unique import _unique2
 
 __all__ = [
+    "_unique2",
     "argmax",
     "cat",
     "count_nonzero",
     "hstack",
+    "isin",
+    "kron",
     "masked_select",
     "mm",
     "mm_out",
     "rms_norm",
     "stack",
-    "kron",
-    "isin",
-    "_unique2",
 ]

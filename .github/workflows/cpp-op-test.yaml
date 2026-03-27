@@ -1,5 +1,8 @@
 name: cpp-ops
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
 

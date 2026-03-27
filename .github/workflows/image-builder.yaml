@@ -1,5 +1,8 @@
 name: image-builder
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: '0 3 * * *'
