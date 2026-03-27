@@ -1,4 +1,5 @@
 #include "flag_gems/accuracy_utils.h"
+#include "flag_gems/backend_utils.h"
 #if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
 #include <c10/cuda/CUDAGuard.h>
 #include <cuda_runtime_api.h>
@@ -8,7 +9,11 @@
 
 namespace flag_gems::accuracy_utils {
 
+#if defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_NPU)
+bool TO_CPU = true;
+#else
 bool TO_CPU = false;
+#endif
 
 float resolution_for_dtype(c10::ScalarType dtype) {
   switch (dtype) {
@@ -67,19 +72,17 @@ torch::Tensor to_reference(torch::Tensor inp, bool upcast) {
   return ref_inp;
 }
 
-torch::Tensor to_cpu(torch::Tensor res, const torch::Tensor& ref) {
+std::pair<torch::Tensor, torch::Tensor> to_cpu(torch::Tensor res, torch::Tensor ref) {
   if (TO_CPU) {
-    TORCH_CHECK(ref.device().is_cpu(),
-                "to_cpu: reference tensor must be on CPU when TO_CPU is enabled, "
-                "but got device = ",
-                ref.device().str());
     res = res.to(torch::kCPU);
+    ref = ref.to(torch::kCPU);
   }
-  return res;
+  return {res, ref};
 }
 
 static std::pair<torch::Tensor, torch::Tensor> _maybe_move_to_cpu(torch::Tensor res, torch::Tensor ref) {
-  if (!(res.is_cuda() && ref.is_cuda())) {
+  bool both_on_device = backend::isOnDevice(res) && backend::isOnDevice(ref);
+  if (!both_on_device) {
     return {res, ref};
   }
 
@@ -120,7 +123,7 @@ CheckCloseResult gems_assert_close(torch::Tensor res,
                                    bool equal_nan,
                                    int64_t reduce_dim,
                                    float atol) {
-  res = to_cpu(res, ref);
+  std::tie(res, ref) = to_cpu(res, ref);
 
   if (dtype == c10::ScalarType::Undefined) {
     // dtype = c10::kFloat;
@@ -164,7 +167,7 @@ CheckCloseResult gems_assert_close(torch::Tensor res,
 }
 
 CheckCloseResult gems_assert_equal(torch::Tensor res, torch::Tensor ref, bool equal_nan) {
-  res = to_cpu(res, ref);
+  std::tie(res, ref) = to_cpu(res, ref);
 
   bool ok = torch::allclose(res, ref, 0.0, 0.0, equal_nan);
 
@@ -233,7 +236,7 @@ CheckCloseResult gems_assert_close_div_factor(torch::Tensor res,
                                               int64_t reduce_dim,
                                               float atol,
                                               bool inplace) {
-  res = to_cpu(res, ref);
+  std::tie(res, ref) = to_cpu(res, ref);
 
   if (dtype == c10::ScalarType::Undefined) {
     // dtype = c10::kFloat;

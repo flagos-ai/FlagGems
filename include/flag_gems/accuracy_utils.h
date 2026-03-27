@@ -14,7 +14,7 @@ struct CheckCloseResult {
 
 torch::Tensor to_reference(torch::Tensor inp, bool upcast = false);
 
-torch::Tensor to_cpu(torch::Tensor res, const torch::Tensor& ref);
+std::pair<torch::Tensor, torch::Tensor> to_cpu(torch::Tensor res, torch::Tensor ref);
 
 CheckCloseResult gems_assert_close(torch::Tensor res,
                                    torch::Tensor ref,

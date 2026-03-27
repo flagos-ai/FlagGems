@@ -440,6 +440,8 @@ mha_varlan_fwd_internal(const at::Tensor& q,
       params.window_size_left,
       params.window_size_right,
       params.seqlenq_ngroups_swapped,
+      // is_paged: page_table is always defined in this function
+      true,
       // alibi
       params.is_alibi,
       params.alibi_slopes,

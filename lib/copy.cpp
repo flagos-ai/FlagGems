@@ -37,7 +37,7 @@ std::vector<int64_t> broadcasted_stride(const std::vector<int64_t>& shape,
 }
 
 static bool _can_use_triton_copy(const at::Tensor& dst, const at::Tensor& src, bool non_blocking) {
-  if (!dst.is_cuda() || !src.is_cuda()) return false;
+  if (!backend::isOnDevice(dst) || !backend::isOnDevice(src)) return false;
   if (dst.device() != src.device()) return false;
   if (non_blocking) return false;
   return true;
