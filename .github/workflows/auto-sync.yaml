@@ -21,10 +21,10 @@ jobs:
             remote: gitcode.com
             repository: FlagGems
             branch: master
-          # - job_name: sync-to-gitlink
-          #   remote: gitlink.com
-          #   repository: FlagGems
-          #   branch: master
+          - job_name: sync-to-gitlink
+            remote: code.gitlink.org.cn
+            repository: FlagGems
+            branch: master
     name: ${{ matrix.job_name }}
     uses: flagos-ai/build-infra/.github/workflows/sync-to-remote.yaml@main
     with:
