@@ -26,7 +26,7 @@ jobs:
           #   repository: FlagGems
           #   branch: master
     name: ${{ matrix.job_name }}
-    uses: flagos-ai/build-infa/.github/workflows/sync-to-remote.yaml@main
+    uses: flagos-ai/build-infra/.github/workflows/sync-to-remote.yaml@main
     with:
       remote: ${{ matrix.remote }}
       repository: ${{ matrix.repository }}
