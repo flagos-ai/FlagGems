@@ -267,7 +267,16 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         inp = inp.contiguous()
         K = inp.numel() // M // N
         shape[dim] = 1
-        if out is None:
+        _out_provided = out is not None
+        if _out_provided:
+            # Resize out to the expected output shape, matching native PyTorch
+            # sum.out behavior. The caller (e.g. logsumexp) may pass a
+            # zero-size placeholder that needs to be resized before use.
+            if keepdim:
+                out.resize_(shape)
+            else:
+                out.resize_(shape[:dim] + shape[dim + 1 :])
+        else:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         with torch_device_fn.device(inp.device):
@@ -288,7 +297,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
                     M,
                     N,
                 )
-        if not keepdim:
+        if not keepdim and not _out_provided:
             out = out.squeeze(dim=dim)
         return out
     else:
@@ -298,14 +307,22 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             N *= shape[i]
             shape[i] = 1
         M = inp.numel() // N
-        if out is None:
+        _out_provided = out is not None
+        if _out_provided:
+            dim_set = set(dim)
+            if keepdim:
+                out.resize_(shape)
+            else:
+                out.resize_([s for i, s in enumerate(shape) if i not in dim_set])
+        else:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
             sum_dim_kernel[grid](inp, out, M, N)
-        if not keepdim:
-            out = out.squeeze(dim=dim)
+        if not keepdim and not _out_provided:
+            for d in sorted(dim, reverse=True):
+                out = out.squeeze(dim=d)
         return out
 
 

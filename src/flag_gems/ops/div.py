@@ -71,13 +71,15 @@ def trunc_div_func(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, y))
+    # Cast scalar y to match tensor x's type to satisfy libdevice div_rz's
+    # requirement that both arguments have the same type.
+    return trunc(div_rz(x, tl.cast(y, x.dtype)))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(x, y))
+    return trunc(div_rz(tl.cast(x, y.dtype), y))
 
 
 def trunc_divide(A, B):
