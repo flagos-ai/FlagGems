@@ -8,6 +8,13 @@ on:
 
   workflow_call:
 
+  # When coverage data is collected and pushed to gh-pages branch
+  workflow_run:
+    workflows:
+      - coverage
+    types:
+      - completed
+
 permissions:
   contents: read
   pages: write
