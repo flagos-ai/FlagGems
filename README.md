@@ -15,7 +15,7 @@
     <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/x.png" alt="X" width="32" height="32" />
   </a>
 
-  <a href="https://www.facebook.com/FlagOSCommunity" target="_blank">
+  <a href="https://www.facebook.com/flagosglobalcommunity/" target="_blank">
     <img src="https://github.com/flagos-ai/FlagGems/blob/master/docs/assets/Facebook.png" alt="Facebook" width="32" height="32" />
   </a>
 
