@@ -1,4 +1,28 @@
 ops:
+  - name: _adaptive_avg_pool3d
+    description: |
+      Apply a 3D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - _adaptive_avg_pool3d
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
+  - name: _adaptive_avg_pool3d_out
+    description: |
+      Apply a 3D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - _adaptive_avg_pool3d.out
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
   - name: _conv_depthwise2d
     description: A depthwise convolution for the conv2d neural network function.
     for:
