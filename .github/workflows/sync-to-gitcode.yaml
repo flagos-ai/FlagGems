@@ -1,0 +1,40 @@
+name: Sync to gitcode
+on:
+
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  sync-master:
+    runs-on: ubuntu-latest
+    steps:
+      - id: setup-ssh-agent
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.GITCODE_SSH_KEY }}
+
+      - id: add-know-hosts
+        run: |
+          ssh-keyscan gitcode.com >> ~/.ssh/known_hosts
+
+      - id: checkout
+        run: |
+          git clone git@gitcode.com:flagos-ai/FlagGems.git FlagGems
+
+      - id: rebase
+        run: |
+          cd FlagGems
+          git checkout master
+          git remote add github https://github.com/flagos-ai/FlagGems.git
+          git fetch github
+          git status
+          git rebase github/mastern
+          git config --global user.name weixin_39841130
+          git config --global user.email weixin_39841130@noreply.gitcode.com
+          git push -u origin master -f
