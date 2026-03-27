@@ -67,7 +67,8 @@ def true_divide_(A, B):
 def trunc_div_func(x, y):
     if x.type.scalar.is_int():
         return x // y
-    return trunc(div_rz(x, y))
+    else:
+        return trunc(div_rz(x, y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
@@ -75,7 +76,8 @@ def trunc_div_func(x, y):
 def trunc_div_func_tensor_scalar(x, y):
     if x.type.scalar.is_int():
         return x // tl.cast(y, x.dtype)
-    return trunc(div_rz(x, tl.cast(y, x.dtype)))
+    else:
+        return trunc(div_rz(x, tl.cast(y, x.dtype)))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
@@ -83,7 +85,8 @@ def trunc_div_func_tensor_scalar(x, y):
 def trunc_div_func_scalar_tensor(x, y):
     if y.type.scalar.is_int():
         return tl.cast(x, y.dtype) // y
-    return trunc(div_rz(tl.cast(x, y.dtype), y))
+    else:
+        return trunc(div_rz(tl.cast(x, y.dtype), y))
 
 
 def trunc_divide(A, B):
