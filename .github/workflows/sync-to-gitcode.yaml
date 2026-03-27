@@ -34,7 +34,7 @@ jobs:
           git remote add github https://github.com/flagos-ai/FlagGems.git
           git fetch github
           git status
-          git rebase github/mastern
+          git rebase github/master
           git config --global user.name weixin_39841130
           git config --global user.email weixin_39841130@noreply.gitcode.com
           git push -u origin master -f
