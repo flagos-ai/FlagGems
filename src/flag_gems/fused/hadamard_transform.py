@@ -450,7 +450,7 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
                     x_flat, out,
                     stride_x, stride_out,
                     SCALE=scale,
-                    num_warps=1,
+                    num_warps=2,
                     num_stages=1,
                 )
             return
@@ -469,7 +469,7 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
 
         # ---- dim=1024 native 2D kernel ----
         if n == 1024 and is_half:
-            rows_per_program = 4
+            rows_per_program = 2
             grid = (triton.cdiv(batch_size, rows_per_program),)
             _fht_kernel_2d_native[grid](
                 x_flat, out,
@@ -483,8 +483,8 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
             )
             return
 
-        # ---- Small dims (<=1024) native kernel ----
-        if n <= 1024 and is_half:
+        # ---- Small dims (<=128) native kernel ----
+        if n <= 128 and is_half:
             grid = (batch_size,)
             _fht_kernel_1d_native[grid](
                 x_flat, out,
@@ -511,15 +511,27 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
             return
 
         # ---- 2D batched kernel for large dims ----
-        if n <= 2048:
-            rows_per_program = 4
-            num_warps = 4
-        elif n <= 8192:
+        if n <= 32:
+            rows_per_program = 64
+            num_warps = 1
+        elif n <= 64:
+            rows_per_program = 64
+            num_warps = 1
+        elif n <= 128:
+            rows_per_program = 32
+            num_warps = 1
+        elif n <= 256:
+            rows_per_program = 16
+            num_warps = 1
+        elif n <= 1024:
             rows_per_program = 2
-            num_warps = 8
+            num_warps = 4
+        elif n <= 4096:
+            rows_per_program = 1
+            num_warps = 4
         else:
             rows_per_program = 1
-            num_warps = 16
+            num_warps = 8
 
         grid = (triton.cdiv(batch_size, rows_per_program),)
         _fht_kernel_2d[grid](
@@ -572,4 +584,35 @@ def hadamard_transform(x, scale=1.0):
     the next power of 2.
     """
     logger.debug("GEMS HADAMARD_TRANSFORM")
+    return HadamardTransformFn.apply(x, scale)
+
+
+# ============================================================
+# XXN variants (non-power-of-2 dims)
+#
+# Dao-AILab decomposes dim = M * 2^k, applying a small M×M
+# Hadamard-like matrix then a standard 2^k FHT.
+# For now these use the standard FHT with implicit zero-padding
+# to the next power of 2, which is correct but not optimal.
+# TODO: implement proper M×N decomposition for better efficiency.
+# ============================================================
+
+
+def hadamard_transform_12N(x, scale=1.0):
+    """Hadamard transform for dim = 12 * 2^k (e.g. 12*512 = 6144)."""
+    return HadamardTransformFn.apply(x, scale)
+
+
+def hadamard_transform_20N(x, scale=1.0):
+    """Hadamard transform for dim = 20 * 2^k (e.g. 20*1024 = 20480)."""
+    return HadamardTransformFn.apply(x, scale)
+
+
+def hadamard_transform_28N(x, scale=1.0):
+    """Hadamard transform for dim = 28 * 2^k (e.g. 28*1024 = 28672)."""
+    return HadamardTransformFn.apply(x, scale)
+
+
+def hadamard_transform_40N(x, scale=1.0):
+    """Hadamard transform for dim = 40 * 2^k (e.g. 40*1024 = 40960)."""
     return HadamardTransformFn.apply(x, scale)
