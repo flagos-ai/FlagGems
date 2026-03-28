@@ -2,9 +2,16 @@ name: linter
 
 on:
   push:
-    branches: [ "master" ]
+    branches:
+      - master
   pull_request:
-    branches: [ "master" ]
+    branches:
+      - master
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
 
 jobs:
   code-style:
