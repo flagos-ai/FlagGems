@@ -36,8 +36,26 @@ def polar_kernel(abs, angle):
 
 def polar(abs, angle):
     logger.debug("GEMS_ASCEND POLAR")
-    output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
 
-    polar_kernel(abs, angle, out0=output[..., 0], out1=output[..., 1])
+    # Use separate contiguous output tensors instead of non-contiguous slices
+    # of a (*, 2) buffer. On Ascend NPU without OPP, AsStrided (used for
+    # output[..., 0] slicing) is not available.
+    out_real = torch.empty_like(abs)
+    out_imag = torch.empty_like(abs)
 
-    return torch.view_as_complex(output)
+    polar_kernel(abs, angle, out0=out_real, out1=out_imag)
+
+    # Combine into complex tensor via CPU round-trip.
+    # On Ascend NPU without OPP, Pack (torch.stack on device), select+copy_,
+    # and torch.complex are all broken or fall back to CPU.
+    real_cpu = out_real.cpu()
+    imag_cpu = out_imag.cpu()
+
+    # view_as_complex only supports float16/float32/float64; cast bf16 if needed
+    orig_dtype = real_cpu.dtype
+    if orig_dtype == torch.bfloat16:
+        real_cpu = real_cpu.float()
+        imag_cpu = imag_cpu.float()
+
+    output_cpu = torch.stack([real_cpu, imag_cpu], dim=-1)
+    return torch.view_as_complex(output_cpu).to(abs.device)
