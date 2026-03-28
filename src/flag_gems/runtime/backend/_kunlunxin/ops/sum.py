@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 # from flag_gems import runtime
+from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -160,6 +161,22 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
         if dtype is torch.bool:
             dtype = torch.int64
 
+    if inp.numel() == 0:
+        out_shape = list(inp.shape)
+        if dim is None:
+            out_shape = [1] * len(out_shape) if keepdim else []
+        else:
+            dims = dim if isinstance(dim, (list, tuple)) else [dim]
+            if keepdim:
+                for d in dims:
+                    out_shape[d % inp.ndim] = 1
+            else:
+                for d in sorted(dims, key=lambda x: x % inp.ndim, reverse=True):
+                    out_shape.pop(d % inp.ndim)
+        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+        zero_(out)
+        return out
+
     if dim == []:
         if not keepdim:
             return sum(inp, dtype=dtype)
@@ -192,6 +209,18 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int64
+
+    if inp.numel() == 0:
+        dims = (
+            dim
+            if isinstance(dim, (list, tuple))
+            else ([dim] if dim is not None else [])
+        )
+        if keepdim:
+            for d in dims:
+                pass  # out shape already correct from caller
+        zero_(out)
+        return out
 
     if dim == []:
         if not keepdim:
