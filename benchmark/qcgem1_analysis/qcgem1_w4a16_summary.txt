@@ -1,0 +1,17 @@
+
+================================================================================
+QC GEM W4A16 Performance Summary (dtype=torch.float16)
+================================================================================
+
+Total Configurations Tested: 21
+
+Speedup Statistics:
+  Mean Speedup:   0.8790x
+  Min Speedup:    0.5700x (M=1024, N=3584, K=1024)
+  Max Speedup:    1.0170x (M=4096, N=1024, K=3584)
+  Configurations with speedup >= 1.0: 12 / 21
+
+TFLOPS Statistics:
+  Mean TFLOPS:    58.47
+  Max TFLOPS:     94.63 (M=32768, N=3584, K=1024)
+================================================================================

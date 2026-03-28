@@ -1,0 +1,17 @@
+
+================================================================================
+QC GEM W8A16 Performance Summary (dtype=torch.float16)
+================================================================================
+
+Total Configurations Tested: 21
+
+Speedup Statistics:
+  Mean Speedup:   0.9410x
+  Min Speedup:    0.6150x (M=32768, N=1024, K=128)
+  Max Speedup:    1.0200x (M=2048, N=1024, K=3584)
+  Configurations with speedup >= 1.0: 14 / 21
+
+TFLOPS Statistics:
+  Mean TFLOPS:    56.23
+  Max TFLOPS:     93.79 (M=32768, N=3584, K=1024)
+================================================================================

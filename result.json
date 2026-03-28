@@ -1,0 +1,254 @@
+{
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype0-1-1-32]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.float16",
+            "M": 1,
+            "N": 1,
+            "K": 32
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype0-15-160-1024]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.float16",
+            "M": 15,
+            "N": 160,
+            "K": 1024
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype0-495-5333-71]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.float16",
+            "M": 495,
+            "N": 5333,
+            "K": 71
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype1-1-1-32]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.float32",
+            "M": 1,
+            "N": 1,
+            "K": 32
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype1-15-160-1024]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.float32",
+            "M": 15,
+            "N": 160,
+            "K": 1024
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype1-495-5333-71]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.float32",
+            "M": 495,
+            "N": 5333,
+            "K": 71
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype2-1-1-32]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.bfloat16",
+            "M": 1,
+            "N": 1,
+            "K": 32
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype2-15-160-1024]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.bfloat16",
+            "M": 15,
+            "N": 160,
+            "K": 1024
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[True-dtype2-495-5333-71]": {
+        "params": {
+            "b_column_major": true,
+            "dtype": "torch.bfloat16",
+            "M": 495,
+            "N": 5333,
+            "K": 71
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype0-1-1-32]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.float16",
+            "M": 1,
+            "N": 1,
+            "K": 32
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype0-15-160-1024]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.float16",
+            "M": 15,
+            "N": 160,
+            "K": 1024
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype0-495-5333-71]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.float16",
+            "M": 495,
+            "N": 5333,
+            "K": 71
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype1-1-1-32]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.float32",
+            "M": 1,
+            "N": 1,
+            "K": 32
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype1-15-160-1024]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.float32",
+            "M": 15,
+            "N": 160,
+            "K": 1024
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype1-495-5333-71]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.float32",
+            "M": 495,
+            "N": 5333,
+            "K": 71
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype2-1-1-32]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.bfloat16",
+            "M": 1,
+            "N": 1,
+            "K": 32
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype2-15-160-1024]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.bfloat16",
+            "M": 15,
+            "N": 160,
+            "K": 1024
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    },
+    "tests/test_blas_ops.py::test_accuracy_mm[False-dtype2-495-5333-71]": {
+        "params": {
+            "b_column_major": false,
+            "dtype": "torch.bfloat16",
+            "M": 495,
+            "N": 5333,
+            "K": 71
+        },
+        "result": "passed",
+        "opname": [
+            "mm"
+        ],
+        "skipped_reason": null
+    }
+}
