@@ -258,3 +258,37 @@ def test_perf_topk_softmax():
     bench.set_gems(fused.topk_softmax)
 
     bench.run()
+
+
+@pytest.mark.hadamard_transform
+def test_perf_hadamard_transform():
+    import math
+    from scipy.linalg import hadamard
+
+    def hadamard_transform_input_fn(shape, dtype, device):
+        x = torch.randn(shape, dtype=dtype, device=device)
+        yield (x,), {"scale": 1.0 / math.sqrt(shape[-1])}
+
+    def torch_op(x, scale=1.0):
+        dim = x.shape[-1]
+        x_flat = x.reshape(-1, dim).float()
+        log_dim = math.ceil(math.log2(dim)) if dim > 1 else 1
+        dim_padded = 2**log_dim
+        if dim != dim_padded:
+            x_flat = torch.nn.functional.pad(x_flat, (0, dim_padded - dim))
+        H = torch.tensor(
+            hadamard(dim_padded, dtype=float), dtype=x_flat.dtype, device=x_flat.device
+        )
+        out = torch.nn.functional.linear(x_flat, H) * scale
+        return out[..., :dim].reshape(x.shape).to(x.dtype)
+
+    gems_op = flag_gems.hadamard_transform
+
+    bench = GenericBenchmark(
+        input_fn=hadamard_transform_input_fn,
+        op_name="hadamard_transform",
+        torch_op=torch_op,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(gems_op)
+    bench.run()
