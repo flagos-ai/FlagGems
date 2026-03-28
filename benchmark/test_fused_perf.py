@@ -265,6 +265,26 @@ def test_perf_hadamard_transform():
     import math
     from scipy.linalg import hadamard
 
+    # Production shapes from serving log analysis (batch=1/16/64)
+    # Decode (~95%): (*,1,16,128) and (*,1,128)
+    # Prefill (~5%): (*,N,128) and (*,N,16,128)
+    HADAMARD_SHAPES = [
+        # Decode shapes
+        (1, 1, 16, 128),
+        (1, 1, 128),
+        (16, 1, 16, 128),
+        (16, 1, 128),
+        (64, 1, 16, 128),
+        (64, 1, 128),
+        # Prefill shapes
+        (1, 4096, 128),
+        (1, 16384, 16, 128),
+        (16, 1024, 128),
+        (16, 4096, 16, 128),
+        (64, 256, 128),
+        (64, 1024, 16, 128),
+    ]
+
     def hadamard_transform_input_fn(shape, dtype, device):
         x = torch.randn(shape, dtype=dtype, device=device)
         yield (x,), {"scale": 1.0 / math.sqrt(shape[-1])}
@@ -288,7 +308,8 @@ def test_perf_hadamard_transform():
         input_fn=hadamard_transform_input_fn,
         op_name="hadamard_transform",
         torch_op=torch_op,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.bfloat16],
     )
+    bench.shapes = HADAMARD_SHAPES
     bench.set_gems(gems_op)
     bench.run()
