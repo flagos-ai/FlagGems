@@ -1,5 +1,4 @@
 import functools
-import json
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -7,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import torch
 import triton
 import triton.language as tl
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -91,26 +91,39 @@ def get_w8a8_block_fp8_configs(
     N: int, K: int, block_n: int, block_k: int
 ) -> Optional[Dict[int, Any]]:
     device_name = torch.cuda.get_device_name().replace(" ", "_")
-    json_file_name = (
-        f"N={N},K={K},device_name={device_name},"
-        f"dtype=fp8_w8a8,block_shape=[{block_n},{block_k}].json"
-    )
+    file_name = f"fp8_w8a8-{block_n}-{block_k}.yaml"
 
     config_dir = os.path.join(os.path.dirname(__file__), "..", "utils", "configs")
-    config_file_path = os.path.join(config_dir, json_file_name)
+    cfg_file = os.path.join(config_dir, file_name)
 
-    if os.path.exists(config_file_path):
-        with open(config_file_path) as f:
+    if os.path.exists(cfg_file):
+        with open(cfg_file) as f:
             logger.info(
-                "Using configuration from %s for W8A8 Block FP8 kernel.",
-                config_file_path,
+                "Using config from %s for W8A8 block FP8 kernel.",
+                cfg_file,
             )
-            return {int(key): val for key, val in json.load(f).items()}
+            dev_data = yaml.safe_load(f).get(device_name, {})
+            NK_data = dev_data.get(f"{N},{K}", {})
+
+            result = {}
+            for k, p in NK_data.items():
+                # unpack the list into dictionary
+                result[int(k)] = {
+                    "BLOCK_SIZE_M": p[0],
+                    "BLOCK_SIZE_N": p[1],
+                    "BLOCK_SIZE_K": p[2],
+                    "GROUP_SIZE_M": p[3],
+                    "num_warps": p[4],
+                    "num_stages": p[5],
+                }
+            if not result:
+                return None
+            return result
 
     logger.warning(
         "Using default W8A8 Block FP8 kernel config. Performance might "
         "be sub-optimal! Config file not found at %s",
-        config_file_path,
+        cfg_file,
     )
     return None
 
