@@ -13,7 +13,6 @@
 
 
 import functools
-import json
 import logging
 import os
 from enum import Enum
@@ -23,6 +22,7 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
+import yaml
 
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
@@ -38,13 +38,13 @@ OCP_MX_BLOCK_SIZE = 32
 @functools.lru_cache(maxsize=1)
 def get_embedded_moe_configs():
     config_path = os.path.join(
-        os.path.dirname(__file__), "..", "utils", "configs", "fused_moe_config.json"
+        os.path.dirname(__file__), "..", "utils", "configs", "fused_moe_config.yaml"
     )
     if not os.path.exists(config_path):
         return {}, {}
     with open(config_path, "r") as f:
         # JSON keys are strings, values are dicts where keys are M and values are configs
-        data = json.load(f)
+        data = yaml.safe_load(f)
 
         fallback = data.get("_FALLBACK", {})
 
