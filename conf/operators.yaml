@@ -85,6 +85,32 @@ ops:
       - Tensor
     stages:
       stable: '2.1'
+  - name: _unsafe_view
+    description: |
+      Creates a new view of an existing tensor with a different shape without
+      performing safety checks, such as verifying if the tensor is contiguous or
+      if the reshape is valid.
+    for:
+      - _unsafe_view
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      alpha: '5.0'
+  - name: _unsafe_view_out
+    description: |
+      A variant of `_unsafe_view` that assigns the output to the `out` tensor.
+    for:
+      - _unsafe_view.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      alpha: '5.0'
   - name: _upsample_bicubic2d_aa
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
@@ -209,6 +235,19 @@ ops:
       - LinearAlg
     stages:
       stable: '4.0'
+  - name: addcmul_
+    description: |
+      The in-place version of `addcmul`.
+    for:
+      - addcmul_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      alpha: '5.0'
   - name: addmm
     description: |
       Performs a matrix multiplication of the matrices `mat1` and `mat2`.
