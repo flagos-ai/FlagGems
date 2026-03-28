@@ -1986,7 +1986,9 @@ def hadamard_transform_ref(x, scale=1.0):
 
 
 def _hadamard_check(out, out_ref, out_pt, atol):
-    """Dao-AILab tolerance: err < 2 * pytorch_err + atol."""
+    """Tolerance from Dao-AILab/fast-hadamard-transform tests:
+    https://github.com/Dao-AILab/fast-hadamard-transform/blob/master/tests/test_fast_hadamard_transform.py
+    err < 2 * pytorch_err + atol, with fp32: atol=3e-3, fp16: atol=5e-3, bf16: atol=5e-2."""
     err = (out.float() - out_ref.float()).abs().max().item()
     pt_err = (out_pt.float() - out_ref.float()).abs().max().item()
     return err < 2 * pt_err + atol
