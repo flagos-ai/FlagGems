@@ -17,6 +17,31 @@ from benchmark.conftest import Config, emit_record_logger
 
 PARALLEL_WORKER_ENV = "FLAGGEMS_BENCH_PARALLEL_WORKER"
 PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
+torch_device_object = flag_gems.runtime.backend.gen_torch_device_object()
+
+
+def _parallel_device_is_available():
+    if hasattr(torch_device_object, "is_available"):
+        return torch_device_object.is_available()
+    return False
+
+
+def _parallel_device_count():
+    if hasattr(torch_device_object, "device_count"):
+        return torch_device_object.device_count()
+    return 0
+
+
+def _parallel_visible_devices_env():
+    env_name_map = {
+        "cuda": "CUDA_VISIBLE_DEVICES",
+        "musa": "MUSA_VISIBLE_DEVICES",
+    }
+    return env_name_map.get(flag_gems.device)
+
+
+def _parallel_device_label():
+    return flag_gems.device.upper()
 
 
 class ParallelBenchmarkMixin:
@@ -218,7 +243,12 @@ class ParallelBenchmarkMixin:
                 cmd.extend(["--metrics", metric])
 
         env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        visible_devices_env = _parallel_visible_devices_env()
+        if visible_devices_env is None:
+            pytest.fail(
+                f"--parallel is not supported on device type '{flag_gems.device}'."
+            )
+        env[visible_devices_env] = str(gpu_id)
         env[PARALLEL_WORKER_ENV] = "1"
         env[PARALLEL_RESULT_FILE_ENV] = tmp_result_path
 
@@ -226,7 +256,7 @@ class ParallelBenchmarkMixin:
 
         try:
             result_payload = None
-            if completed.returncode == 0:
+            if completed.returncode == 0 and os.path.getsize(tmp_result_path) > 0:
                 with open(tmp_result_path, "rb") as result_file:
                     result_payload = pickle.load(result_file)
         finally:
@@ -246,12 +276,12 @@ class ParallelBenchmarkMixin:
         required_gpus = int(Config.parallel)
         if required_gpus <= 0:
             return self._run_inputs(self.get_input_iter(dtype))
-        if not torch.cuda.is_available():
-            pytest.skip("--parallel N requires CUDA.")
-        available_gpus = torch.cuda.device_count()
+        if not _parallel_device_is_available():
+            pytest.skip(f"--parallel N requires {_parallel_device_label()}.")
+        available_gpus = _parallel_device_count()
         if available_gpus < required_gpus:
             pytest.skip(
-                f"--parallel requires at least {required_gpus} GPUs, found {available_gpus}."
+                f"--parallel requires at least {required_gpus} {_parallel_device_label()} devices, found {available_gpus}."
             )
 
         node_info = os.environ.get("PYTEST_CURRENT_TEST")
