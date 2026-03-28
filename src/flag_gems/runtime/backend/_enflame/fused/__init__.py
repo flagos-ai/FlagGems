@@ -1,6 +1,21 @@
 from .. import arch_version
+from .hadamard_transform import (
+    hadamard_transform,
+    hadamard_transform_12N,
+    hadamard_transform_20N,
+    hadamard_transform_28N,
+    hadamard_transform_40N,
+)
 
-__all__ = []
+_hadamard_exports = [
+    "hadamard_transform",
+    "hadamard_transform_12N",
+    "hadamard_transform_20N",
+    "hadamard_transform_28N",
+    "hadamard_transform_40N",
+]
+
+__all__ = _hadamard_exports[:]
 
 if arch_version == 300:
     from .gcu300.concat_and_cache_mla import concat_and_cache_mla  # noqa: F401
@@ -12,7 +27,7 @@ if arch_version == 300:
     from .gcu300.silu_and_mul import silu_and_mul
     from .gcu300.skip_layernorm import skip_layer_norm
 
-    __all__ = [
+    __all__ += [
         "apply_rotary_pos_emb",
         "silu_and_mul",
         "gelu_and_mul",
@@ -31,7 +46,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.silu_and_mul import silu_and_mul
     from .gcu400.skip_layernorm import skip_layer_norm
 
-    __all__ = [
+    __all__ += [
         "gelu_and_mul",
         "silu_and_mul",
         "cross_entropy_loss",
