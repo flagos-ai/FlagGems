@@ -330,6 +330,7 @@ weight: 90
   `scaled_dot_product_attention_forward`,
   `sigmoid_`,
   `silu_`,
+  `smooth_l1_loss`,
   `upsample_nearest2d`,
   `weight_norm_interface`,
 - Added math operators:
