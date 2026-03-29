@@ -1,3 +1,4 @@
+from .add import add, add_
 from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -68,6 +69,8 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "add",
+    "add_",
     "addmm",
     "all",
     "all_dim",
