@@ -164,13 +164,15 @@ def generate_index_put_wrapper(
         code.newline()
         # Block sizes for Ascend
         code.writeline("import triton")
-        code.writeline("BLOCK_SIZE0 = 2")
         code.writeline("BLOCK_SIZE1 = 2048")
+        code.writeline("grid1 = max(triton.cdiv(N, BLOCK_SIZE1), 1)")
+        code.writeline("max_grid0 = max(1, 65535 // grid1)")
+        code.writeline("BLOCK_SIZE0 = max(2, triton.next_power_of_2(triton.cdiv(M, max_grid0)))")
         code.newline()
         code.writeline("grid = (")
         with code.indent():
             code.writeline("triton.cdiv(M, BLOCK_SIZE0), ")
-            code.writeline("triton.cdiv(N, BLOCK_SIZE1), ")
+            code.writeline("grid1, ")
         code.writeline(")")
         code.newline()
         code.writeline(f"{kernel_name}[grid](")
