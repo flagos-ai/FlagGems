@@ -5,7 +5,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES, to_reference
+from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES, INT_DTYPES, to_reference
 
 device = flag_gems.device
 
@@ -105,6 +105,30 @@ def test_accuracy_fast_exponential_(shape, dtype):
     var_ref = 1.0 / (lambd**2)
     assert torch.abs(mean_res - mean_ref) < mean_tol
     assert torch.abs(var_res - var_ref) < var_tol
+
+
+@pytest.mark.inplace
+@pytest.mark.random_
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_random_(shape, dtype):
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        x.random_(3, 97)
+    assert (x >= 3).all()
+    assert (x < 97).all()
+
+
+@pytest.mark.inplace
+@pytest.mark.random_
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_random__to(shape, dtype):
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        x.random_(97)
+    assert (x >= 0).all()
+    assert (x < 97).all()
 
 
 @pytest.mark.multinomial

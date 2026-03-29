@@ -1761,6 +1761,96 @@ def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
     gems_assert_equal(res_dst, ref_dst)
 
 
+def _gen_complex_tensor(shape, dtype, device):
+    real_dtype = torch.float64 if dtype == torch.complex128 else torch.float32
+    real = torch.randn(shape, dtype=real_dtype, device=device)
+    imag = torch.randn(shape, dtype=real_dtype, device=device)
+    return torch.complex(real, imag)
+
+
+@pytest.mark.inplace
+@pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("shape", [(17, 33), (2, 1, 7)])
+def test_copy_inplace_complex_same_dtype(shape, dtype):
+    device = flag_gems.device
+    try:
+        src = _gen_complex_tensor(shape, dtype, device)
+    except RuntimeError as exc:
+        pytest.skip(f"dtype {dtype} not supported on this device: {exc}")
+
+    ref_src = src.clone()
+    ref_dst = torch.zeros_like(ref_src)
+    res_src = src.clone()
+    res_dst = torch.zeros_like(res_src)
+
+    ref_dst.copy_(ref_src)
+    with flag_gems.use_gems():
+        res_dst.copy_(res_src)
+
+    gems_assert_equal(res_dst, ref_dst)
+
+
+@pytest.mark.inplace
+@pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("shape", [(9, 13), (3, 2, 5)])
+def test_copy_inplace_complex_src_conj_view(shape, dtype):
+    device = flag_gems.device
+    try:
+        base = _gen_complex_tensor(shape, dtype, device)
+    except RuntimeError as exc:
+        pytest.skip(f"dtype {dtype} not supported on this device: {exc}")
+
+    ref_src = base.clone().conj()
+    res_src = base.clone().conj()
+
+    ref_dst = torch.zeros_like(base)
+    res_dst = torch.zeros_like(base)
+
+    ref_dst.copy_(ref_src)
+    with flag_gems.use_gems():
+        res_dst.copy_(res_src)
+
+    gems_assert_equal(res_dst, ref_dst)
+
+
+@pytest.mark.inplace
+@pytest.mark.copy_
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The copy operator implement required for torch >= 2.4",
+)
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("shape", [(9, 13), (3, 2, 5)])
+def test_copy_inplace_complex_dst_conj_view(shape, dtype):
+    device = flag_gems.device
+    try:
+        src = _gen_complex_tensor(shape, dtype, device)
+    except RuntimeError as exc:
+        pytest.skip(f"dtype {dtype} not supported on this device: {exc}")
+
+    ref_dst_base = torch.zeros_like(src)
+    res_dst_base = torch.zeros_like(src)
+    ref_dst = ref_dst_base.conj()
+    res_dst = res_dst_base.conj()
+
+    ref_dst.copy_(src)
+    with flag_gems.use_gems():
+        res_dst.copy_(src)
+
+    gems_assert_equal(res_dst, ref_dst)
+    gems_assert_equal(res_dst_base, ref_dst_base)
+
+
 @pytest.mark.sqrt
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)

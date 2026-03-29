@@ -32,7 +32,7 @@ def nonzero_kernel(
     inp_vals = tl.load(inp + offset, mask=mask).to(tl.int1)
     out_offset = tl.load(prefix_sum + offset, mask=mask) - 1
 
-    nonzero_mask = mask and inp_vals  # noqa
+    nonzero_mask = mask & inp_vals  # noqa
 
     idx_flat = offset
     for dim in range(ndim - 1, -1, -1):

@@ -65,6 +65,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.conj import conj
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
@@ -216,6 +217,7 @@ from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
+from flag_gems.ops.random_ import random_
 from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
@@ -283,6 +285,7 @@ from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
+from flag_gems.ops.view_as_complex import view_as_complex
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from flag_gems.ops.weightnorm import (
@@ -374,6 +377,7 @@ __all__ = [
     "clamp_min_",
     "clamp_tensor",
     "clamp_tensor_",
+    "conj",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
@@ -558,6 +562,7 @@ __all__ = [
     "rand_like",
     "randn",
     "randn_like",
+    "random_",
     "randperm",
     "reciprocal",
     "reciprocal_",
@@ -664,6 +669,7 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_as_complex",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",

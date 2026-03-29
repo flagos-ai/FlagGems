@@ -669,6 +669,28 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
+@pytest.mark.conj
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_conj(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    ref_out = torch.conj(to_reference(x))
+    with flag_gems.use_gems():
+        res_out = torch.conj(x)
+    gems_assert_close(to_reference(res_out), ref_out, dtype)
+
+
+@pytest.mark.view_as_complex
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_view_as_complex(shape, dtype):
+    x = torch.randn(size=(*shape, 2), dtype=dtype, device=flag_gems.device)
+    ref_out = torch.view_as_complex(to_reference(x).contiguous())
+    with flag_gems.use_gems():
+        res_out = torch.view_as_complex(x)
+    gems_assert_close(to_reference(res_out), ref_out, torch.complex64)
+
+
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
 
 
