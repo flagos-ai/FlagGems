@@ -1,3 +1,4 @@
+from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_max, clamp_max_
 from .div import div_mode, div_mode_
 from .exponential_ import exponential_
 from .mul import mul
@@ -6,6 +7,12 @@ from .sub import sub, sub_
 from .true_divide import true_divide, true_divide_out, true_divide_
 
 __all__ = [
+    "clamp",
+    "clamp_",
+    "clamp_min",
+    "clamp_min_",
+    "clamp_max",
+    "clamp_max_",
     "div_mode",
     "div_mode_",
     "exponential_",
