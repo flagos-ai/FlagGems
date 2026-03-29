@@ -1,0 +1,1041 @@
+"""
+Fused MoE correctness tests.
+
+Tests FlagGems fused_experts_impl against:
+  - PyTorch references (bf16/fp16, fp8 per-tensor, int8/int4 quantized paths)
+  - vLLM fused_experts_impl (bf16/fp16 and fp8_w8a8 block-wise)
+  - hpc-ops block-wise fp8 reference
+  - SonicMoE bf16 reference
+"""
+
+from math import ceil
+
+import pytest
+import torch
+
+import flag_gems
+
+from .conftest import QUICK_MODE
+
+
+FUSED_MOE_CONFIGS = [
+    # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
+    (1, 8, 128, 256, 2),
+    (4, 8, 128, 256, 2),
+    (8, 4, 64, 128, 2),
+    (16, 8, 256, 512, 2),
+    (32, 8, 128, 256, 4),
+]
+
+if not QUICK_MODE:
+    FUSED_MOE_CONFIGS += [
+        (64, 8, 256, 512, 2),
+        (128, 16, 128, 256, 4),
+        (4, 16, 512, 1024, 2),
+        # Mixtral-like shapes
+        (1, 8, 4096, 14336, 2),
+        (4, 8, 4096, 14336, 2),
+        (16, 8, 4096, 14336, 2),
+        (64, 8, 4096, 14336, 2),
+        (128, 8, 4096, 14336, 2),
+        (256, 8, 4096, 14336, 2),
+        (512, 8, 4096, 14336, 2),
+        # DeepSeek-V3-like shapes (TP=8 shard)
+        (1, 256, 7168, 2048, 8),
+        (4, 256, 7168, 2048, 8),
+        (16, 256, 7168, 2048, 8),
+        (64, 256, 7168, 2048, 8),
+        (128, 256, 7168, 2048, 8),
+        (256, 256, 7168, 2048, 8),
+        # Qwen3.5-397B-A17B
+        (1, 512, 4096, 1024, 10),
+        (4, 512, 4096, 1024, 10),
+        (16, 512, 4096, 1024, 10),
+        (64, 512, 4096, 1024, 10),
+        (128, 512, 4096, 1024, 10),
+        (256, 512, 4096, 1024, 10),
+    ]
+
+FUSED_MOE_QUANT_CONFIGS = [
+    # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
+    (1, 8, 128, 256, 2),
+    (4, 8, 128, 256, 2),
+    (16, 8, 256, 512, 2),
+    (32, 8, 128, 256, 4),
+]
+
+if not QUICK_MODE:
+    FUSED_MOE_QUANT_CONFIGS += [
+        (64, 8, 256, 512, 2),
+        (128, 16, 128, 256, 4),
+        # Mixtral-like shapes
+        (1, 8, 4096, 14336, 2),
+        (16, 8, 4096, 14336, 2),
+        (64, 8, 4096, 14336, 2),
+    ]
+
+
+def native_w8a8_block_matmul(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    a_scales: torch.Tensor,
+    b_scales: torch.Tensor,
+    block_size: list[int],
+    output_dtype: torch.dtype,
+    compute_type: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    a = a.to(compute_type)
+    b = b.to(compute_type)
+    assert a.shape[-1] == b.shape[-1]
+    assert b.ndim == 2 and b.is_contiguous() and b_scales.ndim == 2
+    assert len(block_size) == 2
+    block_n, block_k = block_size
+    assert (a.shape[-1] + block_k - 1) // block_k == a_scales.shape[-1]
+    assert a.shape[:-1] == a_scales.shape[:-1]
+
+    m = a.numel() // a.shape[-1]
+    n, k = b.shape
+    origin_c_shape = a.shape[:-1] + (n,)
+    a = a.reshape(m, a.shape[-1])
+    a_scales = a_scales.reshape(m, a_scales.shape[-1])
+    n_tiles = (n + block_n - 1) // block_n
+    k_tiles = (k + block_k - 1) // block_k
+    assert n_tiles == b_scales.shape[0]
+    assert k_tiles == b_scales.shape[1]
+
+    c = torch.zeros((m, n), dtype=compute_type, device=a.device)
+    a_tiles = [a[:, i * block_k : min((i + 1) * block_k, k)] for i in range(k_tiles)]
+    b_tiles = [
+        [
+            b[
+                j * block_n : min((j + 1) * block_n, n),
+                i * block_k : min((i + 1) * block_k, k),
+            ]
+            for i in range(k_tiles)
+        ]
+        for j in range(n_tiles)
+    ]
+    c_tiles = [c[:, j * block_n : min((j + 1) * block_n, n)] for j in range(n_tiles)]
+    a_scale_tiles = [a_scales[:, i : i + 1] for i in range(k_tiles)]
+
+    for i in range(k_tiles):
+        for j in range(n_tiles):
+            scale = a_scale_tiles[i] * b_scales[j][i]
+            c_tiles[j][:, :] += torch.matmul(a_tiles[i], b_tiles[j][i].t()) * scale
+
+    return c.reshape(origin_c_shape).to(output_dtype)
+
+
+def native_per_token_group_quant_fp8(
+    x: torch.Tensor,
+    group_size: int,
+    eps: float = 1e-10,
+    dtype: torch.dtype = torch.float8_e4m3fn,
+):
+    assert x.shape[-1] % group_size == 0
+    assert x.is_contiguous()
+
+    finfo = torch.finfo(dtype)
+    x_reshaped = x.reshape(x.numel() // group_size, group_size)
+    amax = x_reshaped.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
+    x_scales = amax / finfo.max
+    x_quant = (x_reshaped / x_scales).clamp(min=finfo.min, max=finfo.max).to(dtype)
+    x_quant = x_quant.reshape(x.shape)
+    x_scales = x_scales.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
+    return x_quant, x_scales
+
+
+def torch_w8a8_block_fp8_moe(
+    hidden_states,
+    w1,
+    w2,
+    w1_scale,
+    w2_scale,
+    topk_weights,
+    topk_ids,
+    block_shape,
+):
+    batch_size, hidden_size = hidden_states.shape
+    topk = topk_ids.size(1)
+    expanded_hidden = hidden_states.view(batch_size, -1, hidden_size).repeat(1, topk, 1)
+    expanded_hidden = expanded_hidden.reshape(-1, hidden_size)
+    out = torch.zeros(batch_size * topk, w2.shape[1], dtype=hidden_states.dtype, device=hidden_states.device)
+
+    flat_weights = topk_weights.view(-1)
+    flat_ids = topk_ids.view(-1)
+    _, block_k = block_shape
+    hidden_q, hidden_scale = native_per_token_group_quant_fp8(expanded_hidden, block_k)
+    hidden_q = hidden_q.to(torch.float32)
+
+    def silu_and_mul(x):
+        import torch.nn.functional as F
+
+        d = x.shape[-1] // 2
+        return F.silu(x[..., :d]) * x[..., d:]
+
+    for expert_idx in range(w1.shape[0]):
+        mask = flat_ids == expert_idx
+        if mask.sum():
+            inter = native_w8a8_block_matmul(
+                hidden_q[mask],
+                w1[expert_idx],
+                hidden_scale[mask],
+                w1_scale[expert_idx],
+                block_shape,
+                output_dtype=hidden_states.dtype,
+            )
+            act = silu_and_mul(inter)
+            act_q, act_scale = native_per_token_group_quant_fp8(act, block_k)
+            out[mask] = native_w8a8_block_matmul(
+                act_q,
+                w2[expert_idx],
+                act_scale,
+                w2_scale[expert_idx],
+                block_shape,
+                output_dtype=hidden_states.dtype,
+            )
+
+    return (
+        out.view(batch_size, -1, w2.shape[1])
+        * flat_weights.view(batch_size, -1, 1).to(out.dtype)
+    ).sum(dim=1)
+
+
+def torch_fused_moe_reference(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+) -> torch.Tensor:
+    num_tokens, hidden_size = hidden_states.shape
+    topk = topk_ids.shape[1]
+    output = torch.zeros(num_tokens, hidden_size, device=hidden_states.device, dtype=hidden_states.dtype)
+
+    for token_idx in range(num_tokens):
+        for topk_idx in range(topk):
+            expert_idx = topk_ids[token_idx, topk_idx].item()
+            weight = topk_weights[token_idx, topk_idx]
+            inter = hidden_states[token_idx].float() @ w1[expert_idx].T.float()
+            intermediate_size = inter.shape[-1] // 2
+            gate = inter[:intermediate_size]
+            up = inter[intermediate_size:]
+            act = (gate * torch.sigmoid(gate)) * up
+            out = act @ w2[expert_idx].T.float()
+            output[token_idx] += (weight.float() * out).to(output.dtype)
+
+    return output
+
+
+def _fake_quantize_fp8(tensor: torch.Tensor):
+    finfo = torch.finfo(torch.float8_e4m3fn)
+    eps = 1e-10
+    amax = tensor.abs().amax().clamp(min=eps).float()
+    scale = amax / finfo.max
+    quantized = (tensor.float() / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+    return quantized.float() * scale
+
+
+def _fake_quantize_int8(tensor: torch.Tensor):
+    eps = 1e-10
+    amax = tensor.abs().amax(dim=-1, keepdim=True).clamp(min=eps).float()
+    scale = amax / 127.0
+    quantized = (tensor.float() / scale).round().clamp(-128, 127).to(torch.int8)
+    return quantized.float() * scale
+
+
+def torch_fused_moe_quantized_reference(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    quant_mode: str = "fp8",
+) -> torch.Tensor:
+    num_tokens, hidden_size = hidden_states.shape
+    topk = topk_ids.shape[1]
+    output = torch.zeros(num_tokens, hidden_size, device=hidden_states.device, dtype=hidden_states.dtype)
+    fake_quant = _fake_quantize_fp8 if quant_mode == "fp8" else _fake_quantize_int8
+
+    for token_idx in range(num_tokens):
+        for topk_idx in range(topk):
+            expert_idx = topk_ids[token_idx, topk_idx].item()
+            weight = topk_weights[token_idx, topk_idx]
+            hidden_q = fake_quant(hidden_states[token_idx].unsqueeze(0)).squeeze(0)
+            inter = hidden_q.float() @ w1[expert_idx].T.float()
+            intermediate_size = inter.shape[-1] // 2
+            gate = inter[:intermediate_size]
+            up = inter[intermediate_size:]
+            act = (gate * torch.sigmoid(gate)) * up
+            act_q = fake_quant(act.unsqueeze(0)).squeeze(0)
+            out = act_q.float() @ w2[expert_idx].T.float()
+            output[token_idx] += (weight.float() * out).to(output.dtype)
+
+    return output
+
+
+def torch_fused_moe_weight_only_reference(
+    hidden_states: torch.Tensor,
+    w1_int: torch.Tensor,
+    w2_int: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+) -> torch.Tensor:
+    num_tokens, hidden_size = hidden_states.shape
+    topk = topk_ids.shape[1]
+    output = torch.zeros(num_tokens, hidden_size, device=hidden_states.device, dtype=hidden_states.dtype)
+
+    for token_idx in range(num_tokens):
+        for topk_idx in range(topk):
+            expert_idx = topk_ids[token_idx, topk_idx].item()
+            weight = topk_weights[token_idx, topk_idx]
+            w1_deq = w1_int[expert_idx].float() * w1_scale[expert_idx].unsqueeze(-1).float()
+            w2_deq = w2_int[expert_idx].float() * w2_scale[expert_idx].unsqueeze(-1).float()
+            inter = hidden_states[token_idx].float() @ w1_deq.T
+            intermediate_size = inter.shape[-1] // 2
+            gate = inter[:intermediate_size]
+            up = inter[intermediate_size:]
+            act = (gate * torch.sigmoid(gate)) * up
+            out = act @ w2_deq.T
+            output[token_idx] += (weight.float() * out).to(output.dtype)
+
+    return output
+
+
+def _generate_moe_weights(
+    num_tokens: int,
+    num_experts: int,
+    hidden_size: int,
+    intermediate_size: int,
+    topk: int,
+    dtype: torch.dtype,
+    device: torch.device,
+    block_shape: tuple[int, int] | None = None,
+    sort_topk_ids: bool = False,
+):
+    if sort_topk_ids:
+        topk_ids = torch.randint(0, num_experts, (num_tokens, topk), dtype=torch.int32, device=device)
+        topk_ids, _ = torch.sort(topk_ids, dim=1)
+        topk_weights = torch.randn((num_tokens, topk), dtype=torch.float32, device=device) / topk
+    else:
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+        topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+        topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+        topk_weights = topk_weights.to(torch.float32)
+
+    w1 = (
+        torch.randn(num_experts, intermediate_size * 2, hidden_size, device=device, dtype=torch.float32)
+        * (1.0 / hidden_size**0.5)
+    ).to(dtype)
+    w2 = (
+        torch.randn(num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32)
+        * (1.0 / intermediate_size**0.5)
+    ).to(dtype)
+
+    if dtype == torch.float8_e4m3fn and block_shape is not None:
+        block_n, block_k = block_shape
+        assert block_n == block_k
+        assert (intermediate_size * 2) % block_n == 0
+        assert hidden_size % block_k == 0
+        assert intermediate_size % block_n == 0
+        w1_scale = torch.randn(
+            num_experts,
+            ceil(intermediate_size * 2 / block_n),
+            ceil(hidden_size / block_k),
+            device=device,
+            dtype=torch.float32,
+        )
+        w2_scale = torch.randn(
+            num_experts,
+            ceil(hidden_size / block_n),
+            ceil(intermediate_size / block_k),
+            device=device,
+            dtype=torch.float32,
+        )
+    else:
+        w1_scale = None
+        w2_scale = None
+
+    return w1, w2, w1_scale, w2_scale, topk_weights, topk_ids
+
+
+try:
+    from vllm.model_executor.layers.fused_moe.fused_moe import (
+        fused_experts_impl as vllm_fused_experts_impl,
+    )
+
+    HAS_VLLM_FUSED_MOE = True
+except ImportError:
+    HAS_VLLM_FUSED_MOE = False
+
+try:
+    from sonicmoe.enums import ActivationType
+    from sonicmoe.functional import moe_general_routing_inputs
+
+    HAS_SONICMOE_FUSED_MOE = True
+except ImportError:
+    HAS_SONICMOE_FUSED_MOE = False
+
+try:
+    import hpc
+
+    HAS_HPC_FUSED_MOE = True
+except ImportError:
+    HAS_HPC_FUSED_MOE = False
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_fused_moe_bf16_vs_torchref(config, dtype):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1, w2, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+    )
+    ref = torch_fused_moe_reference(hidden_states, w1, w2, topk_weights, topk_ids)
+
+    torch.cuda.synchronize()
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-5)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
+def test_fused_moe_bf16_vs_vllm(config, dtype):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1, w2, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+    )
+    ref = vllm_fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        inplace=False,
+        activation="silu",
+    )
+
+    torch.cuda.synchronize()
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("block_shape", [[128, 128]])
+def test_fused_moe_fp8_w8a8_blockwise_vs_torchref(config, block_shape):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    if hidden_size % block_shape[1] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+    if intermediate_size % block_shape[0] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1, w2, w1_scale, w2_scale, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens,
+        num_experts,
+        hidden_size,
+        intermediate_size,
+        topk,
+        torch.float8_e4m3fn,
+        device,
+        block_shape=block_shape,
+    )
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        block_shape=block_shape,
+    )
+    ref = torch_w8a8_block_fp8_moe(
+        hidden_states, w1, w2, w1_scale, w2_scale, topk_weights, topk_ids, block_shape
+    )
+
+    torch.cuda.synchronize()
+    rtol = 2e-1
+    atol = max(5e-2, ref.abs().max().item() * 5e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("block_shape", [[128, 128]])
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
+def test_fused_moe_fp8_w8a8_blockwise_vs_vllm(config, block_shape):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    if hidden_size % block_shape[1] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+    if intermediate_size % block_shape[0] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1, w2, w1_scale, w2_scale, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens,
+        num_experts,
+        hidden_size,
+        intermediate_size,
+        topk,
+        torch.float8_e4m3fn,
+        device,
+        block_shape=block_shape,
+    )
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        block_shape=block_shape,
+    )
+    ref = vllm_fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        inplace=False,
+        activation="silu",
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        block_shape=block_shape,
+    )
+
+    torch.cuda.synchronize()
+    rtol = 2e-1
+    atol = max(5e-2, ref.abs().max().item() * 5e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+def test_fused_moe_fp8_w8a8_per_tensor_vs_torchref(config):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1_fp32 = torch.randn(
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
+    ) * (1.0 / hidden_size**0.5)
+    w2_fp32 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
+    ) * (1.0 / intermediate_size**0.5)
+    eps = 1e-10
+    finfo = torch.finfo(torch.float8_e4m3fn)
+
+    w1_scales = []
+    w1_fp8 = []
+    for expert_idx in range(num_experts):
+        amax = w1_fp32[expert_idx].abs().amax().clamp(min=eps)
+        scale = amax / finfo.max
+        w1_q = (w1_fp32[expert_idx] / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+        w1_scales.append(scale)
+        w1_fp8.append(w1_q)
+    w1_fp8 = torch.stack(w1_fp8)
+    w1_scale = torch.tensor(w1_scales, device=device, dtype=torch.float32)
+
+    w2_scales = []
+    w2_fp8 = []
+    for expert_idx in range(num_experts):
+        amax = w2_fp32[expert_idx].abs().amax().clamp(min=eps)
+        scale = amax / finfo.max
+        w2_q = (w2_fp32[expert_idx] / scale).clamp(finfo.min, finfo.max).to(torch.float8_e4m3fn)
+        w2_scales.append(scale)
+        w2_fp8.append(w2_q)
+    w2_fp8 = torch.stack(w2_fp8)
+    w2_scale = torch.tensor(w2_scales, device=device, dtype=torch.float32)
+
+    _, _, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1_fp8,
+        w2_fp8,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+    )
+
+    w1_deq = torch.zeros_like(w1_fp32).to(dtype)
+    for expert_idx in range(num_experts):
+        w1_deq[expert_idx] = (w1_fp8[expert_idx].float() * w1_scales[expert_idx]).to(dtype)
+    w2_deq = torch.zeros_like(w2_fp32).to(dtype)
+    for expert_idx in range(num_experts):
+        w2_deq[expert_idx] = (w2_fp8[expert_idx].float() * w2_scales[expert_idx]).to(dtype)
+
+    ref = torch_fused_moe_quantized_reference(
+        hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="fp8"
+    )
+
+    torch.cuda.synchronize()
+    rtol = 5e-1
+    atol = max(2e-1, ref.abs().max().item() * 1e-1)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+def test_fused_moe_int8_w8a8_vs_torchref(config):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1_fp32 = torch.randn(
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
+    ) * (1.0 / hidden_size**0.5)
+    w2_fp32 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
+    ) * (1.0 / intermediate_size**0.5)
+    eps = 1e-10
+
+    w1_amax = w1_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w1_scale_full = w1_amax / 127.0
+    w1_int8 = (w1_fp32 / w1_scale_full).round().clamp(-128, 127).to(torch.int8)
+    w1_scale = w1_scale_full.squeeze(-1)
+
+    w2_amax = w2_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w2_scale_full = w2_amax / 127.0
+    w2_int8 = (w2_fp32 / w2_scale_full).round().clamp(-128, 127).to(torch.int8)
+    w2_scale = w2_scale_full.squeeze(-1)
+
+    _, _, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1_int8,
+        w2_int8,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        use_int8_w8a8=True,
+        per_channel_quant=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+    )
+
+    w1_deq = (w1_int8.float() * w1_scale_full).to(dtype)
+    w2_deq = (w2_int8.float() * w2_scale_full).to(dtype)
+    ref = torch_fused_moe_quantized_reference(
+        hidden_states, w1_deq, w2_deq, topk_weights, topk_ids, quant_mode="int8"
+    )
+
+    torch.cuda.synchronize()
+    rtol = 2e-1
+    atol = max(5e-2, ref.abs().max().item() * 2e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+def test_fused_moe_int8_w8a16_vs_torchref(config):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1_fp32 = torch.randn(
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
+    ) * (1.0 / hidden_size**0.5)
+    w2_fp32 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
+    ) * (1.0 / intermediate_size**0.5)
+    eps = 1e-10
+
+    w1_amax = w1_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w1_scale_full = w1_amax / 127.0
+    w1_int8 = (w1_fp32 / w1_scale_full).round().clamp(-128, 127).to(torch.int8)
+    w1_scale = w1_scale_full.squeeze(-1)
+
+    w2_amax = w2_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w2_scale_full = w2_amax / 127.0
+    w2_int8 = (w2_fp32 / w2_scale_full).round().clamp(-128, 127).to(torch.int8)
+    w2_scale = w2_scale_full.squeeze(-1)
+
+    _, _, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1_int8,
+        w2_int8,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        use_int8_w8a16=True,
+        per_channel_quant=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+    )
+    ref = torch_fused_moe_weight_only_reference(
+        hidden_states, w1_int8, w2_int8, w1_scale, w2_scale, topk_weights, topk_ids
+    )
+
+    torch.cuda.synchronize()
+    rtol = 2e-1
+    atol = max(5e-2, ref.abs().max().item() * 2e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+def test_fused_moe_int4_w4a16_vs_torchref(config):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1_fp32 = torch.randn(
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=torch.float32,
+    ) * (1.0 / hidden_size**0.5)
+    w2_fp32 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
+    ) * (1.0 / intermediate_size**0.5)
+    eps = 1e-10
+    int4_max = 7
+    int4_min = -8
+
+    w1_amax = w1_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w1_scale_full = w1_amax / int4_max
+    w1_int4 = (w1_fp32 / w1_scale_full).round().clamp(int4_min, int4_max).to(torch.int8)
+    w1_scale = w1_scale_full.squeeze(-1)
+
+    w2_amax = w2_fp32.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
+    w2_scale_full = w2_amax / int4_max
+    w2_int4 = (w2_fp32 / w2_scale_full).round().clamp(int4_min, int4_max).to(torch.int8)
+    w2_scale = w2_scale_full.squeeze(-1)
+
+    _, _, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1_int4,
+        w2_int4,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        use_int4_w4a16=True,
+        per_channel_quant=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+    )
+    ref = torch_fused_moe_weight_only_reference(
+        hidden_states, w1_int4, w2_int4, w1_scale, w2_scale, topk_weights, topk_ids
+    )
+
+    torch.cuda.synchronize()
+    rtol = 3e-1
+    atol = max(1e-1, ref.abs().max().item() * 5e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("block_shape", [[128, 128]])
+@pytest.mark.skipif(not HAS_HPC_FUSED_MOE, reason="hpc-ops not installed")
+def test_fused_moe_fp8_w8a8_blockwise_vs_hpc(config, block_shape):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    if block_shape[0] != 128 or block_shape[1] != 128:
+        pytest.skip("Invalid block shape for hpc-ops")
+    if hidden_size % block_shape[1] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+    if intermediate_size % block_shape[0] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+    if ceil(intermediate_size * 2 / 128) % 4 != 0:
+        pytest.skip("Invalid shape for hpc-ops")
+    if ceil(hidden_size / 128) % 4 != 0:
+        pytest.skip("Invalid shape for hpc-ops")
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1, w2, w1_scale, w2_scale, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens,
+        num_experts,
+        hidden_size,
+        intermediate_size,
+        topk,
+        torch.float8_e4m3fn,
+        device,
+        block_shape=block_shape,
+        sort_topk_ids=True,
+    )
+    from flag_gems.ops.per_token_group_quant_fp8 import per_token_group_quant_fp8
+
+    hidden_states_q, a1_scale = per_token_group_quant_fp8(
+        hidden_states,
+        group_size=block_shape[1],
+        dtype=torch.float8_e4m3fn,
+        column_major_scales=False,
+        scale_ue8m0=False,
+    )
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        block_shape=block_shape,
+    )
+    ref = hpc.fuse_moe_blockwise_fp8(
+        hidden_states_q,
+        a1_scale,
+        w1,
+        w1_scale,
+        w2,
+        w2_scale,
+        topk_ids,
+        topk_weights,
+        0,
+        num_experts,
+    )
+
+    torch.cuda.synchronize()
+    rtol = 2e-1
+    atol = max(5e-2, ref.abs().max().item() * 5e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
+@pytest.mark.skipif(not HAS_SONICMOE_FUSED_MOE, reason="sonicmoe not installed")
+def test_fused_moe_vs_sonicmoe(config, dtype):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    if hidden_size % 64 != 0 or hidden_size < 512 or intermediate_size % 64 != 0:
+        pytest.skip("Invalid shape for SonicMoE")
+    device = flag_gems.device
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1, w2, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+    )
+
+    token_indices = (
+        torch.arange(num_tokens, dtype=torch.int32, device=device)
+        .unsqueeze(1)
+        .expand(-1, topk)
+        .reshape(-1)
+    )
+    expert_indices = topk_ids.reshape(-1)
+    router_scores = topk_weights.reshape(-1)
+    stream_id = torch.cuda.current_stream().cuda_stream
+
+    w1_sonic = torch.empty_like(w1)
+    w1_sonic[:, 0::2, :] = w1[:, :intermediate_size, :]
+    w1_sonic[:, 1::2, :] = w1[:, intermediate_size:, :]
+
+    ref, _ = moe_general_routing_inputs(
+        hidden_states,
+        router_scores,
+        token_indices,
+        expert_indices,
+        w1_sonic.permute(1, 2, 0),
+        None,
+        w2.permute(1, 2, 0),
+        None,
+        num_experts,
+        stream_id,
+        ActivationType.SWIGLU,
+        is_inference_mode_enabled=True,
+    )
+
+    torch.cuda.synchronize()
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-2)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize(
+    "config",
+    [
+        (4, 8, 128, 256, 2),
+        (16, 8, 256, 512, 2),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_fused_moe_inplace(config, dtype):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1, w2, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+    topk_weights = topk_weights.to(dtype)
+
+    ref = flag_gems.fused_experts_impl(
+        hidden_states.clone(),
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        inplace=False,
+    )
+    hidden_copy = hidden_states.clone()
+    result = flag_gems.fused_experts_impl(
+        hidden_copy,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        inplace=True,
+    )
+
+    torch.cuda.synchronize()
+    assert result.data_ptr() == hidden_copy.data_ptr()
+    torch.testing.assert_close(result, ref, rtol=1e-3, atol=1e-3)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize(
+    "config",
+    [
+        (4, 8, 128, 256, 2),
+        (16, 8, 256, 512, 2),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_fused_moe_apply_router_weight_on_input(config, dtype):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1, w2, _, _, topk_weights, topk_ids = _generate_moe_weights(
+        num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+    )
+    topk_weights = topk_weights.to(dtype)
+
+    result_default = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        apply_router_weight_on_input=False,
+    )
+    result_on_input = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=num_experts,
+        apply_router_weight_on_input=True,
+    )
+    ref = torch_fused_moe_reference(hidden_states, w1, w2, topk_weights, topk_ids)
+
+    torch.cuda.synchronize()
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-5)
+    torch.testing.assert_close(result_default, ref, rtol=rtol, atol=atol)
+    assert torch.isfinite(result_on_input).all()
+    assert result_on_input.abs().sum() > 0
