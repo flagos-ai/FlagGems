@@ -39,6 +39,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm
 from .multinomial import multinomial
+from .ne import ne, ne_scalar
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -156,6 +157,8 @@ __all__ = [
     "multinomial",
     "lt",
     "lt_scalar",
+    "ne",
+    "ne_scalar",
     "index_add",
     "index_put",
     "index_put_",
