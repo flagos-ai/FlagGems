@@ -251,6 +251,9 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
     # Cap num_ctas so ROOT_SCAN_TILE_SIZE fits in UB (max 4096 for int64 + multibuffer)
     MAX_ROOT_SCAN = 4096
     num_ctas = min(num_tiles, MAX_ROOT_SCAN)
+    # Ensure total grid (M * num_ctas) doesn't exceed Ascend coreDim limit
+    max_ctas_for_grid = max(1, GRID_Y_LIMIT // M)
+    num_ctas = min(num_ctas, max_ctas_for_grid)
     ROOT_SCAN_TILE_SIZE = triton.next_power_of_2(num_ctas)
     tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
     block_sums = torch.empty(
