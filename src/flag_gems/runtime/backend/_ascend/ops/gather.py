@@ -312,13 +312,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
             and index.shape[0] <= 4096):
         return gather_high_perf(inp, index, out)
 
-    # For very large tensors, fall back to native implementation
-    # which uses optimized DMA-based gather
-    N = index.numel()
-    if N > 4096 * BLOCK_SIZE_SUB:
-        torch.ops.aten.gather.out(inp, dim, index, out=out)
-        return out
-
     return gather_nd(inp, dim, index, out)
 
 
