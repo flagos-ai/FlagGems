@@ -1,6 +1,8 @@
+import functools
 import logging
 import os
-from typing import List, Optional
+from contextlib import contextmanager
+from typing import Any, Dict, List, Optional
 
 import torch
 import triton
@@ -17,6 +19,137 @@ logger = logging.getLogger(
 )
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = "w8a8_block_fp8_matmul_hopper_expand.yaml"
+CONFIG_FILENAME = "w8a8_block_fp8_matmul_hopper.yaml"
+
+
+@functools.lru_cache(maxsize=1)
+def get_embedded_w8a8_block_fp8_hopper_configs():
+    config_path = os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME)
+    if not os.path.exists(config_path):
+        return {}, {}
+
+    with open(config_path, "r") as file:
+        data = yaml.safe_load(file) or {}
+
+    fallback = data.get("_FALLBACK", {})
+    keys_order = [
+        "BLOCK_SIZE_M",
+        "BLOCK_SIZE_N",
+        "BLOCK_SIZE_K",
+        "GROUP_SIZE_M",
+        "num_warps",
+        "num_stages",
+    ]
+    parsed_data = {}
+    for dev, configs in data.items():
+        if dev == "_FALLBACK":
+            continue
+        parsed_data[dev] = {}
+        for key, m_dict in configs.items():
+            parsed_dict = {}
+            for m, value in m_dict.items():
+                if isinstance(value, list):
+                    parsed_dict[int(m)] = dict(zip(keys_order, value))
+                else:
+                    parsed_dict[int(m)] = value
+            parsed_data[dev][key] = parsed_dict
+
+    return parsed_data, fallback
+
+
+@functools.lru_cache(maxsize=1)
+def _get_device_name() -> str:
+    name = torch.cuda.get_device_name().replace(" ", "_")
+    name_parts = name.split("_")
+    if any(part.startswith("H200") for part in name_parts):
+        name = "NVIDIA_H200"
+    elif any(part.startswith("H20") for part in name_parts):
+        name = "NVIDIA_H20"
+
+    embedded_configs, fallback_mapping = get_embedded_w8a8_block_fp8_hopper_configs()
+    if name in embedded_configs:
+        return name
+
+    fallback = fallback_mapping.get(name)
+    if fallback and fallback in embedded_configs:
+        logger.info(
+            "Device %s not in hopper W8A8 Block FP8 config table, falling back to %s",
+            name,
+            fallback,
+        )
+        return fallback
+
+    return name
+
+
+@functools.lru_cache
+def get_w8a8_block_fp8_hopper_configs(
+    N: int, K: int, block_n: int, block_k: int
+) -> Optional[Dict[int, Any]]:
+    device_name = _get_device_name()
+    embedded_configs, _ = get_embedded_w8a8_block_fp8_hopper_configs()
+    device_table = embedded_configs.get(device_name)
+    if device_table is None:
+        logger.warning(
+            "No embedded hopper W8A8 Block FP8 configs for device %s. "
+            "Will use default config.",
+            device_name,
+        )
+        return None
+
+    key = f"{N},{K},fp8_w8a8,{block_n},{block_k}"
+    configs = device_table.get(key)
+    if configs is not None:
+        logger.info(
+            "Using embedded hopper W8A8 Block FP8 config for device=%s, key=%s",
+            device_name,
+            key,
+        )
+        return configs
+
+    logger.warning(
+        "No embedded hopper W8A8 Block FP8 config for device=%s, key=%s. "
+        "Will use default config.",
+        device_name,
+        key,
+    )
+    return None
+
+
+def _build_fixed_matmul_config(
+    config: Dict[str, int], pre_hook=None
+) -> triton.Config:
+    return triton.Config(
+        {
+            "BLOCK_M": config["BLOCK_SIZE_M"],
+            "BLOCK_N": config["BLOCK_SIZE_N"],
+            "BLOCK_K": config["BLOCK_SIZE_K"],
+            "GROUP_M": config["GROUP_SIZE_M"],
+        },
+        num_stages=config["num_stages"],
+        num_warps=config["num_warps"],
+        pre_hook=pre_hook,
+    )
+
+
+@contextmanager
+def _use_fixed_matmul_configs(config: Dict[str, int]):
+    general_tuner = w8a8_block_fp8_matmul_kernel_general.fn
+    host_tma_tuner = w8a8_block_fp8_matmul_kernel_host_tma.fn
+    general_configs = general_tuner.configs
+    host_tma_configs = host_tma_tuner.configs
+    general_tuner.configs = [_build_fixed_matmul_config(config)]
+    host_tma_tuner.configs = [
+        _build_fixed_matmul_config(
+            config,
+            pre_hook=matmul_tma_set_block_size_hook,
+        )
+    ]
+    try:
+        yield
+    finally:
+        general_tuner.configs = general_configs
+        host_tma_tuner.configs = host_tma_configs
 
 
 def is_tma_compatible(a, b, n, k):
@@ -514,6 +647,11 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
     )
     dtype_str = str(a.dtype).split(".")[-1]
+    fixed_config = None
+    if os.environ.get("USE_FLAGTUNE") != "1":
+        configs = get_w8a8_block_fp8_hopper_configs(N, K, group_n, group_k)
+        if configs:
+            fixed_config = configs[min(configs.keys(), key=lambda x: abs(x - M))]
 
     if hasattr(
         triton.tools.tensor_descriptor, "TensorDescriptor"
@@ -535,66 +673,89 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
             b_desc = TensorDescriptor(b.T, b.T.shape, b.T.stride(), dummy_block)
 
         c_desc = TensorDescriptor(c, c.shape, c.stride(), dummy_block)
+        kernel_kwargs = {
+            "GROUP_M": 8,
+            "A_ROW_MAJOR": a_row_major,
+            "B_ROW_MAJOR": b_row_major,
+            "dtype": dtype_str,
+        }
+        if fixed_config is not None:
+            kernel_kwargs.pop("GROUP_M")
 
-        with torch_device_fn.device(a.device):
-            w8a8_block_fp8_matmul_kernel_host_tma[grid](
-                a_desc,
-                b_desc,
-                c_desc,
-                a_s,
-                b_s,
-                M,
-                N,
-                K,
-                group_n,
-                group_k,
-                a.stride(0),
-                a.stride(1),
-                b.stride(0),
-                b.stride(1),
-                c.stride(0),
-                c.stride(1),
-                a_s.stride(0),
-                a_s.stride(1),
-                b_s.stride(0),
-                b_s.stride(1),
-                GROUP_M=8,
-                A_ROW_MAJOR=a_row_major,
-                B_ROW_MAJOR=b_row_major,
-                dtype=dtype_str,
-            )
+        launch = lambda: w8a8_block_fp8_matmul_kernel_host_tma[grid](
+            a_desc,
+            b_desc,
+            c_desc,
+            a_s,
+            b_s,
+            M,
+            N,
+            K,
+            group_n,
+            group_k,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            a_s.stride(0),
+            a_s.stride(1),
+            b_s.stride(0),
+            b_s.stride(1),
+            **kernel_kwargs,
+        )
+
+        if fixed_config is not None:
+            with _use_fixed_matmul_configs(fixed_config):
+                with torch_device_fn.device(a.device):
+                    launch()
+        else:
+            with torch_device_fn.device(a.device):
+                launch()
     else:
 
         def alloc_fn(size: int, align: int, stream: Optional[int]):
             return torch.empty(size, dtype=torch.int8, device=a.device)
 
         triton.set_allocator(alloc_fn)
+        kernel_kwargs = {
+            "dtype": dtype_str,
+            "GROUP_M": 8,
+        }
+        if fixed_config is not None:
+            kernel_kwargs.pop("GROUP_M")
 
-        with torch_device_fn.device(a.device):
-            w8a8_block_fp8_matmul_kernel_general[grid](
-                a,
-                b,
-                c,
-                a_s,
-                b_s,
-                M,
-                N,
-                K,
-                group_n,
-                group_k,
-                a.stride(0),
-                a.stride(1),
-                b.stride(0),
-                b.stride(1),
-                c.stride(0),
-                c.stride(1),
-                a_s.stride(0),
-                a_s.stride(1),
-                b_s.stride(0),
-                b_s.stride(1),
-                dtype=dtype_str,
-                GROUP_M=8,
-            )
+        launch = lambda: w8a8_block_fp8_matmul_kernel_general[grid](
+            a,
+            b,
+            c,
+            a_s,
+            b_s,
+            M,
+            N,
+            K,
+            group_n,
+            group_k,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            a_s.stride(0),
+            a_s.stride(1),
+            b_s.stride(0),
+            b_s.stride(1),
+            **kernel_kwargs,
+        )
+        if fixed_config is not None:
+            with _use_fixed_matmul_configs(fixed_config):
+                with torch_device_fn.device(a.device):
+                    launch()
+        else:
+            with torch_device_fn.device(a.device):
+                launch()
     return c
 
 
