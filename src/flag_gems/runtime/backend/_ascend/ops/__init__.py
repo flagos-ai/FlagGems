@@ -60,6 +60,7 @@ from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
 from .sort import sort
 from .stack import stack
+from .topk import topk
 from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
@@ -163,6 +164,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "_unique2",
+    "topk",
     "upsample_nearest2d",
     "randperm",
 ]
