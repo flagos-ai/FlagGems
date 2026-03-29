@@ -5,6 +5,7 @@ from .mul import mul
 from .pow import pow_scalar, pow_scalar_
 from .sub import sub, sub_
 from .true_divide import true_divide, true_divide_out, true_divide_
+from .view_as_complex import view_as_complex
 
 __all__ = [
     "add",
@@ -20,4 +21,5 @@ __all__ = [
     "true_divide",
     "true_divide_out",
     "true_divide_",
+    "view_as_complex",
 ]
