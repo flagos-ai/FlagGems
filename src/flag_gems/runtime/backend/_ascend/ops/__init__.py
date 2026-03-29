@@ -31,6 +31,7 @@ from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward
+from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
@@ -153,6 +154,8 @@ __all__ = [
     "any_dim",
     "angle",
     "multinomial",
+    "lt",
+    "lt_scalar",
     "index_add",
     "index_put",
     "index_put_",
