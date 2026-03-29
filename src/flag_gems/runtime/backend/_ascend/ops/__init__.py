@@ -26,6 +26,7 @@ from .groupnorm import group_norm, group_norm_backward
 from .hstack import hstack
 from .index import index
 from .index_add import index_add
+from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
@@ -153,6 +154,8 @@ __all__ = [
     "angle",
     "multinomial",
     "index_add",
+    "index_put",
+    "index_put_",
     "_unique2",
     "upsample_nearest2d",
     "randperm",
