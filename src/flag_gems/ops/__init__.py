@@ -104,6 +104,7 @@ from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
+from flag_gems.ops.gemm import gemm, gemm_out
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
@@ -375,6 +376,8 @@ __all__ = [
     "gelu_",
     "gelu_backward",
     "get_scheduler_metadata",
+    "gemm",
+    "gemm_out",
     "glu",
     "glu_backward",
     "group_norm",

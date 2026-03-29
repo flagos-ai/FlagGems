@@ -350,3 +350,31 @@ def test_addr_benchmark():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
+
+
+class GemmBenchmark(BlasBenchmark):
+    """
+    benchmark for gemm
+    """
+
+    pass
+
+
+@pytest.mark.gemm
+def test_gemm_benchmark():
+    def gemm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
+        inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
+        if b_column_major:
+            inp2 = torch.randn([n, k], dtype=cur_dtype, device=device)
+            yield inp1, inp2.t()
+        else:
+            inp2 = torch.randn([k, n], dtype=cur_dtype, device=device)
+            yield inp1, inp2
+
+    bench = GemmBenchmark(
+        input_fn=gemm_input_fn,
+        op_name="gemm",
+        torch_op=torch.Tensor.mm,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

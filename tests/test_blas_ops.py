@@ -289,6 +289,36 @@ def test_accuracy_mm(M, N, K, dtype, b_column_major):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.gemm
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_accuracy_gemm(M, N, K, dtype, b_column_major):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 mm test on tsingmicro platform")
+
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
+    np.random.seed(0)
+    random.seed(0)
+
+    # alpha = 2.0
+    # beta = 1.0
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
+
+    ref_out = torch.mm(ref_mat1, ref_mat2)
+    with flag_gems.use_gems():
+        res_out = flag_gems.ops.gemm(mat1, mat2)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
 @pytest.mark.mv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

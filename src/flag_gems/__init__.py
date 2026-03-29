@@ -237,6 +237,8 @@ _FULL_CONFIG = (
     ("minimum", minimum),
     ("mm", mm),
     ("mm.out", mm_out),
+    ("gemm", gemm),
+    ("gemm.out", gemm_out),
     ("mse_loss", mse_loss),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
