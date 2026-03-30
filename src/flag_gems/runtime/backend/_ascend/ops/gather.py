@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.scatter import scatter_
+from .scatter import scatter_
 from flag_gems.utils import libentry
 from flag_gems.utils.shape_utils import restride_dim
 
