@@ -1,13 +1,12 @@
+import triton
 from backend_utils import VendorInfoBase
+from packaging import version
 
 from .utils import CORE_NUM  # noqa: F401
 
 
 def get_triton_extra_name():
     try:
-        import triton
-        from packaging import version
-
         if version.parse(triton.__version__) <= version.parse("3.2.0"):
             return "ascend"
         else:
