@@ -159,7 +159,9 @@ def true_divide(A, B):
         y_scalar = float(B)
         BLOCK_SIZE = 2048
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        true_divide_scalar_kernel[grid](A, y_scalar, output, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+        true_divide_scalar_kernel[grid](
+            A, y_scalar, output, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        )
         return output
 
     # B is tensor, A is scalar
