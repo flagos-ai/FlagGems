@@ -3,7 +3,6 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 _pow = tl_extra_shim.pow
