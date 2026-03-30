@@ -117,7 +117,9 @@ def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=
     N = weight.shape[-1]
 
     if M == 0:
-        return torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
+        return torch.empty(
+            (*indices.shape, N), device=indices.device, dtype=weight.dtype
+        )
 
     BLOCK_SIZE = triton.next_power_of_2(N)
     # Ensure contiguous layout for efficient memory access
