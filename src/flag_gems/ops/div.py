@@ -82,11 +82,12 @@ def trunc_div_func_scalar_tensor(x, y):
 
 def trunc_divide(A, B):
     logger.debug("GEMS TRUNC_DIVIDE")
-    # Integer types: fall back to PyTorch to avoid div_rz on int
+    # Integer types: fall back to PyTorch to avoid div_rz on int.
+    # Use aten op directly to bypass FlagGems dispatch and avoid infinite recursion.
     if isinstance(A, torch.Tensor) and not A.is_floating_point():
-        return torch.div(A, B, rounding_mode="trunc")
+        return torch.ops.aten.div.Tensor_mode(A, B, rounding_mode="trunc")
     if isinstance(B, torch.Tensor) and not B.is_floating_point():
-        return torch.div(A, B, rounding_mode="trunc")
+        return torch.ops.aten.div.Tensor_mode(A, B, rounding_mode="trunc")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -100,9 +101,9 @@ def trunc_divide(A, B):
 
 def trunc_divide_(A, B):
     logger.debug("GEMS TRUNC_DIVIDE_")
-    # Integer types: fall back to PyTorch
+    # Integer types: fall back to aten directly to avoid FlagGems dispatch recursion
     if not A.is_floating_point():
-        return torch.div(A, B, rounding_mode="trunc", out=A)
+        return torch.ops.aten.div.out_mode(A, B, rounding_mode="trunc", out=A)
     if isinstance(B, torch.Tensor):
         return trunc_div_func(A, B, out0=A)
     else:
