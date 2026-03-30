@@ -11,6 +11,18 @@ from flag_gems.utils.shape_utils import volume
 device_ = device
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
+MAX_GRID = 65535
+BLOCK_SIZE_SUB = 1024
+
+
+def _compute_block_size(N):
+    """Compute BLOCK_SIZE ensuring grid dim (coreDim) <= MAX_GRID.
+    BLOCK_SIZE is always a multiple of BLOCK_SIZE_SUB."""
+    block_size = BLOCK_SIZE_SUB
+    while triton.cdiv(N, block_size) > MAX_GRID:
+        block_size *= 2
+    return max(block_size, 20480)
+
 
 @triton.jit
 def zeros_kernel(
@@ -40,7 +52,20 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     N = volume(size)
     if N == 0:
         return out
+    BLOCK_SIZE = _compute_block_size(N)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=20480, BLOCK_SIZE_SUB=1024)
+        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=BLOCK_SIZE, BLOCK_SIZE_SUB=BLOCK_SIZE_SUB)
     return out
+
+
+def zero_(x: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS_ASCEND ZERO_")
+    N = x.numel()
+    if N == 0:
+        return x
+    BLOCK_SIZE = _compute_block_size(N)
+    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(x.device):
+        zeros_kernel[grid_fn](x, N, BLOCK_SIZE=BLOCK_SIZE, BLOCK_SIZE_SUB=BLOCK_SIZE_SUB)
+    return x

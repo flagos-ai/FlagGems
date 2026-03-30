@@ -64,7 +64,7 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -133,6 +133,7 @@ __all__ = [
     "log_softmax",
     "log_softmax_backward",
     "zeros",
+    "zero_",
     "vector_norm",
     "outer",
     "arange",
