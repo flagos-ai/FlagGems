@@ -301,6 +301,8 @@ def get_tune_config(vendor_name=None):
     get_vendor_module(vendor_name)
     return backend_utils.get_tune_config(vendor_name)
 
+def get_expand_config(op_name=None, file_path=None):
+    return backend_utils.get_expand_config(op_name=op_name, file_path=file_path)
 
 def get_expand_config(op_name=None, file_path=None):
     return backend_utils.get_expand_config(op_name=op_name, file_path=file_path)
