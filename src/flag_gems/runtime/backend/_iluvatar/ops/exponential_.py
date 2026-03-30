@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device, torch_device_fn
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,

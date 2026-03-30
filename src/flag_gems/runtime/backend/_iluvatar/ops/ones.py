@@ -1,6 +1,4 @@
-import functools
 import logging
-import operator
 
 import torch
 import triton
