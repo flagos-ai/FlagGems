@@ -45,4 +45,11 @@ def replace_customized_ops(_globals):
             error.customized_op_replace_error(e)
 
 
+def get_expand_config(op_name):
+    return config_loader.get_expand_config(op_name=op_name)
+
+
+def ops_get_configs(op_name, pre_hook=None):
+    return config_loader.ops_get_configs(op_name=op_name, pre_hook=pre_hook)
+
 __all__ = ["*"]
