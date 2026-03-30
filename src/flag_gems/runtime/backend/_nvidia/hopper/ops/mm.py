@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import Optional
-
 import torch
 import triton
 import triton.language as tl
@@ -176,13 +175,13 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
 
 @libentry()
 @libtuner(
-    configs=matmul_get_configs(pre_hook=None)
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
+    configs=runtime.ops_get_configs("mm_general", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else runtime.get_tuned_config("mm"),
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=get_expand_config("matmul")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
-    else ["default", "default", "default", "default", "default", "default"],
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    strategy=runtime.get_expand_config("mm_general")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["default", "default", "default", "default", "default"],
     warmup=5,
     rep=10,
 )
@@ -312,10 +311,21 @@ def mm_kernel_general(
 
 @libentry()
 @libtuner(
-    configs=matmul_get_configs(),
+    configs=runtime.ops_get_configs("mm_general_tma", pre_hook=matmul_tma_set_block_size_hook)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            dict(config.kwargs),
+            num_stages=config.num_stages,
+            num_warps=config.num_warps,
+            num_ctas=getattr(config, "num_ctas", 1),
+            pre_hook=matmul_tma_set_block_size_hook,
+        )
+        for config in runtime.get_tuned_config("mm")
+    ],
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=get_expand_config("matmul")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
+    strategy=runtime.get_expand_config("mm_general_tma")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
@@ -506,10 +516,12 @@ def gemv_get_configs():
 
 @libentry()
 @libtuner(
-    configs=gemv_get_configs(),
+    configs=runtime.ops_get_configs("mm_gemv",pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [triton.Config({"BLOCK_M": 32, "BLOCK_K": 256})],
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=get_expand_config("gemv")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("gemv") != -1
+    strategy=runtime.get_expand_config("mm_gemv") ["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "default"],
     warmup=5,
     rep=10,
