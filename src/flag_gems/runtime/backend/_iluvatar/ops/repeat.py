@@ -11,10 +11,15 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def repeat_kernel_3d(
-    inp_ptr, out_ptr,
-    inp_s0, inp_s1, inp_s2,
-    out_s1, out_s2,
-    inp_st0, inp_st1,
+    inp_ptr,
+    out_ptr,
+    inp_s0,
+    inp_s1,
+    inp_s2,
+    out_s1,
+    out_s2,
+    inp_st0,
+    inp_st1,
     rep_s2,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -42,10 +47,15 @@ def repeat_kernel_3d(
 
 @triton.jit
 def repeat_kernel_3d_tiled(
-    inp_ptr, out_ptr,
-    inp_s0, inp_s1, inp_s2,
-    out_s1, out_s2,
-    inp_st0, inp_st1,
+    inp_ptr,
+    out_ptr,
+    inp_s0,
+    inp_s1,
+    inp_s2,
+    out_s1,
+    out_s2,
+    inp_st0,
+    inp_st1,
     BLOCK_SIZE: tl.constexpr,
 ):
     """3D repeat tiled: each program handles one (row, tile) pair."""
@@ -163,10 +173,15 @@ def repeat(inp: torch.Tensor, *sizes) -> torch.Tensor:
         if rep_s2 <= 8:
             grid = (num_rows,)
             repeat_kernel_3d[grid](
-                inp, out,
-                inp_shape[0], inp_shape[1], inp_s2,
-                out_shape[1], out_shape[2],
-                inp.stride(0), inp.stride(1),
+                inp,
+                out,
+                inp_shape[0],
+                inp_shape[1],
+                inp_s2,
+                out_shape[1],
+                out_shape[2],
+                inp.stride(0),
+                inp.stride(1),
                 rep_s2,
                 BLOCK_SIZE=BLOCK_SIZE,
                 num_warps=num_warps,
@@ -175,10 +190,15 @@ def repeat(inp: torch.Tensor, *sizes) -> torch.Tensor:
         else:
             grid = (num_rows, rep_s2)
             repeat_kernel_3d_tiled[grid](
-                inp, out,
-                inp_shape[0], inp_shape[1], inp_s2,
-                out_shape[1], out_shape[2],
-                inp.stride(0), inp.stride(1),
+                inp,
+                out,
+                inp_shape[0],
+                inp_shape[1],
+                inp_s2,
+                out_shape[1],
+                out_shape[2],
+                inp.stride(0),
+                inp.stride(1),
                 BLOCK_SIZE=BLOCK_SIZE,
                 num_warps=num_warps,
                 num_stages=4,
