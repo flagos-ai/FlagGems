@@ -4,8 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
 logger = logging.getLogger("flag_gems." + __name__)
 
 
