@@ -1,0 +1,45 @@
+# op_black_list.yaml
+# Description: List of operators unsupported (FALSE) in the current environment
+# test based: 2026-03-11
+# Source: Operator Compatibility Test Table
+
+unsupported_operators:
+  - name: angle
+    reason: "Skipping angle BFloat16 for unsupported dtype on GPU"
+
+  - name: argmax
+    reason: "PyTorch reference requires dim specification for empty tensor."
+
+  - name: flash_attn_varlen_func
+    reason: "RESULT TODOFIX."
+
+  - name: flash_mla
+    reason: "RuntimeError."
+
+  - name: full_like
+    reason: "Skipping inf/nan test for non-float dtypes."
+
+  - name: grouped_topk
+    reason: "vLLM is not installed."
+
+  - name: per_token_group_quant_fp8
+    reason: "triton.compiler.errors.CompilationError: at 1:0:."
+
+  - name: reglu
+    reason: "RuntimeError: /home/TransformerEngine/transformer_engine/common/activation/../util/cast_gated_kernels_hip.cuh."
+
+  - name: std
+    reason: "Correction=1 requires reduction size of at least 2.."
+
+  - name: topk_softmax
+    reason: "TypeError: topk_softmax() takes 4 positional arguments but 5 were given."
+
+  - name: upsample_nearest1d
+    reason: "AssertionError: Tensor-likes are not close."
+
+  - name: weight_norm
+    reason: "Temporarely skip for ci."
+
+summary:
+  total_unsupported: 12
+  note: "This list is based on items explicitly marked as FALSE in the provided table. Certain operators (e.g., conv1d, index_add) have blank entries in some columns and are therefore excluded; their support status requires further verification."

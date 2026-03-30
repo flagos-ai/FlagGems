@@ -1,4 +1,4 @@
-from backend_utils import VendorInfoBase  # noqa: E402
+from backend_utils import VendorInfoBase
 
 from .utils import CORE_NUM  # noqa: F401
 
@@ -25,11 +25,11 @@ vendor_info = VendorInfoBase(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
+    "_to_copy",
     "contiguous",
+    "copy_",
     "sort",
     "sort_stable",
-    "copy_",
-    "_to_copy",
 )
 
 

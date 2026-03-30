@@ -11,6 +11,8 @@
 # TODO(Qiming): Enable daily tests for benchmark and all backends
 
 name: daily
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:
@@ -28,7 +30,7 @@ jobs:
       - id: get-date
         shell: bash
         run: |
-          echo "CURRENT_DATE=$(date +'%Y-%m-%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_DATE=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
 
   cpp-op:
     needs: prepare
@@ -42,14 +44,32 @@ jobs:
     runs-on: jiuding
     steps:
       - uses: actions/checkout@v6
+      - run: |
+          pip install pytest-md-report
       - shell: bash
         run: tools/gpu_check.sh
       - shell: bash
         env:
           CHANGED_FILES: '__ALL__'
         run: |
-          # Use CURRENT_DATE as a fake PR ID
-          bash tools/test-op.sh ${{ needs.prepare.outputs.datetime }}
+          # Invoke script to run full-range unit tests,
+          # Use datetime timestamp as the fake PR ID, with optional affix if
+          # workflow is triggered manually
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+             RUN_TAG="${{ needs.prepare.outputs.datetime}}-manual"
+          else
+             RUN_TAG="${{ needs.prepare.outputs.datetime}}"
+          fi
+
+          # Save RUN_TAG for next step to use
+          echo "RUN_TAG=${RUN_TAG}" >> $GITHUB_ENV
+
+          bash tools/test-op.sh ${RUN_TAG}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: op-ut-coverage
+          path: coverage/
 
   examples:
     needs: prepare
@@ -65,46 +85,12 @@ jobs:
         env:
           CHANGED_FILES: '__ALL__'
         run: |
-          bash tools/test-examples.sh ${{ needs.prepare.outputs.datetime }}
-
-#   coverage:
-#     needs:
-#       - preprocess
-#       - blas-op-test
-#       - examples-test
-#       - quick-cpu-op-test
-#       - utils-test
-#       - pointwise-op-test
-#       - reduction-op-test
-#       - special-op-test
-#     if: contains(github.event.pull_request.labels.*.name, 'tests')
-#     concurrency:
-#       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
-#       cancel-in-progress: true
-#     runs-on: cpu
-#     continue-on-error: true
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v6
-#       - name: Get python coverage
-#         shell: bash
-#         run: |
-#           git config --global --add safe.directory ../FlagGems
-#           if [ "${{ github.event_name }}" == "pull_request" ]; then
-#             PR_ID=${{ github.event.pull_request.number }}
-#           elif [ "${{ github.event_name }}" == "push" ]; then
-#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-#             PR_ID=${PR_NUMBER}
-#           fi
-#           bash tools/code_coverage/coverage.sh ${PR_ID}
-#       - name: Report python coverage
-#         shell: bash
-#         run: |
-#           git config --global --add safe.directory ../FlagGems
-#           if [ "${{ github.event_name }}" == "pull_request" ]; then
-#             PR_ID=${{ github.event.pull_request.number }}
-#           elif [ "${{ github.event_name }}" == "push" ]; then
-#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-#             PR_ID=${PR_NUMBER}
-#           fi
-#           bash tools/code_coverage/report_coverage.sh ${PR_ID}
+          # Invoke script to run full-range example tests,
+          # Use datetime timestamp as the fake PR ID, with optional affix if
+          # workflow is triggered manually
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+             PR_ID="${{ needs.prepare.outputs.datetime}}-manual"
+          else
+             PR_ID="${{ needs.prepare.outputs.datetime}}"
+          fi
+          bash tools/test-examples.sh ${PR_ID}

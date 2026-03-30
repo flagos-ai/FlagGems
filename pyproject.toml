@@ -1,58 +1,75 @@
 [build-system]
-requires = ["setuptools>=64.0", "scikit-build-core>=0.11", "pybind11"]
+# cmake locks to '>=3.20,<4.0' to sync with FlagTree
+requires = ["setuptools>=64.0", "scikit-build-core>=0.11", "pybind11>=3.0.2", "cmake>=3.2.0,<4.0", "ninja>=1.13.0"]
+
 build-backend = "scikit_build_core.build"
 
 
 [project]
+
 name = "flag_gems"
-version = "4.2.1.rc.0"
-description = "FlagGems is a function library written in Triton."
+
+version = "5.0.1.rc.0"
+
+description = "FlagGems is a function library written in Triton language."
+
 readme = { file = "README.md", content-type = "text/markdown" }
+
 requires-python = ">=3.8.0"
+
 license = { text = "Apache Software License" }
+
 authors = [
     { name = "Zhixin Li", email = "strongspoon@outlook.com" },
     { name = "Tongxin Bai", email = "waffle.bai@gmail.com" },
     { name = "Yuming Huang", email = "jokmingwong@gmail.com" },
     { name = "Feiyu Chen", email = "iclementine@outlook.com" },
 ]
+
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
 ]
+
 dependencies = [
+    # TODO: This is a very old version, should be bumped
     "torch>=2.2.0",
-    "packaging",
-    "pybind11",
-    "PyYAML",
-    "packaging",
-    "sqlalchemy",
+    "ninja>=1.13.0",
+    "packaging>=26.0",
+    "pybind11>=2.13.1",
+    "PyYAML>=6.0.3",
+    "sqlalchemy>=2.0.48",
 ]
 
 [project.optional-dependencies]
+
 test = [
-    "pytest>=7.1.0",
+    "pytest>=9.0.2",
     "numpy>=1.26",
-    "scipy>=1.14",
+    "scipy>=1.17.0",
 ]
+
 example = [
     "transformers>=4.40.2",
 ]
 
 [project.urls]
-Homepage = "https://github.com/FlagOpen/FlagGems"
 
-[tool.setuptools]
-package-dir = { "" = "src" }
+Repository = "https://github.com/flagos-ai/FlagGems"
+Documentation = "https://flagos-ai.github.io/FlagGems"
+"Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
 [tool.setuptools.packages.find]
+
 where = ["src"]
 
 [tool.setuptools.package-data]
+
 "flag_gems.runtime" = ["*/**/*.yaml"]
 
 [tool.scikit-build]
+
 build.verbose = true
 logging.level = "INFO"
 wheel.install-dir = "flag_gems"

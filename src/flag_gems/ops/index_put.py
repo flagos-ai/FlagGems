@@ -266,71 +266,17 @@ _index_put_func = IndexPutFunction()
 def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX PUT")
 
-    indices = list(indices)
-    if len(indices) == 1 and indices[0].dtype == torch.bool:
-        mask = indices[0]
-
-        if mask.device != inp.device:
-            mask = mask.to(inp.device)
-
-        indices = list(torch.where(mask))
-
-        K = indices[0].numel()
-        target_shape = (K,) + inp.shape[len(indices) :]
-
-        if values.numel() == 1:
-            values = torch.full(
-                target_shape, values.item(), dtype=inp.dtype, device=inp.device
-            )
-        elif values.numel() == K:
-            values = values.reshape((K,)).expand(target_shape)
-
-    indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
-        for index in indices
-    ]
-
-    target_shape = get_max_rank_shape(indices)
-    broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
-    # Filter out None values for kernel call (only tensor indices)
-    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if not tensor_indices:
-        raise ValueError("At least one non-None index tensor is required")
-
-    if values.device != inp.device:
-        values = values.to(inp.device)
-    values = torch.broadcast_to(values, target_shape)
-
     out = inp.clone()
-    _index_put_func(out, tensor_indices, values, accumulate)
-    return out
+    return index_put_(out, indices, values, accumulate)
 
 
 def index_put_(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX PUT_")
 
     indices = list(indices)
-    if len(indices) == 1 and indices[0].dtype == torch.bool:
-        mask = indices[0]
 
-        if mask.device != inp.device:
-            mask = mask.to(inp.device)
-
-        indices = list(torch.where(mask))
-
-        K = indices[0].numel()
-        target_shape = (K,) + inp.shape[len(indices) :]
-
-        if values.numel() == 1:
-            values = torch.full(
-                target_shape, values.item(), dtype=inp.dtype, device=inp.device
-            )
-        elif values.numel() == K:
-            values = values.reshape((K,)).expand(target_shape)
+    if not indices:
+        raise ValueError("At least one index tensor is required")
 
     indices = [
         index.to(inp.device)
@@ -338,19 +284,81 @@ def index_put_(inp, indices, values, accumulate=False):
         else index
         for index in indices
     ]
+    # step 1: index preprocessing
+    processed_indices = []
+    for idx in indices:
+        if idx is None:
+            processed_indices.append(None)
+        elif idx.dtype in (torch.bool, torch.int8):
+            # Expand bool masks into explicit integer indices
+            processed_indices.extend(idx.nonzero(as_tuple=True))
+        elif torch.is_tensor(idx):
+            processed_indices.append(idx)
+        else:
+            raise TypeError(
+                "tensors used as indices must be long, int, byte or bool tensors"
+            )
 
-    target_shape = get_max_rank_shape(indices)
-    broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
-    # Filter out None values for kernel call (only tensor indices)
-    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if not tensor_indices:
+    indices = processed_indices
+    # Pad missing None indices to match input dimension
+    if len(indices) < inp.ndim:
+        indices.extend([None] * (inp.ndim - len(indices)))
+
+    if len(indices) > inp.ndim:
+        raise IndexError("too many indices for tensor of dimension {}".format(inp.ndim))
+
+    # Step 2: Broadcast tensor indices
+    tensor_pos = [i for i, x in enumerate(indices) if x is not None]
+    if not tensor_pos:
         raise ValueError("At least one non-None index tensor is required")
 
-    if values.device != inp.device:
-        values = values.to(inp.device)
-    values = torch.broadcast_to(values, target_shape)
+    tensor_indices = [indices[i] for i in tensor_pos]
+    if len(tensor_indices) > 1:
+        broadcasted = torch.broadcast_tensors(*tensor_indices)
+        for i, pos in enumerate(tensor_pos):
+            indices[pos] = broadcasted[i]
 
-    _index_put_func(inp, tensor_indices, values, accumulate)
+    # Step 3: Transpose
+    is_contiguous = (tensor_pos[-1] - tensor_pos[0] + 1) == len(tensor_pos)
+    starts_with_none = indices[0] is None
+    need_transpose = not is_contiguous or starts_with_none
+
+    if need_transpose:
+        perm_order = tensor_pos + [i for i, x in enumerate(indices) if x is None]
+        inp_view = inp.permute(perm_order)
+        final_indices = [indices[i] for i in tensor_pos] + [None] * (
+            len(indices) - len(tensor_pos)
+        )
+    else:
+        inp_view = inp
+        final_indices = indices
+
+    # Step 4: Handle Values shape and broadcasting
+    tensors = [x for x in final_indices if x is not None]
+    broadcast_shape = list(tensors[0].shape)
+    slice_shape = [inp_view.shape[i] for i, x in enumerate(final_indices) if x is None]
+
+    target_shape = broadcast_shape + slice_shape
+    values = values.to(inp.device)
+    if need_transpose and is_contiguous:
+        num_before = tensor_pos[0]
+
+        # 1. Broadcast to PyTorch natural shape
+        before_dims = slice_shape[:num_before]
+        after_dims = slice_shape[num_before:]
+        natural_shape = before_dims + broadcast_shape + after_dims
+        values = values.broadcast_to(natural_shape)
+
+        # 2. Permute to Kernel expectation
+        B, T = len(before_dims), len(broadcast_shape)
+        val_perm = (
+            list(range(B, B + T)) + list(range(0, B)) + list(range(B + T, values.ndim))
+        )
+        values = values.permute(val_perm)
+    else:
+        # direct broadcast
+        values = values.broadcast_to(target_shape)
+
+    _index_put_func(inp_view, tensors, values, accumulate)
+
     return inp
