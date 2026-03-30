@@ -486,7 +486,7 @@ def test_accuracy_sum_dim_out(shape, dim, keepdim, dtype):
 
     # Pre-allocate out tensors with wrong shape to test resize logic
     out = torch.empty((1,), dtype=dtype, device=flag_gems.device)
-    ref_out = torch.empty((1,), dtype=dtype, device=flag_gems.device)
+    ref_out = torch.empty((1,), dtype=dtype, device="cpu")
 
     ref_result = torch.sum(ref_inp, dim=dim, keepdim=keepdim, out=ref_out)
     with flag_gems.use_gems():
