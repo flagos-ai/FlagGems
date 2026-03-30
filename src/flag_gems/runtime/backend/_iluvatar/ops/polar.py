@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 @libentry()
 @triton.jit
 def polar_kernel(
-    abs_ptr, angle_ptr, out_ptr,
+    abs_ptr,
+    angle_ptr,
+    out_ptr,
     N,
     BLOCK_SIZE: tl.constexpr,
 ):
