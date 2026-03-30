@@ -169,7 +169,9 @@ def sub(A, B, *, alpha=1):
         y_scalar = float(B)
         BLOCK_SIZE = 2048
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        sub_scalar_kernel[grid](A, y_scalar, output, alpha, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+        sub_scalar_kernel[grid](
+            A, y_scalar, output, alpha, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        )
         return output
 
     # B is tensor, A is scalar
@@ -189,7 +191,9 @@ def sub(A, B, *, alpha=1):
         x_scalar = float(A)
         BLOCK_SIZE = 2048
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-        sub_scalar_tensor_kernel[grid](x_scalar, B, output, alpha, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+        sub_scalar_tensor_kernel[grid](
+            x_scalar, B, output, alpha, n_elements, BLOCK_SIZE=BLOCK_SIZE
+        )
         return output
 
     # Both scalars

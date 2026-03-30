@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 
-from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
