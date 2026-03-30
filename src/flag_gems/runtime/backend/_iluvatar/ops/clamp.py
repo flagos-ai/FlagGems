@@ -109,25 +109,39 @@ def clamp(A, mini=None, maxi=None):
 
     if has_min and has_max:
         clamp_kernel[grid](
-            A, output, n_elements,
-            float(mini), float(maxi),
-            has_min=True, has_max=True,
-            BLOCK_SIZE=BLOCK_SIZE, UNROLL=UNROLL,
-            num_warps=4, num_stages=4,
+            A,
+            output,
+            n_elements,
+            float(mini),
+            float(maxi),
+            has_min=True,
+            has_max=True,
+            BLOCK_SIZE=BLOCK_SIZE,
+            UNROLL=UNROLL,
+            num_warps=4,
+            num_stages=4,
         )
     elif has_min:
         clamp_min_kernel[grid](
-            A, output, n_elements,
+            A,
+            output,
+            n_elements,
             float(mini),
-            BLOCK_SIZE=BLOCK_SIZE, UNROLL=UNROLL,
-            num_warps=4, num_stages=4,
+            BLOCK_SIZE=BLOCK_SIZE,
+            UNROLL=UNROLL,
+            num_warps=4,
+            num_stages=4,
         )
     else:  # has_max only
         clamp_max_kernel[grid](
-            A, output, n_elements,
+            A,
+            output,
+            n_elements,
             float(maxi),
-            BLOCK_SIZE=BLOCK_SIZE, UNROLL=UNROLL,
-            num_warps=4, num_stages=4,
+            BLOCK_SIZE=BLOCK_SIZE,
+            UNROLL=UNROLL,
+            num_warps=4,
+            num_stages=4,
         )
 
     return output
@@ -156,25 +170,39 @@ def clamp_(A, mini=None, maxi=None):
 
     if has_min and has_max:
         clamp_kernel[grid](
-            A, A, n_elements,
-            float(mini), float(maxi),
-            has_min=True, has_max=True,
-            BLOCK_SIZE=BLOCK_SIZE, UNROLL=UNROLL,
-            num_warps=4, num_stages=4,
+            A,
+            A,
+            n_elements,
+            float(mini),
+            float(maxi),
+            has_min=True,
+            has_max=True,
+            BLOCK_SIZE=BLOCK_SIZE,
+            UNROLL=UNROLL,
+            num_warps=4,
+            num_stages=4,
         )
     elif has_min:
         clamp_min_kernel[grid](
-            A, A, n_elements,
+            A,
+            A,
+            n_elements,
             float(mini),
-            BLOCK_SIZE=BLOCK_SIZE, UNROLL=UNROLL,
-            num_warps=4, num_stages=4,
+            BLOCK_SIZE=BLOCK_SIZE,
+            UNROLL=UNROLL,
+            num_warps=4,
+            num_stages=4,
         )
     else:  # has_max only
         clamp_max_kernel[grid](
-            A, A, n_elements,
+            A,
+            A,
+            n_elements,
             float(maxi),
-            BLOCK_SIZE=BLOCK_SIZE, UNROLL=UNROLL,
-            num_warps=4, num_stages=4,
+            BLOCK_SIZE=BLOCK_SIZE,
+            UNROLL=UNROLL,
+            num_warps=4,
+            num_stages=4,
         )
 
     return A
@@ -202,6 +230,7 @@ def clamp_min_(A, mini):
     if mini is None:
         raise ValueError("Mini must not be None")
     return clamp_(A, mini=mini, maxi=None)
+
 
 def clamp_max(A, maxi):
     """Clamp all elements in input to be smaller than maxi.
