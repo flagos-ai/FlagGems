@@ -690,8 +690,8 @@ def test_accuracy_trunc_divide_scalar_scalar(dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + [torch.int64])
 def test_trunc_div_int(shape, dtype):
-    # Regression test: trunc_div_func must use if/else so Triton JIT does not
-    # compile the float-only div_rz branch for integer types (KeyError fix).
+    # Regression test: integer types must be dispatched at Python layer to avoid
+    # passing int tensors to div_rz which only supports floating point.
     inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, False)
@@ -708,7 +708,8 @@ def test_trunc_div_int(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + [torch.int64])
 def test_trunc_div_tensor_scalar_int(shape, dtype):
-    # Regression test: trunc_div_func_tensor_scalar must use if/else for int types.
+    # Regression test: integer types must be dispatched at Python layer to avoid
+    # passing int tensors to div_rz which only supports floating point.
     inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     scalar = random.randint(1, 10)
     ref_inp1 = to_reference(inp1, False)
@@ -724,7 +725,8 @@ def test_trunc_div_tensor_scalar_int(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + [torch.int64])
 def test_trunc_div_scalar_tensor_int(shape, dtype):
-    # Regression test: trunc_div_func_scalar_tensor must use if/else for int types.
+    # Regression test: integer types must be dispatched at Python layer to avoid
+    # passing int tensors to div_rz which only supports floating point.
     inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
     scalar = random.randint(1, 100)
     ref_inp2 = to_reference(inp2, False)

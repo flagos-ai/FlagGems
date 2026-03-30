@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/BAAI/Downloads/**)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh --version)",
+      "Bash(gh auth:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh run:*)",
+      "Bash(pre-commit run:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(python3 -m pip install pre-commit -q)",
+      "Bash(python3 -m pre_commit run --files src/flag_gems/ops/sum.py)",
+      "Read(//c/Users/BAAI/AppData/Local/Programs/Python//**)",
+      "Bash(python -m pip install pre-commit black -q)",
+      "Bash(ls /c/Python*)",
+      "Read(//c/Users/BAAI/**)",
+      "Bash(PYTHON=/c/Users/BAAI/AppData/Local/Programs/Python/Python314/python.exe \"$PYTHON\" -m pip install pre-commit black -q)",
+      "Bash(PYTHON=/c/Users/BAAI/AppData/Local/Programs/Python/Python314/python.exe)",
+      "Bash(\"$PYTHON\" -m pre_commit run --files src/flag_gems/ops/sum.py)",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(c[''''messageHeadline'''']\\) for c in data[''''commits'''']]\")",
+      "Bash(for pr:*)",
+      "Bash(do echo:*)"
+    ]
+  }
+}
