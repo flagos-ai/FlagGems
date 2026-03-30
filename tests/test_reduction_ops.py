@@ -1236,6 +1236,31 @@ def test_accuracy_slice_backward(
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.slice
+@pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_slice_backward_oob_end(shape, dtype):
+    # Regression test: end > dim_size caused out-of-bounds write in kernel.
+    device = flag_gems.device
+    dim = 1 % len(shape)
+    dim_size = shape[dim]
+    start = 0
+    end = dim_size + 100  # intentionally out of bounds
+    step = 1
+
+    slice_len = dim_size  # clamped
+    valid_shape = list(shape)
+    valid_shape[dim] = slice_len
+
+    grad_output = torch.randn(valid_shape, dtype=dtype, device=device)
+    ref_grad_output = to_reference(grad_output)
+
+    ref_out = torch.ops.aten.slice_backward(ref_grad_output, shape, dim, start, end, step)
+    res_out = flag_gems.ops.slice_backward(grad_output, shape, dim, start, end, step)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.slice_scatter
 @pytest.mark.parametrize(("dim", "shape", "stride"), REGULAR_DIM_SHAPE_STRIDES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
