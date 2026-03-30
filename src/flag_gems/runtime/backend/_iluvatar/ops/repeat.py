@@ -3,8 +3,8 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,11 @@ def repeat(inp: torch.Tensor, *sizes) -> torch.Tensor:
 
     inp = inp.contiguous()
     inp_shape = inp.shape
-    out_shape = (inp_shape[0] * sizes[0], inp_shape[1] * sizes[1], inp_shape[2] * sizes[2])
+    out_shape = (
+        inp_shape[0] * sizes[0],
+        inp_shape[1] * sizes[1],
+        inp_shape[2] * sizes[2],
+    )
 
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
     if out.numel() == 0:
