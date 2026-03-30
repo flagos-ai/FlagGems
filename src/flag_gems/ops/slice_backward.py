@@ -63,8 +63,7 @@ def slice_backward(
     dim_size = shape[dim]
 
     actual_start = max(0, min(start, dim_size))
-    actual_end = max(0, min(end, dim_size))
-    slice_len = max(0, (actual_end - actual_start + step - 1) // step)
+    slice_len = grad_output.shape[dim]
     start = actual_start
 
     numel = grad_output.numel()
