@@ -126,7 +126,6 @@ def repeat(inp: torch.Tensor, *sizes) -> torch.Tensor:
 
     # Normalize to 3D for unified kernel path
     orig_ndim = ndim
-    orig_sizes = sizes
     while ndim < 3:
         inp = inp.unsqueeze(0)
         sizes = (1,) + sizes
