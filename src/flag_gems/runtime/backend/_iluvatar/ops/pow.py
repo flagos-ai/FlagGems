@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.shape_utils import volume
 
@@ -94,9 +93,7 @@ def pow_scalar(A, exponent):
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     # Launch kernel
-    pow_scalar_kernel[grid](
-        output, exponent, sbase, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    pow_scalar_kernel[grid](output, exponent, sbase, n_elements, BLOCK_SIZE=BLOCK_SIZE)
 
     return output
 
@@ -128,8 +125,6 @@ def pow_scalar_(A, exponent):
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     # Launch kernel
-    pow_scalar_inplace_kernel[grid](
-        exponent, sbase, n_elements, BLOCK_SIZE=BLOCK_SIZE
-    )
+    pow_scalar_inplace_kernel[grid](exponent, sbase, n_elements, BLOCK_SIZE=BLOCK_SIZE)
 
     return exponent
