@@ -1407,7 +1407,7 @@ ROLL_SHIFTS_DIMS = [
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("shift, dim", ROLL_SHIFTS_DIMS)
-def test_accuracy_roll(shape, dtype, shift, dim):
+def test_roll(shape, dtype, shift, dim):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp = unsqueeze_tensor(inp, 2)
     ref_inp = to_reference(inp, False)
