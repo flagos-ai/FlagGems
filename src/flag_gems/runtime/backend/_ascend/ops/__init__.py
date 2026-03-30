@@ -47,6 +47,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .randn import randn
 from .randperm import randperm
 from .repeat_interleave import repeat_interleave_self_int
 from .resolve_neg import resolve_neg
@@ -153,4 +154,5 @@ __all__ = [
     "_unique2",
     "upsample_nearest2d",
     "randperm",
+    "randn",
 ]
