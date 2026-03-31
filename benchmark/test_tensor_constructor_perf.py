@@ -190,6 +190,8 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
 tensor_constructor_inplace_operations = [
     # tensor constructor with given value
     ("fill_", torch.fill_, fill_input_fn),
+    ("fill_scalar_", torch.ops.aten.fill_.Scalar, fill_input_fn),
+    # ("fill_scalar_", flag_gems.ops.fill.fill_scalar_, fill_input_fn),
     ("masked_fill_", lambda a, b, c: a.masked_fill_(b, c), masked_fill_input_fn),
 ]
 
