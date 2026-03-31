@@ -828,6 +828,8 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
+            if "isclose" in self.name:
+                max_tile_size //= 2
             major, _ = get_device_capability()
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
@@ -915,6 +917,8 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
+            if "isclose" in self.name:
+                max_tile_size //= 2
             major, _ = get_device_capability()
             code.writeline("FlagOfNotUseDMA = False")
             for i in range(schema.num_input_tensors()):
