@@ -141,17 +141,6 @@ def true_div_func_scalar_tensor(x, y):
     return x / y
 
 
-def _can_use_manual_kernel(A, B):
-    """Check if both tensors have the same shape (no broadcasting needed) and are float types."""
-    if not isinstance(A, torch.Tensor) or not isinstance(B, torch.Tensor):
-        return False
-    if A.shape != B.shape:
-        return False
-    if not A.dtype.is_floating_point:
-        return False
-    return True
-
-
 def true_divide(A, B):
     logger.debug("GEMS_ASCEND TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):

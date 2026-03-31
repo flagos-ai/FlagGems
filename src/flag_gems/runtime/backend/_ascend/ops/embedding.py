@@ -142,6 +142,8 @@ def _compute_block_sizes(N):
 
 
 def _compute_grid(M):
+    if M == 0:
+        return 0, 0
     ncore = min(M, NUM_VECTOR_CORES)
     rows_per_core = triton.cdiv(M, ncore)
     return ncore, rows_per_core
@@ -157,6 +159,18 @@ class Embedding(torch.autograd.Function):
 
         M = math.prod(indices.shape)
         N = weight.shape[-1]
+
+        if M == 0:
+            ctx.M = 0
+            ctx.N = N
+            ctx.num_weights = weight.shape[0]
+            ctx.padding_idx = padding_idx
+            ctx.scale_grad_by_freq = scale_grad_by_freq
+            ctx.sparse = sparse
+            ctx.indices = indices
+            return torch.empty(
+                (*indices.shape, N), device=indices.device, dtype=weight.dtype
+            )
 
         BLOCK_SIZE, NUM_ITERS = _compute_block_sizes(N)
         ncore, rows_per_core = _compute_grid(M)
@@ -187,6 +201,14 @@ class Embedding(torch.autograd.Function):
     def backward(ctx, grad_outputs):
         logger.debug("GEMS_ASCEND EMBEDDING BACKWARD")
         assert not ctx.sparse, "Currently do not support sparse format"
+
+        if ctx.M == 0:
+            grad_inputs = torch.zeros(
+                (ctx.num_weights, grad_outputs.shape[-1]),
+                device=grad_outputs.device,
+                dtype=grad_outputs.dtype,
+            )
+            return grad_inputs, None, None, None, None
 
         grad_inputs = torch.zeros(
             (ctx.num_weights, grad_outputs.shape[-1]),
