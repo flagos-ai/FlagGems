@@ -27,9 +27,7 @@ def get_w8a8_block_fp8_hopper_configs(
 ) -> Optional[Dict[int, Any]]:
     device_name = torch.cuda.get_device_name().replace(" ", "_")
     name_parts = device_name.split("_")
-    if any(part.startswith("H200") for part in name_parts):
-        device_name = "NVIDIA_H200"
-    elif any(part.startswith("H20") for part in name_parts):
+    if any(part.startswith("H20") for part in name_parts):
         device_name = "NVIDIA_H20"
     file_name = f"fa8_w8a8-{block_n}-{block_k}.yaml"
 
