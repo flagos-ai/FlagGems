@@ -36,6 +36,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm
 from .multinomial import multinomial
+from .nonzero import nonzero
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -149,6 +150,7 @@ __all__ = [
     "any_dim",
     "angle",
     "multinomial",
+    "nonzero",
     "index_add",
     "_unique2",
     "upsample_nearest2d",
