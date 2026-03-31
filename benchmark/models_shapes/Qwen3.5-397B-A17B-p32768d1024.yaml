@@ -1,0 +1,124 @@
+# Qwen3.5-397B MoE with A17B active parameters
+# p=32768 (context/sequence length), d=1024 (hidden dimension)
+
+mm:  # GEMM operations for MoE FFN layers
+  # Shapes in (M, N, K) format for matmul: x @ W where x=(M,K), W=(N,K) transposed
+  # M = batch*seq (e.g., 32768), N = output_dim, K = input_dim
+  shapes:
+    # Down projection (Gate2): x=(M, K), W=(N, K) -> output=(M, N)
+    # For MoE down: Inter=3584, H=1024, so [M=32768, N=1024, K=3584]
+    - [32768, 1024, 3584]
+    - [16384, 1024, 3584]
+    - [8192, 1024, 3584]
+    - [4096, 1024, 3584]
+    - [2048, 1024, 3584]
+    - [1024, 1024, 3584]
+    - [512, 1024, 3584]
+    - [256, 1024, 3584]
+    
+    # Varied batch sizes for different workloads
+    - [8192, 1024, 3584]
+    - [4096, 1024, 3584]
+    - [2048, 1024, 3584]
+    - [1024, 1024, 3584]
+    - [512, 1024, 3584]
+    - [256, 1024, 3584]
+    
+    # Up projection (Gate1): Inter=3584, H=1024, so [M, N=3584, K=1024]
+    - [32768, 3584, 1024]
+    - [16384, 3584, 1024]
+    - [8192, 3584, 1024]
+    - [4096, 3584, 1024]
+    - [2048, 3584, 1024]
+    - [1024, 3584, 1024]
+    - [512, 3584, 1024]
+    - [256, 3584, 1024]
+    
+    # Gate projection: Inter=7168, H=1024, so [M, N=7168, K=1024]
+    - [32768, 7168, 1024]
+    - [16384, 7168, 1024]
+    - [8192, 7168, 1024]
+    - [4096, 7168, 1024]
+    - [2048, 7168, 1024]
+    
+    # Router/scoring: num_experts=128, H=1024, so [M, N=128, K=1024]
+    - [32768, 128, 1024]
+    - [16384, 128, 1024]
+    - [4096, 128, 1024]
+  shape_desc: "M, N, K"
+
+addmm:  # Bias addition + GEMM
+  shapes:
+    - [1, 4, 32768, 1024]      # bias: [B, M, N], mat1: [B, M, K], mat2: [B, K, N]
+    - [1, 8, 16384, 1024]
+    - [1, 16, 8192, 1024]
+    - [4, 4, 32768, 1024]
+    - [8, 8, 16384, 1024]
+  shape_desc: "B, M, N, K"
+
+bmm:  # Batched GEMM for multiple experts
+  shapes:
+    - [64, 1024, 1024, 3584]   # [batch, M, K, N] - parallel expert processing
+    - [32, 2048, 1024, 3584]
+    - [16, 4096, 1024, 3584]
+    - [8, 8192, 1024, 3584]
+    - [4, 16384, 1024, 3584]
+  shape_desc: "B, M, K, N"
+
+baddbmm:  # Batched add + GEMM
+  shapes:
+    - [8, 4096, 1024, 3584]    # [B, M, N, K] - batched MoE FFN with bias
+    - [16, 2048, 1024, 3584]
+    - [32, 1024, 1024, 3584]
+  shape_desc: "B, M, N, K"
+
+QCMoEBenchmark:  # QC-MoE shapes for MoE FFN layers
+  shapes:
+    # MoE shapes: [batch, seq_len, hidden, inter_dim]
+    - [1, 32768, 1024, 7168]    # Large MoE
+    - [1, 32768, 1024, 3584]    # Up projection
+    - [1, 32768, 3584, 1024]    # Down projection
+    - [4, 8192, 1024, 3584]
+    - [8, 4096, 1024, 3584]
+    - [16, 2048, 1024, 3584]
+    - [32, 1024, 1024, 3584]
+    - [64, 512, 1024, 3584]
+    - [256, 256, 1024, 3584]
+    - [512, 128, 1024, 3584]
+    - [1, 16384, 1024, 3584]
+    - [8, 16384, 3584, 1024]
+    - [1, 8192, 1024, 3584]
+    - [1, 4096, 1024, 3584]
+    - [1, 2048, 1024, 3584]
+    - [1, 32768, 3584, 1024]    # Expert down projection
+  shape_desc: "B, S, H, K"
+
+QCGEMBenchmark:  # QC-GEM quantized GEMM (uses same shapes as mm)
+  # Shapes in (M, N, K) format for matmul: x @ W where x=(M,K), W=(N,K) transposed
+  shapes:
+    # Down projection: [M=batch*seq, N=output, K=input]
+    - [32768, 1024, 3584]
+    - [16384, 1024, 3584]
+    - [8192, 1024, 3584]
+    - [4096, 1024, 3584]
+    - [2048, 1024, 3584]
+    - [1024, 1024, 3584]
+    - [512, 1024, 3584]
+    - [256, 1024, 3584]
+    # Up projection
+    - [32768, 3584, 1024]
+    - [16384, 3584, 1024]
+    - [8192, 3584, 1024]
+    - [4096, 3584, 1024]
+    - [2048, 3584, 1024]
+    # Gate projection
+    - [32768, 7168, 1024]
+    - [16384, 7168, 1024]
+    - [8192, 7168, 1024]
+    - [4096, 7168, 1024]
+    - [2048, 7168, 1024]
+    # Router
+    - [32768, 128, 1024]
+    - [16384, 128, 1024]
+    - [4096, 128, 1024]
+  shape_desc: "M, N, K"

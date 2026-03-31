@@ -24,6 +24,7 @@ device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
+CUSTOM_DTYPE_CHOICES = ["fp8"]
 
 
 def emit_record_logger(message: str) -> None:
@@ -54,6 +55,7 @@ class BenchConfig:
         self.user_desired_metrics = None
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
         self.query = False
+        self.parallel = 0
 
 
 Config = BenchConfig()
@@ -119,7 +121,8 @@ def pytest_addoption(parser):
         choices=[
             str(ele).split(".")[-1]
             for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]
-        ],
+        ]
+        + CUSTOM_DTYPE_CHOICES,
         help=(
             "Specify the data types for benchmarks. "
             "If not specified, the dtype items will vary according to the specified operation's category and name."
@@ -143,6 +146,18 @@ def pytest_addoption(parser):
         help="Benchmark info recorded in log files or not",
     )
 
+    parser.addoption(
+        "--parallel",
+        action="store",
+        type=int,
+        default=0,
+        help=(
+            "Enable multi-GPU parallel benchmark execution across shapes. "
+            "Example: --parallel 8 means using GPU 0~7 in parallel. "
+            "Default 0 means serial execution."
+        ),
+    )
+
 
 def pytest_configure(config):
     global Config  # noqa: F824
@@ -163,7 +178,14 @@ def pytest_configure(config):
     Config.repetition = int(iter_value)
 
     types_str = config.getoption("--dtypes")
-    dtypes = [getattr(torch, dtype) for dtype in types_str] if types_str else types_str
+    dtypes = (
+        [
+            dtype if dtype in CUSTOM_DTYPE_CHOICES else getattr(torch, dtype)
+            for dtype in types_str
+        ]
+        if types_str
+        else types_str
+    )
     Config.user_desired_dtypes = dtypes
 
     metrics = config.getoption("--metrics")
@@ -173,6 +195,7 @@ def pytest_configure(config):
     Config.shape_file = shape_file_str
 
     Config.record_log = config.getoption("--record") == "log"
+    Config.parallel = int(config.getoption("--parallel") or 0)
     if Config.record_log:
         cmd_args = [
             arg.replace(".py", "").replace("=", "_").replace("/", "_")

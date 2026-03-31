@@ -1,6 +1,11 @@
 import gc
+import concurrent.futures
 import importlib
 import os
+import pickle
+import subprocess
+import sys
+import tempfile
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
@@ -72,6 +77,7 @@ class Benchmark:
     DEFAULT_SHAPES = DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+    SHAPE_CONFIG_KEYS = ()
     """
     the base class for the operations benchmark
     """
@@ -168,26 +174,17 @@ class Benchmark:
         try:
             with open(shape_file_path, "r") as file:
                 yaml_config = yaml.safe_load(file)
-                if self.op_name in yaml_config:
-                    self.shapes = yaml_config[self.op_name].get(
-                        "shapes", self.DEFAULT_SHAPES
-                    )
-                    self.shape_desc = yaml_config[self.op_name].get(
-                        "shape_desc", self.DEFAULT_SHAPE_DESC
-                    )
+                for shape_key in self._get_shape_config_keys():
+                    if shape_key in yaml_config:
+                        self.shapes = yaml_config[shape_key].get(
+                            "shapes", self.DEFAULT_SHAPES
+                        )
+                        self.shape_desc = yaml_config[shape_key].get(
+                            "shape_desc", self.DEFAULT_SHAPE_DESC
+                        )
+                        break
                 else:
-                    for cls in type(self).__mro__:
-                        class_name = cls.__name__
-                        if class_name in yaml_config:
-                            self.shapes = yaml_config[class_name].get(
-                                "shapes", self.DEFAULT_SHAPES
-                            )
-                            self.shape_desc = yaml_config[class_name].get(
-                                "shape_desc", self.DEFAULT_SHAPE_DESC
-                            )
-                            break
-                    else:
-                        self.shapes = self.DEFAULT_SHAPES
+                    self.shapes = self.DEFAULT_SHAPES
 
             self.shapes = [tuple(shape) for shape in self.shapes]
             if vendor_name == "kunlunxin":
@@ -205,6 +202,7 @@ class Benchmark:
                 and callable(getattr(self, "set_more_shapes"))
                 and Config.bench_level == BenchLevel.COMPREHENSIVE
                 and not Config.query
+                and not os.environ.get("FLAGGEMS_BENCH_PARALLEL_WORKER")
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
@@ -375,6 +373,270 @@ class Benchmark:
             ]
         return args, kwargs
 
+    def _build_metric_from_input(self, input_item) -> BenchmarkMetrics:
+        metric = BenchmarkMetrics()
+        args, kwargs = self.unpack_to_args_kwargs(input_item)
+        metric.shape_detail = self.record_shapes(*args, **kwargs)
+        if "latency_base" in self.to_bench_metrics:
+            metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
+        if "latency" in self.to_bench_metrics:
+            if self.gems_op:
+                metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
+            else:
+                if self.op_name == "zero_":
+                    with flag_gems.use_gems():
+                        metric.latency = self.get_latency(self.torch_op, *args, **kwargs)
+                else:
+                    # Exclude flaggems' zero_ to avoid the overhead of zero_ in do_bench's clear_cache.
+                    with flag_gems.use_gems(exclude=["zero_"]):
+                        metric.latency = self.get_latency(self.torch_op, *args, **kwargs)
+        if "speedup" in self.to_bench_metrics:
+            metric.speedup = metric.latency_base / metric.latency
+        if "gbps" in self.to_bench_metrics:
+            metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
+            metric.gbps = self.get_gbps(args, latency=metric.latency)
+        if "tflops" in self.to_bench_metrics:
+            metric.tflops = (
+                self.get_tflops(self.torch_op, *args, **kwargs) / metric.latency / 1e12 * 1e3
+            )
+        return metric
+
+    def _run_inputs(self, input_items: Generator):
+        metrics = []
+        for input_item in input_items:
+            metric = BenchmarkMetrics()
+            try:
+                metric = self._build_metric_from_input(input_item)
+            except Exception as e:
+                metric.error_msg = str(e)
+                pytest.fail(str(e))
+            finally:
+                metrics.append(metric)
+                gc.collect()
+        return metrics
+
+    def _resolve_shape_config_key(self, yaml_config):
+        shape_keys = self._get_shape_config_keys()
+        for shape_key in shape_keys:
+            if shape_key in yaml_config:
+                return shape_key
+
+        preferred_shape_key = shape_keys[0]
+        yaml_config[preferred_shape_key] = {
+            "shapes": [list(shape) for shape in self.shapes],
+            "shape_desc": self.shape_desc,
+        }
+        return preferred_shape_key
+
+    def _get_shape_config_keys(self):
+        shape_keys = list(self.SHAPE_CONFIG_KEYS) + [self.op_name]
+        shape_keys.extend(cls.__name__ for cls in type(self).__mro__)
+        return list(dict.fromkeys(key for key in shape_keys if key))
+
+    def _split_shapes_evenly(self, num_buckets: int):
+        indexed_shapes = list(enumerate(self.shapes))
+        if not indexed_shapes:
+            return []
+
+        def estimate_shape_cost(shape):
+            if self.op_name in {
+                "mm",
+                "addmm",
+                "bmm",
+                "baddbmm",
+                "w8a8_block_fp8_matmul",
+            }:
+                normalized_shape = shape
+                if len(shape) == 3:
+                    normalized_shape = (1, *shape)
+                if len(normalized_shape) == 4:
+                    _, m, n, k = normalized_shape
+                else:
+                    normalized_shape = None
+
+                if normalized_shape is None:
+                    return 1
+
+                if self.op_name in {"mm", "bmm", "w8a8_block_fp8_matmul"}:
+                    return m * n * k * 2
+                return m * n * (2 * k + 1)
+
+            cost = 1
+            for dim in shape:
+                if isinstance(dim, bool):
+                    continue
+                if isinstance(dim, (int, float)):
+                    cost *= max(1, int(dim))
+            return cost
+
+        sorted_items = sorted(
+            indexed_shapes,
+            key=lambda idx_shape: estimate_shape_cost(idx_shape[1]),
+            reverse=True,
+        )
+
+        chunks = [[] for _ in range(num_buckets)]
+        bucket_costs = [0] * num_buckets
+        next_start_bucket = 0
+
+        def select_bucket_by_min_cost():
+            nonlocal next_start_bucket
+            ordered = list(range(next_start_bucket, num_buckets)) + list(
+                range(0, next_start_bucket)
+            )
+            target = min(ordered, key=lambda i: bucket_costs[i])
+            next_start_bucket = (target + 1) % num_buckets
+            return target
+
+        heavy_prefix_count = min(len(sorted_items), max(num_buckets, num_buckets * 2))
+
+        for idx_shape in sorted_items[:heavy_prefix_count]:
+            target = select_bucket_by_min_cost()
+            chunks[target].append(idx_shape)
+            bucket_costs[target] += estimate_shape_cost(idx_shape[1])
+
+        for idx_shape in sorted_items[heavy_prefix_count:]:
+            target = select_bucket_by_min_cost()
+            chunks[target].append(idx_shape)
+            bucket_costs[target] += estimate_shape_cost(idx_shape[1])
+
+        for bucket in chunks:
+            bucket.sort(key=lambda x: x[0])
+        return [bucket for bucket in chunks if bucket]
+
+    def _run_parallel_worker_subprocess(
+        self,
+        node_id: str,
+        shape_chunk,
+        gpu_id: int,
+        dtype_name: str,
+    ):
+        shape_chunk_only = [shape for _, shape in shape_chunk]
+
+        with open(Config.shape_file, "r") as f:
+            yaml_config = yaml.safe_load(f) or {}
+        shape_key = self._resolve_shape_config_key(yaml_config)
+        shape_entry = yaml_config.get(shape_key, {})
+        shape_entry["shapes"] = [list(shape) for shape in shape_chunk_only]
+        shape_entry["shape_desc"] = shape_entry.get("shape_desc", self.shape_desc)
+        yaml_config[shape_key] = shape_entry
+
+        tmp_shape_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        )
+        try:
+            yaml.safe_dump(yaml_config, tmp_shape_file)
+            tmp_shape_file.flush()
+            tmp_shape_path = tmp_shape_file.name
+        finally:
+            tmp_shape_file.close()
+
+        tmp_result_file = tempfile.NamedTemporaryFile(mode="wb", suffix=".pkl", delete=False)
+        try:
+            tmp_result_file.flush()
+            tmp_result_path = tmp_result_file.name
+        finally:
+            tmp_result_file.close()
+
+        mode_arg = "--fg_mode" if vendor_name == "kunlunxin" else "--mode"
+        cmd = [
+            sys.executable,
+            "-m",
+            "pytest",
+            node_id,
+            mode_arg,
+            Config.mode.value,
+            "--level",
+            Config.bench_level.value,
+            "--warmup",
+            str(Config.warm_up),
+            "--iter",
+            str(Config.repetition),
+            "--shape_file",
+            tmp_shape_path,
+            "--dtypes",
+            dtype_name,
+        ]
+        if Config.user_desired_metrics:
+            for metric in Config.user_desired_metrics:
+                cmd.extend(["--metrics", metric])
+
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        env["FLAGGEMS_BENCH_PARALLEL_WORKER"] = "1"
+        env["FLAGGEMS_BENCH_RESULT_FILE"] = tmp_result_path
+
+        completed = subprocess.run(cmd, capture_output=True, text=True, env=env)
+
+        try:
+            result_payload = None
+            if completed.returncode == 0:
+                with open(tmp_result_path, "rb") as rf:
+                    result_payload = pickle.load(rf)
+        finally:
+            if os.path.exists(tmp_shape_path):
+                os.remove(tmp_shape_path)
+            if os.path.exists(tmp_result_path):
+                os.remove(tmp_result_path)
+
+        return {
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "result_payload": result_payload,
+        }
+
+    def _run_parallel_dtype(self, dtype):
+        required_gpus = int(Config.parallel)
+        if required_gpus <= 0:
+            return self._run_inputs(self.get_input_iter(dtype))
+        if not torch.cuda.is_available():
+            pytest.skip("--parallel N requires CUDA.")
+        available_gpus = torch.cuda.device_count()
+        if available_gpus < required_gpus:
+            pytest.skip(
+                f"--parallel requires at least {required_gpus} GPUs, found {available_gpus}."
+            )
+
+        node_info = os.environ.get("PYTEST_CURRENT_TEST")
+        if not node_info:
+            pytest.fail("--parallel requires PYTEST_CURRENT_TEST context.")
+        node_id = node_info.split(" (")[0]
+
+        shape_chunks = self._split_shapes_evenly(required_gpus)
+        if not shape_chunks:
+            return []
+
+        dtype_name = str(dtype).split(".")[-1]
+        merged_metrics = []
+        futures = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(shape_chunks)) as ex:
+            for gpu_id, shape_chunk in enumerate(shape_chunks):
+                futures.append(
+                    ex.submit(
+                        self._run_parallel_worker_subprocess,
+                        node_id=node_id,
+                        shape_chunk=shape_chunk,
+                        gpu_id=gpu_id,
+                        dtype_name=dtype_name,
+                    )
+                )
+
+            worker_outputs = [future.result() for future in futures]
+
+        for worker_out in worker_outputs:
+            if worker_out["returncode"] != 0:
+                message = worker_out["stderr"] or worker_out["stdout"]
+                pytest.fail(message)
+
+            payload = worker_out["result_payload"]
+            if not payload:
+                pytest.fail("Parallel worker did not produce benchmark result payload.")
+
+            merged_metrics.extend(payload.result)
+
+        return merged_metrics
+
     def run(self):
         if Config.query:
             self.init_default_config()
@@ -388,54 +650,10 @@ class Benchmark:
             return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
-            metrics = []
-            for input in self.get_input_iter(dtype):
-                metric = BenchmarkMetrics()
-                try:
-                    args, kwargs = self.unpack_to_args_kwargs(input)
-                    metric.shape_detail = self.record_shapes(*args, **kwargs)
-                    if "latency_base" in self.to_bench_metrics:
-                        metric.latency_base = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
-                    if "latency" in self.to_bench_metrics:
-                        if self.gems_op:
-                            metric.latency = self.get_latency(
-                                self.gems_op, *args, **kwargs
-                            )
-                        else:
-                            if self.op_name == "zero_":
-                                with flag_gems.use_gems():
-                                    metric.latency = self.get_latency(
-                                        self.torch_op, *args, **kwargs
-                                    )
-                            else:
-                                # exclude flaggems' zero_ to avoid the overhead of zero_ in do_bench's clear_cache
-                                with flag_gems.use_gems(exclude=["zero_"]):
-                                    metric.latency = self.get_latency(
-                                        self.torch_op, *args, **kwargs
-                                    )
-                    if "speedup" in self.to_bench_metrics:
-                        metric.speedup = metric.latency_base / metric.latency
-                    if "gbps" in self.to_bench_metrics:
-                        metric.gbps_base = self.get_gbps(
-                            args, latency=metric.latency_base
-                        )
-                        metric.gbps = self.get_gbps(args, latency=metric.latency)
-                    if "tflops" in self.to_bench_metrics:
-                        metric.tflops = (
-                            self.get_tflops(self.torch_op, *args, **kwargs)
-                            / metric.latency
-                            / 1e12
-                            * 1e3
-                        )
-                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
-                except Exception as e:
-                    metric.error_msg = str(e)
-                    pytest.fail(str(e))  # raise exception again
-                finally:
-                    metrics.append(metric)
-                    gc.collect()
+            if Config.parallel > 0:
+                metrics = self._run_parallel_dtype(dtype)
+            else:
+                metrics = self._run_inputs(self.get_input_iter(dtype))
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
@@ -445,6 +663,9 @@ class Benchmark:
             )
             print(result)
             emit_record_logger(result.to_json())
+            if os.environ.get("FLAGGEMS_BENCH_RESULT_FILE"):
+                with open(os.environ["FLAGGEMS_BENCH_RESULT_FILE"], "wb") as f:
+                    pickle.dump(result, f)
 
 
 class GenericBenchmark(Benchmark):
