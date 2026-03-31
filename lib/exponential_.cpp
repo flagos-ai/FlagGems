@@ -47,11 +47,19 @@ FloatType dtype_to_floattype(torch::Dtype dtype) {
   throw std::invalid_argument("Unsupported dtype");
 }
 std::string get_vendor_name_simulated() {
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
   return "nvidia";
+#elif defined(FLAGGEMS_USE_MUSA)
+  return "musa";
+#elif defined(FLAGGEMS_USE_NPU)
+  return "npu";
+#else
+  return "unknown";
+#endif
 }
 at::Device get_current_torch_device() {
-  if (torch::cuda::is_available()) {
-    return at::Device(at::kCUDA, at::cuda::current_device());
+  if (backend::isDeviceAvailable()) {
+    return backend::getCurrentDevice();
   } else {
     return at::Device(at::kCPU);
   }
@@ -99,7 +107,10 @@ at::Tensor &exponential_(at::Tensor &self, double lambd, c10::optional<at::Gener
                 dtype == torch::kFloat64,
             "Unsupported dtype");
   TORCH_CHECK(lambd > 0.0, "exponential_ requires lambd > 0.0, but got ", lambd);
-  TORCH_CHECK(self.is_cuda(), "exponential_ currently only supports CUDA tensors");
+  TORCH_CHECK(backend::isOnDevice(self),
+              "exponential_ currently only supports ",
+              backend::getDeviceTypeName(),
+              " tensors");
   bool is_double = (dtype == torch::kFloat64);
 
   const int UNROLL = is_double ? 2 : 4;

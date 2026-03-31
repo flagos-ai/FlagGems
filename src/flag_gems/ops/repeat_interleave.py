@@ -110,6 +110,9 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
 
+    if repeats.numel() == 0:
+        return inp.clone()
+
     if dim is None:
         inp = inp.flatten()
         dim = 0
