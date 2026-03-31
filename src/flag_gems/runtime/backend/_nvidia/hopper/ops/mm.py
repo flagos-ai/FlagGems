@@ -465,13 +465,9 @@ def gemv_kernel(
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("mm_gemv", pre_hook=None)
-    if os.environ.get("USE_FLAGTUNE") == "1" 
-    else [triton.Config({"BLOCK_M": 32, "BLOCK_K": 256})],
+    configs=runtime.ops_get_configs("mm_gemv", pre_hook=None),
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("mm_gemv")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" 
-    else ["align32", "align32", "align32", "default"],
+    strategy=runtime.get_expand_config("mm_gemv")["strategy"],
     warmup=5,
     rep=10,
 )
