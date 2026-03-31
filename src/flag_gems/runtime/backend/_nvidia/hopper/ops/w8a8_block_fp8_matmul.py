@@ -19,99 +19,61 @@ logger = logging.getLogger(
 )
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = "w8a8_block_fp8_matmul_hopper_expand.yaml"
-CONFIG_FILENAME = "w8a8_block_fp8_matmul_hopper.yaml"
-
-
-@functools.lru_cache(maxsize=1)
-def get_embedded_w8a8_block_fp8_hopper_configs():
-    config_path = os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME)
-    if not os.path.exists(config_path):
-        return {}, {}
-
-    with open(config_path, "r") as file:
-        data = yaml.safe_load(file) or {}
-
-    fallback = data.get("_FALLBACK", {})
-    keys_order = [
-        "BLOCK_SIZE_M",
-        "BLOCK_SIZE_N",
-        "BLOCK_SIZE_K",
-        "GROUP_SIZE_M",
-        "num_warps",
-        "num_stages",
-    ]
-    parsed_data = {}
-    for dev, configs in data.items():
-        if dev == "_FALLBACK":
-            continue
-        parsed_data[dev] = {}
-        for key, m_dict in configs.items():
-            parsed_dict = {}
-            for m, value in m_dict.items():
-                if isinstance(value, list):
-                    parsed_dict[int(m)] = dict(zip(keys_order, value))
-                else:
-                    parsed_dict[int(m)] = value
-            parsed_data[dev][key] = parsed_dict
-
-    return parsed_data, fallback
-
-
-@functools.lru_cache(maxsize=1)
-def _get_device_name() -> str:
-    name = torch.cuda.get_device_name().replace(" ", "_")
-    name_parts = name.split("_")
-    if any(part.startswith("H200") for part in name_parts):
-        name = "NVIDIA_H200"
-    elif any(part.startswith("H20") for part in name_parts):
-        name = "NVIDIA_H20"
-
-    embedded_configs, fallback_mapping = get_embedded_w8a8_block_fp8_hopper_configs()
-    if name in embedded_configs:
-        return name
-
-    fallback = fallback_mapping.get(name)
-    if fallback and fallback in embedded_configs:
-        logger.info(
-            "Device %s not in hopper W8A8 Block FP8 config table, falling back to %s",
-            name,
-            fallback,
-        )
-        return fallback
-
-    return name
 
 
 @functools.lru_cache
 def get_w8a8_block_fp8_hopper_configs(
     N: int, K: int, block_n: int, block_k: int
 ) -> Optional[Dict[int, Any]]:
-    device_name = _get_device_name()
-    embedded_configs, _ = get_embedded_w8a8_block_fp8_hopper_configs()
-    device_table = embedded_configs.get(device_name)
-    if device_table is None:
-        logger.warning(
-            "No embedded hopper W8A8 Block FP8 configs for device %s. "
-            "Will use default config.",
-            device_name,
-        )
-        return None
+    device_name = torch.cuda.get_device_name().replace(" ", "_")
+    name_parts = device_name.split("_")
+    if any(part.startswith("H200") for part in name_parts):
+        device_name = "NVIDIA_H200"
+    elif any(part.startswith("H20") for part in name_parts):
+        device_name = "NVIDIA_H20"
+    file_name = f"fa8_w8a8-{block_n}-{block_k}.yaml"
 
-    key = f"{N},{K},fp8_w8a8,{block_n},{block_k}"
-    configs = device_table.get(key)
-    if configs is not None:
-        logger.info(
-            "Using embedded hopper W8A8 Block FP8 config for device=%s, key=%s",
-            device_name,
-            key,
-        )
-        return configs
+    config_dir = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+        "utils",
+        "configs",
+    )
+    cfg_file = os.path.join(config_dir, file_name)
+
+    if os.path.exists(cfg_file):
+        with open(cfg_file) as f:
+            logger.info(
+                "Using config from %s for W8A8 block FP8 kernel.",
+                cfg_file,
+            )
+            dev_data = yaml.safe_load(f).get(device_name, {})
+            NK_data = dev_data.get(f"{N},{K}", {})
+
+            result = {}
+            for k, p in NK_data.items():
+                # unpack the list into dictionary
+                result[int(k)] = {
+                    "BLOCK_SIZE_M": p[0],
+                    "BLOCK_SIZE_N": p[1],
+                    "BLOCK_SIZE_K": p[2],
+                    "GROUP_SIZE_M": p[3],
+                    "num_warps": p[4],
+                    "num_stages": p[5],
+                }
+
+            if not result:
+                return None
+            return result
 
     logger.warning(
-        "No embedded hopper W8A8 Block FP8 config for device=%s, key=%s. "
-        "Will use default config.",
-        device_name,
-        key,
+        "Using default W8A8 Block FP8 kernel config. Performance might "
+        "be sub-optimal! Config file not found at %s",
+        cfg_file,
     )
     return None
 
