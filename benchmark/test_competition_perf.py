@@ -33,7 +33,7 @@ class Log10Benchmark(Benchmark):
             yield inp,
 
 
-@pytest.mark.log10
+@pytest.mark.competition
 def test_perf_log10():
     bench = Log10Benchmark(
         op_name="log10",
@@ -61,7 +61,7 @@ class LogaddexpBenchmark(Benchmark):
             yield inp1, inp2
 
 
-@pytest.mark.logaddexp
+@pytest.mark.competition
 def test_perf_logaddexp():
     bench = LogaddexpBenchmark(
         op_name="logaddexp",
@@ -88,7 +88,7 @@ class CoshBenchmark(Benchmark):
             yield inp,
 
 
-@pytest.mark.cosh
+@pytest.mark.competition
 def test_perf_cosh():
     bench = CoshBenchmark(
         op_name="cosh",
@@ -120,7 +120,7 @@ class GcdBenchmark(Benchmark):
             yield inp1, inp2
 
 
-@pytest.mark.gcd
+@pytest.mark.competition
 def test_perf_gcd():
     bench = GcdBenchmark(
         op_name="gcd",
@@ -145,7 +145,7 @@ class TrilBenchmark(Benchmark):
             yield inp,
 
 
-@pytest.mark.tril
+@pytest.mark.competition
 def test_perf_tril():
     bench = TrilBenchmark(
         op_name="tril",
@@ -174,7 +174,7 @@ class RollBenchmark(Benchmark):
             yield inp, {"shifts": shifts, "dims": dims}
 
 
-@pytest.mark.roll
+@pytest.mark.competition
 def test_perf_roll():
     bench = RollBenchmark(
         op_name="roll",
@@ -201,7 +201,7 @@ class LeakyReluBenchmark(Benchmark):
             yield inp, {"negative_slope": 0.01}
 
 
-@pytest.mark.leaky_relu
+@pytest.mark.competition
 def test_perf_leaky_relu():
     bench = LeakyReluBenchmark(
         op_name="leaky_relu",
@@ -228,7 +228,7 @@ class AsinhBenchmark(Benchmark):
             yield inp,
 
 
-@pytest.mark.asinh
+@pytest.mark.competition
 def test_perf_asinh():
     bench = AsinhBenchmark(
         op_name="asinh",
@@ -269,7 +269,7 @@ class UpsampleNearest2dCompBenchmark(Benchmark):
             },
 
 
-@pytest.mark.upsample_nearest2d
+@pytest.mark.competition
 def test_perf_upsample_nearest2d():
     bench = UpsampleNearest2dCompBenchmark(
         op_name="upsample_nearest2d",
@@ -304,7 +304,7 @@ class ScatterReduceBenchmark(Benchmark):
             yield inp, -1, index, src, {"reduce": "sum"}
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.competition
 def test_perf_scatter_reduce():
     bench = ScatterReduceBenchmark(
         op_name="scatter_reduce",
@@ -332,7 +332,7 @@ class MedianBenchmark(Benchmark):
                 yield inp,
 
 
-@pytest.mark.median
+@pytest.mark.competition
 def test_perf_median():
     bench = MedianBenchmark(
         op_name="median",
@@ -358,7 +358,7 @@ class SmoothL1LossBenchmark(Benchmark):
             yield inp, target
 
 
-@pytest.mark.smooth_l1_loss
+@pytest.mark.competition
 def test_perf_smooth_l1_loss():
     bench = SmoothL1LossBenchmark(
         op_name="smooth_l1_loss",
@@ -394,7 +394,7 @@ class PixelShuffleBenchmark(Benchmark):
             yield inp, r
 
 
-@pytest.mark.pixel_shuffle
+@pytest.mark.competition
 def test_perf_pixel_shuffle():
     bench = PixelShuffleBenchmark(
         op_name="pixel_shuffle",
@@ -440,7 +440,7 @@ class ConvTranspose2dBenchmark(Benchmark):
             },
 
 
-@pytest.mark.conv_transpose2d
+@pytest.mark.competition
 def test_perf_conv_transpose2d():
     bench = ConvTranspose2dBenchmark(
         op_name="conv_transpose2d",
@@ -475,7 +475,7 @@ class AvgPool3dBenchmark(Benchmark):
             yield inp, {"kernel_size": 3, "stride": 2, "padding": 1}
 
 
-@pytest.mark.avg_pool3d
+@pytest.mark.competition
 def test_perf_avg_pool3d():
     bench = AvgPool3dBenchmark(
         op_name="avg_pool3d",
@@ -509,7 +509,7 @@ class MaxPool3dBenchmark(Benchmark):
             yield inp, {"kernel_size": 3, "stride": 2, "padding": 1}
 
 
-@pytest.mark.max_pool3d
+@pytest.mark.competition
 def test_perf_max_pool3d():
     bench = MaxPool3dBenchmark(
         op_name="max_pool3d",
@@ -593,7 +593,7 @@ class ChunkGatedDeltaRuleBenchmark(Benchmark):
         )
 
 
-@pytest.mark.chunk_gated_delta_rule
+@pytest.mark.competition
 @pytest.mark.skipif(flag_gems.device != "cuda", reason="requires CUDA")
 def test_perf_chunk_gated_delta_rule():
     try:
@@ -633,7 +633,7 @@ class SvdBenchmark(Benchmark):
             yield inp,
 
 
-@pytest.mark.svd
+@pytest.mark.competition
 def test_perf_svd():
     bench = SvdBenchmark(
         op_name="svd",
@@ -678,7 +678,7 @@ class CtcLossBenchmark(Benchmark):
             yield log_probs, targets, input_lengths, target_lengths
 
 
-@pytest.mark.ctc_loss
+@pytest.mark.competition
 def test_perf_ctc_loss():
     bench = CtcLossBenchmark(
         op_name="ctc_loss",
@@ -719,7 +719,7 @@ class GridSampleBenchmark(Benchmark):
             yield inp, grid
 
 
-@pytest.mark.grid_sample
+@pytest.mark.competition
 def test_perf_grid_sample():
     bench = GridSampleBenchmark(
         op_name="grid_sample",

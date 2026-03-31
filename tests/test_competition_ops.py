@@ -26,7 +26,7 @@ SHAPES_GENERAL = [(1024, 1024), (20, 320, 15), (16, 128, 64, 60)]
 # ============================================================
 
 
-@pytest.mark.log10
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log10(shape, dtype):
@@ -45,7 +45,7 @@ def test_accuracy_log10(shape, dtype):
 # ============================================================
 
 
-@pytest.mark.logaddexp
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_logaddexp(shape, dtype):
@@ -66,7 +66,7 @@ def test_accuracy_logaddexp(shape, dtype):
 # ============================================================
 
 
-@pytest.mark.cosh
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cosh(shape, dtype):
@@ -85,7 +85,7 @@ def test_accuracy_cosh(shape, dtype):
 # ============================================================
 
 
-@pytest.mark.gcd
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.int32])
 def test_accuracy_gcd(shape, dtype):
@@ -106,7 +106,7 @@ def test_accuracy_gcd(shape, dtype):
 # ============================================================
 
 
-@pytest.mark.tril
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("diagonal", [-1, 0, 1])
@@ -126,7 +126,7 @@ def test_accuracy_tril(shape, dtype, diagonal):
 # ============================================================
 
 
-@pytest.mark.roll
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_roll(shape, dtype):
@@ -148,7 +148,7 @@ def test_accuracy_roll(shape, dtype):
 # ============================================================
 
 
-@pytest.mark.leaky_relu
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("negative_slope", [0.01, 0.1, 0.2])
@@ -168,7 +168,7 @@ def test_accuracy_leaky_relu(shape, dtype, negative_slope):
 # ============================================================
 
 
-@pytest.mark.asinh
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_asinh(shape, dtype):
@@ -189,7 +189,7 @@ def test_accuracy_asinh(shape, dtype):
 SCATTER_SHAPES = [(256, 256), (1024, 1024)]
 
 
-@pytest.mark.scatter_reduce
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", SCATTER_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("reduce", ["sum", "prod", "mean", "amax", "amin"])
@@ -217,7 +217,7 @@ def test_accuracy_scatter_reduce(shape, dtype, reduce):
 # ============================================================
 
 
-@pytest.mark.median
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_median(shape, dtype):
@@ -236,7 +236,7 @@ def test_accuracy_median(shape, dtype):
 # ============================================================
 
 
-@pytest.mark.smooth_l1_loss
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
@@ -266,7 +266,7 @@ PIXEL_SHUFFLE_CONFIGS = [
 ]
 
 
-@pytest.mark.pixel_shuffle
+@pytest.mark.competition
 @pytest.mark.parametrize("shape, upscale_factor", PIXEL_SHUFFLE_CONFIGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pixel_shuffle(shape, upscale_factor, dtype):
@@ -292,7 +292,7 @@ CONV_TRANSPOSE2D_CONFIGS = [
 ]
 
 
-@pytest.mark.conv_transpose2d
+@pytest.mark.competition
 @pytest.mark.parametrize(
     "n, c_in, h, w, c_out, k, stride, padding, groups", CONV_TRANSPOSE2D_CONFIGS
 )
@@ -328,7 +328,7 @@ POOL3D_SHAPES = [
 ]
 
 
-@pytest.mark.avg_pool3d
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POOL3D_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("kernel_size", [2, 3])
@@ -348,7 +348,7 @@ def test_accuracy_avg_pool3d(shape, dtype, kernel_size):
 # ============================================================
 
 
-@pytest.mark.max_pool3d
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", POOL3D_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("kernel_size", [2, 3])
@@ -368,7 +368,7 @@ def test_accuracy_max_pool3d(shape, dtype, kernel_size):
 # ============================================================
 
 
-@pytest.mark.chunk_gated_delta_rule
+@pytest.mark.competition
 @pytest.mark.skipif(flag_gems.device != "cuda", reason="requires CUDA")
 @pytest.mark.parametrize("T", [1, 64, 256])
 def test_accuracy_chunk_gated_delta_rule(T):
@@ -445,7 +445,7 @@ def test_accuracy_chunk_gated_delta_rule(T):
 SVD_SHAPES = [(32, 32), (64, 64), (128, 128), (64, 128)]
 
 
-@pytest.mark.svd
+@pytest.mark.competition
 @pytest.mark.parametrize("shape", SVD_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_accuracy_svd(shape, dtype):
@@ -475,7 +475,7 @@ CTC_CONFIGS = [
 ]
 
 
-@pytest.mark.ctc_loss
+@pytest.mark.competition
 @pytest.mark.parametrize("T, N, C", CTC_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_accuracy_ctc_loss(T, N, C, dtype):
@@ -514,7 +514,7 @@ GRID_SAMPLE_CONFIGS = [
 ]
 
 
-@pytest.mark.grid_sample
+@pytest.mark.competition
 @pytest.mark.parametrize("n, c, h_in, w_in, h_out, w_out", GRID_SAMPLE_CONFIGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
