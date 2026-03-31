@@ -163,7 +163,6 @@ def generate_index_put_wrapper(
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.newline()
         # Block sizes for Ascend
-        code.writeline("import triton")
         code.writeline("BLOCK_SIZE1 = 2048")
         code.writeline("grid1 = max(triton.cdiv(N, BLOCK_SIZE1), 1)")
         code.writeline("max_grid0 = max(1, 65535 // grid1)")

@@ -93,7 +93,7 @@ class BinaryScalarPointwiseBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp1 = generate_tensor_input(shape, cur_dtype, self.device)
-            inp2 = 0
+            inp2 = generate_tensor_input(shape, cur_dtype, self.device)
             yield inp1, inp2
 
     def get_tflops(self, op, *args, **kwargs):
