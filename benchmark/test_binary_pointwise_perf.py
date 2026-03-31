@@ -7,6 +7,27 @@ from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 
+def _polar_baseline(abs, angle):
+    if abs.dtype == torch.bfloat16:
+        return torch.polar(abs.to(torch.float32), angle.to(torch.float32))
+    return torch.polar(abs, angle)
+
+
+def _bitwise_or_baseline(a, b):
+    if a.dtype == torch.bfloat16:
+        return torch.bitwise_or(a.view(torch.int16), b.view(torch.int16)).view(
+            torch.bfloat16
+        )
+    return torch.bitwise_or(a, b)
+
+
+def _bitwise_or_inplace_baseline(a, b):
+    if a.dtype == torch.bfloat16:
+        a.view(torch.int16).bitwise_or_(b.view(torch.int16))
+        return a
+    return a.bitwise_or_(b)
+
+
 class BinaryPointwiseBenchmark(Benchmark):
     """
     Base class for benchmarking binary pointwise operations.
@@ -47,11 +68,11 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("mul", torch.mul, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
             ("pow", torch.pow, FLOAT_DTYPES),
-            ("polar", torch.polar, [torch.float32]),
+            ("polar", _polar_baseline, [torch.float32, torch.bfloat16]),
             ("floor_divide", torch.floor_divide, INT_DTYPES),
             ("remainder", torch.remainder, INT_DTYPES),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
-            ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
+            ("logical_and", torch.logical_and, FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES),
             ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
             # Comparison operations
             ("eq", torch.eq, FLOAT_DTYPES),
@@ -66,7 +87,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("minimum", torch.minimum, FLOAT_DTYPES),
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
-            ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
+            ("bitwise_or", _bitwise_or_baseline, INT_DTYPES + BOOL_DTYPES + [torch.bfloat16]),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
@@ -97,10 +118,10 @@ def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
             ("floor_divide_", lambda a, b: a.floor_divide_(b), INT_DTYPES),
             ("remainder_", lambda a, b: a.remainder_(b), INT_DTYPES),
             ("logical_or_", lambda a, b: a.logical_or_(b), INT_DTYPES + BOOL_DTYPES),
-            ("logical_and_", lambda a, b: a.logical_and_(b), INT_DTYPES + BOOL_DTYPES),
+            ("logical_and_", lambda a, b: a.logical_and_(b), FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES),
             # Bitwise operations
             ("bitwise_and_", lambda a, b: a.bitwise_and_(b), INT_DTYPES + BOOL_DTYPES),
-            ("bitwise_or_", lambda a, b: a.bitwise_or_(b), INT_DTYPES + BOOL_DTYPES),
+            ("bitwise_or_", _bitwise_or_inplace_baseline, INT_DTYPES + BOOL_DTYPES + [torch.bfloat16]),
         ]
     ],
 )

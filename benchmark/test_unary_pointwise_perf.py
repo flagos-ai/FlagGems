@@ -17,6 +17,19 @@ vendor_name = flag_gems.vendor_name
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
+def _bitwise_not_baseline(a):
+    if a.dtype == torch.bfloat16:
+        return torch.bitwise_not(a.view(torch.int16)).view(torch.bfloat16)
+    return torch.bitwise_not(a)
+
+
+def _bitwise_not_inplace_baseline(a):
+    if a.dtype == torch.bfloat16:
+        a.view(torch.int16).bitwise_not_()
+        return a
+    return a.bitwise_not_()
+
+
 class UnaryPointwiseBenchmark(Benchmark):
     """
     Base class for benchmarking unary pointwise operations.
@@ -72,7 +85,7 @@ forward_operations = [
     ("atan", torch.atan, FLOAT_DTYPES),
     ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
-    ("bitwise_not", torch.bitwise_not, INT_DTYPES),
+    ("bitwise_not", _bitwise_not_baseline, INT_DTYPES + [torch.bfloat16]),
     # Numerical Checks
     ("isinf", torch.isinf, FLOAT_DTYPES),
     ("isnan", torch.isnan, FLOAT_DTYPES),
@@ -127,7 +140,7 @@ forward_inplace_operations = [
     ("tanh_", torch.tanh_, FLOAT_DTYPES),
     ("atan_", torch.atan_, FLOAT_DTYPES),
     # Bitwise operations
-    ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
+    ("bitwise_not_", _bitwise_not_inplace_baseline, INT_DTYPES + [torch.bfloat16]),
 ]
 
 

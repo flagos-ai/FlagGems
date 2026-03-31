@@ -2,6 +2,14 @@ from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
+from .bitwise_not import bitwise_not, bitwise_not_
+from .bitwise_or import (
+    bitwise_or_scalar,
+    bitwise_or_scalar_,
+    bitwise_or_scalar_tensor,
+    bitwise_or_tensor,
+    bitwise_or_tensor_,
+)
 from .any import any, any_dim, any_dims
 from .arange import arange
 from .argmax import argmax
@@ -10,6 +18,17 @@ from .bmm import bmm
 from .cat import cat
 from .count_nonzero import count_nonzero
 from .cumsum import cumsum, normed_cumsum
+from .div import (
+    div_mode,
+    div_mode_,
+    floor_divide,
+    floor_divide_,
+    true_divide,
+    true_divide_,
+    true_divide_out,
+    trunc_divide,
+    trunc_divide_,
+)
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -28,6 +47,7 @@ from .index_add import index_add
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
+from .logical_and import logical_and, logical_and_
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
@@ -148,9 +168,27 @@ __all__ = [
     "any_dims",
     "any_dim",
     "angle",
+    "bitwise_not",
+    "bitwise_not_",
+    "bitwise_or_scalar",
+    "bitwise_or_scalar_",
+    "bitwise_or_scalar_tensor",
+    "bitwise_or_tensor",
+    "bitwise_or_tensor_",
     "multinomial",
     "index_add",
     "_unique2",
     "upsample_nearest2d",
     "randperm",
+    "true_divide",
+    "true_divide_",
+    "true_divide_out",
+    "trunc_divide",
+    "trunc_divide_",
+    "floor_divide",
+    "floor_divide_",
+    "div_mode",
+    "div_mode_",
+    "logical_and",
+    "logical_and_",
 ]

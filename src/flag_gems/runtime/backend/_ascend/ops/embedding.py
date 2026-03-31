@@ -11,79 +11,94 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
+MAX_BLOCK_SIZE = 32768
+NUM_VECTOR_CORES = 48
+
 
 @libentry()
 @triton.jit
 def embedding_kernel(
-    out_ptr,  # pointer to the output
-    in_ptr,  # pointer to the input
-    weight_ptr,  # pointer to the weights
-    N: tl.constexpr,  # number of columns in X
+    out_ptr,
+    in_ptr,
+    weight_ptr,
+    M,
+    N,
+    ROWS_PER_CORE: tl.constexpr,
+    NUM_ITERS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
-    out_ptr += pid * N
-    in_ptr += pid
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
-
-    row_idx = tl.load(in_ptr)
-    weight_ptr += row_idx * N
-    embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
-    tl.store(out_ptr + cols, embedding_weight, mask)
+    for row in range(ROWS_PER_CORE):
+        row_idx_in_batch = pid * ROWS_PER_CORE + row
+        if row_idx_in_batch < M:
+            idx = tl.load(in_ptr + row_idx_in_batch)
+            for i in range(NUM_ITERS):
+                cols = i * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+                mask = cols < N
+                val = tl.load(
+                    weight_ptr + idx * N + cols, mask, other=0.0,
+                    care_padding=False,
+                )
+                tl.store(out_ptr + row_idx_in_batch * N + cols, val, mask)
 
 
 @libentry()
 @triton.jit
 def indice_freq_kernel(
     indices_freq,
-    indices,  # pointer to the input
-    elem_cnt: tl.constexpr,  # number of columns in X
+    indices,
+    elem_cnt,
+    num_tasks,
     INDICE_BLOCK_SIZE: tl.constexpr,
+    NCORE: tl.constexpr,
 ):
     pid = tle.program_id(0)
-    block_start = pid * INDICE_BLOCK_SIZE
 
-    for i in range(INDICE_BLOCK_SIZE):
-        off = block_start + i
-        if off < elem_cnt:
-            idx = tl.load(indices + off)
-            tl.atomic_add(indices_freq + idx, 1)
+    for task_id in range(pid, num_tasks, NCORE):
+        block_start = task_id * INDICE_BLOCK_SIZE
+        for i in range(INDICE_BLOCK_SIZE):
+            off = block_start + i
+            if off < elem_cnt:
+                idx = tl.load(indices + off)
+                tl.atomic_add(indices_freq + idx, 1)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["padding_idx"])
 def embedding_backward_kernel(
-    grad_in,  # pointer to the gradient input
-    grad_out,  # pointer to the gradient output
-    indices,  # pointer to the input
-    padding_idx,  # padding_idx
+    grad_in,
+    grad_out,
+    indices,
+    padding_idx,
+    M,
     HAS_PADDING_IDX: tl.constexpr,
-    N: tl.constexpr,  # number of columns in X
+    N,
+    ROWS_PER_CORE: tl.constexpr,
+    NUM_ITERS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
-    grad_out += pid * N
-    indices += pid
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
+    for row in range(ROWS_PER_CORE):
+        row_idx_in_batch = pid * ROWS_PER_CORE + row
+        if row_idx_in_batch < M:
+            row_idx = tl.load(indices + row_idx_in_batch).to(tl.int32)
 
-    row_idx = tl.load(indices).to(tl.int32)
-    if not HAS_PADDING_IDX:
-        grad_in += row_idx * N
-        embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
-        if tl.constexpr(embedding_grad.dtype.is_bf16()):
-            embedding_grad = embedding_grad.to(tl.float32)
-        tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
-    else:
-        if row_idx != padding_idx:
-            grad_in += row_idx * N
-            embedding_grad = tl.load(grad_out + cols, mask, other=0.0)
-            if tl.constexpr(embedding_grad.dtype.is_bf16()):
-                embedding_grad = embedding_grad.to(tl.float32)
-            tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
+            if HAS_PADDING_IDX:
+                if row_idx == padding_idx:
+                    continue
+
+            for i in range(NUM_ITERS):
+                cols = i * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+                mask = cols < N
+                embedding_grad = tl.load(
+                    grad_out + row_idx_in_batch * N + cols, mask, other=0.0,
+                    care_padding=False,
+                )
+                if tl.constexpr(embedding_grad.dtype.is_bf16()):
+                    embedding_grad = embedding_grad.to(tl.float32)
+                tl.atomic_add(grad_in + row_idx * N + cols, embedding_grad, mask=mask)
 
 
 @libentry()
@@ -93,22 +108,43 @@ def embedding_grad_scale_kernel(
     indice_freq,
     n_rows,
     N,
+    ROWS_PER_CORE: tl.constexpr,
+    NUM_ITERS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    row_start = tle.program_id(0)
-    row_step = tle.num_programs(0)
+    pid = tle.program_id(0)
 
-    for row_idx in range(row_start, n_rows, row_step):
-        embedding_scale = 1.0
-        indice_freq_val = tl.load(indice_freq + row_idx)
-        if indice_freq_val > 1:
-            embedding_scale = 1.0 / indice_freq_val
+    for row in range(ROWS_PER_CORE):
+        row_idx = pid * ROWS_PER_CORE + row
+        if row_idx < n_rows:
+            indice_freq_val = tl.load(indice_freq + row_idx)
+            if indice_freq_val > 1:
+                embedding_scale = 1.0 / indice_freq_val
 
-        cols = tl.arange(0, BLOCK_SIZE)
-        mask = tl.arange(0, BLOCK_SIZE) < N
-        embedding_grad = tl.load(grad_out + row_idx * N + cols, mask=mask)
-        scaled_embedding_grad = embedding_grad * embedding_scale
-        tl.store(grad_out + row_idx * N + cols, scaled_embedding_grad, mask=mask)
+                for i in range(NUM_ITERS):
+                    cols = i * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+                    mask = cols < N
+                    embedding_grad = tl.load(
+                        grad_out + row_idx * N + cols, mask=mask,
+                        care_padding=False,
+                    )
+                    scaled_embedding_grad = embedding_grad * embedding_scale
+                    tl.store(
+                        grad_out + row_idx * N + cols,
+                        scaled_embedding_grad, mask=mask,
+                    )
+
+
+def _compute_block_sizes(N):
+    BLOCK_SIZE = min(triton.next_power_of_2(N), MAX_BLOCK_SIZE)
+    NUM_ITERS = triton.cdiv(N, BLOCK_SIZE)
+    return BLOCK_SIZE, NUM_ITERS
+
+
+def _compute_grid(M):
+    ncore = min(M, NUM_VECTOR_CORES)
+    rows_per_core = triton.cdiv(M, ncore)
+    return ncore, rows_per_core
 
 
 class Embedding(torch.autograd.Function):
@@ -122,7 +158,9 @@ class Embedding(torch.autograd.Function):
         M = math.prod(indices.shape)
         N = weight.shape[-1]
 
-        BLOCK_SIZE = triton.next_power_of_2(N)
+        BLOCK_SIZE, NUM_ITERS = _compute_block_sizes(N)
+        ncore, rows_per_core = _compute_grid(M)
+
         indices = indices.contiguous()
         weight = weight.contiguous()
         output = torch.empty(
@@ -130,7 +168,10 @@ class Embedding(torch.autograd.Function):
         )
 
         with torch_device_fn.device(weight.device):
-            embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+            embedding_kernel[ncore,](
+                output, indices, weight, M, N,
+                rows_per_core, NUM_ITERS, BLOCK_SIZE,
+            )
 
         ctx.M = M
         ctx.N = N
@@ -165,34 +206,42 @@ class Embedding(torch.autograd.Function):
                 dtype=torch.int32,
             )
             INDICE_BLOCK_SIZE = 256
-            indice_grid = lambda meta: (triton.cdiv(ctx.M, INDICE_BLOCK_SIZE),)
+            indice_num_tasks = triton.cdiv(ctx.M, INDICE_BLOCK_SIZE)
+            indice_ncore = min(indice_num_tasks, NUM_VECTOR_CORES)
 
             with torch_device_fn.device(grad_outputs.device):
-                indice_freq_kernel[indice_grid](
-                    indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE
+                indice_freq_kernel[indice_ncore,](
+                    indice_freq, ctx.indices, ctx.M, indice_num_tasks,
+                    INDICE_BLOCK_SIZE, indice_ncore
                 )
         else:
             indice_freq = None
 
-        BLOCK_SIZE = triton.next_power_of_2(ctx.N)
+        BLOCK_SIZE, NUM_ITERS = _compute_block_sizes(ctx.N)
+        ncore, rows_per_core = _compute_grid(ctx.M)
 
         HAS_PADDING_IDX = ctx.padding_idx is not None
 
         with torch_device_fn.device(grad_outputs.device):
-            embedding_backward_kernel[ctx.M,](
+            embedding_backward_kernel[ncore,](
                 grad_inputs,
                 grad_outputs,
                 ctx.indices,
                 ctx.padding_idx,
+                ctx.M,
                 HAS_PADDING_IDX,
                 ctx.N,
+                rows_per_core,
+                NUM_ITERS,
                 BLOCK_SIZE,
             )
 
         if ctx.scale_grad_by_freq:
+            ncore_scale, rows_per_core_scale = _compute_grid(ctx.num_weights)
             with torch_device_fn.device(grad_outputs.device):
-                embedding_grad_scale_kernel[ctx.M,](
-                    grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
+                embedding_grad_scale_kernel[ncore_scale,](
+                    grad_inputs, indice_freq, ctx.num_weights, ctx.N,
+                    rows_per_core_scale, NUM_ITERS, BLOCK_SIZE,
                 )
         return (
             (

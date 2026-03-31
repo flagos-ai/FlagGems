@@ -365,10 +365,7 @@ def test_perf_embedding():
         input_fn=embedding_input_fn,
         op_name="embedding",
         torch_op=torch.nn.functional.embedding,
-        dtypes=[
-            torch.float32,
-            torch.float16,
-        ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 
@@ -379,10 +376,7 @@ def test_perf_embedding_backward():
         input_fn=embedding_backward_input_fn,
         op_name="embedding",
         torch_op=torch.nn.functional.embedding,
-        dtypes=[
-            torch.float32,
-            torch.float16,
-        ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+        dtypes=FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()
