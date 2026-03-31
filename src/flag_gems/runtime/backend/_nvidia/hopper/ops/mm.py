@@ -415,6 +415,7 @@ def general_mm(a, b, c, M, N, K):
 
 
 @libentry()
+<<<<<<< HEAD
 @libtuner(
     configs=runtime.ops_get_configs(
         "gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
@@ -434,6 +435,8 @@ def general_mm(a, b, c, M, N, K):
     warmup=5,
     rep=10,
 )
+=======
+>>>>>>> 9b2296ac (add libtuner decorator to gemv_kernel)
 @triton.jit
 def gemv_kernel(
     A,
@@ -479,6 +482,56 @@ def gemv_kernel(
     acc = acc.to(C.dtype.element_ty)
     tl.store(c_ptrs, acc, mask=row_mask)
 
+@libentry()
+@libtuner(
+    configs=runtime.ops_get_configs("mm_gemv", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1" 
+    else [triton.Config({"BLOCK_M": 32, "BLOCK_K": 256})],
+    key=["M", "K", "stride_am", "stride_bk"],
+    strategy=runtime.get_expand_config("mm_gemv")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1" 
+    else ["align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=10,
+)
+@triton.jit
+def gemv_kernel_libtuner(
+    A,
+    B,
+    C,
+    M,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Autotuned kernel for matrix-vector multiplication (N=1 case)."""
+    pid = tl.program_id(0)
+
+    row_start = pid * BLOCK_M
+    row_offset = row_start + tl.arange(0, BLOCK_M)
+    row_mask = row_offset < M
+
+    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+
+    for k_start in range(0, K, BLOCK_K):
+        k_offset = k_start + tl.arange(0, BLOCK_K)
+        k_mask = k_offset < K
+
+        a_ptrs = A + row_offset[:, None] * stride_am + k_offset[None, :] * stride_ak
+        a = tl.load(a_ptrs, mask=row_mask[:, None] & k_mask[None, :], other=0.0)
+
+        b_ptrs = B + k_offset * stride_bk
+        b = tl.load(b_ptrs, mask=k_mask, other=0.0)
+
+        acc += tl.sum(a * b[None, :], axis=1)
+
+    c_ptrs = C + row_offset
+    acc = acc.to(C.dtype.element_ty)
+    tl.store(c_ptrs, acc, mask=row_mask)
+
 
 def gemv_mm(a, b, c, M, K):
     """Optimized matrix-vector multiplication for N=1 case"""
@@ -488,19 +541,36 @@ def gemv_mm(a, b, c, M, K):
         K,
     )
 
-    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
     with torch_device_fn.device(a.device):
-        gemv_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-        )
+        if os.environ.get("USE_FLAGTUNE") == "1":
+            grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+            gemv_kernel_libtuner[grid](
+                a,
+                b,
+                c,
+                M,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+            )
+        else:
+            BLOCK_M = 32
+            BLOCK_K = 256
+            grid = lambda META: (triton.cdiv(M, BLOCK_M),)
+            gemv_kernel[grid](
+                a,
+                b,
+                c,
+                M,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                BLOCK_M=BLOCK_M,
+                BLOCK_K=BLOCK_K,
+            )
     return c
 
 
