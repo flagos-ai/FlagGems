@@ -85,20 +85,18 @@ def embedding_backward_kernel(
         if row_idx_in_batch < M:
             row_idx = tl.load(indices + row_idx_in_batch).to(tl.int32)
 
-            if HAS_PADDING_IDX:
-                if row_idx == padding_idx:
-                    continue
-
-            for i in range(NUM_ITERS):
-                cols = i * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                mask = cols < N
-                embedding_grad = tl.load(
-                    grad_out + row_idx_in_batch * N + cols, mask, other=0.0,
-                    care_padding=False,
-                )
-                if tl.constexpr(embedding_grad.dtype.is_bf16()):
-                    embedding_grad = embedding_grad.to(tl.float32)
-                tl.atomic_add(grad_in + row_idx * N + cols, embedding_grad, mask=mask)
+            skip = HAS_PADDING_IDX and (row_idx == padding_idx)
+            if not skip:
+                for i in range(NUM_ITERS):
+                    cols = i * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+                    mask = cols < N
+                    embedding_grad = tl.load(
+                        grad_out + row_idx_in_batch * N + cols, mask, other=0.0,
+                        care_padding=False,
+                    )
+                    if tl.constexpr(embedding_grad.dtype.is_bf16()):
+                        embedding_grad = embedding_grad.to(tl.float32)
+                    tl.atomic_add(grad_in + row_idx * N + cols, embedding_grad, mask=mask)
 
 
 @libentry()
@@ -280,3 +278,87 @@ class Embedding(torch.autograd.Function):
 
 def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
     return Embedding.apply(weight, indices, padding_idx, scale_grad_by_freq, sparse)
+
+
+def embedding_backward(
+    grad_outputs,
+    indices,
+    num_weights,
+    padding_idx=-1,
+    scale_grad_by_freq=False,
+    sparse=False,
+):
+    logger.debug("GEMS_ASCEND EMBEDDING BACKWARD")
+    assert not sparse, "Currently do not support sparse format"
+
+    M = indices.numel()
+    N = grad_outputs.shape[-1]
+
+    if M == 0:
+        return torch.zeros(
+            (num_weights, N),
+            device=grad_outputs.device,
+            dtype=grad_outputs.dtype,
+        )
+
+    grad_inputs = torch.zeros(
+        (num_weights, N),
+        device=grad_outputs.device,
+        dtype=(
+            torch.float32
+            if grad_outputs.dtype is torch.bfloat16
+            else grad_outputs.dtype
+        ),
+    )
+
+    if scale_grad_by_freq:
+        indice_freq = torch.zeros(
+            (num_weights,),
+            requires_grad=False,
+            device=grad_outputs.device,
+            dtype=torch.int32,
+        )
+        INDICE_BLOCK_SIZE = 256
+        indice_num_tasks = triton.cdiv(M, INDICE_BLOCK_SIZE)
+        indice_ncore = min(indice_num_tasks, NUM_VECTOR_CORES)
+
+        with torch_device_fn.device(grad_outputs.device):
+            indice_freq_kernel[indice_ncore,](
+                indice_freq, indices, M, indice_num_tasks,
+                INDICE_BLOCK_SIZE, indice_ncore
+            )
+    else:
+        indice_freq = None
+
+    BLOCK_SIZE, NUM_ITERS = _compute_block_sizes(N)
+    ncore, rows_per_core = _compute_grid(M)
+
+    HAS_PADDING_IDX = padding_idx is not None
+
+    with torch_device_fn.device(grad_outputs.device):
+        embedding_backward_kernel[ncore,](
+            grad_inputs,
+            grad_outputs,
+            indices,
+            padding_idx,
+            M,
+            HAS_PADDING_IDX,
+            N,
+            rows_per_core,
+            NUM_ITERS,
+            BLOCK_SIZE,
+        )
+
+    if scale_grad_by_freq:
+        ncore_scale, rows_per_core_scale = _compute_grid(num_weights)
+        with torch_device_fn.device(grad_outputs.device):
+            embedding_grad_scale_kernel[ncore_scale,](
+                grad_inputs, indice_freq, num_weights, N,
+                rows_per_core_scale, NUM_ITERS, BLOCK_SIZE,
+            )
+
+    return (
+        grad_inputs.to(torch.bfloat16)
+        if grad_outputs.dtype is torch.bfloat16
+        else grad_inputs
+    )
