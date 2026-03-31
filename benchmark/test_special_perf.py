@@ -1390,45 +1390,51 @@ def test_perf_t_copy():
     bench.run()
 
 
-class SelectBackwardBenchmark(Benchmark):
-    """
-    Benchmark for select_backward operator.
-    """
-
+class UpsampleBicubic2dAaBackwardBenchmark(Benchmark):
     def set_more_shapes(self):
-        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-        return special_shapes_2d + sp_shapes_3d
+        shapes = [(512, 1024, 32, 32), (256, 512, 64, 64)]
+        shapes_4d = [(4, 16, 2**i, 2**i) for i in range(2, 8, 2)]
+        shapes_rect = [(4, 16, 2**i, 2 ** (i + 1)) for i in range(2, 7, 2)]
+        return shapes + shapes_4d + shapes_rect
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
-            x = generate_tensor_input(shape, cur_dtype, self.device)
-            ndim = len(shape)
-
-            dim = 1 if ndim > 1 else 0
-            actual_dim = dim if dim >= 0 else dim + ndim
-
-            index = shape[actual_dim] // 2
-
-            y = torch.select(x, actual_dim, index)
-            grad = torch.randn_like(y)
-
-            yield grad, shape, actual_dim, index
+            if len(shape) == 1:
+                # Treat flat shape as a square spatial dim: (1, 1, sqrt(N), sqrt(N))
+                side = int(shape[0] ** 0.5)
+                shape_4d = (1, 1, side, side)
+            elif len(shape) == 2:
+                shape_4d = (1, 1, shape[0], shape[1])
+            elif len(shape) == 3:
+                shape_4d = (1, shape[0], shape[1], shape[2])
+            else:
+                shape_4d = shape
+            for scale_factor in [0.25, 0.5, 2.0]:
+                for align_corners in [False, True]:
+                    N, C, H_in, W_in = shape_4d
+                    H_out = max(1, int(H_in * scale_factor))
+                    W_out = max(1, int(W_in * scale_factor))
+                    if N * C * max(H_in * W_in, H_out * W_out) >= 2**30:
+                        continue
+                    grad = torch.randn(
+                        [N, C, H_out, W_out], device=self.device, dtype=cur_dtype
+                    )
+                    yield grad, [H_out, W_out], [N, C, H_in, W_in], align_corners, None, None
 
     def get_tflops(self, op, *args, **kwargs):
-        grad, shape, _, _ = args
-        return grad.numel()
+        grad, output_size, input_size, align_corners, scales_h, scales_w = args
+        return grad.numel() * 2
 
 
-@pytest.mark.select_backward
+@pytest.mark.upsample_bicubic2d_aa_backward
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES,
+    [torch.float32], #FLOAT_DTYPES,
 )
-def test_select_backward_perf(dtype):
-    bench = SelectBackwardBenchmark(
-        op_name="select_backward",
-        torch_op=torch.ops.aten.select_backward,
+def test_upsample_bicubic2d_aa_backward_perf(dtype):
+    bench = UpsampleBicubic2dAaBackwardBenchmark(
+        op_name="upsample_bicubic2d_aa_backward",
+        torch_op=torch.ops.aten._upsample_bicubic2d_aa_backward,
         dtypes=[dtype],
     )
 

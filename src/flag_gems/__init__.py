@@ -45,6 +45,7 @@ _FULL_CONFIG = (
     ),
     ("_unique2", _unique2),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
+    ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
     ("_weight_norm_interface", weight_norm_interface),
     ("_weight_norm_interface_backward", weight_norm_interface_backward),
