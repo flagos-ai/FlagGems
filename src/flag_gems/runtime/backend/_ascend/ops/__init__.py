@@ -21,6 +21,7 @@ from .flip import flip
 from .full import full
 from .full_like import full_like
 from .gather import gather
+from .scatter_add_ import scatter_add_
 from .groupnorm import group_norm, group_norm_backward
 from .hstack import hstack
 from .index import index
@@ -155,4 +156,5 @@ __all__ = [
     "_unique2",
     "upsample_nearest2d",
     "randperm",
+    "scatter_add_",
 ]
