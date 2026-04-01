@@ -60,7 +60,7 @@ sqmma:
      stride_bk: default
      dtype: default
 
-mm_gemv:
+gemv:
   - config:
     param_map:
       META:
