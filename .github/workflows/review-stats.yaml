@@ -3,14 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       report_date_start:
-        description: "01/01/2026"
+        description: "Start date: (dd/MM/YYYY)"
       report_date_end:
-        description: "01/04/2026"
+        description: "End Date: (dd/MM/YYYY)"
 jobs:
   create-report:
     permissions:
       contents: read
-      issues: read
+      issues: write
       pull-requests: read
       statuses: read
     name: "Create report"
