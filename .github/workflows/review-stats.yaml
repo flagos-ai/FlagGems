@@ -4,11 +4,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  stats:
+  build:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-    runs-on: ubuntu-latest
+      pull-requests: write
     steps:
-      - name: Run pull request stats
-        uses: flowwer-dev/pull-request-stats@main
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run Pull Request Stats action
+        uses: flowwer-dev/pull-request-stats@v1 # Replace with the correct action version/owner
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
