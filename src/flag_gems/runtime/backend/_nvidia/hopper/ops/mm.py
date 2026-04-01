@@ -179,10 +179,10 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     configs=matmul_get_configs(pre_hook=None)
     if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
     else runtime.get_tuned_config("mm"),
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=get_expand_config("matmul")["strategy"]
     if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
-    else ["default", "default", "default", "default", "default", "default"],
+    else ["default", "default", "default", "default", "default"],
     warmup=5,
     rep=10,
 )
