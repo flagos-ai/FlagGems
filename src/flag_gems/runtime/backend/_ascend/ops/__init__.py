@@ -40,7 +40,8 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .full_like import full_like
-from .gather import gather
+from .gather import gather, gather_backward
+from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .groupnorm import group_norm, group_norm_backward
 from .hstack import hstack
@@ -150,6 +151,7 @@ __all__ = [
     "index_select",
     "isin",
     "gather",
+    "gather_backward",
     "group_norm",
     "group_norm_backward",
     "hstack",
@@ -201,6 +203,8 @@ __all__ = [
     "topk",
     "upsample_nearest2d",
     "randperm",
+    "scatter",
+    "scatter_",
     "randn",
     "randn_like",
     "true_divide",

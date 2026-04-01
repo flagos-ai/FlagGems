@@ -4,35 +4,116 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.scatter import scatter_
+from .scatter import scatter_
 from flag_gems.utils import libentry
 from flag_gems.utils.shape_utils import restride_dim
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 # Hardware specification: Atlas 800T/I A2 product's on-chip memory capacity is 192KB
 UB_SIZE_BYTES = 192 * 1024
-
-
-def compute_base_offset(shape, strides, dim):
-    # Given shape/strides and a dimension, output a tensor with the size of 'shape',
-    # where each position is the offset of the input (excluding the 'dim' dimension)
-    idx = torch.arange(int(torch.prod(torch.tensor(shape))), device="cpu")
-    coord = torch.empty((len(shape), idx.numel()), dtype=torch.long, device="cpu")
-    for i in reversed(range(len(shape))):
-        coord[i] = idx % shape[i]
-        idx = idx // shape[i]
-
-    offset = torch.zeros_like(coord[0])
-    for i in range(len(shape)):
-        if i != dim:
-            offset += coord[i] * strides[i]
-    return offset
+# Max elements per sub-iteration to fit in UB (192KB)
+# Each element needs ~7 int64 temporaries = 56 bytes, with multi-buffer ~112 bytes
+# 192KB / 112 ≈ 1750, round down to power of 2
+BLOCK_SIZE_SUB = 1024
 
 
 @libentry()
-@triton.heuristics({"BLOCK_SIZE": lambda args: 4096})
 @triton.jit
-def _gather_flat_kernel_fixed(
+def _gather_2d_kernel(
+    inp,
+    index,
+    out,
+    inp_stride0,
+    inp_stride1,
+    index_stride0,
+    index_stride1,
+    out_stride0,
+    out_stride1,
+    index_shape1,
+    dim: tl.constexpr,
+    dim_stride,
+    N,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCK_SIZE_SUB: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    base = pid * BLOCK_SIZE
+
+    for sub_idx in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
+        offset = base + sub_idx + tl.arange(0, BLOCK_SIZE_SUB)
+        mask = offset < N
+
+        idx1 = offset % index_shape1
+        idx0 = offset // index_shape1
+
+        index_offset = idx0 * index_stride0 + idx1 * index_stride1
+        cur_index = tl.load(index + index_offset, mask=mask, other=0)
+
+        if dim == 0:
+            inp_offset = idx1 * inp_stride1 + cur_index * dim_stride
+        else:
+            inp_offset = idx0 * inp_stride0 + cur_index * dim_stride
+
+        val = tl.load(inp + inp_offset, mask=mask, other=0)
+
+        out_offset = idx0 * out_stride0 + idx1 * out_stride1
+        tl.store(out + out_offset, val, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _gather_3d_kernel(
+    inp,
+    index,
+    out,
+    inp_stride0,
+    inp_stride1,
+    inp_stride2,
+    index_stride0,
+    index_stride1,
+    index_stride2,
+    out_stride0,
+    out_stride1,
+    out_stride2,
+    index_shape1,
+    index_shape2,
+    dim: tl.constexpr,
+    dim_stride,
+    N,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCK_SIZE_SUB: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    base = pid * BLOCK_SIZE
+
+    for sub_idx in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
+        offset = base + sub_idx + tl.arange(0, BLOCK_SIZE_SUB)
+        mask = offset < N
+
+        idx2 = offset % index_shape2
+        tmp = offset // index_shape2
+        idx1 = tmp % index_shape1
+        idx0 = tmp // index_shape1
+
+        index_offset = idx0 * index_stride0 + idx1 * index_stride1 + idx2 * index_stride2
+        cur_index = tl.load(index + index_offset, mask=mask, other=0)
+
+        if dim == 0:
+            inp_offset = cur_index * dim_stride + idx1 * inp_stride1 + idx2 * inp_stride2
+        elif dim == 1:
+            inp_offset = idx0 * inp_stride0 + cur_index * dim_stride + idx2 * inp_stride2
+        else:
+            inp_offset = idx0 * inp_stride0 + idx1 * inp_stride1 + cur_index * dim_stride
+
+        val = tl.load(inp + inp_offset, mask=mask, other=0)
+
+        out_offset = idx0 * out_stride0 + idx1 * out_stride1 + idx2 * out_stride2
+        tl.store(out + out_offset, val, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _gather_flat_kernel(
     inp,
     index,
     out,
@@ -40,50 +121,26 @@ def _gather_flat_kernel_fixed(
     inp_dim_stride,
     N,
     BLOCK_SIZE: tl.constexpr,
+    BLOCK_SIZE_SUB: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < N
+    base = pid * BLOCK_SIZE
 
-    cur_index = tl.load(index + offset, mask=mask, other=0)
-    base = tl.load(base_offset + offset, mask=mask, other=0)
+    for sub_idx in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
+        offset = base + sub_idx + tl.arange(0, BLOCK_SIZE_SUB)
+        mask = offset < N
 
-    inp_offset = base + cur_index * inp_dim_stride
+        cur_index = tl.load(index + offset, mask=mask, other=0)
+        base_off = tl.load(base_offset + offset, mask=mask, other=0)
 
-    val = tl.load(inp + inp_offset, mask=mask, other=0)
-    tl.store(out + offset, val, mask=mask)
+        inp_offset = base_off + cur_index * inp_dim_stride
 
-
-def gather_flat_fixed(inp: torch.Tensor, dim: int, index: torch.Tensor, out=None):
-    logger.debug("GEMS_ASCEND GATHER (fixed version)")
-
-    if out is None:
-        out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
-
-    N = index.numel()
-    dim_stride = inp.stride(dim)
-    inp_strided = restride_dim(inp, dim, index.shape)
-    if dim == -1:
-        dim = inp_strided.dim() - 1
-    base_offset = compute_base_offset(index.shape, inp_strided.stride(), dim).to(
-        torch.int64
-    )
-    base_offset = base_offset.npu()
-    grid = lambda META: (triton.cdiv(N, META["BLOCK_SIZE"]),)
-    _gather_flat_kernel_fixed[grid](
-        inp_strided,
-        index,
-        out,
-        base_offset,
-        dim_stride,
-        N,
-    )
-    return out
+        val = tl.load(inp + inp_offset, mask=mask, other=0)
+        tl.store(out + offset, val, mask=mask)
 
 
 @triton.jit
 def _gather_high_perf_kernel(
-    # Pointers
     x_ptr,
     idx_ptr,
     out_ptr,
@@ -101,18 +158,14 @@ def _gather_high_perf_kernel(
     offs_idx = tl.arange(0, num_indices)
     offs_x = tl.arange(0, x_size)
 
-    # Load indices for this row
     idx_ptrs = idx_ptr + row_id * stride_idx_rows + offs_idx * stride_idx_cols
     indices = tl.load(idx_ptrs)
 
-    # Load feature vector
     x_ptrs = x_ptr + row_id * stride_x_rows + offs_x * stride_x_feats
     x_vals = tl.load(x_ptrs)
 
-    # Perform gather
     out_vals = tl.gather(x_vals, indices, 0)
 
-    # Store result
     out_ptrs = out_ptr + row_id * stride_out_rows + offs_idx * stride_out_cols
     tl.store(out_ptrs, out_vals)
 
@@ -123,7 +176,6 @@ def gather_high_perf(inp: torch.Tensor, index: torch.Tensor, out=None):
 
     x_size = inp.shape[-1]
     num_indices = index.shape[-1]
-
     num_rows = index.shape[0]
 
     grid = (num_rows,)
@@ -137,10 +189,106 @@ def gather_high_perf(inp: torch.Tensor, index: torch.Tensor, out=None):
         index.stride(1),
         out.stride(0),
         out.stride(1),
-        num_indices=num_indices,
-        x_size=x_size,
+        num_indices=triton.next_power_of_2(num_indices),
+        x_size=triton.next_power_of_2(x_size),
     )
     return out
+
+
+def _compute_block_size(N):
+    """Compute BLOCK_SIZE ensuring grid dim (coreDim) <= 65535.
+    BLOCK_SIZE is always a multiple of BLOCK_SIZE_SUB."""
+    block_size = BLOCK_SIZE_SUB
+    while triton.cdiv(N, block_size) > 65535:
+        block_size *= 2
+    return block_size
+
+
+def gather_nd(inp: torch.Tensor, dim: int, index: torch.Tensor, out=None):
+    """General gather using rank-specific Triton kernels."""
+    if out is None:
+        out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
+
+    N = index.numel()
+    inp_strided = restride_dim(inp, dim, index.shape)
+    dim_stride = inp.stride(dim)
+    rank = inp.dim()
+
+    BLOCK_SIZE = _compute_block_size(N)
+    grid = lambda META: (triton.cdiv(N, META["BLOCK_SIZE"]),)
+
+    if rank == 2:
+        _gather_2d_kernel[grid](
+            inp_strided,
+            index,
+            out,
+            inp_strided.stride(0),
+            inp_strided.stride(1),
+            index.stride(0),
+            index.stride(1),
+            out.stride(0),
+            out.stride(1),
+            index.shape[1],
+            dim=dim,
+            dim_stride=dim_stride,
+            N=N,
+            BLOCK_SIZE=BLOCK_SIZE,
+            BLOCK_SIZE_SUB=BLOCK_SIZE_SUB,
+        )
+    elif rank == 3:
+        _gather_3d_kernel[grid](
+            inp_strided,
+            index,
+            out,
+            inp_strided.stride(0),
+            inp_strided.stride(1),
+            inp_strided.stride(2),
+            index.stride(0),
+            index.stride(1),
+            index.stride(2),
+            out.stride(0),
+            out.stride(1),
+            out.stride(2),
+            index.shape[1],
+            index.shape[2],
+            dim=dim,
+            dim_stride=dim_stride,
+            N=N,
+            BLOCK_SIZE=BLOCK_SIZE,
+            BLOCK_SIZE_SUB=BLOCK_SIZE_SUB,
+        )
+    else:
+        _gather_fallback(inp_strided, dim, index, out, dim_stride, N, BLOCK_SIZE)
+
+    return out
+
+
+def _gather_fallback(inp_strided, dim, index, out, dim_stride, N, BLOCK_SIZE):
+    """Fallback for ranks > 3: compute base_offset on CPU."""
+    shape = index.shape
+    strides = inp_strided.stride()
+    idx = torch.arange(N, device="cpu")
+    coord = torch.empty((len(shape), N), dtype=torch.long, device="cpu")
+    for i in reversed(range(len(shape))):
+        coord[i] = idx % shape[i]
+        idx = idx // shape[i]
+    offset = torch.zeros_like(coord[0])
+    for i in range(len(shape)):
+        if i != dim:
+            offset += coord[i] * strides[i]
+    base_offset = offset.to(torch.int64).npu()
+
+    grid = lambda META: (triton.cdiv(N, META["BLOCK_SIZE"]),)
+    _gather_flat_kernel[grid](
+        inp_strided,
+        index,
+        out,
+        base_offset,
+        dim_stride,
+        N,
+        BLOCK_SIZE=BLOCK_SIZE,
+        BLOCK_SIZE_SUB=BLOCK_SIZE_SUB,
+    )
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
@@ -157,10 +305,13 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
         + index.size(-1) * inp.element_size()
     )
 
-    if is_last_dim and inp.dim() == 2 and total_bytes < UB_SIZE_BYTES:
+    # For 2D last-dim cases that fit in UB with reasonable num_rows, use tl.gather path
+    if (is_last_dim and inp.dim() == 2
+            and total_bytes < UB_SIZE_BYTES
+            and index.shape[0] <= 4096):
         return gather_high_perf(inp, index, out)
 
-    return gather_flat_fixed(inp, dim, index, out)
+    return gather_nd(inp, dim, index, out)
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
