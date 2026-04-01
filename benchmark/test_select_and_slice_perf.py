@@ -195,6 +195,7 @@ def scatter_inplace_input_fn_factory(reduce=None):
     return inner
 
 
+@pytest.mark.skipif(vendor_name == "enflame", reason="i64 dtype is not supported")
 @pytest.mark.scatter
 def test_perf_scatter():
     bench = TensorSelectBenchmark(
@@ -219,6 +220,7 @@ def test_perf_scatter_add():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "enflame", reason="i64 dtype is not supported")
 @pytest.mark.scatter_add_
 def test_perf_scatter_add_():
     def scatter_input_fn(shape, dtype, device):
@@ -302,6 +304,7 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
+@pytest.mark.skipif(vendor_name == "enflame", reason="i64 dtype is not supported")
 @pytest.mark.gather
 def test_perf_gather():
     bench = TensorSelectBenchmark(
@@ -321,6 +324,7 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skipif(vendor_name == "enflame", reason="i64 dtype is not supported")
 @pytest.mark.gather
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(

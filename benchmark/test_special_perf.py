@@ -361,6 +361,7 @@ def embedding_backward_input_fn(shape, dtype, device):
         yield input, weight
 
 
+@pytest.mark.skipif(vendor_name == "enflame", reason="i64 dtype is not supported")
 @pytest.mark.embedding
 def test_perf_embedding():
     bench = EmbeddingBenchmark(
@@ -375,6 +376,7 @@ def test_perf_embedding():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "enflame", reason="i64 dtype is not supported")
 @pytest.mark.embedding
 def test_perf_embedding_backward():
     bench = EmbeddingBenchmark(

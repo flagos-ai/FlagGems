@@ -3,6 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
 from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from benchmark.performance_utils import (
     Benchmark,
@@ -11,6 +12,7 @@ from benchmark.performance_utils import (
     generate_tensor_input,
 )
 
+vendor_name = flag_gems.vendor_name
 
 class ConcatBenchmark(Benchmark):
     """
@@ -202,6 +204,11 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
     ],
 )
 def test_tensor_repeat_benchmark(op_name, torch_op, input_fn, dtypes):
+    if vendor_name == "enflame":
+        if op_name in ["repeat_interleave.tensor", "repeat_interleave.self_tenso"]:
+            pytest.skip(
+                "i64 dtype is not supported"
+            )
     bench = TensorRepeatBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )

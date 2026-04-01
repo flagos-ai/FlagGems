@@ -3,6 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
 from benchmark.attri_util import (
     BOOL_DTYPES,
     COMPLEX_DTYPES,
@@ -11,7 +12,7 @@ from benchmark.attri_util import (
     INT_DTYPES,
 )
 from benchmark.performance_utils import Benchmark, generate_tensor_input
-
+vendor_name = flag_gems.vendor_name
 
 class BinaryPointwiseBenchmark(Benchmark):
     """
@@ -85,6 +86,11 @@ class BinaryPointwiseBenchmark(Benchmark):
     ],
 )
 def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "enflame":
+        if op_name in ["polar"]:
+            pytest.skip(
+                "complex dtype is not supported"
+            )
     bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
