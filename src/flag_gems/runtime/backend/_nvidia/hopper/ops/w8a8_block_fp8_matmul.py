@@ -76,9 +76,7 @@ def get_w8a8_block_fp8_hopper_configs(
     return None
 
 
-def _build_fixed_matmul_config(
-    config: Dict[str, int], pre_hook=None
-) -> triton.Config:
+def _build_fixed_matmul_config(config: Dict[str, int], pre_hook=None) -> triton.Config:
     return triton.Config(
         {
             "BLOCK_M": config["BLOCK_SIZE_M"],
@@ -269,12 +267,12 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
 @libentry()
 @libtuner(
     configs=matmul_get_configs(pre_hook=None)
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else runtime.get_tuned_config("mm"),
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=get_expand_config("matmul")["strategy"]
     if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
-    else ["default", "default", "default", "default", "default", "default"],
+    else ["default", "default", "default", "default", "default"],
     warmup=5,
     rep=10,
 )
