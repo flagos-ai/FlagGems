@@ -12,7 +12,9 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul")
+logger = logging.getLogger(
+    "flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul"
+)
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = "w8a8_block_fp8_matmul_hopper_expand.yaml"
 
@@ -92,9 +94,7 @@ def get_expand_config(op):
         return -1
 
     default_strategy = default_strategies[op]
-    config_path = os.path.join(
-        os.path.dirname(__file__), "..", EXPAND_CONFIG_FILENAME
-    )
+    config_path = os.path.join(os.path.dirname(__file__), "..", EXPAND_CONFIG_FILENAME)
     if not os.path.exists(config_path):
         return -1
 
@@ -171,6 +171,7 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
         for s in [2, 3, 4]
         for w in [4, 8]
     ]
+
 
 @libentry()
 @libtuner(
@@ -265,7 +266,9 @@ def w8a8_block_fp8_matmul_kernel_general(
             acc += tl.dot(a, b, out_dtype=tl.float32) * a_s[:, None] * b_s[None, :]
             offset_k += BLOCK_K
 
-        c_desc.store([offset_am.to(tl.int32), offset_bn.to(tl.int32)], acc.to(c_desc.dtype))
+        c_desc.store(
+            [offset_am.to(tl.int32), offset_bn.to(tl.int32)], acc.to(c_desc.dtype)
+        )
     else:
         rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
         rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -387,7 +390,11 @@ def w8a8_block_fp8_matmul_kernel_host_tma(
             b = b_desc.load([offset_ak, offset_bn])
 
         offs_ks = (offset_ak // group_k).to(tl.int32)
-        a_s = tl.load(As + offs_am * stride_As_m + offs_ks * stride_As_k, mask=offs_am < M, other=0.0)
+        a_s = tl.load(
+            As + offs_am * stride_As_m + offs_ks * stride_As_k,
+            mask=offs_am < M,
+            other=0.0,
+        )
         b_s = tl.load(
             Bs + (offs_bn // group_n) * stride_Bs_n + offs_ks * stride_Bs_k,
             mask=offs_bn < N,
