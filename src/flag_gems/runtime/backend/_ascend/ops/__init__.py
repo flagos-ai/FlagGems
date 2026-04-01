@@ -3,6 +3,14 @@ from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
+from .bitwise_not import bitwise_not, bitwise_not_
+from .bitwise_or import (
+    bitwise_or_scalar,
+    bitwise_or_scalar_,
+    bitwise_or_scalar_tensor,
+    bitwise_or_tensor,
+    bitwise_or_tensor_,
+)
 from .any import any, any_dim, any_dims
 from .arange import arange
 from .argmax import argmax
@@ -11,11 +19,22 @@ from .bmm import bmm
 from .cat import cat
 from .count_nonzero import count_nonzero
 from .cumsum import cumsum, normed_cumsum
+from .div import (
+    div_mode,
+    div_mode_,
+    floor_divide,
+    floor_divide_,
+    true_divide,
+    true_divide_,
+    true_divide_out,
+    trunc_divide,
+    trunc_divide_,
+)
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .dot import dot
-from .embedding import embedding
+from .embedding import embedding, embedding_backward
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
@@ -32,6 +51,7 @@ from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
+from .logical_and import logical_and, logical_and_
 from .log_softmax import log_softmax, log_softmax_backward
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
@@ -111,6 +131,7 @@ __all__ = [
     "diag_embed",
     "dot",
     "embedding",
+    "embedding_backward",
     "exponential_",
     "flip",
     "full",
@@ -159,6 +180,13 @@ __all__ = [
     "any_dims",
     "any_dim",
     "angle",
+    "bitwise_not",
+    "bitwise_not_",
+    "bitwise_or_scalar",
+    "bitwise_or_scalar_",
+    "bitwise_or_scalar_tensor",
+    "bitwise_or_tensor",
+    "bitwise_or_tensor_",
     "multinomial",
     "lt",
     "lt_scalar",
@@ -174,5 +202,16 @@ __all__ = [
     "randperm",
     "scatter",
     "scatter_",
+    "true_divide",
+    "true_divide_",
+    "true_divide_out",
+    "trunc_divide",
+    "trunc_divide_",
+    "floor_divide",
+    "floor_divide_",
+    "div_mode",
+    "div_mode_",
+    "logical_and",
+    "logical_and_",
     "scatter_add_",
 ]
