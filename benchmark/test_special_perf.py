@@ -223,6 +223,15 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
+    if vendor_name == "enflame":
+        if op_name in ["topk"]:
+            pytest.skip(
+                "i64 dtype is not supported"
+            )
+        if op_name in ["resolve_neg", "resolve_conj"]:
+            pytest.skip(
+                "complex dtype is not supported"
+            )
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )

@@ -312,6 +312,7 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="complex dtype is not supported")
 @pytest.mark.vdot
 def test_vdot_benchmark():
     def vdot_input_fn(m, cur_dtype, device):
