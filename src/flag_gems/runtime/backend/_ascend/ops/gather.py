@@ -11,7 +11,6 @@ from flag_gems.utils.shape_utils import restride_dim
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 # Hardware specification: Atlas 800T/I A2 product's on-chip memory capacity is 192KB
 UB_SIZE_BYTES = 192 * 1024
-NUM_VECTOR_CORES = 48
 # Max elements per sub-iteration to fit in UB (192KB)
 # Each element needs ~7 int64 temporaries = 56 bytes, with multi-buffer ~112 bytes
 # 192KB / 112 ≈ 1750, round down to power of 2
