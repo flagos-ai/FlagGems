@@ -12,10 +12,7 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
-
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger("flag_gems.runtime.backend._mthreads.ops.mm")
 
 
 def is_supported_sqmma_layout(tensor):
@@ -40,12 +37,12 @@ def is_sqmma_compatible(a, b, N, K):
 
 def get_expand_config(op):
     default_strategies = {
-        "matmul": ["default", "default", "default", "default", "default", "default"],
+        "matmul": ["default", "default", "default", "default", "default"],
         "sqmma": ["default", "default", "default", "default", "default", "default"],
         "gemv": ["align32", "align32", "align32", "default"],
     }
     op_key_orders = {
-        "matmul": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+        "matmul": ["M", "N", "K", "stride_am", "stride_bk"],
         "sqmma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
         "gemv": ["M", "K", "stride_am", "stride_bk"],
     }
@@ -149,10 +146,10 @@ def prev_multiple_of(a, b):
 @libentry()
 @libtuner(
     configs=matmul_get_configs(),
-    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=get_expand_config("matmul")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32", "align32", "align32"],
 )
 @triton.jit
 def mm_kernel(
@@ -254,7 +251,7 @@ def gemv_get_configs():
     configs=gemv_get_configs(),
     key=["M", "K", "stride_am", "stride_bk"],
     strategy=get_expand_config("gemv")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("gemv") != -1
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "default"],
 )
 @triton.jit
@@ -469,7 +466,7 @@ def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
     configs=sqmma_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     strategy=get_expand_config("sqmma")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("sqmma") != -1
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "align32", "align32", "default"],
 )
 @triton.jit
