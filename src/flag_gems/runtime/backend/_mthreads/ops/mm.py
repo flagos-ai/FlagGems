@@ -461,7 +461,7 @@ def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
         )
     ]
 
-
+@libentry()
 @libtuner(
     configs=sqmma_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
