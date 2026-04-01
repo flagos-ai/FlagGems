@@ -1,7 +1,14 @@
 import triton
 
 if triton.__version__ >= "3.4":
-    from .fill import fill_scalar_  # noqa: F401
+    from .fill import (  # noqa: F401
+        fill_scalar,
+        fill_scalar_,
+        fill_scalar_out,
+        fill_tensor,
+        fill_tensor_,
+        fill_tensor_out,
+    )
     from .mm import mm, mm_out  # noqa: F401
 
 __all__ = ["*"]
