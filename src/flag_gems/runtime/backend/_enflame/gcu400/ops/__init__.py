@@ -113,6 +113,7 @@ from .pow import (
 from .randn import randn
 from .randn_like import randn_like
 from .reciprocal import reciprocal, reciprocal_
+from .replication_pad3d import replication_pad3d
 from .relu import relu, relu_
 from .repeat_interleave import (
     repeat_interleave_self_int,
@@ -343,4 +344,5 @@ __all__ = [
     "randn",
     "exponential_",
     "logspace",
+    "replication_pad3d",
 ]
