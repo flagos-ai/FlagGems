@@ -5,6 +5,9 @@ on:
 
 jobs:
   stats:
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-latest
     steps:
       - name: Run pull request stats
