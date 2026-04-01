@@ -74,6 +74,8 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .randn import randn
+from .randn_like import randn_like
 from .randperm import randperm
 from .repeat_interleave import repeat_interleave_self_int
 from .resolve_neg import resolve_neg
@@ -92,7 +94,7 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -165,6 +167,7 @@ __all__ = [
     "log_softmax",
     "log_softmax_backward",
     "zeros",
+    "zero_",
     "vector_norm",
     "outer",
     "arange",
@@ -202,6 +205,8 @@ __all__ = [
     "randperm",
     "scatter",
     "scatter_",
+    "randn",
+    "randn_like",
     "true_divide",
     "true_divide_",
     "true_divide_out",
