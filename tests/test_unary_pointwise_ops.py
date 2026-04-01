@@ -241,6 +241,39 @@ def test_accuracy_bitwisenot_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+BF16_TYPES = [torch.bfloat16] if flag_gems.runtime.device.support_bf16 else []
+
+
+@pytest.mark.bitwise_not
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BF16_TYPES)
+def test_accuracy_bitwisenot_bf16(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # CPU does not support bitwise_not on bfloat16, use int16 view as reference
+    ref_inp = to_reference(inp).view(torch.int16)
+
+    ref_out = torch.bitwise_not(ref_inp).view(torch.bfloat16)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_not(inp)
+
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
+@pytest.mark.inplace
+@pytest.mark.bitwise_not_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BF16_TYPES)
+def test_accuracy_bitwisenot_bf16_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone()).view(torch.int16)
+
+    ref_out = ref_inp.bitwise_not_().view(torch.bfloat16)
+    with flag_gems.use_gems():
+        res_out = inp.bitwise_not_()
+
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
 @pytest.mark.cos
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
