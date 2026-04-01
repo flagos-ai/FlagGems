@@ -377,6 +377,89 @@ def test_accuracy_bitwiseor_scalar_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+BF16_TYPES = [torch.bfloat16] if flag_gems.runtime.device.support_bf16 else []
+
+
+@pytest.mark.bitwise_or
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BF16_TYPES)
+def test_accuracy_bitwiseor_bf16(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # CPU does not support bitwise_or on bfloat16, use int16 view as reference
+    ref_inp1 = to_reference(inp1).view(torch.int16)
+    ref_inp2 = to_reference(inp2).view(torch.int16)
+
+    ref_out = torch.bitwise_or(ref_inp1, ref_inp2).view(torch.bfloat16)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_or(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
+@pytest.mark.inplace
+@pytest.mark.bitwise_or_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BF16_TYPES)
+def test_accuracy_bitwiseor_bf16_(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1.clone()).view(torch.int16)
+    ref_inp2 = to_reference(inp2).view(torch.int16)
+
+    ref_out = ref_inp1.bitwise_or_(ref_inp2).view(torch.bfloat16)
+    with flag_gems.use_gems():
+        res_out = inp1.bitwise_or_(inp2)
+
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
+@pytest.mark.bitwise_or
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BF16_TYPES)
+def test_accuracy_bitwiseor_scalar_bf16(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = 0x00FF
+    ref_inp1 = to_reference(inp1).view(torch.int16)
+
+    ref_out = torch.bitwise_or(ref_inp1, inp2).view(torch.bfloat16)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_or(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
+@pytest.mark.inplace
+@pytest.mark.bitwise_or_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BF16_TYPES)
+def test_accuracy_bitwiseor_scalar_bf16_(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = 0x00FF
+    ref_inp1 = to_reference(inp1.clone()).view(torch.int16)
+
+    ref_out = ref_inp1.bitwise_or_(inp2).view(torch.bfloat16)
+    with flag_gems.use_gems():
+        res_out = inp1.bitwise_or_(inp2)
+
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
+@pytest.mark.bitwise_or
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BF16_TYPES)
+def test_accuracy_bitwiseor_scalar_tensor_bf16(shape, dtype):
+    inp1 = 0x00FF
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp2 = to_reference(inp2).view(torch.int16)
+
+    ref_out = torch.bitwise_or(inp1, ref_inp2).view(torch.bfloat16)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_or(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
 @pytest.mark.clamp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("maxi", SCALARS)
@@ -1955,7 +2038,7 @@ def test_accuracy_threshold_backward(shape, dtype):
 
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32] + ([torch.bfloat16] if flag_gems.runtime.device.support_bf16 else []))
 def test_accuracy_polar(shape, dtype):
     abs = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 5
     angle = (torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.5) * (
@@ -1963,12 +2046,18 @@ def test_accuracy_polar(shape, dtype):
     )
     ref_abs = to_reference(abs)
     ref_angle = to_reference(angle)
+    # torch.polar on CPU does not support bfloat16, cast to float32 for reference
+    if dtype == torch.bfloat16:
+        ref_abs = ref_abs.to(torch.float32)
+        ref_angle = ref_angle.to(torch.float32)
     ref_out = torch.polar(ref_abs, ref_angle)
     with flag_gems.use_gems():
         res_out = torch.polar(abs, angle)
 
-    gems_assert_close(res_out.real, ref_out.real, dtype)
-    gems_assert_close(res_out.imag, ref_out.imag, dtype)
+    # polar output is complex64 (float32 real/imag) even for bfloat16 inputs
+    cmp_dtype = torch.float32 if dtype == torch.bfloat16 else dtype
+    gems_assert_close(res_out.real, ref_out.real, cmp_dtype)
+    gems_assert_close(res_out.imag, ref_out.imag, cmp_dtype)
 
 
 @pytest.mark.lerp

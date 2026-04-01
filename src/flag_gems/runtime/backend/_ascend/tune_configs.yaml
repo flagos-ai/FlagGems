@@ -306,11 +306,15 @@ mean:
   param_map:
     META:
       BLOCK_M: block_m
-      BLOCK_N: 256
+      BLOCK_N: block_n
   block_m:
+  - 1
+  - 4
+  - 8
+  - 32
   - 64
-  - 128
-  - 256
+  block_n:
+  - 1024
 
 instancenorm:
 - gen: true
