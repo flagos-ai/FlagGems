@@ -22,6 +22,7 @@ from .flip import flip
 from .full import full
 from .full_like import full_like
 from .gather import gather
+from .scatter_add_ import scatter_add_
 from .groupnorm import group_norm, group_norm_backward
 from .hstack import hstack
 from .index import index
@@ -40,6 +41,7 @@ from .min import min, min_dim
 from .mm import mm
 from .multinomial import multinomial
 from .ne import ne, ne_scalar
+from .nonzero import nonzero
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -160,6 +162,7 @@ __all__ = [
     "lt_scalar",
     "ne",
     "ne_scalar",
+    "nonzero",
     "index_add",
     "index_put",
     "index_put_",
@@ -167,4 +170,5 @@ __all__ = [
     "topk",
     "upsample_nearest2d",
     "randperm",
+    "scatter_add_",
 ]

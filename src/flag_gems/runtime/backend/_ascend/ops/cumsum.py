@@ -236,7 +236,7 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
 
 
 def reduce_then_scan_row(x, out, M, N, compute_dtype):
-    if N <= 16384:  # persistent
+    if N <= 8192:  # persistent (capped to avoid UB overflow with int64 + multibuffer)
         TILE_SIZE = triton.next_power_of_2(N)
         reduce_then_scan_root_scan_kernel_row[(M, 1, 1)](
             x,
@@ -248,7 +248,12 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
 
     TILE_SIZE = min(4096, triton.next_power_of_2(N))
     num_tiles = triton.cdiv(N, TILE_SIZE)
-    num_ctas = num_tiles
+    # Cap num_ctas so ROOT_SCAN_TILE_SIZE fits in UB (max 4096 for int64 + multibuffer)
+    MAX_ROOT_SCAN = 4096
+    num_ctas = min(num_tiles, MAX_ROOT_SCAN)
+    # Ensure total grid (M * num_ctas) doesn't exceed Ascend coreDim limit
+    max_ctas_for_grid = max(1, GRID_Y_LIMIT // M)
+    num_ctas = min(num_ctas, max_ctas_for_grid)
     ROOT_SCAN_TILE_SIZE = triton.next_power_of_2(num_ctas)
     tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
     block_sums = torch.empty(
