@@ -31,17 +31,7 @@ def get_w8a8_block_fp8_hopper_configs(
         device_name = "NVIDIA_H20"
     file_name = "w8a8_block_fp8_matmul_hopper.yaml"
 
-    config_dir = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "..",
-        "..",
-        "..",
-        "utils",
-        "configs",
-    )
-    cfg_file = os.path.join(config_dir, file_name)
+    cfg_file = os.path.join(os.path.dirname(__file__), "..", file_name)
 
     if os.path.exists(cfg_file):
         with open(cfg_file) as f:
