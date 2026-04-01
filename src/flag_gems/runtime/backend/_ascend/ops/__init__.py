@@ -1,3 +1,4 @@
+from .add import add, add_
 from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -22,14 +23,17 @@ from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
 from .scatter import scatter, scatter_
+from .scatter_add_ import scatter_add_
 from .groupnorm import group_norm, group_norm_backward
 from .hstack import hstack
 from .index import index
 from .index_add import index_add
+from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward
+from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
@@ -37,6 +41,8 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm
 from .multinomial import multinomial
+from .ne import ne, ne_scalar
+from .nonzero import nonzero
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -57,6 +63,7 @@ from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
 from .sort import sort
 from .stack import stack
+from .topk import topk
 from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
@@ -69,6 +76,8 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "add",
+    "add_",
     "addmm",
     "all",
     "all_dim",
@@ -151,10 +160,19 @@ __all__ = [
     "any_dim",
     "angle",
     "multinomial",
+    "lt",
+    "lt_scalar",
+    "ne",
+    "ne_scalar",
+    "nonzero",
     "index_add",
+    "index_put",
+    "index_put_",
     "_unique2",
+    "topk",
     "upsample_nearest2d",
     "randperm",
     "scatter",
     "scatter_",
+    "scatter_add_",
 ]
