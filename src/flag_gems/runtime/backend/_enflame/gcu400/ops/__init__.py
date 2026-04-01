@@ -102,6 +102,7 @@ from .normal import normal_, normal_float_tensor, normal_tensor_float, normal_te
 from .ones import ones
 from .ones_like import ones_like
 from .pad import pad
+# from .polar import polar
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -122,6 +123,7 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter_
+from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
@@ -153,6 +155,7 @@ __all__ = [
     "zeros",
     "zero_",
     "scatter_",
+    "scatter_add_",
     "sort",
     "sort_stable",
     "cat",
