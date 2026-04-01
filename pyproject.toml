@@ -23,7 +23,17 @@ authors = [
     { name = "Zhixin Li", email = "strongspoon@outlook.com" },
     { name = "Tongxin Bai", email = "waffle.bai@gmail.com" },
     { name = "Yuming Huang", email = "jokmingwong@gmail.com" },
-    { name = "Feiyu Chen", email = "iclementine@outlook.com" },
+    { name = "Feiyu Chen", email = "iclementine@outlook.com" }, 
+    { name = "Ruilin Yang", email = "rlyanger01@gmail.com"},
+    { name = "Zhen Wang", email = "516310189@qq.com"},
+    { name = "Hui Guo", email = "sunnycase@live.cn"},
+    { name = "Xiaoyan Liu", email = "18811205590@163.com"},
+    { name = "Chunlie Men", email = "menchunlei@163.com"},
+    { name = "Hang Xiao", email = "vincent.xiao.me@gmail.com"},
+    { name = "Yiqun Huang", email = "huangyiqun@mail.bnu.edu.cn"},
+    { name = "Jinjin Tian", email = "kiddyjinjin@gmail.com"},
+    { name = "Yang Zheng", email = "zhengyang_pku@163.com"},
+    { name = "Jinjie Liu", email = "sgjzfzzf@gmail.com"},
 ]
 
 classifiers = [
