@@ -340,8 +340,6 @@ def scatter_nd(inp, dim, index, src, out, reduce=None):
         )
 
 
-# ─── Public API ─────────────────────────────────────────────────────────────
-
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_ASCEND SCATTER_")
     dim = dim % inp.dim()
