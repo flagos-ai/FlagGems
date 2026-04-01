@@ -271,7 +271,7 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     else runtime.get_tuned_config("mm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=get_expand_config("matmul")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else ["default", "default", "default", "default", "default"],
     warmup=5,
     rep=10,
@@ -411,7 +411,7 @@ def w8a8_block_fp8_matmul_kernel_general(
     configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     strategy=get_expand_config("matmul")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
@@ -528,7 +528,7 @@ def gemv_get_configs():
     configs=gemv_get_configs(),
     key=["M", "K", "stride_am", "stride_bk"],
     strategy=get_expand_config("gemv")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("gemv") != -1
+    if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "default"],
     warmup=5,
     rep=10,
