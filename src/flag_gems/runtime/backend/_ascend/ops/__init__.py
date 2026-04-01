@@ -73,6 +73,8 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .randn import randn
+from .randn_like import randn_like
 from .randperm import randperm
 from .repeat_interleave import repeat_interleave_self_int
 from .resolve_neg import resolve_neg
@@ -198,6 +200,8 @@ __all__ = [
     "topk",
     "upsample_nearest2d",
     "randperm",
+    "randn",
+    "randn_like",
     "true_divide",
     "true_divide_",
     "true_divide_out",
