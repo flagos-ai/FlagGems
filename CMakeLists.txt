@@ -91,7 +91,7 @@ else()
   set(BACKEND ${FLAGGEMS_BACKEND} CACHE STRING "Backend for TritonJIT" FORCE)
   FetchContent_Declare(TritonJIT
     GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
-    GIT_TAG multi-backend
+    GIT_TAG master
     # SOURCE_DIR <your local source dir of libtriton_jit>
   )
   FetchContent_MakeAvailable(TritonJIT)
