@@ -177,7 +177,7 @@ def gemm_kernel_general(
             b = b.to(C.dtype.element_ty)
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
-        acc = acc.to(C.dtype.element_ty)
+        acc = acc.to(C.dtype.element_ty) * alpha
         # rematerialize rm and rn to save registers
         rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
         rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
@@ -287,7 +287,7 @@ def gemm_kernel_general_host_tma(
         else:
             accumulator = tl.dot(a, b, acc=accumulator, input_precision="tf32x3")
 
-    c = accumulator.to(c_desc.dtype)
+    c = accumulator.to(c_desc.dtype) * alpha
     c_desc.store([offset_am, offset_bn], c)
 
 
@@ -437,7 +437,7 @@ def gemv_kernel(
 
     # Store result
     c_ptrs = C + row_offset
-    acc = acc.to(C.dtype.element_ty)
+    acc = acc.to(C.dtype.element_ty) * alpha
     tl.store(c_ptrs, acc, mask=row_mask)
 
 

@@ -99,7 +99,7 @@ def gemm_kernel_general(
         b = b.to(C.dtype.element_ty)
     acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
-    acc = acc.to(C.dtype.element_ty)
+    acc = acc.to(C.dtype.element_ty) * alpha
     # rematerialize rm and rn to save registers
     rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
     rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)

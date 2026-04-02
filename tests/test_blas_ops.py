@@ -302,8 +302,8 @@ def test_accuracy_gemm(M, N, K, dtype, b_column_major):
     np.random.seed(0)
     random.seed(0)
 
-    # alpha = 2.0
-    # beta = 1.0
+    alpha = 2.0
+    beta = 0
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
         mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
@@ -312,9 +312,9 @@ def test_accuracy_gemm(M, N, K, dtype, b_column_major):
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
 
-    ref_out = torch.mm(ref_mat1, ref_mat2)
+    ref_out = torch.mm(ref_mat1, ref_mat2) * alpha
     with flag_gems.use_gems():
-        res_out = flag_gems.ops.gemm(mat1, mat2)
+        res_out = flag_gems.ops.gemm(mat1, mat2, beta, alpha)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
