@@ -101,18 +101,54 @@ def triu_batch_kernel(
     tl.store(Y + cols, y, mask=mask)
 
 
-INT32_MAX = torch.iinfo(torch.int32).max
+def _check_batch_contiguous(tensor, allow_zero_stride=True):
+    if tensor.is_contiguous():
+        return True, tensor
+
+    dims = tensor.dim()
+
+    if dims >= 2:
+        n = tensor.size(-1)
+        stride_row, stride_col = tensor.stride(-2), tensor.stride(-1)
+
+        if not (stride_col == 1 and stride_row == n):
+            return False, tensor.contiguous()
+
+    if allow_zero_stride and dims <= 3:
+        return True, tensor
+
+    expected_stride = tensor.size(-1) * tensor.size(-2)
+    for i in range(dims - 3, -1, -1):
+        if (
+            allow_zero_stride
+            and i == 0
+            and (tensor.stride(i) == 0 or tensor.size(i) == 1)
+        ):
+            continue
+
+        if tensor.stride(i) != expected_stride:
+            return False, tensor.contiguous()
+
+        expected_stride *= tensor.size(i)
+
+    return True, tensor
 
 
 def triu(A, diagonal=0):
     logger.debug("GEMS_CAMBRICON TRIU")
-    A = A.contiguous()
-    out = torch.empty_like(A)
+
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
-    use_int64_index = not can_use_int32_index(A)
-    M, N = A.shape[-2:]
-    with torch_device_fn.device(A.device):
-        if len(A.shape) == 2:
+
+    can_use_directly, A_input = _check_batch_contiguous(A, allow_zero_stride=False)
+
+    out = torch.empty(
+        A.shape, dtype=A.dtype, device=A.device, memory_format=torch.contiguous_format
+    )
+
+    M, N = A_input.shape[-2:]
+    use_int64_index = not can_use_int32_index(A_input)
+    with torch_device_fn.device(A_input.device):
+        if len(A_input.shape) == 2:
             grid = lambda meta: (
                 min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),
             )
@@ -120,11 +156,11 @@ def triu(A, diagonal=0):
             # causing the compilation to fail. Therefore, a conservative upper limit of 8192
             # is currently set, but the actual maximum achievable value should be confirmed
             # based on real-world conditions.
-            elements_bytes = A.element_size()
+            elements_bytes = A_input.element_size()
             n_block = min(256 * 1024 // elements_bytes, N)
             need_loop = n_block < N
             triu_kernel[grid](
-                A,
+                A_input,
                 out,
                 M,
                 N,
@@ -134,8 +170,8 @@ def triu(A, diagonal=0):
                 INT64_INDEX=use_int64_index,
             )
         else:
-            batch = int(torch.numel(A) / M / N)
-            B = A.view(batch, -1)
+            batch = int(torch.numel(A_input) / M / N)
+            B = A_input.view(batch, -1)
             grid = lambda meta: (
                 triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
                 triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
@@ -145,3 +181,97 @@ def triu(A, diagonal=0):
             )
             out = out.view(A.shape)
     return out
+
+
+def triu_(A, diagonal=0):
+    logger.debug("GEMS_CAMBRICON TRIU_(inplace)")
+
+    assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
+    diagonal = int(diagonal)
+    M, N = A.shape[-2:]
+
+    can_use_directly, A_to_use = _check_batch_contiguous(A, allow_zero_stride=True)
+
+    if not can_use_directly:
+        logger.debug(
+            "Input tensor does not satisfy contiguity requirements, "
+            "using temporary tensor for computation"
+        )
+
+        result_temp = torch.empty_like(A_to_use, memory_format=torch.contiguous_format)
+        use_int64_index = not can_use_int32_index(A_to_use)
+        with torch_device_fn.device(A.device):
+            if len(A.shape) == 2:
+                grid = lambda meta: (
+                    min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),
+                )
+                # A large value for n_block_size can lead to insufficient MLU resources,
+                # causing the compilation to fail. Therefore, a conservative upper limit of 8192
+                # is currently set, but the actual maximum achievable value should be confirmed
+                # based on real-world conditions.
+                elements_bytes = A.element_size()
+                n_block = min(256 * 1024 // elements_bytes, N)
+                need_loop = n_block < N
+                triu_kernel[grid](
+                    A_to_use,
+                    result_temp,
+                    M,
+                    N,
+                    diagonal,
+                    N_BLOCK_SIZE=n_block,
+                    NEED_LOOP=need_loop,
+                    INT64_INDEX=use_int64_index,
+                )
+            else:
+                batch = int(torch.numel(A) / M / N)
+                B = A_to_use.view(batch, -1)
+                result_temp_flat = result_temp.view(batch, -1)
+                grid = lambda meta: (
+                    triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                    triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+                )
+                triu_batch_kernel[grid](
+                    B,
+                    result_temp_flat,
+                    batch,
+                    M * N,
+                    N,
+                    diagonal,
+                    INT64_INDEX=use_int64_index,
+                )
+        A.copy_(result_temp)
+    else:
+        use_int64_index = not can_use_int32_index(A)
+        with torch_device_fn.device(A.device):
+            if len(A.shape) == 2:
+                grid = lambda meta: (
+                    min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),
+                )
+                # A large value for n_block_size can lead to insufficient MLU resources,
+                # causing the compilation to fail. Therefore, a conservative upper limit of 8192
+                # is currently set, but the actual maximum achievable value should be confirmed
+                # based on real-world conditions.
+                elements_bytes = A.element_size()
+                n_block = min(256 * 1024 // elements_bytes, N)
+                need_loop = n_block < N
+                triu_kernel[grid](
+                    A,
+                    A,
+                    M,
+                    N,
+                    diagonal,
+                    N_BLOCK_SIZE=n_block,
+                    NEED_LOOP=need_loop,
+                    INT64_INDEX=use_int64_index,
+                )
+            else:
+                batch = int(torch.numel(A) / M / N)
+                B = A.view(batch, -1)
+                grid = lambda meta: (
+                    triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
+                    triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
+                )
+                triu_batch_kernel[grid](
+                    B, B, batch, M * N, N, diagonal, INT64_INDEX=use_int64_index
+                )
+    return A

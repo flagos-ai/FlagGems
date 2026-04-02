@@ -63,6 +63,7 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 def mean(inp, *, dtype=None):
     logger.debug("GEMS MEAN")
+    inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
