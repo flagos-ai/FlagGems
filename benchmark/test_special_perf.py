@@ -1391,51 +1391,48 @@ def test_perf_t_copy():
 
 
 class UpsampleBicubic2dAaBackwardBenchmark(Benchmark):
-    def set_more_shapes(self):
-        shapes = [(512, 1024, 32, 32), (256, 512, 64, 64)]
-        shapes_4d = [(4, 16, 2**i, 2**i) for i in range(2, 8, 2)]
-        shapes_rect = [(4, 16, 2**i, 2 ** (i + 1)) for i in range(2, 7, 2)]
-        return shapes + shapes_4d + shapes_rect
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cfgs = [
+            # Small / medium — fused path targets
+            (4,  16,   4,   4,   1,   1, False, "tiny 4x down"),
+            (4,  16,   4,   4,  16,  16, False, "small 4x up"),
+            (4,  16,  16,  16,   4,   4, False, "small 4x down"),
+            (4,  16,  16,  32,  64, 128, False, "small->med 4x up"),
+            (1,   1,  64,  64,  16,  16, False, "C=1 4x down"),
+            (1,   1,  64,  64,  32,  32, False, "C=1 2x down"),
+            (1,   1,  64,  64, 128, 128, False, "C=1 2x up"),
+            (4,   3, 256, 256, 128, 128, False, "C=3 2x down"),
+            (4,   3, 128, 128, 256, 256, False, "C=3 2x up"),
+            (4,  64,  64,  64,  32,  32, False, "C=64 2x down"),
+            # Large — 2-pass path targets
+            (1,  64, 512, 512, 128, 128, False, "C=64 4x down"),
+            (1,  64, 512, 512,1024,1024, False, "C=64 2x up"),
+            (512, 1024, 32, 32,  8,  8, False, "NC=524K 4x down"),
+            (256,  512, 64, 64, 16, 16, False, "NC=131K 4x down"),
+            (256,  512, 64, 64, 32, 32, False, "NC=131K 2x down"),
+            (256,  512, 64, 64,128,128, False, "NC=131K 2x up"),
+        ]
 
     def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            if len(shape) == 1:
-                # Treat flat shape as a square spatial dim: (1, 1, sqrt(N), sqrt(N))
-                side = int(shape[0] ** 0.5)
-                shape_4d = (1, 1, side, side)
-            elif len(shape) == 2:
-                shape_4d = (1, 1, shape[0], shape[1])
-            elif len(shape) == 3:
-                shape_4d = (1, shape[0], shape[1], shape[2])
-            else:
-                shape_4d = shape
-            for scale_factor in [0.25, 0.5, 2.0]:
-                for align_corners in [False, True]:
-                    N, C, H_in, W_in = shape_4d
-                    H_out = max(1, int(H_in * scale_factor))
-                    W_out = max(1, int(W_in * scale_factor))
-                    if N * C * max(H_in * W_in, H_out * W_out) >= 2**30:
-                        continue
-                    grad = torch.randn(
-                        [N, C, H_out, W_out], device=self.device, dtype=cur_dtype
-                    )
-                    yield grad, [H_out, W_out], [N, C, H_in, W_in], align_corners, None, None
+        for N, C, Hi, Wi, Ho, Wo, ac, label in self._cfgs:
+            grad = torch.randn(
+                [N, C, Ho, Wo], device=self.device, dtype=cur_dtype
+            )
+            yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None, label
 
     def get_tflops(self, op, *args, **kwargs):
-        grad, output_size, input_size, align_corners, scales_h, scales_w = args
+        grad = args[0]
         return grad.numel() * 2
 
 
 @pytest.mark.upsample_bicubic2d_aa_backward
-@pytest.mark.parametrize(
-    "dtype",
-    [torch.float32], #FLOAT_DTYPES,
-)
-def test_upsample_bicubic2d_aa_backward_perf(dtype):
+def test_upsample_bicubic2d_aa_backward():
     bench = UpsampleBicubic2dAaBackwardBenchmark(
         op_name="upsample_bicubic2d_aa_backward",
         torch_op=torch.ops.aten._upsample_bicubic2d_aa_backward,
-        dtypes=[dtype],
+        dtypes=FLOAT_DTYPES,
     )
 
     bench.run()
+

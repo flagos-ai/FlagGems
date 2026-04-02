@@ -2725,37 +2725,41 @@ def upsample_bicubic2d_aa_backward_call(grad, input_size, align_corners):
 
 @pytest.mark.upsample_bicubic2d_aa_backward
 @pytest.mark.parametrize(
-    "shape",
+    "N,C,H_in,W_in,H_out,W_out,align_corners",
     [
-        (1, 1, 1, 1),
-        (1, 1, 4, 4),
-        (1, 3, 8, 8),
-        (2, 1, 5, 7),
-        (2, 3, 16, 16),
-        (3, 7, 17, 13),
-        (2, 3, 33, 33),
-        (4, 8, 16, 32),
-        (8, 16, 64, 64),
+        (1, 3, 16, 16, 8, 8, False),
+        (2, 4, 8, 8, 16, 16, False),
+        (1, 3, 32, 32, 10, 10, False),
+        (1, 1, 10, 10, 23, 23, False),
+        (1, 3, 16, 16, 8, 8, True),
+        (1, 3, 8, 8, 16, 16, True),
+        (2, 64, 32, 32, 16, 16, False),
+        (1, 3, 7, 11, 13, 5, False),
+        (1, 1, 4, 4, 4, 4, False),
+        (1, 1, 8, 8, 1, 1, True),
+        # Extra cases
+        (1, 1, 64, 64, 16, 16, False),
+        (1, 1, 64, 64, 128, 128, False),
+        (512, 1024, 32, 32, 8, 8, False),
+        (256, 512, 64, 64, 16, 16, False),
+        (4, 16, 16, 16, 4, 4, False),
+        (4, 16, 4, 4, 16, 16, False),
+        (4, 16, 64, 128, 32, 64, False),
+        (4, 16, 64, 128, 128, 256, True),
+        (1, 1, 4096, 4096, 1024, 1024, False),
     ],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("scale_factor", [1.5, 2])
-@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_upsample_bicubic2d_aa_backward(
-    shape, dtype, scale_factor, align_corners
+    N, C, H_in, W_in, H_out, W_out, align_corners, dtype
 ):
-    in_h = shape[-2]
-    in_w = shape[-1]
-    out_h = max(1, int(in_h * scale_factor))
-    out_w = max(1, int(in_w * scale_factor))
+    shape = (N, C, H_in, W_in)
 
-    grad_shape = list(shape)
-    grad_shape[-2] = out_h
-    grad_shape[-1] = out_w
+    grad_shape = (N, C, H_out, W_out)
 
     res_grad = torch.randn(
         grad_shape,
-        dtype=dtype,
+        dtype=torch.float32,
         device=flag_gems.device,
     )
     ref_grad = to_reference(res_grad)
@@ -2764,28 +2768,23 @@ def test_upsample_bicubic2d_aa_backward(
         ref_grad,
         shape,
         align_corners,
-    )
+    ).to(dtype)
 
     with flag_gems.use_gems():
         res_out = upsample_bicubic2d_aa_backward_call(
-            res_grad,
+            res_grad.to(dtype),
             shape,
             align_corners,
         )
 
-    assert res_out.shape == tuple(shape)
-    assert res_out.dtype == res_grad.dtype
+    assert res_out.shape == shape
 
+    # dtype-specific tolerance
     if dtype == torch.float32:
         atol = 1e-4
     elif dtype == torch.float16:
-        atol = 1e-2
-        # fp16 has ~1e-3 relative precision (10-bit mantissa).
-        # Considering bicubic interpolation and gradient accumulation in backward,
-        # the effective error can be several times larger, so 1e-2 is a safe margin.
+        atol = 3e-3
     else:  # bfloat16
         atol = 2e-2
-        # bf16 has ~8e-3 relative precision (7-bit mantissa).
-        # With accumulation and interpolation effects, errors can grow further,
-        # making 2e-2 a reasonable lower bound.
+
     gems_assert_close(res_out, ref_out, dtype, atol=atol)

@@ -9,620 +9,393 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def cubic_keys(x):
-    """Keys cubic filter with a = -0.5.
+def _cubic_aa_filter(x):
+    """Keys cubic filter with a = -0.5 (PIL-compatible).  x must be >= 0."""
+    return tl.where(
+        x < 1.0,
+        (1.5 * x - 2.5) * x * x + 1.0,
+        tl.where(
+            x < 2.0,
+            ((-0.5 * x + 2.5) * x - 4.0) * x + 2.0,
+            0.0,
+        ),
+    )
 
-    |x| < 1 : 1.5|x|^3 - 2.5|x|^2 + 1
-    1 <= |x| < 2 : -0.5|x|^3 + 2.5|x|^2 - 4|x| + 2
-    otherwise : 0
-    """
-    ax = tl.abs(x)
-    ax2 = ax * ax
-    ax3 = ax2 * ax
-    w_inner = 1.5 * ax3 - 2.5 * ax2 + 1.0
-    w_outer = -0.5 * ax3 + 2.5 * ax2 - 4.0 * ax + 2.0
-    return tl.where(ax < 1.0, w_inner, tl.where(ax < 2.0, w_outer, 0.0))
-
-
-# ============================================================
-# Kernel A: fp32 path
-# grad_out / grad_in 均为 fp32，直接 atomic_add，无需额外 cast
-# ============================================================
 
 @triton.jit
-def _upsample_bicubic2d_aa_backward_kernel_fp32(
-    grad_out_ptr,
-    grad_in_ptr,
-    n, c, in_h, in_w, out_h, out_w,
-    go_stride_n, go_stride_c, go_stride_h, go_stride_w,
-    gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w,
-    scale_y, scale_x,
-    scale_y_aa, scale_x_aa,
-    SH: tl.constexpr,
-    SW: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    total = n * c * out_h * out_w
-    mask = offs < total
+def _f2i(x):
+    """float -> int32 with clamping to avoid undefined overflow."""
+    _LO: tl.constexpr = -2147483648.0
+    _HI: tl.constexpr =  2147483520.0
+    return tl.minimum(tl.maximum(x, _LO), _HI).to(tl.int32)
 
-    x_out = offs % out_w
-    tmp   = offs // out_w
-    y_out = tmp % out_h
-    tmp   = tmp // out_h
-    c_idx = tmp % c
-    n_idx = tmp // c
-
-    y_out_f = y_out.to(tl.float32)
-    x_out_f = x_out.to(tl.float32)
-
-    y_real = (y_out_f + 0.5) * scale_y - 0.5
-    x_real = (x_out_f + 0.5) * scale_x - 0.5
-
-    support_h = 2.0 / scale_y_aa
-    support_w = 2.0 / scale_x_aa
-
-    y_in_start = (tl.floor(y_real - support_h) + 1).to(tl.int32)
-    x_in_start = (tl.floor(x_real - support_w) + 1).to(tl.int32)
-
-    go_off = (
-        n_idx.to(tl.int64) * go_stride_n
-        + c_idx.to(tl.int64) * go_stride_c
-        + y_out.to(tl.int64) * go_stride_h
-        + x_out.to(tl.int64) * go_stride_w
-    )
-    go_val = tl.load(grad_out_ptr + go_off, mask=mask, other=0.0)  # fp32
-
-    gi_base = (
-        grad_in_ptr
-        + n_idx.to(tl.int64) * gi_stride_n
-        + c_idx.to(tl.int64) * gi_stride_c
-    )
-
-    norm = tl.zeros([BLOCK], dtype=tl.float32)
-    for dh in range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h = tl.where(valid_h, cubic_keys(dist_h), 0.0)
-
-        for dw in range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-            norm  += w_h * w_w
-
-    norm = tl.where(norm == 0.0, 1.0, norm)
-
-    for dh in range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = mask & (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h     = tl.where(valid_h, cubic_keys(dist_h), 0.0)
-
-        for dw in range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-
-            weight  = (w_h * w_w) / norm
-            contrib = go_val * weight  # fp32
-
-            gi_off = (
-                y_in.to(tl.int64) * gi_stride_h
-                + x_in.to(tl.int64) * gi_stride_w
-            )
-            tl.atomic_add(gi_base + gi_off, contrib, mask=valid)
-
-
-# ============================================================
-# Kernel B1: lowp 下采样路径（scale_y_aa < 1 或 scale_x_aa < 1）
-#
-# AA 窗口宽于一个像素，支持域 > 2，SH/SW 较大。
-# grad_out 低精度读入后立即 cast 到 fp32；
-# grad_in 是 fp32 临时 buffer，atomic_add 全程在 fp32 完成，
-# 最后由调用方 cast 回低精度。
-# 精度已满足要求，逻辑与原 lowp kernel 保持一致。
-# ============================================================
 
 @triton.jit
-def _upsample_bicubic2d_aa_backward_kernel_lowp_downsample(
-    grad_out_ptr,
-    grad_in_ptr,                        # fp32 临时 buffer
-    n, c, in_h, in_w, out_h, out_w,
-    go_stride_n, go_stride_c, go_stride_h, go_stride_w,
-    gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w,
-    scale_y, scale_x,
-    scale_y_aa, scale_x_aa,
-    SH: tl.constexpr,
-    SW: tl.constexpr,
-    BLOCK: tl.constexpr,
+def _fused_backward_kernel(
+    grad_out_ptr,       # [NC, H_out, W_out] flat
+    grad_in_ptr,        # [NC, H_in,  W_in]  flat (output)
+    # H params
+    H_in, H_out,
+    h_scale, support_h, invscale_h, inv_h_scale,
+    # W params
+    W_in, W_out,
+    w_scale, support_w, invscale_w, inv_w_scale,
+    # Stride
+    stride_go_nc,       # = H_out * W_out
+    # Compile-time constants
+    BLOCK_IW: tl.constexpr,
+    MAX_OH: tl.constexpr,
+    MAX_OW: tl.constexpr,
+    MAX_KSIZE_H: tl.constexpr,
+    MAX_KSIZE_W: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    total = n * c * out_h * out_w
-    mask = offs < total
+    pid_row = tl.program_id(0)          # nc * H_in + ih
+    pid_col = tl.program_id(1)          # iw tile
 
-    x_out = offs % out_w
-    tmp   = offs // out_w
-    y_out = tmp % out_h
-    tmp   = tmp // out_h
-    c_idx = tmp % c
-    n_idx = tmp // c
+    nc = pid_row // H_in
+    ih = pid_row %  H_in
+    ih_f = ih.to(tl.float32)
 
-    y_out_f = y_out.to(tl.float32)
-    x_out_f = x_out.to(tl.float32)
+    iw_base = pid_col * BLOCK_IW
+    iws = iw_base + tl.arange(0, BLOCK_IW)
+    iw_mask = iws < W_in
+    iw_f = iws.to(tl.float32)
 
-    y_real = (y_out_f + 0.5) * scale_y - 0.5
-    x_real = (x_out_f + 0.5) * scale_x - 0.5
+    # Scalar: which oh values contribute to this ih
+    oh_start = tl.maximum(
+        _f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0)
 
-    support_h = 2.0 / scale_y_aa
-    support_w = 2.0 / scale_x_aa
+    # Vector: which ow values contribute to each iw
+    ow_starts = tl.maximum(
+        _f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0)
 
-    y_in_start = (tl.floor(y_real - support_h) + 1).to(tl.int32)
-    x_in_start = (tl.floor(x_real - support_w) + 1).to(tl.int32)
+    go_nc_base = nc.to(tl.int64) * stride_go_nc
 
-    go_off = (
-        n_idx.to(tl.int64) * go_stride_n
-        + c_idx.to(tl.int64) * go_stride_c
-        + y_out.to(tl.int64) * go_stride_h
-        + x_out.to(tl.int64) * go_stride_w
-    )
-    # 低精度读入，立即 cast 到 fp32，后续所有计算在 fp32 完成
-    go_val = tl.load(grad_out_ptr + go_off, mask=mask, other=0.0).to(tl.float32)
+    accum = tl.zeros([BLOCK_IW], dtype=tl.float32)
 
-    gi_base = (
-        grad_in_ptr
-        + n_idx.to(tl.int64) * gi_stride_n
-        + c_idx.to(tl.int64) * gi_stride_c
-    )
+    # --- d_ow OUTER loop: wx computed once per d_ow, reused across d_oh ---
+    for d_ow in tl.static_range(MAX_OW):
+        ow = ow_starts + d_ow                          # vector
+        ow_valid_base = iw_mask & (ow >= 0) & (ow < W_out)
 
-    norm = tl.zeros([BLOCK], dtype=tl.float32)
-    for dh in range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h = tl.where(valid_h, cubic_keys(dist_h), 0.0)
+        # Compute wx (vector) — only once per d_ow
+        center_w = w_scale * (ow.to(tl.float32) + 0.5)
+        xmin_w = tl.maximum(_f2i(center_w - support_w + 0.5), 0)
+        xsize_w = tl.minimum(_f2i(center_w + support_w + 0.5), W_in) - xmin_w
+        xsize_w_pos = tl.maximum(xsize_w, 0)
+        iw_in_range = ow_valid_base & (iws >= xmin_w) & (iws < xmin_w + xsize_w_pos)
 
-        for dw in range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-            norm  += w_h * w_w
+        # Inline total_wx computation (vector)
+        xmin_w_f = xmin_w.to(tl.float32)
+        total_wx = tl.zeros([BLOCK_IW], dtype=tl.float32)
+        for j_w in tl.static_range(MAX_KSIZE_W):
+            arg_w = tl.abs((j_w + xmin_w_f - center_w + 0.5) * invscale_w)
+            w_w = _cubic_aa_filter(arg_w)
+            total_wx += tl.where(j_w < xsize_w_pos, w_w, 0.0)
 
-    norm = tl.where(norm == 0.0, 1.0, norm)
+        raw_wx = _cubic_aa_filter(tl.abs((iw_f - center_w + 0.5) * invscale_w))
+        wx = tl.where(iw_in_range & (total_wx != 0.0), raw_wx / total_wx, 0.0)
 
-    for dh in range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = mask & (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h     = tl.where(valid_h, cubic_keys(dist_h), 0.0)
+        ow_safe = tl.maximum(tl.minimum(ow, W_out - 1), 0)
 
-        for dw in range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
+        # --- d_oh INNER loop: wy is scalar, cheap to recompute ---
+        for d_oh in tl.static_range(MAX_OH):
+            oh = oh_start + d_oh                        # scalar
+            oh_valid = (oh >= 0) & (oh < H_out)
 
-            weight  = (w_h * w_w) / norm
-            contrib = go_val * weight       # fp32 * fp32 = fp32
+            # Compute wy (scalar)
+            center_h = h_scale * (oh + 0.5)
+            ymin_h = tl.maximum(_f2i(center_h - support_h + 0.5), 0)
+            ysize_h = tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin_h
+            ysize_h_pos = tl.maximum(ysize_h, 0)
+            ih_in_range = oh_valid & (ih >= ymin_h) & (ih < ymin_h + ysize_h_pos)
 
-            gi_off = (
-                y_in.to(tl.int64) * gi_stride_h
-                + x_in.to(tl.int64) * gi_stride_w
+            # Inline total_wy computation (scalar, very cheap)
+            ymin_h_f = ymin_h.to(tl.float32)
+            total_wy = 0.0
+            for j_h in tl.static_range(MAX_KSIZE_H):
+                arg_h = tl.abs((j_h + ymin_h_f - center_h + 0.5) * invscale_h)
+                w_h = _cubic_aa_filter(arg_h)
+                total_wy += tl.where(j_h < ysize_h_pos, w_h, 0.0)
+
+            raw_wy = _cubic_aa_filter(tl.abs((ih_f - center_h + 0.5) * invscale_h))
+            wy = tl.where(ih_in_range & (total_wy != 0.0), raw_wy / total_wy, 0.0)
+
+            # Load grad_out and accumulate
+            valid = iw_in_range & ih_in_range
+            oh_safe = tl.maximum(tl.minimum(oh, H_out - 1), 0)
+            g = tl.load(
+                grad_out_ptr + go_nc_base
+                + oh_safe.to(tl.int64) * W_out
+                + ow_safe.to(tl.int64),
+                mask=valid, other=0.0,
             )
-            # atomic_add 写入 fp32 buffer，避免低精度累加误差
-            tl.atomic_add(gi_base + gi_off, contrib, mask=valid)
+            accum += wy * wx * g
 
+    gi_off = pid_row.to(tl.int64) * W_in + iws.to(tl.int64)
+    tl.store(
+        grad_in_ptr + gi_off,
+        accum.to(grad_in_ptr.dtype.element_ty),
+        mask=iw_mask,
+    )
 
-# ============================================================
-# Kernel B2: lowp 上采样路径（scale_y_aa == 1 且 scale_x_aa == 1）
-#
-# 上采样时 AA 缩放因子恒为 1，支持域固定为 2（SH=SW=4），
-# 与下采样路径的数值行为完全相同，但单独拆出以便后续针对
-# 上采样的精度问题独立修复（TODO）。
-# ============================================================
 
 @triton.jit
-def bak_upsample_bicubic2d_aa_backward_kernel_lowp_upsample(
-    grad_out_ptr,
-    grad_in_ptr,                        # fp32 临时 buffer
-    n, c, in_h, in_w, out_h, out_w,
-    go_stride_n, go_stride_c, go_stride_h, go_stride_w,
-    gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w,
-    scale_y, scale_x,
-    scale_y_aa, scale_x_aa,
-    SH: tl.constexpr,
-    SW: tl.constexpr,
-    BLOCK: tl.constexpr,
+def _precompute_weight_sums_kernel(
+    total_w_ptr,
+    output_size, input_size,
+    scale, support, invscale,
+    MAX_KSIZE: tl.constexpr,
 ):
-    # TODO: 上采样低精度路径精度尚未达标，待后续专项修复。
-    #       当前实现与下采样路径逻辑一致，作为占位。
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    total = n * c * out_h * out_w
-    mask = offs < total
+    oi = tl.program_id(0)
+    if oi >= output_size:
+        return
+    center = scale * (oi + 0.5)
+    xmin = tl.maximum(_f2i(center - support + 0.5), 0)
+    xsize = tl.minimum(_f2i(center + support + 0.5), input_size) - xmin
+    xsize = tl.minimum(tl.maximum(xsize, 0), MAX_KSIZE)
+    xmin_f = xmin.to(tl.float32)
+    total = 0.0
+    for j in tl.static_range(MAX_KSIZE):
+        arg = tl.abs((j + xmin_f - center + 0.5) * invscale)
+        w = _cubic_aa_filter(arg)
+        total += tl.where(j < xsize, w, 0.0)
+    tl.store(total_w_ptr + oi, total)
 
-    x_out = offs % out_w
-    tmp   = offs // out_w
-    y_out = tmp % out_h
-    tmp   = tmp // out_h
-    c_idx = tmp % c
-    n_idx = tmp // c
-
-    y_out_f = y_out.to(tl.float32)
-    x_out_f = x_out.to(tl.float32)
-
-    y_real = (y_out_f + 0.5) * scale_y - 0.5
-    x_real = (x_out_f + 0.5) * scale_x - 0.5
-
-    support_h = 2.0 / scale_y_aa
-    support_w = 2.0 / scale_x_aa
-
-    y_in_start = (tl.floor(y_real - support_h) + 1).to(tl.int32)
-    x_in_start = (tl.floor(x_real - support_w) + 1).to(tl.int32)
-
-    go_off = (
-        n_idx.to(tl.int64) * go_stride_n
-        + c_idx.to(tl.int64) * go_stride_c
-        + y_out.to(tl.int64) * go_stride_h
-        + x_out.to(tl.int64) * go_stride_w
-    )
-    go_val = tl.load(grad_out_ptr + go_off, mask=mask, other=0.0).to(tl.float32)
-
-    gi_base = (
-        grad_in_ptr
-        + n_idx.to(tl.int64) * gi_stride_n
-        + c_idx.to(tl.int64) * gi_stride_c
-    )
-
-    norm = tl.zeros([BLOCK], dtype=tl.float32)
-    for dh in range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h = tl.where(valid_h, cubic_keys(dist_h), 0.0)
-
-        for dw in range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-            norm  += w_h * w_w
-
-    norm = tl.where(norm == 0.0, 1.0, norm)
-
-    for dh in range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = mask & (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h     = tl.where(valid_h, cubic_keys(dist_h), 0.0)
-
-        for dw in range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-
-            weight  = (w_h * w_w) / norm
-            contrib = go_val * weight
-
-            gi_off = (
-                y_in.to(tl.int64) * gi_stride_h
-                + x_in.to(tl.int64) * gi_stride_w
-            )
-            tl.atomic_add(gi_base + gi_off, contrib, mask=valid)
 
 @triton.jit
-def _upsample_bicubic2d_aa_backward_kernel_lowp_upsample(
-    grad_out_ptr,
-    grad_in_ptr,
-    n, c, in_h, in_w, out_h, out_w,
-    go_stride_n, go_stride_c, go_stride_h, go_stride_w,
-    gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w,
-    scale_y, scale_x,
-    scale_y_aa, scale_x_aa,
-    SH: tl.constexpr,
-    SW: tl.constexpr,
-    BLOCK: tl.constexpr,
+def _pass1_w_gather_nchw_kernel(
+    grad_out_ptr,       # [NC, H_out, W_out] flat
+    buf_ptr,            # [NC, H_out, W_in]  flat (output)
+    total_wx_ptr,       # [W_out]
+    W_in, W_out,
+    w_scale, support_w, invscale_w, inv_w_scale,
+    BLOCK_IW: tl.constexpr,
+    MAX_OW: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    total = n * c * out_h * out_w
-    mask = offs < total
+    pid_row = tl.program_id(0)
+    pid_col = tl.program_id(1)
 
-    x_out = offs % out_w
-    tmp   = offs // out_w
-    y_out = tmp % out_h
-    tmp   = tmp // out_h
-    c_idx = tmp % c
-    n_idx = tmp // c
+    iw_base = pid_col * BLOCK_IW
+    iws = iw_base + tl.arange(0, BLOCK_IW)
+    iw_mask = iws < W_in
+    iw_f = iws.to(tl.float32)
 
-    # ✅ Fix 1: 坐标全程用 fp32 计算，避免 bf16 的 7-bit 尾数问题
-    y_out_f = y_out.to(tl.float32)
-    x_out_f = x_out.to(tl.float32)
+    go_base = pid_row.to(tl.int64) * W_out
+    buf_base = pid_row.to(tl.int64) * W_in
 
-    # scale_y/scale_x 在上采样时 < 1，用 fp32 字面量保持精度
-    y_real = (y_out_f + 0.5) * scale_y.to(tl.float32) - 0.5
-    x_real = (x_out_f + 0.5) * scale_x.to(tl.float32) - 0.5
+    ow_starts = tl.maximum(
+        _f2i((iw_f + 0.5 - support_w) * inv_w_scale - 0.5), 0)
 
-    # 上采样时 scale_y_aa == 1.0，support == 2.0
-    support_h = 2.0 / scale_y_aa
-    support_w = 2.0 / scale_x_aa
+    accum = tl.zeros([BLOCK_IW], dtype=tl.float32)
 
-    y_in_start = (tl.math.floor(y_real - support_h) + 1.0).to(tl.int32)
-    x_in_start = (tl.math.floor(x_real - support_w) + 1.0).to(tl.int32)
+    for d_ow in tl.static_range(MAX_OW):
+        ow = ow_starts + d_ow
+        ow_valid = iw_mask & (ow >= 0) & (ow < W_out)
 
-    go_off = (
-        n_idx.to(tl.int64) * go_stride_n
-        + c_idx.to(tl.int64) * go_stride_c
-        + y_out.to(tl.int64) * go_stride_h
-        + x_out.to(tl.int64) * go_stride_w
-    )
-    go_val = tl.load(grad_out_ptr + go_off, mask=mask, other=0.0).to(tl.float32)
+        center_w = w_scale * (ow.to(tl.float32) + 0.5)
+        xmin  = tl.maximum(_f2i(center_w - support_w + 0.5), 0)
+        xsize = tl.minimum(_f2i(center_w + support_w + 0.5), W_in) - xmin
+        in_range = ow_valid & (iws >= xmin) & (iws < xmin + tl.maximum(xsize, 0))
 
-    gi_base = (
-        grad_in_ptr
-        + n_idx.to(tl.int64) * gi_stride_n
-        + c_idx.to(tl.int64) * gi_stride_c
-    )
+        raw_wx  = _cubic_aa_filter(tl.abs((iw_f - center_w + 0.5) * invscale_w))
+        ow_safe = tl.maximum(tl.minimum(ow, W_out - 1), 0)
+        tw_x    = tl.load(total_wx_ptr + ow_safe, mask=in_range, other=1.0)
+        wx      = tl.where(in_range & (tw_x != 0.0), raw_wx / tw_x, 0.0)
 
-    # ✅ Fix 2: 缓存每个 (dh, dw) 的权重，避免两次循环结果不一致
-    # SH=SW=4，共 16 个权重，全部缓存在寄存器里
-    # Triton 不支持动态索引寄存器数组，用展开的方式处理
-    # ✅ Fix 3: norm 循环加入 mask 保护，防止越界 lane 污染
-    norm = tl.zeros([BLOCK], dtype=tl.float32)
+        g = tl.load(grad_out_ptr + go_base + ow_safe.to(tl.int64),
+                     mask=in_range, other=0.0)
+        accum += wx * g
 
-    for dh in tl.static_range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        # ✅ 加入 mask，越界 lane 不参与 norm 累积
-        valid_h = mask & (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h = tl.where(valid_h, cubic_keys(dist_h), 0.0)
+    tl.store(buf_ptr + buf_base + iws.to(tl.int64), accum, mask=iw_mask)
 
-        for dw in tl.static_range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-            norm  += w_h * w_w
-
-    # ✅ Fix 4: norm 为 0 时用 1.0 替代，与 PyTorch 行为一致
-    norm_safe = tl.where(norm == 0.0, 1.0, norm)
-
-    for dh in tl.static_range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = mask & (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h     = tl.where(valid_h, cubic_keys(dist_h), 0.0)
-
-        for dw in tl.static_range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-
-            # ✅ Fix 5: weight 和 contrib 全程 fp32，最后再除以 norm_safe
-            weight  = (w_h * w_w) / norm_safe
-            contrib = go_val * weight
-
-            gi_off = (
-                y_in.to(tl.int64) * gi_stride_h
-                + x_in.to(tl.int64) * gi_stride_w
-            )
-            tl.atomic_add(gi_base + gi_off, contrib, mask=valid)
 
 @triton.jit
-def v2_upsample_bicubic2d_aa_backward_kernel_lowp_upsample(
-    grad_out_ptr,
-    grad_in_ptr,
-    n, c, in_h, in_w, out_h, out_w,
-    go_stride_n, go_stride_c, go_stride_h, go_stride_w,
-    gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w,
-    scale_y, scale_x,
-    scale_y_aa, scale_x_aa,
-    SH: tl.constexpr,
-    SW: tl.constexpr,
-    BLOCK: tl.constexpr,
+def _pass2_h_gather_nchw_kernel(
+    buf_ptr,            # [NC, H_out, W_in] flat (input)
+    grad_in_ptr,        # [NC, H_in,  W_in] flat (output)
+    total_wy_ptr,       # [H_out]
+    H_in, W_in, H_out,
+    h_scale, support_h, invscale_h, inv_h_scale,
+    stride_buf_hw,      # = H_out * W_in
+    BLOCK_IW: tl.constexpr,
+    MAX_OH: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    total = n * c * out_h * out_w
-    mask = offs < total
+    pid_row = tl.program_id(0)
+    pid_col = tl.program_id(1)
 
-    x_out = offs % out_w
-    tmp   = offs // out_w
-    y_out = tmp % out_h
-    tmp   = tmp // out_h
-    c_idx = tmp % c
-    n_idx = tmp // c
+    nc = pid_row // H_in
+    ih = pid_row %  H_in
+    ih_f = ih.to(tl.float32)
 
-    y_out_f = y_out.to(tl.float32)
-    x_out_f = x_out.to(tl.float32)
+    iw_base = pid_col * BLOCK_IW
+    iws = iw_base + tl.arange(0, BLOCK_IW)
+    iw_mask = iws < W_in
 
-    y_real = (y_out_f + 0.5) * scale_y - 0.5
-    x_real = (x_out_f + 0.5) * scale_x - 0.5
+    oh_start = tl.maximum(
+        _f2i((ih_f + 0.5 - support_h) * inv_h_scale - 0.5), 0)
 
-    # 上采样时 scale_y_aa == scale_x_aa == 1.0，support 固定为 2.0
-    support_h = 2.0 / scale_y_aa
-    support_w = 2.0 / scale_x_aa
+    buf_nc_base = nc.to(tl.int64) * stride_buf_hw
 
-    y_in_start = (tl.floor(y_real - support_h) + 1).to(tl.int32)
-    x_in_start = (tl.floor(x_real - support_w) + 1).to(tl.int32)
+    accum = tl.zeros([BLOCK_IW], dtype=tl.float32)
 
-    go_off = (
-        n_idx.to(tl.int64) * go_stride_n
-        + c_idx.to(tl.int64) * go_stride_c
-        + y_out.to(tl.int64) * go_stride_h
-        + x_out.to(tl.int64) * go_stride_w
+    for d_oh in tl.static_range(MAX_OH):
+        oh = oh_start + d_oh
+        oh_valid = (oh >= 0) & (oh < H_out)
+
+        center_h = h_scale * (oh + 0.5)
+        ymin  = tl.maximum(_f2i(center_h - support_h + 0.5), 0)
+        ysize = tl.minimum(_f2i(center_h + support_h + 0.5), H_in) - ymin
+        ih_in_range = oh_valid & (ih >= ymin) & (ih < ymin + tl.maximum(ysize, 0))
+
+        raw_wy  = _cubic_aa_filter(tl.abs((ih_f - center_h + 0.5) * invscale_h))
+        oh_safe = tl.maximum(tl.minimum(oh, H_out - 1), 0)
+        tw_y    = tl.load(total_wy_ptr + oh_safe)
+        wy      = tl.where(ih_in_range & (tw_y != 0.0), raw_wy / tw_y, 0.0)
+
+        buf_off = buf_nc_base + oh_safe.to(tl.int64) * W_in + iws.to(tl.int64)
+        b = tl.load(buf_ptr + buf_off, mask=iw_mask & ih_in_range, other=0.0)
+
+        accum += wy * b
+
+    gi_off = pid_row.to(tl.int64) * W_in + iws.to(tl.int64)
+    tl.store(
+        grad_in_ptr + gi_off,
+        accum.to(grad_in_ptr.dtype.element_ty),
+        mask=iw_mask,
     )
-    go_val = tl.load(grad_out_ptr + go_off, mask=mask, other=0.0).to(tl.float32)
 
-    gi_base = (
-        grad_in_ptr
-        + n_idx.to(tl.int64) * gi_stride_n
-        + c_idx.to(tl.int64) * gi_stride_c
-    )
 
-    # ── Pass 1: 计算 norm ─────────────────────────────────────────
-    # Fix 1: valid_h 必须包含外层 mask，与 scatter 循环保持完全一致
-    # 否则越界 lane 的垃圾坐标会产生非零 cubic_keys 值污染 norm
-    norm = tl.zeros([BLOCK], dtype=tl.float32)
-    for dh in tl.static_range(SH):   # Fix 4: constexpr 循环用 static_range
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = mask & (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h = tl.where(valid_h, cubic_keys(dist_h), 0.0)
+def _compute_scale(input_size, output_size, align_corners, scale=None):
+    if align_corners:
+        return float(input_size - 1) / (output_size - 1) if output_size > 1 else 0.0
+    else:
+        return (1.0 / scale) if (scale is not None and scale > 0) \
+            else float(input_size) / output_size
 
-        for dw in tl.static_range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-            norm  += w_h * w_w
 
-    # Fix 3: 分离 norm_safe，不覆盖 norm（虽然 pass 1 结束后 norm 本身
-    # 不再被读写，但显式分离变量名可防止后续维护时意外引入 Bug）
-    norm_safe = tl.where(norm == 0.0, 1.0, norm)
+# Threshold: when total elements (across the larger of input / output spatial)
+# is below this, the fused single-kernel path is used (1 launch instead of 4).
+# Above this, the 2-pass separable path is more memory-bandwidth efficient.
+_FUSE_THRESHOLD = 1 << 20       # 1M elements
 
-    # ── Pass 2: scatter 梯度 ──────────────────────────────────────
-    # valid_h 定义与 Pass 1 完全一致（含 mask），保证两次 cubic_keys
-    # 的输入相同，weight = (w_h * w_w) / norm_safe 分子分母匹配
-    for dh in tl.static_range(SH):
-        y_in   = y_in_start + dh
-        y_in_f = y_in.to(tl.float32)
-        dist_h = (y_in_f - y_real) * scale_y_aa
-        valid_h = mask & (y_in >= 0) & (y_in < in_h) & (tl.abs(dist_h) < 2.0)
-        w_h     = tl.where(valid_h, cubic_keys(dist_h), 0.0)
-
-        for dw in tl.static_range(SW):
-            x_in   = x_in_start + dw
-            x_in_f = x_in.to(tl.float32)
-            dist_w = (x_in_f - x_real) * scale_x_aa
-            valid  = valid_h & (x_in >= 0) & (x_in < in_w) & (tl.abs(dist_w) < 2.0)
-            w_w    = tl.where(valid, cubic_keys(dist_w), 0.0)
-
-            weight  = (w_h * w_w) / norm_safe
-            contrib = go_val * weight
-
-            gi_off = (
-                y_in.to(tl.int64) * gi_stride_h
-                + x_in.to(tl.int64) * gi_stride_w
-            )
-            tl.atomic_add(gi_base + gi_off, contrib, mask=valid)
-# ============================================================
-# Python 入口
-# ============================================================
 
 def _upsample_bicubic2d_aa_backward(
     grad_output: torch.Tensor,
-    output_size,
-    input_size,
+    output_size,        # [H_out, W_out]
+    input_size,         # [N, C, H_in, W_in]
     align_corners: bool,
     scales_h=None,
     scales_w=None,
-):
-    assert grad_output.is_cuda
+) -> torch.Tensor:
+    N, C, H_in, W_in = input_size
+    H_out, W_out = output_size
 
-    n, c, in_h, in_w = input_size
-    out_h, out_w = output_size
+    assert grad_output.shape == (N, C, H_out, W_out), (
+        f"grad_output shape {grad_output.shape} != "
+        f"expected ({N}, {C}, {H_out}, {W_out})"
+    )
 
-    grad_out = grad_output.contiguous()
-    src_dtype = grad_output.dtype
+    NC = N * C
+    if NC == 0 or H_in == 0 or W_in == 0 or H_out == 0 or W_out == 0:
+        return grad_output.new_zeros(input_size)
 
-    if align_corners:
-        scale_y = (in_h - 1) / (out_h - 1) if (in_h > 1 and out_h > 1) else 0.0
-        scale_x = (in_w - 1) / (out_w - 1) if (in_w > 1 and out_w > 1) else 0.0
-    else:
-        scale_y = in_h / out_h
-        scale_x = in_w / out_w
+    # ---- Work in NCHW — zero-copy reshape to [NC, H, W] ----
+    grad_out_flat = grad_output.contiguous().reshape(NC, H_out, W_out)
 
-    scale_y_aa = min(1.0 / scale_y, 1.0) if scale_y > 0 else 1.0
-    scale_x_aa = min(1.0 / scale_x, 1.0) if scale_x > 0 else 1.0
+    # ---- Scales & filter parameters ----
+    h_scale = _compute_scale(H_in, H_out, align_corners, scales_h)
+    w_scale = _compute_scale(W_in, W_out, align_corners, scales_w)
 
-    SH = int(math.ceil(4.0 / scale_y_aa)) + 2
-    SW = int(math.ceil(4.0 / scale_x_aa)) + 2
+    INTERP_SIZE = 4
+    support_h = (INTERP_SIZE * 0.5) * h_scale if h_scale >= 1.0 else INTERP_SIZE * 0.5
+    support_w = (INTERP_SIZE * 0.5) * w_scale if w_scale >= 1.0 else INTERP_SIZE * 0.5
+    invscale_h = 1.0 / h_scale if h_scale >= 1.0 else 1.0
+    invscale_w = 1.0 / w_scale if w_scale >= 1.0 else 1.0
 
-    BLOCK = 128
-    grid = (triton.cdiv(n * c * out_h * out_w, BLOCK),)
+    MAX_KSIZE_H = math.ceil(support_h) * 2 + 1
+    MAX_KSIZE_W = math.ceil(support_w) * 2 + 1
 
-    is_lowp = src_dtype in (torch.float16, torch.bfloat16)
+    _EPS = 1e-10
+    inv_h_scale = 1.0 / max(h_scale, _EPS)
+    inv_w_scale = 1.0 / max(w_scale, _EPS)
 
-    # 判断是否为上采样：两个方向的 AA 缩放因子均为 1.0 时为上采样。
-    # （下采样时至少有一个方向 scale_y_aa < 1 或 scale_x_aa < 1）
-    is_upsample = (scale_y_aa == 1.0) and (scale_x_aa == 1.0)
+    MAX_OH = min(math.ceil(2 * support_h * inv_h_scale) + 2, max(H_out, 1))
+    MAX_OW = min(math.ceil(2 * support_w * inv_w_scale) + 2, max(W_out, 1))
 
-    if is_lowp:
-        # fp32 临时 buffer，kernel 内 atomic_add 全程 fp32
-        grad_in = torch.zeros((n, c, in_h, in_w), device=grad_output.device, dtype=torch.float32)
+    # ---- BLOCK_IW & num_warps ----
+    BLOCK_IW = min(triton.next_power_of_2(max(W_in, 1)), 256)
+    if BLOCK_IW < 32:
+        BLOCK_IW = 32
+    nw = 1 if BLOCK_IW <= 32 else (2 if BLOCK_IW <= 64 else 4)
 
-        go_stride_n, go_stride_c, go_stride_h, go_stride_w = grad_out.stride()
-        gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w = grad_in.stride()
+    # ---- Choose fused vs 2-pass ----
+    total_elems = NC * max(H_in * W_in, H_out * W_out)
+    use_fused = total_elems <= _FUSE_THRESHOLD
 
-        common_args = (
-            grad_out,
-            grad_in,
-            n, c, in_h, in_w, out_h, out_w,
-            go_stride_n, go_stride_c, go_stride_h, go_stride_w,
-            gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w,
-            scale_y, scale_x,
-            scale_y_aa, scale_x_aa,
+    if use_fused:
+        # ============================================================
+        # FUSED PATH — single kernel launch, no intermediate buffer
+        # ============================================================
+        grad_in_flat = torch.empty(NC, H_in, W_in, dtype=grad_output.dtype,
+                                   device=grad_output.device)
+        grid = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
+        _fused_backward_kernel[grid](
+            grad_out_flat, grad_in_flat,
+            H_in, H_out,
+            h_scale, support_h, invscale_h, inv_h_scale,
+            W_in, W_out,
+            w_scale, support_w, invscale_w, inv_w_scale,
+            H_out * W_out,          # stride_go_nc
+            BLOCK_IW=BLOCK_IW, MAX_OH=MAX_OH, MAX_OW=MAX_OW,
+            MAX_KSIZE_H=MAX_KSIZE_H, MAX_KSIZE_W=MAX_KSIZE_W,
+            num_warps=nw,
         )
-        common_kwargs = dict(SH=SH, SW=SW, BLOCK=BLOCK)
-
-        if is_upsample:
-            _upsample_bicubic2d_aa_backward_kernel_lowp_upsample[grid](
-                *common_args, **common_kwargs,
-            )
-            # bicubic2d_aa_backward_gather_kernel[grid](
-            #     *common_args, **common_kwargs,
-            # )
-        else:
-            _upsample_bicubic2d_aa_backward_kernel_lowp_downsample[grid](
-                *common_args, **common_kwargs,
-            )
-
-        # 计算完毕后 cast 回原始低精度
-        return grad_in.to(src_dtype)
+        return grad_in_flat.reshape(N, C, H_in, W_in)
 
     else:
-        # fp32 path：grad_in 直接用 fp32，原地 atomic_add
-        grad_in = torch.zeros((n, c, in_h, in_w), device=grad_output.device, dtype=torch.float32)
+        # ============================================================
+        # 2-PASS PATH — separable, memory-bandwidth efficient for big tensors
+        # ============================================================
 
-        go_stride_n, go_stride_c, go_stride_h, go_stride_w = grad_out.stride()
-        gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w = grad_in.stride()
+        # Phase 0: precompute weight sums
+        total_wy = torch.empty(max(H_out, 1), dtype=torch.float32,
+                               device=grad_output.device)
+        total_wx = torch.empty(max(W_out, 1), dtype=torch.float32,
+                               device=grad_output.device)
+        if H_out > 0:
+            _precompute_weight_sums_kernel[(H_out,)](
+                total_wy, H_out, H_in, h_scale, support_h, invscale_h,
+                MAX_KSIZE=MAX_KSIZE_H)
+        if W_out > 0:
+            _precompute_weight_sums_kernel[(W_out,)](
+                total_wx, W_out, W_in, w_scale, support_w, invscale_w,
+                MAX_KSIZE=MAX_KSIZE_W)
 
-        _upsample_bicubic2d_aa_backward_kernel_fp32[grid](
-            grad_out,
-            grad_in,
-            n, c, in_h, in_w, out_h, out_w,
-            go_stride_n, go_stride_c, go_stride_h, go_stride_w,
-            gi_stride_n, gi_stride_c, gi_stride_h, gi_stride_w,
-            scale_y, scale_x,
-            scale_y_aa, scale_x_aa,
-            SH=SH, SW=SW, BLOCK=BLOCK,
+        # Phase 1: W-gather -> buf [NC, H_out, W_in]
+        buf = torch.empty(NC, H_out, W_in, dtype=torch.float32,
+                          device=grad_output.device)
+        grid1 = (NC * H_out, triton.cdiv(W_in, BLOCK_IW))
+        _pass1_w_gather_nchw_kernel[grid1](
+            grad_out_flat, buf, total_wx,
+            W_in, W_out,
+            w_scale, support_w, invscale_w, inv_w_scale,
+            BLOCK_IW=BLOCK_IW, MAX_OW=MAX_OW,
+            num_warps=nw,
         )
 
-        return grad_in  # 已经是 fp32
+        # Phase 2: H-gather -> grad_in [NC, H_in, W_in]
+        grad_in_flat = torch.empty(NC, H_in, W_in, dtype=grad_output.dtype,
+                                   device=grad_output.device)
+        grid2 = (NC * H_in, triton.cdiv(W_in, BLOCK_IW))
+        _pass2_h_gather_nchw_kernel[grid2](
+            buf, grad_in_flat, total_wy,
+            H_in, W_in, H_out,
+            h_scale, support_h, invscale_h, inv_h_scale,
+            H_out * W_in,           # stride_buf_hw
+            BLOCK_IW=BLOCK_IW, MAX_OH=MAX_OH,
+            num_warps=nw,
+        )
+
+        return grad_in_flat.reshape(N, C, H_in, W_in)
+
