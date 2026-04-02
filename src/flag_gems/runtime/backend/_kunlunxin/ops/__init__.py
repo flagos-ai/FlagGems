@@ -10,6 +10,7 @@ from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
 from .any import any, any_dim, any_dims
+from .apply_repetition_penalties import apply_repetition_penalties
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
@@ -221,6 +222,7 @@ __all__ = [
     "_conv_depthwise2d",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "apply_repetition_penalties",
     "abs",
     "abs_",
     "acos",
@@ -246,10 +248,10 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
-    "avg_pool2d",
-    "avg_pool2d_backward",
     "atan",
     "atan_",
+    "avg_pool2d",
+    "avg_pool2d_backward",
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
@@ -259,7 +261,6 @@ __all__ = [
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
     "bitwise_left_shift",
-    "bitwise_right_shift",
     "bitwise_not",
     "bitwise_not_",
     "bitwise_or_scalar",
@@ -267,6 +268,7 @@ __all__ = [
     "bitwise_or_scalar_tensor",
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
+    "bitwise_right_shift",
     "bmm",
     "bmm_out",
     "cat",

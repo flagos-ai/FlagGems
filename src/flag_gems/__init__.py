@@ -14,7 +14,7 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
-__version__ = "4.2.1.rc.0"
+__version__ = "5.0.1.rc.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -135,6 +135,7 @@ _FULL_CONFIG = (
     ("cummin", cummin),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
+    ("conj_physical", conj_physical),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),
@@ -354,6 +355,7 @@ _FULL_CONFIG = (
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
     ("scatter_add_", scatter_add_),
+    ("select_backward", select_backward),
     ("select_scatter", select_scatter),
     ("selu_", selu_),
     ("sgn_", sgn_),

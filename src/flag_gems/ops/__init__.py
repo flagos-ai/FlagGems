@@ -65,6 +65,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
@@ -119,6 +120,7 @@ from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
+from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
@@ -238,6 +240,7 @@ from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
 from flag_gems.ops.scatter_add_ import scatter_add_
+from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
@@ -387,6 +390,7 @@ __all__ = [
     "cummin",
     "cumsum",
     "cumsum_out",
+    "conj_physical",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -438,6 +442,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
@@ -592,6 +597,7 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "select_backward",
     "select_scatter",
     "selu",
     "selu_",
