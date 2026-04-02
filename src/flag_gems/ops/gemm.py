@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import torch
 import triton
@@ -16,10 +17,73 @@ CACHE_USAGE_THRESHOLD = 0.8
 logger = logging.getLogger(__name__)
 
 
+def is_tma_compatible(a, b, N, K):
+    """
+    Check if tensors are compatible with TMA (Tensor Memory Accelerator).
+
+    TMA requires 128-bit (16-byte) alignment for memory access:
+    - For FP16/BF16 (2 bytes/element): N and K must be multiples of 8
+      (8 elements × 2 bytes = 16 bytes)
+    - For FP32 (4 bytes/element): N and K must be multiples of 4
+      (4 elements × 4 bytes = 16 bytes)
+
+    Args:
+        a, b: Input tensors
+        N, K: Matrix dimensions
+
+    Returns:
+        bool: True if compatible with TMA's 128-bit alignment requirement
+    """
+    return (
+        a.dtype in (torch.float16, torch.bfloat16)
+        and b.dtype in (torch.float16, torch.bfloat16)
+        and N % 8 == 0
+        and K % 8 == 0
+    ) or (
+        a.dtype in (torch.float32,)
+        and b.dtype in (torch.float32,)
+        and N % 4 == 0
+        and K % 4 == 0
+    )
+
+
 @triton.jit
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
     return tl.cdiv(a, b) * b - b
+
+
+def matmul_tma_set_block_size_hook(nargs):
+    BLOCK_M = nargs["BLOCK_M"]
+    BLOCK_N = nargs["BLOCK_N"]
+    BLOCK_K = nargs["BLOCK_K"]
+    if nargs["A_ROW_MAJOR"]:
+        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
+    else:
+        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
+
+    if nargs["B_ROW_MAJOR"]:
+        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
+    else:
+        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
+
+    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
+
+
+def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
+    return [
+        triton.Config(
+            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+            num_stages=s,
+            num_warps=w,
+            pre_hook=pre_hook,
+        )
+        for BM in [32, 64, 128, 256]
+        for BN in [32, 64, 128]
+        for BK in [32, 64, 128]
+        for s in [2, 3, 4]
+        for w in [4, 8]
+    ]
 
 
 @libentry()
@@ -109,6 +173,77 @@ def gemm_kernel_general(
     tl.store(C, acc, mask=mask)
 
 
+@libentry()
+@libtuner(
+    configs=matmul_get_configs(),
+    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=5,
+)
+@triton.jit
+def gemm_kernel_general_host_tma(
+    a_desc,
+    b_desc,
+    c_desc,
+    alpha,
+    beta,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    A_ROW_MAJOR: tl.constexpr,
+    B_ROW_MAJOR: tl.constexpr,
+    dtype: tl.constexpr,
+    enable_warp_specialization=True,
+):
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // (group_size)
+
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    offset_am = (pid_m * BLOCK_M).to(tl.int32)
+    offset_bn = (pid_n * BLOCK_N).to(tl.int32)
+    iters = tl.cdiv(K, BLOCK_K)
+    for k in range(iters):
+        offset_ak = (k * BLOCK_K).to(tl.int32)
+
+        if A_ROW_MAJOR:
+            a = a_desc.load([offset_am, offset_ak])
+        else:
+            a_t = a_desc.load([offset_ak, offset_am])
+            a = tl.trans(a_t)
+
+        if B_ROW_MAJOR:
+            b = b_desc.load([offset_ak, offset_bn])
+        else:
+            b_t = b_desc.load([offset_bn, offset_ak])
+            b = tl.trans(b_t)
+
+        if a_desc.dtype == tl.float16 or a_desc.dtype == tl.bfloat16:
+            accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+        else:
+            accumulator = tl.dot(a, b, acc=accumulator, input_precision="tf32x3")
+
+    c = accumulator.to(c_desc.dtype) * alpha
+    c_desc.store([offset_am, offset_bn], c)
+
+
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
 
 
@@ -139,28 +274,84 @@ def general_gemm(a, b, c, alpha, beta, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    with torch_device_fn.device(a.device):
-        gemm_kernel_general[grid](
-            a,
-            b,
-            c,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            GROUP_M=8,
-        )
+
+    # Check if we can use TMA (Tensor Memory Accelerator)
+    if (
+        triton.__version__ >= "3.4"
+        and hasattr(triton.tools.tensor_descriptor, "TensorDescriptor")
+        and is_tma_compatible(a, b, N, K)
+    ):
+        logger.debug("Using TMA-optimized kernel")
+        a_row_major = a.stride(1) == 1
+        b_row_major = b.stride(1) == 1
+        dummy_block = [1, 1]
+        # triton 3.5.0
+        from triton.tools.tensor_descriptor import TensorDescriptor
+
+        if a_row_major:
+            a_desc = TensorDescriptor(a, a.shape, a.stride(), dummy_block)
+        else:
+            a_desc = TensorDescriptor(a, a.T.shape, a.T.stride(), dummy_block)
+        if b_row_major:
+            b_desc = TensorDescriptor(b, b.shape, b.stride(), dummy_block)
+        else:
+            b_desc = TensorDescriptor(b, b.T.shape, b.T.stride(), dummy_block)
+        c_desc = TensorDescriptor(c, c.shape, c.stride(), dummy_block)
+
+        input_dtype = a.dtype
+        dtype_str = str(input_dtype).split(".")[-1]
+
+        with torch_device_fn.device(a.device):
+            gemm_kernel_general_host_tma[grid](
+                a_desc,
+                b_desc,
+                c_desc,
+                alpha,
+                beta,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                GROUP_M=8,
+                A_ROW_MAJOR=a_row_major,
+                B_ROW_MAJOR=b_row_major,
+                dtype=dtype_str,
+            )
+    else:
+        logger.debug("Using regular kernel")
+
+        def alloc_fn(size: int, align: int, stream: Optional[int]):
+            return torch.empty(size, dtype=torch.int8, device=a.device)
+
+        triton.set_allocator(alloc_fn)
+
+        with torch_device_fn.device(a.device):
+            gemm_kernel_general[grid](
+                a,
+                b,
+                c,
+                alpha,
+                beta,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                GROUP_M=8,
+            )
     return c
 
 
-def streamk_scenario(a, b, M, N, K, alpha, beta):
+def streamk_scenario(a, b, alpha, beta, M, N, K):
     # TODO: this my change sometime according to the realbenchmark result
     # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
     # The optimal settings for other devices need to be determined through real testing.
@@ -194,7 +385,7 @@ def gemm(a, b, beta=0, alpha=1):
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     # l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
-    if streamk_scenario(a, b, M, N, K, alpha, beta):
+    if streamk_scenario(a, b, alpha, beta, M, N, K):
         return streamk_mm(a, b, c, M, N, K, sm_count=sm_count)
     else:
         return general_gemm(a, b, c, alpha, beta, M, N, K)
@@ -212,7 +403,7 @@ def gemm_out(a, b, *, beta=0, alpha=1, out):
     _, N = b.shape
     # l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
-    if streamk_scenario(a, b, M, N, K, alpha, beta):
+    if streamk_scenario(a, b, alpha, beta, M, N, K):
         return streamk_mm(a, b, out, M, N, K, sm_count=sm_count)
     else:
         return general_gemm(a, b, out, alpha, beta, M, N, K)

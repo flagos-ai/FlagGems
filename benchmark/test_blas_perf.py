@@ -377,4 +377,5 @@ def test_gemm_benchmark():
         torch_op=torch.Tensor.mm,
         dtypes=FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems.ops.gemm)
     bench.run()
