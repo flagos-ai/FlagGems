@@ -14,6 +14,7 @@ class vendors(Enum):
     ASCEND = 9
     TSINGMICRO = 10
     SUNRISE = 11
+    ENFLAME = 12
 
     @classmethod
     def get_all_vendors(cls) -> dict:

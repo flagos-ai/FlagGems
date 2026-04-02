@@ -12,6 +12,7 @@ from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
     ALL_INT_DTYPES,
     BOOL_TYPES,
+    COMPLEX_DTYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
@@ -43,6 +44,42 @@ def test_accuracy_add(shape, alpha, dtype):
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.add
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("complex_dtype", COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "other_type", ["complex", "float_tensor", "int_tensor", "int_scalar"]
+)
+def test_accuracy_add_complex(shape, complex_dtype, other_type):
+    inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
+
+    if other_type == "complex":
+        inp2 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
+    elif other_type == "float_tensor":
+        if complex_dtype == torch.complex64:
+            float_dtype = torch.float32
+        elif complex_dtype == torch.complex32:
+            float_dtype = torch.float16
+        else:
+            raise ValueError(f"Unsupported complex_dtype: {complex_dtype}")
+        inp2 = torch.randn(shape, dtype=float_dtype, device=flag_gems.device)
+    elif other_type == "int_tensor":
+        inp2 = torch.randint(10, 20, shape, device=flag_gems.device)
+    elif other_type == "int_scalar":
+        inp2 = 3
+    else:
+        raise ValueError(f"Unknown other_type: {other_type}")
+
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True) if isinstance(inp2, torch.Tensor) else inp2
+
+    ref_out = torch.add(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.add(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, complex_dtype)
 
 
 @pytest.mark.inplace
@@ -615,11 +652,10 @@ def test_accuracy_trunc_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
-    upcast = (
-        True
-        if flag_gems.vendor_name not in ["cambricon", "iluvatar", "kunlunxin"]
-        else False
-    )
+    upcast = False
+    if flag_gems.vendor_name not in ["cambricon", "iluvatar", "kunlunxin"]:
+        upcast = True
+
     ref_inp1 = to_reference(inp1, upcast)
     ref_inp2 = to_reference(inp2, upcast)
 
@@ -648,10 +684,9 @@ def test_accuracy_trunc_div_(shape, dtype):
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    upcast = True
     if flag_gems.vendor_name in ("cambricon", "kunlunxin", "iluvatar"):
         upcast = False
-    else:
-        upcast = True
     ref_inp1 = to_reference(inp1, upcast)
     ref_inp2 = to_reference(inp2, upcast)
 
@@ -685,6 +720,58 @@ def test_accuracy_trunc_divide_scalar_scalar(dtype):
         gems_assert_equal(res_out, ref_out)
     else:
         gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.div
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES + [torch.int64])
+def test_trunc_div_int(shape, dtype):
+    # Regression test: integer types must be dispatched at Python layer to avoid
+    # passing int tensors to div_rz which only supports floating point.
+    inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
+    with flag_gems.use_gems():
+        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.div
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES + [torch.int64])
+def test_trunc_div_tensor_scalar_int(shape, dtype):
+    # Regression test: integer types must be dispatched at Python layer to avoid
+    # passing int tensors to div_rz which only supports floating point.
+    inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    scalar = random.randint(1, 10)
+    ref_inp1 = to_reference(inp1, False)
+
+    ref_out = torch.div(ref_inp1, scalar, rounding_mode="trunc")
+    with flag_gems.use_gems():
+        res_out = torch.div(inp1, scalar, rounding_mode="trunc")
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.div
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES + [torch.int64])
+def test_trunc_div_scalar_tensor_int(shape, dtype):
+    # Regression test: integer types must be dispatched at Python layer to avoid
+    # passing int tensors to div_rz which only supports floating point.
+    inp2 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    scalar = random.randint(1, 100)
+    ref_inp2 = to_reference(inp2, False)
+
+    ref_out = torch.div(scalar, ref_inp2, rounding_mode="trunc")
+    with flag_gems.use_gems():
+        res_out = torch.div(scalar, inp2, rounding_mode="trunc")
+
+    gems_assert_equal(res_out, ref_out)
 
 
 # TODO: failed at large size, eg. (65536 * 2048,)
@@ -1128,6 +1215,43 @@ def test_accuracy_mul(shape, dtype):
 
 @pytest.mark.mul
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("complex_dtype", COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "other_type", ["complex", "float_tensor", "int_tensor", "int_scalar"]
+)
+def test_accuracy_mul_complex(shape, complex_dtype, other_type):
+    # inp1: complex tensor
+    inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
+
+    if other_type == "complex":
+        inp2 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
+    elif other_type == "float_tensor":
+        if complex_dtype == torch.complex64:
+            float_dtype = torch.float32
+        elif complex_dtype == torch.complex32:
+            float_dtype = torch.float16
+        else:
+            raise ValueError(f"Unsupported complex_dtype: {complex_dtype}")
+        inp2 = torch.randn(shape, dtype=float_dtype, device=flag_gems.device)
+    elif other_type == "int_tensor":
+        inp2 = torch.randint(10, 20, shape, device=flag_gems.device)
+    elif other_type == "int_scalar":
+        inp2 = 3
+    else:
+        raise ValueError(f"Unknown other_type: {other_type}")
+
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True) if isinstance(inp2, torch.Tensor) else inp2
+
+    ref_out = torch.mul(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.mul(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, complex_dtype)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
@@ -1318,6 +1442,56 @@ def test_accuracy_minimum(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.hypot
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_hypot(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.hypot(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.hypot(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fmin
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_fmin(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.fmin(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.fmin(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.fmin
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_fmin_out(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.empty_like(ref_inp1)
+    torch.fmin(ref_inp1, ref_inp2, out=ref_out)
+    with flag_gems.use_gems():
+        res_out = torch.empty_like(inp1)
+        torch.fmin(inp1, inp2, out=res_out)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.pow
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1461,6 +1635,42 @@ def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.sub
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("complex_dtype", COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "other_type", ["complex", "float_tensor", "int_tensor", "int_scalar"]
+)
+def test_accuracy_sub_complex(shape, complex_dtype, other_type):
+    inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
+
+    if other_type == "complex":
+        inp2 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
+    elif other_type == "float_tensor":
+        if complex_dtype == torch.complex64:
+            float_dtype = torch.float32
+        elif complex_dtype == torch.complex32:
+            float_dtype = torch.float16
+        else:
+            raise ValueError(f"Unsupported complex_dtype: {complex_dtype}")
+        inp2 = torch.randn(shape, dtype=float_dtype, device=flag_gems.device)
+    elif other_type == "int_tensor":
+        inp2 = torch.randint(10, 20, shape, device=flag_gems.device)
+    elif other_type == "int_scalar":
+        inp2 = 3
+    else:
+        raise ValueError(f"Unknown other_type: {other_type}")
+
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True) if isinstance(inp2, torch.Tensor) else inp2
+
+    ref_out = torch.sub(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.sub(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, complex_dtype)
 
 
 @pytest.mark.inplace
@@ -2149,6 +2359,44 @@ def test_accuracy_addcmul(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.addcmul
+@pytest.mark.parametrize(
+    "inp_shape, t1_shape, t2_shape, out_shape",
+    [
+        ((1, 256, 1, 1), (1, 256, 56, 56), (1, 256, 56, 56), (1, 256, 1, 1)),
+        ((1, 3), (2, 1), (2, 3), (1, 1)),
+        ((4, 1, 16), (1, 8, 1), (4, 8, 16), (4, 1, 1)),
+        ((128, 256), (128, 256), (128, 256), (1,)),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addcmul_out_broadcast(
+    inp_shape, t1_shape, t2_shape, out_shape, dtype
+):
+    res_inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+    t1 = torch.randn(t1_shape, dtype=dtype, device=flag_gems.device)
+    t2 = torch.randn(t2_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(res_inp, True)
+    ref_t1 = to_reference(t1, True)
+    ref_t2 = to_reference(t2, True)
+
+    v = float(np.float32(random.random()))
+
+    ref_out_tensor = torch.randn(out_shape, dtype=dtype, device=ref_inp.device)
+    ref_result = torch.addcmul(ref_inp, ref_t1, ref_t2, value=v, out=ref_out_tensor)
+
+    res_out_tensor = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_result = torch.addcmul(res_inp, t1, t2, value=v, out=res_out_tensor)
+
+    broadcast_shape = torch.broadcast_shapes(inp_shape, t1_shape, t2_shape)
+    assert list(res_out_tensor.shape) == list(
+        broadcast_shape
+    ), f"out tensor was not resized: expected {broadcast_shape}, got {res_out_tensor.shape}"
+    gems_assert_close(res_result, ref_result, dtype)
+
+
 @pytest.mark.addcdiv
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -2166,5 +2414,41 @@ def test_accuracy_addcdiv(shape, dtype):
     ref_out = torch.addcdiv(ref_inp, ref_t1, ref_t2, value=v)
     with flag_gems.use_gems():
         res_out = torch.addcdiv(res_inp, t1, t2, value=v)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp(shape, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_x = to_reference(x, True)
+    ref_y = to_reference(y, True)
+    ref_out = torch.logaddexp(ref_x, ref_y)
+
+    with flag_gems.use_gems():
+        res_out = torch.logaddexp(x, y)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logaddexp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_out(shape, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_x = to_reference(x, True)
+    ref_y = to_reference(y, True)
+    ref_out_buf = torch.empty(shape, dtype=ref_x.dtype, device=ref_x.device)
+    ref_out = torch.ops.aten.logaddexp.out(ref_x, ref_y, out=ref_out_buf)
+
+    res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.logaddexp.out(x, y, out=res_out_buf)
 
     gems_assert_close(res_out, ref_out, dtype)

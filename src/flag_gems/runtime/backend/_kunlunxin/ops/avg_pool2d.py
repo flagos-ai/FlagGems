@@ -32,15 +32,7 @@ def pool2d_output_size(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 16}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 64}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_H": 64, "BLOCK_W": 64}, num_stages=2, num_warps=8),
     ],
     key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
 )
@@ -91,8 +83,8 @@ def avg_pool2d_forward_kernel(
 
     input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
 
-    for kh in range(0, kernel_h):
-        for kw in range(0, kernel_w):
+    for kh in tl.static_range(0, kernel_h):
+        for kw in tl.static_range(0, kernel_w):
             h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
             w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
             in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
@@ -105,12 +97,18 @@ def avg_pool2d_forward_kernel(
             sum_acc += tl.where(in_mask, current_val, 0.0)
             count_acc += in_mask.to(tl.int32)
 
-    if divisor_override != 0:
-        divisor = tl.full((BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32)
-    elif COUNT_INCLUDE_PAD:
-        divisor = tl.full((BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32)
+    count_divisor = count_acc.to(tl.float32)
+
+    if COUNT_INCLUDE_PAD:
+        default_divisor = tl.where(
+            count_divisor >= 0, float(kernel_h * kernel_w), count_divisor
+        )
     else:
-        divisor = count_acc.to(tl.float32)
+        default_divisor = count_divisor
+
+    divisor = tl.where(
+        divisor_override != 0, divisor_override + default_divisor * 0, default_divisor
+    )
 
     output_vals = tl.where(divisor != 0, sum_acc / divisor, 0.0)
 
@@ -130,12 +128,7 @@ def avg_pool2d_forward_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 64}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_H": 64, "BLOCK_W": 16}, num_warps=8),
     ],
     key=["in_h", "in_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
 )
@@ -192,8 +185,8 @@ def avg_pool2d_backward_kernel(
 
     grad_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
 
-    for kh_loop in range(kernel_h):
-        for kw_loop in range(kernel_w):
+    for kh_loop in tl.static_range(0, kernel_h):
+        for kw_loop in tl.static_range(0, kernel_w):
             h_out_num = h_in_offsets[:, None] + padding_h - kh_loop * dilation_h
             w_out_num = w_in_offsets[None, :] + padding_w - kw_loop * dilation_w
 
@@ -207,31 +200,36 @@ def avg_pool2d_backward_kernel(
             w_out_mask = w_valid_map & (w_out < out_w)
             out_mask = h_out_mask & w_out_mask
 
-            if divisor_override != 0:
-                divisor = tl.full(
-                    (BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
-                )
-            elif COUNT_INCLUDE_PAD:
-                divisor = tl.full(
-                    (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
+            # Compute count for this output position (for count_include_pad=False)
+            h_start = h_out * stride_h - padding_h
+            w_start = w_out * stride_w - padding_w
+            count = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
+            for kh_count in tl.static_range(0, kernel_h):
+                for kw_count in tl.static_range(0, kernel_w):
+                    h_in_for_count = h_start + kh_count * dilation_h
+                    w_in_for_count = w_start + kw_count * dilation_w
+                    is_valid = (
+                        (h_in_for_count >= 0)
+                        & (h_in_for_count < in_h)
+                        & (w_in_for_count >= 0)
+                        & (w_in_for_count < in_w)
+                    )
+                    count += is_valid.to(tl.int32)
+
+            count_divisor = count.to(tl.float32)
+
+            if COUNT_INCLUDE_PAD:
+                default_divisor = tl.where(
+                    count_divisor >= 0, float(kernel_h * kernel_w), count_divisor
                 )
             else:
-                h_start = h_out * stride_h - padding_h
-                w_start = w_out * stride_w - padding_w
-                count = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
-                for kh_count in range(0, kernel_h):
-                    for kw_count in range(0, kernel_w):
-                        h_in_for_count = h_start + kh_count * dilation_h
-                        w_in_for_count = w_start + kw_count * dilation_w
-                        is_valid = (
-                            (h_in_for_count >= 0)
-                            & (h_in_for_count < in_h)
-                            & (w_in_for_count >= 0)
-                            & (w_in_for_count < in_w)
-                        )
-                        count += is_valid.to(tl.int32)
-                divisor = count.to(tl.float32)
+                default_divisor = count_divisor
 
+            divisor = tl.where(
+                divisor_override != 0,
+                divisor_override + default_divisor * 0,
+                default_divisor,
+            )
             divisor = tl.where(divisor == 0, 1.0, divisor)
 
             grad_out_ptr = (
@@ -239,8 +237,6 @@ def avg_pool2d_backward_kernel(
             )
             grad_out_val = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
             grad_acc += tl.where(out_mask, grad_out_val / divisor, 0.0)
-            # grad_to_add = grad_out_val.to(tl.float32) / divisor.to(tl.float32)
-            # grad_acc += tl.where(out_mask, grad_to_add, 0.0)
 
     grad_input_store_ptr = (
         grad_input_block_ptr

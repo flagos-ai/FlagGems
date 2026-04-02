@@ -1,5 +1,6 @@
 import math
 import os
+import random
 from typing import Any, List, Optional
 
 import pytest
@@ -7,6 +8,7 @@ import torch
 import triton
 
 import flag_gems
+from benchmark.attri_util import FLOAT_DTYPES
 
 from .performance_utils import Benchmark, GenericBenchmark, SkipVersion, vendor_name
 
@@ -22,7 +24,252 @@ class AttentionBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+def torch_flash_attention_forward(
+    q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
+):
+    return torch.ops.aten._flash_attention_forward(
+        q,
+        k,
+        v,
+        None,
+        None,
+        q.shape[-3],
+        k.shape[-3],
+        dropout_p,
+        is_causal,
+        return_debug_mask,
+        scale=scale,
+        **extra_kwargs,
+    )
+
+
+def gems_flash_attention_forward(
+    q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
+):
+    return flag_gems.ops.flash_attention_forward(
+        q,
+        k,
+        v,
+        None,
+        None,
+        q.shape[-3],
+        k.shape[-3],
+        dropout_p,
+        is_causal,
+        return_debug_mask,
+        scale=scale,
+        **extra_kwargs,
+    )
+
+
+def torch_flash_attention_supports_alibi(device: str) -> bool:
+    if device == "cpu" or not torch.cuda.is_available():
+        return False
+    try:
+        q = torch.randn((1, 16, 1, 64), device=device, dtype=torch.float16)
+        k = torch.randn((1, 16, 1, 64), device=device, dtype=torch.float16)
+        v = torch.randn((1, 16, 1, 64), device=device, dtype=torch.float16)
+        scale = float(1.0 / math.sqrt(64))
+        alibi_slopes = torch.ones((1, 1), device=device, dtype=torch.float32) * 0.3
+        torch.ops.aten._flash_attention_forward(
+            q,
+            k,
+            v,
+            None,
+            None,
+            q.shape[-3],
+            k.shape[-3],
+            0.0,
+            False,
+            False,
+            scale=scale,
+            alibi_slopes=alibi_slopes,
+        )
+        return True
+    except RuntimeError as e:
+        if "does not support alibi" in str(e).lower():
+            return False
+        raise
+
+
+class FlashAttentionForwardBenchmark(GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = []
+        for head_size in (64, 128, 192, 256):
+            for is_causal in (False, True):
+                self.shapes.append(
+                    (
+                        4,
+                        8,
+                        8,
+                        1024,
+                        128,
+                        head_size,
+                        is_causal,
+                        0.0,
+                        False,
+                        None,
+                        None,
+                        False,
+                    )
+                )
+        for batch, num_head, q_seq_len, kv_seq_len in (
+            (1, 1, 128, 2048),
+            (4, 8, 17, 1030),
+        ):
+            for is_causal in (False, True):
+                self.shapes.append(
+                    (
+                        batch,
+                        num_head,
+                        num_head,
+                        q_seq_len,
+                        kv_seq_len,
+                        128,
+                        is_causal,
+                        0.0,
+                        False,
+                        None,
+                        None,
+                        False,
+                    )
+                )
+
+        supports_alibi = torch_flash_attention_supports_alibi(self.device)
+        if supports_alibi:
+            # GQA + alibi cases
+            for head_size in (128, 192):
+                for is_causal in (False, True):
+                    self.shapes.append(
+                        (
+                            4,
+                            8,
+                            2,
+                            1024,
+                            1024,
+                            head_size,
+                            is_causal,
+                            0.0,
+                            False,
+                            None,
+                            None,
+                            True,
+                        )
+                    )
+            for is_causal in (False, True):
+                self.shapes.append(
+                    (4, 4, 4, 1, 519, 128, is_causal, 0.0, False, None, None, True)
+                )
+
+        # Split-KV like cases (q_seq_len=1, num_head_k < num_head).
+        for is_causal in (False, True):
+            self.shapes.append(
+                (1, 4, 1, 1, 1024, 128, is_causal, 0.0, False, None, None, False)
+            )
+            if supports_alibi:
+                self.shapes.append(
+                    (1, 4, 1, 1, 1024, 128, is_causal, 0.0, False, None, None, True)
+                )
+
+        # Sliding window attention.
+        for batch, num_head, q_seq_len, kv_seq_len in (
+            (1, 1, 128, 2048),
+            (8, 32, 1024, 1024),
+            (8, 32, 1024, 128),
+            (8, 32, 17, 1030),
+        ):
+            for window_size_left, window_size_right in ((256, 0), (128, 128)):
+                self.shapes.append(
+                    (
+                        batch,
+                        num_head,
+                        num_head,
+                        q_seq_len,
+                        kv_seq_len,
+                        128,
+                        False,
+                        0.0,
+                        False,
+                        window_size_left,
+                        window_size_right,
+                        False,
+                    )
+                )
+        self.shapes.append(
+            (8, 32, 32, 1024, 1024, 192, False, 0.0, False, 256, 0, False)
+        )
+
+        for is_causal in (False, True):
+            self.shapes.append(
+                (1, 1, 1, 1024, 1024, 128, is_causal, 0.2, True, None, None, False)
+            )
+
+    def set_more_shapes(self):
+        return None
+
+
+def flash_attention_forward_input_fn(config, dtype, device):
+    (
+        batch,
+        num_head,
+        num_head_k,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        is_causal,
+        dropout_p,
+        return_debug_mask,
+        window_size_left,
+        window_size_right,
+        use_alibi,
+    ) = config
+
+    q = torch.empty(
+        (batch, q_seq_len, num_head, head_size), device=device, dtype=dtype
+    ).uniform_(-0.05, 0.05)
+    k = torch.empty(
+        (batch, kv_seq_len, num_head_k, head_size), device=device, dtype=dtype
+    ).uniform_(-0.05, 0.05)
+    v = torch.empty(
+        (batch, kv_seq_len, num_head_k, head_size), device=device, dtype=dtype
+    ).uniform_(-0.05, 0.05)
+    scale = float(1.0 / math.sqrt(head_size))
+
+    extra_kwargs = {}
+    if window_size_left is not None or window_size_right is not None:
+        extra_kwargs.update(
+            {
+                "window_size_left": window_size_left,
+                "window_size_right": window_size_right,
+            }
+        )
+    if use_alibi:
+        extra_kwargs["alibi_slopes"] = (
+            torch.ones(batch, num_head, device=device, dtype=torch.float32) * 0.3
+        )
+
+    yield q, k, v, scale, is_causal, dropout_p, return_debug_mask, extra_kwargs
+
+
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="Low Pytorch Version.",
+)
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
+@pytest.mark.flash_attention_forward
+def test_perf_flash_attention_forward():
+    bench = FlashAttentionForwardBenchmark(
+        op_name="flash_attention_forward",
+        input_fn=flash_attention_forward_input_fn,
+        torch_op=torch_flash_attention_forward,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(gems_flash_attention_forward)
+    bench.run()
+
+
+# @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 # @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0])
@@ -79,7 +326,7 @@ class FlashMLABenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.flash_mla
 def test_perf_flash_mla():
@@ -462,7 +709,7 @@ def flash_attn_varlen_legacy(*args, **kwargs):
     SkipVersion("torch", "<2.7"),
     reason="The version prior to 2.7 is not compatible with VLLM.",
 )
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Torch < 2.7")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
@@ -607,4 +854,268 @@ def test_perf_get_scheduler_metadata():
         ],
     )
     bench.set_gems(flaggems_wrapper)
+    bench.run()
+
+
+def torch_concat_and_cache_mla_ref(
+    kv_c: torch.Tensor,
+    k_pe: torch.Tensor,
+    kv_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    kv_cache_dtype: str = "auto",
+    scale: torch.Tensor | None = None,
+) -> None:
+    kv_lora_rank = kv_c.size(1)
+    block_size = kv_cache.size(1)
+    temp_cache = torch.zeros(kv_cache.shape, dtype=kv_c.dtype, device=kv_cache.device)
+
+    for token_idx in range(slot_mapping.numel()):
+        slot = slot_mapping[token_idx].item()
+        block_id = slot // block_size
+        block_offset = slot % block_size
+        temp_cache[block_id, block_offset, :kv_lora_rank] = kv_c[token_idx]
+        temp_cache[block_id, block_offset, kv_lora_rank:] = k_pe[token_idx]
+
+    if kv_cache_dtype != "auto":
+        scale_val = scale.item() if scale is not None else 1.0
+        kv_cache.copy_(
+            (temp_cache / scale_val).to(torch.float8_e4m3fn).view(torch.uint8)
+        )
+    else:
+        kv_cache.copy_(temp_cache)
+
+
+class ConcatAndCacheMLABenchmark(GenericBenchmark):
+    """
+    benchmark for concat_and_cache_mla
+    """
+
+    def set_more_shapes(self):
+        return None
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.concat_and_cache_mla
+def test_perf_concat_and_cache_mla():
+    def input_kwargs(shape, dtype, device):
+        (
+            kv_lora_rank,
+            qk_rope_head_dim,
+            num_tokens,
+            block_size,
+            num_blocks,
+        ) = shape
+        total_slots = num_blocks * block_size
+        slot_mapping_lst = random.sample(range(total_slots), num_tokens)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+
+        kv_c = torch.randn(num_tokens, kv_lora_rank, dtype=dtype, device=device)
+        k_pe = torch.randn(num_tokens, qk_rope_head_dim, dtype=dtype, device=device)
+        entry_size = kv_lora_rank + qk_rope_head_dim
+
+        scale = torch.tensor(0.1, dtype=torch.float32, device=device)
+
+        kv_cache = torch.zeros(
+            num_blocks,
+            block_size,
+            entry_size,
+            dtype=dtype,
+            device=device,
+        )
+
+        yield (
+            kv_c,
+            k_pe,
+            kv_cache,
+            slot_mapping,
+            {"kv_cache_dtype": "auto", "scale": scale},
+        )
+
+    bench = ConcatAndCacheMLABenchmark(
+        op_name="concat_and_cache_mla",
+        input_fn=input_kwargs,
+        torch_op=torch_concat_and_cache_mla_ref,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.concat_and_cache_mla)
+    bench.run()
+
+
+def torch_reshape_and_cache_flash_ref(
+    key: Any,
+    value: Any,
+    key_cache: Any,
+    value_cache: Any,
+    slot_mapping: Any,
+    kv_cache_dtype: Any = "auto",
+    k_scale: Any = None,
+    v_scale: Any = None,
+):
+    block_size = key_cache.size(1)
+    num_tokens = slot_mapping.numel()
+    for i in range(num_tokens):
+        slot = slot_mapping[i].item()
+        block_idx = slot // block_size
+        block_offset = slot % block_size
+        key_cache[block_idx, block_offset] = key[i]
+        value_cache[block_idx, block_offset] = value[i]
+
+
+class ReshapeAndCacheFlashBenchmark(GenericBenchmark):
+    """
+    benchmark for reshape_and_cache_flash
+    """
+
+    def set_more_shapes(self):
+        return None
+
+
+@pytest.mark.reshape_and_cache_flash
+def test_perf_reshape_and_cache_flash():
+    def input_kwargs(shape, dtype, device):
+        (
+            num_tokens,
+            num_heads,
+            head_size,
+            block_size,
+            num_blocks,
+        ) = shape
+        num_slots = block_size * num_blocks
+        slot_mapping_lst = random.sample(range(num_slots), num_tokens)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+        qkv = torch.randn(
+            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
+        )
+        _, key, value = qkv.unbind(dim=1)
+
+        key_value_cache_shape = (num_blocks, 2, block_size, num_heads, head_size)
+        scale = head_size**-0.5
+        key_caches: list[torch.Tensor] = []
+        value_caches: list[torch.Tensor] = []
+        key_value_cache = torch.empty(
+            size=key_value_cache_shape, dtype=dtype, device=device
+        )
+        key_value_cache.uniform_(-scale, scale)
+        key_caches.append(key_value_cache[:, 0])
+        value_caches.append(key_value_cache[:, 1])
+        key_cache, value_cache = (
+            key_caches[0].contiguous(),
+            value_caches[0].contiguous(),
+        )
+        del key_caches
+        del value_caches
+
+        k_scale = (key.amax() / 64.0).to(torch.float32)
+        v_scale = (value.amax() / 64.0).to(torch.float32)
+
+        yield (
+            key,
+            value,
+            key_cache,
+            value_cache,
+            slot_mapping,
+            {
+                "kv_cache_dtype": "auto",
+                "k_scale": k_scale,
+                "v_scale": v_scale,
+            },
+        )
+
+    bench = ReshapeAndCacheFlashBenchmark(
+        op_name="reshape_and_cache_flash",
+        input_fn=input_kwargs,
+        torch_op=torch_reshape_and_cache_flash_ref,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.reshape_and_cache_flash)
+    bench.run()
+
+
+def torch_reshape_and_cache_ref(
+    key,  # [num_tokens, num_heads, head_size]
+    value,  # [num_tokens, num_heads, head_size]
+    key_cache,  # [num_blocks, num_heads, head_size/x, block_size, x]
+    value_cache,  # [num_blocks, num_heads, head_size, block_size]
+    slot_mapping,  # [num_tokens]
+    kv_cache_dtype,
+    k_scale,
+    v_scale,
+):
+    num_tokens = slot_mapping.numel()
+    block_size = key_cache.size(3)
+    reshaped_key = key.reshape(num_tokens, *key_cache[0, :, :, 0, :].shape)
+    for i in range(num_tokens):
+        slot = slot_mapping[i].item()
+        block_idx = slot // block_size
+        block_offset = slot % block_size
+        key_cache[block_idx, :, :, block_offset, :] = reshaped_key[i]
+        value_cache[block_idx, :, :, block_offset] = value[i]
+
+
+class ReshapeAndCacheBenchmark(GenericBenchmark):
+    """
+    benchmark for reshape_and_cache
+    """
+
+    def set_more_shapes(self):
+        return None
+
+
+@pytest.mark.reshape_and_cache
+def test_perf_reshape_and_cache():
+    def input_kwargs(shape, dtype, device):
+        (
+            num_tokens,
+            num_heads,
+            head_size,
+            block_size,
+            num_blocks,
+        ) = shape
+        num_slots = block_size * num_blocks
+        slot_mapping_lst = random.sample(range(num_slots), num_tokens)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+
+        qkv = torch.randn(
+            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
+        )
+        _, key, value = qkv.unbind(dim=1)
+
+        scale = head_size**-0.5
+        x = 16 // torch.tensor([], dtype=dtype).element_size()
+        key_cache_shape = (num_blocks, num_heads, head_size // x, block_size, x)
+        key_caches: list[torch.Tensor] = []
+        key_cache = torch.empty(size=key_cache_shape, dtype=dtype, device=device)
+        key_cache.uniform_(-scale, scale)
+        key_caches.append(key_cache)
+        value_cache_shape = (num_blocks, num_heads, head_size, block_size)
+        value_caches: list[torch.Tensor] = []
+        value_cache = torch.empty(size=value_cache_shape, dtype=dtype, device=device)
+        value_cache.uniform_(-scale, scale)
+        value_caches.append(value_cache)
+
+        key_cache, value_cache = key_caches[0], value_caches[0]
+
+        k_scale = (key.amax() / 64.0).to(torch.float32)
+        v_scale = (value.amax() / 64.0).to(torch.float32)
+
+        yield (
+            key,
+            value,
+            key_cache,
+            value_cache,
+            slot_mapping,
+            {
+                "kv_cache_dtype": "auto",
+                "k_scale": k_scale,
+                "v_scale": v_scale,
+            },
+        )
+
+    bench = ReshapeAndCacheBenchmark(
+        op_name="reshape_and_cache",
+        input_fn=input_kwargs,
+        torch_op=torch_reshape_and_cache_ref,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.reshape_and_cache)
     bench.run()
