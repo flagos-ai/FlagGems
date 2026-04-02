@@ -1433,3 +1433,20 @@ def test_select_backward_perf(dtype):
     )
 
     bench.run()
+
+
+def _functional_sym_constrain_range_for_size_input_fn(shape, cur_dtype, device):
+    dep_token = generate_tensor_input(shape, cur_dtype, device)
+    yield 5, 1, 10, dep_token
+
+
+@pytest.mark.functional_sym_constrain_range_for_size
+@pytest.mark.performance
+def test_perf_functional_sym_constrain_range_for_size():
+    bench = GenericBenchmark(
+        op_name="functional_sym_constrain_range_for_size",
+        torch_op=torch.ops.aten._functional_sym_constrain_range_for_size,
+        dtypes=FLOAT_DTYPES,
+        input_fn=_functional_sym_constrain_range_for_size_input_fn,
+    )
+    bench.run()
