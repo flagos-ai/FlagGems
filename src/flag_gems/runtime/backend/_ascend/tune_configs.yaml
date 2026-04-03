@@ -730,3 +730,16 @@ index_put:
   - 1024
   - 2048
   - 4096
+  grid_sample:                                             
+- META:                                                  
+    BLOCK_C: 64                                           
+    num_stages: 2                                         
+    num_warps: 4                                          
+- META:                                                  
+    BLOCK_C: 128                                         
+    num_stages: 2                                         
+    num_warps: 4                                         
+- META:                                                  
+    BLOCK_C: 256                                          
+    num_stages: 2                                         
+    num_warps: 8      
