@@ -11,10 +11,38 @@ namespace py = pybind11;
 PYBIND11_MODULE(c_operators, m) {
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
   // add
-  m.def("add_tensor", &flag_gems::add_tensor);
-  m.def("add_scalar", &flag_gems::add_scalar);
-  m.def("add_tensor_inplace", &flag_gems::add_tensor_inplace);
-  m.def("add_scalar_inplace", &flag_gems::add_scalar_inplace);
+  m.def(
+      "add_tensor",
+      [](const at::Tensor &self, const at::Tensor &other, double alpha) {
+        return flag_gems::add_tensor(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_scalar",
+      [](const at::Tensor &self, const at::Scalar &other, double alpha) {
+        return flag_gems::add_scalar(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_tensor_inplace",
+      [](at::Tensor &self, const at::Tensor &other, double alpha) {
+        return flag_gems::add_tensor_inplace(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
+  m.def(
+      "add_scalar_inplace",
+      [](at::Tensor &self, const at::Scalar &other, double alpha) {
+        return flag_gems::add_scalar_inplace(self, other, alpha);
+      },
+      py::arg("self"),
+      py::arg("other"),
+      py::arg("alpha") = 1.0);
   // div
   m.def("div.Tensor", &flag_gems::true_div);
   m.def("div_.Tensor", &flag_gems::true_div_);
