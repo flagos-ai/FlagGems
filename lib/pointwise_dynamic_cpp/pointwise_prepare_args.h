@@ -285,7 +285,8 @@ inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
 inline at::Tensor make_strided_view(const at::Tensor& base,
                                     const std::vector<int64_t>& shape,
                                     const std::vector<int64_t>& strides) {
-  return base.as_strided(shape, strides, /*storage_offset=*/0);
+  // return base.as_strided(shape, strides, /*storage_offset=*/0);
+  return base.as_strided(shape, strides, base.storage_offset());
 }
 
 // ==========================================================================
