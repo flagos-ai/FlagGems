@@ -143,6 +143,7 @@ from .unique import (
     sorted_quick_unique_flat,
 )
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .vector_norm import vector_norm
@@ -348,4 +349,5 @@ __all__ = [
     "replication_pad3d",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
+    "upsample_linear1d",
 ]
