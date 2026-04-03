@@ -110,7 +110,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: nvidia
-      runner_label: hopper
+      runner_label: h20
       gpu_check_script: tools/gpu_check.sh
       test_script: tools/run_backend_tests_nvidia.sh
 
