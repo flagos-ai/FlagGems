@@ -129,8 +129,8 @@ class BackendArchEvent:
     def get_arch_ops(self):
         arch_specialized_ops = []
         sys.path.append(self.current_arch_path)
+        ops_module = getattr(self.arch_module, "ops", None)
         try:
-            ops_module = getattr(self.arch_module, "ops", None)
             if ops_module is None:
                 ops_module = importlib.import_module(f"{self.arch}.ops")
             arch_specialized_ops.extend(self.get_functions_from_module(ops_module))
@@ -145,12 +145,12 @@ def _import_module_safe(module_name, vendor_name, module_type):
         return importlib.import_module(module_name)
     except ModuleNotFoundError:
         print(
-            f"[Note] No specialized {module_type} operators were found in "
-            f"the {vendor_name} implementation, and general {module_type} operators are used by default."
+            f"[Note] No specialized {module_type} operators were found for "
+            f"the {vendor_name}, generic {module_type} operators will be used by default."
         )
         return None
     except Exception as e:
-        raise RuntimeError(f"Import vendor extra lib failed: {e}")
+        raise RuntimeError(f"Failed to import vendor extra lib: {e}")
 
 
 def import_vendor_extra_lib(vendor_name=None):
