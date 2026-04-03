@@ -62,6 +62,14 @@ official_torch_270 = [
     "torchaudio==2.7.0",
 ]
 
+# Turned out that iluvatar requires native CUDA toolkit 10.2
+# cuda_runtime = [
+#     "nvidia-cublas-cu12",
+#     "nvidia-cuda-runtime-cu12",
+#     "nvidia-cuda-nvrtc-cu12",
+#     "nvidia-cudnn-cu12",
+# ]
+
 nvidia = [
     "flag_gems[official_torch_290]",
 ]
