@@ -89,6 +89,7 @@ from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
 from .maximum import maximum
+from .max_pool2d_with_indices import max_pool2d_with_indices, max_pool2d_backward
 from .mean import mean_dim
 from .minimum import minimum
 from .mm import mm
@@ -345,4 +346,6 @@ __all__ = [
     "exponential_",
     "logspace",
     "replication_pad3d",
+    "max_pool2d_with_indices",
+    "max_pool2d_backward",
 ]

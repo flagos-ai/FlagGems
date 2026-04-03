@@ -436,7 +436,7 @@ class MaxPool2dBenchmark(GenericBenchmark):
         for shape in shapes_4d:
             yield from self.input_fn(shape, cur_dtype, self.device)
 
-
+@pytest.mark.skipif(vendor_name == "enflame", reason="i64 dtype is not supported")
 @pytest.mark.max_pool2d
 def test_perf_max_pool2d():
     bench = MaxPool2dBenchmark(
@@ -449,6 +449,7 @@ def test_perf_max_pool2d():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "enflame", reason="i64 dtype is not supported")
 @pytest.mark.max_pool2d
 def test_perf_max_pool2d_backward():
     def max_pool2d_backward_input_fn(shape, dtype, device):
