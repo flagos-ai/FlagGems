@@ -23,29 +23,36 @@ class vendors(Enum):
             vendorDict[member.name.lower()] = member
         return vendorDict
 
-UNSUPPORT_FP64 = frozenset({
-    vendors.CAMBRICON,
-    vendors.ILUVATAR,
-    vendors.KUNLUNXIN,
-    vendors.MTHREADS,
-    vendors.AIPU,
-    vendors.ASCEND,
-    vendors.TSINGMICRO,
-    vendors.SUNRISE,
-    vendors.ENFLAME,
-})
 
-UNSUPPORT_BF16 = frozenset({
-    vendors.AIPU,
-    vendors.SUNRISE,
-})
+UNSUPPORT_FP64 = frozenset(
+    {
+        vendors.CAMBRICON,
+        vendors.ILUVATAR,
+        vendors.KUNLUNXIN,
+        vendors.MTHREADS,
+        vendors.AIPU,
+        vendors.ASCEND,
+        vendors.TSINGMICRO,
+        vendors.SUNRISE,
+        vendors.ENFLAME,
+    }
+)
 
-UNSUPPORT_INT64 = frozenset({
-    vendors.AIPU,
-    vendors.TSINGMICRO,
-    vendors.SUNRISE,
-    vendors.ENFLAME,
-})
+UNSUPPORT_BF16 = frozenset(
+    {
+        vendors.AIPU,
+        vendors.SUNRISE,
+    }
+)
+
+UNSUPPORT_INT64 = frozenset(
+    {
+        vendors.AIPU,
+        vendors.TSINGMICRO,
+        vendors.SUNRISE,
+        vendors.ENFLAME,
+    }
+)
 
 
 # Mapping from vendor name to torch attribute for quick detection

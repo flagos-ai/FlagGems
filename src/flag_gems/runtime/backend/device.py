@@ -6,7 +6,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch  # noqa: F401
 
 from .. import backend, error
-from ..common import vendors, UNSUPPORT_FP64, UNSUPPORT_BF16, UNSUPPORT_INT64, _VENDOR_TORCH_ATTR
+from ..common import (
+    _VENDOR_TORCH_ATTR,
+    UNSUPPORT_BF16,
+    UNSUPPORT_FP64,
+    UNSUPPORT_INT64,
+    vendors,
+)
+
 
 class DeviceDetector:
     """Singleton class to manage device context."""
@@ -28,7 +35,9 @@ class DeviceDetector:
         self.name = self.info.device_name
         self.vendor = vendors.get_all_vendors()[self.vendor_name]
         self.dispatch_key = self.info.dispatch_key or self.name.upper()
-        self.device_count = backend.gen_torch_device_object(self.vendor_name).device_count()
+        self.device_count = backend.gen_torch_device_object(
+            self.vendor_name
+        ).device_count()
         self.support_fp64 = self.vendor not in UNSUPPORT_FP64
         self.support_bf16 = self.vendor not in UNSUPPORT_BF16
         self.support_int64 = self.vendor not in UNSUPPORT_INT64
@@ -54,6 +63,7 @@ class DeviceDetector:
                 return vendor_name
         try:
             import torch_npu
+
             for vendor_name, attr in _VENDOR_TORCH_ATTR.items():
                 if hasattr(torch_npu, attr):
                     return vendor_name
@@ -77,7 +87,9 @@ class DeviceDetector:
                 return None
 
         with ThreadPoolExecutor() as executor:
-            futures = {executor.submit(check_vendor, info): info for info in vendor_infos}
+            futures = {
+                executor.submit(check_vendor, info): info for info in vendor_infos
+            }
             for future in as_completed(futures):
                 result = future.result()
                 if result:

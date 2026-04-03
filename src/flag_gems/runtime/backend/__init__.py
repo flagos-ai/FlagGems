@@ -156,8 +156,12 @@ def _import_module_safe(module_name, vendor_name, module_type):
 def import_vendor_extra_lib(vendor_name=None):
     if _state.vendor_extra_lib_imported:
         return
-    _state.ops_module = _import_module_safe(f"_{vendor_name}.ops", vendor_name, "common")
-    _state.fused_module = _import_module_safe(f"_{vendor_name}.fused", vendor_name, "fused")
+    _state.ops_module = _import_module_safe(
+        f"_{vendor_name}.ops", vendor_name, "common"
+    )
+    _state.fused_module = _import_module_safe(
+        f"_{vendor_name}.fused", vendor_name, "fused"
+    )
     _state.vendor_extra_lib_imported = True
 
 

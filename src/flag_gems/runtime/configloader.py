@@ -38,7 +38,11 @@ class ConfigLoader(object):
             self.gen_key = "gen"
             # loaded_triton_config is wrapped in triton.Config according to primitive_yaml_config
             self.loaded_triton_config = {}
-            self.triton_config_default = {"num_stages": 2, "num_warps": 4, "num_ctas": 1}
+            self.triton_config_default = {
+                "num_stages": 2,
+                "num_warps": 4,
+                "num_ctas": 1,
+            }
             if self.device.vendor_name == "hygon":
                 self.triton_config_default["num_ldmatrixes"] = 0
             self.load_all()
@@ -47,8 +51,8 @@ class ConfigLoader(object):
         try:
             archEvent = backend.BackendArchEvent()
             if archEvent.has_arch:
-                self.arch_specialized_yaml_config = (archEvent.autotune_configs)
-                self.arch_heuristics_config = (archEvent.heuristics_configs)
+                self.arch_specialized_yaml_config = archEvent.autotune_configs
+                self.arch_heuristics_config = archEvent.heuristics_configs
         except Exception as err:
             print(f"[INFO] : {err}")
 
