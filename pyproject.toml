@@ -1,9 +1,7 @@
 [build-system]
 # cmake locks to '>=3.20,<4.0' to sync with FlagTree
-requires = ["setuptools>=64.0", "scikit-build-core>=0.11", "pybind11>=3.0.2", "cmake>=3.2.0,<4.0", "ninja>=1.13.0"]
-
+requires = ["setuptools==82.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake==3.31.10", "ninja==1.13.0"]
 build-backend = "scikit_build_core.build"
-
 
 [project]
 
@@ -43,23 +41,53 @@ classifiers = [
 ]
 
 dependencies = [
-    # TODO: This is a very old version, should be bumped
-    "torch>=2.2.0",
-    "ninja>=1.13.0",
-    "packaging>=26.0",
-    "pybind11>=2.13.1",
-    "PyYAML>=6.0.3",
-    "sqlalchemy>=2.0.48",
+    "packaging==26.0",
+    "PyYAML==6.0.3",
+    "sqlalchemy==2.0.48",
+    "numpy==1.26.4",
 ]
 
 [project.optional-dependencies]
 
-test = [
-    "pytest>=9.0.2",
-    "numpy>=1.26",
-    "scipy>=1.17.0",
+# Backend specific packages
+official_torch_290 = [
+    "torch==2.9.0",
+    "torchvision==0.24.0",
+    "torchaudio==2.9.0",
 ]
 
+official_torch_270 = [
+    "torch==2.7.0",
+    "torchvision==0.22.0",
+    "torchaudio==2.7.0",
+]
+
+nvidia = [
+    "flag_gems[official_torch_290]",
+]
+
+iluvatar = [
+    "torch==2.7.1+corex.4.4.0",
+    "torchaudio==2.7.1+corex.4.4.0",
+    "torchvision==0.22.1+corex.4.4.0",
+    "triton==3.1.0+corex.4.4.0",
+]
+
+tsingmicro = [
+    "flag_gems[official_torch_270]",
+    "torch_txda==0.1.0+20260225.008333cf",
+    "txops==0.1.0+20260225.5cc33e4e",
+    "triton==3.3.0+git6b95f337",
+]
+
+# Test packages
+test = [
+    "distro==1.9.0",
+    "pytest==9.0.2",
+    "scipy>=1.15.3",
+]
+
+# Package for running example tests
 example = [
     "transformers>=4.40.2",
 ]
@@ -84,3 +112,53 @@ build.verbose = true
 logging.level = "INFO"
 wheel.install-dir = "flag_gems"
 build-dir = "build/{cache_tag}"
+
+[tool.uv]
+
+index-strategy = "unsafe-best-match"
+
+conflicts = [
+    [
+        { group = "iluvatar" },
+        { group = "tsingmicro" },
+        { group = "nvidia" },
+    ]
+]
+
+# Source for Iluvatar packages
+[[tool.uv.index]]
+name = "iluvatar-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-iluvatar/simple"
+
+# Source for TsingMicro packages
+[[tool.uv.index]]
+name = "tsingmicro-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple"
+
+# Source for common packages
+[[tool.uv.index]]
+name = "default"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[[tool.uv.index]]
+name = "torch-pypi"
+url = "https://download.pytorch.org/whl/cu128"
+
+[tool.uv.sources]
+# Mapping from optional groups to index servers
+iluvatar = [
+    { index = "iluvatar-pypi" }
+]
+
+tsingmicro = [
+    { index = "tsingmicro-pypi" }
+]
+
+official_torch_290 = [
+   { index = "torch-pypi"}
+]
+
+official_torch_270 = [
+   { index = "torch-pypi"}
+]
