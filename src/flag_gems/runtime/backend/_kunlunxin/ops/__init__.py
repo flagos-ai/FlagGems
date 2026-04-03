@@ -61,6 +61,7 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .digamma_ import digamma_
 from .div import (
     div_mode,
     div_mode_,
@@ -221,6 +222,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "digamma_",
     "softshrink",
     "softshrink_out",
     "_unique2",
