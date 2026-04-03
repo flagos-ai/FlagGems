@@ -17,15 +17,6 @@ DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
     )
 )
 
-HOPPER_MM_EXPAND_CONFIG_PATH = os.path.normpath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "backend",
-        "_nvidia",
-        "hopper",
-        "mm_hopper_expand.yaml",
-    )
-)
 
 DEFAULT_STRATEGIES = {
     "bmm": ["log", "log", "log", "align32", "align32"],
@@ -228,42 +219,36 @@ class ConfigLoader(object):
 
         return []
 
+    def _build_single_expand_spec(
+        self,
+        op_name,
+        expand_yaml_path=None,
+        yaml_op_name=None,
+    ):
+        return {
+            "yaml_op_name": yaml_op_name or op_name,
+            "key": OP_KEY_ORDERS[op_name],
+            "default_strategy": DEFAULT_STRATEGIES[op_name],
+            "expand_yaml_path": expand_yaml_path,
+        }
+
     def _build_expand_registry(self):
         return {
-            "bmm": {
-                "key": OP_KEY_ORDERS["bmm"],
-                "default_strategy": DEFAULT_STRATEGIES["bmm"],
-            },
-            "addmm": {
-                "key": OP_KEY_ORDERS["addmm"],
-                "default_strategy": DEFAULT_STRATEGIES["addmm"],
-            },
-            "baddbmm": {
-                "key": OP_KEY_ORDERS["baddbmm"],
-                "default_strategy": DEFAULT_STRATEGIES["baddbmm"],
-            },
-            "mv": {
-                "key": OP_KEY_ORDERS["mv"],
-                "default_strategy": DEFAULT_STRATEGIES["mv"],
-            },
-            "mm_general": {
-                "yaml_op_name": "mm_general",
-                "key": OP_KEY_ORDERS["mm_general"],
-                "default_strategy": DEFAULT_STRATEGIES["mm_general"],
-                "expand_yaml_path": HOPPER_MM_EXPAND_CONFIG_PATH,
-            },
-            "mm_general_tma": {
-                "yaml_op_name": "mm_general_tma",
-                "key": OP_KEY_ORDERS["mm_general_tma"],
-                "default_strategy": DEFAULT_STRATEGIES["mm_general_tma"],
-                "expand_yaml_path": HOPPER_MM_EXPAND_CONFIG_PATH,
-            },
-            "mm_gemv": {
-                "yaml_op_name": "mm_gemv",
-                "key": OP_KEY_ORDERS["mm_gemv"],
-                "default_strategy": DEFAULT_STRATEGIES["mm_gemv"],
-                "expand_yaml_path": HOPPER_MM_EXPAND_CONFIG_PATH,
-            },
+            "bmm": self._build_single_expand_spec(
+                "bmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "addmm": self._build_single_expand_spec(
+                "addmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "baddbmm": self._build_single_expand_spec(
+                "baddbmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "mv": self._build_single_expand_spec(
+                "mv", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "mm_general": self._build_single_expand_spec("mm_general"),
+            "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
+            "mm_gemv": self._build_single_expand_spec("mm_gemv"),
         }
 
     def load_all(self):
@@ -377,18 +362,15 @@ class ConfigLoader(object):
             current_config,
         )
 
-    def get_expand_config(self, op_name):
+    def get_expand_config(self, op_name, yaml_path=None):
         op_spec = self.expand_config_registry.get(op_name)
         if op_spec is None:
             return -1
 
         key = op_spec.get("key", [])
         default_strategy = op_spec.get("default_strategy")
-        expand_yaml_path = op_spec.get("expand_yaml_path", DEFAULT_EXPAND_CONFIG_PATH)
+        expand_yaml_path = op_spec.get("expand_yaml_path") or yaml_path
         yaml_op_name = op_spec.get("yaml_op_name", op_name)
-
-        if not expand_yaml_path or not os.path.exists(expand_yaml_path):
-            return -1
 
         try:
             expand_configs = backend.get_expand_config(
@@ -431,8 +413,8 @@ class ConfigLoader(object):
         except Exception:
             return -1
 
-    def ops_get_configs(self, op_name, pre_hook=None):
-        expand_config = self.get_expand_config(op_name)
+    def ops_get_configs(self, op_name, yaml_path=None, pre_hook=None):
+        expand_config = self.get_expand_config(op_name, yaml_path=yaml_path)
         if expand_config == -1:
             return []
         ranges = expand_config["ranges"]

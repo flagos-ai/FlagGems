@@ -15,6 +15,9 @@ from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
 logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
 CACHE_USAGE_THRESHOLD = 0.8
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
+)
 
 
 def is_tma_compatible(a, b, N, K):
@@ -72,17 +75,16 @@ def matmul_tma_set_block_size_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("mm_general", pre_hook=None)
+    configs=runtime.ops_get_configs(
+        "mm_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+    )
     if os.environ.get("USE_FLAGTUNE") == "1"
     else runtime.get_tuned_config("mm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-<<<<<<< HEAD
-    strategy=get_expand_config("matmul")["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
-=======
-    strategy=runtime.get_expand_config("mm_general")["strategy"]
+    strategy=runtime.get_expand_config("mm_general", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
     if os.environ.get("USE_FLAGTUNE") == "1"
->>>>>>> 7b0cabae (feat: apply config to mm operator under hopper)
     else ["default", "default", "default", "default", "default"],
     warmup=5,
     rep=10,
@@ -230,12 +232,16 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
 @libentry()
 @libtuner(
     configs=runtime.ops_get_configs(
-        "mm_general_tma", pre_hook=matmul_tma_set_block_size_hook
+        "mm_general_tma",
+        pre_hook=matmul_tma_set_block_size_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
     )
     if os.environ.get("USE_FLAGTUNE") == "1"
     else matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config("mm_general_tma")["strategy"]
+    strategy=runtime.get_expand_config(
+        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+    )["strategy"]
     if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
@@ -401,7 +407,9 @@ def general_mm(a, b, c, M, N, K):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("mm_gemv", pre_hook=None)
+    configs=runtime.ops_get_configs(
+        "mm_gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+    )
     if os.environ.get("USE_FLAGTUNE") == "1"
     else [
         triton.Config(
@@ -409,7 +417,9 @@ def general_mm(a, b, c, M, N, K):
         )
     ],
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("mm_gemv")["strategy"]
+    strategy=runtime.get_expand_config("mm_gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
     if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "default"],
     warmup=5,
