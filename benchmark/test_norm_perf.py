@@ -177,8 +177,12 @@ def test_perf_batch_norm_backward():
             if running_var is None:
                 running_var = torch.ones(channels, dtype=dtype, device=device)
 
-            save_mean = torch.randn(channels, dtype=dtype, device=device)
-            save_invstd = torch.randn(channels, dtype=dtype, device=device)
+            if vendor_name in ["enflame"]:
+                save_mean = torch.randn(channels, dtype=dtype, device=device)
+                save_invstd = torch.randn(channels, dtype=dtype, device=device)
+            else:
+                save_mean = torch.randn(channels, dtype=torch.float32, device=device)
+                save_invstd = torch.randn(channels, dtype=torch.float32, device=device)
             output_mask = [True, weight is not None, bias is not None]
 
             yield (
