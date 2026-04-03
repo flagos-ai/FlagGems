@@ -8,6 +8,7 @@ from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
+from .grid_sample import grid_sample
 from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.addmm import addmm, addmm_out
 from flag_gems.ops.addmv import addmv, addmv_out
@@ -681,4 +682,5 @@ __all__ = [
     "zero_",
     "zeros",
     "zeros_like",
+    "grid_sample",
 ]
