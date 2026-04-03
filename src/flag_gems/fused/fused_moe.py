@@ -547,11 +547,7 @@ def apply_moe_activation(
         )
     if activation in (MoEActivation.SILU, MoEActivation.SWIGLUOAI):
         N = output.size(-1)
-        if (
-            input.is_contiguous()
-            and output.is_contiguous()
-            and input.size(0) <= _SMALL_M_SILU_MUL_THRESHOLD
-        ):
+        if input.is_contiguous() and output.is_contiguous() and input.size(0) <= 32:
             small_m_silu_and_mul_packed(output, input)
         else:
             x, y = input[:, :N], input[:, N:]
@@ -580,12 +576,6 @@ def apply_moe_activation(
         raise ValueError(f"Unsupported FusedMoe activation: {activation}")
 
     return output
-
-
-_SMALL_M_FP8_QUANT_THRESHOLD = 16
-_SINGLE_LAUNCH_FP8_QUANT_MAX_M = 8
-_SINGLE_LAUNCH_FP8_QUANT_MAX_NUMEL = 65536
-_SMALL_M_SILU_MUL_THRESHOLD = 32
 
 
 def _get_fp8_quant_2d_config(
