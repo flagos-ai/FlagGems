@@ -350,6 +350,7 @@ __all__ = [
     "fill_tensor_",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "flash_attn_varlen_opt_func",
     "flip",
     "floor_divide",
     "floor_divide_",
