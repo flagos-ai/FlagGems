@@ -5,8 +5,8 @@ export GEMS_VENDOR=$VENDOR
 
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
-export LD_LIBRARY_PATH=/usr/local/corex-4.4.0/lib:/usr/local/cuda/compat:$LD_LIBRARY_PATH
-echo $LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/corex/lib:$LD_LIBRARY_PATH
+echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
