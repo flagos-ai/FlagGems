@@ -188,9 +188,42 @@ def try_get_optimal_moe_config(
     top_k: int,
     dtype: str | None,
     M: int,
+    E: int,
     block_shape: list[int] | None = None,
 ) -> dict[str, int]:
     override_config: Optional[dict[str, Any]] = None
+
+    is_hopper = torch.cuda.is_available() and torch.cuda.get_device_capability() == (
+        9,
+        0,
+    )
+    if (
+        is_hopper
+        and dtype == "fp8_w8a8"
+        and block_shape is not None
+        and len(block_shape) == 2
+    ):
+        # Use heuristic config like hpc-ops
+        avg_tokens_per_expert = M * top_k // E
+        if avg_tokens_per_expert <= 16:
+            block_size_m = 16
+        elif avg_tokens_per_expert <= 32:
+            block_size_m = 32
+        elif avg_tokens_per_expert <= 48:
+            block_size_m = 48
+        else:
+            block_size_m = 64
+        config = {
+            "BLOCK_SIZE_M": block_size_m,
+            "BLOCK_SIZE_N": block_shape[0],
+            "BLOCK_SIZE_K": block_shape[1],
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "SWAP_AB": True,
+        }
+        override_config = config
+
     if override_config:
         config = override_config
     else:
@@ -509,7 +542,9 @@ def _fp8_quantize(
         block_k = block_shape[1]
         assert A.size(-1) % block_k == 0
         if A.ndim == 2 and A.stride(-1) == 1:
-            from flag_gems.ops.per_token_group_quant_fp8 import per_token_group_quant_fp8
+            from flag_gems.ops.per_token_group_quant_fp8 import (
+                per_token_group_quant_fp8,
+            )
 
             return per_token_group_quant_fp8(
                 A,
@@ -924,6 +959,7 @@ def fused_moe_kernel(
     use_int8_w8a16: tl.constexpr,
     per_channel_quant: tl.constexpr,
     HAS_BIAS: tl.constexpr,
+    SWAP_AB: tl.constexpr,
 ):
     """Fused MoE kernel: token × expert GEMM with quantization support."""
     # Map pid to C block (grouped ordering for L2 reuse)
@@ -1011,6 +1047,8 @@ def fused_moe_kernel(
         bias = tl.load(bias_ptrs, mask=(offs_bn < N), other=0.0)
     # Accumulate C block in fp32
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    if SWAP_AB:
+        accumulator_nm = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_M), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl.load(
             a_ptrs,
@@ -1027,9 +1065,16 @@ def fused_moe_kernel(
                 a_scale = tl.load(
                     a_scale_ptrs + offs_ks * stride_ask, mask=token_mask, other=0.0
                 )
-                b_scale = tl.load(b_scale_ptrs + offs_ks * stride_bsk)
-
-                accumulator += tl.dot(a, b) * a_scale[:, None] * b_scale[None, :]
+                if SWAP_AB:
+                    b_scale = tl.load(b_scale_ptrs + offs_ks * stride_bsk)
+                    accumulator_nm += (
+                        tl.dot(tl.trans(b), tl.trans(a))
+                        * b_scale[:, None]
+                        * a_scale[None, :]
+                    )
+                else:
+                    b_scale = tl.load(b_scale_ptrs + offs_ks * stride_bsk)
+                    accumulator += tl.dot(a, b) * a_scale[:, None] * b_scale[None, :]
             else:
                 if use_fp8_w8a8:
                     accumulator = tl.dot(a, b, acc=accumulator)
@@ -1039,6 +1084,9 @@ def fused_moe_kernel(
             accumulator += tl.dot(a, b)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
+
+    if SWAP_AB:
+        accumulator = tl.trans(accumulator_nm)
 
     # Dequantization
     if use_int8_w8a16:
@@ -1221,6 +1269,7 @@ def invoke_fused_moe_triton_kernel(
     if block_shape is not None:
         BLOCK_SIZE_K = min(BLOCK_SIZE_K, min(block_shape[0], block_shape[1]))
 
+    swap_AB = config.pop("SWAP_AB", False)
     fused_moe_kernel[grid](
         A,
         B,
@@ -1262,6 +1311,7 @@ def invoke_fused_moe_triton_kernel(
         naive_block_assignment=(sorted_token_ids is None),
         HAS_BIAS=HAS_BIAS,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
+        SWAP_AB=swap_AB,
         **config,
     )
 
@@ -1442,6 +1492,7 @@ def fused_experts_impl(
         top_k_num,
         config_dtype,
         block_shape=block_shape,
+        E=E,
     )
 
     config = get_config_func(M)
