@@ -1,8 +1,14 @@
 #!/bin/bash
 
-# Configuration parameters
+# Configuration
 memory_usage_max=30000     # Maximum memory usage limit (MB)
 sleep_time=120             # Wait time (seconds), default is 2 minutes
+
+export MUSA_INSTALL_PATH=/usr/local/musa
+export PATH=$MUSA_INSTALL_PATH/bin:$PATH
+export LD_LIBRARY_PATH=$MUSA_INSTALL_PATH/lib:$LD_LIBRARY_PATH
+
+mthreads-gmi
 
 # Get the number of GPUs
 gpu_count=$(mthreads-gmi -L 2>/dev/null | grep -c "GPU ")
@@ -11,7 +17,6 @@ if [ "$gpu_count" -eq 0 ]; then
     echo "No Moore Threads GPUs detected. Please ensure you have GPUs installed and properly configured."
     exit 1
 fi
-
 echo "Detected $gpu_count Moore Threads GPU(s)."
 
 mthreads-gmi
