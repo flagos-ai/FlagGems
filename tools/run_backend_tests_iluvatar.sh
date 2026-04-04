@@ -3,12 +3,19 @@
 VENDOR=${1:?"Usage: bash tools/run_backend_tests_iluvatar.sh <vendor>"}
 export GEMS_VENDOR=$VENDOR
 
-source tools/run_command.sh
-
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
-run_command python3 -m pytest -s tests/test_tensor_constructor_ops.py
-run_command python3 -m pytest -s tests/test_shape_utils.py
-run_command python3 -m pytest -s tests/test_tensor_wrapper.py
-run_command python3 -m pytest -s tests/test_pointwise_dynamic.py
-run_command python3 -m pytest -s tests/test_distribution_ops.py
+export LD_LIBRARY_PATH=/usr/local/corex-4.4.0/lib:/usr/local/cuda/compat:$LD_LIBRARY_PATH
+echo $LD_LIBRARY_PATH
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - bash)"
+
+pip install -U pip
+pip install uv
+uv venv
+source .venv/bin/activate
+uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
+uv pip install -e .[iluvatar,test]
+
+pytest -s tests
