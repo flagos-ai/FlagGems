@@ -37,7 +37,7 @@ run_command pytest -s tests/test_tensor_constructor_ops.py
 
 # BLAS ops
 # TODO(Qiming): Fix sharedencoding on Hopper
-# run_command pytest -s tests/test_attention_ops.py
+run_command pytest -s tests/test_attention_ops.py
 run_command pytest -s tests/test_blas_ops.py
 
 # Special ops
