@@ -8,6 +8,7 @@ bin-release/
 .settings/
 __pycache__/
 .vscode/
+.DS_Store
 
 # Python venv directory
 .venv
