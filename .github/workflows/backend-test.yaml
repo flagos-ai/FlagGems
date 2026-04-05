@@ -43,8 +43,8 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v6
-        with:
-          ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+        # with:
+        #  ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
         shell: bash

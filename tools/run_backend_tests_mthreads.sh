@@ -3,6 +3,10 @@
 VENDOR=${1}
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
+export MUSA_INSTALL_PATH=/usr/local/musa
+export PATH=$MUSA_INSTALL_PATH/bin:$PATH
+export LD_LIBRARY_PATH=$MUSA_INSTALL_PATH/lib:$LD_LIBRARY_PATH
+
 # PyEnv settings
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
@@ -16,7 +20,14 @@ source .venv/bin/activate
 
 # Setup
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-uv pip install -e .[methreads,test]
+uv pip install torch==2.7.1+musa.4.0.0 \
+  --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
+uv pip install triton==3.1.0+musa.4.0.0 \
+  --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
+uv pip install torch_musa==2.7.1 \
+  --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
+
+uv pip install -e .[mthreads,test]
 
 # For the intel math library
 export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH
