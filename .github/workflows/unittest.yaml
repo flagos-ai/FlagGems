@@ -104,18 +104,6 @@ jobs:
         run: |
           bash tools/test-examples.sh ${{ needs.preprocess.outputs.pr_id }}
 
-  backend-nvidia:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: nvidia
-      runner_label: h20
-      gpu_check_script: tools/gpu_check.sh
-      test_script: tools/run_backend_tests_nvidia.sh
-    secrets:
-      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-
   backend-ascend:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
@@ -151,7 +139,7 @@ jobs:
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
-  backend-moore:
+  backend-mthreads:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
@@ -160,6 +148,30 @@ jobs:
       runner_label: moore
       gpu_check_script: tools/gpu_check_mthreads.sh
       test_script: tools/run_backend_tests_mthreads.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-nvidia:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: nvidia
+      runner_label: h20
+      gpu_check_script: tools/gpu_check.sh
+      test_script: tools/run_backend_tests_nvidia.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-tsingmicro:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: tsingmicro
+      runner_label: tsingmicro
+      gpu_check_script: tools/gpu_check_tsingmicro.sh
+      test_script: tools/run_backend_tests_tsingmicro.sh
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
