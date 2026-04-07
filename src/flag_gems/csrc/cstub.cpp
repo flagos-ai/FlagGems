@@ -64,6 +64,11 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("fill_.Scalar", &flag_gems::fill_scalar_);
   m.def("fill_.Tensor", &flag_gems::fill_tensor_);
 #endif
+  m.def("act_quant",
+        &flag_gems::act_quant_triton,
+        py::arg("x"),
+        py::arg("block_size") = 128,
+        py::arg("scale_fmt") = py::none());
   m.def("exponential_", &flag_gems::exponential_);
   m.def("addmm", &flag_gems::addmm);
   m.def("mm", &flag_gems::mm_tensor);

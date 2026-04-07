@@ -42,6 +42,9 @@ at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
 at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
 at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
 #endif
+std::vector<at::Tensor> act_quant_triton(const at::Tensor &x,
+                                         int block_size = 128,
+                                         std::optional<std::string> scale_fmt = std::nullopt);
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
 at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out);
 at::Tensor sum_dim(const at::Tensor &self,

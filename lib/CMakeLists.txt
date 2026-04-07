@@ -1,6 +1,7 @@
 add_library(operators
             SHARED
             device_info.cpp
+            act_quant.cpp
             zeros.cpp
             utils.cpp
             sum.cpp
