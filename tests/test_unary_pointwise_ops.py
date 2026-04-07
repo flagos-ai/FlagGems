@@ -2139,6 +2139,23 @@ def test_accuracy_arcsinh_out(shape, dtype):
         torch.arcsinh(inp, out=res_out)
 
 
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("upscale_factor", [2, 3])
+@pytest.mark.parametrize("shape", [(1, 12, 4, 4), (2, 18, 3, 3), (1, 4, 8, 8), (4, 36, 2, 2)])
+def test_accuracy_pixel_shuffle(shape, dtype, upscale_factor):
+    C = shape[1]
+    r2 = upscale_factor * upscale_factor
+    if C % r2 != 0:
+        pytest.skip("C not divisible by r^2")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.nn.functional.pixel_shuffle(ref_inp, upscale_factor)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.pixel_shuffle(inp, upscale_factor)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.softshrink
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
