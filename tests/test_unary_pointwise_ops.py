@@ -1642,9 +1642,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else FLOAT_DTYPES,
+    (
+        FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else FLOAT_DTYPES
+    ),
 )
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -2137,6 +2139,117 @@ def test_accuracy_arcsinh_out(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.empty_like(inp)
         torch.arcsinh(inp, out=res_out)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "params",
+    [
+        {
+            "in_ch": 4,
+            "out_ch": 8,
+            "ks": 3,
+            "stride": 1,
+            "padding": 1,
+            "shape": (1, 4, 8, 8),
+        },
+        {
+            "in_ch": 8,
+            "out_ch": 4,
+            "ks": 3,
+            "stride": 2,
+            "padding": 1,
+            "shape": (2, 8, 4, 4),
+        },
+        {
+            "in_ch": 16,
+            "out_ch": 16,
+            "ks": 4,
+            "stride": 2,
+            "padding": 1,
+            "shape": (1, 16, 8, 8),
+        },
+        {
+            "in_ch": 3,
+            "out_ch": 1,
+            "ks": 5,
+            "stride": 1,
+            "padding": 2,
+            "shape": (1, 3, 16, 16),
+        },
+        {
+            "in_ch": 32,
+            "out_ch": 64,
+            "ks": 3,
+            "stride": 1,
+            "padding": 0,
+            "shape": (2, 32, 4, 4),
+        },
+    ],
+)
+def test_accuracy_conv_transpose2d(params, dtype):
+    in_ch = params["in_ch"]
+    out_ch = params["out_ch"]
+    ks = params["ks"]
+    stride = params["stride"]
+    padding = params["padding"]
+    shape = params["shape"]
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(in_ch, out_ch, ks, ks, dtype=dtype, device=flag_gems.device)
+    bias = torch.randn(out_ch, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_weight = to_reference(weight, True)
+    ref_bias = to_reference(bias, True)
+
+    ref_out = torch.nn.functional.conv_transpose2d(
+        ref_inp, ref_weight, ref_bias, stride=stride, padding=padding
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv_transpose2d(
+            inp, weight, bias, stride=stride, padding=padding
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_conv_transpose2d_no_bias(dtype):
+    inp = torch.randn(1, 4, 8, 8, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(4, 8, 3, 3, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+    ref_weight = to_reference(weight, True)
+
+    ref_out = torch.nn.functional.conv_transpose2d(
+        ref_inp, ref_weight, stride=2, padding=1
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv_transpose2d(inp, weight, stride=2, padding=1)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.conv_transpose2d
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("groups", [1, 2, 4])
+def test_accuracy_conv_transpose2d_groups(dtype, groups):
+    in_ch = 8
+    out_ch = 8
+    inp = torch.randn(1, in_ch, 4, 4, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(
+        in_ch, out_ch // groups, 3, 3, dtype=dtype, device=flag_gems.device
+    )
+    ref_inp = to_reference(inp, True)
+    ref_weight = to_reference(weight, True)
+
+    ref_out = torch.nn.functional.conv_transpose2d(ref_inp, ref_weight, groups=groups)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv_transpose2d(inp, weight, groups=groups)
+
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.softshrink
