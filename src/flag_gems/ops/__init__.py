@@ -23,6 +23,7 @@ from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.asinh import asinh, asinh_out
 from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
@@ -340,7 +341,9 @@ __all__ = [
     "arcsinh_",
     "argmax",
     "argmin",
+    "asinh",
     "asinh_",
+    "asinh_out",
     "atan",
     "atan_",
     "avg_pool2d",
