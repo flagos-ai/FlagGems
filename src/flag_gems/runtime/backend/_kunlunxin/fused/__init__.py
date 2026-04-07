@@ -17,6 +17,7 @@ from .silu_and_mul import silu_and_mul, silu_and_mul_out
 from .skip_layernorm import skip_layer_norm
 from .topk_softmax import topk_softmax
 from .weight_norm import weight_norm
+from .sparse_attention import sparse_attn_triton
 
 __all__ = [
     "apply_rotary_pos_emb",
@@ -42,4 +43,5 @@ __all__ = [
     "rwkv_mm_sparsity",
     "dreglu",
     "reglu",
+    "sparse_attn_triton",
 ]
