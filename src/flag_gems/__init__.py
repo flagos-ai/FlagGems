@@ -344,6 +344,7 @@ _FULL_CONFIG = (
     ("replication_pad3d", replication_pad3d),
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
+    ("roll", roll),
     ("rms_norm", rms_norm),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rsqrt", rsqrt),

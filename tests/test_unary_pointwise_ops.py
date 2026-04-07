@@ -1642,9 +1642,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else FLOAT_DTYPES,
+    (
+        FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else FLOAT_DTYPES
+    ),
 )
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -2137,6 +2139,63 @@ def test_accuracy_arcsinh_out(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.empty_like(inp)
         torch.arcsinh(inp, out=res_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    if len(shape) == 0:
+        ref_out = torch.roll(ref_inp, shifts=0)
+        with flag_gems.use_gems():
+            res_out = torch.roll(inp, shifts=0)
+    elif len(shape) == 1:
+        ref_out = torch.roll(ref_inp, shifts=3, dims=0)
+        with flag_gems.use_gems():
+            res_out = torch.roll(inp, shifts=3, dims=0)
+    else:
+        ref_out = torch.roll(ref_inp, shifts=(2, -1), dims=(0, 1))
+        with flag_gems.use_gems():
+            res_out = torch.roll(inp, shifts=(2, -1), dims=(0, 1))
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize(
+    "shape", [(8,), (8, 8), (64, 64), (256, 256), (1024, 1024), (16, 32, 64)]
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll_various_sizes(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.roll(ref_inp, shifts=3, dims=0)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts=3, dims=0)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll_no_dims(dtype):
+    inp = torch.randn((4, 6), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.roll(ref_inp, shifts=5)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts=5)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_roll_negative_shift(dtype):
+    inp = torch.randn((8, 16), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.roll(ref_inp, shifts=-3, dims=1)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts=-3, dims=1)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.softshrink

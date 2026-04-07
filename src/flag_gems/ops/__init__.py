@@ -233,6 +233,7 @@ from flag_gems.ops.repeat_interleave import (
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
 from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resolve_conj import resolve_conj
+from flag_gems.ops.roll import roll
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
@@ -583,6 +584,7 @@ __all__ = [
     "replication_pad3d",
     "resolve_conj",
     "resolve_neg",
+    "roll",
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
