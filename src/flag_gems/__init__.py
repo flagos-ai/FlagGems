@@ -85,6 +85,7 @@ _FULL_CONFIG = (
     ("arctanh_", arctanh_),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
+    ("avg_pool3d", avg_pool3d),
     ("baddbmm", baddbmm),
     ("bincount", bincount),
     ("bitwise_and.Scalar", bitwise_and_scalar),
