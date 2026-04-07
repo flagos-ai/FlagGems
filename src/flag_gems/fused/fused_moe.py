@@ -890,8 +890,6 @@ def per_token_group_quant_fp8(
     )
     assert x.stride(-1) == 1, "`x` groups must be contiguous"
 
-    fp8_min, fp8_max = torch.finfo(torch.float8_e4m3fn)
-
     assert out_q is None or out_q.shape == x.shape
     x_q = out_q
     if x_q is None:
@@ -915,8 +913,8 @@ def per_token_group_quant_fp8(
         x.shape[1],
         x.stride(0),
         eps,
-        fp8_min=fp8_min,
-        fp8_max=fp8_max,
+        fp8_min=_FP8_MIN,
+        fp8_max=_FP8_MAX,
         BLOCK=BLOCK,
         num_warps=num_warps,
         num_stages=num_stages,
@@ -935,30 +933,6 @@ def per_token_quant_int8_kernel(
     N,
     BLOCK: tl.constexpr,
 ):
-    # row_id = tl.program_id(0)
-    # row_in_base = row_id * stride_x
-    # row_out_base = row_id * stride_xq
-    # row_absmax = 0.0
-
-    # for off in tl.range(0, N, BLOCK):
-    #     cols = off + tl.arange(0, BLOCK)
-    #     mask = cols < N
-    #     x = tl.load(x_ptr + row_in_base + cols, mask=mask, other=0.0).to(tl.float32)
-    #     row_absmax = tl.maximum(row_absmax, tl.max(tl.abs(x), axis=0))
-
-    # absmax = tl.maximum(row_absmax, 1e-10)
-    # scale_x = absmax / 127.0
-    # inv_scale_x = 127.0 / absmax
-
-    # for off in tl.range(0, N, BLOCK):
-    #     cols = off + tl.arange(0, BLOCK)
-    #     mask = cols < N
-    #     x = tl.load(x_ptr + row_in_base + cols, mask=mask, other=0.0).to(tl.float32)
-    #     x_q = tl.extra.cuda.libdevice.round(x * inv_scale_x)
-    #     x_q = tl.clamp(x_q, -128.0, 127.0).to(xq_ptr.dtype.element_ty)
-    #     tl.store(xq_ptr + row_out_base + cols, x_q, mask=mask)
-
-    # tl.store(scale_ptr + row_id, scale_x)
     row_id = tl.program_id(0)
 
     cols = tl.arange(0, BLOCK)
