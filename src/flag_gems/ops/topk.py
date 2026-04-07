@@ -17,6 +17,12 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
+from flag_gems.utils.triton_version_utils import HAS_TLE
+
+if HAS_TLE:
+    import triton.experimental.tle.language as tle_gpu
+else:
+    tle_gpu = None
 
 logger = logging.getLogger(__name__)
 _MIN_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).min)
@@ -266,6 +272,198 @@ def topk_stage2_kernel(
     tl.store(index_ptr + cols, sorted_chunk_index, mask=cols < k)
 
 
+if HAS_TLE:
+
+    @triton.jit
+    def _get_topmask_and_fullmask(x):
+        tl.static_assert(
+            x.dtype.is_int_unsigned(),
+            "floating-point value must be passed as bits",
+        )
+        tm: tl.constexpr = 1 << (-1 + x.dtype.primitive_bitwidth)
+        fm: tl.constexpr = (1 << x.dtype.primitive_bitwidth) - 1
+        tm_arr = tl.full(x.shape, tm, dtype=x.dtype)
+        fm_arr = tl.full(x.shape, fm, dtype=x.dtype)
+        return tm_arr, fm_arr
+
+    @triton.jit
+    def _fpval_to_key_with_nan(x, x_bits):
+        tm, fm = _get_topmask_and_fullmask(x_bits)
+        mask = tl.where((x_bits & tm) != 0, fm, tm)
+        key = x_bits ^ mask
+        return tl.where(x == x, key, fm)
+
+    @triton.jit
+    def _key_to_fpval(x):
+        tm, fm = _get_topmask_and_fullmask(x)
+        mask = tl.where((x & tm) != 0, tm, fm)
+        return x ^ mask
+
+    @libentry()
+    @triton.jit
+    def topk_kernel_radix_tle(
+        X,
+        Yv,
+        Yi,
+        stride_xm,
+        stride_ym,
+        n_cols,
+        K: tl.constexpr,
+        K_PAD: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        RADIX_BITS: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        x_dtype = X.dtype.element_ty
+        x_nbits: tl.constexpr = x_dtype.primitive_bitwidth
+        if x_nbits < 16:
+            y_nbits: tl.constexpr = 32
+        else:
+            y_nbits: tl.constexpr = x_nbits * 2
+        x_utype = tl.dtype(f"uint{x_nbits}")
+        x_ultype = tl.dtype(f"uint{y_nbits}")
+
+        RADIX_SIZE: tl.constexpr = 1 << RADIX_BITS
+        RADIX_MASK: tl.constexpr = RADIX_SIZE - 1
+        bins = tl.arange(0, RADIX_SIZE)
+        one = tl.full([BLOCK_N], 1, tl.int32)
+
+        desired = tl.full((), 0, dtype=x_utype)
+        desired_mask = tl.full((), 0, dtype=x_utype)
+        k_to_find = tl.full((), K, dtype=tl.int32)
+        n_tiles = tl.cdiv(n_cols, BLOCK_N)
+
+        smem_counts = tle_gpu.gpu.alloc(
+            [RADIX_SIZE],
+            dtype=tl.int32,
+            layout=None,
+            scope=tle_gpu.gpu.smem,
+            nv_mma_shared_layout=False,
+        )
+        smem_count_ptrs = tle_gpu.gpu.local_ptr(smem_counts, (bins,))
+
+        for digit_pos in tl.static_range(x_nbits - RADIX_BITS, -1, -RADIX_BITS):
+            tl.store(smem_count_ptrs, tl.zeros([RADIX_SIZE], dtype=tl.int32))
+            for t in tl.range(0, n_tiles):
+                offs_n = t * BLOCK_N + tl.arange(0, BLOCK_N)
+                mask_n = offs_n < n_cols
+                x_ptrs = X + pid * stride_xm + offs_n
+                x = tl.load(x_ptrs, mask=mask_n, other=float("-inf"))
+                x_bits = x.to(x_utype, bitcast=True)
+                x_key = _fpval_to_key_with_nan(x, x_bits)
+                matches = (x_key & desired_mask) == desired
+                digit = ((x_key >> digit_pos) & RADIX_MASK).to(tl.int32)
+                valid = mask_n & matches
+                count_addrs = tle_gpu.gpu.local_ptr(smem_counts, (digit,))
+                tl.atomic_add(count_addrs, one, mask=valid, sem="relaxed", scope="cta")
+
+            counts = tl.load(smem_count_ptrs)
+
+            cumsum_desc = tl.cumsum(counts, axis=0, reverse=True)
+            tl.store(smem_count_ptrs, cumsum_desc)
+
+            selected_scalar = 0
+            counts_gt_scalar = 0
+            found = 0
+            for rev in tl.static_range(RADIX_SIZE):
+                d = RADIX_SIZE - 1 - rev
+                cum_d = tl.load(tle_gpu.gpu.local_ptr(smem_counts, (d,)))
+                if d + 1 < RADIX_SIZE:
+                    cum_next = tl.load(tle_gpu.gpu.local_ptr(smem_counts, (d + 1,)))
+                else:
+                    cum_next = 0
+                take = (found == 0) & (cum_d >= k_to_find) & (cum_next < k_to_find)
+                selected_scalar = tl.where(take, d, selected_scalar)
+                counts_gt_scalar = tl.where(take, cum_next, counts_gt_scalar)
+                found = tl.where(take, 1, found)
+
+            selected_u = selected_scalar.to(x_utype)
+            desired = desired | (selected_u << digit_pos)
+            desired_mask = desired_mask | (
+                tl.full((), RADIX_MASK, dtype=x_utype) << digit_pos
+            )
+            k_to_find = k_to_find - counts_gt_scalar
+
+        thr_key = desired
+
+        min_val = tl.full((), float("-inf"), tl.float32).to(x_dtype)
+        min_bits = min_val.to(x_utype, bitcast=True)
+        min_key = _fpval_to_key_with_nan(min_val, min_bits)
+        min_packed = min_key.to(x_ultype) << 16
+        offs_k = tl.arange(0, K_PAD)
+
+        smem_selected = tle_gpu.gpu.alloc(
+            [K_PAD],
+            dtype=x_ultype,
+            layout=None,
+            scope=tle_gpu.gpu.smem,
+            nv_mma_shared_layout=False,
+        )
+        smem_selected_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (offs_k,))
+        tl.store(smem_selected_ptrs, tl.full([K_PAD], min_packed, dtype=x_ultype))
+
+        smem_write_count = tle_gpu.gpu.alloc(
+            [1],
+            dtype=tl.int32,
+            layout=None,
+            scope=tle_gpu.gpu.smem,
+            nv_mma_shared_layout=False,
+        )
+        tl.store(tle_gpu.gpu.local_ptr(smem_write_count, (0,)), 0)
+        write_count_ptrs = tle_gpu.gpu.local_ptr(
+            smem_write_count, (tl.zeros([BLOCK_N], dtype=tl.int32),)
+        )
+
+        for t in tl.range(0, n_tiles):
+            offs_n = t * BLOCK_N + tl.arange(0, BLOCK_N)
+            mask_n = offs_n < n_cols
+            x_ptrs = X + pid * stride_xm + offs_n
+            x = tl.load(x_ptrs, mask=mask_n, other=float("-inf"))
+            x_bits = x.to(x_utype, bitcast=True)
+            x_key = _fpval_to_key_with_nan(x, x_bits)
+            idx_key = (n_cols - offs_n).to(x_ultype)
+            packed = (x_key.to(x_ultype) << 16) | idx_key
+            take_gt = mask_n & (x_key > thr_key)
+            pos = tl.atomic_add(
+                write_count_ptrs, one, mask=take_gt, sem="relaxed", scope="cta"
+            )
+            write_mask = take_gt & (pos < K_PAD)
+            dst_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (pos.to(tl.int32),))
+            tl.store(dst_ptrs, packed, mask=write_mask)
+
+        for t in tl.range(0, n_tiles):
+            offs_n = t * BLOCK_N + tl.arange(0, BLOCK_N)
+            mask_n = offs_n < n_cols
+            x_ptrs = X + pid * stride_xm + offs_n
+            x = tl.load(x_ptrs, mask=mask_n, other=float("-inf"))
+            x_bits = x.to(x_utype, bitcast=True)
+            x_key = _fpval_to_key_with_nan(x, x_bits)
+            idx_key = (n_cols - offs_n).to(x_ultype)
+            packed = (x_key.to(x_ultype) << 16) | idx_key
+            take_eq = mask_n & (x_key == thr_key)
+            pos = tl.atomic_add(
+                write_count_ptrs, one, mask=take_eq, sem="relaxed", scope="cta"
+            )
+            write_mask = take_eq & (pos < K_PAD)
+            dst_ptrs = tle_gpu.gpu.local_ptr(smem_selected, (pos.to(tl.int32),))
+            tl.store(dst_ptrs, packed, mask=write_mask)
+
+        selected_packed = tl.load(smem_selected_ptrs)
+
+        topk = tl.sort(selected_packed, dim=0, descending=True)
+        idx_mask = tl.full(topk.shape, (1 << 16) - 1, dtype=topk.dtype)
+        idx_raw = (topk & idx_mask).to(tl.uint32)
+        y_indices = (n_cols - idx_raw.to(tl.int32)).to(tl.int32)
+        y_values_raw = (topk >> 16).to(x_utype)
+        y_values = _key_to_fpval(y_values_raw).to(x_dtype, bitcast=True)
+
+        mask_k = offs_k < K
+        yv_ptrs = Yv + pid * stride_ym + offs_k
+        yi_ptrs = Yi + pid * stride_ym + offs_k
+        tl.store(yv_ptrs, y_values, mask=mask_k)
+        tl.store(yi_ptrs, y_indices, mask=mask_k)
+
+
 def topk(x, k, dim=-1, largest=True, sorted=True):
     logger.debug("GEMS TOPK")
     # If dim equals to last dim, we set it to -1.
@@ -291,6 +489,40 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
 
     topk_elem_cnt = x.shape[dim]
     batch_size = math.prod(x.shape) // topk_elem_cnt
+
+    if (
+        HAS_TLE
+        and sorted
+        and descending
+        and x.is_cuda
+        and x.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and topk_elem_cnt <= 65535
+        and triton.next_power_of_2(k) <= 1024
+    ):
+        k_pad = triton.next_power_of_2(k)
+        out_shape = x.shape[:-1] + (k,)
+        y_vals = torch.empty(out_shape, device=x.device, dtype=x.dtype)
+        y_idx = torch.empty(out_shape, device=x.device, dtype=torch.int32)
+        block_n_radix = max(k_pad, min(512, triton.next_power_of_2(topk_elem_cnt)))
+        block_n_radix = min(block_n_radix, 1024)
+
+        x_2d = x.reshape(batch_size, topk_elem_cnt)
+        with torch_device_fn.device(x.device):
+            topk_kernel_radix_tle[(batch_size,)](
+                x_2d,
+                y_vals,
+                y_idx,
+                x_2d.stride(0),
+                y_vals.stride(0),
+                topk_elem_cnt,
+                K=k,
+                K_PAD=k_pad,
+                BLOCK_N=block_n_radix,
+                RADIX_BITS=4,
+                num_warps=4,
+                num_stages=1,
+            )
+        return (y_vals, y_idx.to(torch.int64))
 
     # Note(Zhengzekang): Maybe we should add a heuristic search in selecting a proper chunk size.
     if topk_elem_cnt < 1024:

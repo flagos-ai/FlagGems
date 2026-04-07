@@ -13,6 +13,7 @@ from flag_gems.utils.shape_utils import (
 )
 from flag_gems.utils.triton_driver_helper import get_device_properties
 from flag_gems.utils.triton_lang_helper import tl_extra_shim
+from flag_gems.utils.triton_version_utils import HAS_TLE, _triton_version_at_least
 
 __all__ = [
     "libentry",
@@ -27,4 +28,6 @@ __all__ = [
     "broadcastable",
     "get_device_properties",
     "tl_extra_shim",
+    "_triton_version_at_least",
+    "HAS_TLE",
 ]
