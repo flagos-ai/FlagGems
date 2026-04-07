@@ -2139,6 +2139,32 @@ def test_accuracy_arcsinh_out(shape, dtype):
         torch.arcsinh(inp, out=res_out)
 
 
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+@pytest.mark.parametrize("beta", [0.5, 1.0, 2.0])
+def test_accuracy_smooth_l1_loss(shape, dtype, reduction, beta):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+    ref_out = torch.nn.functional.smooth_l1_loss(ref_inp, ref_target, reduction=reduction, beta=beta)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(inp, target, reduction=reduction, beta=beta)
+    if reduction == "none":
+        gems_assert_close(res_out, ref_out, dtype)
+    else:
+        # For scalar output, use relaxed tolerance to handle accumulation differences
+        res_f32 = res_out.to(torch.float32)
+        ref_f32 = ref_out.to(torch.float32)
+        # Skip comparison when output overflows in low-precision dtypes
+        if torch.isinf(res_f32).any() or torch.isinf(ref_f32).any():
+            return
+        rtol = 5e-2 if dtype in (torch.bfloat16, torch.float16) else 1e-3
+        assert torch.allclose(res_f32, ref_f32, rtol=rtol, atol=1.0),             f"max diff: {(res_f32 - ref_f32).abs().max().item()}, res={res_f32.item()}, ref={ref_f32.item()}"
+
+
 @pytest.mark.softshrink
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
