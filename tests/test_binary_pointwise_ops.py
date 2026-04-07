@@ -29,6 +29,79 @@ def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
 
+@pytest.mark.gcd
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
+def test_accuracy_gcd(shape, dtype):
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize(
+    "shape",
+    [(1, 1), (8, 8), (64, 64), (256, 256), (1024, 1024)],
+)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_gcd_various_sizes(shape, dtype):
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
+def test_accuracy_gcd_edge_cases(dtype):
+    # gcd(0, x)=|x|, gcd(x, x)=|x|, gcd coprime, gcd negative
+    a = torch.tensor([0, 12, 7, -15, 100, 1, 0], dtype=dtype, device=flag_gems.device)
+    b = torch.tensor([5, 8, 13, 10, 100, 0, 0], dtype=dtype, device=flag_gems.device)
+    ref_a = to_reference(a)
+    ref_b = to_reference(b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(a, b)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+def test_accuracy_gcd_empty_tensor():
+    a = torch.empty(0, dtype=torch.int32, device=flag_gems.device)
+    b = torch.empty(0, dtype=torch.int32, device=flag_gems.device)
+    ref_a = to_reference(a)
+    ref_b = to_reference(b)
+
+    ref_out = torch.gcd(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(a, b)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
@@ -1091,13 +1164,11 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
 
-    (ref_inp1_grad, ref_inp2_grad) = torch.autograd.grad(
+    ref_inp1_grad, ref_inp2_grad = torch.autograd.grad(
         ref_out, (ref_inp1, ref_inp2), ref_grad
     )
 
-    (res_inp1_grad, res_inp2_grad) = torch.autograd.grad(
-        res_out, (inp1, inp2), out_grad
-    )
+    res_inp1_grad, res_inp2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
 
     gems_assert_close(res_out, ref_out, dtype)
     gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
@@ -1590,13 +1661,11 @@ def test_accuracy_silu_and_mul(shape, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
 
-    (ref_inp1_grad, ref_inp2_grad) = torch.autograd.grad(
+    ref_inp1_grad, ref_inp2_grad = torch.autograd.grad(
         ref_out, (ref_inp1, ref_inp2), ref_grad
     )
 
-    (res_inp1_grad, res_inp2_grad) = torch.autograd.grad(
-        res_out, (inp1, inp2), out_grad
-    )
+    res_inp1_grad, res_inp2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
 
     gems_assert_close(res_out, ref_out, dtype)
     gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
