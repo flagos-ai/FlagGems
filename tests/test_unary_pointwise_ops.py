@@ -270,6 +270,79 @@ def test_accuracy_cos_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.cosh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_cosh(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cosh
+@pytest.mark.parametrize(
+    "shape",
+    [(1, 1), (8, 8), (64, 64), (256, 256), (1024, 1024), (4096, 4096)],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_various_sizes(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cosh
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cosh_edge_cases(dtype):
+    # Edge cases: zero, negative, inf, nan
+    vals = [0.0, -0.0, 1.0, -1.0, 0.5, -0.5, float("inf"), float("-inf"), float("nan")]
+    inp = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.cosh
+def test_accuracy_cosh_empty_tensor():
+    inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.cosh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.inplace
+@pytest.mark.cosh_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_cosh_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.cosh_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.cosh_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.exp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1642,9 +1715,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else FLOAT_DTYPES,
+    (
+        FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else FLOAT_DTYPES
+    ),
 )
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
