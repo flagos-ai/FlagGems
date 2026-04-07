@@ -279,6 +279,7 @@ from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
+from flag_gems.ops.upsample_linear1d_backward import upsample_linear1d_backward
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
@@ -662,6 +663,7 @@ __all__ = [
     "uniform_",
     "upsample_bicubic2d",
     "upsample_linear1d",
+    "upsample_linear1d_backward",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_nearest3d",
