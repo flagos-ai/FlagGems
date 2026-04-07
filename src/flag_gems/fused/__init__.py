@@ -37,6 +37,8 @@ from flag_gems.fused.skip_layernorm import skip_layer_norm
 from flag_gems.fused.swiglu import dswiglu, swiglu
 from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.weight_norm import weight_norm
+from flag_gems.fused.sparse_attention import sparse_attn_triton
+
 
 __all__ = [
     "apply_repetition_penalties",
@@ -76,4 +78,5 @@ __all__ = [
     "swiglu",
     "topk_softmax",
     "weight_norm",
+    "sparse_attn_triton",
 ]
