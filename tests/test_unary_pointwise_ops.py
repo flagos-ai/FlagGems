@@ -1642,9 +1642,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else FLOAT_DTYPES,
+    (
+        FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else FLOAT_DTYPES
+    ),
 )
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -2137,6 +2139,49 @@ def test_accuracy_arcsinh_out(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.empty_like(inp)
         torch.arcsinh(inp, out=res_out)
+
+
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduce", ["sum"])
+def test_accuracy_scatter_reduce(dtype, reduce):
+    src = torch.randn((4, 8), dtype=dtype, device=flag_gems.device)
+    index = torch.tensor(
+        [[0, 1, 2, 0, 1, 2, 0, 1], [2, 0, 1, 2, 0, 1, 2, 0]],
+        dtype=torch.long,
+        device=flag_gems.device,
+    )
+    inp = torch.zeros((4, 3), dtype=dtype, device=flag_gems.device)
+    ref_src = to_reference(src)
+    ref_index = to_reference(index)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, reduce)
+    with flag_gems.use_gems():
+        res_out = torch.scatter_reduce(inp, 1, index, src, reduce)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+
+
+
+@pytest.mark.scatter_reduce
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_scatter_reduce_various_sizes(dtype):
+    for n, m, k in [(8, 16, 4), (64, 128, 32), (256, 512, 64)]:
+        src = torch.randn((n, m), dtype=dtype, device=flag_gems.device)
+        index = torch.randint(0, k, (n, m), device=flag_gems.device)
+        inp = torch.zeros((n, k), dtype=dtype, device=flag_gems.device)
+        ref_src = to_reference(src)
+        ref_index = to_reference(index)
+        ref_inp = to_reference(inp)
+
+        ref_out = torch.scatter_reduce(ref_inp, 1, ref_index, ref_src, "sum")
+        with flag_gems.use_gems():
+            res_out = torch.scatter_reduce(inp, 1, index, src, "sum")
+
+        gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.softshrink
