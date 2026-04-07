@@ -100,7 +100,7 @@ def fill_tensor_out(input, value, *, out=None):
 def fill_tensor_(self, value):
     if not value.is_cuda:
         return fill_scalar_(self, value.item())
-    logger.debug("GEMS FILL_TENSOR_ HOPPER")
+    logger.debug("GEMS_HOPPER FILL_TENSOR_")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -113,7 +113,7 @@ def fill_tensor_(self, value):
 
 
 def fill_scalar_(self, value):
-    logger.debug("GEMS FILL_SCALAR_ HOPPER")
+    logger.debug("GEMS_HOPPER FILL_SCALAR_")
     n_elements = self.numel()
     grid = (triton.cdiv(n_elements, 1024),)
     with torch_device_fn.device(self.device):
