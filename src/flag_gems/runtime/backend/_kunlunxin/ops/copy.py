@@ -50,9 +50,8 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
         return False
     if dst.is_quantized or src.is_quantized:
         return False
-    if src.is_complex() and not dst.is_complex():
-        # Preserve PyTorch's behaviour of warning when casting complex to real
-        # by forcing the redispatch path, which issues the warning internally.
+    if src.is_complex() or dst.is_complex():
+        # Triton on kunlunxin does not support complex dtypes; fall back to PyTorch.
         return False
     if not src.is_contiguous():
         return False
