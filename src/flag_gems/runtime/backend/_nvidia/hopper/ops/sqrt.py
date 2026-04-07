@@ -4,16 +4,19 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.utils import libentry, libtuner
+
 logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.sqrt")
 
 
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": 512}, num_stages=4, num_warps=1),
-        triton.Config({"BLOCK_SIZE": 1024}, num_stages=4, num_warps=1),
-        triton.Config({"BLOCK_SIZE": 2048}, num_stages=4, num_warps=1),
-    ],
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("sqrt"),
     key=["n_elements"],
+    strategy=["align32"],
+    warmup=5,
+    rep=10,
 )
 @triton.jit
 def sqrt_kernel(
@@ -34,7 +37,7 @@ def sqrt_kernel(
 
 
 def sqrt(A):
-    logger.debug("GEMS SQRT HOPPER")
+    logger.debug("GEMS_HOPPER SQRT")
     output = torch.empty_like(A)
     n_elements = output.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
@@ -43,7 +46,7 @@ def sqrt(A):
 
 
 def sqrt_(A):
-    logger.debug("GEMS SQRT_ HOPPER")
+    logger.debug("GEMS_HOPPER SQRT_")
     output = torch.empty_like(A)
     n_elements = A.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
