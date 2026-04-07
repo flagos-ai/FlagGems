@@ -1,9 +1,11 @@
 import logging
+import os
 from typing import Optional
 
 import torch
 import triton
 import triton.language as tl
+import yaml
 
 from flag_gems import runtime
 from flag_gems.ops.mm_streamk import streamk_mm
@@ -12,7 +14,7 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
 CACHE_USAGE_THRESHOLD = 0.8
 
 
@@ -52,12 +54,135 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
+def matmul_tma_set_block_size_hook(nargs):
+    BLOCK_M = nargs["BLOCK_M"]
+    BLOCK_N = nargs["BLOCK_N"]
+    BLOCK_K = nargs["BLOCK_K"]
+    if nargs["A_ROW_MAJOR"]:
+        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
+    else:
+        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
+
+    if nargs["B_ROW_MAJOR"]:
+        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
+    else:
+        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
+
+    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
+
+
+def get_expand_config(op):
+    default_strategies = {
+        "matmul": ["align32", "align32", "align32", "align32", "align32", "default"],
+        "gemv": ["align32", "align32", "align32", "default"],
+    }
+    op_key_orders = {
+        "matmul": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+        "gemv": ["M", "K", "stride_am", "stride_bk"],
+    }
+    op_meta_map = {
+        "matmul": {
+            "BM": "BLOCK_M",
+            "BN": "BLOCK_N",
+            "BK": "BLOCK_K",
+        },
+        "gemv": {
+            "BM": "BLOCK_M",
+            "BK": "BLOCK_K",
+        },
+    }
+
+    if op not in default_strategies:
+        return -1
+
+    default_strategy = default_strategies[op]
+    config_path = os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
+    if not os.path.exists(config_path):
+        return -1
+
+    try:
+        with open(config_path, "r") as file:
+            config = yaml.safe_load(file) or {}
+
+        expand_configs = config.get(op)
+
+        gen_config = None
+        strategy_config = None
+        for single_config in expand_configs:
+            if isinstance(single_config, dict) and "param_map" in single_config:
+                gen_config = single_config
+            if isinstance(single_config, dict) and "strategy" in single_config:
+                strategy_config = single_config.get("strategy")
+
+        param_map = gen_config["param_map"]
+        meta_map = param_map["META"]
+
+        strategy = default_strategy
+        if isinstance(strategy_config, dict):
+            strategy = [
+                strategy_config.get(k, default_strategy[idx])
+                for idx, k in enumerate(op_key_orders[op])
+            ]
+
+        ranges = {}
+        for range_key, meta_key in op_meta_map[op].items():
+            ranges[range_key] = gen_config[meta_map[meta_key]]
+        ranges["s"] = gen_config[param_map["num_stages"]]
+        ranges["w"] = gen_config[param_map["num_warps"]]
+
+        return {
+            "ranges": ranges,
+            "strategy": strategy,
+        }
+    except Exception:
+        return -1
+
+
+def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        expand_config = get_expand_config("matmul")
+        if expand_config != -1:
+            logger.debug(
+                "Using expand configurations from mm_hopper_expand.yaml for matmul kernel autotuning"
+            )
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for BM in ranges["BM"]
+                for BN in ranges["BN"]
+                for BK in ranges["BK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+    return [
+        triton.Config(
+            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+            num_stages=s,
+            num_warps=w,
+            pre_hook=pre_hook,
+        )
+        for BM in [32, 64, 128, 256]
+        for BN in [32, 64, 128]
+        for BK in [32, 64, 128]
+        for s in [2, 3, 4]
+        for w in [4, 8]
+    ]
+
+
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("mm"),
-    # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
+    configs=matmul_get_configs(pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
+    else runtime.get_tuned_config("mm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["default", "default", "default", "default", "default"],
+    strategy=get_expand_config("matmul")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
+    else ["default", "default", "default", "default", "default"],
     warmup=5,
     rep=10,
 )
@@ -185,44 +310,13 @@ def mm_kernel_general(
         tl.store(offsets, acc, mask=mask)
 
 
-def matmul_tma_set_block_size_hook(nargs):
-    BLOCK_M = nargs["BLOCK_M"]
-    BLOCK_N = nargs["BLOCK_N"]
-    BLOCK_K = nargs["BLOCK_K"]
-    if nargs["A_ROW_MAJOR"]:
-        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
-    else:
-        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
-
-    if nargs["B_ROW_MAJOR"]:
-        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
-    else:
-        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
-
-    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
-
-
-def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
-    return [
-        triton.Config(
-            {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
-            num_stages=s,
-            num_warps=w,
-            pre_hook=pre_hook,
-        )
-        for BM in [32, 64, 128, 256]
-        for BN in [32, 64, 128]
-        for BK in [32, 64, 128]
-        for s in [2, 3, 4]
-        for w in [4, 8]
-    ]
-
-
 @libentry()
 @libtuner(
     configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=get_expand_config("matmul")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("matmul") != -1
+    else ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
 )
@@ -384,7 +478,42 @@ def general_mm(a, b, c, M, N, K):
     return c
 
 
+def gemv_get_configs():
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        expand_config = get_expand_config("gemv")
+        if expand_config != -1:
+            logger.debug(
+                "Using expand configurations from mm_hopper_expand.yaml for gemv kernel autotuning"
+            )
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {"BLOCK_M": BM, "BLOCK_K": BK},
+                    num_stages=s,
+                    num_warps=w,
+                )
+                for BM in ranges["BM"]
+                for BK in ranges["BK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+    return [
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_K": 256},
+        )
+    ]
+
+
 @libentry()
+@libtuner(
+    configs=gemv_get_configs(),
+    key=["M", "K", "stride_am", "stride_bk"],
+    strategy=get_expand_config("gemv")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("gemv") != -1
+    else ["align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=10,
+)
 @triton.jit
 def gemv_kernel(
     A,
@@ -439,9 +568,7 @@ def gemv_mm(a, b, c, M, K):
         K,
     )
 
-    BLOCK_M = 32
-    BLOCK_K = 256
-    grid = lambda META: (triton.cdiv(M, BLOCK_M),)
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
     with torch_device_fn.device(a.device):
         gemv_kernel[grid](
@@ -453,8 +580,6 @@ def gemv_mm(a, b, c, M, K):
             a.stride(0),
             a.stride(1),
             b.stride(0),
-            BLOCK_M=BLOCK_M,
-            BLOCK_K=BLOCK_K,
         )
     return c
 

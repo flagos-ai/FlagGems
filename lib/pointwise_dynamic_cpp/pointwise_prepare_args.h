@@ -285,7 +285,7 @@ inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
 inline at::Tensor make_strided_view(const at::Tensor& base,
                                     const std::vector<int64_t>& shape,
                                     const std::vector<int64_t>& strides) {
-  return base.as_strided(shape, strides, /*storage_offset=*/0);
+  return base.as_strided(shape, strides, base.storage_offset());
 }
 
 // ==========================================================================
@@ -611,20 +611,23 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
       handler.handle_arg(one_tile_per_cta);  // one_tile_per_cta
     }
 
-    // Append global scratch (required by triton runtime)
-    handler.append_scratch();
+    // Append global scratch (required by triton runtime, twice since triton 3.3)
+    handler.append_global_scratch();
+    handler.append_global_scratch();
 
     // Build signature and launch
     std::string full_signature = join_sig(signature);
 
-    ensure_cuda_context();
-    CUdevice device_index;
-    checkCudaErrors(cuCtxGetDevice(&device_index));
-
-    const TritonKernel& compiled_kernel =
-        kernel.get_kernel(full_signature, num_warps, 1 /* num_stages */, device_index);
     c10::SmallVector<void*> ptrs = buffer.get_ptrs();
-    compiled_kernel.launch(static_cast<unsigned int>(num_ctas), 1, 1, num_warps, raw_stream, ptrs.data());
+    kernel.launch_with_raw_args(raw_stream,
+                                static_cast<unsigned int>(num_ctas),
+                                1,
+                                1,
+                                num_warps,
+                                1 /* num_stages */,
+                                full_signature,
+                                ptrs.data(),
+                                ptrs.size());
   }
 
   // =========================================================================

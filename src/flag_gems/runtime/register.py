@@ -27,6 +27,7 @@ class Register:
 
         # optional mapping func_name -> list of config entries
         self.full_config_by_func = full_config_by_func
+        self.cpp_patched_ops = set(cpp_patched_ops or [])
 
         if user_include_ops:
             self.include_ops = list(user_include_ops or [])
@@ -41,7 +42,6 @@ class Register:
             self.exclude_ops = (
                 list(user_exclude_ops or []) + self.vendor_unused_ops_list
             )
-            self.cpp_patched_ops = set(cpp_patched_ops or [])
             self.config = config
             self.config_filter()
             self.for_each()
@@ -60,6 +60,8 @@ class Register:
                         condition_func = config_item[2]
                         if not condition_func():
                             continue
+                    if op_name in self.cpp_patched_ops:
+                        continue
                     self.include_config.append((op_name, func))
         else:
             # fallback: scan provided config and match by func name or op name
@@ -75,6 +77,8 @@ class Register:
                     condition_func = config_item[2]
                     if not condition_func():
                         continue
+                if op_name in self.cpp_patched_ops:
+                    continue
                 self.include_config.append((op_name, func))
 
         if not self.include_config:

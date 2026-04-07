@@ -449,8 +449,11 @@ def test_accuracy_sum_without_dim(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
 
+INCLUDE_0_SHAPES = [(1, 0, 128, 512), (4096, 1, 256, 0), (200, 10, 0, 3)]
+
+
 @pytest.mark.sum
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + INCLUDE_0_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM + [(False, []), (True, [])])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
@@ -470,6 +473,34 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     if dim == []:
         _dim = inp.numel()
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
+
+
+@pytest.mark.sum
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_sum_dim_out(shape, dim, keepdim, dtype):
+    # Regression test: sum_dim_out must resize external out tensor and skip squeeze.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_result = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+
+    # Pre-allocate out tensor with wrong shape to test resize logic
+    out = torch.empty((1,), dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_result = torch.sum(inp, dim=dim, keepdim=keepdim, out=out)
+
+    if isinstance(dim, int):
+        dim = [dim]
+    dim = [d % inp.ndim for d in dim]
+    _dim = 1
+    for d in dim:
+        _dim *= shape[d]
+    if dim == []:
+        _dim = inp.numel()
+    gems_assert_close(res_result, ref_result, dtype, reduce_dim=_dim)
+    gems_assert_close(out, ref_result, dtype, reduce_dim=_dim)
 
 
 QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]

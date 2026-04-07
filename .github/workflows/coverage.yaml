@@ -66,7 +66,7 @@ jobs:
               return "HAS_DATA";
             }
 
-      - id: nnzip-artifact
+      - id: unzip-artifact
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
         run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
 
@@ -75,15 +75,22 @@ jobs:
         shell: bash
         run: |
           COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
-          echo "COV_ID=${COV_ID}" > $GITHUB_ENV
+          # Strip any newline characters to prevent environment variable injection
+          COV_ID=${COV_ID//$'\r'/}
+          COV_ID=${COV_ID//$'\n'/}
+          # Ensure COV_ID only contains safe characters (alphanumerics, underscore, dash)
+          if ! [[ "$COV_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "Invalid COVERAGE_ID value: '$COV_ID'" >&2
+            exit 1
+          fi
+          echo "COV_ID=${COV_ID}" > "$GITHUB_ENV"
           DATE=${COV_ID:0:8}
 
-          rm -fr docs/coverage/${COV_ID}*
-          mkdir -p docs/coverage/${COV_ID}
-          mv ${{ runner.temp }}/artifacts/htmlcov/* docs/coverage/${COV_ID}/
+          rm -fr docs/static/coverage/${COV_ID}*
+          mkdir -p docs/static/coverage/${COV_ID}
+          mv ${{ runner.temp }}/artifacts/htmlcov/* docs/static/coverage/${COV_ID}/
 
-          mkdir -p docs/test/unit/${COV_ID}
-          mv ${{ runner.temp }}/artifacts/ut-summary.md docs/test/unit/${COV_ID}/
+          mv ${{ runner.temp }}/artifacts/ut-summary.md docs/content/en/references/test/unit/${DATE}-summary.md
 
       - id: commit-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}

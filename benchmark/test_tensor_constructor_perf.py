@@ -1,14 +1,16 @@
 import math
 import os
 import random
+from typing import Generator
 
 import pytest
 import torch
 import torch.nn.functional as F
 
 import flag_gems
-from benchmark.attri_util import BenchLevel
+from benchmark.attri_util import FLOAT_DTYPES, BenchLevel
 from benchmark.performance_utils import (
+    Benchmark,
     Config,
     GenericBenchmark,
     SkipVersion,
@@ -255,5 +257,23 @@ def test_perf_one_hot():
         op_name="one_hot",
         torch_op=F.one_hot,
         dtypes=[torch.int64],
+    )
+    bench.run()
+
+
+class ZeroBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
+
+
+@pytest.mark.zero
+def test_perf_zero():
+    bench = ZeroBenchmark(
+        op_name="zero",
+        torch_op=torch.ops.aten.zero,
+        dtypes=FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()

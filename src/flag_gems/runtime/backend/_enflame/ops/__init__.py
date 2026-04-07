@@ -13,13 +13,14 @@ if arch_version == 300:
 
     __all__ = [
         "apply_rotary_pos_emb",
-        "silu_and_mul",
-        "gelu_and_mul",
         "cross_entropy_loss",
         "flash_mla",
-        "skip_layer_norm",
         "fused_add_rms_norm",
+        "gelu_and_mul",
+        "silu_and_mul",
+        "skip_layer_norm",
     ]
+
 elif arch_version == 400 or arch_version == 410:
     from .gcu400.cross_entropy_loss import cross_entropy_loss
     from .gcu400.flash_mla import flash_mla
@@ -30,11 +31,11 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.skip_layernorm import skip_layer_norm
 
     __all__ = [
-        "gelu_and_mul",
-        "silu_and_mul",
         "cross_entropy_loss",
         "flash_mla",
-        "outer",
         "fused_add_rms_norm",
+        "gelu_and_mul",
+        "outer",
+        "silu_and_mul",
         "skip_layer_norm",
     ]

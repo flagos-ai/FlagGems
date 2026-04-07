@@ -1,20 +1,25 @@
 #!/bin/bash
 
-# TODO(Qiming): Merge this to the generic run_backend_tests.sh file.
-# TODO(Qiming): Make the test cases an input to the script
-
 VENDOR=${1:?"Usage: bash tools/run_backend_tests_nvidia.sh <vendor>"}
 export GEMS_VENDOR=$VENDOR
 
 export CUDA_VISIBLE_DEVICES=6
-# export http_proxy: ${{ secrets.HTTP_PROXY }}
-# export https_proxy: ${{ secrets.HTTPS_PROXY }}
 
 echo "Running FlagGems tests with GEMS_VENDOR=$GEMS_VENDOR"
 
 # TODO(Qiming): Remove the following conda activations
-source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
-conda activate flag_gems
+# source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
+# conda activate flag_gems
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - bash)"
+
+pip install -U pip
+pip install uv
+uv venv
+source .venv/bin/activate
+uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
+uv pip install -e .[nvidia,test]
 
 source tools/run_command.sh
 
@@ -32,7 +37,7 @@ run_command pytest -s tests/test_tensor_constructor_ops.py
 
 # BLAS ops
 # TODO(Qiming): Fix sharedencoding on Hopper
-# run_command pytest -s tests/test_attention_ops.py
+run_command pytest -s tests/test_attention_ops.py
 run_command pytest -s tests/test_blas_ops.py
 
 # Special ops
