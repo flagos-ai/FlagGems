@@ -25,7 +25,9 @@ add_library(operators
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp
             copy.cpp
-            accuracy_utils.cpp)
+            accuracy_utils.cpp
+            fp8_matmul.cpp
+            fp8_matmul_direct.cpp)
 
 if (TRITON_GE_3P5)
   target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
