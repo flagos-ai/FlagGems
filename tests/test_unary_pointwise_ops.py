@@ -1642,9 +1642,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else FLOAT_DTYPES,
+    (
+        FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else FLOAT_DTYPES
+    ),
 )
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -2137,6 +2139,78 @@ def test_accuracy_arcsinh_out(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.empty_like(inp)
         torch.arcsinh(inp, out=res_out)
+
+
+@pytest.mark.ctc_loss
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+def test_accuracy_ctc_loss(dtype, reduction):
+    T, N, C = 50, 4, 20
+    S = 30
+    log_probs = torch.randn(T, N, C, dtype=dtype, device=flag_gems.device).log_softmax(
+        2
+    )
+    targets = torch.randint(1, C, (N, S), dtype=torch.long, device=flag_gems.device)
+    input_lengths = torch.full((N,), T, dtype=torch.long, device=flag_gems.device)
+    target_lengths = torch.randint(
+        10, S + 1, (N,), dtype=torch.long, device=flag_gems.device
+    )
+
+    ref_log_probs = to_reference(log_probs, True)
+    ref_targets = to_reference(targets)
+    ref_input_lengths = to_reference(input_lengths)
+    ref_target_lengths = to_reference(target_lengths)
+
+    ref_out = torch.nn.functional.ctc_loss(
+        ref_log_probs,
+        ref_targets,
+        ref_input_lengths,
+        ref_target_lengths,
+        reduction=reduction,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.ctc_loss(
+            log_probs, targets, input_lengths, target_lengths, reduction=reduction
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.ctc_loss
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"T": 10, "N": 1, "C": 5, "S": 5},
+        {"T": 100, "N": 8, "C": 50, "S": 40},
+        {"T": 200, "N": 2, "C": 100, "S": 80},
+    ],
+)
+def test_accuracy_ctc_loss_various_sizes(dtype, params):
+    T, N, C, S = params["T"], params["N"], params["C"], params["S"]
+    log_probs = torch.randn(T, N, C, dtype=dtype, device=flag_gems.device).log_softmax(
+        2
+    )
+    targets = torch.randint(1, C, (N, S), dtype=torch.long, device=flag_gems.device)
+    input_lengths = torch.full((N,), T, dtype=torch.long, device=flag_gems.device)
+    target_lengths = torch.randint(
+        1, S + 1, (N,), dtype=torch.long, device=flag_gems.device
+    )
+
+    ref_log_probs = to_reference(log_probs, True)
+    ref_targets = to_reference(targets)
+    ref_input_lengths = to_reference(input_lengths)
+    ref_target_lengths = to_reference(target_lengths)
+
+    ref_out = torch.nn.functional.ctc_loss(
+        ref_log_probs, ref_targets, ref_input_lengths, ref_target_lengths
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.ctc_loss(
+            log_probs, targets, input_lengths, target_lengths
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.softshrink
