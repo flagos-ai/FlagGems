@@ -23,13 +23,6 @@ DEFAULT_STRATEGIES = {
     "addmm": ["align32", "align32", "align32"],
     "baddbmm": ["align32", "align32", "align32"],
     "mv": ["align32", "align32"],
-    "mm_general": [
-        "default",
-        "default",
-        "default",
-        "default",
-        "default",
-    ],
     "mm_general_tma": [
         "align32",
         "align32",
@@ -46,7 +39,6 @@ OP_KEY_ORDERS = {
     "addmm": ["M", "N", "K"],
     "baddbmm": ["M", "N", "K"],
     "mv": ["M", "N"],
-    "mm_general": ["M", "N", "K", "stride_am", "stride_bk"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
 }
@@ -184,7 +176,7 @@ class ConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mm_general" or op_name == "mm_general_tma":
+        if op_name == "mm_general_tma":
             return [
                 triton.Config(
                     {
@@ -246,7 +238,6 @@ class ConfigLoader(object):
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
             ),
-            "mm_general": self._build_single_expand_spec("mm_general"),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "gemv": self._build_single_expand_spec("gemv"),
         }

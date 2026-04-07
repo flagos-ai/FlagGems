@@ -75,17 +75,10 @@ def matmul_tma_set_block_size_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_general", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else runtime.get_tuned_config("mm"),
+    configs=runtime.get_tuned_config("mm"),
+    # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("mm_general", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["default", "default", "default", "default", "default"],
+    strategy=["default", "default", "default", "default", "default"],
     warmup=5,
     rep=10,
 )
