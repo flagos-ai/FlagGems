@@ -1642,9 +1642,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else FLOAT_DTYPES,
+    (
+        FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else FLOAT_DTYPES
+    ),
 )
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -2137,6 +2139,80 @@ def test_accuracy_arcsinh_out(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.empty_like(inp)
         torch.arcsinh(inp, out=res_out)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize("negative_slope", [0.01, 0.1, 0.0, 0.5, 1.0])
+def test_accuracy_leaky_relu(shape, dtype, negative_slope):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=negative_slope)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=negative_slope)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize(
+    "shape",
+    [(1, 1), (8, 8), (64, 64), (256, 256), (1024, 1024), (4096, 4096)],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_various_sizes(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=0.01)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=0.01)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_leaky_relu_edge_cases(dtype):
+    vals = [0.0, -0.0, 1.0, -1.0, float("inf"), float("-inf"), float("nan")]
+    inp = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp, negative_slope=0.01)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp, negative_slope=0.01)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.leaky_relu
+def test_accuracy_leaky_relu_empty_tensor():
+    inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.nn.functional.leaky_relu(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.inplace
+@pytest.mark.leaky_relu_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize("negative_slope", [0.01, 0.1])
+def test_accuracy_leaky_relu_(shape, dtype, negative_slope):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.nn.functional.leaky_relu_(ref_inp, negative_slope=negative_slope)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.leaky_relu_(inp, negative_slope=negative_slope)
+
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.softshrink
