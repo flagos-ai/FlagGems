@@ -12,6 +12,7 @@ import flag_gems
 from tests.accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
+    UPSAMPLE_SHAPES,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -40,6 +41,22 @@ def test_accuracy_log10(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.competition
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log10_out(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.01
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.log10(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        out = torch.empty_like(inp)
+        res_out = torch.log10(inp, out=out)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 # ============================================================
 # 2. logaddexp
 # ============================================================
@@ -57,6 +74,24 @@ def test_accuracy_logaddexp(shape, dtype):
     ref_out = torch.logaddexp(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.logaddexp(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.competition
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_logaddexp_out(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.empty_like(ref_inp1)
+    torch.logaddexp(ref_inp1, ref_inp2, out=ref_out)
+    with flag_gems.use_gems():
+        out = torch.empty_like(inp1)
+        res_out = torch.logaddexp(inp1, inp2, out=out)
 
     gems_assert_close(res_out, ref_out, dtype)
 
@@ -178,6 +213,23 @@ def test_accuracy_asinh(shape, dtype):
     ref_out = torch.asinh(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.asinh(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.competition
+@pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_upsample_nearest2d(dtype, shape, scale):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp).to(torch.float32)
+    output_size = [int(inp.shape[i + 2] * scale[i]) for i in range(2)]
+    ref_out = torch._C._nn.upsample_nearest2d(ref_inp, output_size=output_size).to(
+        dtype
+    )
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_nearest2d(inp, output_size=output_size)
 
     gems_assert_close(res_out, ref_out, dtype)
 

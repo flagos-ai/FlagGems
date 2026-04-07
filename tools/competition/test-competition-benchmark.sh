@@ -9,7 +9,7 @@ if [ -z "$PR_ID" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_CODE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEFAULT_CODE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CODE_ROOT="${CODE_ROOT:-$DEFAULT_CODE_ROOT}"
 CODE_ROOT="$(cd "$CODE_ROOT" && pwd)"
 cd "$CODE_ROOT"
@@ -35,7 +35,7 @@ GITHUB_ID="${GITHUB_ID:-${GITHUB_ACTOR:-}}"
 GITHUB_PR_URL="${GITHUB_PR_URL:-}"
 UPLOAD_SCORE="${UPLOAD_SCORE:-1}"
 
-COMPETITION_REPO_ROOT="$(cd "$COMPETITION_ROOT/.." && pwd)"
+COMPETITION_REPO_ROOT="$(cd "$COMPETITION_ROOT/../.." && pwd)"
 
 # Prefer PR code ($CODE_ROOT) on PYTHONPATH even when the authoritative baseline
 # is a full repository checkout.
@@ -44,7 +44,7 @@ PYTEST_PYTHONPATH="$CODE_ROOT:$COMPETITION_REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 # If the authoritative repo is checked out under CODE_ROOT (e.g. CODE_ROOT/authoritative),
 # use relative paths for pytest arguments to avoid overly long / sensitive log filenames
 # generated from invocation args.
-REL_COMPETITION_REPO_ROOT="$COMPETITION_REPO_ROOT"
+REL_COMPETITION_REPO_ROOT="."
 if [[ "$COMPETITION_REPO_ROOT" == "$CODE_ROOT/"* ]]; then
   REL_COMPETITION_REPO_ROOT="${COMPETITION_REPO_ROOT#"$CODE_ROOT/"}"
 fi
@@ -66,7 +66,11 @@ resolve_test_spec() {
 
   if [ -f "$COMPETITION_REPO_ROOT/$file_path" ]; then
     if [[ "$REL_COMPETITION_REPO_ROOT" != /* ]]; then
-      printf '%s/%s%s\n' "$REL_COMPETITION_REPO_ROOT" "$file_path" "$suffix"
+      if [[ "$REL_COMPETITION_REPO_ROOT" == "." ]]; then
+        printf '%s%s\n' "$file_path" "$suffix"
+      else
+        printf '%s/%s%s\n' "$REL_COMPETITION_REPO_ROOT" "$file_path" "$suffix"
+      fi
     else
       printf '%s%s\n' "$COMPETITION_REPO_ROOT/$file_path" "$suffix"
     fi
@@ -121,6 +125,22 @@ for TASK_ID in "${TASK_ID_LIST[@]}"; do
     BENCHMARK_TESTS[$i]="$(resolve_test_spec "${BENCHMARK_TESTS[$i]}")"
   done
 
+  CORRECTNESS_PYTEST_ARGS=()
+  for test_case in "${CORRECTNESS_TESTS[@]}"; do
+    if [[ "$test_case" == tools/competition/* ]]; then
+      CORRECTNESS_PYTEST_ARGS=(-p tests.conftest)
+      break
+    fi
+  done
+
+  BENCHMARK_PYTEST_ARGS=()
+  for test_case in "${BENCHMARK_TESTS[@]}"; do
+    if [[ "$test_case" == tools/competition/* ]]; then
+      BENCHMARK_PYTEST_ARGS=(-p benchmark.conftest)
+      break
+    fi
+  done
+
   LOG_FILE="benchmark_result_pr${PR_ID}_${TASK_ID}.log"
   SCORE_FILE="score_pr${PR_ID}_${TASK_ID}.json"
   CORRECTNESS_XML="correctness_pr${PR_ID}_${TASK_ID}.xml"
@@ -130,7 +150,7 @@ for TASK_ID in "${TASK_ID_LIST[@]}"; do
   echo "Tests: ${CORRECTNESS_TESTS[*]}"
 
   CORRECTNESS_EXIT=0
-  PYTHONPATH="$PYTEST_PYTHONPATH" pytest -v --junitxml="$CORRECTNESS_XML" "${CORRECTNESS_TESTS[@]}" || CORRECTNESS_EXIT=$?
+  PYTHONPATH="$PYTEST_PYTHONPATH" pytest -v "${CORRECTNESS_PYTEST_ARGS[@]}" --junitxml="$CORRECTNESS_XML" "${CORRECTNESS_TESTS[@]}" || CORRECTNESS_EXIT=$?
 
   # Extract passed/total from junitxml
   CORRECTNESS_STATS="$(python -c "
@@ -173,7 +193,7 @@ except Exception:
     echo "Parameters: warmup=$WARMUP iter=$ITER level=$LEVEL mode=$MODE"
     echo "Tests: ${BENCHMARK_TESTS[*]}"
 
-    PYTHONPATH="$PYTEST_PYTHONPATH" pytest -v \
+    PYTHONPATH="$PYTEST_PYTHONPATH" pytest -v "${BENCHMARK_PYTEST_ARGS[@]}" \
       --warmup="$WARMUP" \
       --iter="$ITER" \
       --level="$LEVEL" \

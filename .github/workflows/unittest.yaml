@@ -115,8 +115,8 @@ jobs:
       - shell: bash
         run: |
           test -f "${{ github.workspace }}/authoritative/tools/competition/tasks.yaml"
-          test -f "${{ github.workspace }}/authoritative/tests/test_competition_ops.py"
-          test -f "${{ github.workspace }}/authoritative/benchmark/test_competition_perf.py"
+          test -f "${{ github.workspace }}/authoritative/tools/competition/test_competition_ops.py"
+          test -f "${{ github.workspace }}/authoritative/tools/competition/test_competition_perf.py"
       - shell: bash
         env:
           PR_TITLE: ${{ needs.preprocess.outputs.pr_title }}
