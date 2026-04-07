@@ -508,7 +508,7 @@ def _fake_quantize_int8_block(tensor: torch.Tensor, group_size: int):
     grouped = tensor.float().reshape(-1, original_shape[-1] // group_size, group_size)
     amax = grouped.abs().amax(dim=-1, keepdim=True).clamp(min=eps)
     scale = amax / 127.0
-    q = (grouped / scale).round().clamp(-128, 127).to(torch.int8)
+    q = (grouped / scale).clamp(-128, 127).to(torch.int8)
     return (q.float() * scale).reshape(original_shape)
 
 
