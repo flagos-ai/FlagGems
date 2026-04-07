@@ -119,6 +119,8 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
+  m.def("fp8_matmul", &flag_gems::fp8_matmul);
+  m.def("fp8_matmul_direct", &flag_gems::fp8_matmul_direct);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
