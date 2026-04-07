@@ -1642,9 +1642,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else FLOAT_DTYPES,
+    (
+        FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else FLOAT_DTYPES
+    ),
 )
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -2137,6 +2139,58 @@ def test_accuracy_arcsinh_out(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.empty_like(inp)
         torch.arcsinh(inp, out=res_out)
+
+
+@pytest.mark.upsample_nearest2d
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"input_shape": (1, 1, 4, 4), "output_size": (8, 8)},
+        {"input_shape": (2, 3, 8, 8), "output_size": (16, 16)},
+        {"input_shape": (1, 1, 4, 4), "output_size": (12, 12)},
+        {"input_shape": (2, 4, 16, 16), "output_size": (32, 32)},
+        {"input_shape": (1, 1, 1, 1), "output_size": (4, 4)},
+        {"input_shape": (1, 1, 32, 32), "output_size": (64, 64)},
+    ],
+)
+def test_accuracy_upsample_nearest2d_backward(params, dtype):
+    input_shape = params["input_shape"]
+    output_size = params["output_size"]
+    N, C, IH, IW = input_shape
+    OH, OW = output_size
+
+    grad_output = torch.randn((N, C, OH, OW), dtype=dtype, device=flag_gems.device)
+    # Compute reference without gems on same device
+    ref_out = torch.ops.aten.upsample_nearest2d_backward(
+        grad_output, output_size, input_shape, None, None
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.upsample_nearest2d_backward(
+            grad_output, output_size, input_shape, None, None
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.upsample_nearest2d
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_upsample_nearest2d_backward_with_scales(dtype):
+    input_shape = (1, 1, 8, 8)
+    N, C, IH, IW = input_shape
+    scales_h, scales_w = 2.0, 2.0
+    OH, OW = int(IH * scales_h), int(IW * scales_w)
+
+    grad_output = torch.randn((N, C, OH, OW), dtype=dtype, device=flag_gems.device)
+    ref_out = torch.ops.aten.upsample_nearest2d_backward(
+        grad_output, (OH, OW), input_shape, scales_h, scales_w
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.upsample_nearest2d_backward(
+            grad_output, (OH, OW), input_shape, scales_h, scales_w
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.softshrink
