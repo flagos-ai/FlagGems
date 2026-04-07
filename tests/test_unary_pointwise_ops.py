@@ -1642,9 +1642,11 @@ def test_accuracy_to_copy_preserve_strides(memory_format):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    FLOAT_DTYPES + [torch.int32, torch.int64]
-    if flag_gems.vendor_name == "cambricon"
-    else FLOAT_DTYPES,
+    (
+        FLOAT_DTYPES + [torch.int32, torch.int64]
+        if flag_gems.vendor_name == "cambricon"
+        else FLOAT_DTYPES
+    ),
 )
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.4"),
@@ -2137,6 +2139,34 @@ def test_accuracy_arcsinh_out(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.empty_like(inp)
         torch.arcsinh(inp, out=res_out)
+
+
+@pytest.mark.svd
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize(
+    "shape",
+    [(4, 4), (8, 8)],
+)
+def test_accuracy_svd(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_U, ref_S, ref_Vh = torch.linalg.svd(ref_inp, full_matrices=False)
+    with flag_gems.use_gems():
+        res_U, res_S, res_Vh = torch.svd(inp, some=True)
+
+    # SVD is unique up to sign flips of columns of U and V
+    # Compare singular values (always unique)
+    gems_assert_close(res_S, ref_S, dtype)
+
+    # Verify reconstruction: A ≈ U @ diag(S) @ V^T
+    k = min(shape[-2], shape[-1])
+    reconstructed = (
+        res_U[:, :k] @ torch.diag(res_S) @ res_Vh[:k, :].mT
+        if len(shape) == 2
+        else res_U[..., :, :k] @ torch.diag_embed(res_S) @ res_Vh[..., :k, :].mT
+    )
+    gems_assert_close(reconstructed, inp, dtype)
 
 
 @pytest.mark.softshrink

@@ -632,6 +632,7 @@ __all__ = [
     "std",
     "sub",
     "sub_",
+    "svd",
     "sum",
     "sum_dim",
     "sum_dim_out",

@@ -388,6 +388,7 @@ _FULL_CONFIG = (
     ("sub_.Tensor", sub_),
     ("sum", sum),
     ("sum.dim_IntList", sum_dim),
+    ("svd", svd),
     ("sum.IntList_out", sum_dim_out),
     ("sum.out", sum_out),
     ("t_copy", t_copy),
