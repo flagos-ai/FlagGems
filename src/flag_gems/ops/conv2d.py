@@ -440,7 +440,7 @@ class Conv2d(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logger.debug("GEMS CONV2D VJP")
-        (weight, input, bias) = ctx.saved_tensors
+        weight, input, bias = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info
         in_n, input_height, input_width = ctx.input_info
@@ -594,9 +594,7 @@ class Conv2d(torch.autograd.Function):
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if isinstance(padding, str):
         if padding == "same":
-            assert (
-                stride == 1
-            ), "Doesn't support any stride values other than 1 \
+            assert stride == 1, "Doesn't support any stride values other than 1 \
                 in padding = 'same' mode, received stride value {stride}"
             ih = input.shape[-2]
             iw = input.shape[-1]
