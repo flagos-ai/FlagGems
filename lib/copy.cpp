@@ -1,6 +1,6 @@
 #include <c10/core/DispatchKeySet.h>
 #include <vector>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/utils.h"
 #include "torch/torch.h"
 #include "triton_jit/triton_jit_function.h"
@@ -37,7 +37,7 @@ std::vector<int64_t> broadcasted_stride(const std::vector<int64_t>& shape,
 }
 
 static bool _can_use_triton_copy(const at::Tensor& dst, const at::Tensor& src, bool non_blocking) {
-  if (!dst.is_cuda() || !src.is_cuda()) return false;
+  if (!backend::isOnDevice(dst) || !backend::isOnDevice(src)) return false;
   if (dst.device() != src.device()) return false;
   if (non_blocking) return false;
   return true;
@@ -111,8 +111,8 @@ at::Tensor to_copy(const at::Tensor& x,
   const unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
   c10::DeviceGuard guard(target_device);
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   // at::Tensor x_linear = (x.scalar_type() != target_dtype) ? x.to(target_dtype) : x;
   at::Tensor x_linear = x;
@@ -184,8 +184,8 @@ at::Tensor& copy_(at::Tensor& dst, const at::Tensor& src, bool non_blocking = fa
   const unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
   c10::DeviceGuard guard(dst.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   bool no_broadcast = src.sizes().equals(dst.sizes());
 

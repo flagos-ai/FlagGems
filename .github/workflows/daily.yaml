@@ -11,6 +11,8 @@
 # TODO(Qiming): Enable daily tests for benchmark and all backends
 
 name: daily
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:
@@ -42,6 +44,8 @@ jobs:
     runs-on: jiuding
     steps:
       - uses: actions/checkout@v6
+      - run: |
+          pip install pytest-md-report
       - shell: bash
         run: tools/gpu_check.sh
       - shell: bash
@@ -62,7 +66,7 @@ jobs:
 
           bash tools/test-op.sh ${RUN_TAG}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: op-ut-coverage
           path: coverage/
