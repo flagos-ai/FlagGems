@@ -62,11 +62,33 @@ official_torch_270 = [
     "torchaudio==2.7.0",
 ]
 
+official_torch_251 = [
+    "torch==2.5.1",
+    "torchvision==0.20.1",
+    "torchaudio==2.5.1",
+]
+
 iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
     "triton==3.1.0+corex.4.4.0",
+]
+
+kunlunxin = [
+    "flag_gems[official_torch_251]",
+    "benchflow==1.0.0",
+    "torch_klx==0.1.0",
+    "torch_xray==0.2.1",
+    "triton==3.0.0+0762702f",
+    "xmlir==1.0.0.1",
+    # "hydra==0.1.0",
+    # "transformer_engine==1.13.0+7fc5d8b",
+    # Other dependencies
+    "regex==2026.4.4",
+    "hyperparameter==0.5.6",
+    "colorama==0.4.6",
+    "psutil==6.1.0",
 ]
 
 mthreads = [
@@ -126,11 +148,12 @@ build-dir = "build/{cache_tag}"
 # Tell 'uv' that each index has an equal importance for each package,
 # in other words, don't treat the first index with a matching package
 # as the best one.
-index-strategy = "first-index"
+index-strategy = "unsafe-best-match"
 
 conflicts = [
     [
         { group = "iluvatar" },
+        { group = "kunlunxin" },
         { group = "mthreads" },
         { group = "nvidia" },
         { group = "tsingmicro" },
@@ -141,6 +164,12 @@ conflicts = [
 [[tool.uv.index]]
 name = "iluvatar-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-iluvatar/simple"
+explicit = true
+
+# Source for Kunlunxin packages
+[[tool.uv.index]]
+name = "kunlunxin-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-kunlunxin/simple"
 explicit = true
 
 # Source for Mthreads packages
@@ -157,20 +186,27 @@ explicit = true
 
 # Source for Pytorch CU12.8
 [[tool.uv.index]]
-name = "torch-pypi"
+name = "torch-pypi-128"
 url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# Source for Pytorch CU11.8
+[[tool.uv.index]]
+name = "torch-pypi-118"
+url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 # Source for common packages
 [[tool.uv.index]]
 name = "default"
 url = "https://mirrors.aliyun.com/pypi/simple/"
-explicit = true
 
 [tool.uv.sources]
 # Mapping from optional groups to index servers
 iluvatar = { index = "iluvatar-pypi" }
+kunlunxin = { index = "kunlunxin-pypi" }
 mthreads = { index = "mthreads-pypi" }
 tsingmicro = { index = "tsingmicro-pypi" }
-official_torch_290 = { index = "torch-pypi" }
-official_torch_270 = { index = "torch-pypi" }
+official_torch_290 = { index = "torch-pypi-128" }
+official_torch_270 = { index = "torch-pypi-128" }
+official_torch_251 = { index = "torch-pypi-118" }
