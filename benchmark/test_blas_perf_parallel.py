@@ -1,4 +1,5 @@
 import concurrent.futures
+import fcntl
 import gc
 import os
 import pickle
@@ -58,6 +59,64 @@ class ParallelBenchmarkMixin:
     def should_forward_parallel_dtype(self, dtype_name):
         return True
 
+    def _iter_expected_shapes(self):
+        for shape in self.shapes:
+            group_size = max(1, int(self.get_parallel_metric_group_size(shape)))
+            for _ in range(group_size):
+                yield tuple(shape) if isinstance(shape, (list, tuple)) else shape
+
+    def _get_error_shape_output_path(self):
+        return os.path.abspath("FlagTune/error_shape.yaml")
+
+    def _record_failed_shape(self, shape):
+        if shape is None:
+            return
+
+        normalized_shape = list(shape) if isinstance(shape, (list, tuple)) else [shape]
+        error_shape_path = self._get_error_shape_output_path()
+        output_dir = os.path.dirname(error_shape_path) or "."
+        os.makedirs(output_dir, exist_ok=True)
+        lock_path = os.path.join(output_dir, ".error_output.lock")
+
+        with open(lock_path, "a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                error_config = {
+                    self.op_name: {
+                        "shapes": [normalized_shape],
+                        "shape_desc": self.shape_desc,
+                    }
+                }
+
+                tmp_error_file = tempfile.NamedTemporaryFile(
+                    mode="w",
+                    suffix=".yaml",
+                    dir=output_dir,
+                    delete=False,
+                    encoding="utf-8",
+                )
+                try:
+                    yaml.safe_dump(
+                        error_config,
+                        tmp_error_file,
+                        sort_keys=False,
+                    )
+                    tmp_error_file.flush()
+                    os.replace(tmp_error_file.name, error_shape_path)
+                finally:
+                    tmp_error_file.close()
+                    if os.path.exists(tmp_error_file.name):
+                        os.remove(tmp_error_file.name)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+        sys.stderr.write(
+            "[error_shape] "
+            f"op={self.op_name} failed_shape={normalized_shape} "
+            f"saved_to={error_shape_path}\n"
+        )
+        sys.stderr.flush()
+
     def _build_metric_from_input(self, input_item):
         metric = BenchmarkMetrics()
         args, kwargs = self.unpack_to_args_kwargs(input_item)
@@ -94,12 +153,15 @@ class ParallelBenchmarkMixin:
 
     def _run_inputs(self, input_items):
         metrics = []
+        expected_shapes = self._iter_expected_shapes()
         for input_item in input_items:
+            current_shape = next(expected_shapes, None)
             metric = BenchmarkMetrics()
             try:
                 metric = self._build_metric_from_input(input_item)
             except Exception as e:
                 metric.error_msg = str(e)
+                self._record_failed_shape(current_shape)
                 pytest.fail(str(e))
             finally:
                 metrics.append(metric)
