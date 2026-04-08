@@ -263,6 +263,7 @@ def test_perf_topk_softmax():
 @pytest.mark.hadamard_transform
 def test_perf_hadamard_transform():
     import math
+
     from scipy.linalg import hadamard
 
     # Production shapes from serving log analysis (batch=1/16/64)

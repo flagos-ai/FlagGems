@@ -26,6 +26,7 @@ MAX_GRID = 65535
 # Single butterfly stage kernel
 # ============================================================
 
+
 @triton.jit
 def _butterfly_stage(
     IN_ptr,
@@ -65,6 +66,7 @@ def _butterfly_stage(
 # Scale + cast kernel
 # ============================================================
 
+
 @triton.jit
 def _scale_cast(
     IN_ptr,
@@ -90,6 +92,7 @@ def _scale_cast(
 # ============================================================
 # Forward implementation
 # ============================================================
+
 
 def _hadamard_transform_fwd(x, scale):
     logger.debug("GEMS_KUNLUNXIN HADAMARD_TRANSFORM")
@@ -126,8 +129,10 @@ def _hadamard_transform_fwd(x, scale):
         for s in range(n_stages):
             stride_s = 1 << s
             _butterfly_stage[(grid_size,)](
-                buf_a, buf_b,
-                stride_row, n_rows,
+                buf_a,
+                buf_b,
+                stride_row,
+                n_rows,
                 ROWS_PER_PROGRAM=rows_per_prog,
                 STRIDE_S=stride_s,
                 DIM=dim_padded,
@@ -137,9 +142,12 @@ def _hadamard_transform_fwd(x, scale):
         # Result is in buf_a; scale and cast back
         out = torch.empty(n_rows, dim_padded, dtype=input_dtype, device=x.device)
         _scale_cast[(grid_size,)](
-            buf_a, out,
-            stride_row, dim_padded,
-            scale, n_rows,
+            buf_a,
+            out,
+            stride_row,
+            dim_padded,
+            scale,
+            n_rows,
             ROWS_PER_PROGRAM=rows_per_prog,
             DIM=dim_padded,
         )
@@ -153,6 +161,7 @@ def _hadamard_transform_fwd(x, scale):
 # Autograd wrapper
 # ============================================================
 
+
 class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale):
@@ -162,14 +171,18 @@ class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         # Hadamard matrix is symmetric: backward = forward with same scale
-        return _hadamard_transform_fwd(
-            grad_output.contiguous(), ctx._hadamard_transform_scale
-        ), None
+        return (
+            _hadamard_transform_fwd(
+                grad_output.contiguous(), ctx._hadamard_transform_scale
+            ),
+            None,
+        )
 
 
 # ============================================================
 # Public API
 # ============================================================
+
 
 def hadamard_transform(x, scale=1.0):
     """Fast Hadamard Transform (KunlunXin specialization).
@@ -191,6 +204,7 @@ def hadamard_transform(x, scale=1.0):
 # ============================================================
 # XXN variants (non-power-of-2 dims)
 # ============================================================
+
 
 def hadamard_transform_12N(x, scale=1.0):
     """Hadamard transform for dim = 12 * 2^k."""
