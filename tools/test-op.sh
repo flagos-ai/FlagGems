@@ -4,15 +4,23 @@ set -e
 
 PR_ID=$1
 
-# Replace "__ALL__" with all tests
+# Leave this for debugging's purpose
+echo "PR_ID=${PR_ID}"
+
+COLLECT_COVERAGE=""
+
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  # Replace "__ALL__" with all tests
   CHANGED_FILES=$(find tests -name "test*.py")
-  FAIL_EARLY=""
-  echo "TIMESTAMP=${PR_ID}"
+  # add options to generate summary report
+  EXTRA_OPTS="--md-report"
+  EXTRA_OPTS+=" --md-report-verbose=1"
+  EXTRA_OPTS+=" --md-report-output=${PR_ID}-summary.md"
   SUFFIX=""
+  COLLECT_COVERAGE="yes"
 else
-  FAIL_EARLY="-x"
-  echo "PR_ID=${PR_ID}"
+  # for per-PR test, fail early
+  EXTRA_OPTS="-x"
   SUFFIX="-${GITHUB_SHA::7}"
 fi
 
@@ -30,21 +38,21 @@ QUICK_CPU_TESTS=(
   "tests/test_unary_pointwise_ops.py"
 )
 
-
-
+# Extract test cases from CHANGED_FILES
 TEST_CASES=()
 TEST_CASES_CPU=()
 for item in $CHANGED_FILES; do
   case $item in
-    tests/test_DSA/*)
-      # skip DSA test for now
-      ;;
+    # tests/test_DSA/*)
+    # skip DSA test for now
+    # ;;
     tests/test_quant.py)
-      # skip
+      # skip because it always fail
       ;;
     tests/*) TEST_CASES+=($item)
   esac
 
+  # filter out tests that do not need quick CPU mode tests
   for item_cpu in "${QUICK_CPU_TESTS[@]}"; do
     if [[ "$item" == "$item_cpu" ]]; then
       TEST_CASES_CPU+=($item)
@@ -64,22 +72,22 @@ coverage erase
 
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
-coverage run -m pytest -s ${FAIL_EARLY} ${TEST_CASES[@]}
+coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES[@]}
 
 # Run quick-cpu test if necessary
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run -m pytest -s ${FAIL_EARLY} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
+  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
 fi
 
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default
-# if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+if [ -n "$COLLECT_COVERAGE" ]; then
   coverage combine
   coverage html
   rm -fr coverage
   mkdir coverage
   mv htmlcov coverage/
   echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
-  ls coverage
-# fi
+  mv ${PR_ID}-summary.md coverage/ut-summary.md
+fi
