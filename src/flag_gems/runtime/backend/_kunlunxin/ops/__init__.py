@@ -10,6 +10,7 @@ from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
 from .any import any, any_dim, any_dims
+from .apply_repetition_penalties import apply_repetition_penalties
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
@@ -60,6 +61,7 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .digamma_ import digamma_
 from .div import (
     div_mode,
     div_mode_,
@@ -189,6 +191,7 @@ from .sin import sin, sin_
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
 from .softplus import softplus
+from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sqrt import sqrt, sqrt_
 from .stack import stack
@@ -219,8 +222,12 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "digamma_",
+    "softshrink",
+    "softshrink_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "apply_repetition_penalties",
     "abs",
     "abs_",
     "acos",

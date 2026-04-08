@@ -1,4 +1,30 @@
 ops:
+  - name: _adaptive_avg_pool3d
+    description: |
+      Apply a 3D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - _adaptive_avg_pool3d
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
+  - name: _adaptive_avg_pool3d_out
+    description: |
+      A variant of `_adaptive_avg_pool3d` that assigns the output to the `out` tensor.
+    for:
+      - _adaptive_avg_pool3d.out
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
   - name: _conv_depthwise2d
     description: A depthwise convolution for the conv2d neural network function.
     for:
@@ -24,6 +50,31 @@ ops:
       - Tensor
     stages:
       beta: '5.0'
+  - name: _log_softmax_backward_data
+    description: |
+      Computes the gradient of the input tensor with respect to a `log_softmax` operation
+      during backpropagation.
+    for:
+      - _log_softmax_backward_data
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
+  - name: _log_softmax_backward_data_out
+    description: |
+      A variant of `_log_softmax_backward_data` that assigns the output to the `out` tensor.
+    for:
+      - _log_softmax_backward_data.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
   - name: _unique2
     description: Returns the unique elements of the input tensor. This is an internal PyTorch function.
     for:
@@ -34,6 +85,32 @@ ops:
       - Tensor
     stages:
       stable: '2.1'
+  - name: _unsafe_view
+    description: |
+      Creates a new view of an existing tensor with a different shape without
+      performing safety checks, such as verifying if the tensor is contiguous or
+      if the reshape is valid.
+    for:
+      - _unsafe_view
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      alpha: '5.0'
+  - name: _unsafe_view_out
+    description: |
+      A variant of `_unsafe_view` that assigns the output to the `out` tensor.
+    for:
+      - _unsafe_view.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      alpha: '5.0'
   - name: _upsample_bicubic2d_aa
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
@@ -158,6 +235,19 @@ ops:
       - LinearAlg
     stages:
       stable: '4.0'
+  - name: addcmul_
+    description: |
+      The in-place version of `addcmul`.
+    for:
+      - addcmul_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      alpha: '5.0'
   - name: addmm
     description: |
       Performs a matrix multiplication of the matrices `mat1` and `mat2`.

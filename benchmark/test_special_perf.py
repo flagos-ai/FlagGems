@@ -3,10 +3,15 @@ from typing import Generator
 
 import pytest
 import torch
-import triton
 
 import flag_gems
-from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.attri_util import (
+    BOOL_DTYPES,
+    COMPLEX_DTYPES,
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    BenchLevel,
+)
 from benchmark.performance_utils import (
     Benchmark,
     Config,
@@ -1026,52 +1031,85 @@ def test_perf_per_token_group_quant_fp8():
     bench.run()
 
 
-@pytest.mark.reflection_pad2d
-@pytest.mark.parametrize(
-    "shape",
-    [
-        (3, 33, 33),
-        (2, 4, 32, 64),
-        (8, 16, 64, 64),
-        (32, 64, 128, 256),
-        (16, 32, 64, 128),
-    ],
-)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize(
-    "padding",
-    [
-        (1, 1, 1, 1),
-        (2, 3, 2, 3),
-        (3, 5, 3, 5),
-        (0, 4, 0, 4),
-    ],
-)
-def test_reflection_pad2d_benchmark_tensor(shape, dtype, padding):
-    quantiles = [0.5, 0.2, 0.8]
+@pytest.mark.conj_physical
+def test_perf_conj_physical():
+    def conj_physical_input_fn(shape, dtype, device):
+        if dtype.is_complex:
+            float_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
+            real = torch.randn(shape, dtype=float_dtype, device=device)
+            imag = torch.randn(shape, dtype=float_dtype, device=device)
+            input_tensor = torch.complex(real, imag).to(dtype)
+        elif dtype.is_floating_point:
+            input_tensor = torch.randn(shape, dtype=dtype, device=device)
+        else:
+            input_tensor = torch.randn(shape, device=device).to(dtype)
+        yield (input_tensor,)
 
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    def torch_conj_physical(input):
+        return torch.conj_physical(input)
 
-    # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.reflection_pad2d(ref_x, padding),
-        rep=100,
-        quantiles=quantiles,
+    def gems_wrapper(input):
+        return flag_gems.conj_physical(input)
+
+    class Conj_physicalBenchmark(GenericBenchmarkExcluse3D):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def set_shapes(self, shape_file_path=None):
+            conj_physical_shapes = [
+                (256,),
+                (2048, 2048),
+                (128, 512, 256),
+                (32, 64),
+                (512, 1024),
+                (2, 3, 4),
+            ]
+            self.shapes = conj_physical_shapes
+
+        def set_more_shapes(self):
+            return None
+
+    dtypes = FLOAT_DTYPES + INT_DTYPES + COMPLEX_DTYPES
+    bench = Conj_physicalBenchmark(
+        input_fn=conj_physical_input_fn,
+        op_name="conj_physical",
+        torch_op=torch_conj_physical,
+        dtypes=dtypes,
     )
+    bench.set_gems(flag_gems.conj_physical)
+    bench.run()
 
-    # Triton implementation
-    with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: flag_gems.reflection_pad2d(x, padding), rep=100, quantiles=quantiles
-        )
 
-    # Calculate speedup and return result
-    speedup = ms_torch / ms_triton
+@pytest.mark.reflection_pad2d
+def test_perf_reflection_pad2d():
+    def reflection_pad2d_input_fn(config, dtype, device):
+        shape, padding = config
+        x = torch.randn(shape, dtype=dtype, device=device)
+        yield x, list(padding)
 
-    print(f"reflection_pad2d {shape} {dtype}:")
-    print(f"  FlagGems: {ms_triton:.3f}ms")
-    print(f"  Speedup: {speedup:.2f}x")
+    class ReflectionPad2dBenchmark(Benchmark):
+        def set_shapes(self, shape_file_path=None):
+            self.shapes = [
+                ((3, 33, 33), (1, 1, 1, 1)),
+                ((2, 4, 32, 64), (2, 3, 2, 3)),
+                ((8, 16, 64, 64), (3, 5, 3, 5)),
+                ((32, 64, 128, 256), (0, 4, 0, 4)),
+                ((16, 32, 64, 128), (1, 1, 1, 1)),
+            ]
+
+        def set_more_shapes(self):
+            return None
+
+        def get_input_iter(self, cur_dtype):
+            for config in self.shapes:
+                yield from reflection_pad2d_input_fn(config, cur_dtype, self.device)
+
+    bench = ReflectionPad2dBenchmark(
+        op_name="reflection_pad2d",
+        torch_op=torch.ops.aten.reflection_pad2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.upsample_bicubic2d
@@ -1377,4 +1415,21 @@ def test_select_backward_perf(dtype):
         dtypes=[dtype],
     )
 
+    bench.run()
+
+
+def _functional_sym_constrain_range_for_size_input_fn(shape, cur_dtype, device):
+    dep_token = generate_tensor_input(shape, cur_dtype, device)
+    yield 5, 1, 10, dep_token
+
+
+@pytest.mark.functional_sym_constrain_range_for_size
+@pytest.mark.performance
+def test_perf_functional_sym_constrain_range_for_size():
+    bench = GenericBenchmark(
+        op_name="functional_sym_constrain_range_for_size",
+        torch_op=torch.ops.aten._functional_sym_constrain_range_for_size,
+        dtypes=FLOAT_DTYPES,
+        input_fn=_functional_sym_constrain_range_for_size_input_fn,
+    )
     bench.run()

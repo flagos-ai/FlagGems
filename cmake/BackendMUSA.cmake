@@ -61,14 +61,14 @@ endif()
 
 function(target_link_musa_libraries target)
     target_link_libraries(${target} PRIVATE ${MUSA_LIBRARY})
-    target_include_directories(${target} PRIVATE ${MUSA_HOME}/include)
+    target_include_directories(${target} PUBLIC ${MUSA_HOME}/include)
     # Add Python include dirs (needed by torch_musa headers that include pybind11)
-    target_include_directories(${target} PRIVATE ${Python_INCLUDE_DIRS})
+    target_include_directories(${target} PUBLIC ${Python_INCLUDE_DIRS})
     if(TORCH_MUSA_PATH)
         # Add torch_musa parent dir for "torch_musa/csrc/..." includes
         get_filename_component(TORCH_MUSA_PARENT "${TORCH_MUSA_PATH}" DIRECTORY)
-        target_include_directories(${target} PRIVATE "${TORCH_MUSA_PARENT}")
-        target_include_directories(${target} PRIVATE "${TORCH_MUSA_PATH}/include")
+        target_include_directories(${target} PUBLIC "${TORCH_MUSA_PARENT}")
+        target_include_directories(${target} PUBLIC "${TORCH_MUSA_PATH}/include")
     endif()
     # Link torch_musa and ittnotify libraries
     if(TORCH_MUSA_LIBRARY)

@@ -285,7 +285,7 @@ inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
 inline at::Tensor make_strided_view(const at::Tensor& base,
                                     const std::vector<int64_t>& shape,
                                     const std::vector<int64_t>& strides) {
-  return base.as_strided(shape, strides, /*storage_offset=*/0);
+  return base.as_strided(shape, strides, base.storage_offset());
 }
 
 // ==========================================================================
@@ -296,10 +296,32 @@ inline at::Tensor make_strided_view(const at::Tensor& base,
 // ==========================================================================
 
 inline at::Tensor dispatch_pointwise(const std::string& op_name,
-                                     const std::vector<at::Tensor>& inputs,
+                                     const std::vector<at::Tensor>& inputs_orig,
                                      const std::vector<double>& scalar_args = {},
                                      const std::vector<bool>& is_tensor_mask = {},
                                      const std::vector<c10::optional<at::Tensor>>& pre_outputs = {}) {
+  // =========================================================================
+  // Device promotion: move CPU scalar tensors (0-dim) to the target device.
+  // This handles cases like `cuda_tensor + 1` where PyTorch wraps the Python
+  // int as a CPU tensor before dispatching aten::add.Tensor.
+  // =========================================================================
+  c10::Device target_device = c10::kCPU;
+  for (const auto& t : inputs_orig) {
+    if (t.device() != c10::kCPU) {
+      target_device = t.device();
+      break;
+    }
+  }
+  std::vector<at::Tensor> inputs;
+  inputs.reserve(inputs_orig.size());
+  for (const auto& t : inputs_orig) {
+    if (t.device() == c10::kCPU && t.dim() == 0 && target_device != c10::kCPU) {
+      inputs.push_back(t.to(target_device));
+    } else {
+      inputs.push_back(t);
+    }
+  }
+
   // Lookup kernel metadata (all ranks share the same metadata)
   const KernelInfo* info_meta = get_kernel_info(op_name, 0);
   if (!info_meta) {

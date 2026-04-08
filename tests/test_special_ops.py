@@ -901,6 +901,70 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
+BOUNDARY_CASES = [
+    ("W_in_1_upsample", (2, 3, 1), [5], True, None),
+    ("W_in_1_upsample", (2, 3, 1), [5], False, None),
+    ("W_out_1", (1, 1, 10), [1], False, None),
+    ("identity_scale_ac", (2, 2, 100), [100], True, None),
+    ("identity_scale_nc", (2, 2, 100), [100], False, None),
+    ("value_nan", (1, 1, 10), [20], False, "nan"),
+    ("value_inf", (1, 1, 10), [20], False, "inf"),
+    ("non_contiguous", (2, 4, 10), [15], True, "non_contiguous"),
+    ("non_contiguous", (2, 4, 10), [15], False, "non_contiguous"),
+]
+
+
+@pytest.mark.upsample_linear1d
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("case", BOUNDARY_CASES, ids=lambda x: x[0])
+def test_upsample_linear1d_boundaries(dtype, case):
+    name, shape, output_size, align_corners, special_cfg = case
+
+    if special_cfg == "nan":
+        input_tensor = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+        input_tensor.fill_(float("nan"))
+    elif special_cfg == "inf":
+        input_tensor = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+        input_tensor.fill_(float("inf"))
+    else:
+        input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    if special_cfg == "non_contiguous":
+        if shape[2] > 2:
+            input_tensor = input_tensor[:, :, :-2]
+
+            input_tensor = input_tensor.transpose(0, 2)
+            input_tensor = input_tensor.transpose(0, 2)
+    ref_i = to_reference(input_tensor).to(torch.float32)
+
+    try:
+        ref_out = torch._C._nn.upsample_linear1d(
+            ref_i,
+            output_size=output_size,
+            align_corners=align_corners,
+        ).to(dtype)
+    except Exception as e:
+        pytest.skip(f"PyTorch reference raised error: {e}")
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_linear1d(
+            input_tensor,
+            output_size=output_size,
+            align_corners=align_corners,
+        )
+    if special_cfg == "nan":
+        assert torch.isnan(res_out).all(), "Output should be all NaN"
+        assert torch.isnan(ref_out).all(), "Reference should be all NaN"
+    elif special_cfg == "inf":
+
+        def is_inf_or_nan(x):
+            return torch.isinf(x) | torch.isnan(x)
+
+        assert is_inf_or_nan(res_out).all(), "Output should be all inf or nan"
+        assert is_inf_or_nan(ref_out).all(), "Reference should be all inf or nan"
+    else:
+        gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.upsample_linear1d
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
@@ -2058,6 +2122,28 @@ def test_accuracy_moe_align_block_size(
     gems_assert_close(
         num_tokens_post_pad, to_reference(num_tokens_post_pad_vllm), dtype=dtype
     )
+
+
+@pytest.mark.conj_physical
+@pytest.mark.parametrize("shape", [(256,), (32, 64), (2, 3, 4)])
+@pytest.mark.parametrize("is_complex", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_conj_physical(shape, is_complex, dtype):
+    if is_complex:
+        real = torch.randn(shape, dtype=torch.float32, device=device)
+        imag = torch.randn(shape, dtype=torch.float32, device=device)
+        input = torch.complex(real, imag)
+        out_dtype = input.dtype
+    else:
+        input = torch.randn(shape, dtype=dtype, device=device)
+        out_dtype = dtype
+
+    ref_input = to_reference(input, True)
+    ref_out = torch.conj_physical(ref_input)
+    with flag_gems.use_gems():
+        res_out = torch.conj_physical(input)
+
+    gems_assert_close(res_out, ref_out, out_dtype, reduce_dim=1)
 
 
 @pytest.mark.reflection_pad2d
