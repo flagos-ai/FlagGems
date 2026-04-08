@@ -14,11 +14,11 @@ Coverage:
   bfloat16 : atol=0.016,   rtol=1e-4
 """
 
-import flag_gems
 import pytest
 import torch
 
-from log10_pointwise_submit import log10, log10_out
+import flag_gems
+from flag_gems.experimental_ops.log10_ import log10, log10_out
 
 # log10_ 在 test_accuracy_log10_ 中通过 torch.log10_ 测试，这里保留导入以保持 API 完整性
 # noqa: F401

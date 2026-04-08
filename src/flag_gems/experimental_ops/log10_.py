@@ -13,6 +13,7 @@ import logging
 
 import triton
 import triton.language as tl
+
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -96,8 +97,9 @@ def log10_out(self, *, out):
 # Quick self-test (python log10_pointwise_submit.py)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    import flag_gems
     import torch
+
+    import flag_gems
 
     print("=== log10 self-test ===\n")
 
