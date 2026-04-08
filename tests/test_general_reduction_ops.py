@@ -564,3 +564,34 @@ def test_accuracy_quantile_dim(shape, dim, keepdim, dtype, q, interpolation):
     for d in dim:
         _dim *= shape[d]
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_aminmax_without_dim(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.aminmax(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.aminmax(inp)
+
+    gems_assert_equal(res_out.min, ref_out.min)
+    gems_assert_equal(res_out.max, ref_out.max)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_aminmax_dim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.aminmax(inp, dim=dim, keepdim=keepdim)
+
+    gems_assert_equal(res_out.min, ref_out.min)
+    gems_assert_equal(res_out.max, ref_out.max)
