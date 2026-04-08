@@ -209,6 +209,7 @@ from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
@@ -507,6 +508,7 @@ __all__ = [
     "true_divide_out",
     "true_divide_",
     "uniform_",
+    "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "var_mean",
