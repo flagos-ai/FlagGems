@@ -90,6 +90,12 @@ def w8a8_block_fp8_matmul_kernel(
 def get_w8a8_block_fp8_configs(
     N: int, K: int, block_n: int, block_k: int
 ) -> Optional[Dict[int, Any]]:
+    if not torch.cuda.is_available():
+        logger.debug(
+            "CUDA is unavailable on this backend; using default W8A8 block FP8 config."
+        )
+        return None
+
     device_name = torch.cuda.get_device_name().replace(" ", "_")
     name_parts = device_name.split("_")
     if any(part.startswith("H20") for part in name_parts):
