@@ -47,7 +47,9 @@ def _butterfly_stage_1d(x, BLOCK_SIZE: tl.constexpr, STRIDE: tl.constexpr):
 
 
 @triton.jit
-def _butterfly_stage_2d(x, ROWS: tl.constexpr, BLOCK_SIZE: tl.constexpr, STRIDE: tl.constexpr):
+def _butterfly_stage_2d(
+    x, ROWS: tl.constexpr, BLOCK_SIZE: tl.constexpr, STRIDE: tl.constexpr
+):
     """One butterfly stage on a 2D (ROWS, BLOCK_SIZE) tensor."""
     GRP: tl.constexpr = BLOCK_SIZE // (2 * STRIDE)
     if STRIDE == 1:
@@ -129,10 +131,27 @@ def _fht_kernel_256_4row_native(
     x2 = x2 * SCALE
     x3 = x3 * SCALE
 
-    tl.store(OUT_ptr + row0 * stride_out_row + col_offs, x0, eviction_policy="evict_first")
-    tl.store(OUT_ptr + row1 * stride_out_row + col_offs, x1, mask=row1 < N_ROWS, eviction_policy="evict_first")
-    tl.store(OUT_ptr + row2 * stride_out_row + col_offs, x2, mask=row2 < N_ROWS, eviction_policy="evict_first")
-    tl.store(OUT_ptr + row3 * stride_out_row + col_offs, x3, mask=row3 < N_ROWS, eviction_policy="evict_first")
+    tl.store(
+        OUT_ptr + row0 * stride_out_row + col_offs, x0, eviction_policy="evict_first"
+    )
+    tl.store(
+        OUT_ptr + row1 * stride_out_row + col_offs,
+        x1,
+        mask=row1 < N_ROWS,
+        eviction_policy="evict_first",
+    )
+    tl.store(
+        OUT_ptr + row2 * stride_out_row + col_offs,
+        x2,
+        mask=row2 < N_ROWS,
+        eviction_policy="evict_first",
+    )
+    tl.store(
+        OUT_ptr + row3 * stride_out_row + col_offs,
+        x3,
+        mask=row3 < N_ROWS,
+        eviction_policy="evict_first",
+    )
 
 
 # ============================================================
@@ -164,7 +183,9 @@ def _fht_kernel_256_1d_native(
     x = _butterfly_stage_1d(x, 256, 1)
 
     x = x * SCALE
-    tl.store(OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first")
+    tl.store(
+        OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first"
+    )
 
 
 # ============================================================
@@ -197,7 +218,9 @@ def _fht_kernel_512_1d_native(
     x = _butterfly_stage_1d(x, 512, 1)
 
     x = x * SCALE
-    tl.store(OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first")
+    tl.store(
+        OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first"
+    )
 
 
 # ============================================================
@@ -226,7 +249,9 @@ def _fht_kernel_1d_native(
         x = _butterfly_stage_1d(x, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev))
 
     x = x * SCALE
-    tl.store(OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first")
+    tl.store(
+        OUT_ptr + pid * stride_out_row + col_offs, x, eviction_policy="evict_first"
+    )
 
 
 # ============================================================
@@ -263,7 +288,9 @@ def _fht_kernel_2d_native(
     x = tl.load(in_ptrs, mask=load_mask, other=0.0)
 
     for s_rev in tl.static_range(LOG_N):
-        x = _butterfly_stage_2d(x, ROWS_PER_PROGRAM, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev))
+        x = _butterfly_stage_2d(
+            x, ROWS_PER_PROGRAM, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev)
+        )
 
     x = x * SCALE
     tl.store(out_ptrs, x, mask=load_mask, eviction_policy="evict_first")
@@ -345,14 +372,20 @@ def _fht_kernel_2d(
     x = tl.load(in_ptrs, mask=load_mask, other=0.0).to(tl.float32)
 
     for s_rev in tl.static_range(LOG_N):
-        x = _butterfly_stage_2d(x, ROWS_PER_PROGRAM, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev))
+        x = _butterfly_stage_2d(
+            x, ROWS_PER_PROGRAM, BLOCK_SIZE, 1 << (LOG_N - 1 - s_rev)
+        )
 
     x = x * scale
 
     if INPUT_IS_FP16:
-        tl.store(out_ptrs, x.to(tl.float16), mask=load_mask, eviction_policy="evict_first")
+        tl.store(
+            out_ptrs, x.to(tl.float16), mask=load_mask, eviction_policy="evict_first"
+        )
     elif INPUT_IS_BF16:
-        tl.store(out_ptrs, x.to(tl.bfloat16), mask=load_mask, eviction_policy="evict_first")
+        tl.store(
+            out_ptrs, x.to(tl.bfloat16), mask=load_mask, eviction_policy="evict_first"
+        )
     else:
         tl.store(out_ptrs, x, mask=load_mask, eviction_policy="evict_first")
 
@@ -387,13 +420,18 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
         stride_x = x_flat.stride(0)
         stride_out = n
 
-        _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out)
+        _launch_kernel(
+            x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out
+        )
 
         return out.reshape(shapes_og)
 
     # General path: handle padding
-    assert input_dtype in (torch.float32, torch.float16, torch.bfloat16), \
-        f"hadamard_transform not implemented for input type '{input_dtype}'"
+    assert input_dtype in (
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+    ), f"hadamard_transform not implemented for input type '{input_dtype}'"
 
     # Pad to multiple of 8 (matching CUDA implementation)
     needs_pad = dim_og % 8 != 0
@@ -401,10 +439,12 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
         x_flat = F.pad(x_flat, (0, 8 - dim_og % 8))
     dim = x_flat.shape[1]
 
-    assert dim % 8 == 0, \
-        "fast_hadamard_transform only supports hidden dimension divisible by 8 for now"
-    assert dim <= 65536, \
-        "fast_hadamard_transform only supports hidden dimension at most 65536 for now"
+    assert (
+        dim % 8 == 0
+    ), "fast_hadamard_transform only supports hidden dimension divisible by 8 for now"
+    assert (
+        dim <= 65536
+    ), "fast_hadamard_transform only supports hidden dimension at most 65536 for now"
 
     # For butterfly we need next power of 2
     log_n = math.ceil(math.log2(dim)) if dim > 1 else 1
@@ -418,7 +458,9 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     stride_x = x_flat.stride(0)
     stride_out = n
 
-    _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out)
+    _launch_kernel(
+        x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out
+    )
 
     # Trim padding back to original dim
     if n != dim_og:
@@ -427,7 +469,9 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     return out.reshape(shapes_og)
 
 
-def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out):
+def _launch_kernel(
+    x_flat, out, scale, input_dtype, batch_size, n, log_n, stride_x, stride_out
+):
     """Dispatch to the best kernel variant based on dim and dtype."""
     is_half = input_dtype in (torch.float16, torch.bfloat16)
 
@@ -437,8 +481,10 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
             if batch_size >= 4:
                 grid = (triton.cdiv(batch_size, 4),)
                 _fht_kernel_256_4row_native[grid](
-                    x_flat, out,
-                    stride_x, stride_out,
+                    x_flat,
+                    out,
+                    stride_x,
+                    stride_out,
                     N_ROWS=batch_size,
                     SCALE=scale,
                     num_warps=2,
@@ -447,8 +493,10 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
             else:
                 grid = (batch_size,)
                 _fht_kernel_256_1d_native[grid](
-                    x_flat, out,
-                    stride_x, stride_out,
+                    x_flat,
+                    out,
+                    stride_x,
+                    stride_out,
                     SCALE=scale,
                     num_warps=2,
                     num_stages=1,
@@ -459,8 +507,10 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
         if n == 512 and is_half:
             grid = (batch_size,)
             _fht_kernel_512_1d_native[grid](
-                x_flat, out,
-                stride_x, stride_out,
+                x_flat,
+                out,
+                stride_x,
+                stride_out,
                 SCALE=scale,
                 num_warps=1,
                 num_stages=1,
@@ -472,10 +522,14 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
             rows_per_program = 2
             grid = (triton.cdiv(batch_size, rows_per_program),)
             _fht_kernel_2d_native[grid](
-                x_flat, out,
-                stride_x, stride_out,
+                x_flat,
+                out,
+                stride_x,
+                stride_out,
                 N_ROWS=batch_size,
-                DIM=n, LOG_N=log_n, BLOCK_SIZE=n,
+                DIM=n,
+                LOG_N=log_n,
+                BLOCK_SIZE=n,
                 ROWS_PER_PROGRAM=rows_per_program,
                 SCALE=scale,
                 num_warps=4,
@@ -487,9 +541,13 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
         if n <= 128 and is_half:
             grid = (batch_size,)
             _fht_kernel_1d_native[grid](
-                x_flat, out,
-                stride_x, stride_out,
-                DIM=n, LOG_N=log_n, BLOCK_SIZE=n,
+                x_flat,
+                out,
+                stride_x,
+                stride_out,
+                DIM=n,
+                LOG_N=log_n,
+                BLOCK_SIZE=n,
                 SCALE=scale,
                 num_warps=1,
                 num_stages=1,
@@ -500,9 +558,14 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
         if n <= 512:
             grid = (batch_size,)
             _fht_kernel_1d[grid](
-                x_flat, out, scale,
-                stride_x, stride_out,
-                DIM=n, LOG_N=log_n, BLOCK_SIZE=n,
+                x_flat,
+                out,
+                scale,
+                stride_x,
+                stride_out,
+                DIM=n,
+                LOG_N=log_n,
+                BLOCK_SIZE=n,
                 INPUT_IS_FP16=(input_dtype == torch.float16),
                 INPUT_IS_BF16=(input_dtype == torch.bfloat16),
                 num_warps=1,
@@ -535,10 +598,15 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
 
         grid = (triton.cdiv(batch_size, rows_per_program),)
         _fht_kernel_2d[grid](
-            x_flat, out, scale,
-            stride_x, stride_out,
+            x_flat,
+            out,
+            scale,
+            stride_x,
+            stride_out,
             N_ROWS=batch_size,
-            DIM=n, LOG_N=log_n, BLOCK_SIZE=n,
+            DIM=n,
+            LOG_N=log_n,
+            BLOCK_SIZE=n,
             ROWS_PER_PROGRAM=rows_per_program,
             INPUT_IS_FP16=(input_dtype == torch.float16),
             INPUT_IS_BF16=(input_dtype == torch.bfloat16),
@@ -553,7 +621,6 @@ def _launch_kernel(x_flat, out, scale, input_dtype, batch_size, n, log_n, stride
 
 
 class HadamardTransformFn(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, x, scale=1.0):
         ctx._hadamard_transform_scale = scale

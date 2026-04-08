@@ -101,6 +101,7 @@ def _get_hadamard_matrix(dim_padded, dtype, device):
 # Forward implementation
 # ============================================================
 
+
 def _hadamard_transform_fwd(x, scale):
     logger.debug("GEMS_MTHREADS HADAMARD_TRANSFORM")
     orig_shape = x.shape
@@ -144,7 +145,10 @@ def _hadamard_transform_fwd(x, scale):
     with torch_device_fn.device(x.device):
         for s in range(log_n - 1):
             _butterfly_stage_native[(grid_size,)](
-                src, dst, stride_row, batch,
+                src,
+                dst,
+                stride_row,
+                batch,
                 ROWS_PER_PROGRAM=rows_per_prog,
                 STRIDE_S=(1 << s),
                 DIM=dim_padded,
@@ -155,7 +159,12 @@ def _hadamard_transform_fwd(x, scale):
         # Final stage: upcast to fp32 for scale, output in input_dtype
         out = torch.empty(batch, dim_padded, dtype=input_dtype, device=x.device)
         _butterfly_final_scale[(grid_size,)](
-            src, out, stride_row, dim_padded, scale, batch,
+            src,
+            out,
+            stride_row,
+            dim_padded,
+            scale,
+            batch,
             ROWS_PER_PROGRAM=rows_per_prog,
             STRIDE_S=(1 << (log_n - 1)),
             DIM=dim_padded,
@@ -170,6 +179,7 @@ def _hadamard_transform_fwd(x, scale):
 # ============================================================
 # Matmul fallback (used for backward due to triton-mtgpu limitation)
 # ============================================================
+
 
 def _hadamard_transform_matmul(x, scale):
     orig_shape = x.shape
@@ -191,6 +201,7 @@ def _hadamard_transform_matmul(x, scale):
 # Autograd wrapper
 # ============================================================
 
+
 class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale):
@@ -206,6 +217,7 @@ class HadamardTransformFn(torch.autograd.Function):
 # ============================================================
 # Public API
 # ============================================================
+
 
 def hadamard_transform(x, scale=1.0):
     """Fast Hadamard Transform (MThreads/MUSA specialization).
@@ -227,6 +239,7 @@ def hadamard_transform(x, scale=1.0):
 # ============================================================
 # XXN variants (non-power-of-2 dims)
 # ============================================================
+
 
 def hadamard_transform_12N(x, scale=1.0):
     """Hadamard transform for dim = 12 * 2^k."""
