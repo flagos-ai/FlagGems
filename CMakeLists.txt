@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
 project(FlagGems LANGUAGES CXX VERSION 0.1.0)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 
 # ------------------------------- project-wide settings -------------------------------
-set(CMAKE_CXX_STANDARD 17) # for fold-expression
+set(CMAKE_CXX_STANDARD 20) # for fold-expression and concepts
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF) # Ensures only standard-compliant C++ is used
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -26,7 +26,6 @@ set(CMAKE_INSTALL_RPATH "${_rpath_portable_origin}")
 # the rpath (per library?)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-
 # --------------------------- project options ---------------------------
 option(FLAGGEMS_USE_EXTERNAL_TRITON_JIT "whether to use external triton jit library" OFF)
 option(FLAGGEMS_USE_EXTERNAL_PYBIND11 "whether to use external pybind11 library" ON)
@@ -38,13 +37,50 @@ if(NOT FLAGGEMS_BUILD_C_EXTENSIONS)
   return()
 endif()
 
+# ==============================================================================
+# Backend Selection
+# ==============================================================================
+set(FLAGGEMS_BACKEND "CUDA" CACHE STRING "Target backend: CUDA, IX, MUSA, NPU")
+set_property(CACHE FLAGGEMS_BACKEND PROPERTY STRINGS "CUDA" "IX" "MUSA" "NPU")
+
+if(NOT FLAGGEMS_BACKEND MATCHES "^(CUDA|IX|MUSA|NPU)$")
+    message(FATAL_ERROR "Invalid FLAGGEMS_BACKEND: ${FLAGGEMS_BACKEND}")
+endif()
+message(STATUS "Building FlagGems with backend: ${FLAGGEMS_BACKEND}")
+
+# NPU and MUSA do not need CUDA language
+if(FLAGGEMS_BACKEND STREQUAL "NPU" OR FLAGGEMS_BACKEND STREQUAL "MUSA")
+    project(FlagGems LANGUAGES CXX VERSION 0.1.0)
+else()
+    project(FlagGems LANGUAGES CUDA CXX VERSION 0.1.0)
+endif()
+
+# ------------------------------- Backend compile definitions -------------------------------
+if(FLAGGEMS_BACKEND STREQUAL "CUDA")
+    add_compile_definitions(FLAGGEMS_USE_CUDA)
+elseif(FLAGGEMS_BACKEND STREQUAL "IX")
+    add_compile_definitions(FLAGGEMS_USE_IX)
+elseif(FLAGGEMS_BACKEND STREQUAL "NPU")
+    add_compile_definitions(FLAGGEMS_USE_NPU)
+elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
+    add_compile_definitions(FLAGGEMS_USE_MUSA)
+endif()
 
 message(STATUS "Building flag gems with C extensions")
 include(FetchContent)
-# dependencies: cuda toolkit
-find_package(CUDAToolkit REQUIRED)
-# dependencies: python
+
+# dependencies: python (must be before backend includes that need Python_EXECUTABLE)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
+
+# --------------------------- Backend-specific dependencies ---------------------------
+if(FLAGGEMS_BACKEND STREQUAL "CUDA" OR FLAGGEMS_BACKEND STREQUAL "IX")
+    find_package(CUDAToolkit REQUIRED)
+elseif(FLAGGEMS_BACKEND STREQUAL "NPU")
+    include(BackendNPU)
+elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
+    include(BackendMUSA)
+endif()
+
 # torch
 find_package(Torch MODULE REQUIRED) # This is the FindTorch.cmake
 # dependencies: json
@@ -52,8 +88,10 @@ if(FLAGGEMS_USE_EXTERNAL_TRITON_JIT)
   find_package(TritonJIT 0.1.0 CONFIG REQUIRED)
 else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
+  set(BACKEND ${FLAGGEMS_BACKEND} CACHE STRING "Backend for TritonJIT" FORCE)
   FetchContent_Declare(TritonJIT
     GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit
+    GIT_TAG master
     # SOURCE_DIR <your local source dir of libtriton_jit>
   )
   FetchContent_MakeAvailable(TritonJIT)
@@ -83,7 +121,8 @@ if(FLAGGEMS_BUILD_CTESTS)
 endif()
 
 execute_process(
-  COMMAND ${Python_EXECUTABLE}
+  #COMMAND ${Python_EXECUTABLE}
+  COMMAND ${CMAKE_COMMAND} -E env --unset=LD_PRELOAD ${Python_EXECUTABLE}
           -c "import triton, sys; sys.stdout.write(triton.__version__)"
   RESULT_VARIABLE _ret
   OUTPUT_VARIABLE TRITON_VERSION

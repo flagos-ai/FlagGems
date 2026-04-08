@@ -1,59 +1,176 @@
 [build-system]
-requires = ["setuptools>=64.0", "scikit-build-core>=0.11", "pybind11"]
+# cmake locks to '>=3.20,<4.0' to sync with FlagTree
+requires = ["setuptools==82.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake==3.31.10", "ninja==1.13.0"]
 build-backend = "scikit_build_core.build"
 
-
 [project]
+
 name = "flag_gems"
-version = "4.2.1.rc.0"
-description = "FlagGems is a function library written in Triton."
+
+version = "5.0.1.rc.0"
+
+description = "FlagGems is a function library written in Triton language."
+
 readme = { file = "README.md", content-type = "text/markdown" }
+
 requires-python = ">=3.8.0"
+
 license = { text = "Apache Software License" }
+
 authors = [
     { name = "Zhixin Li", email = "strongspoon@outlook.com" },
     { name = "Tongxin Bai", email = "waffle.bai@gmail.com" },
     { name = "Yuming Huang", email = "jokmingwong@gmail.com" },
     { name = "Feiyu Chen", email = "iclementine@outlook.com" },
+    { name = "Ruilin Yang", email = "rlyanger01@gmail.com"},
+    { name = "Zhen Wang", email = "516310189@qq.com"},
+    { name = "Hui Guo", email = "sunnycase@live.cn"},
+    { name = "Xiaoyan Liu", email = "18811205590@163.com"},
+    { name = "Chunlie Men", email = "menchunlei@163.com"},
+    { name = "Hang Xiao", email = "vincent.xiao.me@gmail.com"},
+    { name = "Yiqun Huang", email = "huangyiqun@mail.bnu.edu.cn"},
+    { name = "Jinjin Tian", email = "kiddyjinjin@gmail.com"},
+    { name = "Yang Zheng", email = "zhengyang_pku@163.com"},
+    { name = "Jinjie Liu", email = "sgjzfzzf@gmail.com"},
 ]
+
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
 ]
+
 dependencies = [
-    "torch>=2.2.0",
-    "packaging",
-    "pybind11",
-    "PyYAML",
-    "packaging",
-    "sqlalchemy",
+    "packaging==26.0",
+    "PyYAML==6.0.3",
+    "sqlalchemy==2.0.48",
+    "numpy==1.26.4",
 ]
 
 [project.optional-dependencies]
-test = [
-    "pytest>=7.1.0",
-    "numpy>=1.26",
-    "scipy>=1.14",
+
+# Backend specific packages
+official_torch_290 = [
+    "torch==2.9.0",
+    "torchvision==0.24.0",
+    "torchaudio==2.9.0",
 ]
+
+official_torch_270 = [
+    "torch==2.7.0",
+    "torchvision==0.22.0",
+    "torchaudio==2.7.0",
+]
+
+iluvatar = [
+    "torch==2.7.1+corex.4.4.0",
+    "torchaudio==2.7.1+corex.4.4.0",
+    "torchvision==0.22.1+corex.4.4.0",
+    "triton==3.1.0+corex.4.4.0",
+]
+
+mthreads = [
+    "torch==2.7.1+musa.4.0.0",
+    "torch_musa==2.7.1",
+    "triton==3.1.0+musa.4.0.0",
+    "numpy==1.26.4",
+    "mkl==2024.0.0",
+]
+
+nvidia = [
+    "flag_gems[official_torch_290]",
+]
+
+tsingmicro = [
+    "flag_gems[official_torch_270]",
+    "torch_txda==0.1.0+20260310.294fc4a6",
+    "txops==0.1.0+20260225.5cc33e4e",
+    "triton==3.3.0+gitfe2a28fa",
+]
+
+# Test packages
+test = [
+    "distro==1.9.0",
+    "pytest==9.0.2",
+    "scipy>=1.15.3",
+]
+
+# Package for running example tests
 example = [
     "transformers>=4.40.2",
 ]
 
 [project.urls]
-Homepage = "https://github.com/FlagOpen/FlagGems"
 
-[tool.setuptools]
-package-dir = { "" = "src" }
+Repository = "https://github.com/flagos-ai/FlagGems"
+Documentation = "https://flagos-ai.github.io/FlagGems"
+"Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
 [tool.setuptools.packages.find]
+
 where = ["src"]
 
 [tool.setuptools.package-data]
+
 "flag_gems.runtime" = ["*/**/*.yaml"]
 
 [tool.scikit-build]
+
 build.verbose = true
 logging.level = "INFO"
 wheel.install-dir = "flag_gems"
 build-dir = "build/{cache_tag}"
+
+[tool.uv]
+
+# Tell 'uv' that each index has an equal importance for each package,
+# in other words, don't treat the first index with a matching package
+# as the best one.
+index-strategy = "first-index"
+
+conflicts = [
+    [
+        { group = "iluvatar" },
+        { group = "mthreads" },
+        { group = "nvidia" },
+        { group = "tsingmicro" },
+    ]
+]
+
+# Source for Iluvatar packages
+[[tool.uv.index]]
+name = "iluvatar-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-iluvatar/simple"
+explicit = true
+
+# Source for Mthreads packages
+[[tool.uv.index]]
+name = "mthreads-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-mthreads/simple"
+explicit = true
+
+# Source for TsingMicro packages
+[[tool.uv.index]]
+name = "tsingmicro-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple"
+explicit = true
+
+# Source for Pytorch CU12.8
+[[tool.uv.index]]
+name = "torch-pypi"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# Source for common packages
+[[tool.uv.index]]
+name = "default"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+explicit = true
+
+[tool.uv.sources]
+# Mapping from optional groups to index servers
+iluvatar = { index = "iluvatar-pypi" }
+mthreads = { index = "mthreads-pypi" }
+tsingmicro = { index = "tsingmicro-pypi" }
+official_torch_290 = { index = "torch-pypi" }
+official_torch_270 = { index = "torch-pypi" }

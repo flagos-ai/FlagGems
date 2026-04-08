@@ -54,6 +54,7 @@ class BenchConfig:
         self.user_desired_metrics = None
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
         self.query = False
+        self.parallel = 0
 
 
 Config = BenchConfig()
@@ -143,6 +144,18 @@ def pytest_addoption(parser):
         help="Benchmark info recorded in log files or not",
     )
 
+    parser.addoption(
+        "--parallel",
+        action="store",
+        type=int,
+        default=0,
+        help=(
+            "Enable multi-GPU parallel benchmark execution across shapes. "
+            "Example: --parallel 8 means using GPU 0~7 in parallel. "
+            "Default 0 means serial execution."
+        ),
+    )
+
 
 def pytest_configure(config):
     global Config  # noqa: F824
@@ -173,6 +186,7 @@ def pytest_configure(config):
     Config.shape_file = shape_file_str
 
     Config.record_log = config.getoption("--record") == "log"
+    Config.parallel = int(config.getoption("--parallel") or 0)
     if Config.record_log:
         cmd_args = [
             arg.replace(".py", "").replace("=", "_").replace("/", "_")
