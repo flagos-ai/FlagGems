@@ -48,8 +48,8 @@ TORCH_LIBRARY_IMPL(aten, CUDA, m) {
   REGISTER_AND_LOG("max", max);
   REGISTER_AND_LOG("sum", sum);
   REGISTER_AND_LOG("zeros", zeros);
-  // REGISTER_AND_LOG("_to_copy", to_copy);
-  // REGISTER_AND_LOG("copy_", copy_);
+  REGISTER_AND_LOG("_to_copy", to_copy);
+  REGISTER_AND_LOG("copy_", copy_);
 }
 
 }  // namespace flag_gems
