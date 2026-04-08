@@ -45,4 +45,16 @@ def replace_customized_ops(_globals):
             error.customized_op_replace_error(e)
 
 
+def get_expand_config(op_name, yaml_path=None):
+    return config_loader.get_expand_config(op_name=op_name, yaml_path=yaml_path)
+
+
+def ops_get_configs(op_name, pre_hook=None, yaml_path=None):
+    return config_loader.ops_get_configs(
+        op_name=op_name,
+        pre_hook=pre_hook,
+        yaml_path=yaml_path,
+    )
+
+
 __all__ = ["*"]

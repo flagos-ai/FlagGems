@@ -1,10 +1,47 @@
 import copy
+import os
 import warnings
 
 import triton
 
 from . import backend
 from .backend.device import DeviceDetector
+
+DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "utils",
+        "configs",
+        "general_ops_expand_configs.yaml",
+    )
+)
+
+
+DEFAULT_STRATEGIES = {
+    "bmm": ["log", "log", "log", "align32", "align32"],
+    "addmm": ["align32", "align32", "align32"],
+    "baddbmm": ["align32", "align32", "align32"],
+    "mv": ["align32", "align32"],
+    "mm_general_tma": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
+    "gemv": ["align32", "align32", "align32", "default"],
+}
+
+OP_KEY_ORDERS = {
+    "bmm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "addmm": ["M", "N", "K"],
+    "baddbmm": ["M", "N", "K"],
+    "mv": ["M", "N"],
+    "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    "gemv": ["M", "K", "stride_am", "stride_bk"],
+}
 
 
 class ConfigLoader(object):
@@ -59,7 +96,151 @@ class ConfigLoader(object):
                     "num_ctas": 1,
                     "num_ldmatrixes": 0,
                 }
+            self.expand_config_registry = self._build_expand_registry()
             self.load_all()
+
+    def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
+        if op_name == "bmm":
+            return [
+                triton.Config(
+                    {
+                        "TILE_M": block_m,
+                        "TILE_N": block_n,
+                        "TILE_K": block_k,
+                        "GROUP_M": 1 if block_m == 32 else 2,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "addmm":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_SIZE_M": block_m,
+                        "BLOCK_SIZE_N": block_n,
+                        "BLOCK_SIZE_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "baddbmm":
+            return [
+                triton.Config(
+                    {
+                        "TILE_M": block_m,
+                        "TILE_N": block_n,
+                        "TILE_K": block_k,
+                        "GROUP_M": 1 if block_m <= 32 else 2,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "mv":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_N": block_n,
+                        "BLOCK_M": block_m,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_n in ranges["BLOCK_N"]
+                for block_m in ranges["BLOCK_M"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "mm_general_tma":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "gemv":
+            return [
+                triton.Config(
+                    {"BLOCK_M": block_m, "BLOCK_K": block_k},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        return []
+
+    def _build_single_expand_spec(
+        self,
+        op_name,
+        expand_yaml_path=None,
+        yaml_op_name=None,
+    ):
+        return {
+            "yaml_op_name": yaml_op_name or op_name,
+            "key": OP_KEY_ORDERS[op_name],
+            "default_strategy": DEFAULT_STRATEGIES[op_name],
+            "expand_yaml_path": expand_yaml_path,
+        }
+
+    def _build_expand_registry(self):
+        return {
+            "bmm": self._build_single_expand_spec(
+                "bmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "addmm": self._build_single_expand_spec(
+                "addmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "baddbmm": self._build_single_expand_spec(
+                "baddbmm", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "mv": self._build_single_expand_spec(
+                "mv", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
+            "gemv": self._build_single_expand_spec("gemv"),
+        }
 
     def load_all(self):
         for key in self.vendor_primitive_yaml_config:
@@ -171,6 +352,64 @@ class ConfigLoader(object):
             iteration_plan,
             current_config,
         )
+
+    def get_expand_config(self, op_name, yaml_path=None):
+        op_spec = self.expand_config_registry.get(op_name)
+        if op_spec is None:
+            return -1
+
+        key = op_spec.get("key", [])
+        default_strategy = op_spec.get("default_strategy")
+        expand_yaml_path = op_spec.get("expand_yaml_path") or yaml_path
+        yaml_op_name = op_spec.get("yaml_op_name", op_name)
+
+        try:
+            expand_configs = backend.get_expand_config(
+                op_name=yaml_op_name,
+                file_path=expand_yaml_path,
+            )
+            if not isinstance(expand_configs, list):
+                return -1
+
+            gen_config = None
+            strategy_config = None
+            for single_config in expand_configs:
+                if isinstance(single_config, dict) and "param_map" in single_config:
+                    gen_config = single_config
+
+                if isinstance(single_config, dict) and "strategy" in single_config:
+                    strategy_config = single_config.get("strategy")
+
+            param_map = gen_config.get("param_map")
+            meta_map = param_map.get("META")
+
+            strategy = default_strategy
+            if isinstance(strategy_config, dict):
+                strategy = [
+                    strategy_config.get(k, default_strategy[idx])
+                    for idx, k in enumerate(key)
+                ]
+
+            ranges = {}
+
+            for mapped_key in meta_map.values():
+                ranges[mapped_key.upper()] = gen_config[mapped_key]
+            ranges["s"] = gen_config[param_map.get("num_stages")]
+            ranges["w"] = gen_config[param_map.get("num_warps")]
+
+            return {
+                "ranges": ranges,
+                "strategy": strategy,
+            }
+        except Exception:
+            return -1
+
+    def ops_get_configs(self, op_name, yaml_path=None, pre_hook=None):
+        expand_config = self.get_expand_config(op_name, yaml_path=yaml_path)
+        if expand_config == -1:
+            return []
+        ranges = expand_config["ranges"]
+        return self._build_configs_by_op(op_name, ranges, pre_hook=pre_hook)
 
     def get_tuned_config(self, op_name):
         if op_name in self.loaded_triton_config:

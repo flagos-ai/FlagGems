@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -6,16 +7,22 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("mv"),
+@libtuner(
+    # configs=runtime.get_tuned_config("mv"),
+    configs=runtime.ops_get_configs("mv", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else runtime.get_tuned_config("mv"),
     key=["M", "N"],
+    strategy=runtime.get_expand_config("mv")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32"],
 )
 @triton.jit
 def mv_kernel(

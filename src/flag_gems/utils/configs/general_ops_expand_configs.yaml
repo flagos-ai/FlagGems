@@ -1,0 +1,151 @@
+addmm:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 32
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 64
+      - 128
+      - 256
+    block_k:
+      - 32
+      - 64
+      - 128
+      # - 256
+    stages:
+      - 2
+      - 3
+      - 4
+      - 5
+    warps:
+      - 2
+      - 4
+      - 8
+  - strategy:
+     M: default
+     N: default
+     K: default
+     stride_am: default
+     stride_bk: default
+     dtype: default
+baddbmm:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 16
+      - 32
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 64
+      - 128
+      # - 256
+    block_k:
+      - 32
+      - 64
+      - 128
+    stages:
+      - 3
+      - 4
+      - 5
+    warps:
+      - 2
+      - 4
+      - 8
+  - strategy:
+      M: default
+      N: default
+      K: default
+bmm:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 32
+      - 64
+      - 128
+      # - 256
+    block_n:
+      - 16
+      - 32
+      - 64
+      - 128
+      # - 256
+    block_k:
+      # - 16
+      - 32
+      - 64
+      - 128
+      - 256
+    stages:
+      # - 2
+      - 3
+      - 4
+      - 5
+    warps:
+      - 4
+      - 8
+  - strategy:
+      M: default
+      N: default
+      K: default
+      stride_am: default
+      stride_bk: default
+      dtype: default
+mv:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+      num_warps: warps
+      num_stages: stages
+    warps:
+      - 2
+      - 4
+      - 8
+    block_m:
+      - 16
+      - 32
+      - 64
+      - 128
+      - 256
+    block_n:
+      - 1
+      - 2
+      - 4
+      - 8
+      - 16
+      # - 32
+    stages:
+      - 3
+      - 4
+      - 5
+  - strategy:
+      N: default
+      M: default
+      stride_an: default
+      stride_am: default
+      dtype: default
