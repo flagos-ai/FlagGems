@@ -381,7 +381,7 @@ def sparse_prefill_fwd(q, kv, indices, sm_scale, d_v, attn_sink=None, topk_lengt
     Returns:
         (output, max_logits, lse)
     """
-    logger.debug("GEMS FLASH MLA")
+    logger.debug("GEMS SPARSE MLA")
     s_q, h_q, d_qk = q.shape
     d_kpe = d_qk - d_v
     MIN_KPE = 16
