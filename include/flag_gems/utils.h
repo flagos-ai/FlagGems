@@ -32,4 +32,7 @@ int cdiv(int a, int b);
 namespace flag_gems {
 std::pair<uint64_t, uint64_t> philox_backend_seed_offset(int64_t increment,
                                                          c10::optional<at::Generator> generator_opt);
-}
+std::pair<uint64_t, uint64_t> philox_backend_seed_offset(int64_t increment,
+                                                         const at::Device &device,
+                                                         c10::optional<at::Generator> generator_opt);
+}  // namespace flag_gems
