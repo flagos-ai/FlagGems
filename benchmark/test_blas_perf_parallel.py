@@ -15,6 +15,13 @@ import benchmark.test_blas_perf as blas_perf
 import flag_gems
 from benchmark.attri_util import BenchmarkMetrics, BenchmarkResult, OperationAttribute
 from benchmark.conftest import Config, emit_record_logger
+try:
+    from flag_gems.ops.fp8mm import fp8_matmul as fp8mm_baseline
+
+    FP8MM_BASELINE_AVAILABLE = True
+except Exception:
+    fp8mm_baseline = None
+    FP8MM_BASELINE_AVAILABLE = False
 
 try:
     from vllm.utils.deep_gemm import (
@@ -58,6 +65,17 @@ def _parallel_visible_devices_env():
 
 def _parallel_device_label():
     return flag_gems.device.upper()
+
+
+def get_fp8mm_baseline_dtype():
+    if hasattr(torch, "float8_e4m3fn"):
+        if flag_gems.vendor_name == "mthreads":
+            return torch.float8_e4m3fn
+        if flag_gems.device == "cuda" and torch.cuda.is_available():
+            major, _ = torch.cuda.get_device_capability()
+            if major >= 8:
+                return torch.float8_e4m3fn
+    return None
 
 
 class ParallelBenchmarkMixin:
@@ -212,6 +230,7 @@ class ParallelBenchmarkMixin:
                 "bmm",
                 "baddbmm",
                 "w8a8_block_fp8_matmul",
+                "w8a8_block_fp8_matmul_fp8",
                 "w8a8_block_fp8_matmul_deepgemm",
             }:
                 normalized_shape = shape
@@ -225,7 +244,12 @@ class ParallelBenchmarkMixin:
                 if normalized_shape is None:
                     return 1
 
-                if self.op_name in {"mm", "bmm", "w8a8_block_fp8_matmul"}:
+                if self.op_name in {
+                    "mm",
+                    "bmm",
+                    "w8a8_block_fp8_matmul",
+                    "w8a8_block_fp8_matmul_fp8",
+                }:
                     return m * n * k * 2
                 return m * n * (2 * k + 1)
 
@@ -665,6 +689,76 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
         return 2 * m * n * k
 
 
+class ParallelW8A8BlockFP8Fp8Benchmark(ParallelW8A8BlockFP8MatmulBenchmark):
+    def get_input_iter(self, cur_dtype):
+        fp8_dtype = get_fp8mm_baseline_dtype()
+        if fp8_dtype is None:
+            raise RuntimeError(
+                "fp8 baseline benchmark requires float8_e4m3fn support on CUDA or mthreads"
+            )
+
+        block_n, block_k = self.block_size
+        for m, n, k in self.shapes:
+            num_k_groups = (k + block_k - 1) // block_k
+            num_n_groups = (n + block_n - 1) // block_n
+
+            A = blas_perf.rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
+            B = blas_perf.rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
+            As = (
+                0.01
+                * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
+                + 0.005
+            ).contiguous()
+            Bs = (
+                0.01
+                * torch.rand(
+                    (num_n_groups, num_k_groups),
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+                + 0.005
+            ).contiguous()
+
+            yield (
+                A,
+                As,
+                B,
+                Bs,
+            ), (
+                A,
+                B,
+                As,
+                Bs,
+                self.block_size[:],
+                torch.bfloat16,
+            )
+
+    def _build_metric_from_input(self, input_item):
+        baseline_input, gems_input = input_item
+        metric = BenchmarkMetrics()
+
+        baseline_args, baseline_kwargs = self.unpack_to_args_kwargs(baseline_input)
+        gems_args, gems_kwargs = self.unpack_to_args_kwargs(gems_input)
+        metric.shape_detail = self.record_shapes(*gems_args, **gems_kwargs)
+
+        if "latency_base" in self.to_bench_metrics:
+            metric.latency_base = self.get_latency(
+                self.torch_op, *baseline_args, **baseline_kwargs
+            )
+        if "latency" in self.to_bench_metrics:
+            metric.latency = self.get_latency(self.gems_op, *gems_args, **gems_kwargs)
+        if "speedup" in self.to_bench_metrics:
+            metric.speedup = metric.latency_base / metric.latency
+        if "tflops" in self.to_bench_metrics:
+            metric.tflops = (
+                self.get_tflops(self.torch_op, *baseline_args, **baseline_kwargs)
+                / metric.latency
+                / 1e12
+                * 1e3
+            )
+        return metric
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, bench_cls",
     [
@@ -726,6 +820,24 @@ def test_perf_w8a8_block_fp8_matmul():
     bench = ParallelW8A8BlockFP8MatmulBenchmark(
         op_name="w8a8_block_fp8_matmul",
         torch_op=blas_perf.vllm_w8a8_triton_block_scaled_mm,
+        dtypes=["fp8"],
+    )
+    bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
+    bench.run()
+
+
+@pytest.mark.w8a8_block_fp8_matmul_fp8
+def test_perf_w8a8_block_fp8_matmul_fp8():
+    if not FP8MM_BASELINE_AVAILABLE:
+        pytest.skip("w8a8_block_fp8_matmul_fp8 benchmark requires fp8mm baseline")
+    if get_fp8mm_baseline_dtype() is None:
+        pytest.skip(
+            "w8a8_block_fp8_matmul_fp8 benchmark requires float8_e4m3fn support on CUDA or mthreads"
+        )
+
+    bench = ParallelW8A8BlockFP8Fp8Benchmark(
+        op_name="w8a8_block_fp8_matmul_fp8",
+        torch_op=fp8mm_baseline,
         dtypes=["fp8"],
     )
     bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
