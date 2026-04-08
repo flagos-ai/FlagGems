@@ -14,6 +14,7 @@ except Exception:  # noqa: BLE001
 has_c_extension = False
 use_c_extension = False
 aten_patch_list = []
+aten_patch = None  # 保存 aten_patch 模块引用
 
 # set FLAGGEMS_SOURCE_DIR for cpp extension to find
 os.environ["FLAGGEMS_SOURCE_DIR"] = str(Path(__file__).parent.resolve())
@@ -37,13 +38,45 @@ if use_env_c_extension and not has_c_extension:
 
 if has_c_extension and use_env_c_extension:
     try:
-        from flag_gems import aten_patch
+        from flag_gems import aten_patch as _aten_patch
 
-        aten_patch_list = aten_patch.get_registered_ops()
+        aten_patch = _aten_patch
         use_c_extension = True
     except (ImportError, AttributeError):
-        aten_patch_list = []
+        aten_patch = None
         use_c_extension = False
+
+
+def get_available_cpp_ops():
+    """获取所有可用的 cpp wrapper 算子名称"""
+    if aten_patch is not None:
+        return aten_patch.get_available_ops()
+    return []
+
+
+def get_registered_cpp_ops():
+    """获取已注册的 cpp wrapper 算子名称"""
+    if aten_patch is not None:
+        return aten_patch.get_registered_ops()
+    return []
+
+
+def register_cpp_ops(op_names):
+    """注册指定的 cpp wrapper 算子"""
+    global aten_patch_list
+    if aten_patch is not None:
+        aten_patch.register_cpp_ops(op_names)
+        aten_patch_list = aten_patch.get_registered_ops()
+    return aten_patch_list
+
+
+def register_all_cpp_ops():
+    """注册所有可用的 cpp wrapper 算子"""
+    global aten_patch_list
+    if aten_patch is not None:
+        aten_patch.register_all_cpp_ops()
+        aten_patch_list = aten_patch.get_registered_ops()
+    return aten_patch_list
 
 
 def load_enable_config_from_yaml(yaml_path, key="include"):
@@ -161,4 +194,8 @@ __all__ = [
     "has_c_extension",
     "use_c_extension",
     "resolve_user_setting",
+    "get_available_cpp_ops",
+    "get_registered_cpp_ops",
+    "register_cpp_ops",
+    "register_all_cpp_ops",
 ]
