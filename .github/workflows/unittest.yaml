@@ -174,7 +174,7 @@ jobs:
       test_script: tools/run_backend_tests_tsingmicro.sh
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      
+
   backend-thead:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/Thead')
