@@ -19,13 +19,7 @@ from flag_gems.fused.fused_moe import (
 from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
-from flag_gems.fused.hadamard_transform import (
-    hadamard_transform,
-    hadamard_transform_12N,
-    hadamard_transform_20N,
-    hadamard_transform_28N,
-    hadamard_transform_40N,
-)
+from flag_gems.fused.hadamard_transform import hadamard_transform
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size,
