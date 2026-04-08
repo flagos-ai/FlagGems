@@ -1964,11 +1964,6 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
 
 
-# ============================================================
-# Hadamard Transform
-# ============================================================
-
-
 def hadamard_transform_ref(x, scale=1.0):
     """Reference implementation using scipy Hadamard matrix."""
     from scipy.linalg import hadamard

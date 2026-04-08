@@ -585,34 +585,3 @@ def hadamard_transform(x, scale=1.0):
     """
     logger.debug("GEMS HADAMARD_TRANSFORM")
     return HadamardTransformFn.apply(x, scale)
-
-
-# ============================================================
-# XXN variants (non-power-of-2 dims)
-#
-# Dao-AILab decomposes dim = M * 2^k, applying a small M×M
-# Hadamard-like matrix then a standard 2^k FHT.
-# For now these use the standard FHT with implicit zero-padding
-# to the next power of 2, which is correct but not optimal.
-# TODO: implement proper M×N decomposition for better efficiency.
-# ============================================================
-
-
-def hadamard_transform_12N(x, scale=1.0):
-    """Hadamard transform for dim = 12 * 2^k (e.g. 12*512 = 6144)."""
-    return HadamardTransformFn.apply(x, scale)
-
-
-def hadamard_transform_20N(x, scale=1.0):
-    """Hadamard transform for dim = 20 * 2^k (e.g. 20*1024 = 20480)."""
-    return HadamardTransformFn.apply(x, scale)
-
-
-def hadamard_transform_28N(x, scale=1.0):
-    """Hadamard transform for dim = 28 * 2^k (e.g. 28*1024 = 28672)."""
-    return HadamardTransformFn.apply(x, scale)
-
-
-def hadamard_transform_40N(x, scale=1.0):
-    """Hadamard transform for dim = 40 * 2^k (e.g. 40*1024 = 40960)."""
-    return HadamardTransformFn.apply(x, scale)
