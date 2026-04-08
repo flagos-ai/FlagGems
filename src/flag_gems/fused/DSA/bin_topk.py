@@ -487,7 +487,9 @@ def _tle_process_histogram_step(
     final_bin_size = tl.load(s_final_bin_size_ptr)
     tl.store(s_step_thresholds_ptr + step_idx, threshold_bin_idx)
 
-    use_final = (step_idx < 3) & (threshold_bin_idx >= 0) & (final_bin_size <= FINAL_SORT_ITEMS)
+    use_final = (
+        (step_idx < 3) & (threshold_bin_idx >= 0) & (final_bin_size <= FINAL_SORT_ITEMS)
+    )
     if use_final:
         tl.store(s_final_cnt_ptr, 0)
 
