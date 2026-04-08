@@ -119,6 +119,8 @@ from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .logspace import logspace
 from .lt import lt, lt_scalar
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
@@ -382,6 +384,8 @@ __all__ = [
     "logspace",
     "lt",
     "lt_scalar",
+    "matmul_bf16",
+    "matmul_int8",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",

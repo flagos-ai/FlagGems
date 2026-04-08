@@ -23,6 +23,8 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .gelu import gelu, gelu_
 from .isclose import allclose, isclose
 from .isin import isin
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .mm import mm
 from .pow import (
     pow_scalar,
@@ -62,6 +64,8 @@ __all__ = [
     "gelu_",
     "isin",
     "isclose",
+    "matmul_bf16",
+    "matmul_int8",
     "mm",
     "pow_scalar",
     "pow_tensor_scalar",
