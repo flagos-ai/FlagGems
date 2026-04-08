@@ -21,6 +21,7 @@ from .div import (
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .gelu import gelu, gelu_
+from .hadamard_transform import hadamard_transform
 from .isclose import allclose, isclose
 from .isin import isin
 from .matmul_bf16 import matmul_bf16
@@ -62,6 +63,7 @@ __all__ = [
     "floor_divide_",
     "gelu",
     "gelu_",
+    "hadamard_transform",
     "isin",
     "isclose",
     "matmul_bf16",
