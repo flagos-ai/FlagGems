@@ -143,7 +143,11 @@ tensor_constructor_operations = [
     ("masked_fill", torch.masked_fill, masked_fill_input_fn),
     ("full", torch.full, full_input_fn),
     ("full_like", torch.full_like, full_like_input_fn),
-    ("new_full", lambda inp, size, fill_value: inp.new_full(size, fill_value), new_full_input_fn),
+    (
+        "new_full",
+        lambda inp, size, fill_value: inp.new_full(size, fill_value),
+        new_full_input_fn,
+    ),
     # arange
     ("arange", torch.arange, arange_input_fn),
     # linspace
