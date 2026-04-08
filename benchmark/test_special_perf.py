@@ -3,7 +3,6 @@ from typing import Generator
 
 import pytest
 import torch
-import triton
 
 import flag_gems
 from benchmark.attri_util import (
