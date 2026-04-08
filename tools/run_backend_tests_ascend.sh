@@ -23,7 +23,10 @@ pip install -U pip
 pip install uv
 uv venv
 source .venv/bin/activate
+
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
+uv pip install flagtree==0.5.0+3.2 torch==2.9.0+cpu torch-npu==2.9.0 \
+  -i https://resource.flagos.net/repository/flagos-pypi-ascend/simple
 uv pip install -e .[ascend,test]
 
 # Start testing
