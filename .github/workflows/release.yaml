@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 jobs:
   build-wheels:
     runs-on: ubuntu-latest
@@ -55,7 +58,7 @@ jobs:
           "
 
       - name: Upload wheel as artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: built-wheel-${{ github.ref_name }}
           path: ${{ runner.temp }}/wheelhouse/*.whl
@@ -75,7 +78,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download built wheel
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: built-wheel-${{ github.ref_name }}
           path: dist

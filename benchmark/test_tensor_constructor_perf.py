@@ -1,14 +1,16 @@
 import math
 import os
 import random
+from typing import Generator
 
 import pytest
 import torch
 import torch.nn.functional as F
 
 import flag_gems
-from benchmark.attri_util import BenchLevel
+from benchmark.attri_util import FLOAT_DTYPES, BenchLevel
 from benchmark.performance_utils import (
+    Benchmark,
     Config,
     GenericBenchmark,
     SkipVersion,
@@ -46,6 +48,19 @@ def new_full_input_fn(shape, dtype, device):
 def fill_input_fn(shape, dtype, device):
     input = torch.empty(shape, dtype=dtype, device=device)
     yield input, 3.14159,
+
+
+def fill_scalar_out_input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    out = torch.empty_like(input)
+    yield input, 3.14159, {"out": out}
+
+
+def fill_tensor_out_input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    value = torch.tensor(3.14159, dtype=dtype, device=device)
+    out = torch.empty_like(input)
+    yield input, value, {"out": out}
 
 
 def zero__input_fn(shape, dtype, device):
@@ -140,6 +155,8 @@ tensor_constructor_operations = [
     ("zeros_like", torch.zeros_like, unary_input_fn),
     # tensor constructor with given value
     ("fill", torch.fill, fill_input_fn),
+    ("fill_scalar_out", torch.ops.aten.fill.Scalar_out, fill_scalar_out_input_fn),
+    ("fill_tensor_out", torch.ops.aten.fill.Tensor_out, fill_tensor_out_input_fn),
     ("masked_fill", torch.masked_fill, masked_fill_input_fn),
     ("full", torch.full, full_input_fn),
     ("full_like", torch.full_like, full_like_input_fn),
@@ -250,5 +267,23 @@ def test_perf_one_hot():
         op_name="one_hot",
         torch_op=F.one_hot,
         dtypes=[torch.int64],
+    )
+    bench.run()
+
+
+class ZeroBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
+
+
+@pytest.mark.zero
+def test_perf_zero():
+    bench = ZeroBenchmark(
+        op_name="zero",
+        torch_op=torch.ops.aten.zero,
+        dtypes=FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()

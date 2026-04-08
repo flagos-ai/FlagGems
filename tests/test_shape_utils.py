@@ -99,6 +99,10 @@ def test_heuristics_for_num_warps():
         assert shape_utils.heuristics_for_num_warps(1024) == 1
         assert shape_utils.heuristics_for_num_warps(2048) == 1
         assert shape_utils.heuristics_for_num_warps(4096) == 1
+    elif device.vendor_name == "enflame":
+        assert shape_utils.heuristics_for_num_warps(1024) == 4
+        assert shape_utils.heuristics_for_num_warps(2048) == 8
+        assert shape_utils.heuristics_for_num_warps(4096) == 16
     else:
         assert shape_utils.heuristics_for_num_warps(1024) == 4
         assert shape_utils.heuristics_for_num_warps(2048) == 8
