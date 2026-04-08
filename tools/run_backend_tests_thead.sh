@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# 1. Parameter Check and Setup 
 VENDOR=${1:?"Usage: bash tools/run_backend_tests_thead.sh <vendor>"}
 export GEMS_VENDOR=$VENDOR
 
