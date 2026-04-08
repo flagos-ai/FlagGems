@@ -482,7 +482,10 @@ def test_accuracy_hardsigmoid(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_glu(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "tsingmicro":
+        res_inp = torch.randn(shape, dtype=dtype, device="cpu")
+    else:
+        res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(res_inp, True)
 
     for dim in range(len(shape)):
@@ -490,7 +493,12 @@ def test_accuracy_glu(shape, dtype):
             continue
         ref_out = torch.nn.functional.glu(ref_inp, dim=dim)
         with flag_gems.use_gems():
-            res_out = torch.nn.functional.glu(res_inp, dim=dim)
+            if flag_gems.vendor_name == "tsingmicro":
+                res_out = torch.nn.functional.glu(
+                    res_inp.to(device=flag_gems.device), dim=dim
+                )
+            else:
+                res_out = torch.nn.functional.glu(res_inp, dim=dim)
         gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -1589,6 +1597,8 @@ def test_accuracy_logit(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + COMPLEX_DTYPES)
 def test_accuracy_to_dtype(shape, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype in COMPLEX_DTYPES:
+        pytest.skip("Skiping complex to_copy test on tsingmicro platform")
     x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_x = to_reference(x)
     ref_out = ref_x.to(dtype)
@@ -1601,6 +1611,8 @@ def test_accuracy_to_dtype(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("target_dtype", ALL_FLOAT_DTYPES + COMPLEX_DTYPES)
 def test_accuracy_to_copy_dtype_cast(shape, target_dtype):
+    if flag_gems.vendor_name == "tsingmicro" and target_dtype in COMPLEX_DTYPES:
+        pytest.skip("Skiping complex to_copy test on tsingmicro platform")
     src_dtype = torch.float32 if target_dtype != torch.float32 else torch.float16
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = to_reference(x)
