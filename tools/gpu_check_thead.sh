@@ -1,63 +1,64 @@
 #!/bin/bash
 
 # Configuration
-memory_usage_max=30000     # Maximum memory usage limit (MB) - 设置显存剩余阈值
-sleep_time=120             # Wait time (seconds), default is 2 minutes
+memory_usage_max=30000     # Maximum memory usage limit (MB)
+sleep_time=120             # Wait time (seconds)
 
-# 平头哥显卡（如阿里云 gn7e 等）通常兼容 NVIDIA CUDA 生态，使用 nvidia-smi 进行管理
-# 确保 nvidia-smi 在 PATH 中，通常位于 /usr/bin/nvidia-smi
-
-# 检查 nvidia-smi 是否存在
-if ! command -v nvidia-smi &> /dev/null; then
-    echo "Error: nvidia-smi not found. Please ensure NVIDIA drivers are installed."
+# 检查 ppu-smi 是否存在
+if ! command -v ppu-smi &> /dev/null; then
+    echo "Error: ppu-smi not found."
     exit 1
 fi
 
-# Get the number of GPUs
-# 使用 nvidia-smi -L 列出 GPU 并统计行数
-gpu_count=$(nvidia-smi -L 2>/dev/null | grep -c "GPU")
+# 获取 PPU 数量
+# 统计包含 "PPU-" 的行（这是设备名称行的特征）
+gpu_count=$(ppu-smi -L 2>/dev/null | grep -c "PPU-")
 
 if [ "$gpu_count" -eq 0 ]; then
-    echo "No GPUs detected. Please ensure you are on a valid T-Head GPU instance."
+    echo "No PPUs detected."
     exit 1
 fi
 
-echo "Detected $gpu_count GPU(s) (T-Head/NVIDIA Compatible)."
-nvidia-smi
+echo "Detected $gpu_count PPU(s)."
+ppu-smi
 
 while true; do
     need_wait=false
 
-    # Check the available memory for each GPU
     for ((i=0; i<$gpu_count; i++)); do
-        # Query GPU memory information using nvidia-smi
-        # We query memory.total and memory.used in MiB
-        memory_info=$(nvidia-smi -i $i --query=memory=total,used --format=csv,noheader,nounits 2>/dev/null)
+        # 1. 获取单张 PPU 的信息
+        # 2. 使用 awk 直接匹配包含 "MiB" 的行，不再依赖 "PPU" 关键词
+        # 3. 提取显存信息 (格式: 2MiB / 97920MiB)
         
-        # Parse the output (Format: "Total MiB, Used MiB")
-        memory_total=$(echo "$memory_info" | awk -F ',' '{print $1}' | tr -d ' ')
-        memory_used=$(echo "$memory_info" | awk -F ',' '{print $2}' | tr -d ' ')
+        # 获取包含显存信息的行
+        mem_line=$(ppu-smi -i $i 2>/dev/null | awk '/MiB/ {print $0}')
 
-        # Check if we got valid memory values
+        # 使用 sed 提取数字
+        # 匹配模式：任意字符 + 数字 + MiB + / + 数字 + MiB
+        memory_used=$(echo "$mem_line" | grep -oP '\d+(?=MiB \/)')
+        memory_total=$(echo "$mem_line" | grep -oP '(?<=\/ )\d+(?=MiB)')
+
+        # 检查是否获取成功
         if [ -z "$memory_used" ] || [ -z "$memory_total" ]; then
-            echo "Warning: Failed to query GPU $i memory information."
-            continue
+            echo "Warning: Failed to parse PPU $i memory. Raw line: '$mem_line'"
+            need_wait=true
+            break
         fi
 
         memory_remin=$((memory_total - memory_used))
 
-        if [ $memory_remin -lt $memory_usage_max ]; then
+        if [ "$memory_remin" -lt "$memory_usage_max" ]; then
             need_wait=true
-            echo "GPU $i: Used ${memory_used}MB / Total ${memory_total}MB (Available: ${memory_remin}MB < ${memory_usage_max}MB)"
+            echo "PPU $i: Used ${memory_used}MB / Total ${memory_total}MB (Available: ${memory_remin}MB < ${memory_usage_max}MB)"
             break
         fi
     done
 
     if [ "$need_wait" = false ]; then
-        echo "All GPUs have sufficient available memory. Proceeding with execution."
+        echo "All PPUs have sufficient available memory. Proceeding."
         break
     fi
 
-    echo "GPU memory is insufficient, waiting for $sleep_time seconds before retrying..."
+    echo "PPU memory is insufficient, waiting for $sleep_time seconds..."
     sleep $sleep_time
 done
