@@ -18,26 +18,27 @@ export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
 
 # 4. Dependency Installation
-echo "Setting up Python environment..."
-pip install -U pip
-pip install uv
+uv pip install --no-build-isolation -e .
+# echo "Setting up Python environment..."
+# pip install -U pip
+# pip install uv
 
-# Create virtual environment
-uv venv
-source .venv/bin/activate
+# # Create virtual environment
+# uv venv
+# source .venv/bin/activate
 
-# Install build tools
-uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
+# # Install build tools
+# uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
 
-# Install project dependencies
-# If T-Head has specific extra dependency groups (e.g., .[tpu] or .[custom]), please modify here.
-uv pip install -e .[test]
+# # Install project dependencies
+# # If T-Head has specific extra dependency groups (e.g., .[tpu] or .[custom]), please modify here.
+# uv pip install -e .[test]
 
-# If specific T-Head runtime libraries are required (e.g., torch-ppu), add them here
-# uv pip install torch-ppu ...
+# # If specific T-Head runtime libraries are required (e.g., torch-ppu), add them here
+# # uv pip install torch-ppu ...
 
-# 5. Load Test Utilities
-source tools/run_command.sh
+# # 5. Load Test Utilities
+# source tools/run_command.sh
 
 echo "Starting tests..."
 
