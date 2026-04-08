@@ -1,0 +1,18 @@
+<h2>Coverage data</h2>
+
+{{ if os.FileExists "static/coverage" -}}
+
+<table class="sortable-table">
+  <tbody>
+    {{- range $dir := os.ReadDir "static/coverage" -}}
+      {{ $href := printf "/FlagGems/coverage/%s/" $dir.Name }}
+        <tr>
+          <td><a href="{{ $href }}" target="_self">{{ $dir.Name }}</a></td>
+      </tr>
+    {{- end -}}
+  </tbody>
+</table>
+
+{{- else -}}
+<B>No coverage data to show.</B>
+{{- end -}}

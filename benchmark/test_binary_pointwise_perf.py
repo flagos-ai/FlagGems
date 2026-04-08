@@ -3,7 +3,13 @@ from typing import Generator
 import pytest
 import torch
 
-from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
+from benchmark.attri_util import (
+    BOOL_DTYPES,
+    COMPLEX_DTYPES,
+    DEFAULT_METRICS,
+    FLOAT_DTYPES,
+    INT_DTYPES,
+)
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 
@@ -42,10 +48,10 @@ class BinaryPointwiseBenchmark(Benchmark):
         )
         for name, op, dtype in [
             # Arithmetic operations
-            ("add", torch.add, FLOAT_DTYPES),
+            ("add", torch.add, FLOAT_DTYPES + COMPLEX_DTYPES),
             ("div", torch.div, FLOAT_DTYPES),
-            ("mul", torch.mul, FLOAT_DTYPES),
-            ("sub", torch.sub, FLOAT_DTYPES),
+            ("mul", torch.mul, FLOAT_DTYPES + COMPLEX_DTYPES),
+            ("sub", torch.sub, FLOAT_DTYPES + COMPLEX_DTYPES),
             ("pow", torch.pow, FLOAT_DTYPES),
             ("polar", torch.polar, [torch.float32]),
             ("floor_divide", torch.floor_divide, INT_DTYPES),
@@ -64,12 +70,16 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Minimum and maximum operations
             ("maximum", torch.maximum, FLOAT_DTYPES),
             ("minimum", torch.minimum, FLOAT_DTYPES),
+            ("hypot", torch.hypot, FLOAT_DTYPES),
+            ("fmin", torch.fmin, FLOAT_DTYPES),
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
+            # Log operations
+            ("logaddexp", torch.logaddexp, FLOAT_DTYPES),
         ]
     ],
 )

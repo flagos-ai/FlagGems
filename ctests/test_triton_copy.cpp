@@ -1,10 +1,11 @@
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "gtest/gtest.h"
 #include "torch/torch.h"
 
 TEST(CopyTest, ContiguousTensorCopy) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::randn({4, 5}, torch::TensorOptions().device(device).dtype(torch::kFloat32));
 
   torch::Tensor out_gems = flag_gems::to_copy(t);
@@ -16,7 +17,7 @@ TEST(CopyTest, ContiguousTensorCopy) {
 }
 
 TEST(CopyTest, ContiguousTensorCopyWithDtype) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::randn({3, 3}, torch::TensorOptions().device(device).dtype(torch::kFloat16));
 
   torch::Tensor out_gems = flag_gems::to_copy(t, torch::kFloat32);
@@ -28,7 +29,7 @@ TEST(CopyTest, ContiguousTensorCopyWithDtype) {
 }
 
 TEST(CopyTest, NonContiguousTensorCopy) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::randn({2, 3, 4}, torch::TensorOptions().device(device));
   torch::Tensor t_transposed = t.transpose(0, 1);
 
@@ -40,7 +41,7 @@ TEST(CopyTest, NonContiguousTensorCopy) {
 }
 
 TEST(CopyTest, CopyInplaceContiguous) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor src = torch::randn({5, 5}, torch::TensorOptions().device(device));
   torch::Tensor dst = torch::empty_like(src);
 
@@ -51,7 +52,7 @@ TEST(CopyTest, CopyInplaceContiguous) {
 }
 
 TEST(CopyTest, CopyInplaceNonContiguous) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor src = torch::randn({3, 4, 5}, torch::TensorOptions().device(device));
   torch::Tensor dst = torch::empty({5, 4, 3}, torch::TensorOptions().device(device));
   torch::Tensor src_transposed = src.transpose(0, 2);
@@ -63,7 +64,7 @@ TEST(CopyTest, CopyInplaceNonContiguous) {
 }
 
 TEST(CopyTest, CopyBroadcasting) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor src = torch::randn({1, 5}, torch::TensorOptions().device(device));
   torch::Tensor dst = torch::empty({3, 5}, torch::TensorOptions().device(device));
 
@@ -75,7 +76,7 @@ TEST(CopyTest, CopyBroadcasting) {
 }
 
 TEST(CopyTest, EmptyTensor) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   torch::Tensor src = torch::empty({0}, torch::TensorOptions().device(device));
   torch::Tensor dst = torch::empty_like(src);
 

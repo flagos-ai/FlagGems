@@ -3,6 +3,7 @@
 #include <tuple>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 
 void reference_reshape_and_cache_flash(const torch::Tensor& key,
                                        const torch::Tensor& value,
@@ -33,8 +34,8 @@ class ReshapeAndCacheFlashTest
 TEST_P(ReshapeAndCacheFlashTest, CompareWithPureTorchReference) {
   auto [num_tokens, num_heads, head_size, block_size, dtype] = GetParam();
 
-  ASSERT_TRUE(torch::cuda::is_available());
-  torch::Device device(torch::kCUDA);
+  ASSERT_TRUE(flag_gems::test::is_device_available());
+  torch::Device device = flag_gems::test::default_device();
   auto options = torch::TensorOptions().device(device).dtype(dtype);
   auto long_options = options.dtype(torch::kLong);
 
