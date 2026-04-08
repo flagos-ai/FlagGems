@@ -78,6 +78,7 @@ def _fht_kernel(
 # Core forward
 # ============================================================
 
+
 def _hadamard_transform_fwd(x, scale):
     """Core forward: handles reshape, padding, kernel launch."""
     logger.debug("GEMS HADAMARD_TRANSFORM")
@@ -132,12 +133,17 @@ def _hadamard_transform_fwd(x, scale):
 
     with torch_device_fn.device(x.device):
         _fht_kernel[(n_programs,)](
-            x, out, scratch, scale,
+            x,
+            out,
+            scratch,
+            scale,
             stride_x_row=x.stride(0),
             stride_out_row=out.stride(0),
             stride_scratch_row=scratch.stride(0),
             N_ROWS=batch_size,
-            DIM=n, LOG_N=log_n, BLOCK_SIZE=BLOCK_SIZE,
+            DIM=n,
+            LOG_N=log_n,
+            BLOCK_SIZE=BLOCK_SIZE,
             ROWS_PER_PROGRAM=rows_per_program,
             INPUT_IS_FP16=(input_dtype == torch.float16),
             INPUT_IS_BF16=(input_dtype == torch.bfloat16),
@@ -154,8 +160,8 @@ def _hadamard_transform_fwd(x, scale):
 # Autograd Function
 # ============================================================
 
-class HadamardTransformFn(torch.autograd.Function):
 
+class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale=1.0):
         ctx._hadamard_transform_scale = scale
@@ -170,6 +176,7 @@ class HadamardTransformFn(torch.autograd.Function):
 # ============================================================
 # Public API
 # ============================================================
+
 
 def hadamard_transform(x, scale=1.0):
     """Fast Hadamard Transform.
@@ -191,6 +198,7 @@ def hadamard_transform(x, scale=1.0):
 # ============================================================
 # XXN variants (non-power-of-2 dims)
 # ============================================================
+
 
 def hadamard_transform_12N(x, scale=1.0):
     """Hadamard transform for dim = 12 * 2^k."""
