@@ -115,7 +115,45 @@ CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
 pip install --no-build-isolation -v -e .
 ```
 
-Note that the above command installs the
+The above command builds for the default **CUDA** backend. To build for
+a different backend or to enable the pointwise dynamic C++ module,
+pass the corresponding CMake options. Below are examples for each
+supported platform:
+
+**NVIDIA CUDA (with pointwise dynamic C++ support)**
+
+```shell
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON" \
+pip install --no-build-isolation -v -e .
+```
+
+**Iluvatar CoreX (IX)**
+
+```shell
+export LIBRARY_PATH=<corex-install-dir>/lib64:$LIBRARY_PATH
+
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=IX -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_CTESTS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install --no-build-isolation -v -e .
+```
+
+**Moore Threads (MUSA)**
+
+```shell
+export MUSA_HOME=<musa-install-dir>
+
+LD_PRELOAD=$CONDA_PREFIX/lib/libittnotify.so \
+pip install --no-build-isolation -v -e . \
+  --config-settings=cmake.args="-DFLAGGEMS_BACKEND=MUSA;-DFLAGGEMS_BUILD_C_EXTENSIONS=ON;-DFLAGGEMS_BUILD_CTESTS=ON"
+```
+
+**Huawei Ascend (NPU)**
+
+```shell
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=NPU -DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
+pip install --no-build-isolation -e .
+```
+
+Note that the above commands install the
 [libtriton_jit library](https://github.com/flagos-ai/libtriton_jit)
 by cloning its GIT repository and installing it from source.
 
@@ -240,6 +278,17 @@ The CMake options for configuring `flag_gems` are listed below:
   <td>Whether to install FlagGems's cmake package.
       Recommended for development mode installation.</td>
   <td>ON</td>
+</tr>
+<tr>
+  <td><code>FLAGGEMS_BACKEND</code></td>
+  <td>Target backend for building. Valid values are <code>CUDA</code>,
+      <code>IX</code>, <code>MUSA</code>, and <code>NPU</code>.</td>
+  <td><code>CUDA</code></td>
+</tr>
+<tr>
+  <td><code>FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP</code></td>
+  <td>Whether to build the pointwise dynamic C++ support module.</td>
+  <td><code>OFF</code></td>
 </tr>
 </tbody>
 </table>

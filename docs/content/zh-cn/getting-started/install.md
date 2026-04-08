@@ -225,6 +225,42 @@ Note that the above command installs the
 [libtriton_jit library](https://github.com/flagos-ai/libtriton_jit)
 by cloning its GIT repository and installing it from source.
 -->
+上面的命令默认构建 **CUDA** 后端。如需构建其他后端或启用 pointwise 动态 C++ 模块，
+请传递相应的 CMake 选项。以下是各平台的编译示例：
+
+**NVIDIA CUDA（启用 pointwise 动态 C++ 支持）**
+
+```shell
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON" \
+pip install --no-build-isolation -v -e .
+```
+
+**天数智芯 CoreX (IX)**
+
+```shell
+export LIBRARY_PATH=<corex-install-dir>/lib64:$LIBRARY_PATH
+
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=IX -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_CTESTS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install --no-build-isolation -v -e .
+```
+
+**摩尔线程 (MUSA)**
+
+```shell
+export MUSA_HOME=<musa-install-dir>
+
+LD_PRELOAD=$CONDA_PREFIX/lib/libittnotify.so \
+pip install --no-build-isolation -v -e . \
+  --config-settings=cmake.args="-DFLAGGEMS_BACKEND=MUSA;-DFLAGGEMS_BUILD_C_EXTENSIONS=ON;-DFLAGGEMS_BUILD_CTESTS=ON"
+```
+
+**华为昇腾 (NPU)**
+
+```shell
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=NPU -DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
+pip install --no-build-isolation -e .
+```
+
 注意，上面的命令会安装 [libtriton_jit 库](https://github.com/flagos-ai/libtriton_jit)，
 并且安装方式是克隆其 GIT 仓库并从源码来安装。
 
@@ -449,6 +485,22 @@ The CMake options for configuring `flag_gems` are listed below:
     是否安装 FlagGems 的 CMake 包。建议以开发模式安装时启用此选项。
   </td>
   <td>ON</td>
+</tr>
+<tr>
+  <td><code>FLAGGEMS_BACKEND</code></td>
+  <td>
+    <!--Target backend for building.-->
+    目标后端平台。合法取值为 <code>CUDA</code>、<code>IX</code>、<code>MUSA</code> 和 <code>NPU</code>。
+  </td>
+  <td><code>CUDA</code></td>
+</tr>
+<tr>
+  <td><code>FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP</code></td>
+  <td>
+    <!--Whether to build the pointwise dynamic C++ support module.-->
+    是否构建 pointwise 动态 C++ 支持模块。
+  </td>
+  <td><code>OFF</code></td>
 </tr>
 </tbody>
 </table>
