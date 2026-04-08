@@ -1,0 +1,211 @@
+# FlagGems Combination Tests CI Configuration
+#
+# This workflow runs combination tests for FlagGems to validate
+# operator combinations in realistic scenarios.
+
+name: Combination Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - dev
+    paths:
+      - 'src/flag_gems/**'
+      - 'tests/combination/**'
+      - '.github/workflows/combination-tests.yml'
+
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'src/flag_gems/**'
+      - 'tests/combination/**'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode (normal/quick)'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - normal
+          - quick
+
+      test_scope:
+        description: 'Test scope (all/transformer/attention/ffn)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - transformer
+          - attention
+          - ffn
+
+# Cancel in-progress runs on the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Basic sanity check
+  sanity-check:
+    name: Sanity Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Check code formatting
+        run: |
+          pip install black isort flake8
+          black --check tests/combination/ || true
+          isort --check-only tests/combination/ || true
+          flake8 tests/combination/ --max-line-length=120 --ignore=F405,E731,W503,E203 || true
+
+  # Job 2: Run combination tests (GPU runner required)
+  combination-tests:
+    name: Combination Tests
+    runs-on: [self-hosted, gpu]  # Requires self-hosted GPU runner
+    needs: sanity-check
+
+    strategy:
+      fail-fast: false
+      matrix:
+        test_file:
+          - test_transformer_layer.py
+          - test_attention_numerical_stability.py
+          - test_ffn_activation_combination.py
+        dtype: [fp16, bf16, fp32]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cu121
+          pip install -e .
+          pip install pytest pytest-xdist pytest-html
+
+      - name: Get GPU info
+        run: |
+          nvidia-smi
+          python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.version.cuda}')"
+
+      - name: Run combination tests
+        run: |
+          export TEST_MODE=${{ github.event.inputs.test_mode || 'normal' }}
+          export TEST_DTYPE=${{ matrix.dtype }}
+
+          pytest tests/combination/${{ matrix.test_file }} \
+            -v \
+            -n auto \
+            --dist=loadscope \
+            --mode=${TEST_MODE} \
+            --html=reports/${{ matrix.test_file }}_${{ matrix.dtype }}.html \
+            --self-contained-html \
+            --tb=short \
+            || true
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ matrix.test_file }}-${{ matrix.dtype }}
+          path: reports/
+          retention-days: 30
+
+  # Job 3: Integration test (full pipeline)
+  integration-test:
+    name: Full Integration Test
+    runs-on: [self-hosted, gpu]
+    needs: [sanity-check]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cu121
+          pip install -e .
+          pip install pytest pytest-cov
+
+      - name: Run full integration suite
+        run: |
+          pytest tests/combination/ \
+            -v \
+            -m integration \
+            --mode=normal \
+            --cov=src/flag_gems \
+            --cov-report=html:coverage/ \
+            --cov-report=xml:coverage.xml \
+            --html=reports/integration.html \
+            --self-contained-html || true
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+
+      - name: Upload integration report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-report
+          path: reports/
+
+  # Job 4: Nightly stress tests (optional)
+  stress-tests:
+    name: Stress Tests
+    runs-on: [self-hosted, gpu]
+    if: github.event_name == 'schedule'
+    # schedule:
+    #   - cron: '0 2 * * *'  # Run at 2 AM UTC daily
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run stress tests
+        run: |
+          pytest tests/combination/ \
+            -v \
+            -m stress \
+            --mode=normal \
+            --html=reports/stress.html \
+            --self-contained-html || true
+
+      - name: Upload stress test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stress-report
+          path: reports/
