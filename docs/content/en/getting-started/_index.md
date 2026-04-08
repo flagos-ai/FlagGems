@@ -104,5 +104,46 @@ with flag_gems.use_gems():
     C = torch.mm(A, B)
 ```
 
+You can bypass the PyTorch dispatch process and directly invoke operators from
+the `flag_gems.ops` package.
+
+```python
+import torch
+from flag_gems import ops
+import flag_gems
+
+a = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
+b = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
+c = ops.mm(a, b)
+```
+
+For fused operators, you can import and use them directly from the `flag_gems.fused` package:
+
+```python
+import torch
+import flag_gems
+from flag_gems.fused.moe_align_block_size import moe_align_block_size
+
+# Example usage of moe_align_block_size
+num_tokens = 4096
+topk = 2
+num_experts = 128
+
+# topk_ids should be expert indices for each token
+topk_ids = torch.randint(
+    low=0,
+    high=num_experts,
+    size=(num_tokens, topk),
+    device=flag_gems.device,
+    dtype=torch.int32,
+)
+
+sorted_ids, expert_ids, num_tokens_post_pad = moe_align_block_size(
+    topk_ids=topk_ids,
+    block_size=128,
+    num_experts=num_experts,
+)
+```
+
 Check the [using FlagGems](/FlagGems/usage/) section for more detailed
 documentation on the various usage patterns about *FlagGems*.
