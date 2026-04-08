@@ -5,6 +5,8 @@ from .hstack import hstack
 from .isin import isin
 from .kron import kron
 from .masked_select import masked_select
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
 from .rms_norm import rms_norm
 from .stack import stack
@@ -18,6 +20,8 @@ __all__ = [
     "hstack",
     "isin",
     "kron",
+    "matmul_bf16",
+    "matmul_int8",
     "masked_select",
     "mm",
     "mm_out",
