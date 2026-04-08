@@ -136,6 +136,8 @@ def nll_loss_nd_input_fn(shape, cur_dtype, device):
     C = shape[1]
     target = torch.randint(0, C, target_shape, dtype=torch.long, device=device)
 
+    yield inp, target
+
     if Config.bench_level == BenchLevel.COMPREHENSIVE:
         weight_tensor = torch.rand(C, dtype=cur_dtype, device=device)
         for weight in [weight_tensor, None]:
