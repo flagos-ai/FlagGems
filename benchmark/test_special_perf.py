@@ -1082,51 +1082,35 @@ def test_perf_conj_physical():
 
 
 @pytest.mark.reflection_pad2d
-@pytest.mark.parametrize(
-    "shape",
-    [
-        (3, 33, 33),
-        (2, 4, 32, 64),
-        (8, 16, 64, 64),
-        (32, 64, 128, 256),
-        (16, 32, 64, 128),
-    ],
-)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize(
-    "padding",
-    [
-        (1, 1, 1, 1),
-        (2, 3, 2, 3),
-        (3, 5, 3, 5),
-        (0, 4, 0, 4),
-    ],
-)
-def test_reflection_pad2d_benchmark_tensor(shape, dtype, padding):
-    quantiles = [0.5, 0.2, 0.8]
+def test_perf_reflection_pad2d():
+    def reflection_pad2d_input_fn(config, dtype, device):
+        shape, padding = config
+        x = torch.randn(shape, dtype=dtype, device=device)
+        yield x, list(padding)
 
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    class ReflectionPad2dBenchmark(Benchmark):
+        def set_shapes(self, shape_file_path=None):
+            self.shapes = [
+                ((3, 33, 33), (1, 1, 1, 1)),
+                ((2, 4, 32, 64), (2, 3, 2, 3)),
+                ((8, 16, 64, 64), (3, 5, 3, 5)),
+                ((32, 64, 128, 256), (0, 4, 0, 4)),
+                ((16, 32, 64, 128), (1, 1, 1, 1)),
+            ]
 
-    # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.reflection_pad2d(ref_x, padding),
-        rep=100,
-        quantiles=quantiles,
+        def set_more_shapes(self):
+            return None
+
+        def get_input_iter(self, cur_dtype):
+            for config in self.shapes:
+                yield from reflection_pad2d_input_fn(config, cur_dtype, self.device)
+
+    bench = ReflectionPad2dBenchmark(
+        op_name="reflection_pad2d",
+        torch_op=torch.ops.aten.reflection_pad2d,
+        dtypes=FLOAT_DTYPES,
     )
-
-    # Triton implementation
-    with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: flag_gems.reflection_pad2d(x, padding), rep=100, quantiles=quantiles
-        )
-
-    # Calculate speedup and return result
-    speedup = ms_torch / ms_triton
-
-    print(f"reflection_pad2d {shape} {dtype}:")
-    print(f"  FlagGems: {ms_triton:.3f}ms")
-    print(f"  Speedup: {speedup:.2f}x")
+    bench.run()
 
 
 @pytest.mark.upsample_bicubic2d
