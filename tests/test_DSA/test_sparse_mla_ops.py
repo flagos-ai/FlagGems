@@ -130,7 +130,3 @@ def test_sparse_mla_edge_cases(config):
     assert not torch.isnan(act_out).any(), "Output contains NaN"
     max_diff = (ref_out.float() - act_out.float()).abs().max().item()
     assert max_diff < 1e-2, f"Output max diff {max_diff:.6f} exceeds tolerance 1e-2"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "-s"])
