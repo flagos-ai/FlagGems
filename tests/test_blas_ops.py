@@ -242,16 +242,21 @@ FP8_MNK_SHAPES = [
 @pytest.mark.w8a8_block_fp8_matmul
 @pytest.mark.parametrize("M,N,K", FP8_MNK_SHAPES)
 def test_accuracy_w8a8_block_fp8_matmul(M, N, K):
-    # dtype = torch.float8_e4m3fn
-    if not torch.cuda.is_available():
-        pytest.skip("w8a8_block_fp8_matmul test requires CUDA")
-    major, _ = torch.cuda.get_device_capability()
-    if major > 8:
-        dtype = torch.float8_e4m3fn
-    elif major == 8:
-        dtype = torch.float8_e5m2
+    if flag_gems.vendor_name == "mthreads":
+        if hasattr(torch, "float8_e4m3fn"):
+            dtype = torch.float8_e4m3fn
+        else:
+            dtype = torch.float32
     else:
-        dtype = torch.float32
+        if not torch.cuda.is_available():
+            pytest.skip("w8a8_block_fp8_matmul test requires CUDA or mthreads")
+        major, _ = torch.cuda.get_device_capability()
+        if major > 8:
+            dtype = torch.float8_e4m3fn
+        elif major == 8:
+            dtype = torch.float8_e5m2
+        else:
+            dtype = torch.float32
     device = flag_gems.device
     block_n = 128
     block_k = 128
@@ -263,9 +268,9 @@ def test_accuracy_w8a8_block_fp8_matmul(M, N, K):
     num_k_groups = (K + block_k - 1) // block_k
     num_n_groups = (N + block_n - 1) // block_n
 
-    As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(dtype)
+    As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(torch.float32)
     Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(
-        dtype
+        torch.float32
     )
 
     A_ref = A.to(torch.float32)
