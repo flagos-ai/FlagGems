@@ -68,6 +68,13 @@ official_torch_251 = [
     "torchaudio==2.5.1",
 ]
 
+ascend = [
+    "flagtree==0.5.0-3.2",
+    "torch==2.9.0+cpu",
+    "torch-npu==2.9.0",
+    "triton-ascend==3.2.0",
+]
+
 iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
@@ -152,6 +159,7 @@ index-strategy = "unsafe-best-match"
 
 conflicts = [
     [
+        { group = "ascend" },
         { group = "iluvatar" },
         { group = "kunlunxin" },
         { group = "mthreads" },
@@ -159,6 +167,12 @@ conflicts = [
         { group = "tsingmicro" },
     ]
 ]
+
+# Source for Ascend packages
+[[tool.uv.index]]
+name = "ascend-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-ascend/simple"
+explicit = true
 
 # Source for Iluvatar packages
 [[tool.uv.index]]
@@ -203,6 +217,7 @@ url = "https://mirrors.aliyun.com/pypi/simple/"
 
 [tool.uv.sources]
 # Mapping from optional groups to index servers
+ascend = { index = "ascend-pypi" }
 iluvatar = { index = "iluvatar-pypi" }
 kunlunxin = { index = "kunlunxin-pypi" }
 mthreads = { index = "mthreads-pypi" }
