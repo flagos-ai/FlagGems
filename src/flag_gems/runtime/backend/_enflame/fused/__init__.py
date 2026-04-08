@@ -1,11 +1,9 @@
 from .. import arch_version
-from .hadamard_transform import (
-    hadamard_transform,
-    hadamard_transform_12N,
-    hadamard_transform_20N,
-    hadamard_transform_28N,
-    hadamard_transform_40N,
-)
+from .hadamard_transform import hadamard_transform  # noqa: F401
+from .hadamard_transform import hadamard_transform_12N  # noqa: F401
+from .hadamard_transform import hadamard_transform_20N  # noqa: F401
+from .hadamard_transform import hadamard_transform_28N  # noqa: F401
+from .hadamard_transform import hadamard_transform_40N  # noqa: F401
 
 _hadamard_exports = [
     "hadamard_transform",
