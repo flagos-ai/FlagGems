@@ -8,10 +8,13 @@ Threshold tuning:
     Run: python benchmark.py --s_q 1 32 64 128 256 512 1024 2048 4096
     then adjust SQ_THRESHOLD below.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # Crossover threshold: v99 when s_q <= this, v91 otherwise
@@ -378,6 +381,7 @@ def sparse_prefill_fwd(q, kv, indices, sm_scale, d_v, attn_sink=None, topk_lengt
     Returns:
         (output, max_logits, lse)
     """
+    logger.debug("GEMS FLASH MLA")
     s_q, h_q, d_qk = q.shape
     d_kpe = d_qk - d_v
     MIN_KPE = 16
