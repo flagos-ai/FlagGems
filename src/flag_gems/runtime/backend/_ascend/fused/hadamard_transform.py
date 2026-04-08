@@ -149,6 +149,7 @@ def _fht_fused_7stage_bf16(
 # Fused 7-stage butterfly kernel (dim=128) — FP32 compute
 # ============================================================
 
+
 @triton.jit
 def _fht_fused_7stage(
     IN_ptr,
@@ -235,6 +236,7 @@ def _fht_fused_7stage(
 # Generic fused butterfly kernel (any power-of-2 dim)
 # ============================================================
 
+
 @triton.jit
 def _fht_fused_generic(
     IN_ptr,
@@ -297,10 +299,12 @@ def _fht_fused_generic(
 # Triton butterfly forward (fallback for non-power-of-2 dims)
 # ============================================================
 
-def _hadamard_transform_triton(x_flat, batch, dim_padded, log_n,
-                                scale, input_dtype, orig_shape, dim, device):
+
+def _hadamard_transform_triton(
+    x_flat, batch, dim_padded, log_n, scale, input_dtype, orig_shape, dim, device
+):
     """Triton butterfly FHT — fallback path."""
-    use_bf16_kernel = (input_dtype == torch.bfloat16 and log_n == 7)
+    use_bf16_kernel = input_dtype == torch.bfloat16 and log_n == 7
 
     if use_bf16_kernel:
         inp = x_flat if x_flat.is_contiguous() else x_flat.contiguous()
@@ -334,16 +338,26 @@ def _hadamard_transform_triton(x_flat, batch, dim_padded, log_n,
     with torch_device_fn.device(device):
         if use_bf16_kernel:
             _fht_fused_7stage_bf16[(grid_size,)](
-                inp, scratch, out,
-                stride_row, dim_padded, seg_stride, scale,
+                inp,
+                scratch,
+                out,
+                stride_row,
+                dim_padded,
+                seg_stride,
+                scale,
                 N_ROWS=batch,
                 ROWS_PER_PROGRAM=rows_per_program,
                 DIM=dim_padded,
             )
         elif log_n == 7:
             _fht_fused_7stage[(grid_size,)](
-                inp, scratch, out,
-                stride_row, dim_padded, seg_stride, scale,
+                inp,
+                scratch,
+                out,
+                stride_row,
+                dim_padded,
+                seg_stride,
+                scale,
                 N_ROWS=batch,
                 ROWS_PER_PROGRAM=rows_per_program,
                 DIM=dim_padded,
@@ -352,8 +366,13 @@ def _hadamard_transform_triton(x_flat, batch, dim_padded, log_n,
             )
         else:
             _fht_fused_generic[(grid_size,)](
-                inp, scratch, out,
-                stride_row, dim_padded, seg_stride, scale,
+                inp,
+                scratch,
+                out,
+                stride_row,
+                dim_padded,
+                seg_stride,
+                scale,
                 N_ROWS=batch,
                 ROWS_PER_PROGRAM=rows_per_program,
                 DIM=dim_padded,
@@ -370,6 +389,7 @@ def _hadamard_transform_triton(x_flat, batch, dim_padded, log_n,
 # ============================================================
 # Core forward — N-D torch.matmul for all shapes
 # ============================================================
+
 
 def _hadamard_transform_fwd(x, scale):
     """Core forward: torch.matmul with cached scaled Hadamard matrix.
@@ -409,6 +429,7 @@ def _hadamard_transform_fwd(x, scale):
 # Autograd wrapper
 # ============================================================
 
+
 class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale):
@@ -425,6 +446,7 @@ class HadamardTransformFn(torch.autograd.Function):
 # ============================================================
 # Public API
 # ============================================================
+
 
 def hadamard_transform(x, scale=1.0):
     """Fast Hadamard Transform (Ascend NPU specialization).
@@ -447,6 +469,7 @@ def hadamard_transform(x, scale=1.0):
 # ============================================================
 # XXN variants (non-power-of-2 dims)
 # ============================================================
+
 
 def hadamard_transform_12N(x, scale=1.0):
     """Hadamard transform for dim = 12 * 2^k."""
