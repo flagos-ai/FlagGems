@@ -139,7 +139,7 @@ def trunc_divide(A, B):
 
 
 def trunc_divide_(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE_")
+    logger.debug("GEMS_KUNLUNXIN TRUNC_DIVIDE_")
     # Integer types: use dedicated int kernels (Triton // is C-style truncation)
     if not A.is_floating_point():
         if isinstance(B, torch.Tensor):
