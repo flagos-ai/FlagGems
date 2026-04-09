@@ -79,7 +79,7 @@ def upsample_linear1d(
             output_size[0] if isinstance(output_size, (list, tuple)) else output_size
         )
     else:
-        assert scales is not None
+        assert scales is not None, "scales must be specified if output_size is not provided."
         W_out = int(math.floor(W_in * scales))
 
     inp = self.contiguous().view(NC, W_in)
