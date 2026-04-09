@@ -2608,3 +2608,44 @@ def test_accuracy_atan2_out(shape, dtype):
         res_out = torch.ops.aten.atan2.out(x, y, out=res_out_buf)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
+def test_accuracy_gcd(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+    inp1 = torch.randint(1, 1000, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(1, 1000, shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    ref_out = torch.gcd(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.gcd(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.gcd
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
+def test_accuracy_gcd_out(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+    inp1 = torch.randint(1, 1000, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(1, 1000, shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    ref_out_buf = torch.empty(shape, dtype=ref_inp1.dtype, device=ref_inp1.device)
+    ref_out = torch.ops.aten.gcd.out(ref_inp1, ref_inp2, out=ref_out_buf)
+
+    res_out_buf = torch.empty(shape, dtype=inp1.dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.gcd.out(inp1, inp2, out=res_out_buf)
+
+    gems_assert_equal(res_out, ref_out)
