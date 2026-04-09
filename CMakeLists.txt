@@ -123,7 +123,7 @@ endif()
 execute_process(
   #COMMAND ${Python_EXECUTABLE}
   COMMAND ${CMAKE_COMMAND} -E env --unset=LD_PRELOAD ${Python_EXECUTABLE}
-          -c "import triton, sys; sys.stdout.write(triton.__version__)"
+          -c "import torch; import triton, sys; sys.stdout.write(triton.__version__)"
   RESULT_VARIABLE _ret
   OUTPUT_VARIABLE TRITON_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE
