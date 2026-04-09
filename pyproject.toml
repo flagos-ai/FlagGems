@@ -1,6 +1,6 @@
 [build-system]
 # cmake locks to '>=3.20,<4.0' to sync with FlagTree
-requires = ["setuptools==82.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake==3.31.10", "ninja==1.13.0"]
+requires = ["setuptools==82.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
