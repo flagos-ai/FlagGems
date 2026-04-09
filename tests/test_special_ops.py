@@ -1648,7 +1648,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     with flag_gems.use_gems():
         res_out = torch.diagonal(inp, offset, dim1, dim2)
 
-    out_grad = torch.randn_like(res_out)
+    out_grad = torch.randn_like(res_out.cpu()).to(device=flag_gems.device)
     ref_grad = to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)

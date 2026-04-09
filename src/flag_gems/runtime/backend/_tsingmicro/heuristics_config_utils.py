@@ -204,19 +204,16 @@ def rand_heur_num_warps(args):
 
 
 def randn_heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
+    bs = triton.next_power_of_2(args["N"] // (16 * 4))
+    if bs > 32768:
+        bs = 32768
+    elif bs < 512:
+        bs = 512
+    return bs
 
 
 def randn_heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
+    return 1
 
 
 def softmax_heur_tile_k(args):
@@ -376,6 +373,27 @@ def mean_heur_one_tile_per_cta(args):
     return args["TILE_N"] >= args["N"]
 
 
+def mha_varlen_heur_block_m(params):
+    if params.seqlen_q == 1:
+        return 1
+    elif params.seqlen_q >= 1024:
+        return 512
+    elif params.seqlen_q >= 512:
+        return 256
+    elif params.seqlen_q >= 256:
+        return 128
+    elif params.seqlen_q >= 128:
+        return 64
+    elif params.seqlen_q >= 64:
+        return 32
+    else:
+        return 16
+
+
+def mha_varlen_heur_block_n(params):
+    return 16
+
+
 HEURISTICS_CONFIGS = {
     "argmax_non_inner": {
         "TILE_K": argmax_heur_tile_k,
@@ -477,29 +495,11 @@ HEURISTICS_CONFIGS = {
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
     },
-    "mha_block_128": {
-        "BLOCK_M": lambda args: 128,
-        "BLOCK_N": lambda args: 32,
-        "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
-    },
-    "mha_block_64": {
-        "BLOCK_M": lambda args: 64,
-        "BLOCK_N": lambda args: 64,
-        "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
-    },
-    "mha_block_32": {
-        "BLOCK_M": lambda args: 32,
-        "BLOCK_N": lambda args: 64,
-        "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
-    },
-    "mha_block_16": {
-        "BLOCK_M": lambda args: 16,
-        "BLOCK_N": lambda args: 64,
-        "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
+    "mha_varlen_fwd": {
+        "BLOCK_M": mha_varlen_heur_block_m,
+        "BLOCK_N": mha_varlen_heur_block_n,
+        "num_warps": lambda args: 1,
+        "num_stages": lambda args: 1,
     },
     "elementwise_generic": {
         "BLOCK_SIZE": simple_elementwise_blocksize_heur,

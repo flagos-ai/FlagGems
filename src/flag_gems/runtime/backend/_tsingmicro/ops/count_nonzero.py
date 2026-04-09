@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
@@ -26,7 +26,13 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
+@libtuner(
+    configs=runtime.get_tuned_config("count_nonzero"),
+    key=["numel"],
+    strategy=["align32"],
+    warmup=1,
+    rep=2,
+)
 @triton.jit
 def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_0 = tle.program_id(0)
@@ -64,7 +70,13 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
+@libtuner(
+    configs=runtime.get_tuned_config("count_nonzero"),
+    key=["numel"],
+    strategy=["align32"],
+    warmup=1,
+    rep=2,
+)
 @triton.jit
 def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     pid_x = tle.program_id(0)
@@ -96,6 +108,7 @@ def count_nonzero_combin_kernel(
 
 def count_nonzero(x, dim=None):
     logger.debug("GEMS_TSINGMICRO COUNT NONZERO")
+    print("GEMS_TSINGMICRO COUNT NONZERO")
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape

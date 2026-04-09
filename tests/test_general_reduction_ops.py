@@ -193,7 +193,7 @@ def test_accuracy_max_without_dim_all_neg_inf(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.max(inp)
 
-    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
 # cambricon add

@@ -7,6 +7,10 @@ import torch
 import torch_txda  # noqa: F401
 from backend_utils import VendorInfoBase  # noqa: E402
 
+SPM_SIZE = 3 * 1024 * 1024
+SYS_SPM_RESERVED_SIZE = 64 * 1024
+OPS_SPM_RESERVED_SIZE = 256
+
 
 @dataclass
 class TxdaDeviceProperties:
