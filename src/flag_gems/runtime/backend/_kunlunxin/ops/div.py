@@ -118,7 +118,7 @@ def trunc_div_int_func_scalar_tensor(x, y):
 
 
 def trunc_divide(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE")
+    logger.debug("GEMS_KUNLUNXIN TRUNC_DIVIDE")
     # Integer types: use dedicated int kernels (Triton // is C-style truncation)
     if isinstance(A, torch.Tensor) and not A.is_floating_point():
         if isinstance(B, torch.Tensor):
