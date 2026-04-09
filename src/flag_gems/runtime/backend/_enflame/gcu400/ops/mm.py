@@ -75,8 +75,6 @@ def mm_kernel(
             mask_b = (rk < k_remaining)[:, None] & (rn < N)[None, :]
             a = tl.load(A, mask=mask_a, other=0)
             b = tl.load(B, mask=mask_b, other=0)
-        a = a.to(dot_out_dtype)
-        b = b.to(dot_out_dtype)
         acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
