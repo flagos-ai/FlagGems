@@ -165,7 +165,7 @@ def w8a8_block_fp8_matmul(
     As: torch.Tensor,
     Bs: torch.Tensor,
     block_size: List[int],
-    output_dtype: torch.dtype = torch.float16,
+    output_dtype: torch.dtype = torch.bfloat16,
 ) -> torch.Tensor:
     assert len(block_size) == 2
     block_n, block_k = block_size[0], block_size[1]

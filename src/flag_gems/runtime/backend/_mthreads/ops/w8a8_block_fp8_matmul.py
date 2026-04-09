@@ -510,7 +510,7 @@ def w8a8_block_fp8_matmul(
     As: torch.Tensor,
     Bs: torch.Tensor,
     block_size: List[int],
-    output_dtype: torch.dtype = torch.float16,
+    output_dtype: torch.dtype = torch.bfloat16,
 ) -> torch.Tensor:
     device = A.device
     assert len(block_size) == 2
