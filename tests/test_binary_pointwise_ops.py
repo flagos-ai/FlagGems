@@ -2469,6 +2469,43 @@ def test_accuracy_logaddexp_out(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.copysign
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_copysign(shape, dtype):
+    # Test copysign: magnitude of input, sign of other
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    other = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_input = to_reference(input)
+    ref_other = to_reference(other)
+    ref_out = torch.copysign(ref_input, ref_other)
+
+    with flag_gems.use_gems():
+        res_out = torch.copysign(input, other)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.copysign
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_copysign_out(shape, dtype):
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    other = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(input)
+
+    ref_input = to_reference(input)
+    ref_other = to_reference(other)
+    ref_out = torch.empty_like(ref_input)
+
+    torch.copysign(ref_input, ref_other, out=ref_out)
+    with flag_gems.use_gems():
+        torch.copysign(input, other, out=out)
+
+    gems_assert_close(out, ref_out, dtype)
+
+
 @pytest.mark.atan2
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
