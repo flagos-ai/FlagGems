@@ -6,7 +6,7 @@ export GEMS_VENDOR=$VENDOR
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
 # TODO: Check if this is necessary
-export TRITON_ALL_BLOCKS_PARALLEL=1
+# export TRITON_ALL_BLOCKS_PARALLEL=1
 
 # Initialize Ascend environment variables.
 # This script is provided by the Huawei Ascend CANN toolkit installation.
@@ -19,14 +19,13 @@ export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
 
-pip install -U pip
-pip install uv
 uv venv
 source .venv/bin/activate
 
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-uv pip install flagtree==0.5.0+3.2 torch==2.9.0+cpu torch-npu==2.9.0 \
-  -i https://resource.flagos.net/repository/flagos-pypi-ascend/simple
+# The following command will install torch==2.9.0+cpu as well
+uv pip install torch-npu==2.9.0 --index https://resource.flagos.net/repository/flagos-pypi-ascend/simple
+uv pip install flagtree==0.5.0+3.2 --index https://resource.flagos.net/repository/flagos-pypi-ascend/simple
 uv pip install -e .[ascend,test]
 
 # Start testing
