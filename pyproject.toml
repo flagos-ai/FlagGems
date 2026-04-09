@@ -83,19 +83,11 @@ iluvatar = [
 ]
 
 kunlunxin = [
-    "flag_gems[official_torch_251]",
-    "benchflow==1.0.0",
-    "torch_klx==0.1.0",
-    "torch_xray==0.2.1",
-    "triton==3.0.0+0762702f",
-    "xmlir==1.0.0.1",
-    # "hydra==0.1.0",
-    # "transformer_engine==1.13.0+7fc5d8b",
-    # Other dependencies
     "regex==2026.4.4",
     "hyperparameter==0.5.6",
     "colorama==0.4.6",
     "psutil==6.1.0",
+    "setuptools==81.0.0",
 ]
 
 mthreads = [
