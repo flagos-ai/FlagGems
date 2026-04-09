@@ -126,6 +126,7 @@ from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
+from flag_gems.ops.hadamard_transform import hadamard_transform
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.hstack import hstack
@@ -453,6 +454,7 @@ __all__ = [
     "group_norm_backward",
     "gt",
     "gt_scalar",
+    "hadamard_transform",
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",

@@ -95,6 +95,7 @@ from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
@@ -352,6 +353,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hstack",
+    "hadamard_transform",
     "index",
     "index_add",
     "index_add_",

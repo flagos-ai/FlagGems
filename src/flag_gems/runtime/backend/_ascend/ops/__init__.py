@@ -22,6 +22,7 @@ from .full import full
 from .full_like import full_like
 from .gather import gather
 from .groupnorm import group_norm, group_norm_backward
+from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add
@@ -104,6 +105,7 @@ __all__ = [
     "group_norm",
     "group_norm_backward",
     "hstack",
+    "hadamard_transform",
     "index",
     "index_add",
     "index_select",
