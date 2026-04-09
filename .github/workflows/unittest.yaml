@@ -110,7 +110,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
-      runner_label: ascend_CI
+      runner_label: ascend
       gpu_check_script: tools/gpu_check_ascend.sh
       test_script: tools/run_backend_tests_ascend.sh
     secrets:
