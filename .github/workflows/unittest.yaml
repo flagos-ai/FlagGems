@@ -128,6 +128,18 @@ jobs:
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
+  backend-kunlunxin:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: kunlunxin
+      runner_label: kunlunxin
+      gpu_check_script: tools/gpu_check_kunlunxin.sh
+      test_script: tools/run_backend_tests_kunlunxin.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
   backend-metax:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/MetaX')
