@@ -116,6 +116,18 @@ jobs:
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
+  backend-hygon:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: hygon
+      runner_label: hygon
+      gpu_check_script: tools/gpu_check_hygon.sh
+      test_script: tools/run_backend_tests_hygon.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
   backend-iluvatar:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/Iluvatar')
