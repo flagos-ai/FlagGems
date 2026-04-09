@@ -3,7 +3,6 @@
 #include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
 
-#include <cuda.h>
 #include <string>
 
 namespace flag_gems {
