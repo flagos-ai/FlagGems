@@ -6,10 +6,10 @@ export GEMS_VENDOR=$VENDOR
 # 2. Device Configuration
 # T-Head PPUs typically use the PPU_VISIBLE_DEVICES environment variable
 # Based on previous logs, device IDs are 0, 1, 2, 3. Defaulting to device 0 for testing.
-export PPU_VISIBLE_DEVICES=0
+# export PPU_VISIBLE_DEVICES=0
 
-echo "Running FlagGems tests on T-Head PPU with GEMS_VENDOR=$GEMS_VENDOR"
-echo "Target Device: PPU $PPU_VISIBLE_DEVICES"
+# echo "Running FlagGems tests on T-Head PPU with GEMS_VENDOR=$GEMS_VENDOR"
+# echo "Target Device: PPU $PPU_VISIBLE_DEVICES"
 
 # 3. Environment Activation
 # Using pyenv to manage Python versions
