@@ -20,9 +20,7 @@ source .venv/bin/activate
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
 
 uv pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index https://download.pytorch.org/whl/cu118
-uv pip install benchflow==1.0.0 torch_klx==0.1.0 torch_xray==0.2.1 triton==3.0.0+0762702f xmlir==1.0.0.1 \
-  --index https://resource.flagos.net/repository/flagos-pypi-kunlunxin/simple
-
+$HOME/kunlunxin/install-wheels.sh
 uv pip install -e .[kununxin,test]
 
 TEST_FILES=(
