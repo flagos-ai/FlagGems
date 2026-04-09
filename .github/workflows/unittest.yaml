@@ -174,7 +174,7 @@ jobs:
       test_script: tools/run_backend_tests_tsingmicro.sh
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
-      
+
   backend-thead:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/Thead')
@@ -184,6 +184,18 @@ jobs:
       runner_label: thead
       gpu_check_script: tools/gpu_check_thead.sh
       test_script: tools/run_backend_tests_thead.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-hygon:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: hygon
+      runner_label: hygon
+      gpu_check_script: tools/gpu_check_hygon.sh
+      test_script: tools/run_backend_tests_hygon.sh
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
