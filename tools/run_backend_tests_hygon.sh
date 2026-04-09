@@ -21,6 +21,8 @@ uv pip install flagtree==0.5.0+hcu3.0 --index https://resource.flagos.net/reposi
 uv pip install torch==2.9.0+das.opt1.dtk2604 --index https://resource.flagos.net/repository/flagos-pypi-hygon/simple
 uv pip install -e .[hygon,test]
 
+source /opt/dtk-26.04/env.sh
+
 echo "Starting tests..."
 
 TEST_FILES=(
