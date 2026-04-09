@@ -2164,7 +2164,7 @@ def test_conj_physical(shape, is_complex, dtype):
 def test_reflection_pad2d(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_x = to_reference(x)
+    ref_x = to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
     with flag_gems.use_gems():

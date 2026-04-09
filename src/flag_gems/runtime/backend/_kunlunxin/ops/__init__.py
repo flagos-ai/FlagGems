@@ -169,6 +169,8 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
+from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from .relu import relu, relu_
 from .repeat import repeat
 from .repeat_interleave import (
@@ -440,6 +442,10 @@ __all__ = [
     "randperm",
     "reciprocal",
     "reciprocal_",
+    "reflection_pad1d",
+    "reflection_pad1d_out",
+    "reflection_pad2d",
+    "reflection_pad2d_out",
     "relu",
     "relu_",
     "remainder",
