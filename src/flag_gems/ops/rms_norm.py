@@ -241,13 +241,9 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     with torch_device_fn.device(x.device):
         if N <= 4096:
             BLOCK_SIZE = triton.next_power_of_2(N)
-            rms_norm_kernel[M,](
-                y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-            )
+            rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
         else:
-            rms_norm_loop_kernel[M,](
-                y, inv_rms, x, weight, N, eps
-            )
+            rms_norm_loop_kernel[M,](y, inv_rms, x, weight, N, eps)
 
     return y, inv_rms
 
