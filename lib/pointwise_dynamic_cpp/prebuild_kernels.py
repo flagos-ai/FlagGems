@@ -110,6 +110,9 @@ class KernelEntry:
             (no stride_order args, single tile_size constexpr).
         is_block_pointer: Whether the kernel uses block pointers
             (stride_order args present in the kernel signature).
+        max_tile_size: Maximum tile size from the codegen config (e.g.
+            512 for NVIDIA).  Needed by the C++ dispatch to replicate
+            the Python budget-based per-dimension tile-size heuristic.
     """
 
     op_name: str
@@ -123,6 +126,7 @@ class KernelEntry:
     promotion_rules: List[PromotionRule]
     is_1d_tile: bool
     is_block_pointer: bool
+    max_tile_size: int
 
 
 # ===================================================================
@@ -252,6 +256,7 @@ def prebuild_from_function(
     # Kernel variant flags (determined by codegen config at build time)
     is_1d_tile = pw_func.config.prefer_1d_tile
     is_block_pointer = pw_func.config.prefer_block_pointer and not is_1d_tile
+    cfg_max_tile_size = pw_func.config.max_tile_size
 
     for rank in range(max_rank + 1):
         try:
@@ -269,6 +274,7 @@ def prebuild_from_function(
                 promotion_rules=promotion_rules,
                 is_1d_tile=is_1d_tile,
                 is_block_pointer=is_block_pointer,
+                max_tile_size=cfg_max_tile_size,
             )
             entries.append(entry)
 
@@ -429,6 +435,7 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
         "    std::vector<PromotionRule> promotion_rules;",
         "    bool is_1d_tile;       // 1D-tile kernel (no stride_order, single tile_size)",
         "    bool is_block_pointer;  // block-pointer kernel (stride_order present)",
+        "    int max_tile_size;      // max tile size budget from codegen config",
         "};",
         "",
     ]
@@ -456,7 +463,7 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
                 f'"{entry.file_path}", "{entry.kernel_name}", '
                 f"{entry.num_input_tensors}, {entry.num_non_tensor_inputs}, {entry.num_outputs}, "
                 f"{rules_str}, "
-                f"{is_1d}, {is_bptr}"
+                f"{is_1d}, {is_bptr}, {entry.max_tile_size}"
                 f"}}}},"
             )
         lines.append("    }},")
@@ -562,16 +569,26 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
 
     code = ""
 
+    # Helper: resolve the op registry once via static local, then delegate
+    # to dispatch_pointwise_impl which takes the pre-resolved registry.
+    # This eliminates the string hash map lookup on every call.
+    registry_lookup = (
+        f'    static const auto& registry = KERNEL_REGISTRY.at("{op_name}");\n'
+    )
+
     # Normal wrapper
     all_params = t_params + (s_params_with_comma if ns else "")
     code += f"inline at::Tensor {op_name}({all_params}) {{\n"
-    code += f'    return dispatch_pointwise("{op_name}", {t_args}, {s_args}, {mask});\n'
+    code += registry_lookup
+    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {mask}, {{}});\n"
     code += "}\n\n"
 
     # _out wrapper (out tensor inserted after input tensors)
     out_params = t_params + ", at::Tensor& out" + (s_params_with_comma if ns else "")
     code += f"inline at::Tensor {op_name}_out({out_params}) {{\n"
-    code += f'    return dispatch_pointwise_out("{op_name}", {t_args}, out, {s_args}, {mask});\n'
+    code += registry_lookup
+    code += "    std::vector<c10::optional<at::Tensor>> pre_outputs = {out};\n"
+    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {mask}, pre_outputs);\n"
     code += "}\n\n"
 
     return code

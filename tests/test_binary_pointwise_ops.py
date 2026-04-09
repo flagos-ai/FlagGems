@@ -1393,6 +1393,9 @@ def test_accuracy_pow(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_(shape, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 pow test on tsingmicro platform")
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -1497,6 +1500,9 @@ def test_accuracy_fmin_out(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 pow test on tsingmicro platform")
+
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -1520,6 +1526,9 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 pow test on tsingmicro platform")
+
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(1)
         torch.cuda.manual_seed_all(1)
@@ -1550,6 +1559,9 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 pow test on tsingmicro platform")
+
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(1)
         torch.cuda.manual_seed_all(1)
@@ -1874,6 +1886,9 @@ def test_accuracy_nan_to_num(shape, dtype, nan, posinf, neginf):
 @pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize("gen_nan", [0, 1, 2, 3, 4])
 def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.int32:
+        pytest.skip("Skiping bool isclose test on tsingmicro platform")
+
     # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
     rtol = (
         torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * 0.0001

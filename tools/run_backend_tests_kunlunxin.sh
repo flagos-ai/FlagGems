@@ -1,35 +1,30 @@
 #!/bin/bash
 
 VENDOR=${1}
-export GEMS_VENDOR=$VENDOR
-
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
-# TODO: Check if this is necessary
-export TRITON_ALL_BLOCKS_PARALLEL=1
+export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
 
-# Initialize Ascend environment variables.
-# This script is provided by the Huawei Ascend CANN toolkit installation.
-if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
-    source /usr/local/Ascend/ascend-toolkit/set_env.sh
-fi
-
-# Set virtual environment
+# PyEnv settings
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
 
+# Preamble
 pip install -U pip
 pip install uv
 uv venv
 source .venv/bin/activate
 
+# Setup
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-uv pip install flagtree==0.5.0+3.2 torch==2.9.0+cpu torch-npu==2.9.0 \
-  -i https://resource.flagos.net/repository/flagos-pypi-ascend/simple
-uv pip install -e .[ascend,test]
 
-# Start testing
+uv pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index https://download.pytorch.org/whl/cu118
+uv pip install benchflow==1.0.0 torch_klx==0.1.0 torch_xray==0.2.1 triton==3.0.0+0762702f xmlir==1.0.0.1 \
+  --index https://resource.flagos.net/repository/flagos-pypi-kunlunxin/simple
+
+uv pip install -e .[kununxin,test]
+
 TEST_FILES=(
   # Reduction
   "tests/test_reduction_ops.py"
