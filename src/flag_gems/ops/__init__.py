@@ -25,6 +25,7 @@ from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.atan import atan, atan_
+from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -343,6 +344,8 @@ __all__ = [
     "asinh_",
     "atan",
     "atan_",
+    "atan2",
+    "atan2_out",
     "avg_pool2d",
     "avg_pool2d_backward",
     "baddbmm",
