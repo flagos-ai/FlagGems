@@ -58,7 +58,7 @@ TEST_FILES=(
 )
 
 for testcase in "${TEST_FILES[@]}"; do
-    pytest -s --tb=line $testcase
+    pytest -s --tb=line $testcase --ref cpu
 done
 
 echo "All tests finished."
