@@ -522,7 +522,7 @@ def torch_fused_moe_quantized_reference(
     return output
 
 
-def native_w8a8_block_matmul(
+def torch_w8a8_block_matmul(
     a: torch.Tensor,
     b: torch.Tensor,
     a_scales: torch.Tensor,
@@ -573,7 +573,7 @@ def native_w8a8_block_matmul(
     return c.reshape(origin_c_shape).to(output_dtype)
 
 
-def native_per_token_group_quant_fp8(
+def torch_per_token_group_quant_fp8(
     x: torch.Tensor,
     group_size: int,
     eps: float = 1e-10,
@@ -618,7 +618,7 @@ def torch_w8a8_block_fp8_moe(
     flat_weights = topk_weights.view(-1)
     flat_ids = topk_ids.view(-1)
     _, block_k = block_shape
-    hidden_q, hidden_scale = native_per_token_group_quant_fp8(expanded_hidden, block_k)
+    hidden_q, hidden_scale = torch_per_token_group_quant_fp8(expanded_hidden, block_k)
     hidden_q = hidden_q.to(torch.float32)
 
     def silu_and_mul(x):
@@ -630,7 +630,7 @@ def torch_w8a8_block_fp8_moe(
     for expert_idx in range(w1.shape[0]):
         mask = flat_ids == expert_idx
         if mask.sum():
-            inter = native_w8a8_block_matmul(
+            inter = torch_w8a8_block_matmul(
                 hidden_q[mask],
                 w1[expert_idx],
                 hidden_scale[mask],
@@ -639,8 +639,8 @@ def torch_w8a8_block_fp8_moe(
                 output_dtype=hidden_states.dtype,
             )
             act = silu_and_mul(inter)
-            act_q, act_scale = native_per_token_group_quant_fp8(act, block_k)
-            out[mask] = native_w8a8_block_matmul(
+            act_q, act_scale = torch_per_token_group_quant_fp8(act, block_k)
+            out[mask] = torch_w8a8_block_matmul(
                 act_q,
                 w2[expert_idx],
                 act_scale,
