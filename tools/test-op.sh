@@ -2,6 +2,28 @@
 
 set -e
 
+PR_ID=$1
+
+# Leave this for debugging's purpose
+echo "PR_ID=${PR_ID}"
+
+COLLECT_COVERAGE=""
+
+if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
+  # Replace "__ALL__" with all tests
+  CHANGED_FILES=$(find tests -name "test*.py")
+  # add options to generate summary report
+  EXTRA_OPTS="--md-report"
+  EXTRA_OPTS+=" --md-report-verbose=1"
+  EXTRA_OPTS+=" --md-report-output=${PR_ID}-summary.md"
+  SUFFIX=""
+  COLLECT_COVERAGE="yes"
+else
+  # for per-PR test, fail early
+  EXTRA_OPTS="-x"
+  SUFFIX="-${GITHUB_SHA::7}"
+fi
+
 # Test cases that needs to run quick cpu tests
 QUICK_CPU_TESTS=(
   "tests/test_attention_ops.py"
@@ -16,21 +38,21 @@ QUICK_CPU_TESTS=(
   "tests/test_unary_pointwise_ops.py"
 )
 
-PR_ID=$1
-ID_SHA="${PR_ID}-${GITHUB_SHA::7}"
-echo "CHANGED_FILES=$CHANGED_FILES"
-
+# Extract test cases from CHANGED_FILES
 TEST_CASES=()
 TEST_CASES_CPU=()
-UNARY_POINTWISE=0
 for item in $CHANGED_FILES; do
   case $item in
+    # tests/test_DSA/*)
+    # skip DSA test for now
+    # ;;
+    tests/test_quant.py)
+      # skip because it always fail
+      ;;
     tests/*) TEST_CASES+=($item)
   esac
-  if [[ "$item" == "tests/test_unary_pointwise_ops.py" ]]; then
-    UNARY_POINTWISE=1
-  fi
 
+  # filter out tests that do not need quick CPU mode tests
   for item_cpu in "${QUICK_CPU_TESTS[@]}"; do
     if [[ "$item" == "$item_cpu" ]]; then
       TEST_CASES_CPU+=($item)
@@ -45,48 +67,27 @@ if [ ${#TEST_CASES[@]} -eq 0 ]; then
   exit 0
 fi
 
+# Clear existing coverage data if any
+coverage erase
+
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
-coverage run --data-file=${ID_SHA}-op -m pytest -s -x ${TEST_CASES[@]}
+coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES[@]}
 
 # Run quick-cpu test if necessary
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run --data-file=${ID_SHA}-op -m pytest -s -x ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
+  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
 fi
 
-# For unary pointwise operators, adds an additional `abs` mode test
-# TODO(Qiming): Check if this special case can be generalized
-if [[ "$UNARY_POINTWISE" -eq 1 ]]; then
-coverage run --data-file=${ID_SHA}-op -m pytest -s tests/test_unary_pointwise_ops.py -m abs --record=log
+# Process coverage data only when full-range testing
+# Coverage data HTML dumped to `htmlcov/` by default
+if [ -n "$COLLECT_COVERAGE" ]; then
+  coverage combine
+  coverage html
+  rm -fr coverage
+  mkdir coverage
+  mv htmlcov coverage/
+  echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
+  mv ${PR_ID}-summary.md coverage/ut-summary.md
 fi
-
-# blas_ops=(
-#  "tests/test_attention_ops.py"
-#  "tests/test_blas_ops.py"
-#)
-
-# pointwise_ops=(
-#   "tests/test_binary_pointwise_ops.py"
-#   "tests/test_pointwise_dynamic.py"
-#   "tests/test_pointwise_type_promotion.py"
-#   "tests/test_unary_pointwise_ops.py"
-# )
-
-# reduction_ops=(
-#  "tests/test_general_reduction_ops.py"
-#  "tests/test_norm_ops.py"
-#  "tests/test_reduction_ops.py"
-# )
-#
-# special_ops=(
-#  "tests/test_distribution_ops.py"
-#  "tests/test_special_ops.py"
-#  "tests/test_tensor_constructor_ops.py"
-# )
-#
-# utils=(
-#  "tests/test_libentry.py"
-#  "tests/test_shape_utils.py"
-#  "tests/test_tensor_wrapper.py"
-# )

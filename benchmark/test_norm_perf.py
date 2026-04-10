@@ -209,8 +209,8 @@ def weight_norm_interface_input_fn(shape, dtype, device):
 
 def weight_norm_input_fn(shape, dtype, device):
     v = torch.randn(shape, dtype=dtype, device=device)
-    if vendor_name == "cambricon":
-        # Cambricon fix input shape limit.
+    if vendor_name == "cambricon" or vendor_name == "enflame":
+        # Cambricon and Enflame fix input shape limit.
         g = torch.randn(shape[:1] + (1,) * (len(shape) - 1), dtype=dtype, device=device)
     else:
         g = torch.randn(shape, dtype=dtype, device=device)

@@ -310,6 +310,15 @@ upsample_nearest2d:
     block_n: [1024, 2048]
     warps: [4, 8]
 
+upsample_nearest3d:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_SIZE: block_n
+      num_warps: warps
+    block_n: [1024, 2048]
+    warps: [4, 8]
+
 upsample_bicubic2d_aa:
   - gen: true
     param_map:
@@ -592,3 +601,19 @@ index:
       - 1024
       - 2048
       - 4096
+
+w8a8_block_fp8_matmul:
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 128
+      GROUP_SIZE_M: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 128
+      GROUP_SIZE_M: 16
+    num_warps: 4
+    num_stages: 1
