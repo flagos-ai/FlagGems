@@ -1,9 +1,13 @@
 import os
+from collections import OrderedDict
 
 import numpy as np
 import torch
 import triton
 import triton.language as tl
+
+_TMA_DESCRIPTOR_CACHE_MAXSIZE = 256
+_tma_descriptor_cache = OrderedDict()
 
 
 def create_tma_device_descriptor(tensor, block_m, block_n, device):
@@ -26,6 +30,32 @@ def create_tma_device_descriptor(tensor, block_m, block_n, device):
         desc_np,
     )
     desc = torch.tensor(desc_np, device=device)
+    return desc
+
+
+def _tma_descriptor_cache_key(tensor, block_m, block_n, device):
+    return (
+        tensor.data_ptr(),
+        tuple(tensor.shape),
+        tuple(tensor.stride()),
+        str(tensor.dtype),
+        block_m,
+        block_n,
+        str(device),
+    )
+
+
+def get_cached_tma_device_descriptor(tensor, block_m, block_n, device):
+    key = _tma_descriptor_cache_key(tensor, block_m, block_n, device)
+    desc = _tma_descriptor_cache.get(key)
+    if desc is not None:
+        _tma_descriptor_cache.move_to_end(key)
+        return desc
+
+    desc = create_tma_device_descriptor(tensor, block_m, block_n, device)
+    _tma_descriptor_cache[key] = desc
+    if len(_tma_descriptor_cache) > _TMA_DESCRIPTOR_CACHE_MAXSIZE:
+        _tma_descriptor_cache.popitem(last=False)
     return desc
 
 
