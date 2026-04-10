@@ -284,7 +284,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
-    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
+    if flag_gems.vendor_name == "mthreads" and op_name not in ("mm", "baddbmm"):
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
     bench = bench_cls(
@@ -292,7 +292,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     )
     bench.run()
 
-    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
+    if flag_gems.vendor_name == "mthreads" and op_name not in ("mm", "baddbmm"):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
