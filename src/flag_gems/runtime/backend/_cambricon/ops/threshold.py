@@ -45,7 +45,7 @@ def threshold_kernel(
         tl.store(OUT_ptr + offsets, result, mask=mask)
 
 
-# backward 保留 pointwise_dynamic
+# keep backward using pointwise_dynamic
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def threshold_backward_kernel(grad_output, self, threshold):

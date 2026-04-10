@@ -42,7 +42,7 @@ def relu_kernel(
         tl.store(OUT_ptr + offsets, tl.where(x > 0, x, 0), mask=mask)
 
 
-# backward 保留 pointwise_dynamic 不动
+# keep backward using pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def relu_backward(x, dy):
