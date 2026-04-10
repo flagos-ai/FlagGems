@@ -17,7 +17,7 @@ import torch.nn.functional as F
 import flag_gems
 
 from .conftest import QUICK_MODE
-from .accuracy_utils import compute_reference, combo_assert_close
+from .accuracy_utils import compute_reference, combo_assert_close, COMBO_FLOAT_DTYPES
 
 device = flag_gems.device
 
@@ -87,16 +87,17 @@ class TestConvolutionCombination:
         [
             pytest.param(1, 3, 16, 32, id="minimal"),
             pytest.param(4, 3, 64, 64, id="small"),
-            pytest.param(8, 64, 128, 128, id="medium", 
+            pytest.param(8, 64, 128, 128, id="medium",
                         marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")),
             pytest.param(16, 128, 256, 224, id="large",
                         marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")),
         ],
     )
-    def test_conv_bn_relu_block(self, batch_size, in_channels, out_channels, spatial_size, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_conv_bn_relu_block(self, batch_size, in_channels, out_channels, spatial_size, dtype, use_gems):
         """测试Conv→BN→ReLU基础块"""
-        model = ConvBNReLU(in_channels, out_channels).to(device)
-        x = torch.randn(batch_size, in_channels, spatial_size, spatial_size, device=device)
+        model = ConvBNReLU(in_channels, out_channels).to(device).to(dtype)
+        x = torch.randn(batch_size, in_channels, spatial_size, spatial_size, device=device, dtype=dtype)
 
         model.eval()
         with torch.no_grad():
@@ -113,13 +114,14 @@ class TestConvolutionCombination:
     
     @pytest.mark.integration
     @pytest.mark.parametrize("channels", [32, 64, 128])
-    def test_residual_block_forward(self, channels, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_residual_block_forward(self, channels, dtype, use_gems):
         """测试ResNet残差块前向传播"""
-        model = ResidualBlock(channels).to(device)
+        model = ResidualBlock(channels).to(device).to(dtype)
         batch_size = 4
         spatial_size = 32
 
-        x = torch.randn(batch_size, channels, spatial_size, spatial_size, device=device)
+        x = torch.randn(batch_size, channels, spatial_size, spatial_size, device=device, dtype=dtype)
 
         model.eval()
         with torch.no_grad():
@@ -156,10 +158,11 @@ class TestConvolutionCombination:
         "in_channels,out_channels",
         [(32, 64), (64, 128)],
     )
-    def test_multi_scale_feature_extraction(self, in_channels, out_channels, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_multi_scale_feature_extraction(self, in_channels, out_channels, dtype, use_gems):
         """测试多尺度特征提取"""
-        model = MultiScaleBlock(in_channels, out_channels).to(device)
-        x = torch.randn(2, in_channels, 56, 56, device=device)
+        model = MultiScaleBlock(in_channels, out_channels).to(device).to(dtype)
+        x = torch.randn(2, in_channels, 56, 56, device=device, dtype=dtype)
 
         model.eval()
         with torch.no_grad():

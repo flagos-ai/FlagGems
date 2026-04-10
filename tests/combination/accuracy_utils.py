@@ -24,6 +24,17 @@ import flag_gems
 from flag_gems.testing import RESOLUTION
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
+bf16_is_supported = flag_gems.runtime.device.support_bf16
+
+# Combination test float dtypes – adapts to backend capabilities.
+COMBO_FLOAT_DTYPES = [torch.float16, torch.float32]
+if bf16_is_supported:
+    COMBO_FLOAT_DTYPES.append(torch.bfloat16)
+
+# Low-precision only (for mixed-precision accumulation tests that compare against fp32).
+COMBO_LOW_PRECISION_DTYPES = [torch.float16]
+if bf16_is_supported:
+    COMBO_LOW_PRECISION_DTYPES.append(torch.bfloat16)
 
 try:
     from ..conftest import TO_CPU

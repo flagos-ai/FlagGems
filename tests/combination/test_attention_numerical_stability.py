@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from .accuracy_utils import assert_numerical_consistency
+from .accuracy_utils import assert_numerical_consistency, COMBO_FLOAT_DTYPES
 from .utils.numerical_stability import (
     check_finite,
     check_no_nan,
@@ -227,7 +227,7 @@ class TestAttentionNumericalStability:
         )
 
     @pytest.mark.numerical_stability
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
     def test_attention_precision_comparison(self, dtype, attention_config, use_gems):
         """Test attention output precision across different dtypes."""
         B = attention_config["batch_size"]

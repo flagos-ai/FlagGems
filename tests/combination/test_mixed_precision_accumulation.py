@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from .accuracy_utils import assert_accumulation_error
+from .accuracy_utils import assert_accumulation_error, COMBO_LOW_PRECISION_DTYPES
 from .utils.numerical_stability import check_finite, check_no_nan
 
 device = flag_gems.device
@@ -97,7 +97,7 @@ class TestMixedPrecisionAccumulation:
         assert_accumulation_error(output_fp16, output_fp32, torch.float16, num_layers)
 
     @pytest.mark.numerical_stability
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("dtype", COMBO_LOW_PRECISION_DTYPES)
     def test_fp16_vs_bf16_accumulation(self, dtype, use_gems):
         """Compare error accumulation between fp16 and bf16."""
         num_layers = 8

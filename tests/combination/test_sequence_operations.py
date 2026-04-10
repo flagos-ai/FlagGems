@@ -17,7 +17,7 @@ import torch.nn.functional as F
 import flag_gems
 
 from .conftest import QUICK_MODE
-from .accuracy_utils import compute_reference, combo_assert_close
+from .accuracy_utils import compute_reference, combo_assert_close, COMBO_FLOAT_DTYPES
 
 device = flag_gems.device
 
@@ -110,11 +110,12 @@ class TestPositionalEncoding:
                          marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")),
         ],
     )
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
     @pytest.mark.integration
-    def test_positional_encoding_shape(self, batch_size, seq_len, d_model, use_gems):
+    def test_positional_encoding_shape(self, batch_size, seq_len, d_model, dtype, use_gems):
         """测试位置编码形状"""
         pe = PositionalEncoding(d_model).to(device)
-        x = torch.randn(batch_size, seq_len, d_model, device=device)
+        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
 
         pe.eval()
         with torch.no_grad():
@@ -279,13 +280,14 @@ class TestArangeEmbedding:
         assert torch.equal(torch.sort(indices)[0], indices)
     
     @pytest.mark.integration
-    def test_sequence_embedding(self, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_sequence_embedding(self, dtype, use_gems):
         """测试序列嵌入"""
         vocab_size = 1000
         embed_dim = 256
         hidden_dim = 128
 
-        model = SequenceModel(vocab_size, embed_dim, hidden_dim).to(device)
+        model = SequenceModel(vocab_size, embed_dim, hidden_dim).to(device).to(dtype)
 
         # 创建序列索引（arange）
         seq_indices = torch.arange(0, 64, device=device).unsqueeze(0)
@@ -299,7 +301,7 @@ class TestArangeEmbedding:
 
         # Reference comparison (embedding + linear ≈ 2 ops)
         ref_output = compute_reference(model, seq_indices)
-        combo_assert_close(output, ref_output, output.dtype, num_ops=2, name="SequenceModel")
+        combo_assert_close(output, ref_output, dtype, num_ops=2, name=f"SequenceModel {dtype}")
     
     @pytest.mark.integration
     def test_batch_sequence_indices(self, use_gems):

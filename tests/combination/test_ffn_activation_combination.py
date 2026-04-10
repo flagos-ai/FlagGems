@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import flag_gems
 
 from .models.ffn import StandardFFN, SwiGLUFFN, GeGLUFFN
-from .accuracy_utils import compute_reference, combo_assert_close
+from .accuracy_utils import compute_reference, combo_assert_close, COMBO_FLOAT_DTYPES
 from .utils.numerical_stability import (
     check_finite,
     check_no_nan,
@@ -46,8 +46,9 @@ class TestFFNActivationCombinations:
 
     @pytest.mark.integration
     @pytest.mark.parametrize("activation", ["gelu", "relu", "silu"])
-    def test_standard_ffn_activations(self, activation, ffn_config, use_gems):
-        """Test standard FFN with different activation functions."""
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_standard_ffn_activations(self, activation, dtype, ffn_config, use_gems):
+        """Test standard FFN with different activation functions and dtypes."""
         B = ffn_config["batch_size"]
         L = ffn_config["seq_len"]
         D = ffn_config["d_model"]
@@ -55,40 +56,28 @@ class TestFFNActivationCombinations:
 
         # Create FFN
         ffn = StandardFFN(D, H, activation=activation, dropout=0.0)
-        ffn = ffn.to(device).to(torch.float32)
+        ffn = ffn.to(device).to(dtype)
 
         # Create input
-        x = torch.randn(B, L, D, device=device, dtype=torch.float32)
+        x = torch.randn(B, L, D, device=device, dtype=dtype)
 
         # Forward pass
-        output = ffn(x)
+        ffn.eval()
+        with torch.no_grad():
+            output = ffn(x)
 
         # Verify
         assert output.shape == (B, L, D), f"Output shape mismatch for {activation}"
-        check_no_nan(output, f"FFN with {activation}")
-        check_finite(output, f"FFN with {activation}")
+        check_no_nan(output, f"FFN with {activation} {dtype}")
+        check_finite(output, f"FFN with {activation} {dtype}")
+
+        # Reference comparison (FFN ≈ 4 ops: linear + activation + dropout + linear)
+        ref_output = compute_reference(ffn, x)
+        combo_assert_close(output, ref_output, dtype, num_ops=4, name=f"FFN {activation} {dtype}")
 
     @pytest.mark.integration
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
-    def test_ffn_mixed_precision(self, dtype, ffn_config, use_gems):
-        """Test FFN with different precision levels."""
-        B = ffn_config["batch_size"]
-        L = ffn_config["seq_len"]
-        D = ffn_config["d_model"]
-        H = ffn_config["dim_feedforward"]
-
-        ffn = StandardFFN(D, H, activation="gelu", dropout=0.0)
-        ffn = ffn.to(device).to(dtype)
-
-        x = torch.randn(B, L, D, device=device, dtype=dtype)
-
-        output = ffn(x)
-
-        assert output.shape == (B, L, D)
-        check_no_nan(output, f"FFN {dtype}")
-
-    @pytest.mark.integration
-    def test_swiglu_ffn(self, ffn_config, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_swiglu_ffn(self, dtype, ffn_config, use_gems):
         """Test SwiGLU-style FFN (LLaMA architecture)."""
         B = ffn_config["batch_size"]
         L = ffn_config["seq_len"]
@@ -96,18 +85,25 @@ class TestFFNActivationCombinations:
         H = ffn_config["dim_feedforward"]
 
         ffn = SwiGLUFFN(D, H, dropout=0.0)
-        ffn = ffn.to(device).to(torch.float32)
+        ffn = ffn.to(device).to(dtype)
 
-        x = torch.randn(B, L, D, device=device, dtype=torch.float32)
+        x = torch.randn(B, L, D, device=device, dtype=dtype)
 
-        output = ffn(x)
+        ffn.eval()
+        with torch.no_grad():
+            output = ffn(x)
 
         assert output.shape == (B, L, D)
-        check_no_nan(output, "SwiGLU FFN")
-        check_finite(output, "SwiGLU FFN")
+        check_no_nan(output, f"SwiGLU FFN {dtype}")
+        check_finite(output, f"SwiGLU FFN {dtype}")
+
+        # Reference comparison (SwiGLU ≈ 5 ops)
+        ref_output = compute_reference(ffn, x)
+        combo_assert_close(output, ref_output, dtype, num_ops=5, name=f"SwiGLU FFN {dtype}")
 
     @pytest.mark.integration
-    def test_geglu_ffn(self, ffn_config, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_geglu_ffn(self, dtype, ffn_config, use_gems):
         """Test GeGLU-style FFN."""
         B = ffn_config["batch_size"]
         L = ffn_config["seq_len"]
@@ -115,15 +111,21 @@ class TestFFNActivationCombinations:
         H = ffn_config["dim_feedforward"]
 
         ffn = GeGLUFFN(D, H, dropout=0.0)
-        ffn = ffn.to(device).to(torch.float32)
+        ffn = ffn.to(device).to(dtype)
 
-        x = torch.randn(B, L, D, device=device, dtype=torch.float32)
+        x = torch.randn(B, L, D, device=device, dtype=dtype)
 
-        output = ffn(x)
+        ffn.eval()
+        with torch.no_grad():
+            output = ffn(x)
 
         assert output.shape == (B, L, D)
-        check_no_nan(output, "GeGLU FFN")
-        check_finite(output, "GeGLU FFN")
+        check_no_nan(output, f"GeGLU FFN {dtype}")
+        check_finite(output, f"GeGLU FFN {dtype}")
+
+        # Reference comparison (GeGLU ≈ 5 ops)
+        ref_output = compute_reference(ffn, x)
+        combo_assert_close(output, ref_output, dtype, num_ops=5, name=f"GeGLU FFN {dtype}")
 
     @pytest.mark.numerical_stability
     @pytest.mark.parametrize("activation", ["gelu", "silu"])
@@ -232,15 +234,16 @@ class TestActivationFunctions:
             (torch.tanh, "tanh"),
         ],
     )
-    def test_activation_basic(self, activation_fn, name, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_activation_basic(self, activation_fn, name, dtype, use_gems):
         """Test basic activation function behavior."""
         shape = (4, 256, 768)
-        x = torch.randn(shape, device=device, dtype=torch.float32)
+        x = torch.randn(shape, device=device, dtype=dtype)
 
         output = activation_fn(x)
 
         assert output.shape == shape
-        check_no_nan(output, f"{name} basic")
+        check_no_nan(output, f"{name} basic {dtype}")
 
     @pytest.mark.parametrize(
         "activation_fn,name",
@@ -259,7 +262,7 @@ class TestActivationFunctions:
 
         check_no_nan(output, f"{name} scale={scale}")
 
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
     def test_gelu_precision(self, dtype, use_gems):
         """Test GELU precision across dtypes."""
         shape = (4, 256, 768)
@@ -325,7 +328,8 @@ class TestFFNVsPyTorch:
 
     @pytest.mark.comparison
     @pytest.mark.parametrize("activation", ["gelu", "relu"])
-    def test_ffn_output_comparison(self, activation, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_ffn_output_comparison(self, activation, dtype, use_gems):
         """Compare FFN output between FlagGems (GPU) and PyTorch reference."""
         B, L, D, H = 4, 256, 768, 3072
 
@@ -334,11 +338,11 @@ class TestFFNVsPyTorch:
 
         # Create FFN
         ffn = StandardFFN(D, H, activation=activation, dropout=0.0)
-        ffn = ffn.to(device).to(torch.float32)
+        ffn = ffn.to(device).to(dtype)
         ffn.eval()
 
         # Create input
-        x = torch.randn(B, L, D, device=device, dtype=torch.float32)
+        x = torch.randn(B, L, D, device=device, dtype=dtype)
 
         # Compute with FlagGems (use_gems fixture is active)
         with torch.no_grad():
@@ -349,6 +353,6 @@ class TestFFNVsPyTorch:
 
         # Compare (FFN ≈ 4 ops: linear + activation + dropout + linear)
         combo_assert_close(
-            output_gems, output_ref, torch.float32, num_ops=4,
-            name=f"FFN {activation}",
+            output_gems, output_ref, dtype, num_ops=4,
+            name=f"FFN {activation} {dtype}",
         )

@@ -15,7 +15,7 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from .accuracy_utils import compute_reference, combo_assert_close
+from .accuracy_utils import compute_reference, combo_assert_close, COMBO_FLOAT_DTYPES
 from .utils.numerical_stability import check_finite, check_no_nan
 
 device = flag_gems.device
@@ -156,15 +156,16 @@ class TestMoERoutingCombination:
             pytest.param(8, 4, id="8experts_4topk"),
         ],
     )
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
     @pytest.mark.integration
-    def test_moe_router_basic(self, num_experts, top_k, use_gems):
+    def test_moe_router_basic(self, num_experts, top_k, dtype, use_gems):
         """Test MoE router basic functionality."""
         batch_size, seq_len, d_model = 4, 128, 512
 
         router = MoERouter(d_model, num_experts, top_k)
-        router = router.to(device).to(torch.float32)
+        router = router.to(device).to(dtype)
 
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
+        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
 
         router.eval()
         with torch.no_grad():
@@ -186,10 +187,11 @@ class TestMoERoutingCombination:
 
         # Reference comparison (router ≈ 4 ops: linear + softmax + topk + normalize)
         ref_probs, ref_indices, ref_weights = compute_reference(router, x)
-        combo_assert_close(router_probs, ref_probs, torch.float32, num_ops=4, name="MoE router probs")
+        combo_assert_close(router_probs, ref_probs, dtype, num_ops=4, name=f"MoE router probs {dtype}")
 
     @pytest.mark.integration
-    def test_moe_layer_forward(self, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_moe_layer_forward(self, dtype, use_gems):
         """Test complete MoE layer forward pass."""
         batch_size, seq_len, d_model = 2, 64, 256
         num_experts = 8
@@ -197,9 +199,9 @@ class TestMoERoutingCombination:
         dim_feedforward = 512
 
         moe = MoELayer(d_model, num_experts, top_k, dim_feedforward)
-        moe = moe.to(device).to(torch.float32)
+        moe = moe.to(device).to(dtype)
 
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
+        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
 
         moe.eval()
         with torch.no_grad():
@@ -209,7 +211,7 @@ class TestMoERoutingCombination:
         assert output.shape == (batch_size, seq_len, d_model)
 
         # Verify no NaN
-        check_no_nan(output, "MoE output")
+        check_no_nan(output, f"MoE output {dtype}")
 
         # Verify routing diversity (not all tokens go to same expert)
         expert_counts = (
@@ -222,25 +224,7 @@ class TestMoERoutingCombination:
 
         # Reference comparison (MoE ≈ 8 ops: router + topk + gather + expert_fwd + scatter)
         ref_output, _ = compute_reference(moe, x)
-        combo_assert_close(output, ref_output, torch.float32, num_ops=8, name="MoE forward")
-
-    @pytest.mark.integration
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-    def test_moe_precision(self, dtype, use_gems):
-        """Test MoE with different precisions."""
-        batch_size, seq_len, d_model = 2, 32, 128
-        num_experts = 4
-        top_k = 2
-        dim_feedforward = 256
-
-        moe = MoELayer(d_model, num_experts, top_k, dim_feedforward)
-        moe = moe.to(device).to(dtype)
-
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
-
-        output, routing_info = moe(x)
-
-        check_no_nan(output, f"MoE {dtype}")
+        combo_assert_close(output, ref_output, dtype, num_ops=8, name=f"MoE forward {dtype}")
 
     @pytest.mark.numerical_stability
     def test_moe_router_stability(self, use_gems):
@@ -298,7 +282,8 @@ class TestMoERoutingCombination:
 
     @pytest.mark.integration
     @pytest.mark.parametrize("batch_size,seq_len", [(1, 128), (4, 256), (16, 512)])
-    def test_moe_scaling(self, batch_size, seq_len, use_gems):
+    @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
+    def test_moe_scaling(self, batch_size, seq_len, dtype, use_gems):
         """Test MoE with different batch/sequence sizes."""
         d_model = 256
         num_experts = 8
@@ -306,14 +291,14 @@ class TestMoERoutingCombination:
         dim_feedforward = 512
 
         moe = MoELayer(d_model, num_experts, top_k, dim_feedforward)
-        moe = moe.to(device).to(torch.float32)
+        moe = moe.to(device).to(dtype)
 
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
+        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
 
         output, routing_info = moe(x)
 
         assert output.shape == (batch_size, seq_len, d_model)
-        check_no_nan(output, f"MoE batch={batch_size} seq={seq_len}")
+        check_no_nan(output, f"MoE batch={batch_size} seq={seq_len} {dtype}")
 
 
 class TestMoERoutingPatterns:
