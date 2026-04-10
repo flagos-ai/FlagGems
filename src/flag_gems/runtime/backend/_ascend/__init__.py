@@ -1,4 +1,4 @@
-from backend_utils import VendorInfoBase
+from flag_gems.runtime.backend.backend_utils import VendorInfoBase
 
 from .utils import CORE_NUM  # noqa: F401
 

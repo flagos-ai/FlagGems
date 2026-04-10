@@ -69,7 +69,7 @@ official_torch_251 = [
 ]
 
 ascend = [
-    "flagtree==0.5.0+3.2",
+    "flagtree==0.5.0+ascend3.2",
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
 ]
