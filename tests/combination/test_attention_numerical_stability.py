@@ -13,7 +13,8 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from ..utils.numerical_stability import (
+from .accuracy_utils import assert_numerical_consistency
+from .utils.numerical_stability import (
     check_finite,
     check_no_nan,
     generate_stress_input,
@@ -188,9 +189,8 @@ class TestAttentionNumericalStability:
 
         # Note: Standard PyTorch softmax may produce NaN for all-inf rows
         # FlagGems should handle this gracefully
-        # We log the result rather than fail, as this is expected behavior in some cases
         if nan_count > 0:
-            pytest.skip(
+            pytest.xfail(
                 f"All-masked row produces {nan_count} NaN values (expected for standard softmax)"
             )
 
@@ -218,10 +218,13 @@ class TestAttentionNumericalStability:
         # Verify no NaN
         check_no_nan(output, "Causal attention output")
 
-        # Verify causal property: no attention to future positions
-        for i in range(L):
-            future_weights = attn_weights[:, :, i, i + 1:]
-            assert (future_weights == 0).all(), f"Position {i} attends to future"
+        # Verify causal property: no attention to future positions (vectorized)
+        row_idx = torch.arange(L, device=attn_weights.device).view(1, 1, L, 1)
+        col_idx = torch.arange(L, device=attn_weights.device).view(1, 1, 1, L)
+        future_mask = col_idx > row_idx
+        assert (attn_weights[future_mask.expand_as(attn_weights)] == 0).all(), (
+            "Some positions attend to future"
+        )
 
     @pytest.mark.numerical_stability
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
@@ -246,18 +249,13 @@ class TestAttentionNumericalStability:
         v = v_fp32.to(dtype)
         output, _ = self._compute_attention(q, k, v)
 
-        # Compare results
-        output_fp32 = output.to(torch.float32)
-        error = (output_fp32 - output_ref).abs()
-
-        max_error = error.max().item()
-        mean_error = error.mean().item()
-
-        # Log precision information
-        print(f"\n{dtype}: max_error={max_error:.6e}, mean_error={mean_error:.6e}")
-
         # Verify finite output
         check_finite(output, f"Attention {dtype}")
+
+        # Numerical consistency check
+        assert_numerical_consistency(
+            output.to(torch.float32), output_ref, name=f"Attention {dtype} vs fp32"
+        )
 
     @pytest.mark.numerical_stability
     def test_attention_gradient_stability(self, attention_config, use_gems):
@@ -350,6 +348,10 @@ class TestSoftmaxStability:
         unmasked_sum = output[:, :64].sum(dim=-1)
         assert torch.allclose(unmasked_sum, torch.ones_like(unmasked_sum), rtol=1e-3)
 
+        # Numerical consistency: compare NaN/Inf positions with reference
+        ref_output = F.softmax(x.clone().detach(), dim=-1)
+        assert_numerical_consistency(output, ref_output, name="softmax partial -inf")
+
     @pytest.mark.numerical_stability
     def test_softmax_all_neg_inf(self, use_gems):
         """
@@ -367,6 +369,6 @@ class TestSoftmaxStability:
         # We document this behavior for awareness
         nan_count = torch.isnan(output).sum().item()
         if nan_count > 0:
-            pytest.skip(
+            pytest.xfail(
                 f"All -inf input produces NaN (expected behavior: {nan_count} NaN values)"
             )

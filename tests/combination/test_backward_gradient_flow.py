@@ -12,8 +12,9 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from ..models.transformer_block import TransformerBlock
-from ..utils.numerical_stability import check_finite, check_gradient_health
+from .models.transformer_block import TransformerBlock
+from .accuracy_utils import compute_reference_with_grad, combo_assert_close, assert_gradient_close
+from .utils.numerical_stability import check_finite, check_gradient_health
 
 device = flag_gems.device
 
@@ -94,6 +95,12 @@ class TestBackwardGradientFlow:
         # Check parameter gradients
         check_gradient_health(model, "Single layer")
 
+        # Reference gradient comparison (≈ 10 ops in a TransformerBlock)
+        ref_output, ref_input_grads, ref_param_grads = compute_reference_with_grad(model, x)
+        combo_assert_close(output.detach(), ref_output, torch.float32, num_ops=10, name="Single layer forward")
+        if 0 in ref_input_grads:
+            assert_gradient_close(x.grad, ref_input_grads[0], torch.float32, num_ops=10, name="Single layer input grad")
+
     @pytest.mark.integration
     @pytest.mark.parametrize("num_layers", [2, 4, 8])
     def test_multi_layer_gradient_flow(self, num_layers, use_gems):
@@ -122,12 +129,15 @@ class TestBackwardGradientFlow:
 
         # Gradient should not vanish (check norm)
         grad_norm = x.grad.norm().item()
-        print(f"\n{num_layers}-layer gradient norm: {grad_norm:.6e}")
-
-        # Very rough check - gradient shouldn't be too small (< 1e-6)
-        # or exploded (> 1e3)
         assert grad_norm > 1e-6, f"Gradient may have vanished: {grad_norm}"
         assert grad_norm < 1e3, f"Gradient may have exploded: {grad_norm}"
+
+        # Reference gradient comparison (10 ops per layer)
+        num_ops = num_layers * 10
+        ref_output, ref_input_grads, _ = compute_reference_with_grad(model, x)
+        combo_assert_close(output.detach(), ref_output, torch.float32, num_ops=num_ops, name=f"{num_layers}-layer forward")
+        if 0 in ref_input_grads:
+            assert_gradient_close(x.grad, ref_input_grads[0], torch.float32, num_ops=num_ops, name=f"{num_layers}-layer input grad")
 
     @pytest.mark.integration
     def test_gradient_with_masking(self, use_gems):

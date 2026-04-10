@@ -13,6 +13,24 @@ from .attention import MultiHeadAttention
 from .ffn import StandardFFN, SwiGLUFFN, GeGLUFFN
 
 
+class RMSNorm(nn.Module):
+    """
+    Root Mean Square Layer Normalization (LLaMA-style).
+
+    Unlike LayerNorm, RMSNorm does not re-center the activations
+    and only re-scales them using the root mean square.
+    """
+
+    def __init__(self, d_model, eps=1e-5):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(d_model))
+        self.eps = eps
+
+    def forward(self, x):
+        rms = torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        return x * rms * self.weight
+
+
 class TransformerBlock(nn.Module):
     """
     Standard Transformer encoder block.
@@ -107,9 +125,9 @@ class LLaMABlock(nn.Module):
         # SwiGLU FFN
         self.ffn = SwiGLUFFN(d_model, dim_feedforward, dropout)
 
-        # RMS Normalization (using LayerNorm as placeholder for testing)
-        self.norm1 = nn.LayerNorm(d_model, eps=norm_eps)
-        self.norm2 = nn.LayerNorm(d_model, eps=norm_eps)
+        # RMS Normalization
+        self.norm1 = RMSNorm(d_model, eps=norm_eps)
+        self.norm2 = RMSNorm(d_model, eps=norm_eps)
 
     def forward(self, x, mask=None, is_causal=False):
         """
@@ -206,10 +224,10 @@ class TransformerDecoderBlock(nn.Module):
         x = self.self_attn(x, mask=tgt_mask, is_causal=is_causal)
         x = residual + self.dropout1(x)
 
-        # Cross-attention with pre-norm
+        # Cross-attention with pre-norm (Q from target, K/V from memory)
         residual = x
         x = self.norm2(x)
-        x = self.cross_attn(x, mask=memory_mask, is_causal=False)
+        x = self.cross_attn(x, kv_input=memory, mask=memory_mask, is_causal=False)
         x = residual + self.dropout2(x)
 
         # FFN with pre-norm

@@ -12,8 +12,9 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from ..models.ffn import StandardFFN, SwiGLUFFN, GeGLUFFN
-from ..utils.numerical_stability import (
+from .models.ffn import StandardFFN, SwiGLUFFN, GeGLUFFN
+from .accuracy_utils import compute_reference, combo_assert_close
+from .utils.numerical_stability import (
     check_finite,
     check_no_nan,
     generate_stress_input,
@@ -325,7 +326,7 @@ class TestFFNVsPyTorch:
     @pytest.mark.comparison
     @pytest.mark.parametrize("activation", ["gelu", "relu"])
     def test_ffn_output_comparison(self, activation, use_gems):
-        """Compare FFN output with PyTorch reference."""
+        """Compare FFN output between FlagGems (GPU) and PyTorch reference."""
         B, L, D, H = 4, 256, 768, 3072
 
         # Set seed for reproducibility
@@ -339,21 +340,15 @@ class TestFFNVsPyTorch:
         # Create input
         x = torch.randn(B, L, D, device=device, dtype=torch.float32)
 
-        # Compute with FlagGems
-        with flag_gems.use_gems():
+        # Compute with FlagGems (use_gems fixture is active)
+        with torch.no_grad():
             output_gems = ffn(x.clone())
 
-        # Compute without FlagGems (PyTorch reference)
-        # Note: This assumes flag_gems is not globally enabled
-        output_ref = ffn(x.clone())
+        # Compute reference (three-level strategy: GPU fp64 → CPU fp32)
+        output_ref = compute_reference(ffn, x.clone())
 
-        # Compare
-        max_diff = (output_gems - output_ref).abs().max().item()
-        mean_diff = (output_gems - output_ref).abs().mean().item()
-
-        print(f"\nFFN {activation}: max_diff={max_diff:.6e}, mean_diff={mean_diff:.6e}")
-
-        # Should be very close
-        assert torch.allclose(output_gems, output_ref, rtol=1e-3, atol=1e-4), (
-            f"FFN output mismatch: max_diff={max_diff}"
+        # Compare (FFN ≈ 4 ops: linear + activation + dropout + linear)
+        combo_assert_close(
+            output_gems, output_ref, torch.float32, num_ops=4,
+            name=f"FFN {activation}",
         )

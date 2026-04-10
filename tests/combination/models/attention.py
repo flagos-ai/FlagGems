@@ -42,12 +42,13 @@ class MultiHeadAttention(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, mask=None, is_causal=False):
+    def forward(self, x, kv_input=None, mask=None, is_causal=False):
         """
         Forward pass of multi-head attention.
 
         Args:
-            x: Input tensor of shape (batch, seq_len, d_model)
+            x: Input tensor of shape (batch, seq_len, d_model) — used as Q
+            kv_input: Optional tensor for K/V (cross-attention). If None, uses x (self-attention).
             mask: Optional attention mask
             is_causal: Whether to use causal masking
 
@@ -55,24 +56,26 @@ class MultiHeadAttention(nn.Module):
             Output tensor of shape (batch, seq_len, d_model)
         """
         batch_size, seq_len, _ = x.shape
+        kv = kv_input if kv_input is not None else x
+        kv_len = kv.shape[1]
 
         # Project to Q, K, V
         q = self.q_proj(x)
-        k = self.k_proj(x)
-        v = self.v_proj(x)
+        k = self.k_proj(kv)
+        v = self.v_proj(kv)
 
-        # Reshape to (batch, nhead, seq_len, head_dim)
+        # Reshape to (batch, nhead, seq_len/kv_len, head_dim)
         q = q.view(batch_size, seq_len, self.nhead, self.head_dim).transpose(1, 2)
-        k = k.view(batch_size, seq_len, self.nhead, self.head_dim).transpose(1, 2)
-        v = v.view(batch_size, seq_len, self.nhead, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, kv_len, self.nhead, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, kv_len, self.nhead, self.head_dim).transpose(1, 2)
 
-        # Compute attention scores: (batch, nhead, seq_len, seq_len)
+        # Compute attention scores: (batch, nhead, seq_len, kv_len)
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
 
         # Apply causal mask if needed
         if is_causal:
             causal_mask = torch.triu(
-                torch.ones(seq_len, seq_len, dtype=torch.bool, device=x.device),
+                torch.ones(seq_len, kv_len, dtype=torch.bool, device=x.device),
                 diagonal=1,
             )
             attn_scores = attn_scores.masked_fill(causal_mask, float("-inf"))

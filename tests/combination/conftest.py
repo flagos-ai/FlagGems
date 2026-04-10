@@ -9,26 +9,42 @@ tests/conftest.py. It inherits TO_CPU, QUICK_MODE, and other global
 configurations.
 """
 
-import sys
-
 import pytest
 import torch
-
-# Add parent test directory to path to import parent conftest
-sys.path.insert(0, str(__file__).parent.parent)
 
 import flag_gems
 
 device = flag_gems.device
 
-# Import global variables from parent conftest if available
+# Import global variables from parent conftest
 try:
-    from tests.conftest import TO_CPU, QUICK_MODE, RECORD_LOG
+    from ..conftest import TO_CPU, QUICK_MODE, RECORD_LOG
 except ImportError:
     # Default values if parent conftest not available
     TO_CPU = False
     QUICK_MODE = False
     RECORD_LOG = False
+
+# ---------------------------------------------------------------------------
+# Logging (initialised in pytest_configure)
+# ---------------------------------------------------------------------------
+
+_test_logger = None
+
+
+# ============================================================================
+# Pytest option hooks
+# ============================================================================
+
+
+def pytest_addoption(parser):
+    """Add combination-test specific command-line options."""
+    parser.addoption(
+        "--combo-log-dir",
+        action="store",
+        default=None,
+        help="Directory for combination test JSONL log files (default: combination_test_logs/)",
+    )
 
 
 # ============================================================================
@@ -37,7 +53,7 @@ except ImportError:
 
 
 def pytest_configure(config):
-    """Register custom markers for combination tests."""
+    """Register custom markers and initialise combination-test logging."""
     # Register markers specific to combination tests
     config.addinivalue_line(
         "markers", "integration: mark test as integration test (end-to-end scenarios)"
@@ -58,8 +74,15 @@ def pytest_configure(config):
         "markers", "attention: mark test related to attention mechanisms"
     )
     config.addinivalue_line(
-        markers", "ffn: mark test related to FFN modules"
+        "markers", "ffn: mark test related to FFN modules"
     )
+
+    # Initialise combination-test logging
+    from .logging_config import TestLogger
+
+    global _test_logger
+    log_dir = config.getoption("--combo-log-dir", default=None)
+    _test_logger = TestLogger(log_dir=log_dir)
 
 
 # ============================================================================
@@ -72,6 +95,70 @@ def use_gems():
     """Context manager to enable FlagGems for a test module."""
     with flag_gems.use_gems():
         yield
+
+
+# ============================================================================
+# Pytest hooks for test lifecycle logging
+# ============================================================================
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol(item, nextitem):
+    """Log the start of each test with its parameters."""
+    if _test_logger is None:
+        return
+    params = {}
+    if hasattr(item, "_request") and hasattr(item._request, "node"):
+        node = item._request.node
+        if hasattr(node, "callspec"):
+            params = {k: str(v) for k, v in node.callspec.params.items()}
+    _test_logger.log_test_start(item.nodeid, params)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logreport(report):
+    """Log the outcome of each test (only for the 'call' phase)."""
+    if _test_logger is None:
+        return
+    if report.when == "call":
+        error_msg = None
+        if report.failed and report.longrepr:
+            error_msg = str(report.longrepr)
+        _test_logger.log_test_result(
+            test_name=report.nodeid,
+            outcome=report.outcome,
+            duration=report.duration,
+            error_msg=error_msg,
+        )
+    elif report.when == "setup" and report.outcome == "skipped":
+        reason = ""
+        if hasattr(report.longrepr, "reprcrash"):
+            reason = report.longrepr.reprcrash.message
+        elif isinstance(report.longrepr, tuple):
+            reason = str(report.longrepr[2])
+        _test_logger.log_test_result(
+            test_name=report.nodeid,
+            outcome="skipped",
+            duration=0,
+            error_msg=reason,
+        )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Write session summary and close the logger."""
+    if _test_logger is None:
+        return
+    stats = session.testscollected
+    tr = getattr(session.config, "_terminal_reporter", None) if hasattr(session, "config") else None
+    # Gather counts from the internal _counts tracker
+    passed = _test_logger._counts.get("passed", 0)
+    failed = _test_logger._counts.get("failed", 0)
+    skipped = _test_logger._counts.get("skipped", 0)
+    total = passed + failed + skipped
+    _test_logger.log_session_summary(
+        total=total, passed=passed, failed=failed, skipped=skipped
+    )
+    _test_logger.close()
 
 
 @pytest.fixture
@@ -201,55 +288,6 @@ def _generate_mixed_specials(shape, dtype, device):
     inf_mask = torch.rand(shape, device=device) < 0.005
     x[inf_mask] = float("inf")
     return x
-
-
-# ============================================================================
-# Assertion utilities (compatible with parent conftest)
-# ============================================================================
-
-
-def assert_numerical_stability(output, name="", rtol=1e-3, atol=1e-4):
-    """
-    Assert that output tensor has no NaN or Inf values.
-
-    Args:
-        output: Output tensor to check
-        name: Name of the test for error messages
-        rtol: Relative tolerance for finite check
-        atol: Absolute tolerance for finite check
-    """
-    nan_count = torch.isnan(output).sum().item()
-    inf_count = torch.isinf(output).sum().item()
-
-    if nan_count > 0:
-        pytest.fail(f"{name}: Output contains {nan_count} NaN values")
-
-    if inf_count > atol * output.numel():
-        pytest.fail(f"{name}: Output contains {inf_count} Inf values (exceeds tolerance)")
-
-
-def assert_gradient_correctness(model, name="", rtol=1e-3, atol=1e-4):
-    """
-    Assert that all gradients are valid.
-
-    Args:
-        model: Model with gradients
-        name: Name of the test for error messages
-        rtol: Relative tolerance
-        atol: Absolute tolerance
-    """
-    for param_name, param in model.named_parameters():
-        if param.grad is not None:
-            if torch.isnan(param.grad).any():
-                pytest.fail(f"{name}: NaN in gradient of {param_name}")
-            if not torch.isfinite(param.grad).all():
-                pytest.fail(f"{name}: Inf in gradient of {param_name}")
-
-
-def assert_shape_match(output, expected_shape, name=""):
-    """Assert that output shape matches expected shape."""
-    if output.shape != expected_shape:
-        pytest.fail(f"{name}: Shape mismatch: got {output.shape}, expected {expected_shape}")
 
 
 # ============================================================================

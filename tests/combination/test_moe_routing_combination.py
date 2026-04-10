@@ -15,7 +15,8 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from ..utils.numerical_stability import check_finite, check_no_nan
+from .accuracy_utils import compute_reference, combo_assert_close
+from .utils.numerical_stability import check_finite, check_no_nan
 
 device = flag_gems.device
 
@@ -155,6 +156,7 @@ class TestMoERoutingCombination:
             pytest.param(8, 4, id="8experts_4topk"),
         ],
     )
+    @pytest.mark.integration
     def test_moe_router_basic(self, num_experts, top_k, use_gems):
         """Test MoE router basic functionality."""
         batch_size, seq_len, d_model = 4, 128, 512
@@ -164,7 +166,9 @@ class TestMoERoutingCombination:
 
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
-        router_probs, topk_indices, topk_weights = router(x)
+        router.eval()
+        with torch.no_grad():
+            router_probs, topk_indices, topk_weights = router(x)
 
         # Verify output shapes
         assert router_probs.shape == (batch_size, seq_len, num_experts)
@@ -180,6 +184,10 @@ class TestMoERoutingCombination:
         weights_sum = topk_weights.sum(dim=-1)
         assert torch.allclose(weights_sum, torch.ones_like(weights_sum), rtol=1e-4)
 
+        # Reference comparison (router ≈ 4 ops: linear + softmax + topk + normalize)
+        ref_probs, ref_indices, ref_weights = compute_reference(router, x)
+        combo_assert_close(router_probs, ref_probs, torch.float32, num_ops=4, name="MoE router probs")
+
     @pytest.mark.integration
     def test_moe_layer_forward(self, use_gems):
         """Test complete MoE layer forward pass."""
@@ -193,7 +201,9 @@ class TestMoERoutingCombination:
 
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
-        output, routing_info = moe(x)
+        moe.eval()
+        with torch.no_grad():
+            output, routing_info = moe(x)
 
         # Verify output shape
         assert output.shape == (batch_size, seq_len, d_model)
@@ -209,6 +219,10 @@ class TestMoERoutingCombination:
         # At least 3 different experts should be used
         active_experts = (expert_counts > 0).sum().item()
         assert active_experts >= 3, f"Only {active_experts} experts used, expected more diversity"
+
+        # Reference comparison (MoE ≈ 8 ops: router + topk + gather + expert_fwd + scatter)
+        ref_output, _ = compute_reference(moe, x)
+        combo_assert_close(output, ref_output, torch.float32, num_ops=8, name="MoE forward")
 
     @pytest.mark.integration
     @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
@@ -339,7 +353,7 @@ class TestMoERoutingPatterns:
 class TestMoEPerformance:
     """Performance-related MoE tests."""
 
-    def test_moe_memory_efficiency(self):
+    def test_moe_memory_efficiency(self, use_gems):
         """Test MoE memory usage."""
         batch_size, seq_len, d_model = 4, 128, 512
         num_experts = 8

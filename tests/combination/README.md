@@ -4,6 +4,8 @@
 
 ## 📊 测试覆盖
 
+### P0+P1级测试（核心LLM场景）
+
 | 优先级 | 测试文件 | 测试重点 | 状态 |
 |--------|---------|---------|------|
 | **P0** | `test_transformer_layer.py` | Transformer层端到端 | ✅ 已实现 |
@@ -13,14 +15,24 @@
 | **P1** | `test_backward_gradient_flow.py` | 反向传播梯度流 | ✅ 已实现 |
 | **P1** | `test_mixed_precision_accumulation.py` | 混合精度累积误差 | ✅ 已实现 |
 
-**总计**：6个测试文件，60+测试方法，50+参数化组合
+### P2级测试（扩展场景）
+
+| 优先级 | 测试文件 | 测试重点 | 状态 |
+|--------|---------|---------|------|
+| **P2** | `test_convolution_combination.py` | CNN/卷积网络组合 | ✅ 已实现 |
+| **P2** | `test_loss_functions.py` | 损失函数组合 | ✅ 已实现 |
+| **P2** | `test_sampling_operations.py` | 采样/随机操作组合 | ✅ 已实现 |
+| **P2** | `test_sequence_operations.py` | 序列操作组合 | ✅ 已实现 |
+
+**总计**：10个测试文件，130+测试方法，100+参数化组合
 
 ## 目录结构
 
 ```
 combination/
-├── __init__.py                      # 模块初始化
+├── __init__.py                      # 模块模块初始化
 ├── conftest.py                      # pytest配置和fixtures（兼容原框架）
+├── accuracy_utils.py                # 精度对比工具（reference计算 + 断言）
 ├── README.md                        # 本文档
 │
 ├── models/                          # 简化模型实现
@@ -29,16 +41,26 @@ combination/
 │   ├── ffn.py                      # FFN模块
 │   └── transformer_block.py        # Transformer块
 │
+├── logging_config.py                # 日志系统（JSONL FileHandler + TestLogger）
+│
 ├── utils/                           # 测试工具
 │   ├── __init__.py
-│   └── numerical_stability.py      # 数值稳定性工具
+│   └── numerical_stability.py      # 数值稳定性工具（快速sanity check）
+│
+├── scripts/                         # 辅助脚本
+│   ├── __init__.py
+│   └── generate_report.py          # 从JSONL日志生成Markdown测试报告
 │
 ├── test_transformer_layer.py       # P0: Transformer层端到端测试
 ├── test_attention_numerical_stability.py  # P0: Attention数值稳定性
 ├── test_ffn_activation_combination.py      # P0: FFN激活函数组合
 ├── test_moe_routing_combination.py  # P1: MoE路由组合测试
 ├── test_backward_gradient_flow.py   # P1: 反向传播梯度流测试
-└── test_mixed_precision_accumulation.py # P1: 混合精度累积误差测试
+├── test_mixed_precision_accumulation.py # P1: 混合精度累积误差测试
+├── test_convolution_combination.py  # P2: CNN卷积组合测试
+├── test_loss_functions.py           # P2: 损失函数组合测试
+├── test_sampling_operations.py      # P2: 采样操作组合测试
+└── test_sequence_operations.py      # P2: 序列操作组合测试
 ```
 
 ## 运行测试
@@ -103,6 +125,35 @@ pytest tests/combination/ -n 4 -v
 pytest tests/combination/ -n auto --dist loadscope -v
 ```
 
+### 日志与测试报告
+
+组合测试内置了结构化日志系统（JSONL 格式），每次运行自动记录测试过程和精度对比数据。
+
+```bash
+# 运行测试并指定日志目录（默认 combination_test_logs/）
+pytest tests/combination/ -v --combo-log-dir=./my_logs
+
+# 从日志生成 Markdown 测试报告
+python tests/combination/scripts/generate_report.py my_logs/*.jsonl -o report.md
+
+# 同时生成 JSON 摘要（供 CI 或其他工具消费）
+python tests/combination/scripts/generate_report.py my_logs/*.jsonl -o report.md --json summary.json
+```
+
+**日志内容**：
+- 每个测试的开始/结束、参数、结果（passed/failed/skipped）、耗时
+- 精度对比的详细数据：expected_atol/rtol、actual_max_error/mean_error、是否通过
+- 数值问题记录（NaN/Inf）
+- Session 汇总
+
+**报告内容**：
+- 测试概览（总数/通过/失败/跳过/通过率）
+- 精度分析（按 dtype 和检查类型统计 max_error 分布）
+- 按文件分组的测试结果表
+- 失败测试详情
+- 数值问题汇总
+- 耗时 Top-10
+
 ## 测试标记
 
 | 标记 | 用途 | 示例 |
@@ -131,6 +182,87 @@ pytest tests/combination/ -m transformer -v
 pytest tests/combination/ -m "attention and numerical_stability" -v
 ```
 
+## 测试模式
+
+组合测试采用 5 种测试模式，通过 `accuracy_utils.py` 统一管理 reference 计算和容差断言。
+
+### 模式 1：标准组合前向对比
+
+对比 FlagGems pipeline 输出与 reference（GPU fp64 或 CPU fallback）。
+
+```python
+output = model(x)                                        # FlagGems
+ref_output = compute_reference(model, x)                 # 三级 reference 策略
+combo_assert_close(output, ref_output, dtype, num_ops=10) # 自动缩放容差
+```
+
+**适用**：`test_transformer_layer.py`、`test_ffn_activation_combination.py`、`test_moe_routing_combination.py`、`test_convolution_combination.py`、`test_sequence_operations.py`
+
+### 模式 2：混合精度累积误差
+
+同一模型分别在 fp32 和 fp16/bf16 下运行，验证误差增长率不超阈值。
+
+```python
+output_fp32 = model_fp32(x_fp32)
+output_low  = model_low(x_low)
+assert_accumulation_error(output_low, output_fp32, dtype, num_layers)
+```
+
+**适用**：`test_mixed_precision_accumulation.py`
+
+### 模式 3：梯度正确性对比
+
+前向 + 反向同时在 FlagGems 和 reference 上运行，对比梯度一致性。
+
+```python
+ref_output, ref_input_grads, ref_param_grads = compute_reference_with_grad(model, x)
+combo_assert_close(output, ref_output, dtype, num_ops=10)
+assert_gradient_close(x.grad, ref_input_grads[0], dtype, num_ops=10)
+```
+
+**适用**：`test_backward_gradient_flow.py`
+
+### 模式 4：数值稳定性 + 行为一致性
+
+edge case 输入（全 `-inf`、大值、混合特殊值），验证 NaN/Inf 出现位置与 PyTorch 一致。
+
+```python
+assert_numerical_consistency(output_gems, output_ref, name="all-inf softmax")
+```
+
+**适用**：`test_attention_numerical_stability.py`
+
+### 模式 5：标量 loss 对比
+
+对比标量 loss 值（CrossEntropy、MSE 等）与 reference。
+
+```python
+assert_loss_close(loss_gems, loss_ref, dtype, name="CrossEntropy")
+```
+
+**适用**：`test_loss_functions.py`、`test_sampling_operations.py`（部分）
+
+---
+
+## Reference 三级策略
+
+| 优先级 | 条件 | Reference 运行方式 | 说明 |
+|-------|------|-------------------|------|
+| 1 | `not TO_CPU` 且 `fp64_is_supported` | GPU fp64 | 与单算子默认行为一致 |
+| 2 | `TO_CPU` 或设备不支持 fp64 | CPU fp32/fp64 | 用户 `--ref cpu` 指定 |
+| 3 | 运行时 fp64 失败 | CPU fp32（fallback） | 组合中某算子不支持 fp64 |
+
+## 容差自动缩放
+
+```
+rtol = RESOLUTION[dtype]                          # 来自 flag_gems.testing
+atol = COMBO_BASE_ATOL[dtype] * sqrt(num_ops)     # sqrt 缩放，反映独立误差累积
+```
+
+基础 `atol`：fp16=5e-3, bf16=1.5e-2, fp32=1e-5, fp64=1e-10
+
+---
+
 ## 测试内容详解
 
 ### P0级测试（核心）
@@ -153,6 +285,7 @@ pytest tests/combination/ -m "attention and numerical_stability" -v
 - 输出形状正确
 - 无NaN/Inf值
 - 梯度健康
+- 与 reference 对比（模式 1）
 
 ---
 
@@ -463,14 +596,19 @@ def test_your_combination():
 
 | 指标 | 数值 |
 |------|------|
-| 测试文件 | 6个 |
-| 测试类 | 14个 |
-| 测试方法 | 60+ |
-| 参数化组合 | 50+ |
-| 代码行数 | ~3500行 |
-| 文档行数 | ~700行 |
+| 测试文件 | 10个 |
+| 测试类 | 25+ |
+| 测试方法 | 130+ |
+| 参数化组合 | 100+ |
+| 代码行数 | ~6500行 |
+| 文档行数 | ~800行 |
+
+**按优先级**：
+- P0级测试：50+ 方法
+- P1级测试：36+ 方法
+- P2级测试：74+ 方法
 
 ---
 
-**最后更新**：2026-04-08  
+**最后更新**：2026-04-10
 **维护者**：FlagGems Team

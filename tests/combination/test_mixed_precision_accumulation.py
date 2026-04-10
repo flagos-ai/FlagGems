@@ -14,7 +14,8 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from ..utils.numerical_stability import check_finite, check_no_nan
+from .accuracy_utils import assert_accumulation_error
+from .utils.numerical_stability import check_finite, check_no_nan
 
 device = flag_gems.device
 
@@ -92,9 +93,8 @@ class TestMixedPrecisionAccumulation:
         print(f"  Mean error: {mean_error:.6e}")
         print(f"  Relative error: {relative_error:.6%}")
 
-        # Error should not grow exponentially
-        # Rough heuristic: error should be < 10% for reasonable models
-        assert relative_error < 0.1, f"Relative error too high: {relative_error:.2%}"
+        # Use structured assertion with sqrt scaling
+        assert_accumulation_error(output_fp16, output_fp32, torch.float16, num_layers)
 
     @pytest.mark.numerical_stability
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -109,11 +109,12 @@ class TestMixedPrecisionAccumulation:
         # Create model
         model = MultiLayerNetwork(num_layers, input_dim, hidden_dim, output_dim)
 
-        # Save FP32 reference
-        model_fp32 = model.to(device).to(torch.float32)
+        # Save FP32 reference (deep copy to avoid in-place modification)
+        import copy
+        model_fp32 = copy.deepcopy(model).to(device).to(torch.float32)
 
-        # Test in target dtype
-        model_test = model.to(device).to(dtype)
+        # Test in target dtype (separate copy)
+        model_test = copy.deepcopy(model).to(device).to(dtype)
 
         # Generate input
         torch.manual_seed(42)
@@ -132,11 +133,8 @@ class TestMixedPrecisionAccumulation:
 
         print(f"\n{dtype}: Relative error: {relative_error:.6%}")
 
-        # BF16 typically has slightly higher error but better range
-        if dtype == torch.bfloat16:
-            assert relative_error < 0.15, f"BF16 relative error too high: {relative_error:.2%}"
-        else:
-            assert relative_error < 0.1, f"FP16 relative error too high: {relative_error:.2%}"
+        # Use structured assertion with sqrt scaling
+        assert_accumulation_error(output_test, output_fp32, dtype, num_layers)
 
     @pytest.mark.numerical_stability
     def test_layer_norm_accumulation(self, use_gems):
@@ -293,8 +291,9 @@ class TestPrecisionLossEstimation:
             nn.Linear(hidden_dim, output_dim),
         )
 
-        model_fp32 = model.to(device).to(torch.float32)
-        model_fp16 = model.to(device).to(torch.float16)
+        import copy
+        model_fp32 = copy.deepcopy(model).to(device).to(torch.float32)
+        model_fp16 = copy.deepcopy(model).to(device).to(torch.float16)
 
         x_fp32 = torch.randn(batch_size, input_dim, device=device, dtype=torch.float32)
         x_fp16 = x_fp32.to(torch.float16)

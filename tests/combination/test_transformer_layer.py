@@ -13,8 +13,9 @@ import torch.nn as nn
 
 import flag_gems
 
-from ..models.transformer_block import TransformerBlock, LLaMABlock
-from ..utils.numerical_stability import (
+from .models.transformer_block import TransformerBlock, LLaMABlock
+from .accuracy_utils import compute_reference, combo_assert_close
+from .utils.numerical_stability import (
     check_finite,
     check_gradient_health,
     check_no_nan,
@@ -65,12 +66,18 @@ class TestTransformerLayerE2E:
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
         # Forward pass
-        output = model(x)
+        model.eval()
+        with torch.no_grad():
+            output = model(x)
 
         # Verify output
         assert output.shape == (batch_size, seq_len, d_model), "Output shape mismatch"
         check_no_nan(output, "Transformer forward")
         check_finite(output, "Transformer forward")
+
+        # Reference comparison (TransformerBlock ≈ 10 ops: attn + norm + ffn + norm)
+        ref_output = compute_reference(model, x)
+        combo_assert_close(output, ref_output, torch.float32, num_ops=10, name="Transformer forward")
 
     @pytest.mark.integration
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -94,11 +101,17 @@ class TestTransformerLayerE2E:
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype)
 
         # Forward pass
-        output = model(x)
+        model.eval()
+        with torch.no_grad():
+            output = model(x)
 
         # Verify
         assert output.shape == (batch_size, seq_len, d_model)
         check_no_nan(output, f"Transformer {dtype} forward")
+
+        # Reference comparison
+        ref_output = compute_reference(model, x)
+        combo_assert_close(output, ref_output, dtype, num_ops=10, name=f"Transformer {dtype}")
 
     @pytest.mark.integration
     @pytest.mark.parametrize("d_model,nhead", [(768, 12), (1024, 16), (4096, 32)])
@@ -120,12 +133,18 @@ class TestTransformerLayerE2E:
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
         # Forward pass with causal masking
-        output = model(x, is_causal=True)
+        model.eval()
+        with torch.no_grad():
+            output = model(x, is_causal=True)
 
         # Verify
         assert output.shape == (batch_size, seq_len, d_model)
         check_no_nan(output, "LLaMA block forward")
         check_finite(output, "LLaMA block forward")
+
+        # Reference comparison (LLaMA block ≈ 12 ops: RMSNorm + attn + RMSNorm + SwiGLU FFN)
+        ref_output = compute_reference(model, x, is_causal=True)
+        combo_assert_close(output, ref_output, torch.float32, num_ops=12, name="LLaMA block")
 
     @pytest.mark.integration
     def test_transformer_backward(self, use_gems):
@@ -185,11 +204,20 @@ class TestTransformerLayerE2E:
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
         # Forward pass
-        output = model(x, is_causal=is_causal)
+        model.eval()
+        with torch.no_grad():
+            output = model(x, is_causal=is_causal)
 
         # Verify
         assert output.shape == (batch_size, seq_len, d_model)
         check_no_nan(output, f"Transformer with is_causal={is_causal}")
+
+        # Reference comparison
+        ref_output = compute_reference(model, x, is_causal=is_causal)
+        combo_assert_close(
+            output, ref_output, torch.float32, num_ops=10,
+            name=f"Transformer is_causal={is_causal}",
+        )
 
     @pytest.mark.stress
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for stress test")
@@ -222,9 +250,9 @@ class TestAttentionBlock:
     """
 
     @pytest.mark.integration
-    def test_multihead_attention_basic(self):
+    def test_multihead_attention_basic(self, use_gems):
         """Test basic multi-head attention."""
-        from ..models.attention import MultiHeadAttention
+        from .models.attention import MultiHeadAttention
 
         batch_size, seq_len, d_model = 4, 256, 512
         nhead = 8
@@ -234,10 +262,16 @@ class TestAttentionBlock:
 
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
-        output = attn(x)
+        attn.eval()
+        with torch.no_grad():
+            output = attn(x)
 
         assert output.shape == (batch_size, seq_len, d_model)
         check_no_nan(output, "MultiHeadAttention")
+
+        # Reference comparison (attention ≈ 6 ops: QKV proj + matmul + softmax + matmul + out proj)
+        ref_output = compute_reference(attn, x)
+        combo_assert_close(output, ref_output, torch.float32, num_ops=6, name="MultiHeadAttention")
 
     @pytest.mark.integration
     @pytest.mark.parametrize("nhead", [4, 8, 12, 16, 32])
@@ -249,17 +283,26 @@ class TestAttentionBlock:
         if d_model % nhead != 0:
             d_model = nhead * 64
 
-        from ..models.attention import MultiHeadAttention
+        from .models.attention import MultiHeadAttention
 
         attn = MultiHeadAttention(d_model, nhead, dropout=0.0)
         attn = attn.to(device).to(torch.float32)
 
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
-        output = attn(x)
+        attn.eval()
+        with torch.no_grad():
+            output = attn(x)
 
         assert output.shape == (batch_size, seq_len, d_model)
         check_finite(output, f"Attention with {nhead} heads")
+
+        # Reference comparison
+        ref_output = compute_reference(attn, x)
+        combo_assert_close(
+            output, ref_output, torch.float32, num_ops=6,
+            name=f"Attention {nhead} heads",
+        )
 
 
 class TestFFNBlock:
@@ -274,17 +317,23 @@ class TestFFNBlock:
         batch_size, seq_len, d_model = 4, 256, 768
         dim_feedforward = d_model * 4
 
-        from ..models.ffn import StandardFFN
+        from .models.ffn import StandardFFN
 
         ffn = StandardFFN(d_model, dim_feedforward, activation=activation, dropout=0.0)
         ffn = ffn.to(device).to(torch.float32)
 
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
-        output = ffn(x)
+        ffn.eval()
+        with torch.no_grad():
+            output = ffn(x)
 
         assert output.shape == (batch_size, seq_len, d_model)
         check_no_nan(output, f"FFN with {activation}")
+
+        # Reference comparison (FFN ≈ 4 ops: linear + activation + dropout + linear)
+        ref_output = compute_reference(ffn, x)
+        combo_assert_close(output, ref_output, torch.float32, num_ops=4, name=f"FFN {activation}")
 
     @pytest.mark.integration
     def test_swiglu_ffn(self, use_gems):
@@ -292,14 +341,20 @@ class TestFFNBlock:
         batch_size, seq_len, d_model = 4, 256, 768
         dim_feedforward = d_model * 4
 
-        from ..models.ffn import SwiGLUFFN
+        from .models.ffn import SwiGLUFFN
 
         ffn = SwiGLUFFN(d_model, dim_feedforward, dropout=0.0)
         ffn = ffn.to(device).to(torch.float32)
 
         x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
 
-        output = ffn(x)
+        ffn.eval()
+        with torch.no_grad():
+            output = ffn(x)
 
         assert output.shape == (batch_size, seq_len, d_model)
         check_no_nan(output, "SwiGLU FFN")
+
+        # Reference comparison (SwiGLU ≈ 5 ops: gate_proj + up_proj + silu + mul + down_proj)
+        ref_output = compute_reference(ffn, x)
+        combo_assert_close(output, ref_output, torch.float32, num_ops=5, name="SwiGLU FFN")
