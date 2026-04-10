@@ -16,7 +16,7 @@ logger = logging.getLogger(
     "flag_gems.runtime.backend._mthreads.ops.w8a8_block_fp8_matmul"
 )
 
-SQMMA_ON = True
+SQMMA_ON = False
 
 
 def is_supported_sqmma_layout(tensor):
