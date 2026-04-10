@@ -1061,7 +1061,9 @@ def _fp8_quantize(
     per_act_token: bool,
     block_shape: Optional[list[int]] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """FP8 E4M3 quantization: keep dispatch shallow, specialize the hot paths."""
+    """FP8 E4M3 quantization: per-tensor, per-token, or block-wise."""
+    eps = 1e-10
+
     if block_shape is not None:
         assert not per_act_token
         assert len(block_shape) == 2
@@ -1076,7 +1078,7 @@ def _fp8_quantize(
                 A,
                 group_size=block_k,
                 eps=eps,
-                dtype=fp8_dtype,
+                dtype=_FP8_DTYPE,
                 column_major_scales=False,
                 scale_ue8m0=False,
             )
@@ -1087,8 +1089,8 @@ def _fp8_quantize(
         amax = (
             A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
         )
-        scale = amax / fp8_max
-        A_q = (A_groups.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+        scale = amax / _FP8_MAX
+        A_q = (A_groups.float() / scale).clamp(_FP8_MIN, _FP8_MAX).to(_FP8_DTYPE)
         A_q = A_q.reshape(orig_shape)
         scale = scale.reshape(M, K // block_k)
         return A_q, scale
