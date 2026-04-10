@@ -3,9 +3,9 @@
 VENDOR=${1}
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
-export MUSA_INSTALL_PATH=/usr/local/musa
-export PATH=$MUSA_INSTALL_PATH/bin:$PATH
-export LD_LIBRARY_PATH=$MUSA_INSTALL_PATH/lib:$LD_LIBRARY_PATH
+export MUSA_HOME=/usr/local/musa
+export PATH=$MUSA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
 
 # PyEnv settings
 export PYENV_ROOT="$HOME/.pyenv"
