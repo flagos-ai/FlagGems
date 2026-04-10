@@ -88,6 +88,7 @@ forward_operations = [
     # Numerical Checks
     ("isinf", torch.isinf, FLOAT_DTYPES),
     ("isnan", torch.isnan, FLOAT_DTYPES),
+    ("isneginf", torch.isneginf, FLOAT_DTYPES),
     ("isfinite", torch.isfinite, FLOAT_DTYPES),
 ]
 
