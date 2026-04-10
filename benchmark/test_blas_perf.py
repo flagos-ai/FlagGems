@@ -471,10 +471,37 @@ def test_addr_benchmark():
 
 class GemmBenchmark(BlasBenchmark):
     """
-    benchmark for gemm
+    benchmark for gemm, test shape compatable with to mm
     """
 
-    pass
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for b, m, n, k in self.shapes:
+            yield from self.input_fn(b, m, n, k, cur_dtype, self.device, False)
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            for b, m, n, k in self.shapes:
+                yield from self.input_fn(b, m, n, k, cur_dtype, self.device, True)
+
+    def set_more_shapes(self):
+        large_k_shapes = [
+            (8, 1848, 1536, 151936),
+            (8, 1848, 1536, 128256),
+            (8, 1848, 1536, 152064),
+            (8, 4096, 1, 152064),
+        ]
+
+        return large_k_shapes
+
+    def get_tflops(self, op, *args, **kwargs):
+        total_flops = 0
+        # shape(m,k)(k,n)
+        # total_flops mxnx2k
+        total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
+        # shape(m,n)(n,p)
+        # total_flops mxpx(2n+1)
+        return total_flops
 
 
 @pytest.mark.gemm
