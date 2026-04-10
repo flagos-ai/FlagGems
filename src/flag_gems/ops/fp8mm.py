@@ -17,9 +17,13 @@ Based on v45. Fixed config: BLOCK_M=64, BLOCK_N=64, BLOCK_K=128,
 GROUP_SIZE_M=4, num_stages=3, num_warps=4 (best for M>=128 on H20).
 """
 
+import os
+
 import torch
 import triton
 import triton.language as tl
+
+import flag_gems
 
 GROUP_SIZE = 128
 
@@ -30,6 +34,8 @@ BLOCK_K = 128
 GROUP_SIZE_M = 4
 NUM_STAGES = 3
 NUM_WARPS = 4
+
+ENABLE_SQMMA = False
 
 
 @triton.jit
@@ -145,32 +151,43 @@ def fp8_matmul(
 
     grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
 
-    _fp8_matmul_kernel[grid](
-        a_2d,
-        b,
-        C,
-        a_s_2d,
-        b_s,
-        M,
-        N,
-        K,
-        a_2d.stride(0),
-        a_2d.stride(1),
-        b.stride(0),
-        b.stride(1),
-        C.stride(0),
-        C.stride(1),
-        a_s_2d.stride(0),
-        a_s_2d.stride(1),
-        b_s.stride(0),
-        b_s.stride(1),
-        GROUP_K=GROUP_SIZE,
-        BLOCK_M=BLOCK_M,
-        BLOCK_N=BLOCK_N,
-        BLOCK_K=BLOCK_K,
-        GROUP_SIZE_M=GROUP_SIZE_M,
-        num_stages=NUM_STAGES,
-        num_warps=NUM_WARPS,
-    )
+    enable_sqmma_env = ENABLE_SQMMA and flag_gems.vendor_name == "mthreads"
+    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA") if enable_sqmma_env else None
+    if enable_sqmma_env:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    try:
+        _fp8_matmul_kernel[grid](
+            a_2d,
+            b,
+            C,
+            a_s_2d,
+            b_s,
+            M,
+            N,
+            K,
+            a_2d.stride(0),
+            a_2d.stride(1),
+            b.stride(0),
+            b.stride(1),
+            C.stride(0),
+            C.stride(1),
+            a_s_2d.stride(0),
+            a_s_2d.stride(1),
+            b_s.stride(0),
+            b_s.stride(1),
+            GROUP_K=GROUP_SIZE,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
+            GROUP_SIZE_M=GROUP_SIZE_M,
+            num_stages=NUM_STAGES,
+            num_warps=NUM_WARPS,
+        )
+    finally:
+        if enable_sqmma_env:
+            if prev_sqmma is None:
+                os.environ.pop("MUSA_ENABLE_SQMMA", None)
+            else:
+                os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
 
     return C.view(out_shape)
