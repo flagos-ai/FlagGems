@@ -656,6 +656,39 @@ def test_topk(
     gems_assert_equal(res_index, ref_index)
 
 
+@pytest.mark.topk
+@pytest.mark.parametrize(
+    "shape, topk",
+    [
+        ((16, 1024, 256), 256),
+        ((8, 512, 32), 32),
+        ((4, 128, 64), 64),
+        ((2, 33, 128), 128),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_topk_3d_lastdim(shape, topk, dtype):
+    batch_size = int(np.prod(shape[:-1]))
+    hiddensize = shape[-1]
+
+    x = torch.arange(hiddensize, dtype=dtype, device=flag_gems.device)
+    x = x.repeat(batch_size).reshape(shape)
+    x_2d = x.reshape(batch_size, hiddensize)
+
+    for bsz in range(batch_size):
+        col_indices = torch.randperm(hiddensize)
+        x_2d[bsz, :] = x_2d[bsz, col_indices]
+
+    ref_x = to_reference(x)
+    ref_value, ref_index = torch.topk(ref_x, topk, dim=-1, largest=True, sorted=True)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.topk(x, topk, dim=-1, largest=True, sorted=True)
+
+    gems_assert_close(res_value, ref_value, dtype)
+    gems_assert_equal(res_index, ref_index)
+
+
 @pytest.mark.resolve_conj
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
