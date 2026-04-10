@@ -651,6 +651,21 @@ layer_norm_loop:
       - 2048
       - 4096
       - 8192
+rms_norm_loop:
+  - gen: true
+    param_map:
+      META:
+        TILE_N: tile_n
+      num_warps: warps
+    warps:
+      - 4
+      - 8
+      - 16
+    tile_n:
+      - 1024
+      - 2048
+      - 4096
+      - 8192
 layer_norm_backward:
   - gen: true
     param_map:
@@ -779,6 +794,25 @@ cross_entropy_loss_sum_and_scale:
       - 64
       - 256
       - 1024
+conj_physical:
+  - META:
+      BLOCK_SIZE: 64
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
 
 upsample_nearest1d:
   - gen: true

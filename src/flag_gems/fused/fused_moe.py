@@ -14,6 +14,7 @@
 
 import functools
 import logging
+import os
 from enum import Enum
 from typing import Any, Optional
 
@@ -21,6 +22,7 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
+import yaml
 
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
@@ -31,6 +33,46 @@ logger = logging.getLogger(__name__)
 # OCP MX quantization helpers (requires amd-quark)
 
 OCP_MX_BLOCK_SIZE = 32
+
+
+@functools.lru_cache(maxsize=1)
+def get_embedded_moe_configs():
+    config_path = os.path.join(
+        os.path.dirname(__file__), "..", "utils", "configs", "fused_moe_config.yaml"
+    )
+    if not os.path.exists(config_path):
+        return {}, {}
+    with open(config_path, "r") as f:
+        # JSON keys are strings, values are dicts where keys are M and values are configs
+        data = yaml.safe_load(f)
+
+        fallback = data.get("_FALLBACK", {})
+
+        # We need to convert the innermost keys (which are stringified integers for M) back to integers.
+        # Ensure we map the lists back to config dicts.
+        keys_order = [
+            "BLOCK_SIZE_M",
+            "BLOCK_SIZE_N",
+            "BLOCK_SIZE_K",
+            "GROUP_SIZE_M",
+            "num_warps",
+            "num_stages",
+        ]
+        parsed_data = {}
+        for dev, configs in data.items():
+            if dev == "_FALLBACK":
+                continue
+            parsed_data[dev] = {}
+            for k, m_dict in configs.items():
+                parsed_dict = {}
+                for m, v in m_dict.items():
+                    if isinstance(v, list):
+                        parsed_dict[int(m)] = dict(zip(keys_order, v))
+                    else:
+                        parsed_dict[int(m)] = v
+                parsed_data[dev][k] = parsed_dict
+
+        return parsed_data, fallback
 
 
 def dequant_mxfp4(
@@ -79,6 +121,29 @@ def dequant_mxfp6(
 # Activation quantization helpers
 
 
+@functools.lru_cache(maxsize=1)
+def _get_device_name() -> str:
+    """Return the normalised CUDA device name (spaces replaced by underscores).
+
+    Matches the naming convention used by vLLM for its per-device config files.
+    H800 falls back to H100_80GB_HBM3 (same SM 9.0 architecture).
+    """
+    name = torch.cuda.get_device_name().replace(" ", "_")
+    # Normalise the H200 product family to a single key, following vLLM.
+    if "H200" in name.split("_"):
+        name = "NVIDIA_H200"
+    # H800 has the same SM 9.0 as H100; use H100 configs as fallback.
+    embedded_configs, fallback_mapping = get_embedded_moe_configs()
+    if name in embedded_configs:
+        return name
+    # Fallback mapping for devices whose tuning profiles are equivalent.
+    fallback = fallback_mapping.get(name)
+    if fallback and fallback in embedded_configs:
+        logger.info("Device %s not in config table, falling back to %s", name, fallback)
+        return fallback
+    return name
+
+
 def get_moe_configs(
     E: int,
     N: int,
@@ -86,7 +151,34 @@ def get_moe_configs(
     block_n: int | None = None,
     block_k: int | None = None,
 ) -> dict[int, Any] | None:
-    """Return None; FlagGems uses get_default_config instead."""
+    """
+    Return optimized configurations for the fused MoE kernel.
+
+    Looks up pre-tuned configs from the embedded table (ported from vLLM)
+    for the current GPU device. Returns None if no matching config is found.
+    """
+    device_name = _get_device_name()
+    embedded_configs, _ = get_embedded_moe_configs()
+    device_table = embedded_configs.get(device_name)
+    if device_table is None:
+        logger.warning(
+            "No embedded MoE configs for device %s. Will use default config.",
+            device_name,
+        )
+        return None
+
+    _block_n = block_n if block_n else 0
+    _block_k = block_k if block_k else 0
+    key = f"{E},{N},{dtype},{_block_n},{_block_k}"
+    configs = device_table.get(key)
+    if configs is not None:
+        logger.info("Using embedded MoE config for device=%s, key=%s", device_name, key)
+        return configs
+    logger.warning(
+        "No embedded MoE config for device=%s, key=%s. Will use default config.",
+        device_name,
+        key,
+    )
     return None
 
 
@@ -210,7 +302,12 @@ def get_default_config(
     dtype: str | None,
     block_shape: list[int] | None = None,
 ) -> dict[str, int]:
-    """Default Triton config for fused MoE kernel."""
+    """Default Triton config for fused MoE kernel.
+
+    Heuristic selection aligned with vLLM v0.17.0 defaults, tuned on H20/H100.
+    Key insight: for high-expert-count MoE (e.g. DeepSeek-V3 E=256), each
+    expert sees very few tokens, so small BLOCK_SIZE_M (16) is critical.
+    """
     if dtype == "fp8_w8a8" and block_shape is not None:
         config = {
             "BLOCK_SIZE_M": 16 if M <= 64 else 64,
@@ -221,16 +318,20 @@ def get_default_config(
             "num_stages": 3,
         }
     else:
-        if M <= 32:
+        # tokens_per_expert drives block_m: use M//E (not M*topk//E) to
+        # estimate the actual per-expert token count after routing.
+        tokens_per_expert = M // max(E, 1)
+
+        if tokens_per_expert <= 2:
             block_m = 16
-        elif M <= 96:
+        elif tokens_per_expert <= 4:
             block_m = 32
-        elif M <= 512:
+        elif tokens_per_expert <= 16:
             block_m = 64
         else:
             block_m = 128
 
-        # Tile sizing for H100/H800
+        # Tile sizing
         if N >= 4096:
             block_n = 128 if M <= 128 else 256
         elif N >= 1024:
@@ -240,12 +341,11 @@ def get_default_config(
 
         if dtype == "fp8_w8a8":
             block_k = 128
-        elif K >= 4096 or M <= 64:
+        elif M <= 64:
             block_k = 128
         else:
             block_k = 64
 
-        tokens_per_expert = (M * topk) // max(E, 1)
         if tokens_per_expert > 128:
             group_m = 16
         elif tokens_per_expert > 32:
@@ -253,7 +353,8 @@ def get_default_config(
         else:
             group_m = 1
 
-        num_warps = 4 if block_m * block_n < 8192 else 8
+        # Prefer 4 warps for small tiles; only use 8 for large M
+        num_warps = 4 if M <= 128 else 8
         num_stages = 3
 
         smem_per_stage = (block_m * block_k + block_k * block_n) * 2
@@ -1306,7 +1407,7 @@ def fused_experts_impl(
         global_num_experts = E
     top_k_num = topk_ids.size(1)
 
-    CHUNK_SIZE: int = 64 * 1024
+    CHUNK_SIZE: int = 16 * 1024
     M = min(num_tokens, CHUNK_SIZE)
 
     config_dtype = _get_config_dtype_str(

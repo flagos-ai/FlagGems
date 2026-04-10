@@ -53,6 +53,7 @@ elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
       PUBLIC Torch::Torch
       PRIVATE TritonJIT::triton_jit)
 endif()
+target_compile_definitions(operators PRIVATE BACKEND_${FLAGGEMS_BACKEND})
 
 add_library(FlagGems::operators ALIAS operators)
 

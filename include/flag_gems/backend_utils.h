@@ -122,9 +122,51 @@ namespace backend {
 #endif
   }
 
+  // Get the current device index for the active backend.
+  inline c10::DeviceIndex getCurrentDeviceIndex() {
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+    return at::cuda::current_device();
+#elif defined(FLAGGEMS_USE_MUSA)
+    return c10::musa::current_device();
+#elif defined(FLAGGEMS_USE_NPU)
+    return 0;  // TODO: NPU current device query
+#else
+    return 0;
+#endif
+  }
+
+  // Get the current torch device for the active backend.
+  inline at::Device getCurrentDevice() {
+    return at::Device(getBackendDeviceType(), getCurrentDeviceIndex());
+  }
+
   // Get the default torch device for tensors allocated by this backend.
-  inline at::Device getDefaultDevice() {
-    return at::Device(getBackendDeviceType());
+  inline at::Device getDefaultDevice(int index = 0) {
+    return at::Device(getBackendDeviceType(), static_cast<c10::DeviceIndex>(index));
+  }
+
+  // Check if the backend device is available.
+  inline bool isDeviceAvailable() {
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+    return torch::cuda::is_available();
+#elif defined(FLAGGEMS_USE_NPU)
+    return torch::custom_class_available("npu");
+#elif defined(FLAGGEMS_USE_MUSA)
+    return true;
+#else
+    return false;
+#endif
+  }
+
+  // Synchronize the backend device.
+  inline void synchronize() {
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+    torch::cuda::synchronize();
+#elif defined(FLAGGEMS_USE_NPU)
+    // NPU sync if needed
+#elif defined(FLAGGEMS_USE_MUSA)
+    // MUSA sync if needed
+#endif
   }
 
 }  // namespace backend
