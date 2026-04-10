@@ -233,6 +233,8 @@ _FULL_CONFIG = (
     ("isin.Tensor_Tensor", isin),
     ("isinf", isinf),
     ("isnan", isnan),
+    ("isneginf", isneginf),
+    ("isneginf.out", isneginf_out),
     ("kron", kron),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
