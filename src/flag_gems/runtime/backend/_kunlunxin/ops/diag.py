@@ -19,7 +19,7 @@ def diag_1d_to_2d_kernel(
         col_idx = idx
         row_idx = col_idx - diagonal
 
-    mask = (row_idx < M) & (col_idx < M)
+    mask = (row_idx < M) & (col_idx < M) & (idx < N)
 
     diag_value = tl.load(data_ptr + idx * stride, mask=idx < N, other=0)
 
@@ -54,20 +54,33 @@ def diag_2d_to_1d_kernel(
     tl.store(output_ptr + idx, diag_value, mask=mask)
 
 
+def _get_block_config(n):
+    """Select BLOCK_SIZE and num_warps based on input size."""
+    if n <= 64:
+        return 64, 2
+    elif n <= 256:
+        return 128, 4
+    elif n <= 1024:
+        return 256, 4
+    elif n <= 4096:
+        return 512, 8
+    else:
+        return 1024, 8
+
+
 def diag_1d_to_2d(x, diagonal=0):
     N = x.shape[0]
     M = N + abs(diagonal)
     output = torch.zeros((M, M), dtype=x.dtype, device=x.device)
 
     stride = x.stride(0)
-    # BLOCK_SIZE = 128
-    BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(N, 12))
+    BLOCK_SIZE, num_warps = _get_block_config(N)
 
     grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
 
     with torch_device_fn.device(x.device):
         diag_1d_to_2d_kernel[grid](
-            x, output, N, M, stride, diagonal, BLOCK_SIZE=BLOCK_SIZE
+            x, output, N, M, stride, diagonal, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
         )
     return output
 
@@ -83,13 +96,13 @@ def diag_2d_to_1d(x, diagonal=0):
     output = torch.empty(diag_len, dtype=x.dtype, device=x.device)
     stride0 = x.stride(0)
     stride1 = x.stride(1)
-    BLOCK_SIZE = 128
+    BLOCK_SIZE, num_warps = _get_block_config(diag_len)
 
     grid = lambda meta: (triton.cdiv(diag_len, BLOCK_SIZE),)
 
     with torch_device_fn.device(x.device):
         diag_2d_to_1d_kernel[grid](
-            x, output, N, M, stride0, stride1, diagonal, BLOCK_SIZE=BLOCK_SIZE
+            x, output, N, M, stride0, stride1, diagonal, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
         )
     return output
 

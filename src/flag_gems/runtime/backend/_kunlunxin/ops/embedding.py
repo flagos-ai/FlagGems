@@ -17,20 +17,24 @@ def embedding_kernel(
     out_ptr,  # pointer to the output
     in_ptr,  # pointer to the input
     weight_ptr,  # pointer to the weights
-    N: tl.constexpr,  # number of columns in X
+    N,  # number of columns in X
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    out_ptr += pid * N
-    in_ptr += pid
+    # 2D grid: pid_m for indices, pid_n for embedding dimension blocks
+    pid_m = tle.program_id(0)
+    pid_n = tle.program_id(1)
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
+    # Calculate column offsets for this block
+    col_start = pid_n * BLOCK_SIZE
+    cols = col_start + tl.arange(0, BLOCK_SIZE)
+    mask = cols < N
 
-    row_idx = tl.load(in_ptr)
-    weight_ptr += row_idx * N
-    embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
-    tl.store(out_ptr + cols, embedding_weight, mask)
+    # Load the index for this row
+    row_idx = tl.load(in_ptr + pid_m)
+
+    # Load embedding weights and store to output
+    embedding_weight = tl.load(weight_ptr + row_idx * N + cols, mask, other=0.0)
+    tl.store(out_ptr + pid_m * N + cols, embedding_weight, mask)
 
 
 @libentry()
@@ -117,14 +121,20 @@ def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=
     M = indices.numel()
     N = weight.shape[-1]
 
-    BLOCK_SIZE = triton.next_power_of_2(N)
     # TODO: remove contiguous enforcement
     indices = indices.contiguous()
     weight = weight.contiguous()
     output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
 
+    # Fixed block size for best performance (from v1)
+    BLOCK_SIZE = 1024
+    num_col_blocks = triton.cdiv(N, BLOCK_SIZE)
+
+    # 2D grid: (M indices, num_col_blocks)
+    grid = (M, num_col_blocks)
+
     with torch_device_fn.device(weight.device):
-        embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+        embedding_kernel[grid](output, indices, weight, N, BLOCK_SIZE, num_warps=8)
 
     return output
 
@@ -174,6 +184,7 @@ def embedding_backward(
     else:
         indice_freq = None
 
+    # Use 1D grid with power-of-2 block size (best approach from v1)
     BLOCK_SIZE = triton.next_power_of_2(N)
 
     HAS_PADDING_IDX = padding_idx is not None
