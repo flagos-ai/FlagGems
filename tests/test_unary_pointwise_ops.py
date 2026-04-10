@@ -1802,6 +1802,52 @@ def test_accuracy_sqrt_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.square
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_square(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.square(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.square(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.square_
+@pytest.mark.inplace
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_square_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone())
+
+    ref_out = torch.square_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.square_(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.square_out
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_square_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(inp)
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.empty_like(ref_inp)
+
+    torch.square(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        torch.square(inp, out=out)
+
+    gems_assert_equal(out, ref_out)
+
+
 @pytest.mark.inplace
 @pytest.mark.asinh_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)

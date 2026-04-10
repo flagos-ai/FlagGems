@@ -49,6 +49,7 @@ forward_operations = [
     ("exp", torch.exp, FLOAT_DTYPES),
     ("exp2", torch.exp2, FLOAT_DTYPES),
     ("neg", torch.neg, FLOAT_DTYPES),
+    ("square", torch.square, FLOAT_DTYPES),
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("sqrt", torch.sqrt, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
@@ -126,6 +127,7 @@ forward_inplace_operations = [
     ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
     ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
+    ("square_", torch.square_, FLOAT_DTYPES),
     # Activation operations
     ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
