@@ -168,7 +168,7 @@ jobs:
     if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: moore
+      vendor: mthreads
       runner_label: moore
       gpu_check_script: tools/gpu_check_mthreads.sh
       test_script: tools/run_backend_tests_mthreads.sh
