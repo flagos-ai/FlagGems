@@ -234,10 +234,12 @@ def test_accuracy_w8a8_block_fp8_matmul(M, N, K):
     num_k_groups = (K + block_k - 1) // block_k
     num_n_groups = (N + block_n - 1) // block_n
 
-    As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(dtype)
-    Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(
-        dtype
+    As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(
+        torch.float32
     )
+    Bs = (
+        0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005
+    ).to(torch.float32)
 
     A_ref = A.to(torch.float32)
     B_ref = B.to(torch.float32)

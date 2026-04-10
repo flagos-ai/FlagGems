@@ -205,6 +205,79 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     per_token_group_quant_fp8,
 )
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
+from flag_gems.ops.qcgem import (
+    QCGeMLinear,
+    qcgem_mm,
+    qcgem_linear,
+    DType,
+)
+# QC-GEM1 (Mobius Labs GemLite v0.5.1) - wrapped in try-except as qcgem1 module is being migrated
+try:
+    from flag_gems.ops.qcgem1 import (
+        GemLiteLinearTriton,
+        GemLiteLinear,
+        DType as GemLiteDType,
+        GEMLITE_ACC_DTYPE,
+        GEMLITE_TRITON_KERNELS,
+        GEMLITE_TRITON_MAPPING,
+        GEMLITE_MATMUL_TYPES,
+        GEMLITE_MATMUL_TYPES_MAPPING,
+        GEMLITE_TRITON_CONFIG_CACHE,
+        set_autotune_setting,
+        set_packing_bitwidth,
+        set_acc_dtype,
+        set_autotune,
+        forward_functional,
+        get_matmul_type,
+        get_default_gemv,
+        get_default_cache_config,
+        load_config,
+        cache_config,
+        reset_config,
+        helper,
+        quant_utils,
+        gemm,
+        gemm_splitK,
+        gemm_splitK_persistent,
+        gemv,
+        gemv_splitK,
+        gemv_revsplitK,
+        set_autotune,
+        set_kernel_caching,
+    )
+    _HAS_QCGEM1 = True
+except ImportError:
+    _HAS_QCGEM1 = False
+    # Define placeholder names so code doesn't break
+    GemLiteLinearTriton = None
+    GemLiteLinear = None
+    GemLiteDType = None
+    GEMLITE_ACC_DTYPE = {}
+    GEMLITE_TRITON_KERNELS = []
+    GEMLITE_TRITON_MAPPING = {}
+    GEMLITE_MATMUL_TYPES = []
+    GEMLITE_MATMUL_TYPES_MAPPING = {}
+    GEMLITE_TRITON_CONFIG_CACHE = {}
+    set_autotune_setting = None
+    set_packing_bitwidth = None
+    set_acc_dtype = None
+    set_autotune = None
+    forward_functional = None
+    get_matmul_type = None
+    get_default_gemv = None
+    get_default_cache_config = None
+    load_config = None
+    cache_config = None
+    reset_config = None
+    helper = None
+    quant_utils = None
+    gemm = None
+    gemm_splitK = None
+    gemm_splitK_persistent = None
+    gemv = None
+    gemv_splitK = None
+    gemv_revsplitK = None
+    set_kernel_caching = None
 from flag_gems.ops.polar import polar
 from flag_gems.ops.pow import (
     pow_scalar,
@@ -564,6 +637,41 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "qcgem_mm",
+    "qcgem_linear",
+    "QCGeMLinear",
+    "DType",
+    # QC-GEM1 (Mobius Labs GemLite v0.5.1)
+    "GemLiteLinearTriton",
+    "GemLiteLinear",
+    "GemLiteDType",
+    "GEMLITE_ACC_DTYPE",
+    "GEMLITE_TRITON_KERNELS",
+    "GEMLITE_TRITON_MAPPING",
+    "GEMLITE_MATMUL_TYPES",
+    "GEMLITE_MATMUL_TYPES_MAPPING",
+    "GEMLITE_TRITON_CONFIG_CACHE",
+    "set_autotune_setting",
+    "set_packing_bitwidth",
+    "set_acc_dtype",
+    "set_autotune",
+    "forward_functional",
+    "get_matmul_type",
+    "get_default_gemv",
+    "get_default_cache_config",
+    "load_config",
+    "cache_config",
+    "reset_config",
+    "helper",
+    "quant_utils",
+    "gemm",
+    "gemm_splitK",
+    "gemm_splitK_persistent",
+    "gemv",
+    "gemv_splitK",
+    "gemv_revsplitK",
+    "set_kernel_caching",
+    "_HAS_QCGEM1",
     "rand",
     "rand_like",
     "randn",

@@ -161,15 +161,6 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         yield inp1, inp2
 
 
-W8A8_BLOCK_FP8_MNK_SHAPES = [
-    (64, 128, 128),
-    (128, 256, 512),
-    (1, 4096, 7168),
-    (16, 4096, 7168),
-    (64, 4096, 7168),
-    (83, 7748, 3884),
-    (84, 7168, 3884),
-]
 W8A8_BLOCK_FP8_BLOCK_SIZE = [128, 128]
 
 
@@ -200,6 +191,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
     """
 
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    SHAPE_CONFIG_KEYS = ("mm", "BlasBenchmark")
 
     def __init__(self, *args, block_size=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -208,8 +200,24 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
         )
         self.shape_desc = "M, N, K"
 
+    def set_more_shapes(self):
+        return BlasBenchmark.set_more_shapes(self)
+
     def set_shapes(self, shape_file_path=None):
-        self.shapes = W8A8_BLOCK_FP8_MNK_SHAPES[:]
+        super().set_shapes(shape_file_path)
+        normalized_shapes = []
+        for shape in self.shapes:
+            if len(shape) == 4:
+                _, m, n, k = shape
+                normalized_shapes.append((m, n, k))
+            elif len(shape) == 3:
+                normalized_shapes.append(shape)
+            else:
+                raise ValueError(
+                    "w8a8_block_fp8_matmul benchmark expects shapes in (M, N, K) "
+                    "or (B, M, N, K) format."
+                )
+        self.shapes = normalized_shapes
         self.shape_desc = "M, N, K"
 
     def get_input_iter(self, cur_dtype) -> Generator:
@@ -465,5 +473,286 @@ def test_addr_benchmark():
         op_name="addr",
         torch_op=torch.Tensor.addr,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+# =============================================================================
+# QC-GEM1 (GemLite v0.5.1) benchmarks
+# =============================================================================
+try:
+    from flag_gems.ops.qcgem1 import (
+        gemm,
+        gemm_splitK,
+        gemv,
+        gemv_splitK,
+        gemv_revsplitK,
+        DType,
+        forward_functional,
+        GEMLITE_MATMUL_TYPES,
+        GEMLITE_MATMUL_TYPES_MAPPING,
+        get_matmul_type,
+    )
+    from flag_gems.ops.qcgem1.dtypes import DTYPE_TO_TORCH, TORCH_TO_DTYPE
+    from flag_gems.ops.qcgem1.bitpack import pack_weights_over_cols_triton
+
+    QCGEM1_AVAILABLE = True
+except Exception:
+    gemm = gemm_splitK = gemv = gemv_splitK = gemv_revsplitK = None
+    DType = forward_functional = None
+    GEMLITE_MATMUL_TYPES = []
+    GEMLITE_MATMUL_TYPES_MAPPING = {}
+    get_matmul_type = None
+    DTYPE_TO_TORCH = {}
+    TORCH_TO_DTYPE = {}
+    QCGEM1_AVAILABLE = False
+
+
+PRECISION_CONFIGS = {
+    # name: (W_nbits, input_dtype, activation_scaling, description)
+    "W8A16": (8, DType.FP16, False, "W8/FP16 (INT8 weight + FP16 activation)"),
+    "W4A16": (4, DType.FP16, False, "W4/FP16 (INT4 weight + FP16 activation)"),
+    "W8A8_FP8": (8, DType.FP8, True, "W8/FP8 (INT8 weight + FP8 activation)"),
+}
+
+
+class QCGem1Benchmark(Benchmark):
+    """
+    Generic benchmark for qcgem1 (GemLite v0.5.1) quantized GEMM kernels.
+
+    Supports:
+      - W8A16:  INT8 weights + FP16 activations
+      - W4A16:  INT4 weights + FP16 activations
+      - W8A8_FP8: INT8 weights + FP8 activations
+      - W4A4_MXFP4: MXFP4 weight+activation
+      - W4A4_NVFP4: NVFP4 weight+activation
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    SHAPE_CONFIG_KEYS = ("mm", "BlasBenchmark")
+
+    def __init__(
+        self,
+        *args,
+        precision="W4A16",
+        group_size=128,
+        matmul_type=None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.precision = precision
+        self.group_size = group_size
+        self.matmul_type = matmul_type  # None = auto-select based on M
+        self.shape_desc = "M, N, K"
+
+        if precision not in PRECISION_CONFIGS:
+            raise ValueError(
+                f"Unsupported precision '{precision}'. "
+                f"Supported: {list(PRECISION_CONFIGS.keys())}"
+            )
+        w_nbits, self.input_dtype_enum, self.activation_scaling, self._desc = PRECISION_CONFIGS[precision]
+        self.w_nbits = w_nbits
+
+    def set_more_shapes(self):
+        return BlasBenchmark.set_more_shapes(self)
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        normalized_shapes = []
+        for shape in self.shapes:
+            if len(shape) == 4:
+                _, m, n, k = shape
+                normalized_shapes.append((m, n, k))
+            elif len(shape) == 3:
+                normalized_shapes.append(shape)
+            else:
+                raise ValueError(
+                    "qcgem1 benchmark expects shapes in (M, N, K) "
+                    "or (B, M, N, K) format."
+                )
+        self.shapes = normalized_shapes
+        self.shape_desc = "M, N, K"
+
+    def _quantize_weights(self, W_fp, m_type):
+        """Quantize float weights to qcgem1 format.
+
+        W_fp: (N, K) float tensor
+        Returns: W_q_packed (K, N_packed), scales (N, n_groups), zeros (N, n_groups)
+        """
+        n, k = W_fp.shape  # (N, K)
+        n_groups = k // self.group_size
+
+        # Group-wise quantization
+        W_view = W_fp.view(n, n_groups, self.group_size)  # (N, n_groups, G)
+        scales = W_view.abs().amax(dim=-1, keepdim=True).clamp(min=1e-6)
+        scales = scales.squeeze(-1)  # (N, n_groups)
+
+        if self.w_nbits == 8:
+            max_val = 127.0
+        else:
+            max_val = 7.0
+
+        W_normalized = W_view / scales.unsqueeze(-1)
+        W_q = W_normalized.round().clamp(-max_val, max_val).to(torch.int8)
+        zeros = torch.zeros_like(scales)
+
+        # Pack: 4-bit packs into uint8 bytes, 8-bit stays as-is
+        # W_q is (N, K), transpose to (K, N) for pack
+        if self.w_nbits == 4:
+            W_q_T = W_q.t()  # (K, N)
+            W_q_packed, _ = pack_weights_over_cols_triton(
+                W_q_T, self.w_nbits, self.group_size, True
+            )
+        else:
+            W_q_T = W_q.t()
+            W_q_packed, _ = pack_weights_over_cols_triton(
+                W_q_T, self.w_nbits, self.group_size, True
+            )
+
+        return W_q_packed, scales, zeros
+
+    def _select_kernel(self, m):
+        """Auto-select kernel based on batch size."""
+        if self.matmul_type:
+            return self.matmul_type
+        return get_matmul_type(m, self.w_nbits, mx_dtype=False)
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        if not QCGEM1_AVAILABLE:
+            raise RuntimeError("qcgem1 kernels are not available")
+
+        input_dtype_torch = cur_dtype
+        input_dtype_enum = self._get_input_dtype_enum(input_dtype_torch)
+
+        for m, n, k in self.shapes:
+            # Generate float weights (N, K) and quantize
+            W_fp = torch.randn(n, k, dtype=input_dtype_torch, device=self.device)
+            W_q_packed, scales, zeros = self._quantize_weights(W_fp, self._select_kernel(m))
+
+            # Input: (M, K)
+            x = torch.randn(m, k, dtype=input_dtype_torch, device=self.device)
+
+            # qcgem1 forward args
+            tensor_args = [W_q_packed, scales, zeros]
+            meta_args = [
+                int(self.activation_scaling),  # scaled_activations
+                self.w_nbits,
+                self.group_size,
+                0,  # unpack_mask
+                1,  # elements_per_sample
+                input_dtype_enum.value,  # input_dtype
+                input_dtype_enum.value,  # output_dtype
+                0,  # acc_dtype (0 = auto)
+                0,  # meta_dtype (0 = auto)
+                0,  # channel_scale_mode (0 = auto)
+                0,  # W_group_mode (0 = auto)
+                1,  # data_contiguous
+                -1,  # type_id (-1 = auto)
+            ]
+            yield x, tensor_args, meta_args, None
+
+    @staticmethod
+    def _get_input_dtype_enum(torch_dtype):
+        """Map torch dtype to qcgem1 DType enum."""
+        if torch_dtype == torch.float16:
+            return DType.FP16
+        elif torch_dtype == torch.bfloat16:
+            return DType.BF16
+        elif torch_dtype == torch.float32:
+            return DType.FP32
+        return DType.FP16
+
+    def get_tflops(self, op, *args, **kwargs):
+        x = args[0]
+        W_q_packed = args[1]
+        m, k = x.shape
+        n = W_q_packed.shape[1]
+        return 2 * m * n * k
+
+    def _build_metric_from_input(self, input_item):
+        from benchmark.attri_util import BenchmarkMetrics
+
+        x, tensor_args, meta_args, _ = input_item
+        m = x.shape[0]
+        matmul_type_str = self._select_kernel(m)
+        matmul_type_id = GEMLITE_MATMUL_TYPES_MAPPING.get(matmul_type_str, -1)
+
+        metric = BenchmarkMetrics()
+        metric.shape_detail = [x.shape, tensor_args[0].shape]
+
+        def qcgem1_fn():
+            return forward_functional(x, None, tensor_args, meta_args, matmul_type_id)
+
+        def fp16_ref_fn():
+            W_q = tensor_args[0]
+            scales = tensor_args[1]
+            W_deq = W_q.float() * scales.float().T
+            return torch.mm(x, W_deq.T)
+
+        if "latency_base" in self.to_bench_metrics:
+            metric.latency_base = self.get_latency(fp16_ref_fn)
+        if "latency" in self.to_bench_metrics:
+            metric.latency = self.get_latency(qcgem1_fn)
+        if "speedup" in self.to_bench_metrics:
+            metric.speedup = metric.latency_base / metric.latency
+        if "gbps" in self.to_bench_metrics:
+            metric.gbps_base = 0
+            metric.gbps = 0
+        if "tflops" in self.to_bench_metrics:
+            metric.tflops = self.get_tflops(None, x, tensor_args[0])
+        return metric
+
+
+# Convenience factory for common precisions
+def make_qcgem1_benchmark(precision, op_name=None, group_size=128):
+    """Create a QCGem1Benchmark for the given precision."""
+    if op_name is None:
+        op_name = f"qcgem1_{precision.lower()}"
+    bench = QCGem1Benchmark(
+        op_name=op_name,
+        torch_op=None,
+        precision=precision,
+        group_size=group_size,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    return bench
+
+
+@pytest.mark.qcgem1
+@pytest.mark.parametrize("precision", list(PRECISION_CONFIGS.keys()))
+def test_perf_qcgem1_gemm(precision):
+    """Benchmark qcgem1 GEMM kernels for different weight precisions."""
+    if not QCGEM1_AVAILABLE:
+        pytest.skip("qcgem1 kernels not available")
+
+    bench = make_qcgem1_benchmark(
+        precision=precision,
+        op_name=f"qcgem1_gemm_{precision.lower()}",
+    )
+    bench.run()
+
+
+@pytest.mark.qcgem1
+def test_perf_qcgem1_gemm_w8a16():
+    """Benchmark qcgem1 GEMM W8A16 (INT8 weights + FP16 activations)."""
+    if not QCGEM1_AVAILABLE:
+        pytest.skip("qcgem1 kernels not available")
+
+    bench = make_qcgem1_benchmark(
+        precision="W8A16",
+        op_name="qcgem1_gemm_w8a16",
+    )
+    bench.run()
+
+
+@pytest.mark.qcgem1
+def test_perf_qcgem1_gemm_w4a16():
+    """Benchmark qcgem1 GEMM W4A16 (INT4 weights + FP16 activations)."""
+    if not QCGEM1_AVAILABLE:
+        pytest.skip("qcgem1 kernels not available")
+
+    bench = make_qcgem1_benchmark(
+        precision="W4A16",
+        op_name="qcgem1_gemm_w4a16",
     )
     bench.run()
