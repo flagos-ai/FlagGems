@@ -262,15 +262,6 @@ def get_higher_dtype(a, b):
 
 
 def general_gemm(a, b, c, alpha, beta, M, N, K):
-    logger.debug(
-        "GEMS MM, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s",
-        M,
-        N,
-        K,
-        a.stride(0) == 1,
-        b.stride(0) == 1,
-    )
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
@@ -281,7 +272,6 @@ def general_gemm(a, b, c, alpha, beta, M, N, K):
         and hasattr(triton.tools.tensor_descriptor, "TensorDescriptor")
         and is_tma_compatible(a, b, N, K)
     ):
-        logger.debug("Using TMA-optimized kernel")
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -323,7 +313,6 @@ def general_gemm(a, b, c, alpha, beta, M, N, K):
                 dtype=dtype_str,
             )
     else:
-        logger.debug("Using regular kernel")
 
         def alloc_fn(size: int, align: int, stream: Optional[int]):
             return torch.empty(size, dtype=torch.int8, device=a.device)
@@ -370,6 +359,7 @@ def streamk_scenario(a, b, alpha, beta, M, N, K):
 
 
 def gemm(a, b, beta=0, alpha=1):
+    logger.debug("GEMS GEMM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -392,6 +382,7 @@ def gemm(a, b, beta=0, alpha=1):
 
 
 def gemm_out(a, b, *, beta=0, alpha=1, out):
+    logger.debug("GEMS GEMM_OUT")
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
