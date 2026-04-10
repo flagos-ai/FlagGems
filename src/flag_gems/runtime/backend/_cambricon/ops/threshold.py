@@ -8,6 +8,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
@@ -22,11 +23,13 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
     ],
     key=["n_elements"],
 )
-@triton.jit
-def ceil_kernel(
+@triton.jit(do_not_specialize=["threshold_val", "value_val"])
+def threshold_kernel(
     X_ptr,
     OUT_ptr,
     n_elements,
+    threshold_val,
+    value_val,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -38,46 +41,30 @@ def ceil_kernel(
         offsets = off + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
         x = tl.load(X_ptr + offsets, mask=mask)
-        result = tl.ceil(x.to(tl.float32)).to(x.dtype)
+        result = tl.where(x > threshold_val, x, value_val)
         tl.store(OUT_ptr + offsets, result, mask=mask)
 
 
-def ceil(A):
-    logger.debug("GEMS_CAMBRICON CEIL")
-    A = A.contiguous()
+# keep backward using pointwise_dynamic
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def threshold_backward_kernel(grad_output, self, threshold):
+    return tl.where(self > threshold, grad_output, 0)
+
+
+def threshold(self, threshold_val, value_val):
+    logger.debug("GEMS_CAMBRICON THRESHOLD FORWARD")
+    A = self.contiguous()
     out = torch.empty_like(A)
     N = A.numel()
     if N == 0:
         return out
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(A.device):
-        ceil_kernel[grid_fn](A, out, N)
+        threshold_kernel[grid_fn](A, out, N, threshold_val, value_val)
     return out
 
 
-def ceil_out(A, *, out=None):
-    logger.debug("GEMS_CAMBRICON CEIL_OUT")
-    A = A.contiguous()
-    N = A.numel()
-    if out is None:
-        out = torch.empty_like(A)
-    if N == 0:
-        return out
-    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
-    with torch_device_fn.device(A.device):
-        ceil_kernel[grid_fn](A, out, N)
-    return out
-
-
-def ceil_(A):
-    logger.debug("GEMS_CAMBRICON CEIL_")
-    A_contig = A.contiguous()
-    N = A_contig.numel()
-    if N == 0:
-        return A
-    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
-    with torch_device_fn.device(A.device):
-        ceil_kernel[grid_fn](A_contig, A_contig, N)
-    if not A.is_contiguous():
-        A.copy_(A_contig)
-    return A
+def threshold_backward(grad_output, self, threshold_val):
+    logger.debug("GEMS_CAMBRICON THRESHOLD BACKWARD")
+    return threshold_backward_kernel(grad_output, self, threshold_val)

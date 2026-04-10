@@ -49,6 +49,8 @@ class BinaryPointwiseBenchmark(Benchmark):
         for name, op, dtype in [
             # Arithmetic operations
             ("add", torch.add, FLOAT_DTYPES + COMPLEX_DTYPES),
+            ("atan2", torch.atan2, FLOAT_DTYPES),
+            ("copysign", torch.copysign, FLOAT_DTYPES),
             ("div", torch.div, FLOAT_DTYPES),
             ("mul", torch.mul, FLOAT_DTYPES + COMPLEX_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES + COMPLEX_DTYPES),
