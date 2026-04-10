@@ -15,6 +15,7 @@ from flag_gems.ops.addr import addr
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.amax import amax
+from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
@@ -103,6 +104,7 @@ from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
+from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
@@ -148,6 +150,7 @@ from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
 from flag_gems.ops.isinf import isinf
 from flag_gems.ops.isnan import isnan
+from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.kron import kron
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
@@ -267,6 +270,7 @@ from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.sqrt import sqrt, sqrt_
+from flag_gems.ops.square import square, square_, square_out
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
@@ -336,6 +340,7 @@ __all__ = [
     "all_dims",
     "allclose",
     "amax",
+    "aminmax",
     "angle",
     "any",
     "any_dim",
@@ -428,6 +433,9 @@ __all__ = [
     "exp_out",
     "exp2",
     "exp2_",
+    "expm1",
+    "expm1_",
+    "expm1_out",
     "exponential_",
     "eye",
     "eye_m",
@@ -486,6 +494,8 @@ __all__ = [
     "isin",
     "isinf",
     "isnan",
+    "isneginf",
+    "isneginf_out",
     "kron",
     "layer_norm",
     "layer_norm_backward",
@@ -644,6 +654,9 @@ __all__ = [
     "special_i0e_out",
     "sqrt",
     "sqrt_",
+    "square",
+    "square_",
+    "square_out",
     "stack",
     "std",
     "sub",

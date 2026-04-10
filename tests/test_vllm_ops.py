@@ -446,6 +446,19 @@ if not QUICK_MODE:
         (64, 8, 4096, 14336, 2),
     ]
 
+FUSED_MOE_FP8_BLOCKWISE_CONFIGS = list(FUSED_MOE_QUANT_CONFIGS)
+
+if not QUICK_MODE:
+    FUSED_MOE_FP8_BLOCKWISE_CONFIGS += [
+        # Qwen3.5-397B-A17B
+        (1, 512, 4096, 1024, 10),
+        (4, 512, 4096, 1024, 10),
+        (16, 512, 4096, 1024, 10),
+        (64, 512, 4096, 1024, 10),
+        (128, 512, 4096, 1024, 10),
+        (256, 512, 4096, 1024, 10),
+    ]
+
 
 def _fake_quantize_fp8(tensor: torch.Tensor):
     """Simulate FP8 E4M3 quantization round-trip for reference computation."""
@@ -507,6 +520,139 @@ def torch_fused_moe_quantized_reference(
             output[m] += (weight.float() * r).to(output.dtype)
 
     return output
+
+
+def torch_w8a8_block_matmul(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    a_scales: torch.Tensor,
+    b_scales: torch.Tensor,
+    block_size: list[int],
+    output_dtype: torch.dtype,
+    compute_type: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    a = a.to(compute_type)
+    b = b.to(compute_type)
+    assert a.shape[-1] == b.shape[-1]
+    assert b.ndim == 2 and b.is_contiguous() and b_scales.ndim == 2
+    assert len(block_size) == 2
+    block_n, block_k = block_size
+    assert (a.shape[-1] + block_k - 1) // block_k == a_scales.shape[-1]
+    assert a.shape[:-1] == a_scales.shape[:-1]
+
+    m = a.numel() // a.shape[-1]
+    n, k = b.shape
+    origin_c_shape = a.shape[:-1] + (n,)
+    a = a.reshape(m, a.shape[-1])
+    a_scales = a_scales.reshape(m, a_scales.shape[-1])
+    n_tiles = (n + block_n - 1) // block_n
+    k_tiles = (k + block_k - 1) // block_k
+    assert n_tiles == b_scales.shape[0]
+    assert k_tiles == b_scales.shape[1]
+
+    c = torch.zeros((m, n), dtype=compute_type, device=a.device)
+    a_tiles = [a[:, i * block_k : min((i + 1) * block_k, k)] for i in range(k_tiles)]
+    b_tiles = [
+        [
+            b[
+                j * block_n : min((j + 1) * block_n, n),
+                i * block_k : min((i + 1) * block_k, k),
+            ]
+            for i in range(k_tiles)
+        ]
+        for j in range(n_tiles)
+    ]
+    c_tiles = [c[:, j * block_n : min((j + 1) * block_n, n)] for j in range(n_tiles)]
+    a_scale_tiles = [a_scales[:, i : i + 1] for i in range(k_tiles)]
+
+    for i in range(k_tiles):
+        for j in range(n_tiles):
+            scale = a_scale_tiles[i] * b_scales[j][i]
+            c_tiles[j][:, :] += torch.matmul(a_tiles[i], b_tiles[j][i].t()) * scale
+
+    return c.reshape(origin_c_shape).to(output_dtype)
+
+
+def torch_per_token_group_quant_fp8(
+    x: torch.Tensor,
+    group_size: int,
+    eps: float = 1e-10,
+    dtype: torch.dtype = torch.float8_e4m3fn,
+):
+    assert x.shape[-1] % group_size == 0
+    assert x.is_contiguous()
+
+    finfo = torch.finfo(dtype)
+    x_reshaped = x.reshape(x.numel() // group_size, group_size)
+    amax = (
+        x_reshaped.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
+    )
+    x_scales = amax / finfo.max
+    x_quant = (x_reshaped / x_scales).clamp(min=finfo.min, max=finfo.max).to(dtype)
+    x_quant = x_quant.reshape(x.shape)
+    x_scales = x_scales.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
+    return x_quant, x_scales
+
+
+def torch_w8a8_block_fp8_moe(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    block_shape: list[int],
+):
+    batch_size, hidden_size = hidden_states.shape
+    topk = topk_ids.size(1)
+    expanded_hidden = hidden_states.view(batch_size, -1, hidden_size).repeat(1, topk, 1)
+    expanded_hidden = expanded_hidden.reshape(-1, hidden_size)
+    out = torch.zeros(
+        batch_size * topk,
+        w2.shape[1],
+        dtype=hidden_states.dtype,
+        device=hidden_states.device,
+    )
+
+    flat_weights = topk_weights.view(-1)
+    flat_ids = topk_ids.view(-1)
+    _, block_k = block_shape
+    hidden_q, hidden_scale = torch_per_token_group_quant_fp8(expanded_hidden, block_k)
+    hidden_q = hidden_q.to(torch.float32)
+
+    def silu_and_mul(x):
+        import torch.nn.functional as F
+
+        d = x.shape[-1] // 2
+        return F.silu(x[..., :d]) * x[..., d:]
+
+    for expert_idx in range(w1.shape[0]):
+        mask = flat_ids == expert_idx
+        if mask.sum():
+            inter = torch_w8a8_block_matmul(
+                hidden_q[mask],
+                w1[expert_idx],
+                hidden_scale[mask],
+                w1_scale[expert_idx],
+                block_shape,
+                output_dtype=hidden_states.dtype,
+            )
+            act = silu_and_mul(inter)
+            act_q, act_scale = torch_per_token_group_quant_fp8(act, block_k)
+            out[mask] = torch_w8a8_block_matmul(
+                act_q,
+                w2[expert_idx],
+                act_scale,
+                w2_scale[expert_idx],
+                block_shape,
+                output_dtype=hidden_states.dtype,
+            )
+
+    return (
+        out.view(batch_size, -1, w2.shape[1])
+        * flat_weights.view(batch_size, -1, 1).to(out.dtype)
+    ).sum(dim=1)
 
 
 @pytest.mark.fused_moe
@@ -602,6 +748,96 @@ def test_accuracy_fused_moe_fp8(config):
     # Two quantized GEMMs + activation create cumulative rounding error.
     rtol = 5e-1
     atol = max(2e-1, ref.abs().max().item() * 1e-1)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_FP8_BLOCKWISE_CONFIGS)
+@pytest.mark.parametrize("block_shape", [[128, 128]])
+@pytest.mark.skipif(
+    not is_cuda_available(),
+    reason="FP8 blockwise quantization requires NVIDIA Hopper architecture",
+)
+def test_accuracy_fused_moe_fp8_blockwise(config, block_shape):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    if hidden_size % block_shape[1] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+    if intermediate_size % block_shape[0] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1_fp8 = (
+        torch.randn(
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=torch.float32,
+        )
+        * (1.0 / hidden_size**0.5)
+    ).to(torch.float8_e4m3fn)
+    w2_fp8 = (
+        torch.randn(
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            device=device,
+            dtype=torch.float32,
+        )
+        * (1.0 / intermediate_size**0.5)
+    ).to(torch.float8_e4m3fn)
+
+    w1_scale = torch.randn(
+        num_experts,
+        ceil(intermediate_size * 2 / block_shape[0]),
+        ceil(hidden_size / block_shape[1]),
+        device=device,
+        dtype=torch.float32,
+    )
+    w2_scale = torch.randn(
+        num_experts,
+        ceil(hidden_size / block_shape[0]),
+        ceil(intermediate_size / block_shape[1]),
+        device=device,
+        dtype=torch.float32,
+    )
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1_fp8,
+        w2_fp8,
+        topk_weights,
+        topk_ids,
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        block_shape=block_shape,
+    )
+
+    ref = torch_w8a8_block_fp8_moe(
+        hidden_states,
+        w1_fp8,
+        w2_fp8,
+        w1_scale,
+        w2_scale,
+        topk_weights,
+        topk_ids,
+        block_shape,
+    )
+
+    torch.cuda.synchronize()
+
+    rtol = 2e-1
+    atol = max(5e-2, ref.abs().max().item() * 5e-2)
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
