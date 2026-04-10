@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -12,12 +13,49 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
-@libentry()
-@triton.autotune(
+autotune_decorator = triton.autotune(
     configs=[],
     generate_configs="addmm",
     key=["M", "N", "K"],
 )
+
+
+KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "1") == "1"
+
+if not KLX_USE_AUTOTUNE:
+
+    def heur_block_m(args):
+        M = args["M"]
+        if M == 1:
+            return 2
+        if M <= 32:
+            return M
+
+        return 128
+
+    def heur_block_n(args):
+        N = args["N"]
+        if N == 1:
+            return 2
+        if N <= 32:
+            return N
+        return 128
+
+    def heur_block_k(args):
+        K = args["K"]
+        return min(K, 128)
+
+    autotune_decorator = triton.heuristics(
+        {
+            "BLOCK_SIZE_M": heur_block_m,
+            "BLOCK_SIZE_N": heur_block_n,
+            "BLOCK_SIZE_K": heur_block_k,
+        }
+    )
+
+
+@libentry()
+@autotune_decorator
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
     a_ptr,
@@ -71,7 +109,7 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
-    logger.debug("GEMS ADDMM")
+    logger.debug("GEMS_KUNLUNXIN ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -112,7 +150,7 @@ def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
 
 
 def addmm_out(bias, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
-    logger.debug("GEMS ADDMM OUT")
+    logger.debug("GEMS_KUNLUNXIN ADDMM_OUT")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])

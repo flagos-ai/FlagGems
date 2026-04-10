@@ -41,6 +41,9 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
+    ("absolute", torch.absolute, FLOAT_DTYPES),
+    ("alias_copy", torch.ops.aten.alias_copy, FLOAT_DTYPES),
+    ("ceil", torch.ceil, FLOAT_DTYPES),
     ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
@@ -49,8 +52,11 @@ forward_operations = [
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("sqrt", torch.sqrt, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
+    ("special_i0e", torch.ops.aten.special_i0e, FLOAT_DTYPES),
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     ("log", torch.log, FLOAT_DTYPES),
+    ("special_i1", torch.special.i1, FLOAT_DTYPES),
+    ("logit", lambda a: torch.logit(a, eps=1e-6), FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
     # Dropout
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
@@ -58,8 +64,12 @@ forward_operations = [
     ("celu", torch.nn.functional.celu, FLOAT_DTYPES),
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
+    ("hardsigmoid", torch.nn.functional.hardsigmoid, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
+    ("relu6", torch.nn.functional.relu6, FLOAT_DTYPES),
+    ("selu", torch.nn.functional.selu, FLOAT_DTYPES),
     ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
+    ("softshrink", torch.nn.functional.softshrink, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
@@ -69,9 +79,12 @@ forward_operations = [
     ("tan", torch.tan, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
     ("atan", torch.atan, FLOAT_DTYPES),
+    ("arcsinh", torch.arcsinh, FLOAT_DTYPES),
     ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
+    # Bessel
+    ("i0", torch.i0, FLOAT_DTYPES),
     # Numerical Checks
     ("isinf", torch.isinf, FLOAT_DTYPES),
     ("isnan", torch.isnan, FLOAT_DTYPES),
@@ -103,7 +116,9 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
 
 forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
+    ("ceil_", torch.ceil_, FLOAT_DTYPES),
     # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
+    ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
@@ -115,15 +130,30 @@ forward_inplace_operations = [
     ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
+    ("hardswish_", torch.ops.aten.hardswish_, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
+    ("selu_", torch.ops.aten.selu_, FLOAT_DTYPES),
     ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
+    ("sgn_", lambda a: a.sgn_(), FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
     # Trigonometric operations
     ("cos_", torch.cos_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
+    ("sinh_", lambda a: a.sinh_(), FLOAT_DTYPES),
     ("tan_", torch.tan_, FLOAT_DTYPES),
     ("tanh_", torch.tanh_, FLOAT_DTYPES),
     ("atan_", torch.atan_, FLOAT_DTYPES),
+    ("i0_", torch.Tensor.i0_, FLOAT_DTYPES),
+    ("digamma_", lambda a: a.digamma_(), FLOAT_DTYPES),
+    ("arctanh_", lambda a: a.arctanh_(), FLOAT_DTYPES),
+    ("digamma_", lambda a: a.digamma_(), FLOAT_DTYPES),
+    ("asinh_", lambda a: a.asinh_(), FLOAT_DTYPES),
+    ("digamma_", lambda a: a.digamma_(), FLOAT_DTYPES),
+    ("asinh_", lambda a: a.asinh_(), FLOAT_DTYPES),
+    ("digamma_", lambda a: a.digamma_(), FLOAT_DTYPES),
+    ("arcsinh_", lambda a: a.arcsinh_(), FLOAT_DTYPES),
+    ("log1p_", lambda a: a.log1p_(), FLOAT_DTYPES),
+    ("logit_", lambda a: a.logit_(eps=1e-6), FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
 ]
@@ -239,6 +269,29 @@ def test_elu_backward_perf():
     bench = EluBackwardBenchmark(
         op_name="elu_backward",
         torch_op=torch.ops.aten.elu_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class RreluWithNoiseBackwardBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype: torch.dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            grad_out = torch.randn_like(inp)
+            noise = torch.rand_like(inp)
+            lower = 0.125
+            upper = 1.0 / 3.0
+            training = True
+            self_is_result = False
+            yield grad_out, inp, noise, lower, upper, training, self_is_result
+
+
+@pytest.mark.rrelu_with_noise_backward
+def test_rrelu_with_noise_backward_perf():
+    bench = RreluWithNoiseBackwardBenchmark(
+        op_name="rrelu_with_noise_backward",
+        torch_op=torch.ops.aten.rrelu_with_noise_backward,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
@@ -367,4 +420,25 @@ def test_perf_repetition_penalty():
         dtypes=FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.apply_repetition_penalties)
+    bench.run()
+
+
+class PreluBenchmark(Benchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            x = generate_tensor_input(shape, cur_dtype, self.device)
+            if len(shape) == 1:
+                w = torch.randn((), dtype=cur_dtype, device=self.device)
+            else:
+                w = torch.randn((shape[1],), dtype=cur_dtype, device=self.device)
+            yield x, w
+
+
+@pytest.mark.prelu
+def test_perf_prelu():
+    bench = PreluBenchmark(
+        op_name="prelu",
+        torch_op=torch.ops.aten.prelu,
+        dtypes=FLOAT_DTYPES,
+    )
     bench.run()

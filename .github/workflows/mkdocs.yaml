@@ -1,31 +1,21 @@
-name: mkdocs-for-gems
+name: mkdocs
 
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-  schedule:
-    - cron: '0 16 * * *'
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   build-doc:
-    runs-on: docs
-
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Documentation
+      - uses: actions/checkout@v6
+      - shell: bash
+        run: |
+          echo "To be revised"
+      - if: github.event_name == 'schedule'
         shell: bash
         run: |
-          echo "Building docs (Markdown -> HTML)"
-          mkdocs build
-          echo "The website will update next day!"
-          echo "http://120.92.44.177/gems_docs/"
-
-      - name: Deploy to Website
-        if: github.event_name == 'schedule'
-        shell: bash
-        run: |
-          echo “Deploy to Website”
-          mkdocs build --config-file mkdocs.yml --site-dir /html/gems_docs
+          # mkdocs build --config-file mkdocs.yml --site-dir /html/gems_docs
+          echo "To be revised"

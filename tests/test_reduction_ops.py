@@ -324,6 +324,60 @@ def test_accuracy_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+NLL_LOSS_ND_SHAPES = (
+    [(2, 3, 4, 5)]
+    if QUICK_MODE
+    else [(2, 32), (16, 50, 128), (4, 3, 5, 5), (2, 10, 8, 16, 16)]
+)
+
+
+@pytest.mark.nll_loss_nd
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("weight", [True, False])
+@pytest.mark.parametrize("shape", NLL_LOSS_ND_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("ignore_index", [1, 200, -100])
+def test_accuracy_nll_loss_nd(shape, dtype, ignore_index, reduction, weight):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        np.random.seed(0)
+        random.seed(0)
+
+    dim = 1
+    target_shape = list(shape)
+    del target_shape[dim]
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randint(0, shape[dim], target_shape, device=flag_gems.device)
+
+    if weight:
+        weight = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
+    else:
+        weight = None
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target)
+    ref_weight = to_reference(weight, True)
+
+    ref_out = torch.nn.functional.nll_loss(
+        ref_inp, ref_target, ref_weight, reduction=reduction, ignore_index=ignore_index
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.nll_loss(
+            inp, target, weight, reduction=reduction, ignore_index=ignore_index
+        )
+    reduce_dim = 1 if reduction == "none" else target.numel()
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim, equal_nan=True)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
 CUMSUM_SHAPES = (
     [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
 )
@@ -357,7 +411,7 @@ def test_accuracy_cumsum(shape, dtype):
     # we should use ref's output type, since cumsum of int dtype results in int64
     check_dtype = (
         dtype
-        if flag_gems.vendor_name == "cambricon"
+        if flag_gems.vendor_name == "cambricon" or flag_gems.vendor_name == "enflame"
         else (ref_out.dtype if dtype in INT_DTYPES else dtype)
     )
     gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
@@ -576,7 +630,10 @@ def test_accuracy_log_softmax_backward(shape, dtype, dim):
 # TODO: failed at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize(
-    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
+    "shape",
+    [(1, 256)]
+    if QUICK_MODE
+    else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -601,6 +658,12 @@ def test_accuracy_softmax(shape, dtype, dim, neg_inf):
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
 def test_accuracy_softmax_backward(shape, dtype, dim, neg_inf):
+    if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
+        pytest.skip(
+            "XPU _softmax_backward_data short-circuits to zero when reduction dim "
+            "is 1, while the Triton kernel computes normally with synthetic inputs, "
+            "causing a mismatch that does not reflect a real correctness issue."
+        )
     res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if neg_inf:
         res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
@@ -1099,6 +1162,132 @@ def test_accuracy_select_scatter_with_self_overlapping_input():
     gems_assert_equal(res_out, ref_out)
 
 
+SLICE_BACKWARD_SHAPES = [
+    (128, 256),
+    (1024, 1024),
+    (512, 1024, 512),
+    (16, 8192, 4096),
+    (8, 4096, 11008),
+    (4, 32, 4096, 128),
+    (32, 256, 256, 128),
+]
+
+
+@pytest.mark.slice
+@pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dim", [0, 1, -1])
+@pytest.mark.parametrize("start", [0, 16])
+@pytest.mark.parametrize("end", [64, 128])
+@pytest.mark.parametrize("step", [1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_slice_backward(
+    shape,
+    dim,
+    start,
+    end,
+    step,
+    dtype,
+):
+    device = flag_gems.device
+
+    ndim = len(shape)
+    dim = dim % ndim
+    size = shape[dim]
+
+    start = start % size
+    end = end % (size + 1)
+
+    if end < start:
+        end, start = start, end
+    elif end == start:
+        end = size
+
+    valid_shape = list(shape)
+
+    slice_len = (end - start + step - 1) // step
+    valid_shape[dim] = slice_len
+
+    grad_output = torch.randn(
+        valid_shape,
+        dtype=dtype,
+        device=device,
+    )
+
+    ref_grad_output = to_reference(grad_output)
+
+    ref_out = torch.ops.aten.slice_backward(
+        ref_grad_output,
+        shape,
+        dim,
+        start,
+        end,
+        step,
+    )
+
+    res_out = flag_gems.ops.slice_backward(
+        grad_output,
+        shape,
+        dim,
+        start,
+        end,
+        step,
+    )
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.slice
+@pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_slice_backward_oob_end(shape, dtype):
+    # Regression test: end > dim_size caused out-of-bounds write in kernel.
+    device = flag_gems.device
+    dim = 1 % len(shape)
+    dim_size = shape[dim]
+    start = 0
+    end = dim_size + 100  # intentionally out of bounds
+    step = 1
+
+    # grad_output shape matches what PyTorch would produce (clamped slice)
+    valid_shape = list(shape)
+    valid_shape[dim] = dim_size
+    grad_output = torch.randn(valid_shape, dtype=dtype, device=device)
+    ref_grad_output = to_reference(grad_output)
+
+    ref_out = torch.ops.aten.slice_backward(
+        ref_grad_output, shape, dim, start, end, step
+    )
+    res_out = flag_gems.ops.slice_backward(grad_output, shape, dim, start, end, step)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.slice
+@pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_slice_backward_oob_start(shape, dtype):
+    # Regression test: start > dim_size caused out-of-bounds write in kernel.
+    device = flag_gems.device
+    dim = 1 % len(shape)
+    dim_size = shape[dim]
+    start = dim_size + 50  # intentionally out of bounds
+    end = dim_size + 100
+    step = 1
+
+    # grad_output is empty since clamped slice is empty
+    valid_shape = list(shape)
+    valid_shape[dim] = 0
+    grad_output = torch.randn(valid_shape, dtype=dtype, device=device)
+    ref_grad_output = to_reference(grad_output)
+
+    ref_out = torch.ops.aten.slice_backward(
+        ref_grad_output, shape, dim, start, end, step
+    )
+    res_out = flag_gems.ops.slice_backward(grad_output, shape, dim, start, end, step)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.slice_scatter
 @pytest.mark.parametrize(("dim", "shape", "stride"), REGULAR_DIM_SHAPE_STRIDES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1593,7 +1782,10 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, 
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        K = indices[0].sum().item()
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -1637,7 +1829,10 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, d
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        K = indices[0].sum().item()
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -1668,7 +1863,10 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        K = indices[0].sum().item()
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -1714,7 +1912,10 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        K = indices[0].sum().item()
+        if flag_gems.vendor_name == "tsingmicro":
+            K = indices[0].to(device="cpu").sum().item()
+        else:
+            K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -1765,6 +1966,60 @@ def test_index_put__error_all_none(dtype):
         ValueError, match="At least one non-None index tensor is required"
     ):
         flag_gems.index_put_(inp, indices, values, accumulate=False)
+
+
+# Format: (input_shape, indices_config)
+# 0 in indices_config means a Tensor, 1 in indices_config means None
+MIXED_INDEX_SHAPES = [
+    ((1024, 1024), (0, 1)),
+    ((1024, 1024), (1, 0)),
+    ((32, 32, 32), (0, 0, 1)),
+    ((32, 32, 32), (0, 1, 0)),
+    ((32, 32, 32), (1, 0, 0)),
+    ((64, 64, 64), (1, 0, 1)),
+    ((12, 12, 12, 12), (1, 0, 0, 0)),
+    ((12, 12, 12, 12), (0, 1, 0, 0)),
+    ((16, 16, 16, 16), (1, 0, 0, 1)),
+    ((16, 16, 16, 16), (0, 1, 1, 0)),
+    ((8, 8, 8, 8), (0, 1, 1, 1)),
+    ((8, 8, 8, 8), (1, 1, 0, 1)),
+]
+
+
+@pytest.mark.index_put
+@pytest.mark.parametrize("input_shape, indices_config", MIXED_INDEX_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
+    accumulate = False
+    inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
+
+    tensor_dims = [
+        input_shape[i] for i, is_none in enumerate(indices_config) if is_none == 0
+    ]
+    min_dim = min(tensor_dims)
+    idx_len = random.randint(3, min(min_dim, 32))
+    unique_pool = torch.randperm(min_dim, device=flag_gems.device)[:idx_len]
+
+    indices, ref_indices = [], []
+    for i, is_none in enumerate(indices_config):
+        if is_none:
+            indices.append(None)
+            ref_indices.append(slice(None))
+        else:
+            indices.append(unique_pool)
+            ref_indices.append(unique_pool.cpu())
+
+    ref_inp = to_reference(inp)
+    target_shape = ref_inp[tuple(ref_indices)].shape
+
+    values = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
+    ref_values = to_reference(values)
+
+    ref_out = ref_inp.clone()
+    ref_out[tuple(ref_indices)] = ref_values
+
+    out = flag_gems.index_put(inp, indices, values, accumulate)
+    gems_assert_close(out, ref_out, dtype)
 
 
 @pytest.mark.index
@@ -1818,8 +2073,8 @@ def test_index_with_none_basic_indexing(input_shape, index_pos, dtype):
 @pytest.mark.index
 @pytest.mark.parametrize(
     "input_shape, indices_idx",
-    # 0 in indices_idx means None
-    # 1 in indices_idx means a Tensor
+    # 0 in indices_idx means a Tensor
+    # 1 in indices_idx means None
     [
         ((1024, 1024), (0, 1)),
         ((16, 16, 16), (1, 0, 0)),
@@ -2189,3 +2444,72 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
         inp.masked_scatter_(mask, src)
 
     gems_assert_equal(inp, ref_inp)
+
+
+BINCOUNT_SHAPES = [(16,), (4096,), (100000,)]
+NUM_CLASSES_LIST = [10, 256]
+
+
+def _assert_bincount(res_out, ref_out, dtype=None, shape=None, num_classes=None):
+    if dtype is None:
+        gems_assert_equal(res_out, ref_out)
+    else:
+        atol = (
+            1e-3
+            if (dtype == torch.float32 and shape[0] >= 100000 and num_classes <= 10)
+            else 1e-4
+        )
+        gems_assert_close(res_out, ref_out, dtype, atol=atol)
+
+
+@pytest.mark.bincount
+@pytest.mark.parametrize("shape", BINCOUNT_SHAPES)
+@pytest.mark.parametrize("num_classes", NUM_CLASSES_LIST)
+def test_accuracy_bincount_base(shape, num_classes):
+    inp = torch.randint(
+        0, num_classes, shape, dtype=torch.int64, device=flag_gems.device
+    )
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.bincount(ref_inp)
+    res_out = flag_gems.bincount(inp)
+    _assert_bincount(res_out, ref_out)
+
+
+@pytest.mark.bincount
+@pytest.mark.parametrize("shape", BINCOUNT_SHAPES)
+@pytest.mark.parametrize("num_classes", NUM_CLASSES_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_bincount_weighted(shape, num_classes, dtype):
+    inp = torch.randint(
+        0, num_classes, shape, dtype=torch.int64, device=flag_gems.device
+    )
+    weights = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp, ref_weights = to_reference(inp), to_reference(weights)
+
+    ref_out = torch.bincount(ref_inp, weights=ref_weights)
+    res_out = flag_gems.bincount(inp, weights=weights)
+    _assert_bincount(res_out, ref_out, dtype, shape, num_classes)
+
+
+@pytest.mark.bincount
+@pytest.mark.parametrize("shape", BINCOUNT_SHAPES)
+@pytest.mark.parametrize("num_classes", NUM_CLASSES_LIST)
+@pytest.mark.parametrize("minlength", [0, 512])
+def test_accuracy_bincount_minlength(shape, num_classes, minlength):
+    inp = torch.randint(
+        0, num_classes, shape, dtype=torch.int64, device=flag_gems.device
+    )
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.bincount(ref_inp, minlength=minlength)
+    res_out = flag_gems.bincount(inp, minlength=minlength)
+    _assert_bincount(res_out, ref_out)
+
+    dtype = torch.float32
+    weights = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_weights = to_reference(weights)
+
+    ref_out_w = torch.bincount(ref_inp, weights=ref_weights, minlength=minlength)
+    res_out_w = flag_gems.bincount(inp, weights=weights, minlength=minlength)
+    _assert_bincount(res_out_w, ref_out_w, dtype, shape, num_classes)

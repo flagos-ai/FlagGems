@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 
 import torch
@@ -11,6 +12,12 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
+
+logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
+CACHE_USAGE_THRESHOLD = 0.8
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
+)
 
 
 def is_tma_compatible(a, b, N, K):
@@ -43,15 +50,27 @@ def is_tma_compatible(a, b, N, K):
     )
 
 
-CACHE_USAGE_THRESHOLD = 0.8
-
-logger = logging.getLogger(__name__)
-
-
 @triton.jit
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
     return tl.cdiv(a, b) * b - b
+
+
+def matmul_tma_set_block_size_hook(nargs):
+    BLOCK_M = nargs["BLOCK_M"]
+    BLOCK_N = nargs["BLOCK_N"]
+    BLOCK_K = nargs["BLOCK_K"]
+    if nargs["A_ROW_MAJOR"]:
+        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
+    else:
+        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
+
+    if nargs["B_ROW_MAJOR"]:
+        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
+    else:
+        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
+
+    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
 
 
 @libentry()
@@ -187,23 +206,6 @@ def mm_kernel_general(
         tl.store(offsets, acc, mask=mask)
 
 
-def matmul_tma_set_block_size_hook(nargs):
-    BLOCK_M = nargs["BLOCK_M"]
-    BLOCK_N = nargs["BLOCK_N"]
-    BLOCK_K = nargs["BLOCK_K"]
-    if nargs["A_ROW_MAJOR"]:
-        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
-    else:
-        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
-
-    if nargs["B_ROW_MAJOR"]:
-        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
-    else:
-        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
-
-    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
-
-
 def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     return [
         triton.Config(
@@ -222,9 +224,19 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
 
 @libentry()
 @libtuner(
-    configs=matmul_get_configs(),
+    configs=runtime.ops_get_configs(
+        "mm_general_tma",
+        pre_hook=matmul_tma_set_block_size_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=runtime.get_expand_config(
+        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+    )["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
 )
@@ -289,10 +301,9 @@ def mm_kernel_general_host_tma(
     c_desc.store([offset_am, offset_bn], c)
 
 
-_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
-
-
 def get_higher_dtype(a, b):
+    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
+
     if a is b:
         return a
 
@@ -307,6 +318,7 @@ def get_higher_dtype(a, b):
 
 
 def general_mm(a, b, c, M, N, K):
+    # TODO: Remove this debug message
     logger.debug(
         "GEMS MM-hopper, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",
@@ -387,6 +399,25 @@ def general_mm(a, b, c, M, N, K):
 
 
 @libentry()
+@libtuner(
+    configs=runtime.ops_get_configs(
+        "gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_K": 256},
+        )
+    ],
+    key=["M", "K", "stride_am", "stride_bk"],
+    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=10,
+)
 @triton.jit
 def gemv_kernel(
     A,
@@ -441,9 +472,7 @@ def gemv_mm(a, b, c, M, K):
         K,
     )
 
-    BLOCK_M = 32
-    BLOCK_K = 256
-    grid = lambda META: (triton.cdiv(M, BLOCK_M),)
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
     with torch_device_fn.device(a.device):
         gemv_kernel[grid](
@@ -455,8 +484,6 @@ def gemv_mm(a, b, c, M, K):
             a.stride(0),
             a.stride(1),
             b.stride(0),
-            BLOCK_M=BLOCK_M,
-            BLOCK_K=BLOCK_K,
         )
     return c
 

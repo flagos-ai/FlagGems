@@ -25,7 +25,7 @@ from .attri_util import (
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config, recordLogger
+from .conftest import Config, emit_record_logger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -215,6 +215,14 @@ class Benchmark:
                 # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
+                if vendor_name == "enflame":
+                    if self.op_name in ["isin"]:
+                        # isin shapelimit
+                        import math
+
+                        self.shapes = [
+                            shape for shape in self.shapes if math.prod(shape) < 2**28
+                        ]
         except yaml.YAMLError as e:
             raise ValueError(
                 f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
@@ -255,6 +263,11 @@ class Benchmark:
                 os.path.dirname(__file__),
                 "../src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml",
             )  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        elif vendor_name == "enflame":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_enflame/core_shapes.yaml",
+            )
         self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):
@@ -371,7 +384,7 @@ class Benchmark:
                 shape_desc=self.shape_desc,
             )
             print(attri)
-            recordLogger.info(attri.to_dict())
+            emit_record_logger(attri.to_dict())
             return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
@@ -391,10 +404,17 @@ class Benchmark:
                                 self.gems_op, *args, **kwargs
                             )
                         else:
-                            with flag_gems.use_gems():
-                                metric.latency = self.get_latency(
-                                    self.torch_op, *args, **kwargs
-                                )
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_ in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
                     if "speedup" in self.to_bench_metrics:
                         metric.speedup = metric.latency_base / metric.latency
                     if "gbps" in self.to_bench_metrics:
@@ -424,7 +444,7 @@ class Benchmark:
                 result=metrics,
             )
             print(result)
-            recordLogger.info(result.to_json())
+            emit_record_logger(result.to_json())
 
 
 class GenericBenchmark(Benchmark):

@@ -22,8 +22,20 @@ from flag_gems.runtime import torch_device_fn
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
-recordLogger = logging.getLogger("flag_gems.benchmark.record")
+recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
+
+
+def emit_record_logger(message: str) -> None:
+    if recordLogger.handlers:
+        handler = recordLogger.handlers[0]
+        if getattr(handler, "stream", None) is None:
+            handler.acquire()
+            try:
+                handler.stream = handler._open()
+            finally:
+                handler.release()
+    recordLogger.info(message)
 
 
 class BenchConfig:
@@ -42,6 +54,7 @@ class BenchConfig:
         self.user_desired_metrics = None
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
         self.query = False
+        self.parallel = 0
 
 
 Config = BenchConfig()
@@ -131,6 +144,18 @@ def pytest_addoption(parser):
         help="Benchmark info recorded in log files or not",
     )
 
+    parser.addoption(
+        "--parallel",
+        action="store",
+        type=int,
+        default=0,
+        help=(
+            "Enable multi-GPU parallel benchmark execution across shapes. "
+            "Example: --parallel 8 means using GPU 0~7 in parallel. "
+            "Default 0 means serial execution."
+        ),
+    )
+
 
 def pytest_configure(config):
     global Config  # noqa: F824
@@ -161,6 +186,7 @@ def pytest_configure(config):
     Config.shape_file = shape_file_str
 
     Config.record_log = config.getoption("--record") == "log"
+    Config.parallel = int(config.getoption("--parallel") or 0)
     if Config.record_log:
         cmd_args = [
             arg.replace(".py", "").replace("=", "_").replace("/", "_")
@@ -178,12 +204,12 @@ def pytest_configure(config):
 
                 warnings.warn(f"Failed to close handler: {e}")
 
-        handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        handler = logging.FileHandler(log_file, mode="w", encoding="utf-8", delay=False)
         handler.setLevel(logging.INFO)
         handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
         recordLogger.addHandler(handler)
         recordLogger.setLevel(logging.INFO)
-        recordLogger.info("Benchmark record logger enabled")
+        emit_record_logger("Benchmark record logger enabled")
 
 
 BUILTIN_MARKS = {
@@ -250,6 +276,5 @@ def extract_and_log_op_attributes(request):
         pytest.skip("Skipping benchmark due to the query parameter.")
 
     yield
-
     if Config.record_log and op_attributes:
-        recordLogger.info(json.dumps(op_attributes, indent=2))
+        emit_record_logger(json.dumps(op_attributes, indent=2))

@@ -199,7 +199,7 @@ def attention_ref(
 
 def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
     if torch.__version__ < "2.5":
-        torch_result = torch.nn.functional.scaled_dot_product_attention(
+        return torch.nn.functional.scaled_dot_product_attention(
             q,
             k,
             v,
@@ -207,25 +207,25 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
             scale=scale,
             is_causal=is_causal,
         )
+
+    if flag_gems.vendor_name == "iluvatar" and TO_CPU:
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+
+        ctx = sdpa_kernel(backends=[SDPBackend.MATH])
     else:
-        if flag_gems.vendor_name == "iluvatar" and TO_CPU:
-            from torch.nn.attention import SDPBackend, sdpa_kernel
+        from contextlib import nullcontext
 
-            ctx = sdpa_kernel(backends=[SDPBackend.MATH])
-        else:
-            from contextlib import nullcontext
-
-            ctx = nullcontext()
-        with ctx:
-            torch_result = torch.nn.functional.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                attn_mask=None,
-                scale=scale,
-                is_causal=is_causal,
-                enable_gqa=enable_gqa,
-            )
+        ctx = nullcontext()
+    with ctx:
+        torch_result = torch.nn.functional.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
     return torch_result
 
 
@@ -889,7 +889,7 @@ def ref_paged_attn(
             v = torch.repeat_interleave(v, q.shape[1] // v.shape[1], dim=1)
 
         attn = torch.einsum("qhd,khd->hqk", q, k)
-        empty_mask = torch.ones(query_len, kv_len)
+        empty_mask = torch.ones(query_len, kv_len, device=q.device)
         mask = torch.triu(empty_mask, diagonal=kv_len - query_len + 1).bool()
         if sliding_window is not None:
             sliding_window_mask = (

@@ -198,7 +198,7 @@ def set_torch_backend_device_fn(vendor_name=None):
     global device_name, torch_device_fn_device
     device_name = device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{device_name}"
-    if device_name in ("musa", "aipu", "npu", "txda", "ptpu"):
+    if device_name in ("musa", "aipu", "npu", "txda", "ptpu", "gcu"):
         torch_device_fn_device = None
     else:
         torch_device_fn_device = importlib.import_module(module_str)
@@ -300,6 +300,10 @@ def get_tune_config(vendor_name=None):
     global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
     return backend_utils.get_tune_config(vendor_name)
+
+
+def get_expand_config(op_name=None, file_path=None):
+    return backend_utils.get_expand_config(op_name=op_name, file_path=file_path)
 
 
 __all__ = ["*"]

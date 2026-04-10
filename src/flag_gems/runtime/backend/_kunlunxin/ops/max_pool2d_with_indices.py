@@ -82,7 +82,7 @@ def max_pool2d_forward_kernel(
     dtype = input_ptr.type.element_ty
     min_val = get_dtype_min(dtype)
     max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int64)
+    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int32)
 
     input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
 
@@ -278,7 +278,7 @@ def max_pool2d_with_indices(
         (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
     )
     indices = torch.empty(
-        (in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int64
+        (in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int32
     )
 
     if output.numel() == 0:
@@ -327,8 +327,9 @@ def max_pool2d_backward(
     ceil_mode,
 ):
     logger.debug("GEMS MAX_POOL2D BACKWARD")
-    grad_output = grad_output.contiguous()
-    indices = indices.contiguous()
+    original_dtype = grad_output.dtype
+    grad_output = grad_output.to(torch.float32).contiguous()
+    indices = indices.to(torch.int32).contiguous()
 
     params = _parse_pool_params(kernel_size, stride, padding, dilation)
     (
@@ -348,7 +349,7 @@ def max_pool2d_backward(
     grad_input = torch.zeros_like(input, dtype=torch.float32)
 
     if grad_input.numel() == 0:
-        return grad_input.to(grad_output.dtype)
+        return grad_input.to(original_dtype)
 
     grid = lambda meta: (
         in_n * in_c,
@@ -382,4 +383,4 @@ def max_pool2d_backward(
             dilation_w,
         )
 
-    return grad_input.to(grad_output.dtype)
+    return grad_input.to(original_dtype)

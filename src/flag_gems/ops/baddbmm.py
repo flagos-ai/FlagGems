@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -8,12 +9,7 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
-
-if runtime.device.vendor_name == "iluvatar":
-    from flag_gems.runtime.backend._iluvatar.ops.bmm import bmm
-else:
-    from .bmm import bmm
-
+from .bmm import bmm
 from .mul import mul
 
 logger = logging.getLogger(__name__)
@@ -21,9 +17,13 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("baddbmm"),
+    configs=runtime.ops_get_configs("baddbmm", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else runtime.get_tuned_config("baddbmm"),
     key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    strategy=runtime.get_expand_config("baddbmm")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32"],
     warmup=5,
     rep=10,
 )

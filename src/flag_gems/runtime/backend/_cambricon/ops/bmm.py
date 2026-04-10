@@ -14,7 +14,8 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("bmm"),
-    key=["M", "N", "K"],
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    strategy=["log", "log", "log", "align32", "align32"],
 )
 @triton.heuristics(runtime.get_heuristic_config("bmm"))
 @triton.jit
@@ -25,6 +26,15 @@ def bmm_kernel(
     M,
     N,
     K,
+    stride_ab,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bk,
+    stride_bn,
+    stride_ob,
+    stride_om,
+    stride_on,
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
@@ -35,9 +45,9 @@ def bmm_kernel(
 ):
     # batch offsets
     pid_b = tl.program_id(2)
-    A += pid_b * M * K
-    B += pid_b * K * N
-    O += pid_b * M * N
+    A += pid_b * stride_ab
+    B += pid_b * stride_bb
+    O += pid_b * stride_ob
 
     pidx = tl.program_id(0)
     pidy = tl.program_id(1)
@@ -69,13 +79,13 @@ def bmm_kernel(
     if not DIVISIBLE_N:
         mask_n = offs_n < N
 
-    a_ptrs = A + offs_m[:, None] * K + offs_k[None, :]
-    b_ptrs = B + offs_k[:, None] * N + offs_n[None, :]
-    o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
+    a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = B + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
+    o_ptrs = O + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
 
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
-    for k in range(num_iters):
+    for _ in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
                 mask_a = None
@@ -86,7 +96,7 @@ def bmm_kernel(
             else:
                 mask_b = mask_n[None, :]
         else:
-            mask_k = offs_k < K - k * TILE_K
+            mask_k = offs_k < K
             if DIVISIBLE_M:
                 mask_a = mask_k[None, :]
             else:
@@ -99,8 +109,9 @@ def bmm_kernel(
         a = tl.load(a_ptrs, mask_a)
         b = tl.load(b_ptrs, mask_b)
 
-        a_ptrs += TILE_K
-        b_ptrs += TILE_K * N
+        offs_k += TILE_K
+        a_ptrs += TILE_K * stride_ak
+        b_ptrs += TILE_K * stride_bk
 
         o += tl.dot(a, b, allow_tf32=False)
 
@@ -117,10 +128,10 @@ def bmm_kernel(
 
 def bmm(A, B):
     logger.debug("GEMS_CAMBRICON BMM")
+    assert A.shape[0] == B.shape[0], "Batch dim mismatch"
+    assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape
     _, _, N = B.shape
-    A = A.contiguous()
-    B = B.contiguous()
     out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
     grid_fn = lambda meta: (
@@ -129,5 +140,54 @@ def bmm(A, B):
         batch,
     )
     with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](A, B, out, M, N, K)
+        bmm_kernel[grid_fn](
+            A,
+            B,
+            out,
+            M,
+            N,
+            K,
+            A.stride(0),
+            A.stride(1),
+            A.stride(2),
+            B.stride(0),
+            B.stride(1),
+            B.stride(2),
+            out.stride(0),
+            out.stride(1),
+            out.stride(2),
+        )
+    return out
+
+
+def bmm_out(A, B, out):
+    logger.debug("GEMS_CAMBRICON BMM_OUT")
+    assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
+    assert A.shape[2] == B.shape[1], "K dim mismatch"
+    batch, M, K = A.shape
+    _, _, N = B.shape
+
+    grid_fn = lambda meta: (
+        triton.cdiv(meta["M"], meta["TILE_M"]),
+        triton.cdiv(meta["N"], meta["TILE_N"]),
+        batch,
+    )
+    with torch_device_fn.device(A.device):
+        bmm_kernel[grid_fn](
+            A,
+            B,
+            out,
+            M,
+            N,
+            K,
+            A.stride(0),
+            A.stride(1),
+            A.stride(2),
+            B.stride(0),
+            B.stride(1),
+            B.stride(2),
+            out.stride(0),
+            out.stride(1),
+            out.stride(2),
+        )
     return out

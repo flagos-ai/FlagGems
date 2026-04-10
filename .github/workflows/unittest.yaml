@@ -1,0 +1,227 @@
+name: unit-test
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [ "master" ]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+  pull_request:
+    branches: [ "master" ]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  preprocess:
+    runs-on: ubuntu-latest
+    outputs:
+      changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
+      pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
+      labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
+    steps:
+      - id: changed-files
+        uses: tj-actions/changed-files@v47
+      - id: wait-for-triage
+        uses: ArcticLampyrid/action-wait-for-workflow@v1.3.0
+        with:
+          workflow: .github/workflows/triage.yaml
+      - id: get-pr-id
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            PR_ID=${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            PR_ID=${PR_NUMBER}
+          fi
+          echo "PR_ID=${PR_ID}" >> "$GITHUB_OUTPUT"
+          # NOTE: Preserve these line for debugging's purpose
+          echo "PR_ID: ${PR_ID}"
+
+      - id: get-labels
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // Determine if the event is a pull request
+            const isPullRequest = context.eventName === 'pull_request';
+            if (!isPullRequest) {
+              return "";
+            }
+
+            const prNumber = context.payload.pull_request.number;
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            console.log('Labels:', labels.map(label => label.name));
+            return JSON.stringify(labels.map(label => label.name));
+
+  build-doc:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'documentation')
+    uses: ./.github/workflows/mkdocs.yaml
+
+  cpp-op:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'ops/cpp')
+    uses: ./.github/workflows/cpp-op-test.yaml
+
+  python-op:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'tests')
+    concurrency:
+      group: python-op-${{ needs.preprocess.outputs.pr_id }}
+      cancel-in-progress: true
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@v6
+      - shell: bash
+        run: tools/gpu_check.sh
+      - shell: bash
+        env:
+          CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+        run: |
+          bash tools/test-op.sh ${{ needs.preprocess.outputs.pr_id }}
+
+  examples:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'examples')
+    concurrency:
+      group: examples-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@v6
+      - shell: bash
+        run: tools/gpu_check.sh
+      - shell: bash
+        env:
+          CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+        run: |
+          bash tools/test-examples.sh ${{ needs.preprocess.outputs.pr_id }}
+
+  backend-ascend:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: ascend
+      runner_label: ascend
+      gpu_check_script: tools/gpu_check_ascend.sh
+      test_script: tools/run_backend_tests_ascend.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-hygon:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: hygon
+      runner_label: hygon
+      gpu_check_script: tools/gpu_check_hygon.sh
+      test_script: tools/run_backend_tests_hygon.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-iluvatar:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Iluvatar')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: iluvatar
+      runner_label: iluvatar
+      gpu_check_script: tools/gpu_check_iluvatar.sh
+      test_script: tools/run_backend_tests_iluvatar.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-kunlunxin:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: kunlunxin
+      runner_label: kunlunxin
+      gpu_check_script: tools/gpu_check_kunlunxin.sh
+      test_script: tools/run_backend_tests_kunlunxin.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-metax:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/MetaX')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: metax
+      runner_label: metax_CI
+      test_script: tools/run_backend_tests_metax.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-mthreads:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: mthreads
+      runner_label: moore
+      gpu_check_script: tools/gpu_check_mthreads.sh
+      test_script: tools/run_backend_tests_mthreads.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-nvidia:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: nvidia
+      runner_label: h20
+      gpu_check_script: tools/gpu_check.sh
+      test_script: tools/run_backend_tests_nvidia.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-tsingmicro:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: tsingmicro
+      runner_label: tsingmicro
+      gpu_check_script: tools/gpu_check_tsingmicro.sh
+      test_script: tools/run_backend_tests_tsingmicro.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-thead:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Thead')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: thead
+      runner_label: thead
+      gpu_check_script: tools/gpu_check_thead.sh
+      test_script: tools/run_backend_tests_thead.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  # TODO(Qiming): This job doesn't require an nvidia backend, the generic
+  # test-op workflow should be fine.
+  alpha-ops:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: nvidia
+      runner_label: hopper
+      gpu_check_script: tools/gpu_check.sh
+      test_script: tools/test-op-experimental.sh
+      changed_files: ${{ needs.preprocess.outputs.changed_files }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
