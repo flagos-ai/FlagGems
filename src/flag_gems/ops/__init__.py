@@ -75,6 +75,7 @@ from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.count_nonzero import count_nonzero
+from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
@@ -303,6 +304,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "ctc_loss",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
     "_safe_softmax",
