@@ -16,9 +16,9 @@ Coverage:
 
 import pytest
 import torch
-from flag_gems.experimental_ops.logaddexp import logaddexp, logaddexp_out
 
 import flag_gems
+from flag_gems.experimental_ops.logaddexp import logaddexp, logaddexp_out
 
 # logaddexp_ 在 test_accuracy_logaddexp_ 中通过 torch.logaddexp_ 测试
 # noqa: F401
@@ -111,11 +111,17 @@ def test_accuracy_logaddexp_out(shape, dtype):
 def test_special_values():
     """inf / -inf / nan semantics must match torch.logaddexp."""
     # Test with inf
-    x_inf = torch.tensor([float("inf"), 0.0, -float("inf"), 100.0], dtype=torch.float32, device="cuda")
-    y_inf = torch.tensor([0.0, float("inf"), -float("inf"), 100.0], dtype=torch.float32, device="cuda")
+    x_inf = torch.tensor(
+        [float("inf"), 0.0, -float("inf"), 100.0], dtype=torch.float32, device="cuda"
+    )
+    y_inf = torch.tensor(
+        [0.0, float("inf"), -float("inf"), 100.0], dtype=torch.float32, device="cuda"
+    )
     ref_inf = torch.logaddexp(x_inf, y_inf)
     res_inf = logaddexp(x_inf, y_inf)
-    torch.testing.assert_close(res_inf, ref_inf, atol=1.3e-6, rtol=_RTOL, equal_nan=True)
+    torch.testing.assert_close(
+        res_inf, ref_inf, atol=1.3e-6, rtol=_RTOL, equal_nan=True
+    )
     print(f"  inf test passed: {res_inf.tolist()}")
 
 
@@ -156,7 +162,7 @@ def test_different_shapes():
         ((2, 3, 4), (4,)),
         ((1, 1, 8), (8, 8)),
     ]
-    for (s1, s2) in shapes:
+    for s1, s2 in shapes:
         x = _make_positive(s1, torch.float32)
         y = _make_positive(s2, torch.float32)
         ref = torch.logaddexp(x, y)
@@ -186,7 +192,7 @@ if __name__ == "__main__":
     total = len(POINTWISE_SHAPES) * len(FLOAT_DTYPES)
     print("=== Test coverage statistics ===")
     print(f"  shapes × dtypes × 2 variants = {total} × 2 = {total * 2}")
-    print(f"  Special/boundary tests: 5")
+    print("  Special/boundary tests: 5")
     print(f"  Total: {total * 2 + 5} test cases\n")
 
     print("Running quick self-check (float32 small sizes)...")

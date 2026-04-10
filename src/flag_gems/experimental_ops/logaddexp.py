@@ -18,18 +18,19 @@ from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def _logaddexp_kernel(x, y):
     """Numerically stable logaddexp: m + log(exp(x-m) + exp(y-m))"""
     x_fp32 = x.to(tl.float32)
     y_fp32 = y.to(tl.float32)
-    
+
     m = tl.maximum(x_fp32, y_fp32)
-    
+
     diff_x = tl.where(x_fp32 == m, 0.0, x_fp32 - m)
     diff_y = tl.where(y_fp32 == m, 0.0, y_fp32 - m)
-    
+
     result = m + tl.log(tl.exp(diff_x) + tl.exp(diff_y))
     return result.to(x.dtype)
 
@@ -92,7 +93,9 @@ if __name__ == "__main__":
     y3 = torch.tensor([0.0, float("inf"), -float("inf")], device=device)
     ref3 = torch.logaddexp(x3, y3)
     res3 = logaddexp(x3, y3)
-    assert torch.allclose(res3, ref3, equal_nan=True), f"Special values FAIL: {res3} vs {ref3}"
+    assert torch.allclose(
+        res3, ref3, equal_nan=True
+    ), f"Special values FAIL: {res3} vs {ref3}"
     print("  ✅ special values (inf/-inf) 正确")
 
     # 5. Large value test
@@ -100,7 +103,9 @@ if __name__ == "__main__":
     y4 = torch.tensor([1000.0, 1000.0], device=device)
     ref4 = torch.logaddexp(x4, y4)
     res4 = logaddexp(x4, y4)
-    assert torch.allclose(res4, ref4, atol=1e-3, rtol=1e-3), f"Large value FAIL: {res4} vs {ref4}"
+    assert torch.allclose(
+        res4, ref4, atol=1e-3, rtol=1e-3
+    ), f"Large value FAIL: {res4} vs {ref4}"
     print("  ✅ numerical stability (large values) 正确")
 
     # 6. Broadcast test
@@ -108,7 +113,9 @@ if __name__ == "__main__":
     y5 = torch.tensor([1.0], device=device)
     ref5 = torch.logaddexp(x5, y5)
     res5 = logaddexp(x5, y5)
-    assert torch.allclose(res5, ref5, atol=1e-4, rtol=1e-4), f"Broadcast FAIL: {res5} vs {ref5}"
+    assert torch.allclose(
+        res5, ref5, atol=1e-4, rtol=1e-4
+    ), f"Broadcast FAIL: {res5} vs {ref5}"
     print("  ✅ broadcast 正确")
 
     print("\n✅ 全部自测通过！")

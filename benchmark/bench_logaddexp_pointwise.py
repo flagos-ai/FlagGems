@@ -11,9 +11,9 @@ import os
 import sys
 
 import torch
-from flag_gems.experimental_ops.logaddexp import logaddexp
 
 import flag_gems
+from flag_gems.experimental_ops.logaddexp import logaddexp
 
 # ---------------------------------------------------------------------------
 # Try to use FlagGems official benchmark framework
@@ -48,7 +48,9 @@ FLOAT_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
 # ===========================================================================
 # CUDA Event precise timing (median latency)
 # ===========================================================================
-def _bench(op, x: torch.Tensor, y: torch.Tensor, warmup: int = 50, rep: int = 200) -> float:
+def _bench(
+    op, x: torch.Tensor, y: torch.Tensor, warmup: int = 50, rep: int = 200
+) -> float:
     """Return median latency (ms). Must use CUDA Event, time.time() is inaccurate for GPU async."""
     for _ in range(warmup):
         op(x, y)
@@ -105,8 +107,12 @@ def run_standalone():
     speedups = []
     for dtype in FLOAT_DTYPES:
         for shape in BENCHMARK_SHAPES:
-            x = (torch.rand(shape, dtype=torch.float32, device="cuda").abs() + 1e-3).to(dtype)
-            y = (torch.rand(shape, dtype=torch.float32, device="cuda").abs() + 1e-3).to(dtype)
+            x = (torch.rand(shape, dtype=torch.float32, device="cuda").abs() + 1e-3).to(
+                dtype
+            )
+            y = (torch.rand(shape, dtype=torch.float32, device="cuda").abs() + 1e-3).to(
+                dtype
+            )
 
             t_ref = _bench(torch.logaddexp, x, y)
             t_gems = _bench(logaddexp, x, y)
@@ -130,8 +136,8 @@ def run_standalone():
     print("=" * W)
 
     # Memory bandwidth utilization (float32 1024×1024)
-    x32 = (torch.rand(1024, 1024, dtype=torch.float32, device="cuda").abs() + 1e-3)
-    y32 = (torch.rand(1024, 1024, dtype=torch.float32, device="cuda").abs() + 1e-3)
+    x32 = torch.rand(1024, 1024, dtype=torch.float32, device="cuda").abs() + 1e-3
+    y32 = torch.rand(1024, 1024, dtype=torch.float32, device="cuda").abs() + 1e-3
     t_ms = _bench(logaddexp, x32, y32)
     # Read 2*N elements + Write N elements
     gbps = 3 * x32.numel() * x32.element_size() / (t_ms * 1e-3) / 1e9
