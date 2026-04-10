@@ -17,11 +17,31 @@ uv venv
 source .venv/bin/activate
 
 # Setup
-uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
+uv pip install setuptools==79.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
 
-uv pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index https://download.pytorch.org/whl/cu118
+uv pip install \
+    nvidia-cublas-cu11==11.11.3.6 \
+    nvidia-cuda-cupti-cu11==11.8.87 \
+    nvidia-cuda-nvrtc-cu11==11.8.89 \
+    nvidia-cuda-runtime-cu11==11.8.89 \
+    nvidia-cudnn-cu11==9.1.0.70 \
+    nvidia-cufft-cu11==10.9.0.58 \
+    nvidia-curand-cu11==10.3.0.86 \
+    nvidia-cusolver-cu11==11.4.1.48 \
+    nvidia-cusparse-cu11==11.7.5.86 \
+    nvidia-nccl-cu11==2.21.5 \
+    nvidia-nvtx-cu11==11.8.86 \
+  --index https://resource.flagos.net/respository/flagos-pypi-kunlunxin/simple
+
+uv pip install -e .[kunlunxin,test]
+
 $HOME/kunlunxin/install-wheels.sh
-uv pip install -e .[kununxin,test]
+
+uv pip uninstall pytest-repeat pytest-timeout
+
+uv pip list
+
+echo "Start running tests ..."
 
 TEST_FILES=(
   # Reduction
@@ -58,5 +78,5 @@ TEST_FILES=(
 )
 
 for testcase in "${TEST_FILES[@]}"; do
-    pytest -s --tb=line $testcase
+    pytest -s --tb=line $testcase --ref cpu
 done

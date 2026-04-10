@@ -31,7 +31,7 @@ def add_func_scalar_tensor(x, y, alpha):
 
 
 def add(A, B, *, alpha=1):
-    logger.debug("GEMS ADD")
+    logger.debug("GEMS_KUNLUNXIN ADD")
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
     )
@@ -87,7 +87,7 @@ def add(A, B, *, alpha=1):
 
 
 def add_(A, B, *, alpha=1.0):
-    logger.debug("GEMS ADD_")
+    logger.debug("GEMS_KUNLUNXIN ADD_")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return add_func(A, B, alpha, out0=A)
     elif isinstance(A, torch.Tensor):

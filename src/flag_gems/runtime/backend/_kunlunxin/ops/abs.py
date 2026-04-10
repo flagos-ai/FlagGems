@@ -15,11 +15,11 @@ def abs_func(x):
 
 
 def abs(A):
-    logger.debug("GEMS ABS")
+    logger.debug("GEMS_KUNLUNXIN ABS")
     return abs_func(A)
 
 
 def abs_(A):
-    logger.debug("GEMS ABS_")
+    logger.debug("GEMS_KUNLUNXIN ABS_")
     abs_func(A, out0=A)
     return A

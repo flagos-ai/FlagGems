@@ -91,7 +91,6 @@ kunlunxin = [
     "hyperparameter==0.5.6",
     "colorama==0.4.6",
     "psutil==6.1.0",
-    "setuptools==81.0.0",
 ]
 
 mthreads = [
