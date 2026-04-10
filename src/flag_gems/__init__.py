@@ -67,6 +67,7 @@ _FULL_CONFIG = (
     ("all.dims", all_dims),
     ("allclose", allclose),
     ("amax", amax),
+    ("aminmax", aminmax),
     ("angle", angle),
     ("any", any),
     ("any.dim", any_dim),

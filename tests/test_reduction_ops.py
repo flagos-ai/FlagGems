@@ -85,6 +85,45 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.aminmax
+@pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_aminmax(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # torch.aminmax only supports single dim, use torch.amin/amax for multi-dim
+    if isinstance(dim, list):
+        ref_min = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
+        ref_max = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+    else:
+        ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        if isinstance(dim, list):
+            res_min = torch.amin(inp, dim=dim, keepdim=keepdim)
+            res_max = torch.amax(inp, dim=dim, keepdim=keepdim)
+        else:
+            res_min, res_max = torch.aminmax(inp, dim=dim, keepdim=keepdim)
+
+    gems_assert_equal(res_min, ref_min)
+    gems_assert_equal(res_max, ref_max)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_aminmax_no_dim(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_min, ref_max = torch.aminmax(ref_inp)
+    with flag_gems.use_gems():
+        res_min, res_max = torch.aminmax(inp)
+
+    gems_assert_equal(res_min, ref_min)
+    gems_assert_equal(res_max, ref_max)
+
+
 EMPTY_SHAPES = [(0, 5), (3, 0, 4), (2, 5, 0), (0,)]
 
 
