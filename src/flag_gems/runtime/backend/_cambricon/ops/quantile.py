@@ -19,7 +19,6 @@ from flag_gems.utils import triton_lang_extension as tle
 from ..utils import MAX_GRID_SIZE_X
 from .topk import _get_finfo_val
 
-logger = logging.getLogger(__name__)
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
