@@ -1,47 +1,29 @@
 #!/bin/bash
 
-VENDOR=${1}
-echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
+VENDOR=${1:?"Usage: bash tools/run_backend_tests_hygon.sh <vendor>"}
 
-export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
-
-# PyEnv settings
+# Environment Activation
+# Using pyenv to manage Python versions
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
 
-# Preamble
 pip install -U pip
 pip install uv
+
+# Create virtual environment
 uv venv
 source .venv/bin/activate
 
-# Setup
+# Install build tools
 uv pip install setuptools==79.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
+uv pip install flagtree==0.5.0+hcu3.0 --index https://resource.flagos.net/repository/flagos-pypi-hygon/simple
+uv pip install torch==2.9.0+das.opt1.dtk2604 --index https://resource.flagos.net/repository/flagos-pypi-hygon/simple
+uv pip install -e .[hygon,test]
 
-uv pip install \
-    nvidia-cublas-cu11==11.11.3.6 \
-    nvidia-cuda-cupti-cu11==11.8.87 \
-    nvidia-cuda-nvrtc-cu11==11.8.89 \
-    nvidia-cuda-runtime-cu11==11.8.89 \
-    nvidia-cudnn-cu11==9.1.0.70 \
-    nvidia-cufft-cu11==10.9.0.58 \
-    nvidia-curand-cu11==10.3.0.86 \
-    nvidia-cusolver-cu11==11.4.1.48 \
-    nvidia-cusparse-cu11==11.7.5.86 \
-    nvidia-nccl-cu11==2.21.5 \
-    nvidia-nvtx-cu11==11.8.86 \
-  --index https://resource.flagos.net/respository/flagos-pypi-kunlunxin/simple
+source /opt/dtk-26.04/env.sh
 
-uv pip install -e .[kunlunxin,test]
-
-$HOME/kunlunxin/install-wheels.sh
-
-uv pip uninstall pytest-repeat pytest-timeout
-
-uv pip list
-
-echo "Start running tests ..."
+echo "Starting tests..."
 
 TEST_FILES=(
   # Reduction
@@ -80,3 +62,5 @@ TEST_FILES=(
 for testcase in "${TEST_FILES[@]}"; do
     pytest -s --tb=line $testcase --ref cpu
 done
+
+echo "All tests finished."
