@@ -65,6 +65,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("eq", torch.eq, FLOAT_DTYPES),
             ("equal", torch.equal, FLOAT_DTYPES),
             ("ge", torch.ge, FLOAT_DTYPES),
+            ("greater", torch.greater, FLOAT_DTYPES),
             ("gt", torch.gt, FLOAT_DTYPES),
             ("le", torch.le, FLOAT_DTYPES),
             ("lt", torch.lt, FLOAT_DTYPES),
