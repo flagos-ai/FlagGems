@@ -1,6 +1,6 @@
 import logging
 import math
-from collections import namedtuple
+from typing import List, Tuple, Union
 
 import torch
 import triton
@@ -10,11 +10,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
-
-# from typing import List, Tuple, Union
-
-
-CumminResult = namedtuple("CumminResult", ["values", "indices"])
 
 Tensor = torch.Tensor
 
@@ -109,7 +104,6 @@ def scan_part_min_kernel(
     result, cummin_indices = tl_cummin(inp_vals, in_indices_vals, axis=0)
 
     if tl.constexpr(NEED_PARTIAL):
-        # tl.min do not support min_indices_tie_break_right
         part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
             inp_vals, in_indices_vals, axis=0
         )
@@ -129,7 +123,6 @@ def scan_part_min_kernel(
 
 
 def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False):
-    # TODO(all): tune on target board
     BLOCK_SIZE = 1024
     if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
@@ -223,7 +216,6 @@ def scan_part_min_abc_kernel(
     result, cummin_indices = tl_cummin(inp_vals, in_indices_vals, axis=0)
 
     if tl.constexpr(NEED_PARTIAL):
-        # tl.min do not support min_indices_tie_break_right
         part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
             inp_vals, in_indices_vals, axis=0
         )
@@ -288,7 +280,6 @@ def add_base_min_abc_kernel(
 
 
 def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
-    # TODO(all): tune on target board
     BLOCK_SIZE = 1024
     if B <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
@@ -363,7 +354,6 @@ def scan_part_min_abc_loop_kernel(
     t_idx = tl.arange(0, BLOCK_SIZE)
     ac_offset = a_idx * B * C + c_idx
 
-    # init
     max_value = get_dtype_max(inp.type.element_ty)
     if tl.constexpr(inp.type.element_ty.is_fp16()) or tl.constexpr(
         inp.type.element_ty.is_bf16()
@@ -386,46 +376,36 @@ def scan_part_min_abc_loop_kernel(
         offset = ac_offset + b_idx * C
 
         inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
-        # Only promote if necessary
         if tl.constexpr(compute_dtype != inp.type.element_ty):
             vals = inp_vals.to(compute_dtype)
         else:
             vals = inp_vals
         idxs = b_idx
 
-        # cummin
         result, cummin_indices = tl_cummin(vals, idxs, axis=0)
 
-        # broadcast
         prev_min_val_b = tl.broadcast_to(prev_min_val, (BLOCK_SIZE,))
         prev_min_val_idx_b = tl.broadcast_to(prev_min_val_idx, (BLOCK_SIZE,))
 
-        # Handle NaN and tie-breaking logic
         if tl.constexpr(compute_dtype.is_floating()):
-            # For floats: handle NaN propagation + tie-break right
             prev_is_nan = prev_min_val != prev_min_val
             result_is_nan = result != result
             prev_nan_mask = tl.broadcast_to(prev_is_nan, (BLOCK_SIZE,))
-
             use_result = result_is_nan | (~prev_nan_mask & (result <= prev_min_val_b))
         else:
-            # For integers: simple tie-break right
             use_result = result <= prev_min_val_b
 
         final_vals = tl.where(use_result, result, prev_min_val_b)
         final_indices = tl.where(use_result, cummin_indices, prev_min_val_idx_b)
 
-        # update global min val and idx
         prev_min_val = tl.sum(tl.where(last_mask, final_vals, 0), axis=0)
         prev_min_val_idx = tl.sum(tl.where(last_mask, final_indices, 0), axis=0)
 
-        # store result
         tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
         tl.store(out_indices + offset, final_indices, mask=mask)
 
 
 def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
-    # TODO(all): tune on target board
     BLOCK_SIZE = 1024
     if B < 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
@@ -445,13 +425,12 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
         )
 
 
-# def cummin(
-#     input: Tensor,
-#     dim: int,
-#     *,
-#     out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
-# ) -> torch.return_types.cummin:
-def cummin(input, dim=1):
+def cummin(
+    input: Tensor,
+    dim: int,
+    *,
+    out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
+) -> torch.return_types.cummin:
     logger.debug("GEMS cummin")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
@@ -479,5 +458,4 @@ def cummin(input, dim=1):
         scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
     else:
         scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
-    # return out, out_indices
-    return CumminResult(out, out_indices)
+    return torch.return_types.cummin((out, out_indices))
