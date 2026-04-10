@@ -112,6 +112,7 @@ from .mm import mm, mm_out
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
+from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nonzero import nonzero
@@ -166,6 +167,7 @@ from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
+from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_copy
 from .topk import topk
@@ -341,6 +343,7 @@ __all__ = [
     "mul_",
     "multinomial",
     "mv",
+    "nan_to_num",
     "ne",
     "ne_scalar",
     "neg",
@@ -440,6 +443,8 @@ __all__ = [
     "where_self_out",
     "where_scalar_other",
     "where_scalar_self",
+    "threshold",
+    "threshold_backward",
     "zero_",
     "zeros",
     "zeros_like",

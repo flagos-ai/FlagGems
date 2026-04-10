@@ -6,8 +6,8 @@ import triton
 import triton.language as tl
 from triton.language.extra.mlu.libdevice import philox as _philox
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
@@ -17,8 +17,19 @@ from ..utils import TOTAL_CORE_NUM
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
+UNROLL = 4
 
-@triton.heuristics(runtime.get_heuristic_config("dropout"))
+
+@libentry()
+@libtuner(
+    configs=[
+        triton.Config(kwargs={"BLOCK": 1024}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK": 4096}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK": 16384}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK": 32768}, num_stages=3, num_warps=1),
+    ],
+    key=["N"],
+)
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_forward_kernel(
     X,
@@ -30,7 +41,7 @@ def dropout_forward_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
-    UNROLL: tl.constexpr = 4  # philox generate 128 random bits at a time
+    UNROLL: tl.constexpr = 4
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
 
@@ -50,19 +61,27 @@ def dropout_forward_kernel(
         r = uint_to_uniform_float(r)
 
         mask = r > p
+        mask_reshaped = tl.reshape(mask, [UNROLL * BLOCK], can_reorder=True)
 
         off = block_offset + tl.arange(0, UNROLL * BLOCK)
-        x = tl.load(X + off, mask=off < N, other=0.0)
-        y = (
-            x * mp * tl.reshape(mask, [UNROLL * BLOCK], can_reorder=True)
-        )  # tl.where(mask0, x0 * p, 0.0)
-        mask_reshaped = tl.reshape(mask, [UNROLL * BLOCK], can_reorder=True)
-        tl.store(dropout_mask + off, mask_reshaped, mask=off < N)
-        tl.store(Y + off, y, mask=off < N)
+        valid = off < N
+        x = tl.load(X + off, mask=valid, other=0.0)
+        y = tl.where(mask_reshaped, x * mp, 0.0)
+        tl.store(dropout_mask + off, mask_reshaped, mask=valid)
+        tl.store(Y + off, y, mask=valid)
         i4_start += num_jobs * BLOCK
 
 
-@triton.heuristics(runtime.get_heuristic_config("dropout"))
+@libentry()
+@libtuner(
+    configs=[
+        triton.Config(kwargs={"BLOCK": 1024}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK": 4096}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK": 16384}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK": 32768}, num_stages=3, num_warps=1),
+    ],
+    key=["N"],
+)
 @triton.jit(do_not_specialize=["scale"])
 def dropout_backward_kernel(
     DY,
@@ -73,23 +92,19 @@ def dropout_backward_kernel(
     BLOCK: tl.constexpr,
 ):
     UNROLL: tl.constexpr = 4
-
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     block_start = pid * UNROLL * BLOCK
     step = num_programs * UNROLL * BLOCK
     for block_offset in range(block_start, N, step):
         off = block_offset + tl.arange(0, UNROLL * BLOCK)
+        valid = off < N
         mask = tl.load(
-            dropout_mask + off, mask=off < N, other=0, eviction_policy="evict_first"
+            dropout_mask + off, mask=valid, other=0, eviction_policy="evict_first"
         )
-        dy = tl.load(DY + off, mask=off < N, other=0.0, eviction_policy="evict_first")
+        dy = tl.load(DY + off, mask=valid, other=0.0, eviction_policy="evict_first")
         dx = dy * mask * scale
-
-        tl.store(DX + off, dx, mask=off < N, eviction_policy="evict_first")
-
-
-UNROLL = 4
+        tl.store(DX + off, dx, mask=valid, eviction_policy="evict_first")
 
 
 def dropout(input, p, train=True):
@@ -104,7 +119,6 @@ def dropout(input, p, train=True):
         return out, mask
     assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
     device = input.device
-    # TODO: remove contiguous enforcement
     input = input.contiguous()
     out = torch.empty_like(input)
     mask = torch.empty_like(input, dtype=torch.bool)
@@ -112,8 +126,6 @@ def dropout(input, p, train=True):
     grid_fn = lambda meta: (
         min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),
     )
-    # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
-    # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
@@ -125,8 +137,6 @@ def dropout(input, p, train=True):
             p,
             philox_seed,
             philox_offset,
-            num_warps=1,
-            num_stages=3,
         )
     return out, mask
 
@@ -146,7 +156,5 @@ def dropout_backward(grad_output, mask, scale):
             mask,
             N,
             scale,
-            num_stages=3,
-            num_warps=1,
         )
     return grad_input
