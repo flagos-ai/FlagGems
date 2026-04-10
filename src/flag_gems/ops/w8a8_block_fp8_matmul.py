@@ -194,39 +194,28 @@ def w8a8_block_fp8_matmul(
             triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         )
 
-    enable_sqmma_env = flag_gems.vendor_name == "mthreads"
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA") if enable_sqmma_env else None
-    if enable_sqmma_env:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    try:
-        w8a8_block_fp8_matmul_kernel[grid](
-            A,
-            B,
-            C,
-            As,
-            Bs,
-            M,
-            N,
-            K,
-            block_n,
-            block_k,
-            A.stride(-2),
-            A.stride(-1),
-            B.stride(1),
-            B.stride(0),
-            C.stride(-2),
-            C.stride(-1),
-            As.stride(-2),
-            As.stride(-1),
-            Bs.stride(1),
-            Bs.stride(0),
-            **config,
-        )
-    finally:
-        if enable_sqmma_env:
-            if prev_sqmma is None:
-                os.environ.pop("MUSA_ENABLE_SQMMA", None)
-            else:
-                os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+    w8a8_block_fp8_matmul_kernel[grid](
+        A,
+        B,
+        C,
+        As,
+        Bs,
+        M,
+        N,
+        K,
+        block_n,
+        block_k,
+        A.stride(-2),
+        A.stride(-1),
+        B.stride(1),
+        B.stride(0),
+        C.stride(-2),
+        C.stride(-1),
+        As.stride(-2),
+        As.stride(-1),
+        Bs.stride(1),
+        Bs.stride(0),
+        **config,
+    )
 
     return C
