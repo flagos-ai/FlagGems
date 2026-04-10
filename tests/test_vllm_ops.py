@@ -261,13 +261,6 @@ if not QUICK_MODE:
         (64, 256, 7168, 2048, 8),
         (128, 256, 7168, 2048, 8),
         (256, 256, 7168, 2048, 8),
-        # Qwen3.5-397B-A17B
-        (1, 512, 4096, 1024, 10),
-        (4, 512, 4096, 1024, 10),
-        (16, 512, 4096, 1024, 10),
-        (64, 512, 4096, 1024, 10),
-        (128, 512, 4096, 1024, 10),
-        (256, 512, 4096, 1024, 10),
     ]
 
 
@@ -450,6 +443,12 @@ if not QUICK_MODE:
         (1, 8, 4096, 14336, 2),
         (16, 8, 4096, 14336, 2),
         (64, 8, 4096, 14336, 2),
+    ]
+
+FUSED_MOE_FP8_BLOCKWISE_CONFIGS = list(FUSED_MOE_QUANT_CONFIGS)
+
+if not QUICK_MODE:
+    FUSED_MOE_FP8_BLOCKWISE_CONFIGS += [
         # Qwen3.5-397B-A17B
         (1, 512, 4096, 1024, 10),
         (4, 512, 4096, 1024, 10),
@@ -752,7 +751,7 @@ def test_accuracy_fused_moe_fp8(config):
 
 
 @pytest.mark.fused_moe
-@pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
+@pytest.mark.parametrize("config", FUSED_MOE_FP8_BLOCKWISE_CONFIGS)
 @pytest.mark.parametrize("block_shape", [[128, 128]])
 @pytest.mark.skipif(
     not is_cuda_available(),
