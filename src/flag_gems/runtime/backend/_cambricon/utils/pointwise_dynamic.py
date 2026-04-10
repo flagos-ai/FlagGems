@@ -1,5 +1,6 @@
 import importlib
 import os
+from dataclasses import dataclass
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
@@ -238,10 +239,8 @@ class KernelGenerator:
         self.fn_module = scalar_fn.__module__
 
     def gen_import_function(self, code: IndentedBuffer):
-        code.writeline(f'"""Quoted source of {self.fn_name}:')
+        code.writeline("@triton.jit")
         code.writemultiline(self.fn.src)
-        code.writeline('"""')
-        code.newline()
 
     def gen_config_prune(self, code):
         code.writeline("def config_prune(configs, named_args, **kwargs):")
@@ -1412,6 +1411,7 @@ class ModuleGenerator:
         config: CodeGenConfig,
     ):
         self.config = config
+        self.scalar_fn = scalar_fn
         self.wrapper_gen = WrapperGenerator(
             function_schema, jit_fn_name, ndim, wrapper_name, config
         )
@@ -1420,7 +1420,91 @@ class ModuleGenerator:
         )
 
     @staticmethod
-    def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    def _collect_jit_deps(scalar_fn):
+        """Collect extra imports and local @triton.jit helper sources.
+
+        Parses the source module where scalar_fn is defined using AST.
+        Returns a tuple of:
+          - extra_imports: dict of module_path -> set of names
+          - local_sources: list of source strings for local @triton.jit
+            functions (those NOT decorated with @pointwise_dynamic)
+        """
+        import ast
+        import inspect
+
+        py_fn = getattr(scalar_fn, "fn", scalar_fn)
+        module_name = getattr(py_fn, "__module__", None)
+        if not module_name:
+            return {}, []
+        try:
+            mod = importlib.import_module(module_name)
+            source_file = inspect.getfile(mod)
+        except (ImportError, TypeError, OSError):
+            return {}, []
+        try:
+            with open(source_file) as f:
+                module_source = f.read()
+            source_lines = module_source.splitlines(keepends=True)
+            tree = ast.parse(module_source)
+        except (OSError, SyntaxError):
+            return {}, []
+
+        # Collect non-standard import-from lines
+        ALREADY_IMPORTED = {
+            "math",
+            "typing",
+            "torch",
+            "triton",
+            "triton.language",
+            "flag_gems.utils.shape_utils",
+            "flag_gems.utils.tensor_wrapper",
+            "flag_gems.utils.libentry",
+            "flag_gems.utils",
+            "flag_gems.runtime",
+            "flag_gems.utils.pointwise_dynamic",
+            "utils.pointwise_dynamic",
+            "randn",
+            "utils",
+            "all",
+        }
+        extra_imports = {}
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module in ALREADY_IMPORTED:
+                    continue
+                names = {alias.name for alias in node.names}
+                extra_imports.setdefault(node.module, set()).update(names)
+
+        # Collect local @triton.jit functions (without @pointwise_dynamic)
+        def _has_decorator(func_node, name):
+            for dec in func_node.decorator_list:
+                src = "".join(source_lines[dec.lineno - 1 : dec.end_lineno])
+                if name in src:
+                    return True
+            return False
+
+        def _extract_source(func_node):
+            start = func_node.lineno - 1
+            if func_node.decorator_list:
+                start = func_node.decorator_list[0].lineno - 1
+            end = func_node.end_lineno
+            return "".join(source_lines[start:end])
+
+        local_sources = []
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if not _has_decorator(node, "triton.jit") and not _has_decorator(
+                node, "jit"
+            ):
+                continue
+            if _has_decorator(node, "pointwise_dynamic"):
+                continue
+            local_sources.append(_extract_source(node))
+
+        return extra_imports, local_sources
+
+    def generate_imports(self, code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("import math")
         code.writeline("from typing import Union")
         code.writeline("import torch")
@@ -1436,12 +1520,25 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry, libtuner")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
+
+        # Generate extra imports and local JIT deps of the scalar function
+        jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
+        for module_path, names in sorted(jit_dep_imports.items()):
+            sorted_names = ", ".join(sorted(names))
+            code.writeline(f"from {module_path} import {sorted_names}")
+
         code.newline()
         code.newline()
+
+        # Emit local @triton.jit helper functions
+        for source in local_jit_sources:
+            for line in source.splitlines():
+                code.writeline(line)
+            code.newline()
+
         return code
 
     def codegen(self, code: IndentedBuffer):
-        # the only runtime determined factor is the rank of the task space
         code = self.generate_imports(code)
         if self.config.prefer_1d_tile:
             code = self.wrapper_gen.codegen_1d_tile(code)
@@ -1450,6 +1547,16 @@ class ModuleGenerator:
             code = self.wrapper_gen.codegen_nd_tile(code)
             code = self.kernel_gen.codegen_nd_tile(code)
         return code
+
+
+@dataclass
+class KernelInfo:
+    """Information about a generated kernel for C++ integration."""
+
+    file_path: str
+    kernel_name: str
+    wrapper_name: str
+    ndim: int
 
 
 class PointwiseDynamicFunction:
@@ -1470,6 +1577,8 @@ class PointwiseDynamicFunction:
 
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
+        # cached kernel info for C++ integration
+        self._kernel_info_cache: Mapping[str, KernelInfo] = {}
 
     def __call__(self, *args, **kwargs):
         # inputs must be passed by position, outputs must be passed by keyword
@@ -1617,6 +1726,29 @@ class PointwiseDynamicFunction:
             return item.unwrap()
         return tuple(item.unwrap() for item in tensors)
 
+    def _compute_kernel_names(self, ndim: int) -> Tuple[str, str, str]:
+        """Compute kernel name, wrapper name, and file path for a given ndim.
+
+        This is the single source of truth for naming, used by both instantiate()
+        and get_kernel_info() to ensure consistency.
+
+        Returns:
+            Tuple of (kernel_name, wrapper_name, file_path)
+        """
+        scalar_fn_name = self._scalar_fn.__name__
+        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}"
+        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}"
+
+        file_name = (
+            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
+            f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
+            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
+            ".py"
+        )
+        file_path = str(code_cache_dir() / file_name)
+
+        return kernel_name, wrapper_name, file_path
+
     def instantiate(self, ndim):
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
@@ -1627,9 +1759,9 @@ class PointwiseDynamicFunction:
 
         code = IndentedBuffer()
 
-        scalar_fn_name = self._scalar_fn.__name__
-        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}"
-        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}"
+        # Use helper to compute names (single source of truth)
+        kernel_name, wrapper_name, file_path = self._compute_kernel_names(ndim)
+
         module_gen = ModuleGenerator(
             self.fx,
             self._scalar_fn,
@@ -1647,14 +1779,6 @@ class PointwiseDynamicFunction:
         # created via exec string. We can help inspect to find the source by hacking linecache
         # library, but we find generating a module simpler, since we can generating 2 functions
         # the kernel and the wrapper, and the wrapper calls the kernel.
-        file_name = (
-            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
-            f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
-            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
-            ".py"
-        )
-
-        file_path = code_cache_dir() / file_name
         write_atomic(file_path, code.getvalue())
 
         # load
@@ -1679,7 +1803,38 @@ class PointwiseDynamicFunction:
 
         overload = getattr(m, wrapper_name)
         self.overloads[key] = overload
+
+        # Cache kernel info for C++ integration
+        self._kernel_info_cache[key] = KernelInfo(
+            file_path=file_path,
+            kernel_name=kernel_name,
+            wrapper_name=wrapper_name,
+            ndim=ndim,
+        )
+
         return overload
+
+    def get_kernel_info(self, ndim: int) -> KernelInfo:
+        """Get kernel information for a given ndim.
+
+        This method is useful for C++ integration to get the file path and
+        kernel name without duplicating the naming logic.
+
+        If the kernel hasn't been instantiated yet, this will instantiate it first.
+
+        Args:
+            ndim: The rank of the task space
+
+        Returns:
+            KernelInfo with file_path, kernel_name, wrapper_name, and ndim
+        """
+        key = f"{ndim}_{self.config.prefer_block_pointer}"
+
+        # Ensure the kernel is instantiated
+        if key not in self._kernel_info_cache:
+            self.instantiate(ndim)
+
+        return self._kernel_info_cache[key]
 
 
 def pointwise_dynamic(
