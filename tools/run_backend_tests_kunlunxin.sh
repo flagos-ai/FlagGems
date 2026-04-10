@@ -1,34 +1,48 @@
 #!/bin/bash
 
 VENDOR=${1}
-export GEMS_VENDOR=$VENDOR
-
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
-# TODO: Check if this is necessary
-# export TRITON_ALL_BLOCKS_PARALLEL=1
+export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
 
-# Initialize Ascend environment variables.
-# This script is provided by the Huawei Ascend CANN toolkit installation.
-if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
-    source /usr/local/Ascend/ascend-toolkit/set_env.sh
-fi
-
-# Set virtual environment
+# PyEnv settings
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
 
+# Preamble
+pip install -U pip
+pip install uv
 uv venv
 source .venv/bin/activate
 
-uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-# The following command will install torch==2.9.0+cpu as well
-uv pip install torch-npu==2.9.0 --index https://resource.flagos.net/repository/flagos-pypi-ascend/simple
-uv pip install flagtree==0.5.0+ascend3.2 --index https://resource.flagos.net/repository/flagos-pypi-ascend/simple
-uv pip install -e .[ascend,test]
+# Setup
+uv pip install setuptools==79.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
 
-# Start testing
+uv pip install \
+    nvidia-cublas-cu11==11.11.3.6 \
+    nvidia-cuda-cupti-cu11==11.8.87 \
+    nvidia-cuda-nvrtc-cu11==11.8.89 \
+    nvidia-cuda-runtime-cu11==11.8.89 \
+    nvidia-cudnn-cu11==9.1.0.70 \
+    nvidia-cufft-cu11==10.9.0.58 \
+    nvidia-curand-cu11==10.3.0.86 \
+    nvidia-cusolver-cu11==11.4.1.48 \
+    nvidia-cusparse-cu11==11.7.5.86 \
+    nvidia-nccl-cu11==2.21.5 \
+    nvidia-nvtx-cu11==11.8.86 \
+  --index https://resource.flagos.net/respository/flagos-pypi-kunlunxin/simple
+
+uv pip install -e .[kunlunxin,test]
+
+$HOME/kunlunxin/install-wheels.sh
+
+uv pip uninstall pytest-repeat pytest-timeout
+
+uv pip list
+
+echo "Start running tests ..."
+
 TEST_FILES=(
   # Reduction
   "tests/test_reduction_ops.py"
@@ -64,6 +78,5 @@ TEST_FILES=(
 )
 
 for testcase in "${TEST_FILES[@]}"; do
-    echo "Testing $testcase"
     pytest -s --tb=line $testcase --ref cpu
 done

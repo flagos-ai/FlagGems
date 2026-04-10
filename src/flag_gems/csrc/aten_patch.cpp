@@ -26,30 +26,44 @@ PYBIND11_MODULE(aten_patch, m) {
 //
 // Contributions are welcome to improve this behavior!
 namespace flag_gems {
-TORCH_LIBRARY_IMPL(aten, CUDA, m) {
+
+// Define dispatch key based on backend
+// CUDA and IX use CUDA dispatch key (IX is CUDA-compatible)
+// NPU and MUSA use PrivateUse1 dispatch key
+#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
+#define FLAGGEMS_DISPATCH_KEY CUDA
+#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA)
+#define FLAGGEMS_DISPATCH_KEY PrivateUse1
+#else
+#error \
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA"
+#endif
+
+TORCH_LIBRARY_IMPL(aten, FLAGGEMS_DISPATCH_KEY, m) {
   // REGISTER_AND_LOG("addmm", addmm);
   // REGISTER_AND_LOG("addmm.out", addmm_out);
   // REGISTER_AND_LOG("bmm", bmm);
   // REGISTER_AND_LOG("mm", mm_tensor);
   // REGISTER_AND_LOG("mm.out", mm_out_tensor);
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
-  REGISTER_AND_LOG("add.Tensor", add_tensor);
-  REGISTER_AND_LOG("add_.Tensor", add_tensor_inplace);
-  REGISTER_AND_LOG("add.Scalar", add_scalar);
-  REGISTER_AND_LOG("add_.Scalar", add_scalar_inplace);
-  // fill
-  REGISTER_AND_LOG("fill.Scalar", fill_scalar);
-  REGISTER_AND_LOG("fill_.Scalar", fill_scalar_);
-  REGISTER_AND_LOG("fill.Tensor", fill_tensor);
-  REGISTER_AND_LOG("fill_.Tensor", fill_tensor_);
+  // REGISTER_AND_LOG("add.Tensor", add_tensor);
+  // REGISTER_AND_LOG("add_.Tensor", add_tensor_inplace);
+  // REGISTER_AND_LOG("add.Scalar", add_scalar);
+  // REGISTER_AND_LOG("add_.Scalar", add_scalar_inplace);
+  // // fill
+  // REGISTER_AND_LOG("fill.Scalar", fill_scalar);
+  // REGISTER_AND_LOG("fill_.Scalar", fill_scalar_);
+  // REGISTER_AND_LOG("fill.Tensor", fill_tensor);
+  // REGISTER_AND_LOG("fill_.Tensor", fill_tensor_);
 #endif
-  REGISTER_AND_LOG("max.dim_max", max_dim_max);
-  REGISTER_AND_LOG("max.dim", max_dim);
-  REGISTER_AND_LOG("max", max);
-  REGISTER_AND_LOG("sum", sum);
-  REGISTER_AND_LOG("zeros", zeros);
+  // REGISTER_AND_LOG("max.dim_max", max_dim_max);
+  // REGISTER_AND_LOG("max.dim", max_dim);
+  // REGISTER_AND_LOG("max", max);
+  // REGISTER_AND_LOG("sum", sum);
+  // REGISTER_AND_LOG("zeros", zeros);
   REGISTER_AND_LOG("_to_copy", to_copy);
   REGISTER_AND_LOG("copy_", copy_);
+  REGISTER_AND_LOG("nonzero", nonzero);
 }
 
 }  // namespace flag_gems

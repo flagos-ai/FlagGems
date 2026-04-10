@@ -1,34 +1,30 @@
 #!/bin/bash
 
-VENDOR=${1}
-export GEMS_VENDOR=$VENDOR
+VENDOR=${1:?"Usage: bash tools/run_backend_tests_hygon.sh <vendor>"}
 
-echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
-
-# TODO: Check if this is necessary
-# export TRITON_ALL_BLOCKS_PARALLEL=1
-
-# Initialize Ascend environment variables.
-# This script is provided by the Huawei Ascend CANN toolkit installation.
-if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
-    source /usr/local/Ascend/ascend-toolkit/set_env.sh
-fi
-
-# Set virtual environment
+# Environment Activation
+# Using pyenv to manage Python versions
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
 
+pip install -U pip
+pip install uv
+
+# Create virtual environment
 uv venv
 source .venv/bin/activate
 
-uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-# The following command will install torch==2.9.0+cpu as well
-uv pip install torch-npu==2.9.0 --index https://resource.flagos.net/repository/flagos-pypi-ascend/simple
-uv pip install flagtree==0.5.0+ascend3.2 --index https://resource.flagos.net/repository/flagos-pypi-ascend/simple
-uv pip install -e .[ascend,test]
+# Install build tools
+uv pip install setuptools==79.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
+uv pip install flagtree==0.5.0+hcu3.0 --index https://resource.flagos.net/repository/flagos-pypi-hygon/simple
+uv pip install torch==2.9.0+das.opt1.dtk2604 --index https://resource.flagos.net/repository/flagos-pypi-hygon/simple
+uv pip install -e .[hygon,test]
 
-# Start testing
+source /opt/dtk-26.04/env.sh
+
+echo "Starting tests..."
+
 TEST_FILES=(
   # Reduction
   "tests/test_reduction_ops.py"
@@ -64,6 +60,7 @@ TEST_FILES=(
 )
 
 for testcase in "${TEST_FILES[@]}"; do
-    echo "Testing $testcase"
     pytest -s --tb=line $testcase --ref cpu
 done
+
+echo "All tests finished."
