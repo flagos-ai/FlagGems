@@ -179,6 +179,14 @@ def index_select_heur_block_n(args):
     return max(m, 16)
 
 
+def index_add_heur_block_m(args):
+    return 4 if args["M"] < 4096 else 8
+
+
+def index_add_heur_block_n(args):
+    return min(8192, triton.next_power_of_2(args["N"]))
+
+
 def mm_heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
@@ -426,6 +434,10 @@ HEURISTICS_CONFIGS = {
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
+    },
+    "index_add": {
+        "BLOCK_M": index_add_heur_block_m,
+        "BLOCK_N": index_add_heur_block_n,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
