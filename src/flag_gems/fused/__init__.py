@@ -20,6 +20,7 @@ from flag_gems.fused.fused_moe import (
 from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
+from flag_gems.fused.hadamard_transform import hadamard_transform
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size,
@@ -59,6 +60,7 @@ __all__ = [
     "geglu",
     "gelu_and_mul",
     "grouped_topk",
+    "hadamard_transform",
     "inplace_fused_experts",
     "instance_norm",
     "invoke_fused_moe_triton_kernel",
