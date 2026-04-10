@@ -171,6 +171,8 @@ from flag_gems.ops.max_pool2d_with_indices import (
 )
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
+from flag_gems.ops.median import median as median_op
+from flag_gems.ops.median import median_dim
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mm import mm, mm_out
@@ -303,6 +305,8 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "median_op",
+    "median_dim",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
     "_safe_softmax",

@@ -428,6 +428,8 @@ _FULL_CONFIG = (
     ("zero_", zero_),
     ("zeros", zeros),
     ("zeros_like", zeros_like),
+    ("median", median_op),
+    ("median.dim", median_dim),
 )
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
