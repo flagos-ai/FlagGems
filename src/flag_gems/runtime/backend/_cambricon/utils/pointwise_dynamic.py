@@ -244,6 +244,8 @@ class KernelGenerator:
         code.newline()
 
     def gen_config_prune(self, code):
+        code.newline()
+        code.newline()
         code.writeline("def config_prune(configs, named_args, **kwargs):")
         with code.indent():
             code.writeline("new_configs = []")
@@ -290,12 +292,45 @@ class KernelGenerator:
                     )
 
             code.writeline("return new_configs")
+
+    def gen_hooks(self, code):
         code.newline()
         code.newline()
+        code.writeline("restore_copies = {}")
+        code.writeline(
+            "KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.PrivateUse1)"
+        )
+        code.writeline("def pre_hook(kwargs, reset_only=False):")
+        with code.indent():
+            code.writeline("if not reset_only:")
+            with code.indent():
+                code.writeline(
+                    "torch_copy_ = flag_gems.current_work_registrar.torch_ops_map['aten::copy_']"
+                )
+                code.writeline(f"for name in {self.name}.fn.restore_value:")
+                with code.indent():
+                    code.writeline("restore_copy = torch.empty_like(kwargs[name])")
+                    code.writeline(
+                        "restore_copies[name] = torch_copy_.call_boxed(KEYSET, restore_copy, kwargs[name])"
+                    )
+
+        code.writeline("def post_hook(kwargs, exception):")
+        with code.indent():
+            code.writeline(f"for name in {self.name}.fn.restore_value:")
+            with code.indent():
+                code.writeline(
+                    "torch_copy_ = flag_gems.current_work_registrar.torch_ops_map['aten::copy_']"
+                )
+                code.writeline(
+                    "kwargs[name] = torch_copy_.call_boxed(KEYSET, kwargs[name], restore_copies[name])"
+                )
 
     def gen_decorators(self, code):
         if self.ndim in [1, 2, 3, 4] and (not self.config.prefer_1d_tile):
             self.gen_config_prune(code)
+
+            if self.fn_name == "_copy_kernel":
+                self.gen_hooks(code)
 
         num_non_tensor_args = self.fx.num_non_tensor_args()
         if num_non_tensor_args > 0:
@@ -335,6 +370,9 @@ class KernelGenerator:
                 ]
                 output_elements = ", ".join(f"'{name}'" for name in output_params)
                 code.writeline(f"restore_value=[{output_elements}],")
+                if self.fn_name == "_copy_kernel":
+                    code.writeline("pre_hook=pre_hook,")
+                    code.writeline("post_hook=post_hook,")
             code.writeline(")")
 
         if self.ndim == 2 and (not self.config.prefer_1d_tile):
@@ -361,6 +399,9 @@ class KernelGenerator:
                 ]
                 output_elements = ", ".join(f"'{name}'" for name in output_params)
                 code.writeline(f"restore_value=[{output_elements}],")
+                if self.fn_name == "_copy_kernel":
+                    code.writeline("pre_hook=pre_hook,")
+                    code.writeline("post_hook=post_hook,")
             code.writeline(")")
 
         if self.ndim == 3 and (not self.config.prefer_1d_tile):
@@ -391,6 +432,9 @@ class KernelGenerator:
                 ]
                 output_elements = ", ".join(f"'{name}'" for name in output_params)
                 code.writeline(f"restore_value=[{output_elements}],")
+                if self.fn_name == "_copy_kernel":
+                    code.writeline("pre_hook=pre_hook,")
+                    code.writeline("post_hook=post_hook,")
             code.writeline(")")
 
         if self.ndim == 4 and (not self.config.prefer_1d_tile):
@@ -421,6 +465,9 @@ class KernelGenerator:
                 ]
                 output_elements = ", ".join(f"'{name}'" for name in output_params)
                 code.writeline(f"restore_value=[{output_elements}],")
+                if self.fn_name == "_copy_kernel":
+                    code.writeline("pre_hook=pre_hook,")
+                    code.writeline("post_hook=post_hook,")
             code.writeline(")")
 
         if num_non_tensor_args > 0:
@@ -1427,6 +1474,7 @@ class ModuleGenerator:
         code.writeline("import triton")
         code.writeline("from triton import language as tl")
         code.newline()
+        code.writeline("import flag_gems")
         code.writeline("from flag_gems.utils.shape_utils import (")
         code.writeline("    heuristics_for_tile_size,")
         code.writeline("    heuristics_for_num_warps,")
