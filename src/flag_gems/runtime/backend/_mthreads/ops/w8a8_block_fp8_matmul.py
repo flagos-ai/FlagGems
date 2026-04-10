@@ -42,6 +42,7 @@ def is_sqmma_compatible(a, b, output_dtype, n, k):
     m = a.shape[0]
     return (
         a.dim() == 2
+        and SQMMA_ON
         and b.dim() == 2
         and a.dtype == b.dtype == torch.float8_e4m3fn
         and output_dtype in (torch.float16, torch.bfloat16)
@@ -50,7 +51,6 @@ def is_sqmma_compatible(a, b, output_dtype, n, k):
         and n % 16 == 0
         and k % 16 == 0
         and not should_skip_sqmma_for_shape(m, n, k)
-        and SQMMA_ON
     )
 
 
