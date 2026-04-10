@@ -1,4 +1,5 @@
 import itertools
+import math
 import random
 import time
 from typing import Optional
@@ -6,6 +7,7 @@ from typing import Optional
 import numpy as np
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 
@@ -2463,6 +2465,128 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
     with flag_gems.use_gems():
         res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+# ============================================================
+# Hadamard Transform
+# ============================================================
+
+
+def hadamard_transform_ref(x, scale=1.0):
+    """Reference implementation using scipy Hadamard matrix."""
+    from scipy.linalg import hadamard
+
+    x_shape = x.shape
+    dim = x.shape[-1]
+    x = x.reshape(-1, dim)
+    log_dim = math.ceil(math.log2(dim)) if dim > 1 else 1
+    dim_padded = 2**log_dim
+    if dim != dim_padded:
+        x = F.pad(x, (0, dim_padded - dim))
+    H = torch.tensor(hadamard(dim_padded, dtype=float), dtype=x.dtype, device=x.device)
+    out = F.linear(x, H) * scale
+    return out[..., :dim].reshape(*x_shape)
+
+
+def _hadamard_check(out, out_ref, out_pt, atol):
+    """Tolerance from Dao-AILab/fast-hadamard-transform tests:
+    https://github.com/Dao-AILab/fast-hadamard-transform/blob/master/tests/test_fast_hadamard_transform.py
+    err < 2 * pytorch_err + atol, with fp32: atol=3e-3, fp16: atol=5e-3, bf16: atol=5e-2.
+    """
+    err = (out.float() - out_ref.float()).abs().max().item()
+    pt_err = (out_pt.float() - out_ref.float()).abs().max().item()
+    return err < 2 * pt_err + atol
+
+
+@pytest.mark.hadamard_transform
+@pytest.mark.parametrize("batch_size", [1, 15])
+@pytest.mark.parametrize(
+    "dim", [8, 16, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768]
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_accuracy_hadamard_transform(batch_size, dim, dtype):
+    x = torch.randn(batch_size, dim, dtype=dtype, device=device, requires_grad=True)
+    x_ref = x.detach().clone().float().requires_grad_(True)
+    x_pt = x.detach().clone().requires_grad_(True)
+    scale = 1.0 / math.sqrt(dim)
+
+    atol = {torch.float32: 3e-3, torch.float16: 5e-3, torch.bfloat16: 5e-2}[dtype]
+
+    # Forward
+    out = flag_gems.hadamard_transform(x, scale)
+    out_ref = hadamard_transform_ref(x_ref, scale)  # fp32 ground truth
+    out_pt = hadamard_transform_ref(x_pt, scale)  # original dtype baseline
+
+    assert _hadamard_check(
+        out, out_ref, out_pt, atol
+    ), f"Forward failed: dim={dim}, dtype={dtype}, batch={batch_size}"
+
+    # Backward
+    g = torch.randn_like(out)
+    out.backward(g)
+    out_ref.backward(g.float())
+    out_pt.backward(g)
+
+    assert _hadamard_check(
+        x.grad, x_ref.grad, x_pt.grad, atol
+    ), f"Backward failed: dim={dim}, dtype={dtype}, batch={batch_size}"
+
+
+@pytest.mark.hadamard_transform
+@pytest.mark.parametrize(
+    "shape",
+    [
+        # Basic shapes
+        (4,),
+        (2, 3, 128),
+        (1, 1, 1, 256),
+        (8, 2048, 256),
+        # Production decode shapes
+        (1, 1, 16, 128),
+        (1, 1, 128),
+        (16, 1, 16, 128),
+        (16, 1, 128),
+        (64, 1, 16, 128),
+        (64, 1, 128),
+        # Production prefill shapes
+        (1, 4096, 128),
+        (1, 16384, 16, 128),
+        (16, 1024, 128),
+        (16, 4096, 16, 128),
+        (64, 256, 128),
+        (64, 1024, 16, 128),
+        # Non-power-of-2 dims (padding path)
+        (8, 3),
+        (8, 5),
+        (8, 7),
+        (8, 100),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_accuracy_hadamard_transform_shapes(shape, dtype):
+    scale = 1.0 / math.sqrt(shape[-1])
+    x = torch.randn(*shape, dtype=dtype, device=device, requires_grad=True)
+    x_ref = x.detach().clone().float().requires_grad_(True)
+    x_pt = x.detach().clone().requires_grad_(True)
+
+    atol = {torch.float32: 3e-3, torch.float16: 5e-3, torch.bfloat16: 5e-2}[dtype]
+
+    out = flag_gems.hadamard_transform(x, scale)
+    out_ref = hadamard_transform_ref(x_ref, scale)  # fp32 ground truth
+    out_pt = hadamard_transform_ref(x_pt, scale)  # original dtype baseline
+
+    assert _hadamard_check(
+        out, out_ref, out_pt, atol
+    ), f"Forward failed: shape={shape}, dtype={dtype}"
+
+    g = torch.randn_like(out)
+    out.backward(g)
+    out_ref.backward(g.float())
+    out_pt.backward(g)
+
+    assert _hadamard_check(
+        x.grad, x_ref.grad, x_pt.grad, atol
+    ), f"Backward failed: shape={shape}, dtype={dtype}"
 
 
 @pytest.mark.lift_fresh_copy

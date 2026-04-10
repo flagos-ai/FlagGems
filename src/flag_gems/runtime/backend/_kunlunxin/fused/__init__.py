@@ -4,6 +4,13 @@ from .flash_mla import flash_mla
 from .fused_add_rms_norm import fused_add_rms_norm
 from .geglu import dgeglu, geglu
 from .gelu_and_mul import gelu_and_mul
+from .hadamard_transform import (
+    hadamard_transform,
+    hadamard_transform_12N,
+    hadamard_transform_20N,
+    hadamard_transform_28N,
+    hadamard_transform_40N,
+)
 from .instance_norm import instance_norm
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
 from .outer import outer
@@ -22,6 +29,11 @@ __all__ = [
     "apply_rotary_pos_emb",
     "skip_layer_norm",
     "fused_add_rms_norm",
+    "hadamard_transform",
+    "hadamard_transform_12N",
+    "hadamard_transform_20N",
+    "hadamard_transform_28N",
+    "hadamard_transform_40N",
     "silu_and_mul",
     "silu_and_mul_out",
     "geglu",
