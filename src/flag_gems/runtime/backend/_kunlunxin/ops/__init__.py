@@ -189,6 +189,7 @@ from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
+from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .softmax import softmax, softmax_backward
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
@@ -223,6 +224,8 @@ from .zeros_like import zeros_like
 __all__ = [
     "_conv_depthwise2d",
     "digamma_",
+    "soft_margin_loss",
+    "soft_margin_loss_out",
     "softshrink",
     "softshrink_out",
     "_unique2",
