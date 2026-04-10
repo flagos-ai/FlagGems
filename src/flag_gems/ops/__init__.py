@@ -191,6 +191,7 @@ from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
+from flag_gems.ops.new_full import new_full
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
     nll_loss2d_backward,
@@ -557,6 +558,7 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "new_full",
     "nll_loss_backward",
     "nll_loss_forward",
     "nll_loss2d_backward",
