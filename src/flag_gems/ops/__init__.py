@@ -25,6 +25,7 @@ from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.atan import atan, atan_
+from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -72,6 +73,7 @@ from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
+from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
@@ -123,6 +125,12 @@ from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.greater import (
+    greater,
+    greater_out,
+    greater_scalar,
+    greater_scalar_out,
+)
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
@@ -343,6 +351,8 @@ __all__ = [
     "asinh_",
     "atan",
     "atan_",
+    "atan2",
+    "atan2_out",
     "avg_pool2d",
     "avg_pool2d_backward",
     "baddbmm",
@@ -383,6 +393,8 @@ __all__ = [
     "conv3d",
     "copy",
     "copy_",
+    "copysign",
+    "copysign_out",
     "cos",
     "cos_",
     "count_nonzero",
@@ -446,6 +458,10 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "greater",
+    "greater_out",
+    "greater_scalar",
+    "greater_scalar_out",
     "group_norm",
     "group_norm_backward",
     "gt",

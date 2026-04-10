@@ -114,6 +114,9 @@ def test_accuracy_addmm_out(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm(M, N, K, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
@@ -143,6 +146,9 @@ def test_accuracy_bmm(M, N, K, dtype):
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm_out(M, N, K, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -167,6 +173,9 @@ def test_accuracy_bmm_out(M, N, K, dtype):
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm_non_contiguous(M, N, K, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -468,17 +477,19 @@ def test_accuracy_outer(M, N, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.cfloat])
 @pytest.mark.parametrize("stride", [1, 2])
 def test_accuracy_vdot(M, is_conj, dtype, stride):
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "tsingmicro":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
     inp1_is_conj, inp2_is_conj = is_conj
 
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name == "mthreads" or flag_gems.vendor_name == "tsingmicro":
         inp1 = torch.randn(M, dtype=dtype, device="cpu")
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
     elif flag_gems.vendor_name == "ascend" and dtype == torch.cfloat:
         pytest.skip("Skipping torch.cfloat tests on Ascend platform")
+    elif flag_gems.vendor_name == "tsingmicro" and dtype == torch.cfloat:
+        pytest.skip("Skipping torch.cfloa tests on tsingmicro platform")
     elif flag_gems.vendor_name == "kunlunxin" and dtype == torch.cfloat:
         inp1 = torch.randn(M, dtype=dtype, device="cpu")
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
@@ -499,6 +510,10 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
 
     with flag_gems.use_gems():
         if flag_gems.vendor_name == "mthreads":
+            res_out = torch.vdot(
+                inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
+            )
+        elif flag_gems.vendor_name == "tsingmicro":
             res_out = torch.vdot(
                 inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
             )

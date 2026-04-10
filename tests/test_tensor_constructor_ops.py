@@ -41,7 +41,7 @@ def test_accuracy_randn(shape, dtype):
         torch.manual_seed(42)
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device=device)
-    ref_out = to_reference(res_out)
+    ref_out = to_reference(res_out).float()
     mean = torch.mean(ref_out)
     std = torch.std(ref_out)
     assert torch.abs(mean) < 0.01

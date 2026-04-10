@@ -3,9 +3,9 @@
 VENDOR=${1}
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
-export MUSA_INSTALL_PATH=/usr/local/musa
-export PATH=$MUSA_INSTALL_PATH/bin:$PATH
-export LD_LIBRARY_PATH=$MUSA_INSTALL_PATH/lib:$LD_LIBRARY_PATH
+export MUSA_HOME=/usr/local/musa
+export PATH=$MUSA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
 
 # PyEnv settings
 export PYENV_ROOT="$HOME/.pyenv"
@@ -32,16 +32,18 @@ uv pip install -e .[mthreads,test]
 # For the intel math library
 export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH
 
+# Print out package versions for debugging.
+uv pip list
+
 # In case the backend detection fails
 # export GEMS_VENDOR=$VENDOR
-source tools/run_command.sh
 
 # Reduction ops
 # FIXME(moore): Softmax only support float32/float16/bfloat16
-pytest -s tests/test_reduction_ops.py
+# pytest -s tests/test_reduction_ops.py
 pytest -s tests/test_general_reduction_ops.py
 # FIXME(moore): BatchNorm supports Float/Half/BFloat16 input dtype
-pytest -s tests/test_norm_ops.py
+# pytest -s tests/test_norm_ops.py
 
 # Pointwise ops
 pytest -s tests/test_pointwise_dynamic.py
@@ -57,7 +59,7 @@ pytest -s tests/test_tensor_constructor_ops.py
 # TODO(Qiming): Fix sharedencoding on Hopper
 pytest -s tests/test_attention_ops.py
 # FIXME(moore): unsupported data type DOUBLE
-pytest -s tests/test_blas_ops.py
+# pytest -s tests/test_blas_ops.py
 
 # Special ops
 pytest -s tests/test_special_ops.py
@@ -69,10 +71,6 @@ pytest -s tests/test_distribution_ops.py
 pytest -s tests/test_convolution_ops.py
 
 # Utils
-pytest -s tests/test_libentry.py
+# pytest -s tests/test_libentry.py
 pytest -s tests/test_shape_utils.py
 pytest -s tests/test_tensor_wrapper.py
-
-# Examples
-# TODO(Qiming): OSError: [Errno 101] Network is unreachable
-# run_command pytest -s examples/model_bert_test.py

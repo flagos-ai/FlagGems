@@ -1648,7 +1648,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     with flag_gems.use_gems():
         res_out = torch.diagonal(inp, offset, dim1, dim2)
 
-    out_grad = torch.randn_like(res_out)
+    out_grad = torch.randn_like(res_out.cpu()).to(device=flag_gems.device)
     ref_grad = to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
@@ -2164,7 +2164,7 @@ def test_conj_physical(shape, is_complex, dtype):
 def test_reflection_pad2d(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_x = to_reference(x)
+    ref_x = to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
     with flag_gems.use_gems():

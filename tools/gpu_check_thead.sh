@@ -24,7 +24,6 @@ while true; do
     need_wait=false
 
     printf " PPU  Total (MiB)  Used (MiB)  Free (MiB)\n"
-
     # Iterate through each card
     for ((i=0; i<$gpu_count; i++)); do
         # 1. Get information for a single card

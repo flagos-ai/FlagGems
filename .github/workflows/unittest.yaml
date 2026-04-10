@@ -110,9 +110,21 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
-      runner_label: ascend_CI
+      runner_label: ascend
       gpu_check_script: tools/gpu_check_ascend.sh
       test_script: tools/run_backend_tests_ascend.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-hygon:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: hygon
+      runner_label: hygon
+      gpu_check_script: tools/gpu_check_hygon.sh
+      test_script: tools/run_backend_tests_hygon.sh
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -125,6 +137,18 @@ jobs:
       runner_label: iluvatar
       gpu_check_script: tools/gpu_check_iluvatar.sh
       test_script: tools/run_backend_tests_iluvatar.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-kunlunxin:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: kunlunxin
+      runner_label: kunlunxin
+      gpu_check_script: tools/gpu_check_kunlunxin.sh
+      test_script: tools/run_backend_tests_kunlunxin.sh
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -144,7 +168,7 @@ jobs:
     if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: moore
+      vendor: mthreads
       runner_label: moore
       gpu_check_script: tools/gpu_check_mthreads.sh
       test_script: tools/run_backend_tests_mthreads.sh

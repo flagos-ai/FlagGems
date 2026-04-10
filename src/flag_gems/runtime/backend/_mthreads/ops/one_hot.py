@@ -9,7 +9,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
 )
 
 
@@ -132,9 +132,13 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
         # Only compute max to infer num_classes
         maxv = int(tensor.max().item())
         num_classes = maxv + 1
-    else:
-        if num_classes < 1:
-            raise RuntimeError("num_classes should be positive")
+
+    # Validate that all indices are non-negative
+    if (tensor < 0).any():
+        raise RuntimeError("Class values must be non-negative.")
+
+    if num_classes < 1:
+        raise RuntimeError("num_classes should be positive")
 
     # CPU tensor handling
     if tensor.device.type == "cpu":
