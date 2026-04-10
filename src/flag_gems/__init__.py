@@ -428,6 +428,7 @@ _FULL_CONFIG = (
     ("zero_", zero_),
     ("zeros", zeros),
     ("zeros_like", zeros_like),
+    ("conv_transpose2d.input", conv_transpose2d),
 )
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
