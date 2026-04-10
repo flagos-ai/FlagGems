@@ -1,6 +1,8 @@
 [build-system]
 # cmake locks to '>=3.20,<4.0' to sync with FlagTree
-requires = ["setuptools==82.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake==3.31.10", "ninja==1.13.0"]
+
+requires = ["setuptools==79.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -69,10 +71,14 @@ official_torch_251 = [
 ]
 
 ascend = [
-    "flagtree==0.5.0+3.2",
+    "flagtree==0.5.0+ascend3.2",
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
-    # "triton-ascend==3.2.0",
+]
+
+hygon = [
+    "flagtree==0.5.0+hcu3.0",
+    "torch==2.9.0+das.opt1.dtk2604",
 ]
 
 iluvatar = [
@@ -87,7 +93,6 @@ kunlunxin = [
     "hyperparameter==0.5.6",
     "colorama==0.4.6",
     "psutil==6.1.0",
-    "setuptools==81.0.0",
 ]
 
 mthreads = [
@@ -152,6 +157,7 @@ index-strategy = "unsafe-best-match"
 conflicts = [
     [
         { group = "ascend" },
+        { group = "hygon" },
         { group = "iluvatar" },
         { group = "kunlunxin" },
         { group = "mthreads" },
@@ -164,6 +170,12 @@ conflicts = [
 [[tool.uv.index]]
 name = "ascend-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-ascend/simple"
+explicit = true
+
+# Source for Hygon packages
+[[tool.uv.index]]
+name = "hygon-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-hygon/simple"
 explicit = true
 
 # Source for Iluvatar packages
@@ -210,6 +222,7 @@ url = "https://mirrors.aliyun.com/pypi/simple/"
 [tool.uv.sources]
 # Mapping from optional groups to index servers
 ascend = { index = "ascend-pypi" }
+hygon = { index = "hygon-pypi" }
 iluvatar = { index = "iluvatar-pypi" }
 kunlunxin = { index = "kunlunxin-pypi" }
 mthreads = { index = "mthreads-pypi" }
