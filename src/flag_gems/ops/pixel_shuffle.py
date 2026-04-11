@@ -24,9 +24,7 @@ AUTOTUNE_CONFIGS = [
 
 
 @libentry()
-@triton.autotune(
-    configs=AUTOTUNE_CONFIGS, key=["hw_elements", "H_out", "W_out"]
-)
+@triton.autotune(configs=AUTOTUNE_CONFIGS, key=["hw_elements", "H_out", "W_out"])
 @triton.heuristics({"USE_INT32_IDX": lambda args: args["n_elements"] <= INT32_MAX})
 @triton.jit
 def pixel_shuffle_kernel(
