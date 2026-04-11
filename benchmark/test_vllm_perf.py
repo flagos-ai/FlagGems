@@ -1,14 +1,14 @@
+import dataclasses
 import random
 from itertools import product
 from math import ceil
+from typing import List
 
 import pytest
 import torch
 
 import flag_gems
 from benchmark.performance_utils import Benchmark
-
-random.seed(42)
 
 
 def is_vllm_available():
@@ -32,6 +32,7 @@ def is_cuda_available():
 
 
 CUDA_AVAILABLE = is_cuda_available()
+DEFAULT_BLOCK_SHAPE = [128, 128]
 
 
 def to_int8(tensor: torch.Tensor):
@@ -345,7 +346,7 @@ def _gems_fused_moe_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
 def test_perf_fused_moe_gems_vs_vllm():
     """
-    Benchmark FlagGems fused_experts_impl vs vLLM fused_experts_impl (bf16).
+    Benchmark FlagGems fused_experts_impl vs vLLM fused_experts_impl (bf16/fp16).
     """
     bench = FusedMoEBenchmark(
         op_name="fused_moe_gems_vs_vllm",
@@ -455,6 +456,117 @@ class FusedMoEFP8Benchmark(Benchmark):
         )
 
 
+class FusedMoEFP8BlockwiseBenchmark(Benchmark):
+    """
+    Benchmark for fused_experts_impl with FP8 W8A8 block-wise quantization.
+
+    Weights are stored in FP8 E4M3 and accompanied by block scales.
+    Activations are dynamically quantized per-token per-group inside the kernel.
+    """
+
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+        self.block_shape = DEFAULT_BLOCK_SHAPE
+
+    def set_shapes(self, shape_file_path=None):
+        # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
+        self.shapes = [
+            # Mixtral-like shapes
+            (1, 8, 4096, 14336, 2),
+            (4, 8, 4096, 14336, 2),
+            (16, 8, 4096, 14336, 2),
+            (64, 8, 4096, 14336, 2),
+            (128, 8, 4096, 14336, 2),
+            (256, 8, 4096, 14336, 2),
+            (512, 8, 4096, 14336, 2),
+            # DeepSeek-V3-like shapes (TP=8 shard)
+            (1, 256, 7168, 2048, 8),
+            (4, 256, 7168, 2048, 8),
+            (16, 256, 7168, 2048, 8),
+            (64, 256, 7168, 2048, 8),
+            (128, 256, 7168, 2048, 8),
+            (256, 256, 7168, 2048, 8),
+            # Qwen3.5-397B-A17B
+            (1, 512, 4096, 1024, 10),
+            (4, 512, 4096, 1024, 10),
+            (16, 512, 4096, 1024, 10),
+            (64, 512, 4096, 1024, 10),
+            (128, 512, 4096, 1024, 10),
+            (256, 512, 4096, 1024, 10),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        del cur_dtype
+        for config in self.shapes:
+            yield from self._fp8_blockwise_input_fn(config)
+
+    def _fp8_blockwise_input_fn(self, config):
+        num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+        block_n, block_k = self.block_shape
+        device = flag_gems.device
+        dtype = torch.bfloat16
+
+        hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+        w1_fp8 = (
+            torch.randn(
+                num_experts,
+                intermediate_size * 2,
+                hidden_size,
+                device=device,
+                dtype=torch.bfloat16,
+            )
+            * (1.0 / hidden_size**0.5)
+        ).to(torch.float8_e4m3fn)
+        w2_fp8 = (
+            torch.randn(
+                num_experts,
+                hidden_size,
+                intermediate_size,
+                device=device,
+                dtype=torch.bfloat16,
+            )
+            * (1.0 / intermediate_size**0.5)
+        ).to(torch.float8_e4m3fn)
+
+        w1_scale = (
+            torch.rand(
+                num_experts,
+                ceil(intermediate_size * 2 / block_n),
+                ceil(hidden_size / block_k),
+                device=device,
+                dtype=torch.float32,
+            )
+            + 0.01
+        )
+        w2_scale = (
+            torch.rand(
+                num_experts,
+                ceil(hidden_size / block_n),
+                ceil(intermediate_size / block_k),
+                device=device,
+                dtype=torch.float32,
+            )
+            + 0.01
+        )
+
+        gating = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
+        topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+        topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+        topk_weights = topk_weights.to(torch.float32)
+
+        yield (
+            hidden_states,
+            w1_fp8,
+            w2_fp8,
+            w1_scale,
+            w2_scale,
+            topk_weights,
+            topk_ids,
+        )
+
+
 def _vllm_fused_moe_fp8_wrapper(
     hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
 ):
@@ -489,6 +601,42 @@ def _gems_fused_moe_fp8_wrapper(
     )
 
 
+def _vllm_fused_moe_fp8_blockwise_wrapper(
+    hidden_states, w1, w2, w1_scale, w2_scale, topk_weights, topk_ids
+):
+    """Wrapper to call vllm fused_experts_impl with block-wise FP8."""
+    return vllm_fused_experts_impl(
+        hidden_states.clone(),
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        inplace=False,
+        activation="silu",
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        block_shape=DEFAULT_BLOCK_SHAPE,
+    )
+
+
+def _gems_fused_moe_fp8_blockwise_wrapper(
+    hidden_states, w1, w2, w1_scale, w2_scale, topk_weights, topk_ids
+):
+    """Wrapper to call FlagGems fused_experts_impl with block-wise FP8."""
+    return flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        block_shape=DEFAULT_BLOCK_SHAPE,
+    )
+
+
 @pytest.mark.fused_moe
 @pytest.mark.skipif(
     not (HAS_VLLM_FUSED_MOE and CUDA_AVAILABLE),
@@ -504,6 +652,24 @@ def test_perf_fused_moe_fp8_gems_vs_vllm():
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_fused_moe_fp8_wrapper)
+    bench.run()
+
+
+@pytest.mark.fused_moe
+@pytest.mark.skipif(
+    not (HAS_VLLM_FUSED_MOE and CUDA_AVAILABLE),
+    reason="requires vLLM and NVIDIA Hopper architecture for FP8 blockwise",
+)
+def test_perf_fused_moe_fp8_blockwise_gems_vs_vllm():
+    """
+    Benchmark FlagGems vs vLLM fused_experts_impl with FP8 W8A8 block-wise quantization.
+    """
+    bench = FusedMoEFP8BlockwiseBenchmark(
+        op_name="fused_moe_fp8_blockwise_gems_vs_vllm",
+        torch_op=_vllm_fused_moe_fp8_blockwise_wrapper,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(_gems_fused_moe_fp8_blockwise_wrapper)
     bench.run()
 
 
@@ -984,4 +1150,264 @@ def test_perf_fused_moe_int4_w4a16_gems_vs_vllm():
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_fused_moe_int4_w4a16_wrapper)
+    bench.run()
+
+
+try:
+    from vllm.utils.deep_gemm import (
+        get_num_sms,
+        get_paged_mqa_logits_metadata,
+        has_deep_gemm,
+    )
+
+    DEEPGEMM_AVAILABLE = has_deep_gemm()
+except ImportError:
+    DEEPGEMM_AVAILABLE = False
+
+
+class GetPagedMqaLogitsMetadataBenchmark(Benchmark):
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+
+    def set_shapes(self, shape_file_path=None):
+        # (batch_size, next_n)
+        self.shapes = [
+            (4, 1),
+            (8, 1),
+            (16, 1),
+            (32, 1),
+            (64, 1),
+            (128, 1),
+            (256, 1),
+            (512, 1),
+            (4, 2),
+            (8, 2),
+            (16, 2),
+            (32, 2),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for config in self.shapes:
+            yield from self._input_fn(config, cur_dtype)
+
+    def _input_fn(self, config, dtype):
+        batch_size, next_n = config
+        device = flag_gems.device
+
+        avg_ctx_len = 2048
+        context_lens = torch.randint(
+            int(0.8 * avg_ctx_len),
+            int(1.2 * avg_ctx_len),
+            (batch_size,),
+            device=device,
+            dtype=torch.int32,
+        )
+
+        if next_n > 1:
+            context_lens = (
+                context_lens.unsqueeze(1).expand(batch_size, next_n).contiguous()
+            )
+
+        num_sms = get_num_sms()
+
+        yield (context_lens, 64, num_sms)
+
+
+@pytest.mark.get_paged_mqa_logits_metadata
+@pytest.mark.skipif(
+    not DEEPGEMM_AVAILABLE,
+    reason="requires vLLM with DeepGEMM and NVIDIA Hopper architecture or newer",
+)
+def test_get_paged_mqa_logits_metadata_benchmark():
+    bench = GetPagedMqaLogitsMetadataBenchmark(
+        op_name="get_paged_mqa_logits_metadata",
+        torch_op=get_paged_mqa_logits_metadata,
+        dtypes=[torch.int32],
+    )
+    bench.set_gems(flag_gems.get_paged_mqa_logits_metadata)
+    bench.run()
+
+
+# ---------------------- flashmla_sparse op test ----------------------
+try:
+    from vllm.v1.attention.ops.flashmla import (
+        flash_mla_sparse_fwd as vllm_flash_mla_sparse_fwd,
+    )
+
+    HAS_VLLM_FLASHMLA_SPARSE = True
+except ImportError:
+    HAS_VLLM_FLASHMLA_SPARSE = False
+
+
+@dataclasses.dataclass
+class Flashmla_Sparse_Test_Param:
+    s_q: int
+    s_kv: int
+    topk: int
+    h_q: int = 128
+    h_kv: int = 1
+    d_qk: int = 512
+    d_v: int = 512
+    is_all_indices_invalid: bool = False
+    num_warmup: int = 5
+    num_runs: int = 10
+    have_attn_sink: bool = False
+    have_topk_length: bool = False
+    dtype: torch.dtype = torch.bfloat16
+    device: torch.device = flag_gems.device
+
+
+# used by make_input_flashmla
+_flashmla_sparse_counter = 0
+
+
+class FlashmlaSparseBenchmark(Benchmark):
+    def __init__(self):
+        super().__init__(
+            "flash_mla_sparse_fwd", vllm_flash_mla_sparse_fwd, [torch.bfloat16]
+        )
+        self.set_gems(flag_gems.flash_mla_sparse_fwd)
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = []
+
+    def get_input_iter(self, cur_dtype):
+        for param in FlashmlaSparseBenchmark.get_performance_test_params_flashmla():
+            yield from FlashmlaSparseBenchmark.make_input_flashmla(param)
+
+    @staticmethod
+    def _init_seed(seed):
+        random.seed(seed)
+        torch.manual_seed(seed)
+
+    @staticmethod
+    def get_performance_test_params_flashmla():
+        cases = (
+            [
+                Flashmla_Sparse_Test_Param(
+                    4096, s_kv, 2048, h_q=128, d_qk=576, have_attn_sink=True
+                )
+                for s_kv in [8192, 32768, 65536, 98304, 131072]
+            ]
+            + [
+                Flashmla_Sparse_Test_Param(
+                    4096, s_kv, 512, h_q=64, d_qk=512, have_attn_sink=True
+                )
+                for s_kv in [8192, 32768, 49152, 65536]
+            ]
+            + [
+                Flashmla_Sparse_Test_Param(
+                    4096, s_kv, 1024, h_q=128, d_qk=512, have_attn_sink=True
+                )
+                for s_kv in [8192, 32768, 49152, 65536]
+            ]
+        )
+        return cases
+
+    @staticmethod
+    def _randperm_batch(
+        batch_size: int, perm_range: torch.Tensor, perm_size: int, paddings: List[int]
+    ) -> torch.Tensor:
+        """
+        Generate random permutations in batch
+        The return tensor, denoted as `res`, has a shape of [batch_size, perm_size]. `0 <= res[i, :] < perm_range[i]`
+        holds.
+        Values within each row are unique.
+        If, for some `i`, `perm_range[i] < perm_size` holds, then `res[i, :]` contains values in `[0, perm_range[i])`
+        as many as possible, and the rest are filled with `padding`.
+        """
+        assert not torch.are_deterministic_algorithms_enabled()
+        torch.use_deterministic_algorithms(True)
+        perm_range_max = max(int(torch.max(perm_range).item()), perm_size)
+        rand = torch.rand(batch_size, perm_range_max, dtype=torch.float32)
+        rand[
+            torch.arange(0, perm_range_max).broadcast_to(batch_size, perm_range_max)
+            >= perm_range.view(batch_size, 1)
+        ] = float("-inf")
+        res = rand.topk(perm_size, dim=-1, sorted=True).indices.to(torch.int32)
+        if len(paddings) == 1:
+            res[res >= perm_range.view(batch_size, 1)] = paddings[0]
+        else:
+            fillers = torch.tensor(paddings, dtype=torch.int32).index_select(
+                0, torch.randint(0, len(paddings), (res.numel(),), dtype=torch.int32)
+            )
+            res.masked_scatter_(res >= perm_range.view(batch_size, 1), fillers)
+        torch.use_deterministic_algorithms(False)
+        return res
+
+    @staticmethod
+    def make_input_flashmla(param: Flashmla_Sparse_Test_Param):
+        """Create input data for sparse MLA operator by referring to the FlashMLA examples"""
+        s_q = param.s_q
+        s_kv = param.s_kv
+        h_q = param.h_q
+        h_kv = param.h_kv
+        d_qk = param.d_qk
+        topk = param.topk
+        have_attn_sink = param.have_attn_sink
+        have_topk_length = param.have_topk_length
+        is_all_indices_invalid = param.is_all_indices_invalid
+        dtype = param.dtype
+        device = param.device
+
+        global _flashmla_sparse_counter
+        FlashmlaSparseBenchmark._init_seed(_flashmla_sparse_counter)
+        _flashmla_sparse_counter = _flashmla_sparse_counter + 1
+
+        q = (
+            torch.randn((s_q, h_q, d_qk), dtype=dtype, device=device) / 10
+            + (random.random() - 0.5) / 10
+        )
+        kv = (
+            torch.randn((s_kv, h_kv, d_qk), dtype=dtype, device=device) / 10
+            + (random.random() - 0.5) / 10
+        )
+        q = q.clamp_(-10, 10)
+        kv = kv.clamp_(-10, 10)
+        invalid_indices_candidate = [
+            -2147483648,
+            -123456,
+            -1,
+            s_kv,
+            114514,
+            1919810,
+            2147480000,
+            2147483647,
+        ]
+        indices = FlashmlaSparseBenchmark._randperm_batch(
+            s_q,
+            torch.full((s_q,), s_kv, dtype=torch.int32),
+            topk,
+            invalid_indices_candidate,
+        ).view(s_q, h_kv, topk)
+        if is_all_indices_invalid:
+            all_indices_invalid_mask = torch.randn(s_q, device="cpu") < -2
+            indices[
+                all_indices_invalid_mask[:, None, None].broadcast_to(indices.shape)
+            ] = random.choice(invalid_indices_candidate)
+        indices = indices.to(device)
+
+        attn_sink = None
+        if have_attn_sink:
+            attn_sink = torch.randn((h_q,), dtype=torch.float32, device=device)
+            mask = torch.randn((h_q,), dtype=torch.float32, device=device)
+            attn_sink[mask < -0.5] = float("-inf")
+            attn_sink[mask > +0.5] = float("+inf")
+
+        topk_length = None
+        if have_topk_length:
+            topk_length = torch.randint(
+                0, max(topk + 1, 64), (s_q,), dtype=torch.int32, device=device
+            ).clamp_max(topk)
+        yield (q, kv, indices, 0.5, param.d_v, attn_sink, topk_length)
+
+
+@pytest.mark.flashmla_sparse
+@pytest.mark.performance
+@pytest.mark.skipif(not HAS_VLLM_FLASHMLA_SPARSE, reason="vllm not installed")
+def test_perf_flashmla_sparse_gems_vs_vllm():
+    """
+    Benchmark FlagGems flash_mla_sparse_fwd vs vLLM flash_mla_sparse_fwd.
+    """
+    bench = FlashmlaSparseBenchmark()
     bench.run()

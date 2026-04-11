@@ -1,10 +1,20 @@
-from backend_utils import VendorInfoBase  # noqa: E402
+from backend_utils import VendorInfoBase
 
 vendor_info = VendorInfoBase(
-    vendor_name="nvidia", device_name="cuda", device_query_cmd="nvidia-smi"
+    vendor_name="nvidia",
+    device_name="cuda",
+    device_query_cmd="nvidia-smi",
 )
-ARCH_MAP = {"9": "hopper", "8": "ampere"}
-CUSTOMIZED_UNUSED_OPS = ("cumsum", "cos", "add")
 
+ARCH_MAP = {
+    "9": "hopper",
+    "8": "ampere",
+}
+
+CUSTOMIZED_UNUSED_OPS = (
+    "add",
+    "cos",
+    "cumsum",
+)
 
 __all__ = ["*"]

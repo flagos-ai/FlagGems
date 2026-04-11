@@ -41,7 +41,7 @@ def test_accuracy_randn(shape, dtype):
         torch.manual_seed(42)
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device=device)
-    ref_out = to_reference(res_out)
+    ref_out = to_reference(res_out).float()
     mean = torch.mean(ref_out)
     std = torch.std(ref_out)
     assert torch.abs(mean) < 0.01
@@ -190,6 +190,40 @@ def test_accuracy_full_like(shape, dtype, xdtype, fill_value):
     ref_out = torch.full_like(ref_inp, fill_value, dtype=dtype)
     with flag_gems.use_gems():
         res_out = torch.full_like(inp, fill_value, dtype=dtype)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
+@pytest.mark.new_full
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BOOL_TYPES + ALL_INT_DTYPES + ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize("xdtype", BOOL_TYPES + ALL_INT_DTYPES + ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "fill_value", [3.1415926, 2, False, float("inf"), float("nan")]
+)
+def test_accuracy_new_full(shape, dtype, xdtype, fill_value):
+    inp = torch.empty(size=shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+
+    # without dtype: output dtype inherits from self (dtype), skip if dtype doesn't support inf/nan
+    if isinstance(fill_value, float) and (
+        math.isinf(fill_value) or math.isnan(fill_value)
+    ):
+        if dtype not in ALL_FLOAT_DTYPES:
+            pytest.skip("Skipping inf/nan test for non-float dtypes")
+    ref_out = ref_inp.new_full(shape, fill_value)
+    with flag_gems.use_gems():
+        res_out = inp.new_full(shape, fill_value)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+    # with dtype: output dtype is xdtype, skip if xdtype doesn't support inf/nan
+    if isinstance(fill_value, float) and (
+        math.isinf(fill_value) or math.isnan(fill_value)
+    ):
+        if xdtype not in ALL_FLOAT_DTYPES:
+            pytest.skip("Skipping inf/nan test for non-float dtypes")
+    ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
+    with flag_gems.use_gems():
+        res_out = inp.new_full(shape, fill_value, dtype=xdtype)
     gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 

@@ -36,53 +36,28 @@ from .repeat_interleave import (
 from .resolve_conj import resolve_conj
 from .sort import sort, sort_stable
 from .tile import tile
+from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
     "amax",
-    "rand",
-    "rand_like",
-    "dropout",
-    "dropout_backward",
-    "celu",
-    # "celu_",
-    "one_hot",
-    "ones",
-    "ones_like",
-    "randn",
-    "randn_like",
-    "zeros",
-    "zero_",
-    "zeros_like",
-    "log",
-    "log_softmax",
-    "log_softmax_backward",
-    "sort",
-    "arange",
-    "arange_start",
-    "sort_stable",
-    "randperm",
-    "repeat",
-    "repeat_interleave_self_int",
-    "repeat_interleave_self_tensor",
-    "repeat_interleave_tensor",
-    "conv2d",
     "all",
     "all_dim",
     "all_dims",
     "any",
     "any_dim",
     "any_dims",
+    "arange",
+    "arange_start",
     "argmin",
-    "prod",
-    "prod_dim",
-    "min",
-    "min_dim",
-    "max",
-    "max_dim",
     "batch_norm",
     "batch_norm_backward",
+    "celu",
+    # "celu_",
+    "conv2d",
+    "dropout",
+    "dropout_backward",
     "gather",
     "gather_backward",
     "index_add",
@@ -90,20 +65,51 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
-    "resolve_conj",
+    "log",
+    "log_softmax",
+    "log_softmax_backward",
+    "max",
+    "max_dim",
+    "min",
+    "min_dim",
     "normal_",
+    "one_hot",
+    "ones",
+    "ones_like",
+    "prod",
+    "prod_dim",
+    "rand",
+    "rand_like",
+    "randn",
+    "randn_like",
+    "randperm",
+    "repeat",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "repeat_interleave_tensor",
+    "resolve_conj",
+    "sort",
+    "sort_stable",
     "tile",
+    "w8a8_block_fp8_matmul",
+    "zero_",
+    "zeros",
+    "zeros_like",
 ]
 
 if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm
-    from .bmm import bmm
-    from .gelu import gelu
-    from .mm import mm
-    from .tanh import tanh
+    from .addmm import addmm  # noqa: F401
+    from .bmm import bmm  # noqa: F401
+    from .gelu import gelu  # noqa: F401
+    from .mm import mm  # noqa: F401
+    from .tanh import tanh  # noqa: F401
 
-    __all__ += ["gelu"]
-    __all__ += ["tanh"]
-    __all__ += ["mm"]
-    __all__ += ["addmm"]
-    __all__ += ["bmm"]
+    __all__.extend(
+        [
+            "addmm",
+            "bmm",
+            "gelu",
+            "mm",
+            "tanh",
+        ]
+    )

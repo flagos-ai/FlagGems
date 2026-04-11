@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def prelu(
+def prelu_kernel(
     x_ptr,  # *Pointer* to input tensor.
     w_ptr,  # *Pointer* to weight tensor (scalar or per-channel vector).
     out_ptr,  # *Pointer* to output tensor.
@@ -35,10 +35,6 @@ def prelu(
         y = tl.where(x >= 0, x, alpha * x)
 
     tl.store(out_ptr + offsets, y, mask=mask)
-
-
-# Keep a reference to the Triton kernel before defining the Python wrapper with the same name.
-prelu_kernel = prelu
 
 
 def prelu(*args, **kwargs):

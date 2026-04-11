@@ -888,7 +888,7 @@ class WrapperGenerator:
                 max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("tile_sizes = tuple([64])")
+                code.writeline("tile_sizes = tuple([1024])")
             else:
                 code.writeline(
                     f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"

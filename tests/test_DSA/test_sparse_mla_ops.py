@@ -110,7 +110,7 @@ def reference_sparse_mla_implementation(q, kv, indices, sm_scale=None, d_v=512):
 @pytest.mark.parametrize("seq_len_q", [64, 128, 512])
 @pytest.mark.parametrize("seq_len_kv", [1024, 2048, 4096])
 @pytest.mark.parametrize("num_heads", [64, 128, 256])
-@pytest.mark.parametrize("num_kv_heads", [1])
+@pytest.mark.parametrize("num_kv_heads", [1, 2])
 @pytest.mark.parametrize("qk_dim", [576])  # Your operator is fixed at 576
 @pytest.mark.parametrize("d_v", [512])  # Output dimension
 @pytest.mark.parametrize("topk", [64, 128, 256])
