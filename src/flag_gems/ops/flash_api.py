@@ -767,8 +767,8 @@ def mha_varlan_fwd_opt(
             )
         else:
             is_dropout = False
-            # philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
-            philox_args = None
+            philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
+            # philox_args = None
 
         p_dropout = 1 - p_dropout
         p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
@@ -781,8 +781,8 @@ def mha_varlan_fwd_opt(
                 device=q_device,
             )
         else:
-            # p = torch.empty((), device=q_device)
-            p = None
+            p = torch.empty((), device=q_device)
+            # p = None
         if zero_tensors:
             out.zero_()
             lse.fill_(float("-inf"))
