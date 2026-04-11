@@ -808,7 +808,7 @@ def mha_varlan_fwd_opt(
             o_batch_stride,  # o_batch_stride,
             cu_seqlens_q is not None,  # is_cu_seqlens_q,
             cu_seqlens_q,  # cu_seqlens_q_ptr,
-            seqused_k is None,  # is_cu_seqlens_k,
+            cu_seqlens_k is not None,  # is_cu_seqlens_k,
             cu_seqlens_k,  # cu_seqlens_k_ptr,
             seqused_k is not None,  # is_seqused_k,
             seqused_k,  # seqused_k_ptr,
