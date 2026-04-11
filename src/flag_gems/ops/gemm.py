@@ -317,7 +317,8 @@ def general_gemm(a, b, c, alpha, beta, M, N, K):
         def alloc_fn(size: int, align: int, stream: Optional[int]):
             return torch.empty(size, dtype=torch.int8, device=a.device)
 
-        triton.set_allocator(alloc_fn)
+        if hasattr(triton, "set_allocator"):
+            triton.set_allocator(alloc_fn)
 
         with torch_device_fn.device(a.device):
             gemm_kernel_general[grid](
