@@ -389,7 +389,24 @@ class Benchmark:
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
             metrics = []
-            for input in self.get_input_iter(dtype):
+            input_iter = self.get_input_iter(dtype)
+
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+                finally:
+                    gc.collect()
+
                 metric = BenchmarkMetrics()
                 try:
                     args, kwargs = self.unpack_to_args_kwargs(input)
@@ -430,7 +447,7 @@ class Benchmark:
                             * 1e3
                         )
                         # utilization = metric.tflops / metric.latency / 1e12 * 1e3
-                except Exception as e:
+                except (RuntimeError, Exception) as e:
                     metric.error_msg = str(e)
                     pytest.fail(str(e))  # raise exception again
                 finally:
