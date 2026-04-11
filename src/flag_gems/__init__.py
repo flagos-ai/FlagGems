@@ -379,6 +379,7 @@ _FULL_CONFIG = (
     ("sigmoid", sigmoid),
     ("sigmoid_", sigmoid_),
     ("sigmoid_backward", sigmoid_backward),
+    ("signbit", signbit),
     ("silu", silu),
     ("silu_", silu_),
     ("silu_backward", silu_backward),

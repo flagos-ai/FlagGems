@@ -92,6 +92,7 @@ forward_operations = [
     ("isnan", torch.isnan, FLOAT_DTYPES),
     ("isneginf", torch.isneginf, FLOAT_DTYPES),
     ("isfinite", torch.isfinite, FLOAT_DTYPES),
+    ("signbit", torch.signbit, FLOAT_DTYPES),
 ]
 
 
