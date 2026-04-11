@@ -37,6 +37,29 @@ class BinaryPointwiseBenchmark(Benchmark):
         return torch.tensor(shape1).prod().item() + torch.tensor(shape2).prod().item()
 
 
+class ScalarBinaryPointwiseBenchmark(Benchmark):
+    """
+    Base class for benchmarking binary pointwise operations with scalar input.
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
+        return special_shapes_2d + shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = 0.001  # Scalar input
+            inp2 = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp1, inp2
+
+    def get_tflops(self, op, *args, **kwargs):
+        shape = list(args[1].shape)  # Second argument is the tensor
+        return torch.tensor(shape).prod().item()
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes",
     [
@@ -120,5 +143,26 @@ def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
 def test_general_inplace_binary_pointwise_perf(op_name, torch_op, dtypes):
     bench = BinaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
+    bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name,
+            op,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, op, dtype in [
+            ("pow", lambda a, b: torch.pow(a, b), FLOAT_DTYPES),
+        ]
+    ],
+)
+def test_scalar_binary_pointwise_perf(op_name, torch_op, dtypes):
+    bench = ScalarBinaryPointwiseBenchmark(
+        op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
