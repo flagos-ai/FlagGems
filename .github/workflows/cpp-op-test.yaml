@@ -1,5 +1,8 @@
 name: cpp-ops
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
 
@@ -10,7 +13,7 @@ jobs:
       - uses: actions/checkout@v6
       - shell: bash
         run: |
-          SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
+          CXX=/usr/bin/g++-11 CC=/usr/bin/gcc-11 SKBUILD_CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -v -e .
       - shell: bash
         run: |
           cd build/cpython-311/ctests

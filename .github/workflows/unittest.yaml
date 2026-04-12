@@ -1,4 +1,6 @@
 name: unit-test
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:
@@ -102,16 +104,6 @@ jobs:
         run: |
           bash tools/test-examples.sh ${{ needs.preprocess.outputs.pr_id }}
 
-  backend-nvidia:
-    needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
-    uses: ./.github/workflows/backend-test.yaml
-    with:
-      vendor: nvidia
-      runner_label: hopper
-      gpu_check_script: tools/gpu_check.sh
-      test_script: tools/run_backend_tests_nvidia.sh
-
   backend-ascend:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/Ascend')
@@ -120,7 +112,21 @@ jobs:
       vendor: ascend
       runner_label: ascend
       gpu_check_script: tools/gpu_check_ascend.sh
-      test_script: tools/run_backend_tests.sh
+      test_script: tools/run_backend_tests_ascend.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-hygon:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: hygon
+      runner_label: hygon
+      gpu_check_script: tools/gpu_check_hygon.sh
+      test_script: tools/run_backend_tests_hygon.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
   backend-iluvatar:
     needs: preprocess
@@ -130,7 +136,21 @@ jobs:
       vendor: iluvatar
       runner_label: iluvatar
       gpu_check_script: tools/gpu_check_iluvatar.sh
-      test_script: tools/run_backend_tests.sh
+      test_script: tools/run_backend_tests_iluvatar.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-kunlunxin:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: kunlunxin
+      runner_label: kunlunxin
+      gpu_check_script: tools/gpu_check_kunlunxin.sh
+      test_script: tools/run_backend_tests_kunlunxin.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
   backend-metax:
     needs: preprocess
@@ -138,18 +158,58 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
-      runner_label: metax
+      runner_label: metax_CI
       test_script: tools/run_backend_tests_metax.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
-  backend-moore:
+  backend-mthreads:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: moore
-      runner_label: mthreadsCI
-      gpu_check_script: tools/gpu_check_moore.sh
-      test_script: tools/run_backend_tests.sh
+      vendor: mthreads
+      runner_label: moore
+      gpu_check_script: tools/gpu_check_mthreads.sh
+      test_script: tools/run_backend_tests_mthreads.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-nvidia:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/NVIDIA')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: nvidia
+      runner_label: h20
+      gpu_check_script: tools/gpu_check.sh
+      test_script: tools/run_backend_tests_nvidia.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-tsingmicro:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/TsingMicro')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: tsingmicro
+      runner_label: tsingmicro
+      gpu_check_script: tools/gpu_check_tsingmicro.sh
+      test_script: tools/run_backend_tests_tsingmicro.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+
+  backend-thead:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Thead')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: thead
+      runner_label: thead
+      gpu_check_script: tools/gpu_check_thead.sh
+      test_script: tools/run_backend_tests_thead.sh
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
   # TODO(Qiming): This job doesn't require an nvidia backend, the generic
   # test-op workflow should be fine.
@@ -163,3 +223,5 @@ jobs:
       gpu_check_script: tools/gpu_check.sh
       test_script: tools/test-op-experimental.sh
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}

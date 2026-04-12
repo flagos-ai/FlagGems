@@ -1,6 +1,0 @@
-baseURL: https://flagos-ai.github.io/FlagGems/
-languageCode: en-us
-title: FlagGems Documentation
-caches:
-  images:
-    dir: :cacheDir/images

@@ -1,12 +1,13 @@
 #include <gtest/gtest.h>
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
+#include "flag_gems/test_utils.h"
 #include "torch/torch.h"
 
 class reduction_op_test : public ::testing::TestWithParam<torch::ScalarType> {};
 
 TEST_P(reduction_op_test, argmax) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto dtype = GetParam();
   torch::Tensor input = torch::randn({1024, 1024}, device).to(dtype);
   torch::Tensor ref_input = flag_gems::accuracy_utils::to_reference(input);
@@ -19,7 +20,7 @@ TEST_P(reduction_op_test, argmax) {
 }
 
 TEST_P(reduction_op_test, argmax_dim_specific) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto dtype = GetParam();
   torch::Tensor input = torch::randn({64, 64, 128}, device).to(dtype);
   torch::Tensor ref_input = flag_gems::accuracy_utils::to_reference(input);
@@ -38,7 +39,7 @@ TEST_P(reduction_op_test, argmax_dim_specific) {
 }
 
 TEST_P(reduction_op_test, argmax_keepdim_option) {
-  const torch::Device device(torch::kCUDA, 0);
+  const torch::Device device = flag_gems::test::default_device();
   auto dtype = GetParam();
   torch::Tensor input = torch::randn({2, 4, 64, 64}, device).to(dtype);
   torch::Tensor ref_input = flag_gems::accuracy_utils::to_reference(input);

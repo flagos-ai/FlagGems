@@ -130,7 +130,7 @@ def pytest_runtest_protocol(item, nextitem):
     test_results[item.nodeid]["opname"] = operator_marks
 
 
-def get_skipped_reason(report):
+def get_reason(report):
     if hasattr(report.longrepr, "reprcrash"):
         return report.longrepr.reprcrash.message
     elif isinstance(report.longrepr, tuple):
@@ -143,17 +143,16 @@ def get_skipped_reason(report):
 def pytest_runtest_logreport(report):
     if report.when == "setup":
         if report.outcome == "skipped":
-            reason = get_skipped_reason(report)
+            reason = get_reason(report)
             test_results[report.nodeid]["result"] = "skipped"
-            test_results[report.nodeid]["skipped_reason"] = reason
-
+            test_results[report.nodeid]["reason"] = reason
     elif report.when == "call":
         test_results[report.nodeid]["result"] = report.outcome
-        if report.outcome == "skipped":
-            reason = get_skipped_reason(report)
-            test_results[report.nodeid]["skipped_reason"] = reason
+        if report.outcome in ["skipped", "failed"]:
+            reason = get_reason(report)
+            test_results[report.nodeid]["reason"] = reason
         else:
-            test_results[report.nodeid]["skipped_reason"] = None
+            test_results[report.nodeid]["reason"] = None
 
 
 def pytest_terminal_summary(terminalreporter):
