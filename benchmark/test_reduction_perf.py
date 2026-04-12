@@ -660,3 +660,19 @@ def test_perf_bincount_weighted(dtype):
     )
     bench.set_gems(flag_gems.bincount)
     bench.run()
+
+
+def median_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, {"dim": -1}
+
+
+@pytest.mark.median
+def test_perf_median():
+    bench = GenericBenchmark2DOnly(
+        input_fn=median_input_fn,
+        op_name="median",
+        torch_op=torch.median,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
