@@ -9,7 +9,6 @@ import re
 import shutil
 import subprocess
 import sys
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal, getcontext
 from importlib import metadata
@@ -23,13 +22,13 @@ import yaml
 getcontext().prec = 18
 
 # Global lock for writing result file and the result file
-SUMMARY_LOCK = threading.Lock()
 GLOBAL_RESULTS = {}
 ENV_INFO = {}
 HAS_TRITON = False
 HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
+OP_LIST = []
 
 NO_CPU_LIST = [
     "flash_attention_forward",
@@ -216,34 +215,35 @@ def run_cmd_capture(cmd, cwd=None, env=None):
 
 
 def parse_accuracy_log(text):
-    counter = {
+    record = {
         "passed": 0,
         "failed": 0,
         "skipped": 0,
         "errors": 0,
         "total": 0,
+        "status": "",
     }
 
     clean = ANSI_RE.sub("", text)
     for m in re.finditer(r"(\d+)\s+([A-Za-z_]+)", clean):
         num = int(m.group(1))
         key = m.group(2).lower()
-        if key in counter:
-            counter[key] = num
+        if key in record:
+            record[key] = num
 
-    total = counter["failed"] + counter["passed"] + counter["skipped"]
-    counter["total"] = total
+    total = record["failed"] + record["passed"] + record["skipped"]
+    record["total"] = total
 
-    if counter["failed"] > 0:
-        counter["status"] = "FAIL"
-    elif counter["errors"] > 0 and total == 0:
-        counter["status"] = "FAIL"  # pytest failed to start
-    elif counter["passed"] == 0:
-        counter["status"] = "FAIL"
+    if record["failed"] > 0:
+        record["status"] = "FAIL"
+    elif record["errors"] > 0 and total == 0:
+        record["status"] = "FAIL"  # pytest failed to start
+    elif record["passed"] == 0:
+        record["status"] = "FAIL"
     else:
-        counter["status"] = "PASS"
+        record["status"] = "PASS"
 
-    return counter
+    return record
 
 
 def get_env(gpu_ids):
@@ -295,17 +295,21 @@ def dedup(fn):
         f.writelines(uniq)
 
 
-def run_accuracy(op, gpu_id, op_dir):
-    pinfo(f"[GPU {gpu_id:2d}] Running accuracy tests for '{op}'")
+def run_accuracy(gpu_id, start, index, count):
+    op = OP_LIST[start + index].strip()
+    n = index * 10 // count
+    prog = "█" * n + " " * (10 - n)
+    pinfo(f"[GPU {gpu_id:2d}][{index:3d}][{prog}] Running accuracy tests for '{op}'")
     env = get_env(str(gpu_id))
 
-    if f"{op}" in NO_CPU_LIST:
+    if op in NO_CPU_LIST:
         cmd = f'pytest -m "{op}" -vs'
     else:
         cmd = f'pytest -m "{op}" --ref cpu -vs'
     out, err, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
 
     combined = out + "\n" + err
+    op_dir = OUTPUT_DIR.joinpath(op)
     log_file = op_dir.joinpath("accuracy.log")
     with open(log_file, "w") as f:
         f.write(combined)
@@ -326,13 +330,11 @@ def parse_perf_log(op_dir):
     with perf_log_file.open("r") as f:
         lines = f.readlines()
     line_no = 0
+    data = {}
     while line_no < len(lines):
         line = lines[line_no]
         if "deselected / 0 selected" in line:
-            record = {
-                "result": "NOT TESTED",
-                "error": "No test case.",
-            }
+            record = {"status": "Unkown", "error": "No test case.", "data": {}}
             return record
 
         if "FAILED" in line and "Operator" in line and "dtype" in line:
@@ -351,9 +353,10 @@ def parse_perf_log(op_dir):
                 line = lines[line_no]
                 pos2 = line.find(">>>")
                 err_str += line[:pos2]
-            record.setdefault(dtype, {})
-            record[dtype].setdefault("result", "FAILED")
-            record[dtype].setdefault("error", err_str)
+            data[dtype] = {
+                "result": "FAILED",
+                "error": err_str,
+            }
         line_no += 1
 
     # Check if there are usable records
@@ -378,7 +381,7 @@ def parse_perf_log(op_dir):
         count = 0
         # Iterate through shapes
         for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+            shape = str(res.get("shape_detail", "UNKNOWN")).replace(" ", "")
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base", 0.0)
             details[shape]["gems"] = res.get("latency", 0.0)
@@ -388,27 +391,32 @@ def parse_perf_log(op_dir):
             total += speedup
 
         if details:
-            record[dtype] = {
+            data[dtype] = {
                 "result": "OK",
                 "details": details,
                 "speedup": total / count,
             }
         else:
-            record[dtype] = {
-                "result": "Incomplete",
+            data[dtype] = {
+                "result": "UNKNOWN",
                 "details": details,
                 "speedup": 0,
             }
 
-    return record
+    return {
+        "data": data,
+    }
 
 
-def run_benchmark(op, gpu_id, op_dir):
+def run_benchmark(gpu_id, start, index, count):
     """Run benchmark for a specific operator on a specific GPU/DCU.
 
     This returns a dict as report summary.
     """
-    pinfo(f"[GPU {gpu_id:2d}] Running performance benchmark for '{op}'")
+    op = OP_LIST[start + index].strip()
+    n = index * 10 // count
+    prog = "█" * n + " " * (10 - n)
+    pinfo(f"[GPU {gpu_id:2d}][{index:3d}][{prog} Running perf benchmark for '{op}'")
 
     env = get_env(str(gpu_id))
 
@@ -424,6 +432,7 @@ def run_benchmark(op, gpu_id, op_dir):
     out, err, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
 
     # Write raw command output
+    op_dir = OUTPUT_DIR.joinpath(op)
     output_file = op_dir.joinpath("performance_output.log")
     with open(output_file, "w") as f:
         f.write(out + "\n---\n" + err)
@@ -437,9 +446,10 @@ def run_benchmark(op, gpu_id, op_dir):
     # Not found
     if not result_file:
         return {
-            "status": "NO_RESULT",
+            "status": "No Result",
             "log": str(output_file.relative_to(OUTPUT_DIR)),
             "result": None,
+            "exit_code": code,
             "data": [],
         }
 
@@ -451,28 +461,29 @@ def run_benchmark(op, gpu_id, op_dir):
     # Remove duplicate lines in the result file
     dedup(result_file)
 
-    perf_result = parse_perf_log(op_dir)
-
-    return {
+    record = {
         "status": "OK",
+        "exit_code": code,
         "log": str(output_file.relative_to(OUTPUT_DIR)),
-        "result": str(result_file.relative_to(OUTPUT_DIR)),
-        "data": perf_result,
+        "result_file": str(result_file.relative_to(OUTPUT_DIR)),
     }
+    record.update(parse_perf_log(op_dir))
+
+    return record
 
 
-def worker_proc(gpu_id, ops_list):
+def worker_proc(gpu_id, start, count):
     worker_result = {}
-    for op in ops_list:
-        op = op.strip()
+    for i in range(count):
+        op = OP_LIST[start + i].strip()
         if not op:
             continue
 
         op_dir = OUTPUT_DIR.joinpath(op)
         ensure_dir(op_dir)
 
-        acc = run_accuracy(op, gpu_id, op_dir)
-        perf = run_benchmark(op, gpu_id, op_dir)
+        acc = run_accuracy(gpu_id, start, i, count)
+        perf = run_benchmark(gpu_id, start, i, count)
 
         result = {
             "accuracy": acc,
@@ -558,6 +569,7 @@ def write_xlsx(path):
 
 def main():
     global OUTPUT_DIR
+    global OP_LIST
 
     init()
     op_catalog = get_ops()
@@ -588,11 +600,13 @@ def main():
 
         ops = [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
 
-    if len(ops) == 0:
+    OP_LIST = ops
+    op_count = len(ops)
+    if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
         sys.exit(1)
     else:
-        pinfo(f"Testing {len(ops)} operators ...")
+        pinfo(f"Testing {op_count} operators ...")
 
     now_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     OUTPUT_DIR = ROOT.joinpath(f"results_{now_ts}")
@@ -603,17 +617,22 @@ def main():
     # Split the operators among GPUs
     gpu_ids = [int(x) for x in args.gpus.split(",") if x.strip()]
     gpu_count = len(gpu_ids)
-    tasks = {gpu_id: [] for gpu_id in gpu_ids}
-    for i, op in enumerate(ops):
-        tasks[gpu_ids[i % gpu_count]].append(op)
-
-    with ThreadPoolExecutor(max_workers=gpu_count) as exe:
-        futures = []
-        for gpu in gpu_ids:
-            if tasks[gpu]:
-                futures.append(exe.submit(worker_proc, gpu, tasks[gpu]))
-        for f in as_completed(futures):
-            f.result()
+    if gpu_count == 1:
+        worker_proc(gpu_ids[0], 0, op_count)
+    else:
+        with ThreadPoolExecutor(max_workers=gpu_count) as exe:
+            futures = []
+            m, n = divmod(op_count, gpu_count)
+            start = 0
+            for i, gpu in enumerate(gpu_ids):
+                if i < n:
+                    count = m + 1
+                else:
+                    count = m
+                futures.append(exe.submit(worker_proc, gpu, start, count))
+                start += count
+            for f in as_completed(futures):
+                f.result()
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     op_data = {}
