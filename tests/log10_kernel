@@ -1,0 +1,40 @@
+import torch
+import triton
+import triton.language as tl
+
+# استيراد الكيرنل بتاعك
+from your_module import log10_kernel  # عدّل المسار حسب مشروعك
+
+
+def log10_triton(x: torch.Tensor):
+    x = x.contiguous().cuda()
+    out = torch.empty_like(x)
+
+    n_elements = x.numel()
+    BLOCK_SIZE = 1024
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+
+    log10_kernel[grid](
+        x, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
+    )
+    return out
+
+
+# -------- TEST --------
+def test_log10():
+    torch.manual_seed(0)
+
+    x = torch.rand(1000, device="cuda") * 10 + 1  # مهم: تجنب 0
+    y_triton = log10_triton(x)
+    y_torch = torch.log10(x)
+
+    max_diff = (y_triton - y_torch).abs().max()
+
+    print("Max difference:", max_diff.item())
+
+    assert torch.allclose(y_triton, y_torch, atol=1e-3, rtol=1e-3), "❌ Test failed!"
+    print("✅ Test passed!")
+
+
+if __name__ == "__main__":
+    test_log10()
