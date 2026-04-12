@@ -155,7 +155,7 @@ def init():
         #    sys.exit(-1)
 
         if version:
-            has_config = hasattr(triton.Config)
+            has_config = hasattr(triton, "Config")
             ENV_INFO["triton"]["has_config"] = has_config
             pinfo(f"Triton (triton) has Config ... [{has_config}]")
 
@@ -248,14 +248,26 @@ def parse_accuracy_log(text):
 
 def get_env(gpu_ids):
     env = os.environ.copy()
-    device = ENV_INFO.get("flag_gems", {}).get("device", "")
-    if device == "npu":
+    vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
+
+    if vendor == "npu":
         env["ASCEND_RT_VISIBLE_DEVICES"] = gpu_ids
         env["NPU_VISIBLE_DEVICES"] = gpu_ids
-    elif device == "mthreads":
+        return env
+
+    if vendor == "mthreads":
         env["MUSA_VISIBLE_DEVICES"] = gpu_ids
-    else:
-        env["CUDA_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "hygon":
+        env["HIP_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "tsingmicro":
+        env["TXDA_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
     return env
 
