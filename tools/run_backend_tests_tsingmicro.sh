@@ -2,6 +2,7 @@
 
 VENDOR=${1}
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
+export LD_LIBRARY_PATH=/usr/local/kuiper/lib:$LD_LIBRARY_PATH
 
 # PyEnv settings
 export PYENV_ROOT="$HOME/.pyenv"
