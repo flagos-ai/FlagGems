@@ -289,7 +289,7 @@ def dedup(fn):
 
 
 def run_accuracy(op, gpu_id, op_dir):
-    pinfo(f"[GPU {gpu_id}:2d] Running accuracy tests for '{op}'")
+    pinfo(f"[GPU {gpu_id:2d}] Running accuracy tests for '{op}'")
     env = get_env(str(gpu_id))
 
     if f"{op}" in NO_CPU_LIST:
@@ -455,6 +455,7 @@ def run_benchmark(op, gpu_id, op_dir):
 
 
 def worker_proc(gpu_id, ops_list):
+    worker_result = {}
     for op in ops_list:
         op = op.strip()
         if not op:
@@ -466,30 +467,17 @@ def worker_proc(gpu_id, ops_list):
         acc = run_accuracy(op, gpu_id, op_dir)
         perf = run_benchmark(op, gpu_id, op_dir)
 
-        with SUMMARY_LOCK:
-            GLOBAL_RESULTS[op] = {
-                "gpu": gpu_id,
-                "accuracy": acc,
-                "performance": perf,
-            }
-            write_summary()
-
-            # TODO(Qiming): Enable this conditionally
-            # write_xlsx()
-
-
-def write_summary():
-    json_path = OUTPUT_DIR.joinpath("summary.json")
-    data = [
-        {
-            "operator": op,
-            "accuracy": info["accuracy"],
-            "performance": info["performance"],
+        result = {
+            "accuracy": acc,
+            "performance": perf,
         }
-        for op, info in GLOBAL_RESULTS.items()
-    ]
-    with open(json_path, "w") as f:
-        json.dump(data, f, indent=2)
+        worker_result.setdefault(op, result)
+
+        json_path = OUTPUT_DIR.joinpath(f"summary{gpu_id}.json")
+        with open(json_path, "w") as f:
+            json.dump(worker_result, f, indent=2)
+
+    return
 
 
 def write_xlsx(path):
@@ -621,16 +609,22 @@ def main():
             f.result()
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    json_path = OUTPUT_DIR.joinpath("summary.json")
-    data = {}
-    with open(json_path, "r") as f:
-        result = json.load(f)
-        data["result"] = result
-        data["env"] = ENV_INFO
-        data["timestamp"] = timestamp
+    op_data = {}
+    for gpu_id in gpu_ids:
+        gpu_file = OUTPUT_DIR.joinpath(f"summary{gpu_id}.json")
+        with gpu_file.open("r") as f:
+            result = json.load(f)
+            op_data.update(result)
 
-    with open(json_path, "w") as f:
-        f.write(json.dumps(data))
+    final_data = {
+        "timestamp": timestamp,
+        "env": ENV_INFO,
+        "result": op_data,
+    }
+
+    json_path = OUTPUT_DIR.joinpath("summary.json")
+    with json_path.open("w") as f:
+        f.write(json.dumps(final_data))
 
     pinfo("Test completed.")
 
