@@ -660,3 +660,20 @@ def test_perf_bincount_weighted(dtype):
     )
     bench.set_gems(flag_gems.bincount)
     bench.run()
+
+
+def smooth_l1_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, target
+
+
+@pytest.mark.smooth_l1_loss
+def test_perf_smooth_l1_loss():
+    bench = GenericBenchmark2DOnly(
+        input_fn=smooth_l1_loss_input_fn,
+        op_name="smooth_l1_loss",
+        torch_op=torch.nn.functional.smooth_l1_loss,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
