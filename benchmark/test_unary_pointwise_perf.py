@@ -139,6 +139,7 @@ forward_inplace_operations = [
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
     # Trigonometric operations
     ("cos_", torch.cos_, FLOAT_DTYPES),
+    ("log10_", lambda a: a.log10_(), FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
     ("sinh_", lambda a: a.sinh_(), FLOAT_DTYPES),
     ("tan_", torch.tan_, FLOAT_DTYPES),
