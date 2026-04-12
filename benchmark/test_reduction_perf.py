@@ -660,3 +660,20 @@ def test_perf_bincount_weighted(dtype):
     )
     bench.set_gems(flag_gems.bincount)
     bench.run()
+
+
+def avg_pool3d_input_fn(shape, cur_dtype, device):
+    N, C = shape[0], shape[1]
+    inp = torch.randn(N, C, 16, 16, 16, dtype=cur_dtype, device=device)
+    yield inp, 2
+
+
+@pytest.mark.avg_pool3d
+def test_perf_avg_pool3d():
+    bench = GenericBenchmark2DOnly(
+        input_fn=avg_pool3d_input_fn,
+        op_name="avg_pool3d",
+        torch_op=torch.nn.functional.avg_pool3d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
