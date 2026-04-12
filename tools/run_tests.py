@@ -250,7 +250,7 @@ def get_env(gpu_ids):
     env = os.environ.copy()
     vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
 
-    if vendor == "npu":
+    if vendor == "ascend":
         env["ASCEND_RT_VISIBLE_DEVICES"] = gpu_ids
         env["NPU_VISIBLE_DEVICES"] = gpu_ids
         return env
@@ -289,7 +289,7 @@ def dedup(fn):
 
 
 def run_accuracy(op, gpu_id, op_dir):
-    pinfo(f"[GPU {gpu_id}] Running accuracy tests for '{op}'")
+    pinfo(f"[GPU {gpu_id}:>2] Running accuracy tests for '{op}'")
     env = get_env(str(gpu_id))
 
     if f"{op}" in NO_CPU_LIST:
@@ -311,6 +311,45 @@ def run_accuracy(op, gpu_id, op_dir):
 
 
 def parse_perf_log(op_dir):
+    record = {}
+
+    # Parse log output first
+    perf_log_file = op_dir / "performance_output.log"
+    lines = []
+    with perf_log_file.open("r") as f:
+        lines = f.readlines()
+    line_no = 0
+    while line_no < len(lines):
+        line = lines[line_no]
+        if "deselected / 0 selected" in line:
+            record = {
+                "result": "NOT TESTED",
+                "error": "No test case.",
+            }
+            return record
+
+        if "FAILED" in line and "Operator" in line and "dtype" in line:
+            # skip stack trace
+            if "print" in line:
+                continue
+            pos1 = line.find("dtype=")
+            pos2 = line.find(" ", pos1)
+            dtype = line[pos1 + 6 : pos2]
+            dtype = DTYPE_MAP.get(dtype, dtype)
+            pos1 = line.find("<<<") + 3
+            pos2 = line.find(">>>")
+            err_str = line[pos1:pos2]
+            while (pos2 < 0) and line_no < len(lines):
+                line_no += 1
+                line = lines[line_no]
+                pos2 = line.find(">>>")
+                err_str += line[:pos2]
+            record.setdefault(dtype, {})
+            record[dtype].setdefault("result", "FAILED")
+            record[dtype].setdefault("error", err_str)
+        line_no += 1
+
+    # Check if there are usable records
     perf_res_file = op_dir / "performance_result.log"
     log_lines = []
     with perf_res_file.open("r") as f:
@@ -318,9 +357,13 @@ def parse_perf_log(op_dir):
             line for line in f.read().strip().split("\n") if line.startswith("[INFO] {")
         ]
 
-    record = {}
     for line in log_lines:
-        item = json.loads(line[7:])
+        item = {}
+        try:
+            item = json.loads(line[7:])
+        except Exception:
+            # Bad (corrupted) JSON or empty string
+            continue
 
         dtype = DTYPE_MAP.get(item["dtype"], item["dtype"])
         details = {}
@@ -350,34 +393,6 @@ def parse_perf_log(op_dir):
                 "speedup": 0,
             }
 
-    perf_log_file = op_dir / "performance_output.log"
-    lines = []
-    with perf_log_file.open("r") as f:
-        lines = f.readlines()
-    line_no = 0
-    while line_no < len(lines):
-        line = lines[line_no]
-        if "FAILED" in line and "Operator" in line and "dtype" in line:
-            # skip stack trace
-            if "print" in line:
-                continue
-            pos1 = line.find("dtype=")
-            pos2 = line.find(" ", pos1)
-            dtype = line[pos1 + 6 : pos2]
-            dtype = DTYPE_MAP.get(dtype, dtype)
-            pos1 = line.find("<<<") + 3
-            pos2 = line.find(">>>")
-            err_str = line[pos1:pos2]
-            while (pos2 < 0) and line_no < len(lines):
-                line_no += 1
-                line = lines[line_no]
-                pos2 = line.find(">>>")
-                err_str += line[:pos2]
-            record.setdefault(dtype, {})
-            record[dtype].setdefault("result", "FAILED")
-            record[dtype].setdefault("error", err_str)
-        line_no += 1
-
     return record
 
 
@@ -386,7 +401,7 @@ def run_benchmark(op, gpu_id, op_dir):
 
     This returns a dict as report summary.
     """
-    pinfo(f"[GPU {gpu_id}] Running performance benchmark for '{op}'")
+    pinfo(f"[GPU {gpu_id:>2}] Running performance benchmark for '{op}'")
 
     env = get_env(str(gpu_id))
 
