@@ -297,9 +297,13 @@ def dedup(fn):
 
 def run_accuracy(gpu_id, start, index, count):
     op = OP_LIST[start + index].strip()
-    n = index * 10 // count
+    n = (index + 1) * 10 // count
+    total = len(OP_LIST)
     prog = "█" * n + " " * (10 - n)
-    pinfo(f"[GPU {gpu_id:2d}][{index:3d}][{prog}] Running accuracy tests for '{op}'")
+    pinfo(
+        f"[GPU {gpu_id:2d}][{start + index:3d}/{total:3d}][{prog}] "
+        "Running accuracy tests for '{op}'"
+    )
     env = get_env(str(gpu_id))
 
     if op in NO_CPU_LIST:
@@ -414,9 +418,13 @@ def run_benchmark(gpu_id, start, index, count):
     This returns a dict as report summary.
     """
     op = OP_LIST[start + index].strip()
-    n = index * 10 // count
+    total = len(OP_LIST)
+    n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
-    pinfo(f"[GPU {gpu_id:2d}][{index:3d}][{prog} Running perf benchmark for '{op}'")
+    pinfo(
+        f"[GPU {gpu_id:2d}][{start + index:3d}/{total:3d}][{prog}] "
+        "Running perf benchmark for '{op}'"
+    )
 
     env = get_env(str(gpu_id))
 
