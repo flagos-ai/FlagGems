@@ -267,6 +267,13 @@ def get_env(gpu_ids):
         env["TXDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
+    # NOTE: Iluvatar said to support CUDA_VISIBLE_DEVICES as well
+    if vendor == "iluvatar":
+        env["ILUVATAR_VISIBLE_DEVICES"] = gpu_ids
+        env["CUDA_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    # MetaX is using CUDA_VISIBLE_DEVICES as well
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
     return env
@@ -289,7 +296,7 @@ def dedup(fn):
 
 
 def run_accuracy(op, gpu_id, op_dir):
-    pinfo(f"[GPU {gpu_id}:2d] Running accuracy tests for '{op}'")
+    pinfo(f"[GPU {gpu_id:2d}] Running accuracy tests for '{op}'")
     env = get_env(str(gpu_id))
 
     if f"{op}" in NO_CPU_LIST:
