@@ -74,6 +74,7 @@ forward_operations = [
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     ("leaky_relu", lambda x: torch.nn.functional.leaky_relu(x), FLOAT_DTYPES),
+    ("leaky_relu_", lambda x: torch.nn.functional.leaky_relu_(x), FLOAT_DTYPES),
     # Trigonometric operations
     ("cos", torch.cos, FLOAT_DTYPES),
     ("sin", torch.sin, FLOAT_DTYPES),
