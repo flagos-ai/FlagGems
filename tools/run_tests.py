@@ -302,7 +302,7 @@ def run_accuracy(gpu_id, start, index, count):
     prog = "█" * n + " " * (10 - n)
     pinfo(
         f"[GPU {gpu_id:2d}][{start + index:3d}/{total:3d}][{prog}] "
-        "Running accuracy tests for '{op}'"
+        f"Running accuracy tests for '{op}'"
     )
     env = get_env(str(gpu_id))
 
@@ -423,7 +423,7 @@ def run_benchmark(gpu_id, start, index, count):
     prog = "█" * n + " " * (10 - n)
     pinfo(
         f"[GPU {gpu_id:2d}][{start + index:3d}/{total:3d}][{prog}] "
-        "Running perf benchmark for '{op}'"
+        f"Running perf benchmark for '{op}'"
     )
 
     env = get_env(str(gpu_id))
