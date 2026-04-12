@@ -404,8 +404,6 @@ class Benchmark:
                         "dtype={dtype} err=<<<{e}>>>"
                     )
                     pytest.fail(str(e))
-                finally:
-                    gc.collect()
 
                 metric = BenchmarkMetrics()
                 try:
