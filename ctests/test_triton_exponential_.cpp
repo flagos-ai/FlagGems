@@ -90,11 +90,6 @@ void RunExponentialTest(torch::ScalarType dtype) {
 }
 
 TEST(exponential_op_test, exponential_) {
-  // LOG(WARNING) << " test torch::kFloat16";
-  // RunExponentialTest<torch::Half>(torch::kFloat16);
   LOG(WARNING) << " test torch::kFloat32";
-  // Temporarily commented out; does not affect CI/CD. Will fix/implement later.
-  // RunExponentialTest<float>(torch::kFloat32);  // pytest use type of float32 to test
-  // LOG(WARNING) << " test torch::kFloat64";
-  // RunExponentialTest<double>(torch::kFloat64);
+  RunExponentialTest<float>(torch::kFloat32);
 }
