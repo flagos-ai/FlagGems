@@ -301,28 +301,27 @@ def nll_loss_backward(
 # 3d+ tensor
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS NLL Loss2d FWD")
-    assert self.ndim == 4, "Invalid input ndim"
+    assert self.ndim >= 3, "Invalid input ndim"
 
-    shape = list(target.shape)
-    N, C, _, D = self.shape
-    assert shape == [N, 1, D], "Invalid target size"
+    N, C = self.shape[0], self.shape[1]
+    D = self.numel() // (N * C)
+    assert target.numel() == N * D, "Invalid target size"
 
-    self = self.contiguous()
-    target = target.contiguous()
+    target_orig_shape = target.shape
+    self_flat = self.reshape(N, C, D).contiguous()
+    target_flat = target.reshape(N, D).contiguous()
     weight = None if weight is None else weight.contiguous()
 
-    out = torch.empty(shape, dtype=self.dtype, device=self.device)
+    out = torch.empty((N, D), dtype=self.dtype, device=self.device)
     ignore_weight_tgt = None
     if reduction == 1:
-        ignore_weight_tgt = torch.zeros(
-            target.shape, dtype=self.dtype, device=self.device
-        )
+        ignore_weight_tgt = torch.zeros((N, D), dtype=self.dtype, device=self.device)
 
     grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
     with torch_device_fn.device(self.device):
         nll_loss2d_forward_kernel[grid](
-            self,
-            target,
+            self_flat,
+            target_flat,
             weight,
             out,
             ignore_weight_tgt,
@@ -336,7 +335,7 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
 
     # redution: 0-None, 1-mean, 2-sum
     if reduction == 0:
-        output = out
+        output = out.reshape(target_orig_shape)
         total_weight = torch.empty([], dtype=self.dtype, device=self.device)
     elif reduction == 1:
         total_out = torch.sum(out)
@@ -360,10 +359,11 @@ def nll_loss2d_backward(
     total_weight=None,
 ):
     logger.debug("GEMS NLL Loss2d BWD")
-    N, C, _, D = self.shape
+    N, C = self.shape[0], self.shape[1]
+    D = self.numel() // (N * C)
 
     grad_output = grad_output.contiguous()
-    target = target.contiguous()
+    target_flat = target.reshape(N, D).contiguous()
     weight = None if weight is None else weight.contiguous()
 
     grad_input = torch.zeros_like(self).contiguous()
@@ -372,9 +372,9 @@ def nll_loss2d_backward(
     with torch_device_fn.device(self.device):
         nll_loss2d_backward_kernel[grid](
             grad_output,
-            target,
+            target_flat,
             weight,
-            grad_input,
+            grad_input.reshape(N, C, D),
             ignore_index,
             total_weight,
             N,
