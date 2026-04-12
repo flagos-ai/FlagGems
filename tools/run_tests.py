@@ -289,7 +289,7 @@ def dedup(fn):
 
 
 def run_accuracy(op, gpu_id, op_dir):
-    pinfo(f"[GPU {gpu_id}:>2] Running accuracy tests for '{op}'")
+    pinfo(f"[GPU {gpu_id}:2d] Running accuracy tests for '{op}'")
     env = get_env(str(gpu_id))
 
     if f"{op}" in NO_CPU_LIST:
@@ -401,7 +401,7 @@ def run_benchmark(op, gpu_id, op_dir):
 
     This returns a dict as report summary.
     """
-    pinfo(f"[GPU {gpu_id:>2}] Running performance benchmark for '{op}'")
+    pinfo(f"[GPU {gpu_id:2d}] Running performance benchmark for '{op}'")
 
     env = get_env(str(gpu_id))
 
