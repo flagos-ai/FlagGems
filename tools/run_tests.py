@@ -10,15 +10,13 @@ import shutil
 import signal
 import subprocess
 import sys
-import time
-from decimal import getcontext
+from decimal import Decimal, getcontext
 from importlib import metadata
 from multiprocessing import Process
 from pathlib import Path
 
 import consts
 import distro
-import git
 import yaml
 
 import flag_gems
@@ -34,10 +32,30 @@ HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
-DUMP_OUTPUT = False
 TIMEOUT = -100
-# A list of operators that can only run on GPU/DCUs
-NO_CPU_LIST = []
+
+NO_CPU_LIST = [
+    "flash_attention_forward",
+    "get_scheduler_metadata",
+    "grouped_topk",
+    "per_token_group_quant_fp8",
+]
+
+DTYPE_MAP = {
+    "torch.float16": "fp16",
+    "torch.float32": "fp32",
+    "torch.bfloat16": "bf16",
+    "torch.int16": "int16",
+    "torch.int32": "int32",
+    "torch.bool": "bool",
+    "torch.complex64": "cf64",
+}
+
+# Regex for numeric validator
+NUM_RE = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$")
+
+# Regex for ANSI
+ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
 
 def pinfo(str, **args):
@@ -217,20 +235,13 @@ def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
         stderr=stderr,
         start_new_session=True,
     )
-
     try:
-        p.wait(timeout=timeout)
+        out, err = p.communicate(timeout=300)
     except subprocess.TimeoutExpired:
-        pgid = os.getpgid(p.pid)
-        try:
-            os.killpg(pgid, signal.SIGTERM)
-        except Exception:
-            os.killpg(pgid, signal.SIGKILL)
-
-        return p.returncode
-    except Exception as e:
-        perror(f"run_cmd failed: {e}")
-        return -1
+        p.kill()
+        out, err = p.communicate()
+        return out or "", err or "", TIMEOUT
+    return out or "", err or "", p.returncode
 
 
 def parse_accuracy_data(result_file):
@@ -366,15 +377,21 @@ def run_accuracy(gpu_id, start, index, count):
     if op in NO_CPU_LIST:
         cmd = f'pytest -m "{op}" --record json --output accuracy_{op}.json -vs'
     else:
-        cmd = (
-            f'pytest -m "{op}" --record json --output accuracy_{op}.json --ref cpu -vs'
-        )
+        cmd = f'pytest -m "{op}" --ref cpu -vs'
+    stdout, stderr, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
 
-    accuracy_dir = ROOT.joinpath("tests")
-    result_file = accuracy_dir / f"accuracy_{op}.json"
-    if result_file.exists():
-        result_file.unlink()
+    if code == TIMEOUT:  # Timeout
+        return {
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 0,
+            "total": 0,
+            "status": "TIMEOUT",
+            "exit_code": TIMEOUT,
+        }
 
+    combined = stdout + "\n---\n" + stderr
     op_dir = OUTPUT_DIR.joinpath(op)
     ensure_dir(op_dir)
     start = time.time()
@@ -486,8 +503,6 @@ def run_benchmark(gpu_id, start, index, count):
     op = OP_LIST[start + index].strip()
     n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
-    if (index + 1) == count:
-        prog = f"\033[32m{prog}\033[0m"
     nums = f"{index + 1}/{count}"
     pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running perf benchmark for '{op}'")
 
@@ -498,8 +513,14 @@ def run_benchmark(gpu_id, start, index, count):
     if result_file.exists():
         result_file.unlink()
 
+    cmd = f'pytest -m "{op}" --level core --record log'
+    stdout, stderr, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
+
+    # Write raw command output
     op_dir = OUTPUT_DIR.joinpath(op)
-    ensure_dir(op_dir)
+    output_file = op_dir.joinpath("performance_output.log")
+    with open(output_file, "w") as f:
+        f.write(stdout + "\n---\n" + stderr)
 
     start = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
@@ -507,11 +528,16 @@ def run_benchmark(gpu_id, start, index, count):
     end = time.time()
 
     # Not found
-    if not result_file.exists():
+    if not result_file:
+        status = "No Result"
+        if code == TIMEOUT:
+            status = "TIMEOUT"
         return {
-            "status": "NotFound",
-            "exit_code": code,
-            "data": {},
+            "status": status,
+            "log": str(output_file.relative_to(OUTPUT_DIR)),
+            "result": None,
+            "exit_code": TIMEOUT,
+            "data": [],
         }
 
     # Move record log to output directory
@@ -560,75 +586,6 @@ def worker_proc(gpu_id, start, count):
     return
 
 
-def get_ops_to_test(ops_file, ops_list, stages):
-    # Build list of operators which do NOT support CPU mode
-    op_catalog = get_ops_from_inventory()
-    for op in op_catalog:
-        labels = op.get("labels", [])
-        if "NoCPU" in labels:
-            NO_CPU_LIST.append(op["id"])
-
-    # This is the highest priority
-    if ops_list:
-        ops = []
-        for op in ops_list.split(","):
-            # Leading underscores are not valid pytest marks
-            ops.append(op.strip().lstrip("_"))
-
-        return ops
-
-    # Parse the op list file if specified
-    if ops_file:
-        lines = []
-        try:
-            with open(ops_file, "r") as f:
-                lines = f.readlines()
-        except Exception as e:
-            perror(f"Failed reading the specified op list file: {e}")
-            return []
-
-        ops = []
-        for ln in lines:
-            ln = ln.strip()
-            # comment line
-            if ln.startswith("#"):
-                continue
-            # Remove leading underscore to make valid pytest mark
-            ops.append(ln.lstrip("_"))
-
-        return ops
-
-    # Now fall-back to inventory
-    effective_stages = []
-    for s in stages.split(","):
-        stage = s.strip()
-        if stage not in ["alpha", "beta", "stable", "all", "removed"]:
-            pwarn(f"ignoring unsupported stage name '{s}'...")
-            continue
-        # Stop checking if 'all' specified
-        if stage == "all":
-            effective_stages = ["alpha", "beta", "stable"]
-            break
-        effective_stages.append(stage)
-
-    # Fall back to 'stable' if no effective filter specified
-    if not effective_stages:
-        effective_stages = ["stable"]
-
-    ops = []
-    for op in op_catalog:
-        stages = op.get("stages", [])
-        if len(stages) == 0:
-            # won't happen
-            continue
-        stage = next(iter(stages[-1].keys()), None)
-        if stage not in effective_stages:
-            continue
-        ops.append(op["id"])
-
-    return ops
-
-
 def main():
     global OUTPUT_DIR
     global OP_LIST
@@ -675,6 +632,8 @@ def main():
     if gpu_count == 1:
         worker_proc(gpu_ids[0], 0, op_count)
     else:
+        # with ThreadPoolExecutor(max_workers=gpu_count) as exe:
+        #    futures = []
         processes = []
         m, n = divmod(op_count, gpu_count)
         start = 0
@@ -683,6 +642,7 @@ def main():
                 count = m + 1
             else:
                 count = m
+            # futures.append(exe.submit(worker_proc, gpu, start, count))
             p = Process(target=worker_proc, args=(gpu, start, count))
             p.start()
             processes.append(p)
