@@ -1,7 +1,5 @@
 import dataclasses
-import gc
 import random
-import time
 from itertools import product
 from math import ceil
 from typing import List
@@ -1154,108 +1152,154 @@ def test_perf_fused_moe_int4_w4a16_gems_vs_vllm():
     bench.run()
 
 
-# ---------------------- fused_moe_mxq W8A16 test ----------------------
+class FusedMoEMXQW8A16Benchmark(Benchmark):
+    """
+    Benchmark for flag_gems.fused_moe_mxq.fused_moe with W8A16 mixed precision.
+
+    Uses QuantMode.W8A16: INT8 weights, FP16 activations.
+    Tests SwiGLU MoE: y = W2 @ (silu(W1 @ x) * (W3 @ x))
+    """
+
+    def __init__(self, op_name, torch_op, dtypes):
+        super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            # Mixtral-like shapes
+            (1, 8, 4096, 14336, 2),
+            (4, 8, 4096, 14336, 2),
+            (16, 8, 4096, 14336, 2),
+            (64, 8, 4096, 14336, 2),
+            (128, 8, 4096, 14336, 2),
+            (256, 8, 4096, 14336, 2),
+            (512, 8, 4096, 14336, 2),
+            # DeepSeek-V3-like shapes (smaller E to avoid OOM)
+            (1, 64, 7168, 2048, 8),
+            (4, 64, 7168, 2048, 8),
+            (16, 64, 7168, 2048, 8),
+            (64, 64, 7168, 2048, 8),
+            (128, 64, 7168, 2048, 8),
+            (256, 64, 7168, 2048, 8),
+            # Qwen3.5-397B-A17B (smaller E to avoid OOM)
+            (1, 128, 4096, 1024, 10),
+            (4, 128, 4096, 1024, 10),
+            (16, 128, 4096, 1024, 10),
+            (64, 128, 4096, 1024, 10),
+            (128, 128, 4096, 1024, 10),
+            (256, 128, 4096, 1024, 10),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for config in self.shapes:
+            yield from self._w8a16_mxq_input_fn(config)
+
+    def _w8a16_mxq_input_fn(self, config):
+        num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+        device = flag_gems.device
+        dtype = torch.bfloat16
+
+        from flag_gems.fused_moe_mxq import QuantConfig, QuantMode, quantize_weights_moe
+
+        hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+
+        # Generate INT8 weights with scales (group-wise quantization)
+        w1_fp16 = torch.randn(
+            num_experts, intermediate_size * 2, hidden_size,
+            device=device, dtype=dtype,
+        ) * (1.0 / hidden_size**0.5)
+        w2_fp16 = torch.randn(
+            num_experts, hidden_size, intermediate_size,
+            device=device, dtype=dtype,
+        ) * (1.0 / intermediate_size**0.5)
+        w3_fp16 = torch.randn(
+            num_experts, intermediate_size * 2, hidden_size,
+            device=device, dtype=dtype,
+        ) * (1.0 / hidden_size**0.5)
+
+        # Quantize to W8A16
+        quant_config = QuantConfig(mode=QuantMode.W8A16, has_zero_point=False)
+        w1_q, w1_scale, _ = quantize_weights_moe(w1_fp16, num_experts, quant_config)
+        w2_q, w2_scale, _ = quantize_weights_moe(w2_fp16, num_experts, quant_config)
+        w3_q, w3_scale, _ = quantize_weights_moe(w3_fp16, num_experts, quant_config)
+
+        # Routing
+        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+        topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+        topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+        topk_weights = topk_weights.to(dtype)
+
+        yield (
+            hidden_states, w1_q, w2_q, w3_q,
+            w1_scale, w2_scale, w3_scale,
+            topk_weights, topk_ids,
+            num_experts, topk,
+        )
 
 
-def _mxq_w8a16_wrapper(
-    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
+def _baseline_w8a16_mxq_wrapper(
+    hidden_states, w1_q, w2_q, w3_q,
+    w1_scale, w2_scale, w3_scale,
+    topk_weights, topk_ids, num_experts, topk,
 ):
-    """Call fused_moe_mxq W8A16 implementation."""
-    from flag_gems.fused_moe_mxq import QuantConfig, QuantMode, fused_moe as mxq_fused_moe
-    quant_config = QuantConfig(mode=QuantMode.W8A16, group_size=128)
-    return mxq_fused_moe(
-        hidden_states,
-        w1=w1,
-        w2=w2,
-        w3=None,
-        topk_weights=topk_weights,
-        topk_ids=topk_ids,
-        quant_config=quant_config,
-        num_experts=w1.shape[0],
-        top_k=topk_weights.shape[1],
-        w1_scales=w1_scale,
-        w2_scales=w2_scale,
+    """Baseline: dequantize only used experts, then use FP16 path."""
+    group_size = 128
+
+    unique_experts = topk_ids.unique()
+    w1_deq = torch.zeros_like(w1_q, dtype=torch.float32)
+    w2_deq = torch.zeros_like(w2_q, dtype=torch.float32)
+
+    for e in unique_experts:
+        e = int(e.item())
+        s1 = w1_scale[e]
+        n_out1, num_groups1 = s1.shape
+        k_in1 = w1_q.shape[2]
+        s1_expanded = s1.unsqueeze(-1).expand(n_out1, num_groups1, group_size).reshape(n_out1, k_in1)
+        w1_deq[e] = (w1_q[e].float() - 128.0) * s1_expanded.float()
+
+        s2 = w2_scale[e]
+        n_out2, num_groups2 = s2.shape
+        k_in2 = w2_q.shape[2]
+        s2_expanded = s2.unsqueeze(-1).expand(n_out2, num_groups2, group_size).reshape(n_out2, k_in2)
+        w2_deq[e] = (w2_q[e].float() - 128.0) * s2_expanded.float()
+
+    return flag_gems.fused_experts_impl(
+        hidden_states.clone(), w1_deq.to(hidden_states.dtype), w2_deq.to(hidden_states.dtype), topk_weights, topk_ids,
     )
 
 
-def _mxq_w8a16_baseline_wrapper(
-    hidden_states, w1_int8, w2_int8, topk_weights, topk_ids, w1_scale, w2_scale
+def _gems_fused_moe_mxq_w8a16_wrapper(
+    hidden_states, w1_q, w2_q, w3_q,
+    w1_scale, w2_scale, w3_scale,
+    topk_weights, topk_ids, num_experts, topk,
 ):
-    """Baseline: dequantize only used experts, then run FlagGems fused_experts_impl."""
-    unique_experts = topk_ids.unique().tolist()
-    w1_deq = torch.zeros_like(w1_int8, dtype=hidden_states.dtype)
-    w2_deq = torch.zeros_like(w2_int8, dtype=hidden_states.dtype)
-    for eid in unique_experts:
-        w1_deq[eid] = w1_int8[eid].to(hidden_states.dtype) * w1_scale[eid].unsqueeze(-1).to(hidden_states.dtype)
-        w2_deq[eid] = w2_int8[eid].to(hidden_states.dtype) * w2_scale[eid].unsqueeze(-1).to(hidden_states.dtype)
-    return flag_gems.fused_experts_impl(
-        hidden_states.clone(),
-        w1_deq,
-        w2_deq,
-        topk_weights,
-        topk_ids,
+    """Test flag_gems.fused_moe_mxq.fused_moe with W8A16."""
+    from flag_gems.fused_moe_mxq import fused_moe, QuantConfig, QuantMode
+
+    quant_config = QuantConfig(mode=QuantMode.W8A16, has_zero_point=False)
+    return fused_moe(
+        hidden_states,
+        w1=None, w2=None, w3=None,
+        topk_weights=topk_weights, topk_ids=topk_ids,
+        quant_config=quant_config,
+        num_experts=num_experts, top_k=topk,
+        w1_q=w1_q, w1_scales=w1_scale, w1_zeros=None,
+        w2_q=w2_q, w2_scales=w2_scale, w2_zeros=None,
+        w3_q=w3_q, w3_scales=w3_scale, w3_zeros=None,
     )
 
 
 @pytest.mark.fused_moe
 @pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
-def test_perf_fused_moe_mxq_w8a16():
-    """Benchmark fused_moe_mxq W8A16 with dequant baseline using FusedMoEINT8W8A16Benchmark.
-
-    Uses only 8 expert shapes to avoid OOM during mxq weight quantization.
+def test_perf_fused_moe_w8a16_mxq():
     """
-    from flag_gems.fused_moe_mxq import QuantConfig, QuantMode, fused_moe as mxq_fused_moe
-
-    class MxqW8A16Benchmark(FusedMoEINT8W8A16Benchmark):
-        """Override to use only 8-expert shapes and mxq kernel as gems_op."""
-
-        def set_shapes(self, shape_file_path=None):
-            self.shapes = [
-                (1, 8, 4096, 14336, 2),
-                (4, 8, 4096, 14336, 2),
-                (16, 8, 4096, 14336, 2),
-                (64, 8, 4096, 14336, 2),
-            ]
-
-    bench = MxqW8A16Benchmark(
-        op_name="fused_moe_mxq_w8a16",
-        torch_op=_mxq_w8a16_baseline_wrapper,
+    Benchmark flag_gems.fused_moe_mxq.fused_moe with W8A16 mixed precision.
+    """
+    bench = FusedMoEMXQW8A16Benchmark(
+        op_name="fused_moe_w8a16_mxq_gems_vs_bf16_deq",
+        torch_op=_baseline_w8a16_mxq_wrapper,
         dtypes=[torch.bfloat16],
     )
-
-    def mxq_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
-        """Wrapper that converts benchmark weights to mxq kernel format.
-
-        Benchmark uses: w1 [E, 2*inter, hidden], w1_scale [E, 2*inter]
-        Mxq expects:    w1_q [E, 2*inter, hidden], w1_scales [E, 2*inter, num_groups]
-                        where num_groups = hidden // group_size
-        """
-        quant_config = QuantConfig(mode=QuantMode.W8A16, group_size=128, has_zero_point=False)
-        group_size = 128
-        num_groups = w1.shape[2] // group_size  # hidden_size // 128
-
-        # Mxq expects scales of shape [E, out_features, num_groups]
-        # Reshape per-channel scales to per-group scales
-        w1_scale_expanded = w1_scale.unsqueeze(-1).expand(-1, -1, num_groups).contiguous()
-        w2_scale_expanded = w2_scale.unsqueeze(-1).expand(-1, -1, num_groups).contiguous()
-
-        return mxq_fused_moe(
-            hidden_states,
-            w1=None,
-            w2=None,
-            w3=None,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            quant_config=quant_config,
-            num_experts=w1.shape[0],
-            top_k=topk_weights.shape[1],
-            w1_q=w1,
-            w1_scales=w1_scale_expanded,
-            w2_q=w2,
-            w2_scales=w2_scale_expanded,
-        )
-
-    bench.set_gems(mxq_wrapper)
+    bench.set_gems(_gems_fused_moe_mxq_w8a16_wrapper)
     bench.run()
 
 
