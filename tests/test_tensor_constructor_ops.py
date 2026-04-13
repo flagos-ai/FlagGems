@@ -297,7 +297,7 @@ def test_accuracy_eye(shape, dtype):
 
 @pytest.mark.one_hot
 def test_accuracy_one_hot():
-    from flag_gems.ops.one_hot import one_hot as gems_one_hot
+    gems_one_hot = flag_gems.one_hot
 
     dev_type = torch.device(device).type
     expected_device = "cpu" if TO_CPU else device
