@@ -28,6 +28,7 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("_assert_async", _assert_async),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
@@ -45,6 +46,7 @@ _FULL_CONFIG = (
     ),
     ("_unique2", _unique2),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
+    ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
     ("_weight_norm_interface", weight_norm_interface),
     ("_weight_norm_interface_backward", weight_norm_interface_backward),
@@ -303,6 +305,7 @@ _FULL_CONFIG = (
     ("ne.Tensor", ne),
     ("neg", neg),
     ("neg_", neg_),
+    ("new_full", new_full),
     ("nll_loss_backward", nll_loss_backward),
     ("nll_loss_forward", nll_loss_forward),
     ("nll_loss2d_backward", nll_loss2d_backward),
@@ -359,6 +362,9 @@ _FULL_CONFIG = (
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
+    ("round", round),
+    ("round.out", round_out),
+    ("round_", round_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
@@ -377,6 +383,8 @@ _FULL_CONFIG = (
     ("sigmoid", sigmoid),
     ("sigmoid_", sigmoid_),
     ("sigmoid_backward", sigmoid_backward),
+    ("signbit", signbit),
+    ("signbit.out", signbit_out),
     ("silu", silu),
     ("silu_", silu_),
     ("silu_backward", silu_backward),
