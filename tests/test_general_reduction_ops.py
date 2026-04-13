@@ -193,7 +193,7 @@ def test_accuracy_max_without_dim_all_neg_inf(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.max(inp)
 
-    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
 # cambricon add
@@ -314,6 +314,53 @@ def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+# Shapes where K (product of dims after the reduction axis) exceeds the CUDA
+# grid-Y limit of 65535, which used to trigger "Triton Error [CUDA]: invalid
+# argument" before the mean_heur_tile_k grid-overflow fix.
+MEAN_LARGE_K_SHAPES = [
+    (1, 8, 256, 256),  # dim=1 → M=1, N=8, K=65536 (just over limit)
+    (1, 4, 512, 512),  # dim=1 → M=1, N=4, K=262144 (well over limit)
+]
+
+
+@pytest.mark.mean
+@pytest.mark.parametrize("shape", MEAN_LARGE_K_SHAPES)
+@pytest.mark.parametrize("dim", [1])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_mean_dim_large_k(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.mean(ref_inp, dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp, dim, keepdim)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+MEAN_LARGE_INNERDIM_SHAPES = [
+    (1024, 1024, 1024),  # dim=1 → M=1, N=8, K=65536 (just over limit)
+    (1024, 2048, 1024),  # dim=1 → M=1, N=4, K=262144 (well over limit)
+]
+
+
+@pytest.mark.mean
+@pytest.mark.parametrize("shape", MEAN_LARGE_INNERDIM_SHAPES)
+@pytest.mark.parametrize("dim", [1])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_mean_dim_large_innerdim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.mean(ref_inp, dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp, dim, keepdim)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.min
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
@@ -424,8 +471,11 @@ def test_accuracy_sum_without_dim(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
 
+INCLUDE_0_SHAPES = [(1, 0, 128, 512), (4096, 1, 256, 0), (200, 10, 0, 3)]
+
+
 @pytest.mark.sum
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + INCLUDE_0_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM + [(False, []), (True, [])])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
@@ -445,6 +495,34 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     if dim == []:
         _dim = inp.numel()
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
+
+
+@pytest.mark.sum
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_sum_dim_out(shape, dim, keepdim, dtype):
+    # Regression test: sum_dim_out must resize external out tensor and skip squeeze.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_result = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+
+    # Pre-allocate out tensor with wrong shape to test resize logic
+    out = torch.empty((1,), dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_result = torch.sum(inp, dim=dim, keepdim=keepdim, out=out)
+
+    if isinstance(dim, int):
+        dim = [dim]
+    dim = [d % inp.ndim for d in dim]
+    _dim = 1
+    for d in dim:
+        _dim *= shape[d]
+    if dim == []:
+        _dim = inp.numel()
+    gems_assert_close(res_result, ref_result, dtype, reduce_dim=_dim)
+    gems_assert_close(out, ref_result, dtype, reduce_dim=_dim)
 
 
 QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]

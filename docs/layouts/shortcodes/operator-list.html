@@ -1,0 +1,52 @@
+
+<table>
+<thead>
+  <tr>
+    <th>name</th>
+    <th>kind</th>
+    <th>stage</th>
+    <th>since</th>
+    <th>labels</th>
+    <th>description</th>
+  <tr>
+</thead>
+<tbody>
+{{ range hugo.Data.operators.ops }}
+<tr>
+  <td><tt>{{ .name }}</tt></td>
+  <td>{{ range .kind }}
+      {{ . }}
+      {{ end }}
+  </td>
+  {{ if isset .stages "removed" -}}
+    <td>Removed</td>
+    <td> {{ index .stages "removed" }}</td>
+  {{ else }}
+    {{ if isset .stages "stable" -}}
+      <td>Stable</td>
+      <td> {{ index .stages "stable" }}</td>
+    {{ else }}
+      {{ if isset .stages "beta" -}}
+        <td>Beta</td>
+        <td>{{ index .stages "beta" }}</td>
+      {{ else }}
+        {{ if isset .stages "alpha" -}}
+          <td>Alpha</td>
+          <td>{{ index .stages "alpha" }}</td>
+        {{ else }}
+          <td>XXX</td>
+          <td>XXX</td>
+        {{ end }}
+      {{ end }}
+    {{ end }}
+  {{ end }}
+
+  <td>
+    {{- delimit .labels ", " -}}
+  </td>
+  <td>
+    {{ .description | markdownify }}
+  </td>
+{{ end }}
+</tbody>
+</table>
