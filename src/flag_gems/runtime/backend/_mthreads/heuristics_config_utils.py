@@ -179,6 +179,14 @@ def index_select_heur_block_n(args):
     return max(m, 16)
 
 
+def index_add_heur_block_m(args):
+    return 4 if args["M"] < 4096 else 8
+
+
+def index_add_heur_block_n(args):
+    return min(8192, triton.next_power_of_2(args["N"]))
+
+
 def mm_heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
@@ -307,6 +315,22 @@ def upsample_nearest2d_USE_INT32_IDX(args):
     return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)  # INT32 MAX
 
 
+def upsample_nearest3d_SAME_D(args):
+    return args["OD"] == args["ID"]
+
+
+def upsample_nearest3d_SAME_H(args):
+    return args["OH"] == args["IH"]
+
+
+def upsample_nearest3d_SAME_W(args):
+    return args["OW"] == args["IW"]
+
+
+def upsample_nearest3d_USE_INT32_IDX(args):
+    return args["N"] * args["C"] * args["OD"] * args["OH"] * args["OW"] <= (2**31 - 1)
+
+
 def batch_norm_heur_block_m(args):
     return min(2048, triton.next_power_of_2(args["batch_dim"]))
 
@@ -330,6 +354,7 @@ def vdot_heur_block_size(args):
 
 def mean_heur_tile_k(args):
     MAX_TILE_K = 512
+    MAX_GRID_Y = 65535
     NUM_SMS = torch.musa.get_device_properties(
         torch.musa.current_device()
     ).multi_processor_count
@@ -344,6 +369,10 @@ def mean_heur_tile_k(args):
             tile_k *= 2
         else:
             break
+    # Ensure grid Y dimension does not exceed CUDA limit
+    min_tile_k = triton.cdiv(args["K"], MAX_GRID_Y)
+    if min_tile_k > tile_k:
+        tile_k = triton.next_power_of_2(min_tile_k)
     return tile_k
 
 
@@ -406,6 +435,10 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
     },
+    "index_add": {
+        "BLOCK_M": index_add_heur_block_m,
+        "BLOCK_N": index_add_heur_block_n,
+    },
     "mm": {
         "EVEN_K": mm_heur_even_k,
     },
@@ -450,6 +483,12 @@ HEURISTICS_CONFIGS = {
         "SAME_H": upsample_nearest2d_SAME_H,
         "SAME_W": upsample_nearest2d_SAME_W,
         "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
+    },
+    "upsample_nearest3d": {
+        "SAME_D": upsample_nearest3d_SAME_D,
+        "SAME_H": upsample_nearest3d_SAME_H,
+        "SAME_W": upsample_nearest3d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest3d_USE_INT32_IDX,
     },
     "var_mean": {
         "BLOCK_N": var_mean_heur_block_n,
