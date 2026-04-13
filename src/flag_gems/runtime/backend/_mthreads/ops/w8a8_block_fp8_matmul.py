@@ -34,7 +34,6 @@ def is_supported_sqmma_layout(tensor):
 
 
 def is_sqmma_compatible(a, b, output_dtype, n, k):
-    m = a.shape[0]
     return (
         a.dim() == 2
         and SQMMA_ON
