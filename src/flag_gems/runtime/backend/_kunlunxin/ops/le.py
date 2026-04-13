@@ -11,7 +11,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 config_ = CodeGenConfig(
-    512,
+    1024,
     (65536, 65536, 65536),
     32,
     True,
