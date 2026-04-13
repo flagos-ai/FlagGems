@@ -12,7 +12,58 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 @libentry()
 @triton.jit(do_not_specialize=["beta", "alpha"])
-def addr_kernel(
+def addr_kernel_1d(
+    input_ptr,
+    vec1_ptr,
+    vec2_ptr,
+    output_ptr,
+    beta,
+    alpha,
+    M,
+    N,
+    stride_input_m,
+    stride_input_n,
+    stride_output_m,
+    stride_output_n,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """1D kernel that processes one row at a time for better parallelism."""
+    pid = tl.program_id(0)
+    row_idx = pid
+
+    if row_idx >= M:
+        return
+
+    # Load vec1 element for this row
+    vec1_val = tl.load(vec1_ptr + row_idx).to(tl.float32)
+
+    # Process columns in blocks
+    for col_start in range(0, N, BLOCK_SIZE):
+        col_offs = col_start + tl.arange(0, BLOCK_SIZE)
+        col_mask = col_offs < N
+
+        # Load vec2 elements
+        vec2_vals = tl.load(vec2_ptr + col_offs, mask=col_mask, other=0.0).to(
+            tl.float32
+        )
+
+        # Load input elements
+        input_ptrs = input_ptr + row_idx * stride_input_m + col_offs * stride_input_n
+        input_vals = tl.load(input_ptrs, mask=col_mask, other=0.0).to(tl.float32)
+
+        # Compute result
+        result = beta * input_vals + alpha * (vec1_val * vec2_vals)
+
+        # Store result
+        output_ptrs = (
+            output_ptr + row_idx * stride_output_m + col_offs * stride_output_n
+        )
+        tl.store(output_ptrs, result, mask=col_mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["beta", "alpha"])
+def addr_kernel_2d(
     input_ptr,
     vec1_ptr,
     vec2_ptr,
@@ -79,29 +130,50 @@ def addr(input, vec1, vec2, *, beta=1, alpha=1):
         )
     out = torch.empty(output_shape, device=input.device, dtype=input.dtype)
 
-    BLOCK_SIZE_M = 32
-    BLOCK_SIZE_N = 32
-    grid = lambda META: (
-        triton.cdiv(M, BLOCK_SIZE_M),
-        triton.cdiv(N, BLOCK_SIZE_N),
-    )
-    with torch_device_fn.device(input.device):
-        addr_kernel[grid](
-            input_broadcasted,
-            vec1,
-            vec2,
-            out,
-            beta,
-            alpha,
-            M,
-            N,
-            input_broadcasted.stride(0),
-            input_broadcasted.stride(1),
-            vec1.stride(0),
-            vec2.stride(0),
-            out.stride(0),
-            out.stride(1),
-            BLOCK_SIZE_M=BLOCK_SIZE_M,
-            BLOCK_SIZE_N=BLOCK_SIZE_N,
+    # Use 1D kernel for small M (row-parallel), 2D kernel for larger matrices
+    if M <= 128:
+        BLOCK_SIZE = 1024
+        grid = (M,)
+        with torch_device_fn.device(input.device):
+            addr_kernel_1d[grid](
+                input_broadcasted,
+                vec1,
+                vec2,
+                out,
+                beta,
+                alpha,
+                M,
+                N,
+                input_broadcasted.stride(0),
+                input_broadcasted.stride(1),
+                out.stride(0),
+                out.stride(1),
+                BLOCK_SIZE=BLOCK_SIZE,
+            )
+    else:
+        BLOCK_SIZE_M = 128
+        BLOCK_SIZE_N = 128
+        grid = (
+            triton.cdiv(M, BLOCK_SIZE_M),
+            triton.cdiv(N, BLOCK_SIZE_N),
         )
+        with torch_device_fn.device(input.device):
+            addr_kernel_2d[grid](
+                input_broadcasted,
+                vec1,
+                vec2,
+                out,
+                beta,
+                alpha,
+                M,
+                N,
+                input_broadcasted.stride(0),
+                input_broadcasted.stride(1),
+                vec1.stride(0),
+                vec2.stride(0),
+                out.stride(0),
+                out.stride(1),
+                BLOCK_SIZE_M=BLOCK_SIZE_M,
+                BLOCK_SIZE_N=BLOCK_SIZE_N,
+            )
     return out

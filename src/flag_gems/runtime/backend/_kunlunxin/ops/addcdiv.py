@@ -13,11 +13,13 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 )
 @triton.jit
 def addcdiv_kernel(x, t1, t2, value):
-    return x + value * (t1 / t2)
+    # Use reciprocal multiplication: t1 * (1/t2) can be faster than t1 / t2
+    rcp_t2 = 1.0 / t2
+    return x + value * t1 * rcp_t2
 
 
 def addcdiv(inp, tensor1, tensor2, value=1.0, out=None):
-    logger.debug("GEMS_KUNLUNXIN ADDCDIV")
+    logger.debug("GEMS ADDCDIV FORWARD")
 
     if out is None:
         out = torch.empty_like(inp)
