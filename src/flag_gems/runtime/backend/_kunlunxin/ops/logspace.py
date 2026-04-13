@@ -71,7 +71,7 @@ def logspace(
         if isinstance(end, torch.Tensor):
             end = end.item()
         step_size = (float(end) - float(start)) / (steps - 1)
-        BLOCK_SIZE = 256  # according to benchmark, 256 is the best block size
+        BLOCK_SIZE = 1024  # larger block size for better throughput
         grid = (triton.cdiv(steps, BLOCK_SIZE),)
         logspace_kernel[grid](
             out,
