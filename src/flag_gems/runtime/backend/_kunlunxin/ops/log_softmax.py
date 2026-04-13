@@ -5,7 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-# from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -14,17 +13,18 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def heur_block_n(args):
-    if args["N"] > 8192:
+    N = args["N"]
+    if N > 8192:
         return 64
-    return builtins.min(args["N"], 8192)
+    return builtins.min(triton.next_power_of_2(N), 8192)
 
 
 def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+    # Cap BLOCK_M at 8 for better parallelism and occupancy
+    return builtins.min(triton.next_power_of_2(triton.cdiv(args["M"], 12)), 8)
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -45,7 +45,6 @@ def log_softmax_kernel(
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    # TODO(chenfeiyu): consider float64 add add a utility function to get accumulator type
     m = tl.full([BLOCK_M, BLOCK_N], value=float("-inf"), dtype=tl.float32)
     z = tl.full([BLOCK_M, BLOCK_N], value=0.0, dtype=tl.float32)
     for start_n in range(0, N, BLOCK_N):
@@ -53,7 +52,9 @@ def log_softmax_kernel(
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
+        inp = tl.load(
+            input_ptrs, mask=mask, other=-float("inf"), eviction_policy="evict_last"
+        ).to(tl.float32)
         m_new = tl.maximum(inp, m)
         all_neg_inf = m_new == float("-inf")
         z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
@@ -62,19 +63,21 @@ def log_softmax_kernel(
     m_reduced = tl.max(m, 1)
     z = tl.sum(z * tl.exp(m - m_reduced[:, None]), 1)
     m = m_reduced
+    log_z = tl.log(z)
 
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-        o = inp - m[:, None] - tl.log(z[:, None])
-        tl.store(output_ptr + offset, o, mask=mask)
+        inp = tl.load(
+            input_ptrs, mask=mask, other=-float("inf"), eviction_policy="evict_first"
+        ).to(tl.float32)
+        o = inp - m[:, None] - log_z[:, None]
+        tl.store(output_ptr + offset, o, mask=mask, eviction_policy="evict_first")
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_tuned_config("log_softmax"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -136,6 +139,21 @@ def log_softmax(self, dim, half_to_float=False):
     out = torch.empty_like(inp, dtype=dtype)
     K = inp.numel() // M // N
 
+    # Select num_warps and num_stages based on N
+    # Use higher num_stages for better pipelining
+    if N <= 256:
+        nw = 2
+        ns = 4
+    elif N <= 1024:
+        nw = 4
+        ns = 4
+    elif N <= 4096:
+        nw = 8
+        ns = 3
+    else:
+        nw = 16
+        ns = 2
+
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
@@ -148,7 +166,8 @@ def log_softmax(self, dim, half_to_float=False):
             N,
             K,
             isCloseCoreTiling=True,
-            num_warps=8,
+            num_warps=nw,
+            num_stages=ns,
         )
     return out
 
@@ -167,6 +186,21 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
     in_grad = torch.empty_like(output, dtype=input_dtype)
     K = output.numel() // M // N
 
+    # Select num_warps and num_stages based on N
+    # Use higher num_stages for better pipelining
+    if N <= 256:
+        nw = 2
+        ns = 4
+    elif N <= 1024:
+        nw = 4
+        ns = 4
+    elif N <= 4096:
+        nw = 8
+        ns = 3
+    else:
+        nw = 16
+        ns = 2
+
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
@@ -180,5 +214,7 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
             N,
             K,
             isCloseCoreTiling=True,
+            num_warps=nw,
+            num_stages=ns,
         )
     return in_grad
