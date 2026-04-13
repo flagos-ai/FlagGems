@@ -3,7 +3,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
@@ -59,6 +58,16 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     assert (
         with_replacement or n_samples <= n_categories
     ), "cannot sample n_samples > prob.size(-1) samples without replacement."
+
+    # Fast path: when there's only 1 category, all samples must be 0
+    if n_categories == 1:
+        if prob.dim() == 1:
+            return torch.zeros((n_samples,), device=prob.device, dtype=torch.int64)
+        else:
+            n_dist = prob.size(0)
+            return torch.zeros(
+                (n_dist, n_samples), device=prob.device, dtype=torch.int64
+            )
 
     # Sampling without replacement
     if (not with_replacement) or n_samples == 1:
