@@ -1145,10 +1145,6 @@ class FlashAttnVarlenOptInitBenchmark(Benchmark):
                 249,
                 265,
             ),
-            (
-                0,
-                512,
-            ),
             tuple(range(0, 196))
             + (
                 211,
@@ -1163,10 +1159,13 @@ class FlashAttnVarlenOptInitBenchmark(Benchmark):
                 2,
                 72,
             ),
+            (
+                0,
+                512,
+            ),
         ]
         all_seqused_k = [
             (515,) + (514,) * 20 + (513,) * 20 + (512,) * 14,
-            (512,),
             (2333,)
             + (2331,) * 20
             + (2330,) * 20
@@ -1191,6 +1190,7 @@ class FlashAttnVarlenOptInitBenchmark(Benchmark):
                 1,
                 70,
             ),
+            (512,),
         ]
 
         num_heads = 16

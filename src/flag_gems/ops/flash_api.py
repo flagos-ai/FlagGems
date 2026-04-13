@@ -619,17 +619,19 @@ def mha_varlan_fwd_opt(
     assert cu_seqlens_k.dtype == torch.int32
     assert cu_seqlens_k.is_contiguous()
 
-    assert page_table is not None
+    is_paged = page_table is not None
+    if not is_paged:
+        page_table = torch.emtpty((0, 0), device=q_device, dtype=torch.int32)
 
     # q shape: [total_q_tokens, num_heads, head_size]
     # k shape:
     #   paged_kv: [num_pages, block_size, num_heads_k, head_size]
     # batch_size, number of sentences
     total_q, num_heads, head_size = q.size()
-    num_heads_k = k.size(2)
+    num_heads_k = k.size(2) if is_paged else k.size(1)
     batch_size = cu_seqlens_q.numel() - 1
-    block_size = k.size(1)
-    num_pages = k.size(0)
+    block_size = k.size(1) if is_paged else 1
+    num_pages = k.size(0) if is_paged else 0
     k_batch_size = num_pages
     # max_num_pages_per_seq = page_table.size(1)
     page_table_batch_stride = page_table.stride(0)
@@ -708,8 +710,9 @@ def mha_varlan_fwd_opt(
     ), "Number of heads in key/value must divide number of heads in query"
 
     assert q.shape == (total_q, num_heads, head_size)
-    assert k.shape == (num_pages, block_size, num_heads_k, head_size)
-    assert v.shape == (num_pages, block_size, num_heads_k, head_size)
+    if is_paged:
+        assert k.shape == (num_pages, block_size, num_heads_k, head_size)
+        assert v.shape == (num_pages, block_size, num_heads_k, head_size)
     assert k.stride() == v.stride()
 
     if softcap > 0.0:
@@ -774,8 +777,8 @@ def mha_varlan_fwd_opt(
             )
         else:
             is_dropout = False
-            philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
-            # philox_args = None
+            # philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
+            philox_args = None
 
         p_dropout = 1 - p_dropout
         p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
@@ -788,8 +791,8 @@ def mha_varlan_fwd_opt(
                 device=q_device,
             )
         else:
-            p = torch.empty((), device=q_device)
-            # p = None
+            # p = torch.empty((), device=q_device)
+            p = None
         if zero_tensors:
             out.zero_()
             lse.fill_(float("-inf"))
@@ -849,6 +852,7 @@ def mha_varlan_fwd_opt(
             window_size_left,  # window_size_left,
             window_size_right,  # window_size_right,
             seqlenq_ngroups_swapped,  # seqlenq_ngroups_swapped,
+            is_paged,
             # alibi
             is_alibi,  #
             alibi_slopes,  # alibi_slopes_ptr,
@@ -899,7 +903,7 @@ def mha_varlan_fwd_opt(
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
             "num_warps": cfg["num_warps"](args),
-            "num_stages": cfg["num_stages"](args),
+            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
         }
 
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
