@@ -1,5 +1,7 @@
 import dataclasses
+import gc
 import random
+import time
 from itertools import product
 from math import ceil
 from typing import List
@@ -1149,6 +1151,111 @@ def test_perf_fused_moe_int4_w4a16_gems_vs_vllm():
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_fused_moe_int4_w4a16_wrapper)
+    bench.run()
+
+
+# ---------------------- fused_moe_mxq W8A16 test ----------------------
+
+
+def _mxq_w8a16_wrapper(
+    hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
+):
+    """Call fused_moe_mxq W8A16 implementation."""
+    from flag_gems.fused_moe_mxq import QuantConfig, QuantMode, fused_moe as mxq_fused_moe
+    quant_config = QuantConfig(mode=QuantMode.W8A16, group_size=128)
+    return mxq_fused_moe(
+        hidden_states,
+        w1=w1,
+        w2=w2,
+        w3=None,
+        topk_weights=topk_weights,
+        topk_ids=topk_ids,
+        quant_config=quant_config,
+        num_experts=w1.shape[0],
+        top_k=topk_weights.shape[1],
+        w1_scales=w1_scale,
+        w2_scales=w2_scale,
+    )
+
+
+def _mxq_w8a16_baseline_wrapper(
+    hidden_states, w1_int8, w2_int8, topk_weights, topk_ids, w1_scale, w2_scale
+):
+    """Baseline: dequantize only used experts, then run FlagGems fused_experts_impl."""
+    unique_experts = topk_ids.unique().tolist()
+    w1_deq = torch.zeros_like(w1_int8, dtype=hidden_states.dtype)
+    w2_deq = torch.zeros_like(w2_int8, dtype=hidden_states.dtype)
+    for eid in unique_experts:
+        w1_deq[eid] = w1_int8[eid].to(hidden_states.dtype) * w1_scale[eid].unsqueeze(-1).to(hidden_states.dtype)
+        w2_deq[eid] = w2_int8[eid].to(hidden_states.dtype) * w2_scale[eid].unsqueeze(-1).to(hidden_states.dtype)
+    return flag_gems.fused_experts_impl(
+        hidden_states.clone(),
+        w1_deq,
+        w2_deq,
+        topk_weights,
+        topk_ids,
+    )
+
+
+@pytest.mark.fused_moe
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
+def test_perf_fused_moe_mxq_w8a16():
+    """Benchmark fused_moe_mxq W8A16 with dequant baseline using FusedMoEINT8W8A16Benchmark.
+
+    Uses only 8 expert shapes to avoid OOM during mxq weight quantization.
+    """
+    from flag_gems.fused_moe_mxq import QuantConfig, QuantMode, fused_moe as mxq_fused_moe
+
+    class MxqW8A16Benchmark(FusedMoEINT8W8A16Benchmark):
+        """Override to use only 8-expert shapes and mxq kernel as gems_op."""
+
+        def set_shapes(self, shape_file_path=None):
+            self.shapes = [
+                (1, 8, 4096, 14336, 2),
+                (4, 8, 4096, 14336, 2),
+                (16, 8, 4096, 14336, 2),
+                (64, 8, 4096, 14336, 2),
+            ]
+
+    bench = MxqW8A16Benchmark(
+        op_name="fused_moe_mxq_w8a16",
+        torch_op=_mxq_w8a16_baseline_wrapper,
+        dtypes=[torch.bfloat16],
+    )
+
+    def mxq_wrapper(hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale):
+        """Wrapper that converts benchmark weights to mxq kernel format.
+
+        Benchmark uses: w1 [E, 2*inter, hidden], w1_scale [E, 2*inter]
+        Mxq expects:    w1_q [E, 2*inter, hidden], w1_scales [E, 2*inter, num_groups]
+                        where num_groups = hidden // group_size
+        """
+        quant_config = QuantConfig(mode=QuantMode.W8A16, group_size=128, has_zero_point=False)
+        group_size = 128
+        num_groups = w1.shape[2] // group_size  # hidden_size // 128
+
+        # Mxq expects scales of shape [E, out_features, num_groups]
+        # Reshape per-channel scales to per-group scales
+        w1_scale_expanded = w1_scale.unsqueeze(-1).expand(-1, -1, num_groups).contiguous()
+        w2_scale_expanded = w2_scale.unsqueeze(-1).expand(-1, -1, num_groups).contiguous()
+
+        return mxq_fused_moe(
+            hidden_states,
+            w1=None,
+            w2=None,
+            w3=None,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            quant_config=quant_config,
+            num_experts=w1.shape[0],
+            top_k=topk_weights.shape[1],
+            w1_q=w1,
+            w1_scales=w1_scale_expanded,
+            w2_q=w2,
+            w2_scales=w2_scale_expanded,
+        )
+
+    bench.set_gems(mxq_wrapper)
     bench.run()
 
 
