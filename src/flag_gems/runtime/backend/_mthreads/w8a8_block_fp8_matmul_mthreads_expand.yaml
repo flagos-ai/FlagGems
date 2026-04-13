@@ -9,7 +9,6 @@ w8a8_block_fp8_general:
       num_stages: stages
       num_warps: warps
     block_m:
-      - 16
       - 32
       - 64
       - 128
