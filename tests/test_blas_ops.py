@@ -32,6 +32,13 @@ else:
     ]
     FLOAT_DTYPES = ORIG_FLOAT_DTYPES
 
+MIXED_DTYPE_PAIRS = [
+    (torch.float16, torch.float32),
+    (torch.float32, torch.float16),
+    (torch.bfloat16, torch.float32),
+    (torch.float32, torch.bfloat16),
+]
+
 
 @pytest.mark.addmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -73,6 +80,28 @@ def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
 
     if flag_gems.vendor_name == "mthreads":
         del os.environ["MUSA_ENABLE_SQMMA"]
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype_a, dtype_b", MIXED_DTYPE_PAIRS)
+def test_accuracy_addmm_mixed_dtype(M, N, K, scalar, dtype_a, dtype_b):
+    mat1 = torch.randn((M, K), dtype=dtype_a, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype_b, device=flag_gems.device)
+    out_dtype = torch.promote_types(dtype_a, dtype_b)
+    bias1 = torch.randn((N,), dtype=out_dtype, device=flag_gems.device)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
+    ref_bias1 = to_reference(bias1, True)
+
+    alpha = beta = scalar
+
+    ref_out = torch.addmm(ref_bias1, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
+    with flag_gems.use_gems():
+        res_out = torch.addmm(bias1, mat1, mat2, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out, ref_out, out_dtype, reduce_dim=K)
 
 
 @pytest.mark.addmm_out
@@ -368,6 +397,33 @@ def test_accuracy_mm(M, N, K, dtype, b_column_major):
         res_out = torch.mm(mat1, mat2)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("dtype_a, dtype_b", MIXED_DTYPE_PAIRS)
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_accuracy_mm_mixed_dtype(M, N, K, dtype_a, dtype_b, b_column_major):
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
+    np.random.seed(0)
+    random.seed(0)
+
+    mat1 = torch.randn((M, K), dtype=dtype_a, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype_b, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype_b, device=flag_gems.device)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
+
+    out_dtype = torch.promote_types(dtype_a, dtype_b)
+
+    ref_out = torch.mm(ref_mat1, ref_mat2)
+    with flag_gems.use_gems():
+        res_out = torch.mm(mat1, mat2)
+
+    gems_assert_close(res_out, ref_out, out_dtype, reduce_dim=K)
 
 
 @pytest.mark.mv
