@@ -14,23 +14,21 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @triton.jit
 def linspace_kernel(
     out_ptr,
-    out_stride0,
     start,
-    mid,
     end,
     step_size,
     steps,
+    last_idx,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = idx < steps
-    fw_mask = idx < mid
-    fw_values = start + (step_size * idx)
-    bd_values = end - step_size * (steps - idx - 1)
-
-    out_val = tl.where(fw_mask, fw_values, bd_values)
-    tl.store(out_ptr + idx * out_stride0, out_val, mask=mask)
+    # Compute value from start
+    out_val = start + step_size * idx
+    # Override last element to be exactly end
+    out_val = tl.where(idx == last_idx, end, out_val)
+    tl.store(out_ptr + idx, out_val, mask=mask)
 
 
 def linspace(
@@ -53,11 +51,30 @@ def linspace(
             start = start.item()
         if isinstance(end, torch.Tensor):
             end = end.item()
-        mid = steps // 2
         step_size = (float(end) - float(start)) / (steps - 1)
-        BLOCK_SIZE = 128
+        last_idx = steps - 1
+        # Tuned BLOCK_SIZE and num_warps for memory throughput
+        if steps >= 1000000:
+            BLOCK_SIZE = 16384
+            num_warps = 16
+        elif steps >= 100000:
+            BLOCK_SIZE = 8192
+            num_warps = 8
+        elif steps >= 10000:
+            BLOCK_SIZE = 4096
+            num_warps = 8
+        else:
+            BLOCK_SIZE = 2048
+            num_warps = 4
         grid = (triton.cdiv(steps, BLOCK_SIZE),)
         linspace_kernel[grid](
-            out, out.stride(0), start, mid, end, step_size, steps, BLOCK_SIZE=BLOCK_SIZE
+            out,
+            start,
+            end,
+            step_size,
+            steps,
+            last_idx,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
         )
         return out
