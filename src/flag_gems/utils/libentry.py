@@ -724,6 +724,7 @@ class LibEntry(triton.KernelInterface):
                 constexprs = {}
                 tune_constexprs = {}
                 heur_constexprs = {}
+                launch_pre_hooks = []
                 while not isinstance(fn, triton.runtime.JITFunction):
                     if isinstance(fn, triton.runtime.Autotuner):
                         config = fn.best_config
@@ -732,6 +733,10 @@ class LibEntry(triton.KernelInterface):
                         constexprs["num_ctas"] = config.num_ctas
                         constexprs = {**constexprs, **config.kwargs}
                         tune_constexprs = {**tune_constexprs, **config.kwargs}
+                        if config.pre_hook is not None:
+                            launch_pre_hooks.append(
+                                (config.pre_hook, config.all_kwargs())
+                            )
                     elif isinstance(fn, triton.runtime.Heuristics):
                         for v, heur in fn.values.items():
                             heur_constexprs[v] = heur(
@@ -757,10 +762,17 @@ class LibEntry(triton.KernelInterface):
                     constexprs,
                     tune_constexprs,
                     heur_constexprs,
+                    tuple(launch_pre_hooks),
                 )
             return kernel, constexprs
 
-        kernel, constexprs, tune_constexprs, heur_constexprs = cache[entry_key]
+        (
+            kernel,
+            constexprs,
+            tune_constexprs,
+            heur_constexprs,
+            launch_pre_hooks,
+        ) = cache[entry_key]
 
         if callable(grid):
             # collect all arguments to the grid fn，ie:
@@ -771,6 +783,11 @@ class LibEntry(triton.KernelInterface):
             meta = {**dict(zip(self.arg_names, args)), **kwargs, **constexprs}
             grid = grid(meta)
         grid = grid + (1, 1)
+
+        if launch_pre_hooks:
+            hook_nargs = {**dict(zip(self.arg_names, args)), **kwargs}
+            for pre_hook, hook_kwargs in launch_pre_hooks:
+                pre_hook({**hook_nargs, **hook_kwargs})
 
         if major_version == 3 and 3 <= minor_version <= 6:
             all_args = []

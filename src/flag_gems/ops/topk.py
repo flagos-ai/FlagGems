@@ -496,6 +496,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         and descending
         and x.is_cuda
         and x.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and k >= 8
         and topk_elem_cnt <= 65535
         and triton.next_power_of_2(k) <= 1024
     ):
@@ -507,13 +508,15 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         block_n_radix = min(block_n_radix, 1024)
 
         x_2d = x.reshape(batch_size, topk_elem_cnt)
+        y_vals_2d = y_vals.reshape(batch_size, k)
+        y_idx_2d = y_idx.reshape(batch_size, k)
         with torch_device_fn.device(x.device):
             topk_kernel_radix_tle[(batch_size,)](
                 x_2d,
-                y_vals,
-                y_idx,
+                y_vals_2d,
+                y_idx_2d,
                 x_2d.stride(0),
-                y_vals.stride(0),
+                y_vals_2d.stride(0),
                 topk_elem_cnt,
                 K=k,
                 K_PAD=k_pad,
