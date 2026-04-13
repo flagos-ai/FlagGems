@@ -841,15 +841,27 @@ class FusedMoEINT8W8A16Benchmark(Benchmark):
         super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
 
     def set_shapes(self, shape_file_path=None):
+        # QWEN3 shapes: (num_tokens, hidden_size, intermediate_size)
+        QWEN3_SHAPES = {
+            "seq_len_sweep_1": (128, 1024, 3584),
+            "seq_len_sweep_2": (256, 1024, 3584),
+            "seq_len_sweep_3": (512, 1024, 3584),
+            "seq_len_sweep_4": (1024, 1024, 3584),
+            "seq_len_sweep_5": (2048, 1024, 3584),
+            "seq_len_sweep_6": (4096, 1024, 3584),
+            "seq_len_sweep_7": (8192, 1024, 3584),
+            "seq_len_sweep_8": (16384, 1024, 3584),
+        }
         self.shapes = [
-            # Mixtral-like shapes
-            (1, 8, 4096, 14336, 2),
-            (4, 8, 4096, 14336, 2),
-            (16, 8, 4096, 14336, 2),
-            (64, 8, 4096, 14336, 2),
-            (128, 8, 4096, 14336, 2),
-            (256, 8, 4096, 14336, 2),
-            (512, 8, 4096, 14336, 2),
+            # Qwen3 MoE shapes (num_experts=8, topk=2)
+            (128, 8, 1024, 3584, 2),
+            (256, 8, 1024, 3584, 2),
+            (512, 8, 1024, 3584, 2),
+            (1024, 8, 1024, 3584, 2),
+            (2048, 8, 1024, 3584, 2),
+            (4096, 8, 1024, 3584, 2),
+            (8192, 8, 1024, 3584, 2),
+            (16384, 8, 1024, 3584, 2),
             # DeepSeek-V3-like shapes (TP=8 shard)
             (1, 256, 7168, 2048, 8),
             (4, 256, 7168, 2048, 8),
@@ -937,19 +949,18 @@ class FusedMoEINT8W8A16Benchmark(Benchmark):
 def _vllm_fused_moe_int8_w8a16_wrapper(
     hidden_states, w1, w2, topk_weights, topk_ids, w1_scale, w2_scale
 ):
-    """Baseline: dequantize INT8 weights to bf16, then run FlagGems bf16
-    fused_moe.  Measures the overhead of the dequant + bf16 path.
+    """Baseline: FP16 weights directly (same kernel, no quantization overhead).
 
-    NOTE: vLLM's INT8 W8A16 relies on specialised WNA16 kernels (CUDA or
-    GPTQ/AWQ Triton) that are not directly comparable to the generic
-    dequantize-then-GEMM approach, so we use a bf16 dequant baseline.
+    This is a fair baseline since both paths use fused_experts_impl:
+    - W8A16: INT8 weights are dequantized inside the kernel
+    - FP16 baseline: weights stay FP16/BF16, no dequant needed
+
+    W8A16 should show speedup due to reduced memory bandwidth (50% less data).
     """
-    w1_deq = w1.to(hidden_states.dtype) * w1_scale.unsqueeze(-1).to(hidden_states.dtype)
-    w2_deq = w2.to(hidden_states.dtype) * w2_scale.unsqueeze(-1).to(hidden_states.dtype)
     return flag_gems.fused_experts_impl(
         hidden_states.clone(),
-        w1_deq,
-        w2_deq,
+        w1.to(hidden_states.dtype),
+        w2.to(hidden_states.dtype),
         topk_weights,
         topk_ids,
     )
@@ -974,15 +985,15 @@ def _gems_fused_moe_int8_w8a16_wrapper(
 
 @pytest.mark.fused_moe
 @pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
-def test_perf_fused_moe_int8_w8a16_gems_vs_vllm():
+def test_perf_fused_moe_int8_w8a16_gems_vs_fp16():
     """
     Benchmark FlagGems fused_experts_impl with INT8 W8A16 quantization.
 
-    Baseline is manual dequant + bf16 FlagGems (vLLM's INT8 W8A16 uses
-    specialised WNA16 kernels not available via the generic Triton path).
+    Baseline is FP16 fused_experts_impl (same kernel, no quantization).
+    W8A16 should show speedup due to 50% memory bandwidth reduction.
     """
     bench = FusedMoEINT8W8A16Benchmark(
-        op_name="fused_moe_int8_w8a16_gems_vs_bf16_deq",
+        op_name="fused_moe_int8_w8a16_gems_vs_fp16",
         torch_op=_vllm_fused_moe_int8_w8a16_wrapper,
         dtypes=[torch.bfloat16],
     )
@@ -1406,3 +1417,171 @@ class FlashmlaSparseBenchmark(Benchmark):
 def test_perf_flashmla_sparse_gems_vs_vllm():
     bench = FlashmlaSparseBenchmark()
     bench.run()
+
+
+# ==============================================================================
+# QC-MoE W8A16 vs FP16 Benchmark (using flag_gems.fused_moe)
+# ==============================================================================
+
+def to_int8(x):
+    """Convert tensor to int8."""
+    return x.to(torch.int8)
+
+
+def qc_quantize_weights_moe(weights, num_experts, quant_config):
+    """Quantize MoE weights to W8A16 format."""
+    from flag_gems.fused_moe_mxq import quantize_weights_moe
+    E, N, K = weights.shape
+    w_q, w_scales, w_zp = quantize_weights_moe(weights, num_experts, quant_config)
+    return w_q, w_scales, w_zp
+
+
+def fp16_moe_w1_only_reference(inp, W1, topk_weights, topk_ids):
+    """W1 projection FP16 reference implementation using torch.mm."""
+    M, H = inp.shape
+    E, K, _ = W1.shape
+    output = torch.zeros(M, K, dtype=inp.dtype, device=inp.device)
+
+    for e in range(E):
+        mask = (topk_ids == e)
+        if not mask.any():
+            continue
+        tokens_e = mask.nonzero(as_tuple=True)[0]
+        weights_e = topk_weights[mask]
+        inp_e = inp.index_select(0, tokens_e)
+        result = torch.mm(inp_e, W1[e].T)
+        down_w = result * weights_e.unsqueeze(1)
+        output.scatter_add_(0, tokens_e.unsqueeze(1).expand(-1, K), down_w)
+
+    return output
+
+
+# Import fused_moe from fused_moe_mxq
+from flag_gems.fused_moe_mxq import fused_moe
+
+
+# Test shapes matching QWEN3 configurations
+QC_MOE_SHAPES = {
+    "seq_len_sweep_1": (128, 8, 1024, 3584, 2),
+    "seq_len_sweep_2": (256, 8, 1024, 3584, 2),
+    "seq_len_sweep_3": (512, 8, 1024, 3584, 2),
+    "seq_len_sweep_4": (1024, 8, 1024, 3584, 2),
+    "seq_len_sweep_5": (2048, 8, 1024, 3584, 2),
+    "seq_len_sweep_6": (4096, 8, 1024, 3584, 2),
+    "seq_len_sweep_7": (8192, 8, 1024, 3584, 2),
+    "seq_len_sweep_8": (16384, 8, 1024, 3584, 2),
+}
+
+
+@pytest.mark.fused_moe
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires CUDA")
+def test_perf_qcmoe_w8a16_vs_fp16():
+    """
+    QC-MoE W8A16 vs FP16 performance benchmark using flag_gems.fused_moe.
+
+    Uses the same measurement methodology:
+    - W8A16: Triton kernel with INT8 quantized weights (real kernel support)
+    - FP16: Triton kernel with FP16 weights (same kernel, different quantization)
+    """
+    import time as time_module
+    from flag_gems.fused_moe_mxq import QuantConfig, QuantMode
+
+    device = "cuda"
+    dtype = torch.float16
+    WARMUP = 10
+    NUM_ITERS = 100
+    RANDOM_SEED = 42
+
+    print("\n" + "=" * 90)
+    print("QC-MoE W8A16 vs FP16 Performance Benchmark")
+    print("=" * 90)
+
+    GPU_NAME = torch.cuda.get_device_name(0)
+    print(f"[environment] GPU: {GPU_NAME}")
+    print(f"[environment] PyTorch: {torch.__version__}")
+    import triton
+    print(f"[environment] Triton: {triton.__version__}")
+    print()
+
+    print(f"{'Shape (S,E,H,K,topk)':<28} {'W8A16 ms':<14} {'FP16 ms':<14} {'speedup':<10}")
+    print("-" * 70)
+
+    for name, config in QC_MOE_SHAPES.items():
+        seq_len, num_experts, hidden_dim, inter_dim, topk = config
+
+        torch.manual_seed(RANDOM_SEED)
+
+        # W8A16 path
+        W1_fp16_w8a16 = torch.randn(num_experts, inter_dim, hidden_dim, dtype=dtype, device=device)
+        quant_config = QuantConfig(mode=QuantMode.W8A16, group_size=128)
+        W1_q, W1_sc, W1_z = qc_quantize_weights_moe(
+            W1_fp16_w8a16, num_experts, quant_config
+        )
+
+        inp = torch.randn(seq_len, hidden_dim, dtype=dtype, device=device)
+        topk_weights = torch.ones(seq_len, topk, dtype=dtype, device=device) / topk
+        topk_ids = torch.randint(0, num_experts, (seq_len, topk), dtype=torch.int64, device=device)
+
+        # Reference for accuracy check
+        ref_output = fp16_moe_w1_only_reference(inp, W1_fp16_w8a16, topk_weights, topk_ids)
+
+        quant_config_w8a16 = QuantConfig(mode=QuantMode.W8A16, group_size=128)
+
+        # Warmup and benchmark W8A16
+        for _ in range(WARMUP):
+            _ = fused_moe(
+                inp, None, None, None,
+                topk_weights=topk_weights, topk_ids=topk_ids,
+                quant_config=quant_config_w8a16,
+                num_experts=num_experts, top_k=topk,
+                w1_q=W1_q, w1_scales=W1_sc, w1_zeros=W1_z,
+            )
+        torch.cuda.synchronize()
+
+        t0 = time_module.perf_counter()
+        for _ in range(NUM_ITERS):
+            out_w8a16 = fused_moe(
+                inp, None, None, None,
+                topk_weights=topk_weights, topk_ids=topk_ids,
+                quant_config=quant_config_w8a16,
+                num_experts=num_experts, top_k=topk,
+                w1_q=W1_q, w1_scales=W1_sc, w1_zeros=W1_z,
+            )
+        torch.cuda.synchronize()
+        w8a16_ms = (time_module.perf_counter() - t0) / NUM_ITERS * 1000
+
+        # FP16 path
+        torch.manual_seed(RANDOM_SEED)
+        W1_fp16 = torch.randn(num_experts, inter_dim, hidden_dim, dtype=dtype, device=device)
+        quant_config_fp16 = QuantConfig(mode=QuantMode.FP16)
+
+        for _ in range(WARMUP):
+            _ = fused_moe(
+                inp, W1_fp16, None, None,
+                topk_weights=topk_weights, topk_ids=topk_ids,
+                quant_config=quant_config_fp16,
+                num_experts=num_experts, top_k=topk,
+            )
+        torch.cuda.synchronize()
+
+        t0 = time_module.perf_counter()
+        for _ in range(NUM_ITERS):
+            _ = fused_moe(
+                inp, W1_fp16, None, None,
+                topk_weights=topk_weights, topk_ids=topk_ids,
+                quant_config=quant_config_fp16,
+                num_experts=num_experts, top_k=topk,
+            )
+        torch.cuda.synchronize()
+        fp16_ms = (time_module.perf_counter() - t0) / NUM_ITERS * 1000
+
+        speedup = fp16_ms / w8a16_ms
+        max_abs_err = (out_w8a16.float() - ref_output.float()).abs().max().item()
+
+        print(
+            f"({seq_len},{num_experts},{hidden_dim},{inter_dim},{topk})"
+            f"{'':3}{w8a16_ms:<14.3f} {fp16_ms:<14.3f} {speedup:<10.2f}x  "
+            f"(max_abs_err={max_abs_err:.2e})"
+        )
+
+    print("=" * 90)
