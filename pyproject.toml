@@ -110,9 +110,10 @@ nvidia = [
 
 tsingmicro = [
     "flag_gems[official_torch_270]",
+    "flagtree==0.5.0+tsingmicro3.3",
     "torch_txda==0.1.0+20260310.294fc4a6",
     "txops==0.1.0+20260225.5cc33e4e",
-    "triton==3.3.0+gitfe2a28fa",
+    # "triton==3.3.0+gitfe2a28fa",
 ]
 
 # Test packages
