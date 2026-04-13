@@ -529,6 +529,7 @@ def main():
     parser = argparse.ArgumentParser()
     # parser.add_argument("--flaggems", required=False)
     parser.add_argument("--op-list", required=False)
+    parser.add_argument("--ops", required=False)
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
@@ -552,6 +553,8 @@ def main():
             sys.exit(1)
 
         ops = [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
+    elif args.ops:
+        ops = [op.strip() for op in args.ops.split(",")]
 
     OP_LIST = ops
     op_count = len(ops)

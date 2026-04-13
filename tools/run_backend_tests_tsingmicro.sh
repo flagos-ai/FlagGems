@@ -4,7 +4,7 @@ VENDOR=${1}
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
 # Tsingmicro dependencies
-export TX8_DEP_ROOT=/opt/tsingmicro/tx8_deps
+export TX8_DEPS_ROOT=/opt/tsingmicro/tx8_deps
 export LLVM_SYSPATH=/opt/tsingmicro/llvm21
 export LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin
 export PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core:$PYTHONPATH
