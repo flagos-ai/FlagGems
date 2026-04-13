@@ -94,7 +94,11 @@ class MultiHeadAttention(nn.Module):
         attn_output = torch.matmul(attn_weights, v)
 
         # Reshape back to (batch, seq_len, d_model)
-        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
+        attn_output = (
+            attn_output.transpose(1, 2)
+            .contiguous()
+            .view(batch_size, seq_len, self.d_model)
+        )
 
         # Output projection
         output = self.out_proj(attn_output)
@@ -158,7 +162,11 @@ class FlashAttentionWrapper(nn.Module):
         attn_output = torch.matmul(attn_weights, v)
 
         # Reshape
-        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
+        attn_output = (
+            attn_output.transpose(1, 2)
+            .contiguous()
+            .view(batch_size, seq_len, self.d_model)
+        )
 
         # Output projection
         output = self.out_proj(attn_output)

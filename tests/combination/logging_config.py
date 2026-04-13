@@ -64,9 +64,7 @@ class JsonFormatter(logging.Formatter):
 def _remove_file_handlers(logger):
     """Remove and close FileHandlers owned by this module."""
     for h in list(logger.handlers):
-        if isinstance(h, logging.FileHandler) and getattr(
-            h, "_flaggems_owned", False
-        ):
+        if isinstance(h, logging.FileHandler) and getattr(h, "_flaggems_owned", False):
             h.close()
             logger.removeHandler(h)
 

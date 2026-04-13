@@ -7,10 +7,9 @@ that combines attention, FFN, and normalization.
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .attention import MultiHeadAttention
-from .ffn import StandardFFN, SwiGLUFFN, GeGLUFFN
+from .ffn import StandardFFN, SwiGLUFFN
 
 
 class RMSNorm(nn.Module):

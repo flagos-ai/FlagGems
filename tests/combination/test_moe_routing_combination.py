@@ -15,7 +15,7 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from .accuracy_utils import compute_reference, combo_assert_close, COMBO_FLOAT_DTYPES
+from .accuracy_utils import COMBO_FLOAT_DTYPES, combo_assert_close, compute_reference
 from .utils.numerical_stability import check_finite, check_no_nan
 
 device = flag_gems.device
@@ -187,7 +187,9 @@ class TestMoERoutingCombination:
 
         # Reference comparison (router ≈ 4 ops: linear + softmax + topk + normalize)
         ref_probs, ref_indices, ref_weights = compute_reference(router, x)
-        combo_assert_close(router_probs, ref_probs, dtype, num_ops=4, name=f"MoE router probs {dtype}")
+        combo_assert_close(
+            router_probs, ref_probs, dtype, num_ops=4, name=f"MoE router probs {dtype}"
+        )
 
     @pytest.mark.integration
     @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
@@ -214,17 +216,20 @@ class TestMoERoutingCombination:
         check_no_nan(output, f"MoE output {dtype}")
 
         # Verify routing diversity (not all tokens go to same expert)
-        expert_counts = (
-            torch.bincount(routing_info["topk_indices"].flatten(), minlength=num_experts)
-            .float()
-        )
+        expert_counts = torch.bincount(
+            routing_info["topk_indices"].flatten(), minlength=num_experts
+        ).float()
         # At least 3 different experts should be used
         active_experts = (expert_counts > 0).sum().item()
-        assert active_experts >= 3, f"Only {active_experts} experts used, expected more diversity"
+        assert (
+            active_experts >= 3
+        ), f"Only {active_experts} experts used, expected more diversity"
 
         # Reference comparison (MoE ≈ 8 ops: router + topk + gather + expert_fwd + scatter)
         ref_output, _ = compute_reference(moe, x)
-        combo_assert_close(output, ref_output, dtype, num_ops=8, name=f"MoE forward {dtype}")
+        combo_assert_close(
+            output, ref_output, dtype, num_ops=8, name=f"MoE forward {dtype}"
+        )
 
     @pytest.mark.numerical_stability
     def test_moe_router_stability(self, use_gems):
@@ -237,7 +242,12 @@ class TestMoERoutingCombination:
         router = router.to(device).to(torch.float32)
 
         # Test with large values
-        x_large = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32) * 10
+        x_large = (
+            torch.randn(
+                batch_size, seq_len, d_model, device=device, dtype=torch.float32
+            )
+            * 10
+        )
 
         router_probs, topk_indices, topk_weights = router(x_large)
 
@@ -245,7 +255,12 @@ class TestMoERoutingCombination:
         check_no_nan(router_probs, "Router probs with large values")
 
         # Test with small values
-        x_small = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32) * 1e-4
+        x_small = (
+            torch.randn(
+                batch_size, seq_len, d_model, device=device, dtype=torch.float32
+            )
+            * 1e-4
+        )
 
         router_probs, _, _ = router(x_small)
 
@@ -263,7 +278,12 @@ class TestMoERoutingCombination:
         moe = moe.to(device).to(torch.float32)
 
         x = torch.randn(
-            batch_size, seq_len, d_model, device=device, dtype=torch.float32, requires_grad=True
+            batch_size,
+            seq_len,
+            d_model,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
         )
 
         output, _ = moe(x)
@@ -314,12 +334,16 @@ class TestMoERoutingPatterns:
         router = MoERouter(d_model, num_experts, top_k)
         router = router.to(device).to(torch.float32)
 
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
+        x = torch.randn(
+            batch_size, seq_len, d_model, device=device, dtype=torch.float32
+        )
 
         _, topk_indices, _ = router(x)
 
         # Count expert usage
-        expert_counts = torch.bincount(topk_indices.flatten(), minlength=num_experts).float()
+        expert_counts = torch.bincount(
+            topk_indices.flatten(), minlength=num_experts
+        ).float()
 
         # Calculate load balance metrics
         # CV (coefficient of variation) should not be too high
@@ -348,7 +372,9 @@ class TestMoEPerformance:
         moe = MoELayer(d_model, num_experts, top_k, dim_feedforward)
         moe = moe.to(device).to(torch.float16)
 
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float16)
+        x = torch.randn(
+            batch_size, seq_len, d_model, device=device, dtype=torch.float16
+        )
 
         # Track memory
         torch.cuda.reset_peak_memory_stats()

@@ -12,8 +12,12 @@ import torch.nn.functional as F
 
 import flag_gems
 
+from .accuracy_utils import (
+    assert_gradient_close,
+    combo_assert_close,
+    compute_reference_with_grad,
+)
 from .models.transformer_block import TransformerBlock
-from .accuracy_utils import compute_reference_with_grad, combo_assert_close, assert_gradient_close
 from .utils.numerical_stability import check_finite, check_gradient_health
 
 device = flag_gems.device
@@ -78,7 +82,12 @@ class TestBackwardGradientFlow:
         model = model.to(device).to(torch.float32)
 
         x = torch.randn(
-            batch_size, seq_len, d_model, device=device, dtype=torch.float32, requires_grad=True
+            batch_size,
+            seq_len,
+            d_model,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
         )
 
         # Forward
@@ -96,10 +105,24 @@ class TestBackwardGradientFlow:
         check_gradient_health(model, "Single layer")
 
         # Reference gradient comparison (≈ 10 ops in a TransformerBlock)
-        ref_output, ref_input_grads, ref_param_grads = compute_reference_with_grad(model, x)
-        combo_assert_close(output.detach(), ref_output, torch.float32, num_ops=10, name="Single layer forward")
+        ref_output, ref_input_grads, ref_param_grads = compute_reference_with_grad(
+            model, x
+        )
+        combo_assert_close(
+            output.detach(),
+            ref_output,
+            torch.float32,
+            num_ops=10,
+            name="Single layer forward",
+        )
         if 0 in ref_input_grads:
-            assert_gradient_close(x.grad, ref_input_grads[0], torch.float32, num_ops=10, name="Single layer input grad")
+            assert_gradient_close(
+                x.grad,
+                ref_input_grads[0],
+                torch.float32,
+                num_ops=10,
+                name="Single layer input grad",
+            )
 
     @pytest.mark.integration
     @pytest.mark.parametrize("num_layers", [2, 4, 8])
@@ -113,7 +136,12 @@ class TestBackwardGradientFlow:
         model = model.to(device).to(torch.float32)
 
         x = torch.randn(
-            batch_size, seq_len, d_model, device=device, dtype=torch.float32, requires_grad=True
+            batch_size,
+            seq_len,
+            d_model,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
         )
 
         # Forward
@@ -135,9 +163,21 @@ class TestBackwardGradientFlow:
         # Reference gradient comparison (10 ops per layer)
         num_ops = num_layers * 10
         ref_output, ref_input_grads, _ = compute_reference_with_grad(model, x)
-        combo_assert_close(output.detach(), ref_output, torch.float32, num_ops=num_ops, name=f"{num_layers}-layer forward")
+        combo_assert_close(
+            output.detach(),
+            ref_output,
+            torch.float32,
+            num_ops=num_ops,
+            name=f"{num_layers}-layer forward",
+        )
         if 0 in ref_input_grads:
-            assert_gradient_close(x.grad, ref_input_grads[0], torch.float32, num_ops=num_ops, name=f"{num_layers}-layer input grad")
+            assert_gradient_close(
+                x.grad,
+                ref_input_grads[0],
+                torch.float32,
+                num_ops=num_ops,
+                name=f"{num_layers}-layer input grad",
+            )
 
     @pytest.mark.integration
     def test_gradient_with_masking(self, use_gems):
@@ -150,7 +190,12 @@ class TestBackwardGradientFlow:
         model = model.to(device).to(torch.float32)
 
         x = torch.randn(
-            batch_size, seq_len, d_model, device=device, dtype=torch.float32, requires_grad=True
+            batch_size,
+            seq_len,
+            d_model,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
         )
 
         # Create padding mask (50% of sequence)
@@ -179,7 +224,12 @@ class TestBackwardGradientFlow:
         model = model.to(device).to(torch.float32)
 
         x = torch.randn(
-            batch_size, seq_len, d_model, device=device, dtype=torch.float32, requires_grad=True
+            batch_size,
+            seq_len,
+            d_model,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
         )
 
         # Forward with causal mask
@@ -201,7 +251,12 @@ class TestBackwardGradientFlow:
         model = model.to(device).to(torch.float32)
 
         # Large input values
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32) * 50
+        x = (
+            torch.randn(
+                batch_size, seq_len, d_model, device=device, dtype=torch.float32
+            )
+            * 50
+        )
         x = x.reshape(batch_size, -1)
         x.requires_grad = True
 
@@ -224,7 +279,12 @@ class TestBackwardGradientFlow:
         model = model.to(device).to(torch.float32)
 
         # Small input values
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32) * 1e-4
+        x = (
+            torch.randn(
+                batch_size, seq_len, d_model, device=device, dtype=torch.float32
+            )
+            * 1e-4
+        )
         x = x.reshape(batch_size, -1)
         x.requires_grad = True
 
@@ -254,7 +314,9 @@ class TestGradientCorrectness:
         model = SimpleMLP(input_dim, hidden_dim, output_dim)
         model = model.to(device).to(torch.float64)  # Use fp64 for numerical stability
 
-        x = torch.randn(1, input_dim, device=device, dtype=torch.float64, requires_grad=True)
+        x = torch.randn(
+            1, input_dim, device=device, dtype=torch.float64, requires_grad=True
+        )
 
         # Compute analytical gradient
         output = model(x)
@@ -293,7 +355,9 @@ class TestGradientFlowEdgeCases:
     def test_gradient_through_softmax(self, use_gems):
         """Test gradient through softmax."""
         batch_size, dim = 4, 128
-        x = torch.randn(batch_size, dim, device=device, dtype=torch.float32, requires_grad=True)
+        x = torch.randn(
+            batch_size, dim, device=device, dtype=torch.float32, requires_grad=True
+        )
 
         output = F.softmax(x, dim=-1)
         loss = output.sum()
@@ -305,10 +369,21 @@ class TestGradientFlowEdgeCases:
         """Test gradient through layer norm."""
         batch_size, seq_len, d_model = 4, 32, 64
 
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32, requires_grad=True)
+        x = torch.randn(
+            batch_size,
+            seq_len,
+            d_model,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
+        )
 
-        weight = torch.ones(d_model, device=device, dtype=torch.float32, requires_grad=True)
-        bias = torch.zeros(d_model, device=device, dtype=torch.float32, requires_grad=True)
+        weight = torch.ones(
+            d_model, device=device, dtype=torch.float32, requires_grad=True
+        )
+        bias = torch.zeros(
+            d_model, device=device, dtype=torch.float32, requires_grad=True
+        )
 
         output = F.layer_norm(x, [d_model], weight, bias)
         loss = output.sum()

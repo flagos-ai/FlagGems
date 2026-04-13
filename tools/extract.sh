@@ -17,7 +17,7 @@ if [ "$1" = "--dual-stats" ]; then
     echo "====================================="
     echo ""
     echo "项目路径: $PROJECT_ROOT"
-    
+
     OUTPUT_ARG=""
     if [ -n "$2" ] && [ "$2" = "json" ]; then
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -26,12 +26,12 @@ if [ "$1" = "--dual-stats" ]; then
         mkdir -p "$OUTPUT_DIR"
         OUTPUT_ARG="--output $OUTPUT_FILE"
     fi
-    
+
     python3 "$SCRIPT_DIR/extract_operators.py" \
         --path "$PROJECT_ROOT" \
         --dual-stats \
         $OUTPUT_ARG
-    
+
     if [ -n "$OUTPUT_ARG" ]; then
         echo ""
         echo "查看结果：cat $OUTPUT_FILE"

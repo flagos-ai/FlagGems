@@ -7,18 +7,13 @@ including GELU, SiLU, SwiGLU, and GeGLU patterns.
 
 import pytest
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 import flag_gems
 
-from .models.ffn import StandardFFN, SwiGLUFFN, GeGLUFFN
-from .accuracy_utils import compute_reference, combo_assert_close, COMBO_FLOAT_DTYPES
-from .utils.numerical_stability import (
-    check_finite,
-    check_no_nan,
-    generate_stress_input,
-)
+from .accuracy_utils import COMBO_FLOAT_DTYPES, combo_assert_close, compute_reference
+from .models.ffn import GeGLUFFN, StandardFFN, SwiGLUFFN
+from .utils.numerical_stability import check_finite, check_no_nan
 
 device = flag_gems.device
 
@@ -73,7 +68,9 @@ class TestFFNActivationCombinations:
 
         # Reference comparison (FFN ≈ 4 ops: linear + activation + dropout + linear)
         ref_output = compute_reference(ffn, x)
-        combo_assert_close(output, ref_output, dtype, num_ops=4, name=f"FFN {activation} {dtype}")
+        combo_assert_close(
+            output, ref_output, dtype, num_ops=4, name=f"FFN {activation} {dtype}"
+        )
 
     @pytest.mark.integration
     @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
@@ -99,7 +96,9 @@ class TestFFNActivationCombinations:
 
         # Reference comparison (SwiGLU ≈ 5 ops)
         ref_output = compute_reference(ffn, x)
-        combo_assert_close(output, ref_output, dtype, num_ops=5, name=f"SwiGLU FFN {dtype}")
+        combo_assert_close(
+            output, ref_output, dtype, num_ops=5, name=f"SwiGLU FFN {dtype}"
+        )
 
     @pytest.mark.integration
     @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
@@ -125,7 +124,9 @@ class TestFFNActivationCombinations:
 
         # Reference comparison (GeGLU ≈ 5 ops)
         ref_output = compute_reference(ffn, x)
-        combo_assert_close(output, ref_output, dtype, num_ops=5, name=f"GeGLU FFN {dtype}")
+        combo_assert_close(
+            output, ref_output, dtype, num_ops=5, name=f"GeGLU FFN {dtype}"
+        )
 
     @pytest.mark.numerical_stability
     @pytest.mark.parametrize("activation", ["gelu", "silu"])
@@ -353,6 +354,9 @@ class TestFFNVsPyTorch:
 
         # Compare (FFN ≈ 4 ops: linear + activation + dropout + linear)
         combo_assert_close(
-            output_gems, output_ref, dtype, num_ops=4,
+            output_gems,
+            output_ref,
+            dtype,
+            num_ops=4,
             name=f"FFN {activation} {dtype}",
         )

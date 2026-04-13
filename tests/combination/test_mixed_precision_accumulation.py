@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from .accuracy_utils import assert_accumulation_error, COMBO_LOW_PRECISION_DTYPES
+from .accuracy_utils import COMBO_LOW_PRECISION_DTYPES, assert_accumulation_error
 from .utils.numerical_stability import check_finite, check_no_nan
 
 device = flag_gems.device
@@ -111,6 +111,7 @@ class TestMixedPrecisionAccumulation:
 
         # Save FP32 reference (deep copy to avoid in-place modification)
         import copy
+
         model_fp32 = copy.deepcopy(model).to(device).to(torch.float32)
 
         # Test in target dtype (separate copy)
@@ -143,7 +144,9 @@ class TestMixedPrecisionAccumulation:
         batch_size, seq_len, d_model = 4, 64, 128
 
         # FP32 reference
-        x_fp32 = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
+        x_fp32 = torch.randn(
+            batch_size, seq_len, d_model, device=device, dtype=torch.float32
+        )
 
         layer_norm = nn.LayerNorm(d_model)
         layer_norm = layer_norm.to(device)
@@ -197,13 +200,17 @@ class TestMixedPrecisionAccumulation:
         check_no_nan(output_fp16, f"{num_softmax} softmaxes")
 
     @pytest.mark.numerical_stability
-    @pytest.mark.parametrize("operation_sequence", ["linear_only", "mixed", "norm_only"])
+    @pytest.mark.parametrize(
+        "operation_sequence", ["linear_only", "mixed", "norm_only"]
+    )
     def test_operation_sequence_accumulation(self, operation_sequence, use_gems):
         """Test different operation sequences."""
         batch_size, seq_len, d_model = 4, 32, 128
         num_ops = 10
 
-        x_fp32 = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
+        x_fp32 = torch.randn(
+            batch_size, seq_len, d_model, device=device, dtype=torch.float32
+        )
         x_fp16 = x_fp32.to(torch.float16)
 
         linear = nn.Linear(d_model, d_model)
@@ -224,7 +231,9 @@ class TestMixedPrecisionAccumulation:
             else:  # mixed
                 if i % 2 == 0:
                     output_fp32 = linear(output_fp32)
-                    output_fp16 = linear(output_fp16.to(torch.float16)).to(torch.float16)
+                    output_fp16 = linear(output_fp16.to(torch.float16)).to(
+                        torch.float16
+                    )
                 else:
                     output_fp32 = F.gelu(output_fp32)
                     output_fp16 = F.gelu(output_fp16)
@@ -245,7 +254,9 @@ class TestMixedPrecisionBestPractices:
         batch_size, input_dim, output_dim = 4, 128, 64
 
         # FP32 master weights
-        weight_fp32 = torch.randn(output_dim, input_dim, device=device, dtype=torch.float32)
+        weight_fp32 = torch.randn(
+            output_dim, input_dim, device=device, dtype=torch.float32
+        )
 
         # FP16 copy for computation
         weight_fp16 = weight_fp32.to(torch.float16)
@@ -292,6 +303,7 @@ class TestPrecisionLossEstimation:
         )
 
         import copy
+
         model_fp32 = copy.deepcopy(model).to(device).to(torch.float32)
         model_fp16 = copy.deepcopy(model).to(device).to(torch.float16)
 

@@ -13,12 +13,8 @@ import torch.nn.functional as F
 
 import flag_gems
 
-from .accuracy_utils import assert_numerical_consistency, COMBO_FLOAT_DTYPES
-from .utils.numerical_stability import (
-    check_finite,
-    check_no_nan,
-    generate_stress_input,
-)
+from .accuracy_utils import COMBO_FLOAT_DTYPES, assert_numerical_consistency
+from .utils.numerical_stability import check_finite, check_no_nan
 
 device = flag_gems.device
 
@@ -117,9 +113,9 @@ class TestAttentionNumericalStability:
         # Verify attention weights sum to 1
         attn_sum = attn_weights.sum(dim=-1)
         expected_sum = torch.ones_like(attn_sum)
-        assert torch.allclose(attn_sum, expected_sum, rtol=1e-2, atol=1e-3), (
-            f"Attention weights don't sum to 1 for {scenario}"
-        )
+        assert torch.allclose(
+            attn_sum, expected_sum, rtol=1e-2, atol=1e-3
+        ), f"Attention weights don't sum to 1 for {scenario}"
 
     @pytest.mark.numerical_stability
     @pytest.mark.parametrize("mask_ratio", [0.0, 0.3, 0.5, 0.7, 0.9])
@@ -151,9 +147,9 @@ class TestAttentionNumericalStability:
 
         # Check masked positions have zero attention weight
         if mask_ratio > 0:
-            masked_weights = attn_weights[:, :, :, mask_start:]
             # Note: After softmax, masked positions should have 0 weight
             # but numerical precision might give small values
+            pass
 
     @pytest.mark.numerical_stability
     def test_attention_all_masked_row(self, attention_config, use_gems):
@@ -170,7 +166,7 @@ class TestAttentionNumericalStability:
         # Create inputs
         q = torch.randn(B, H, L, D, device=device, dtype=torch.float32)
         k = torch.randn(B, H, L, D, device=device, dtype=torch.float32)
-        v = torch.randn(B, H, L, D, device=device, dtype=torch.float32)
+        _ = torch.randn(B, H, L, D, device=device, dtype=torch.float32)  # v unused
 
         # Create mask where first row is completely masked
         mask = torch.zeros(B, H, L, L, dtype=torch.bool, device=device)
@@ -222,9 +218,9 @@ class TestAttentionNumericalStability:
         row_idx = torch.arange(L, device=attn_weights.device).view(1, 1, L, 1)
         col_idx = torch.arange(L, device=attn_weights.device).view(1, 1, 1, L)
         future_mask = col_idx > row_idx
-        assert (attn_weights[future_mask.expand_as(attn_weights)] == 0).all(), (
-            "Some positions attend to future"
-        )
+        assert (
+            attn_weights[future_mask.expand_as(attn_weights)] == 0
+        ).all(), "Some positions attend to future"
 
     @pytest.mark.numerical_stability
     @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
@@ -266,9 +262,15 @@ class TestAttentionNumericalStability:
         D = attention_config["head_dim"]
 
         # Create inputs with gradients
-        q = torch.randn(B, H, L, D, device=device, dtype=torch.float32, requires_grad=True)
-        k = torch.randn(B, H, L, D, device=device, dtype=torch.float32, requires_grad=True)
-        v = torch.randn(B, H, L, D, device=device, dtype=torch.float32, requires_grad=True)
+        q = torch.randn(
+            B, H, L, D, device=device, dtype=torch.float32, requires_grad=True
+        )
+        k = torch.randn(
+            B, H, L, D, device=device, dtype=torch.float32, requires_grad=True
+        )
+        v = torch.randn(
+            B, H, L, D, device=device, dtype=torch.float32, requires_grad=True
+        )
 
         # Forward pass
         output, _ = self._compute_attention(q, k, v)

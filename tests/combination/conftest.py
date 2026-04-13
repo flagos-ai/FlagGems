@@ -18,7 +18,7 @@ device = flag_gems.device
 
 # Import global variables from parent conftest
 try:
-    from ..conftest import TO_CPU, QUICK_MODE, RECORD_LOG
+    from ..conftest import QUICK_MODE, RECORD_LOG, TO_CPU
 except ImportError:
     # Default values if parent conftest not available
     TO_CPU = False
@@ -61,9 +61,7 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "numerical_stability: mark test as numerical stability test"
     )
-    config.addinivalue_line(
-        "markers", "stress: mark test as stress test (may be slow)"
-    )
+    config.addinivalue_line("markers", "stress: mark test as stress test (may be slow)")
     config.addinivalue_line(
         "markers", "comparison: mark test as comparison test (against PyTorch baseline)"
     )
@@ -73,9 +71,7 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "attention: mark test related to attention mechanisms"
     )
-    config.addinivalue_line(
-        "markers", "ffn: mark test related to FFN modules"
-    )
+    config.addinivalue_line("markers", "ffn: mark test related to FFN modules")
 
     # Initialise combination-test logging
     from .logging_config import TestLogger
@@ -148,8 +144,6 @@ def pytest_sessionfinish(session, exitstatus):
     """Write session summary and close the logger."""
     if _test_logger is None:
         return
-    stats = session.testscollected
-    tr = getattr(session.config, "_terminal_reporter", None) if hasattr(session, "config") else None
     # Gather counts from the internal _counts tracker
     passed = _test_logger._counts.get("passed", 0)
     failed = _test_logger._counts.get("failed", 0)
@@ -195,8 +189,12 @@ def dtype(request):
 @pytest.fixture(
     params=[
         pytest.param(1, id="batch1"),
-        pytest.param(4, id="batch4", marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")),
-        pytest.param(16, id="batch16", marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")),
+        pytest.param(
+            4, id="batch4", marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")
+        ),
+        pytest.param(
+            16, id="batch16", marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")
+        ),
     ],
     scope="module",
 )
@@ -208,8 +206,14 @@ def batch_size(request):
 @pytest.fixture(
     params=[
         pytest.param(128, id="seq128"),
-        pytest.param(512, id="seq512", marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")),
-        pytest.param(2048, id="seq2048", marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")),
+        pytest.param(
+            512, id="seq512", marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode")
+        ),
+        pytest.param(
+            2048,
+            id="seq2048",
+            marks=pytest.mark.skipif(QUICK_MODE, reason="Quick mode"),
+        ),
     ],
     scope="module",
 )
@@ -259,7 +263,9 @@ def numerical_scenarios():
     return {
         "normal": {
             "description": "Normal distribution inputs",
-            "generator": lambda shape, dtype, device: torch.randn(shape, dtype=dtype, device=device),
+            "generator": lambda shape, dtype, device: torch.randn(
+                shape, dtype=dtype, device=device
+            ),
         },
         "all_neg_inf": {
             "description": "All negative infinity (padding scenario)",
@@ -269,11 +275,16 @@ def numerical_scenarios():
         },
         "large_values": {
             "description": "Large values (magnitude > 10)",
-            "generator": lambda shape, dtype, device: torch.randn(shape, dtype=dtype, device=device) * 20,
+            "generator": lambda shape, dtype, device: torch.randn(
+                shape, dtype=dtype, device=device
+            )
+            * 20,
         },
         "mixed_specials": {
             "description": "Mixed normal, NaN, Inf values",
-            "generator": lambda shape, dtype, device: _generate_mixed_specials(shape, dtype, device),
+            "generator": lambda shape, dtype, device: _generate_mixed_specials(
+                shape, dtype, device
+            ),
         },
     }
 

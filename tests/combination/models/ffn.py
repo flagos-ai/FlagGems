@@ -4,7 +4,6 @@ Feed-Forward Network implementations for combination testing.
 This module provides FFN variants used in Transformer models.
 """
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 

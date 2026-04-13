@@ -5,21 +5,15 @@ This module tests complete Transformer layers with FlagGems operators,
 verifying numerical stability, gradient correctness, and performance.
 """
 
-import math
-
 import pytest
 import torch
 import torch.nn as nn
 
 import flag_gems
 
-from .models.transformer_block import TransformerBlock, LLaMABlock
-from .accuracy_utils import compute_reference, combo_assert_close, COMBO_FLOAT_DTYPES
-from .utils.numerical_stability import (
-    check_finite,
-    check_gradient_health,
-    check_no_nan,
-)
+from .accuracy_utils import COMBO_FLOAT_DTYPES, combo_assert_close, compute_reference
+from .models.transformer_block import LLaMABlock, TransformerBlock
+from .utils.numerical_stability import check_finite, check_gradient_health, check_no_nan
 
 device = flag_gems.device
 
@@ -78,7 +72,9 @@ class TestTransformerLayerE2E:
 
         # Reference comparison (TransformerBlock ≈ 10 ops: attn + norm + ffn + norm)
         ref_output = compute_reference(model, x)
-        combo_assert_close(output, ref_output, dtype, num_ops=10, name=f"Transformer forward {dtype}")
+        combo_assert_close(
+            output, ref_output, dtype, num_ops=10, name=f"Transformer forward {dtype}"
+        )
 
     @pytest.mark.integration
     @pytest.mark.parametrize("d_model,nhead", [(768, 12), (1024, 16), (4096, 32)])
@@ -112,7 +108,9 @@ class TestTransformerLayerE2E:
 
         # Reference comparison (LLaMA block ≈ 12 ops: RMSNorm + attn + RMSNorm + SwiGLU FFN)
         ref_output = compute_reference(model, x, is_causal=True)
-        combo_assert_close(output, ref_output, dtype, num_ops=12, name=f"LLaMA block {dtype}")
+        combo_assert_close(
+            output, ref_output, dtype, num_ops=12, name=f"LLaMA block {dtype}"
+        )
 
     @pytest.mark.integration
     def test_transformer_backward(self, use_gems):
@@ -132,7 +130,12 @@ class TestTransformerLayerE2E:
 
         # Create input with gradient
         x = torch.randn(
-            batch_size, seq_len, d_model, device=device, dtype=torch.float32, requires_grad=True
+            batch_size,
+            seq_len,
+            d_model,
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
         )
 
         # Forward pass
@@ -184,12 +187,17 @@ class TestTransformerLayerE2E:
         # Reference comparison
         ref_output = compute_reference(model, x, is_causal=is_causal)
         combo_assert_close(
-            output, ref_output, dtype, num_ops=10,
+            output,
+            ref_output,
+            dtype,
+            num_ops=10,
             name=f"Transformer is_causal={is_causal} {dtype}",
         )
 
     @pytest.mark.stress
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for stress test")
+    @pytest.mark.skipif(
+        not torch.cuda.is_available(), reason="CUDA required for stress test"
+    )
     def test_transformer_long_sequence(self, use_gems):
         """Test Transformer with very long sequences."""
         batch_size, seq_len, d_model = 1, 8192, 4096
@@ -203,7 +211,9 @@ class TestTransformerLayerE2E:
         )
         model = model.to(device).to(torch.float16)
 
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float16)
+        x = torch.randn(
+            batch_size, seq_len, d_model, device=device, dtype=torch.float16
+        )
 
         # Forward pass
         output = model(x, is_causal=True)
@@ -229,7 +239,9 @@ class TestAttentionBlock:
         attn = MultiHeadAttention(d_model, nhead, dropout=0.0)
         attn = attn.to(device).to(torch.float32)
 
-        x = torch.randn(batch_size, seq_len, d_model, device=device, dtype=torch.float32)
+        x = torch.randn(
+            batch_size, seq_len, d_model, device=device, dtype=torch.float32
+        )
 
         attn.eval()
         with torch.no_grad():
@@ -240,7 +252,9 @@ class TestAttentionBlock:
 
         # Reference comparison (attention ≈ 6 ops: QKV proj + matmul + softmax + matmul + out proj)
         ref_output = compute_reference(attn, x)
-        combo_assert_close(output, ref_output, torch.float32, num_ops=6, name="MultiHeadAttention")
+        combo_assert_close(
+            output, ref_output, torch.float32, num_ops=6, name="MultiHeadAttention"
+        )
 
     @pytest.mark.integration
     @pytest.mark.parametrize("nhead", [4, 8, 12, 16, 32])
@@ -270,7 +284,10 @@ class TestAttentionBlock:
         # Reference comparison
         ref_output = compute_reference(attn, x)
         combo_assert_close(
-            output, ref_output, dtype, num_ops=6,
+            output,
+            ref_output,
+            dtype,
+            num_ops=6,
             name=f"Attention {nhead} heads {dtype}",
         )
 
@@ -304,7 +321,9 @@ class TestFFNBlock:
 
         # Reference comparison (FFN ≈ 4 ops: linear + activation + dropout + linear)
         ref_output = compute_reference(ffn, x)
-        combo_assert_close(output, ref_output, dtype, num_ops=4, name=f"FFN {activation} {dtype}")
+        combo_assert_close(
+            output, ref_output, dtype, num_ops=4, name=f"FFN {activation} {dtype}"
+        )
 
     @pytest.mark.integration
     @pytest.mark.parametrize("dtype", COMBO_FLOAT_DTYPES)
@@ -329,4 +348,6 @@ class TestFFNBlock:
 
         # Reference comparison (SwiGLU ≈ 5 ops: gate_proj + up_proj + silu + mul + down_proj)
         ref_output = compute_reference(ffn, x)
-        combo_assert_close(output, ref_output, dtype, num_ops=5, name=f"SwiGLU FFN {dtype}")
+        combo_assert_close(
+            output, ref_output, dtype, num_ops=5, name=f"SwiGLU FFN {dtype}"
+        )

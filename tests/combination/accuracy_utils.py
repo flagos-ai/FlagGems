@@ -16,7 +16,6 @@ operators (sqrt scaling for independent error accumulation).
 import copy
 import logging
 import math
-from contextlib import contextmanager
 
 import torch
 
@@ -73,8 +72,10 @@ def _get_combo_tolerance(dtype, num_ops=1, atol_override=None, rtol_override=Non
     """
     rtol = rtol_override if rtol_override is not None else RESOLUTION.get(dtype, 1e-3)
     base_atol = COMBO_BASE_ATOL.get(dtype, 1e-4)
-    atol = atol_override if atol_override is not None else base_atol * math.sqrt(
-        max(num_ops, 1)
+    atol = (
+        atol_override
+        if atol_override is not None
+        else base_atol * math.sqrt(max(num_ops, 1))
     )
     return rtol, atol
 
@@ -82,6 +83,7 @@ def _get_combo_tolerance(dtype, num_ops=1, atol_override=None, rtol_override=Non
 # ---------------------------------------------------------------------------
 # Reference computation (three-level strategy)
 # ---------------------------------------------------------------------------
+
 
 def _ref_device_and_dtype():
     """Decide the device / dtype to use for the reference computation."""
@@ -232,6 +234,7 @@ def compute_reference_with_grad(model, *inputs, loss_fn=None, **kwargs):
 # Assertions
 # ---------------------------------------------------------------------------
 
+
 def combo_assert_close(res, ref, dtype, num_ops=1, atol=None, rtol=None, name=""):
     """Assert *res* and *ref* are close, with tolerance scaled for *num_ops*.
 
@@ -266,18 +269,20 @@ def combo_assert_close(res, ref, dtype, num_ops=1, atol=None, rtol=None, name=""
     finally:
         logger.info(
             "accuracy_check",
-            extra={"test_data": {
-                "event": "accuracy_check",
-                "check_type": "forward_comparison",
-                "name": name,
-                "dtype": str(dtype),
-                "num_ops": num_ops,
-                "expected_atol": atol_val,
-                "expected_rtol": rtol_val,
-                "actual_max_error": max_err,
-                "actual_mean_error": mean_err,
-                "passed": passed,
-            }},
+            extra={
+                "test_data": {
+                    "event": "accuracy_check",
+                    "check_type": "forward_comparison",
+                    "name": name,
+                    "dtype": str(dtype),
+                    "num_ops": num_ops,
+                    "expected_atol": atol_val,
+                    "expected_rtol": rtol_val,
+                    "actual_max_error": max_err,
+                    "actual_mean_error": mean_err,
+                    "passed": passed,
+                }
+            },
         )
 
 
@@ -312,15 +317,17 @@ def assert_accumulation_error(
 
     logger.info(
         "accuracy_check",
-        extra={"test_data": {
-            "event": "accuracy_check",
-            "check_type": "accumulation_error",
-            "dtype": str(dtype),
-            "num_layers": num_layers,
-            "relative_error": relative_error,
-            "max_allowed": max_relative_error,
-            "passed": passed,
-        }},
+        extra={
+            "test_data": {
+                "event": "accuracy_check",
+                "check_type": "accumulation_error",
+                "dtype": str(dtype),
+                "num_layers": num_layers,
+                "relative_error": relative_error,
+                "max_allowed": max_relative_error,
+                "passed": passed,
+            }
+        },
     )
 
     assert passed, (
@@ -366,18 +373,20 @@ def assert_gradient_close(
     finally:
         logger.info(
             "accuracy_check",
-            extra={"test_data": {
-                "event": "accuracy_check",
-                "check_type": "gradient_comparison",
-                "name": name,
-                "dtype": str(dtype),
-                "num_ops": num_ops,
-                "expected_atol": atol_val,
-                "expected_rtol": rtol_val,
-                "actual_max_error": max_err,
-                "actual_mean_error": mean_err,
-                "passed": passed,
-            }},
+            extra={
+                "test_data": {
+                    "event": "accuracy_check",
+                    "check_type": "gradient_comparison",
+                    "name": name,
+                    "dtype": str(dtype),
+                    "num_ops": num_ops,
+                    "expected_atol": atol_val,
+                    "expected_rtol": rtol_val,
+                    "actual_max_error": max_err,
+                    "actual_mean_error": mean_err,
+                    "passed": passed,
+                }
+            },
         )
 
 
@@ -419,7 +428,9 @@ def assert_numerical_consistency(output_gems, output_ref, name=""):
         if gems_nan_but_ref_not.any():
             count = gems_nan_but_ref_not.sum().item()
             nan_match = False
-            error_detail = f"FlagGems has NaN at {count} positions where reference does not"
+            error_detail = (
+                f"FlagGems has NaN at {count} positions where reference does not"
+            )
 
     # For non-NaN positions, values should be close.
     if nan_match:
@@ -441,14 +452,16 @@ def assert_numerical_consistency(output_gems, output_ref, name=""):
 
     logger.info(
         "accuracy_check",
-        extra={"test_data": {
-            "event": "accuracy_check",
-            "check_type": "numerical_consistency",
-            "name": name,
-            "nan_match": nan_match,
-            "non_nan_close": non_nan_close,
-            "passed": passed,
-        }},
+        extra={
+            "test_data": {
+                "event": "accuracy_check",
+                "check_type": "numerical_consistency",
+                "name": name,
+                "nan_match": nan_match,
+                "non_nan_close": non_nan_close,
+                "passed": passed,
+            }
+        },
     )
 
     if not nan_match:
@@ -487,14 +500,16 @@ def assert_loss_close(loss_gems, loss_ref, dtype, name=""):
     finally:
         logger.info(
             "accuracy_check",
-            extra={"test_data": {
-                "event": "accuracy_check",
-                "check_type": "loss_comparison",
-                "name": name,
-                "dtype": str(dtype),
-                "expected_atol": atol,
-                "expected_rtol": rtol,
-                "actual_diff": actual_diff,
-                "passed": passed,
-            }},
+            extra={
+                "test_data": {
+                    "event": "accuracy_check",
+                    "check_type": "loss_comparison",
+                    "name": name,
+                    "dtype": str(dtype),
+                    "expected_atol": atol,
+                    "expected_rtol": rtol,
+                    "actual_diff": actual_diff,
+                    "passed": passed,
+                }
+            },
         )
