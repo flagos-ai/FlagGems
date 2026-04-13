@@ -105,6 +105,7 @@ mthreads = [
 
 nvidia = [
     "flag_gems[official_torch_290]",
+    "flagtree==0.5.0+3.5",
 ]
 
 tsingmicro = [
@@ -117,6 +118,7 @@ tsingmicro = [
 # Test packages
 test = [
     "distro==1.9.0",
+    "openpyxl==3.1.5",
     "pytest==9.0.2",
     "scipy>=1.15.3",
 ]
@@ -196,6 +198,13 @@ name = "mthreads-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-mthreads/simple"
 explicit = true
 
+# Source for NVIDIA packages
+# Mainly for flagtree installation
+[[tool.uv.index]]
+name = "nvidia-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-hosted/simple"
+explicit = true
+
 # Source for TsingMicro packages
 [[tool.uv.index]]
 name = "tsingmicro-pypi"
@@ -226,6 +235,7 @@ hygon = { index = "hygon-pypi" }
 iluvatar = { index = "iluvatar-pypi" }
 kunlunxin = { index = "kunlunxin-pypi" }
 mthreads = { index = "mthreads-pypi" }
+nvidia = { index = "nvidia-pypi" }
 tsingmicro = { index = "tsingmicro-pypi" }
 official_torch_290 = { index = "torch-pypi-128" }
 official_torch_270 = { index = "torch-pypi-128" }

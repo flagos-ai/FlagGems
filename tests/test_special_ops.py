@@ -1286,6 +1286,34 @@ def test_fill_out(value, shape, dtype):
     ), "fill.Tensor_out should return the out tensor"
 
 
+FILL_SLICE_CASES = [
+    # (shape, slice)
+    ((4, 128), (slice(None), slice(64, None))),
+    ((2, 1, 1, 512), (slice(None), slice(None), slice(None), slice(358, None))),
+    ((8, 32, 64), (slice(None), slice(16, None))),
+]
+
+
+@pytest.mark.fill
+@pytest.mark.parametrize("shape, slc", FILL_SLICE_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + BOOL_TYPES)
+@pytest.mark.parametrize(
+    "value", [0, 1, True, float("-inf")], ids=["zero", "one", "true", "neginf"]
+)
+def test_fill_sliced_view(shape, slc, dtype, value):
+    if dtype == torch.bool and value == float("-inf"):
+        pytest.skip("bool tensor does not support -inf")
+
+    x = torch.randn(shape, device=flag_gems.device).to(dtype)
+    ref_x = to_reference(x.clone(), False)
+
+    ref_x[slc] = value
+    with flag_gems.use_gems():
+        x[slc] = value
+
+    gems_assert_equal(x, ref_x)
+
+
 CAMBRICON_STACK_SHAPES = [
     [
         (8, 8, 128),
@@ -2463,6 +2491,39 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
     with flag_gems.use_gems():
         res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+@pytest.mark.assert_async
+@pytest.mark.parametrize(
+    "shape, value, expected_err, match_str",
+    [
+        ((), 1.0, None, None),
+        ((2,), 1.0, RuntimeError, "is ambiguous"),
+        ((1,), 1.0, None, None),
+    ],
+)
+def test_assert_async_consistency(shape, value, expected_err, match_str):
+    msg = "Assertion failed!"
+    inp_pt = torch.full(shape, value, device=device)
+    inp_triton = inp_pt.clone()
+    if expected_err:
+        with flag_gems.use_gems():
+            with pytest.raises(expected_err, match=match_str):
+                flag_gems._assert_async(inp_triton, msg)
+                if value == 0:
+                    torch.cuda.synchronize()
+    else:
+        with flag_gems.use_gems():
+            flag_gems._assert_async(inp_triton, msg)
+            torch.cuda.synchronize()
+    if expected_err:
+        with pytest.raises(expected_err, match=match_str):
+            torch._assert_async(inp_pt, msg)
+            if value == 0:
+                torch.cuda.synchronize()
+    else:
+        torch._assert_async(inp_pt, msg)
+        torch.cuda.synchronize()
 
 
 @pytest.mark.lift_fresh_copy

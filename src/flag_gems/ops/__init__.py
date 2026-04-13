@@ -25,12 +25,14 @@ from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.asinh_ import asinh_
+from flag_gems.ops.assert_async import _assert_async
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
     flash_attn_varlen_func,
+    flash_attn_varlen_opt_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
@@ -192,6 +194,7 @@ from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
+from flag_gems.ops.new_full import new_full
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
     nll_loss2d_backward,
@@ -247,6 +250,7 @@ from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
@@ -258,6 +262,7 @@ from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinh_ import sinh_
@@ -316,6 +321,7 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "_assert_async",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
     "_safe_softmax",
@@ -450,6 +456,7 @@ __all__ = [
     "fill_tensor_out",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "flash_attn_varlen_opt_func",
     "flip",
     "floor_",
     "floor_divide",
@@ -559,6 +566,7 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "new_full",
     "nll_loss_backward",
     "nll_loss_forward",
     "nll_loss2d_backward",
@@ -616,6 +624,9 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "round",
+    "round_",
+    "round_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
@@ -635,6 +646,8 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "signbit",
+    "signbit_out",
     "silu",
     "silu_",
     "silu_backward",
