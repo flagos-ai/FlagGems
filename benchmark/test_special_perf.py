@@ -900,8 +900,81 @@ except ImportError:
     HAS_VLLM = False
 
 
+def torch_moe_align_block_size(
+    topk_ids,
+    num_experts,
+    block_size,
+    sorted_token_ids,
+    experts_ids,
+    num_tokens_post_pad,
+):
+    max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
+    flattened_token_indices = torch.arange(
+        topk_ids.numel(), device=topk_ids.device, dtype=torch.int32
+    )
+    flattened_expert_ids = topk_ids.flatten()
+    sorted_expert_ids, sort_indices = torch.sort(flattened_expert_ids, stable=True)
+    sorted_token_indices = flattened_token_indices[sort_indices]
+
+    expert_token_counts = torch.zeros(
+        num_experts, dtype=torch.int64, device=topk_ids.device
+    )
+    for expert_id in range(num_experts):
+        mask = sorted_expert_ids == expert_id
+        expert_token_counts[expert_id] = mask.sum()
+
+    expert_padded_counts = torch.zeros(
+        num_experts, dtype=torch.int64, device=topk_ids.device
+    )
+    for expert_id in range(num_experts):
+        original_count = expert_token_counts[expert_id]
+        if original_count > 0:
+            expert_padded_counts[expert_id] = (
+                (original_count + block_size - 1) // block_size
+            ) * block_size
+
+    in_sorted_token_ids = torch.full(
+        (max_num_tokens_padded,),
+        topk_ids.numel(),
+        dtype=torch.int32,
+        device=topk_ids.device,
+    )
+
+    max_num_blocks = max_num_tokens_padded // block_size
+    expert_ids = torch.zeros(max_num_blocks, dtype=torch.int32, device=topk_ids.device)
+
+    current_pos = 0
+    current_block = 0
+    for expert_id in range(num_experts):
+        expert_mask = sorted_expert_ids == expert_id
+        expert_tokens = sorted_token_indices[expert_mask]
+        num_expert_tokens = expert_tokens.shape[0]
+
+        if num_expert_tokens > 0:
+            in_sorted_token_ids[
+                current_pos : current_pos + num_expert_tokens
+            ] = expert_tokens
+            expert_blocks_needed = expert_padded_counts[expert_id] // block_size
+            expert_ids[
+                current_block : current_block + expert_blocks_needed
+            ] = expert_id
+            current_pos += expert_padded_counts[expert_id]
+            current_block += expert_blocks_needed
+
+    total_padded_tokens = expert_padded_counts.sum()
+    in_num_tokens_post_pad = torch.tensor(
+        [total_padded_tokens], dtype=torch.int32, device=topk_ids.device
+    )
+    sorted_token_ids.copy_(in_sorted_token_ids)
+    experts_ids.copy_(expert_ids)
+    num_tokens_post_pad.copy_(in_num_tokens_post_pad)
+
+
 @pytest.mark.moe_align_block_size
-@pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
+@pytest.mark.skipif(
+    not HAS_VLLM and vendor_name != "ascend",
+    reason="vllm not installed and not ascend",
+)
 def test_perf_moe_align_block_size():
     def moe_align_block_size_input_fn(shape, dtype, device):
         num_experts = shape[0]
@@ -910,12 +983,7 @@ def test_perf_moe_align_block_size():
         topk_ids = torch.randint(
             0, num_experts, (shape[2], shape[3]), dtype=dtype, device=device
         )
-        max_num_tokens_padded = ((num_experts + WARP_SIZE - 1) // WARP_SIZE) * WARP_SIZE
-
-        # padded_num_experts in vllm._custom_ops.moe_align_block_size
-        # must be less than 1024
-        if max_num_tokens_padded >= 1024:
-            return
+        max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
 
         sorted_ids = torch.empty((max_num_tokens_padded,), dtype=dtype, device=device)
         max_num_m_blocks = max_num_tokens_padded // block_size
@@ -954,11 +1022,14 @@ def test_perf_moe_align_block_size():
         def set_more_shapes(self):
             return None
 
+    torch_op = (
+        torch_moe_align_block_size if vendor_name == "ascend" else vllm_ops.moe_align_block_size
+    )
     gems_op = flag_gems.moe_align_block_size_triton
     bench = MoeAlignBlockSizeBenchmark(
         op_name="moe_align_block_size_triton",
         input_fn=moe_align_block_size_input_fn,
-        torch_op=vllm_ops.moe_align_block_size,
+        torch_op=torch_op,
         dtypes=[
             torch.int32,
         ],

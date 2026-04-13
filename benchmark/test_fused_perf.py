@@ -184,7 +184,7 @@ def test_perf_apply_rotary_pos_emb():
 
 class TopKSoftmaxBenchmark(Benchmark):
     """
-    Benchmark for comparing topk_softmax between vLLM (CUDA kernel) and FlagGems (Triton kernel).
+    Benchmark for comparing topk_softmax between reference impl and FlagGems (Triton kernel).
     """
 
     def set_shapes(self, shape_file_path=None):
@@ -228,12 +228,42 @@ class TopKSoftmaxBenchmark(Benchmark):
             )
 
 
+def torch_topk_softmax(
+    topk_weights: torch.Tensor,
+    topk_indices: torch.Tensor,
+    token_expert_indices: torch.Tensor,
+    gating_output: torch.Tensor,
+    renormalize: bool = False,
+) -> None:
+    """PyTorch reference implementation of topk_softmax for Ascend platform."""
+    num_tokens = gating_output.shape[0]
+    k = topk_weights.size(-1)
+
+    # Softmax
+    probs = torch.softmax(gating_output.float(), dim=-1)
+
+    # Top-k selection
+    weights, indices = torch.topk(probs, k, dim=-1)
+
+    topk_weights.copy_(weights)
+    topk_indices.copy_(indices.to(topk_indices.dtype))
+
+    # token_expert_indices computation: ki * num_tokens + row_idx
+    rows = torch.arange(num_tokens, device=gating_output.device)
+    for ki in range(k):
+        token_expert_indices[:, ki] = ki * num_tokens + rows
+
+    # Renormalize
+    if renormalize:
+        topk_weights.div_(topk_weights.sum(dim=-1, keepdim=True) + 1e-8)
+
+
 @pytest.mark.skipif(
-    SkipVersion("vllm", "<0.9"),
+    vendor_name not in ("ascend",) and SkipVersion("vllm", "<0.9"),
     reason="The version prior to 0.9 does not include the topk_softmax kernel in vllm._custom_ops.",
 )
 @pytest.mark.skipif(
-    SkipVersion("torch", "<2.7"),
+    vendor_name not in ("ascend",) and SkipVersion("torch", "<2.7"),
     reason="The version prior to 2.7 is not compatible with VLLM.",
 )
 @pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
@@ -243,15 +273,20 @@ class TopKSoftmaxBenchmark(Benchmark):
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.topk_softmax
 def test_perf_topk_softmax():
-    try:
-        os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
-        from vllm._custom_ops import topk_softmax as vllm_topk_softmax
-    except (ImportError, AttributeError) as e:
-        pytest.skip(f"Skipped due to missing vLLM topk_softmax: {e}")
+    # Select reference implementation based on platform
+    if vendor_name == "ascend":
+        torch_op = torch_topk_softmax
+    else:
+        try:
+            os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
+            from vllm._custom_ops import topk_softmax as vllm_topk_softmax
+            torch_op = vllm_topk_softmax
+        except (ImportError, AttributeError) as e:
+            pytest.skip(f"Skipped due to missing vLLM topk_softmax: {e}")
 
     bench = TopKSoftmaxBenchmark(
         op_name="topk_softmax",
-        torch_op=vllm_topk_softmax,
+        torch_op=torch_op,
         dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
 

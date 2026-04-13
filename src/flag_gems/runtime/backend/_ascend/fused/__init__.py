@@ -1,11 +1,23 @@
 from .cross_entropy_loss import cross_entropy_loss
 from .fused_add_rms_norm import fused_add_rms_norm
+from .gelu_and_mul import gelu_and_mul
+from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
+from .moe_sum import moe_sum
 from .rotary_embedding import apply_rotary_pos_emb
+from .silu_and_mul import silu_and_mul, silu_and_mul_out
 from .skip_layernorm import skip_layer_norm
+from .topk_softmax import topk_softmax
 
 __all__ = [
     "cross_entropy_loss",
     "apply_rotary_pos_emb",
     "fused_add_rms_norm",
+    "gelu_and_mul",
+    "moe_align_block_size",
+    "moe_align_block_size_triton",
+    "moe_sum",
+    "silu_and_mul",
+    "silu_and_mul_out",
     "skip_layer_norm",
+    "topk_softmax",
 ]
