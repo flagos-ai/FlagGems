@@ -27,13 +27,13 @@ def div_complex_kernel(ar, ai, br, bi):
     use_br = abs_br >= abs_bi
 
     # When |br| >= |bi|: ratio = bi/br, denom = br + bi*ratio
-    ratio1 = bi / br
+    ratio1 = tl.where(br == 0, 0.0, bi / br)
     denom1 = br + bi * ratio1
     real1 = (ar + ai * ratio1) / denom1
     imag1 = (ai - ar * ratio1) / denom1
 
     # When |bi| > |br|: ratio = br/bi, denom = bi + br*ratio
-    ratio2 = br / bi
+    ratio2 = tl.where(bi == 0, 0.0, br / bi)
     denom2 = bi + br * ratio2
     real2 = (ar * ratio2 + ai) / denom2
     imag2 = (ai * ratio2 - ar) / denom2
