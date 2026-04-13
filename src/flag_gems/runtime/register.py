@@ -42,7 +42,6 @@ class Register:
             self.exclude_ops = (
                 list(user_exclude_ops or []) + self.vendor_unused_ops_list
             )
-            self.config = config
             self.config_filter()
             self.for_each()
 
