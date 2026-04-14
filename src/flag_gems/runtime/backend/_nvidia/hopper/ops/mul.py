@@ -132,7 +132,10 @@ def mul(A, B):
                 out_real = mul_func_scalar(Br, Ar)  # Br is tensor, Ar is scalar
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))
     elif isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return mul_all_real_func(A, B)
+        if len(A.shape) == len(B.shape):
+            return mul_all_real_func(A, B)
+        else:
+            return mul_func(A, B)
     elif isinstance(A, torch.Tensor):
         return mul_func_scalar(A, B)
     elif isinstance(B, torch.Tensor):
