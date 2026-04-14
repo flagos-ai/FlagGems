@@ -11,11 +11,11 @@ Notes
 """
 
 import logging
-import functools
 import traceback
 from pathlib import Path
 
 import torch
+
 
 class LogOncePerLocationFilter(logging.Filter):
     def __init__(self):
@@ -127,7 +127,11 @@ def get_call_location():
 def compare_outputs(fg_out, pt_out, rtol, atol):
     if isinstance(fg_out, torch.Tensor) and isinstance(pt_out, torch.Tensor):
         if fg_out.shape != pt_out.shape:
-            return False, {"error": "shape_mismatch", "fg": tuple(fg_out.shape), "pt": tuple(pt_out.shape)}
+            return False, {
+                "error": "shape_mismatch",
+                "fg": tuple(fg_out.shape),
+                "pt": tuple(pt_out.shape),
+            }
         try:
             fg = fg_out.detach().float()
             pt = pt_out.detach().float()
@@ -146,16 +150,21 @@ def compare_outputs(fg_out, pt_out, rtol, atol):
                 return False, info
     return True, {}
 
-def enable_precision_check(rtol=1e-4, atol=1e-5, log_once=True, max_checks=10, path=None):
+
+def enable_precision_check(
+    rtol=1e-4, atol=1e-5, log_once=True, max_checks=10, path=None
+):
     setup_precision_logging(path)
-    precision_config.update({
-        "enabled": True,
-        "rtol": rtol,
-        "atol": atol,
-        "log_once": log_once,
-        "max_checks": max_checks,
-        "logged_ops": set(),
-    })
+    precision_config.update(
+        {
+            "enabled": True,
+            "rtol": rtol,
+            "atol": atol,
+            "log_once": log_once,
+            "max_checks": max_checks,
+            "logged_ops": set(),
+        }
+    )
 
 
 def disable_precision_check():
