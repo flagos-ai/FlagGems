@@ -159,7 +159,7 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
-        "--collect-markers",
+        "--collect-marks",
         action="store_true",
         help="Collect the tests with marker information without executing them",
     )
@@ -295,7 +295,7 @@ def extract_and_log_op_attributes(request):
 
 
 def pytest_collection_modifyitems(session, config, items):
-    if config.getoption("--collect-markers"):
+    if config.getoption("--collect-marks"):
         report = []
         for item in items:
             data = {}
