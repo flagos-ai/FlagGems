@@ -50,6 +50,18 @@ ops:
       - Tensor
     stages:
       beta: '5.0'
+  - name: _grouped_mm
+    description: |
+      Grouped matrix multiply is a functional operator designed to accelerate Mixture-of-Experts (MoE) models
+      by computing multiple matrix multiplications in a single kernel launch.
+    for:
+      - _grouped_mm
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      beta: '5.1'
   - name: _log_softmax_backward_data
     description: |
       Computes the gradient of the input tensor with respect to a `log_softmax` operation
