@@ -1,76 +1,78 @@
 #!/bin/bash
 
-VENDOR=${1}
-echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
+VENDOR=${1:-mthreads}
 
-export MUSA_HOME=/usr/local/musa
-export PATH=$MUSA_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
-
-# PyEnv settings
+#=== Common setup ===
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
-
-# Preamble
 pip install -U pip
 pip install uv
 uv venv
 source .venv/bin/activate
 
+echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
+
+#=== Install ===
+
+export FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple
+uv pip install setuptools==79.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 'cmake>=3.20,<4.0' ninja==1.13.0
+
 # Setup
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-uv pip install torch==2.7.1+musa.4.0.0 \
-  --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
-uv pip install triton==3.1.0+musa.4.0.0 \
-  --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
-uv pip install torch_musa==2.7.1 \
-  --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
-
+uv pip install --index $FLAGOS_PYPI
+   "torch==2.7.1+musa.4.0.0" \
+   "torch_musa==2.7.1" \
+   "triton==3.1.0+musa1.4.6"
 uv pip install -e .[mthreads,test]
 
+#=== Start testing ===
+
+export MUSA_HOME=/usr/local/musa
+export PATH=$MUSA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
 # For the intel math library
 export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH
 
-# Print out package versions for debugging.
-uv pip list
+echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 
-# In case the backend detection fails
-# export GEMS_VENDOR=$VENDOR
+echo "Starting tests..."
 
-# Reduction ops
-# FIXME(moore): Softmax only support float32/float16/bfloat16
-# pytest -s tests/test_reduction_ops.py
-pytest -s tests/test_general_reduction_ops.py
-# FIXME(moore): BatchNorm supports Float/Half/BFloat16 input dtype
-# pytest -s tests/test_norm_ops.py
+TEST_FILES=(
+  # Reduction
+  "tests/test_reduction_ops.py"
+  "tests/test_general_reduction_ops.py"
+  "tests/test_norm_ops.py"
+  # Pointwise
+  "tests/test_pointwise_dynamic.py"
+  "tests/test_unary_pointwise_ops.py"
+  "tests/test_binary_pointwise_ops.py"
+  "tests/test_pointwise_type_promotion.py"
+  # Tensor
+  "tests/test_tensor_constructor_ops.py"
+  "tests/test_tensor_wrapper.py"
+  # Attention
+  "tests/test_attention_ops.py"
+  "tests/test_blas_ops.py"
+  # Special
+  "tests/test_special_ops.py"
+  # Distribution
+  "tests/test_distribution_ops.py"
+  # Convolution
+  "tests/test_convolution_ops.py"
+  # Utils
+  "tests/test_libentry"
+  "tests/test_shape_utils.py"
+  # DSA
+  "tests/test_DSA/test_bin_topk.py"
+  "tests/test_DSA/test_sparse_mla_ops.py"
+  "tests/test_DSA/test_indexer_k_tiled.py"
+  # FLA
+  "tests/test_FLA/test_fla_utils_input_guard.py"
+  "tests/test_FLA/test_fused_recurrent_gated_delta_rule.py"
+)
 
-# Pointwise ops
-pytest -s tests/test_pointwise_dynamic.py
-# FIXME(moore): RuntimeError: _Map_base::at (missing operators)
-pytest -s tests/test_unary_pointwise_ops.py
-pytest -s tests/test_binary_pointwise_ops.py
-pytest -s tests/test_pointwise_type_promotion.py
-
-# TODO: test_accuracy_randperm
-pytest -s tests/test_tensor_constructor_ops.py
-
-# BLAS ops
-# TODO(Qiming): Fix sharedencoding on Hopper
-pytest -s tests/test_attention_ops.py
-# FIXME(moore): unsupported data type DOUBLE
-# pytest -s tests/test_blas_ops.py
-
-# Special ops
-pytest -s tests/test_special_ops.py
-
-# Distribution
-pytest -s tests/test_distribution_ops.py
-
-# Convolution ops
-pytest -s tests/test_convolution_ops.py
-
-# Utils
-# pytest -s tests/test_libentry.py
-pytest -s tests/test_shape_utils.py
-pytest -s tests/test_tensor_wrapper.py
+for testcase in "${TEST_FILES[@]}"; do
+    echo "Testing $testcase"
+    pytest -s --tb=line $testcase --ref cpu
+done

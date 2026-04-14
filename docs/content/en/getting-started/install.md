@@ -64,8 +64,12 @@ unified compiler for multiple AI platforms. Please make sure you have
 read the environment requirements from the FlagTree project before
 installing it.
 
+The `requirements_<backend>.txt` files include both FlagTree and the build
+dependencies (such as `scikit-build-core`, `pybind11`, `ninja`, and `cmake`).
+You can install them together with one command.
+
 ```shell
-pip install -r flag_tree_requirements/requirements_nvidia.txt
+pip install -r requirements/requirements_nvidia.txt
 ```
 
 > [!TIP]
@@ -73,33 +77,16 @@ pip install -r flag_tree_requirements/requirements_nvidia.txt
 >
 > - For [non-NVIDIA platforms](/FlagGems/usage/non-nvidia/), you
 >   **have to** use different `requirements_<backend>.txt` under
->   the `flag_tree_requirements/` directory.
+>   the `requirements/` directory.
 > - There are on-going efforts to simplify this step. Stay tuned.
 
-### 3.3. Prepare the build dependencies
-
-FlagGems follows the [PEP 518](https://peps.python.org/pep-0518/) standard
-and provides a `pyproject.toml` file to govern the installation process.
-
-The Python package `flag_gems` uses [`scikit-build-core`](https://scikit-build-core.readthedocs.io/en/latest/)
-as its [build backend](https://peps.python.org/pep-0517/#build-backend-interface).
-
-You can run the following command to install/upgrade the build dependencies.
-
-```shell
-pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
-```
-
-You can refer to [scikit-build-core](#scikit-build-core-options) reference
-for more details about the commonly used options.
-
-### 3.4. Install the package
+### 3.3. Install the package
 
 FlagGems can be installed either a pure Python package or a package with C++ extensions.
 The C++ extensions are  still an experimental feature, so please make sure
 you have conducted some assessments before using them in production environments.
 
-#### 3.4.1 Install with C++ extension
+#### 3.3.1 Install with C++ extension
 
 If you are NOT enabling the C++ wrapped operators, you can skip to the next step.
 
@@ -165,7 +152,7 @@ check the following sections:
 - [build isolation](#build-isolation)
 - [installing libtriton_jit](#libtriton-jit)
 
-#### 3.4.2 Install the Python package only
+#### 3.3.2 Install the Python package only
 
 You can install *flag_gems* as a pure Python package.
 If you are using *FlagGems* as is with no intent to customize it,
