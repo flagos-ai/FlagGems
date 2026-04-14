@@ -6,6 +6,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,8 +98,7 @@ def _launch_upsample_nearest_exact1d_kernel(input, out, output_size=None, scale=
         raise ValueError(
             f"_upsample_nearest_exact1d expects a 3D tensor (N, C, W); got shape {tuple(input.shape)}"
         )
-    if not input.is_cuda or not out.is_cuda:
-        # Fallback to the native operator on CPU or non-CUDA devices
+    if input.device.type != flag_gems.device or out.device.type != flag_gems.device:
         return torch.ops.aten._upsample_nearest_exact1d(
             input, [out.shape[-1]], [scale] if scale is not None else None
         )
