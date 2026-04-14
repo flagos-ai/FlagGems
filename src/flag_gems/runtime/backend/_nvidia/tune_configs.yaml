@@ -1190,6 +1190,19 @@ kron:
       - 8
       - 16
 
+index_select_backward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+      num_warps: 4
+    block_m:
+      - 1
+    block_n:
+      - 256
+      - 512
+
 index_put:
   - gen: true
     param_map:

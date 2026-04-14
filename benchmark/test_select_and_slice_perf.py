@@ -78,6 +78,19 @@ def index_select_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+def index_select_backward_gbps(bench_fn_args, latency):
+    inp = bench_fn_args[0]
+    dim = bench_fn_args[1]
+    index = bench_fn_args[2]
+    index_unique = torch.unique(index)
+    io_amount = (
+        shape_utils.size_in_bytes(inp)
+        * (index.size(0) + index_unique.size(0))
+        // inp.size(dim)
+    )
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
 @pytest.mark.index_select
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",
@@ -99,6 +112,32 @@ def test_perf_index_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
         torch_op=torch_op,
         dtypes=dtypes,
         get_gbps=gbps_fn,
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_select_backward
+def test_perf_index_select_backward():
+    def index_select_backward_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        threshold = 0.1
+        dim = 0
+        index_size = inp.size(dim)
+        from math import floor
+
+        index = torch.randint(
+            0, index_size, [floor(index_size * threshold)], device=device
+        )
+        yield inp, dim, index
+
+    bench = TensorSelectBenchmark(
+        input_fn=index_select_backward_input_fn,
+        op_name="index_select_backward",
+        torch_op=torch.index_select,
+        dtypes=FLOAT_DTYPES,
+        get_gbps=index_select_backward_gbps,
+        is_backward=True,
     )
     bench.run()
 

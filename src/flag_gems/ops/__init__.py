@@ -146,7 +146,6 @@ from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_put import index_put, index_put_
-from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
@@ -318,6 +317,8 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+
+from .index_select import index_select, index_select_backward
 
 __all__ = [
     "_assert_async",
@@ -498,6 +499,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "index_select_backward",
     "isclose",
     "isfinite",
     "isin",

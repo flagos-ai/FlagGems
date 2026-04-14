@@ -1478,6 +1478,35 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.index_select_backward
+@pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_select_backward(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    ref_inp = to_reference(inp)
+    from math import floor
+
+    index_size = inp.size(dim)
+    index = torch.randint(0, index_size, [floor(index_size * 0.1)], device="cuda")
+    if len(index) == 0:
+        pass
+    else:
+        ref_index = to_reference(index)
+        ref_out = torch.index_select(ref_inp, dim, ref_index)
+        with flag_gems.use_gems():
+            res_out = torch.index_select(inp, dim, index)
+        out_grad = torch.randn_like(res_out)
+        ref_grad = to_reference(out_grad)
+        (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+        with flag_gems.use_gems():
+            (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+        res_out = to_reference(res_out)
+        res_in_grad = to_reference(res_in_grad)
+        gems_assert_close(res_out, ref_out, dtype)
+        gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 @pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
