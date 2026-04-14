@@ -8,7 +8,13 @@ import torch
 import flag_gems
 
 from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
-from .accuracy_utils import SCALARS, UT_SHAPES_1D, gems_assert_close, to_reference
+from .accuracy_utils import (
+    SCALARS,
+    UT_SHAPES_1D,
+    SkipVersion,
+    gems_assert_close,
+    to_reference,
+)
 from .conftest import QUICK_MODE
 
 if QUICK_MODE:
@@ -32,6 +38,7 @@ else:
     ]
     FLOAT_DTYPES = ORIG_FLOAT_DTYPES
 
+GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
 MIXED_DTYPE_PAIRS = [
     (torch.float16, torch.float32),
     (torch.float32, torch.float16),
@@ -242,16 +249,21 @@ FP8_MNK_SHAPES = [
 @pytest.mark.w8a8_block_fp8_matmul
 @pytest.mark.parametrize("M,N,K", FP8_MNK_SHAPES)
 def test_accuracy_w8a8_block_fp8_matmul(M, N, K):
-    # dtype = torch.float8_e4m3fn
-    if not torch.cuda.is_available():
-        pytest.skip("w8a8_block_fp8_matmul test requires CUDA")
-    major, _ = torch.cuda.get_device_capability()
-    if major > 8:
-        dtype = torch.float8_e4m3fn
-    elif major == 8:
-        dtype = torch.float8_e5m2
+    if flag_gems.vendor_name == "mthreads":
+        if hasattr(torch, "float8_e4m3fn"):
+            dtype = torch.float8_e4m3fn
+        else:
+            dtype = torch.float32
     else:
-        dtype = torch.float32
+        if not torch.cuda.is_available():
+            pytest.skip("w8a8_block_fp8_matmul test requires CUDA or mthreads")
+        major, _ = torch.cuda.get_device_capability()
+        if major > 8:
+            dtype = torch.float8_e4m3fn
+        elif major == 8:
+            dtype = torch.float8_e5m2
+        else:
+            dtype = torch.float32
     device = flag_gems.device
     block_n = 128
     block_k = 128
@@ -263,9 +275,9 @@ def test_accuracy_w8a8_block_fp8_matmul(M, N, K):
     num_k_groups = (K + block_k - 1) // block_k
     num_n_groups = (N + block_n - 1) // block_n
 
-    As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(dtype)
+    As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(torch.float32)
     Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(
-        dtype
+        torch.float32
     )
 
     A_ref = A.to(torch.float32)
@@ -395,6 +407,46 @@ def test_accuracy_mm(M, N, K, dtype, b_column_major):
     ref_out = torch.mm(ref_mat1, ref_mat2)
     with flag_gems.use_gems():
         res_out = torch.mm(mat1, mat2)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.8"),
+    reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
+)
+@pytest.mark.parametrize("groups, N, K", GNK_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
+def test_accuracy_groupmm(groups, N, K, dtype):
+    assert dtype == torch.bfloat16
+    group_A_list = []
+    group_B_list = []
+    M_list = []
+    A_offs = 0
+    B_offs = 0
+    for i in range(groups):
+        M_g = random.randint(1, 16384)
+        N_g = N
+        K_g = K
+        A_g = torch.rand([M_g, K_g], device="cuda", dtype=dtype)
+        B_g = torch.rand([K_g, N_g], device="cuda", dtype=dtype)
+        group_A_list.append(A_g)
+        group_B_list.append(B_g)
+        M_list.append(M_g)
+        A_offs += M_g
+        B_offs += K_g
+
+    mat_a = torch.cat([x for x in group_A_list], dim=0)
+    mat_b = torch.stack([x for x in group_B_list], dim=0)
+    offs = torch.tensor(
+        [sum(M_list[: i + 1]) for i in range(groups)],
+        dtype=torch.int32,
+        device="cuda",
+    )
+
+    ref_out = torch._grouped_mm(mat_a, mat_b, offs)
+    with flag_gems.use_gems():
+        res_out = torch._grouped_mm(mat_a, mat_b, offs)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
