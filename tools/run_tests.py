@@ -592,7 +592,8 @@ def main():
     global DUMP_OUTPUT
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--op-list-file", required=False)
+    # parser.add_argument("--flaggems", required=False)
+    parser.add_argument("--op-list", required=False)
     parser.add_argument("--ops", required=False)
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
@@ -610,7 +611,11 @@ def main():
     # Probe environment setttings
     probe_env()
 
-    ops = get_ops_to_test(args.op_list_file, args.ops, args.stages)
+        ops = [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
+    elif args.ops:
+        ops = [op.strip() for op in args.ops.split(",")]
+
+    OP_LIST = ops
     op_count = len(ops)
     if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
