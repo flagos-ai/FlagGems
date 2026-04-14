@@ -135,6 +135,7 @@ from flag_gems.ops.greater import (
     greater_scalar,
     greater_scalar_out,
 )
+from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
@@ -479,6 +480,7 @@ __all__ = [
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
+    "group_mm",
     "group_norm",
     "group_norm_backward",
     "gt",
