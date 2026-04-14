@@ -84,8 +84,6 @@ def transform_exponential_f64(u, inv_lambd, eps_minus):
         triton.Config({"BLOCK": 128}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK": 256}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK": 512}, num_warps=8, num_stages=3),
-        triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK": 2048}, num_warps=16, num_stages=4),
     ],
     key=["N"],
 )
@@ -146,8 +144,6 @@ def fused_exponential_kernel_f32_unroll8(
         triton.Config({"BLOCK": 128}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK": 256}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK": 512}, num_warps=8, num_stages=3),
-        triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK": 2048}, num_warps=16, num_stages=4),
     ],
     key=["N"],
 )
@@ -232,8 +228,6 @@ def fused_exponential_kernel_f32_small(
         triton.Config({"BLOCK": 128}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK": 256}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK": 512}, num_warps=8, num_stages=3),
-        triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK": 2048}, num_warps=16, num_stages=4),
     ],
     key=["N"],
 )
