@@ -236,7 +236,6 @@ class CutlassScaledMMBenchmark(Benchmark):
     reason="requires vLLM and NVIDIA Hopper architecture",
 )
 @pytest.mark.cutlass_scaled_mm
-@pytest.mark.performance
 def test_cutlass_scaled_mm_benchmark():
     bench = CutlassScaledMMBenchmark()
     bench.run()
@@ -1403,11 +1402,7 @@ class FlashmlaSparseBenchmark(Benchmark):
 
 
 @pytest.mark.flashmla_sparse
-@pytest.mark.performance
 @pytest.mark.skipif(not HAS_VLLM_FLASHMLA_SPARSE, reason="vllm not installed")
 def test_perf_flashmla_sparse_gems_vs_vllm():
-    """
-    Benchmark FlagGems flash_mla_sparse_fwd vs vLLM flash_mla_sparse_fwd.
-    """
     bench = FlashmlaSparseBenchmark()
     bench.run()

@@ -1511,8 +1511,7 @@ def _functional_sym_constrain_range_for_size_input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.functional_sym_constrain_range_for_size
-@pytest.mark.performance
-def test_perf_functional_sym_constrain_range_for_size():
+def test_functional_sym_constrain_range_for_size():
     bench = GenericBenchmark(
         op_name="functional_sym_constrain_range_for_size",
         torch_op=torch.ops.aten._functional_sym_constrain_range_for_size,
