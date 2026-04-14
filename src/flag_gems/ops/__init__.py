@@ -15,6 +15,7 @@ from flag_gems.ops.addr import addr
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.amax import amax
+from flag_gems.ops.aminmax import aminmax
 from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
@@ -24,11 +25,14 @@ from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.asinh_ import asinh_
+from flag_gems.ops.assert_async import _assert_async
 from flag_gems.ops.atan import atan, atan_
+from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
     flash_attn_varlen_func,
+    flash_attn_varlen_opt_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
@@ -65,12 +69,14 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
+from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -101,6 +107,7 @@ from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
+from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
@@ -120,8 +127,16 @@ from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
+from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.greater import (
+    greater,
+    greater_out,
+    greater_scalar,
+    greater_scalar_out,
+)
+from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
@@ -139,6 +154,7 @@ from flag_gems.ops.isfinite import isfinite
 from flag_gems.ops.isin import isin
 from flag_gems.ops.isinf import isinf
 from flag_gems.ops.isnan import isnan
+from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.kron import kron
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
@@ -179,6 +195,7 @@ from flag_gems.ops.mv import mv
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
+from flag_gems.ops.new_full import new_full
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
     nll_loss2d_backward,
@@ -234,6 +251,7 @@ from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
@@ -245,6 +263,7 @@ from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinh_ import sinh_
@@ -258,6 +277,7 @@ from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.sqrt import sqrt, sqrt_
+from flag_gems.ops.square import square, square_, square_out
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
@@ -277,6 +297,7 @@ from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
@@ -301,11 +322,13 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "_assert_async",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
     "_safe_softmax",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "_upsample_bicubic2d_aa_backward",
     "_upsample_nearest_exact1d",
     "abs",
     "abs_",
@@ -327,6 +350,7 @@ __all__ = [
     "all_dims",
     "allclose",
     "amax",
+    "aminmax",
     "angle",
     "any",
     "any_dim",
@@ -342,6 +366,8 @@ __all__ = [
     "asinh_",
     "atan",
     "atan_",
+    "atan2",
+    "atan2_out",
     "avg_pool2d",
     "avg_pool2d_backward",
     "baddbmm",
@@ -382,6 +408,8 @@ __all__ = [
     "conv3d",
     "copy",
     "copy_",
+    "copysign",
+    "copysign_out",
     "cos",
     "cos_",
     "cosh",
@@ -391,6 +419,7 @@ __all__ = [
     "cummin",
     "cumsum",
     "cumsum_out",
+    "conj_physical",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -416,6 +445,9 @@ __all__ = [
     "exp_out",
     "exp2",
     "exp2_",
+    "expm1",
+    "expm1_",
+    "expm1_out",
     "exponential_",
     "eye",
     "eye_m",
@@ -427,6 +459,7 @@ __all__ = [
     "fill_tensor_out",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "flash_attn_varlen_opt_func",
     "flip",
     "floor_",
     "floor_divide",
@@ -442,9 +475,15 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "greater",
+    "greater_out",
+    "greater_scalar",
+    "greater_scalar_out",
+    "group_mm",
     "group_norm",
     "group_norm_backward",
     "gt",
@@ -469,6 +508,8 @@ __all__ = [
     "isin",
     "isinf",
     "isnan",
+    "isneginf",
+    "isneginf_out",
     "kron",
     "layer_norm",
     "layer_norm_backward",
@@ -528,6 +569,7 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "new_full",
     "nll_loss_backward",
     "nll_loss_forward",
     "nll_loss2d_backward",
@@ -585,6 +627,9 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "round",
+    "round_",
+    "round_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
@@ -604,6 +649,8 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "signbit",
+    "signbit_out",
     "silu",
     "silu_",
     "silu_backward",
@@ -627,6 +674,9 @@ __all__ = [
     "special_i0e_out",
     "sqrt",
     "sqrt_",
+    "square",
+    "square_",
+    "square_out",
     "stack",
     "std",
     "sub",

@@ -301,6 +301,26 @@ cross_entropy_loss_sum_and_scale:
       - 256
       - 1024
 
+conj_physical:
+  - META:
+      BLOCK_SIZE: 64
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+
 upsample_nearest2d:
   - gen: true
     param_map:
@@ -601,3 +621,19 @@ index:
       - 1024
       - 2048
       - 4096
+
+w8a8_block_fp8_matmul:
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 128
+      GROUP_SIZE_M: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 128
+      GROUP_SIZE_M: 16
+    num_warps: 4
+    num_stages: 1

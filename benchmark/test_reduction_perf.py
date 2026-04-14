@@ -102,6 +102,35 @@ def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
+def aminmax_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    # Test dim=None (whole tensor reduction)
+    yield inp,
+    # Test dim=-1 (last dimension)
+    yield inp, {"dim": -1}
+    # Test dim=0 (first dimension)
+    if len(shape) > 1:
+        yield inp, {"dim": 0}
+
+
+class AminmaxBenchmark(UnaryReductionBenchmark):
+    """Benchmark for aminmax which returns two tensors (min, max)."""
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield from aminmax_input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.aminmax
+def test_aminmax_perf():
+    bench = AminmaxBenchmark(
+        op_name="aminmax",
+        torch_op=torch.aminmax,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 def cross_entropy_loss_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     target = torch.randint(0, shape[-1], (shape[0],), device=device)
@@ -135,6 +164,8 @@ def nll_loss_nd_input_fn(shape, cur_dtype, device):
     del target_shape[1]
     C = shape[1]
     target = torch.randint(0, C, target_shape, dtype=torch.long, device=device)
+
+    yield inp, target
 
     if Config.bench_level == BenchLevel.COMPREHENSIVE:
         weight_tensor = torch.rand(C, dtype=cur_dtype, device=device)

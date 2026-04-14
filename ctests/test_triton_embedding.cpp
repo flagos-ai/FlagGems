@@ -60,11 +60,18 @@ TEST_P(EmbeddingBackwardTest, FixedValueTest) {
   auto indices =
       torch::randint(0, EmbeddingSize, {Batch, M}, torch::TensorOptions().device(device).dtype(torch::kLong));
 
-  auto ref_grad = flag_gems::accuracy_utils::to_reference(grad);
   int64_t num_weights = EmbeddingSize;
   bool sparse = false;
+#if defined(FLAGGEMS_USE_MUSA)
+  // torch_musa does not support scale_grad_by_freq in native embedding_backward,
+  // so compute the reference on CPU instead.
+  auto torch_in_grad =
+      at::embedding_backward(grad.cpu(), indices.cpu(), num_weights, padding_idx, scale_grad_by_freq, sparse)
+          .to(device);
+#else
   auto torch_in_grad =
       at::embedding_backward(grad, indices, num_weights, padding_idx, scale_grad_by_freq, sparse);
+#endif
   auto triton_in_grad =
       flag_gems::embedding_backward(grad, indices, num_weights, padding_idx, scale_grad_by_freq, sparse);
   auto result = flag_gems::accuracy_utils::gems_assert_close(triton_in_grad, torch_in_grad);

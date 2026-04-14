@@ -1,10 +1,12 @@
 import logging
+import os
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.mm import get_higher_dtype
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
@@ -14,9 +16,13 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("addmm"),
+    configs=runtime.ops_get_configs("addmm", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    strategy=runtime.get_expand_config("addmm")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32"],
     warmup=5,
     rep=10,
 )
@@ -64,6 +70,9 @@ def addmm_kernel(
             mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
             other=0.0,
         )
+        if a.dtype != b.dtype:
+            a = a.to(c_ptr.dtype.element_ty)
+            b = b.to(c_ptr.dtype.element_ty)
         accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
@@ -100,7 +109,8 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     )
     mat1 = mat1.contiguous()
     # mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    c_dtype = get_higher_dtype(mat1.dtype, mat2.dtype)
+    out = torch.empty((M, N), device=mat1.device, dtype=c_dtype)
     bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
@@ -138,7 +148,8 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     M, K = mat1.shape
     _, N = mat2.shape
     if out is None:
-        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+        c_dtype = get_higher_dtype(mat1.dtype, mat2.dtype)
+        out = torch.empty((M, N), device=mat1.device, dtype=c_dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
     logger.debug(
