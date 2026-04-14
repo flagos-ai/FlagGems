@@ -20,6 +20,15 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
 )
 
 
+def _has_valid_tma_stride(t):
+    """Check that tensor has no zero strides (e.g. from expand) and that
+    either row-major or column-major layout has a contiguous inner dim."""
+    if any(s == 0 for s in t.stride()):
+        return False
+    # At least one of the two dims must have stride == 1
+    return t.stride(0) == 1 or t.stride(1) == 1
+
+
 def is_tma_compatible(a, b, N, K):
     """
     Check if tensors are compatible with TMA (Tensor Memory Accelerator).
@@ -30,13 +39,18 @@ def is_tma_compatible(a, b, N, K):
     - For FP32 (4 bytes/element): N and K must be multiples of 4
       (4 elements × 4 bytes = 16 bytes)
 
+    Additionally, tensors must have valid strides (no zero strides from
+    expand) and a contiguous inner dimension.
+
     Args:
         a, b: Input tensors
         N, K: Matrix dimensions
 
     Returns:
-        bool: True if compatible with TMA's 128-bit alignment requirement
+        bool: True if compatible with TMA's alignment and stride requirements
     """
+    if not (_has_valid_tma_stride(a) and _has_valid_tma_stride(b)):
+        return False
     return (
         a.dtype in (torch.float16, torch.bfloat16)
         and b.dtype in (torch.float16, torch.bfloat16)
@@ -100,6 +114,7 @@ def mm_kernel_general(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    dtype: tl.constexpr = "float32",
 ):
     # matrix multiplication
     pid = tle.program_id(0)
@@ -394,6 +409,7 @@ def general_mm(a, b, c, M, N, K):
                 c.stride(0),
                 c.stride(1),
                 GROUP_M=8,
+                dtype=str(a.dtype).split(".")[-1],
             )
     return c
 
