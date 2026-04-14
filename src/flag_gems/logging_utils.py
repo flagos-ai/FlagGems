@@ -16,6 +16,7 @@ from pathlib import Path
 
 import torch
 
+
 class LogOncePerLocationFilter(logging.Filter):
     def __init__(self):
         super().__init__()
