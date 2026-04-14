@@ -22,7 +22,7 @@ source .venv/bin/activate
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
 uv pip install torch==2.7.1+musa.4.0.0 \
   --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
-uv pip install triton==3.1.0+musa.4.0.0 \
+uv pip install triton==3.1.0+musa1.4.6 \
   --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
 uv pip install torch_musa==2.7.1 \
   --index https://resource.flagos.net/repository/flagos-pypi-mthreads/simple
