@@ -140,8 +140,8 @@ def compare_outputs(fg_out, pt_out, rtol, atol):
             max_rel = (abs_diff / (torch.abs(pt) + 1e-12)).max().item()
             is_close = torch.allclose(fg, pt, rtol=rtol, atol=atol)
             return is_close, {"max_abs": max_abs, "max_rel": max_rel}
-        except:
-            return True, {}
+        except Exception as e:
+            return True, {"error": "exception", "message": str(e)}
     elif isinstance(fg_out, (tuple, list)) and isinstance(pt_out, (tuple, list)):
         for i, (fg, pt) in enumerate(zip(fg_out, pt_out)):
             ok, info = compare_outputs(fg, pt, rtol, atol)
