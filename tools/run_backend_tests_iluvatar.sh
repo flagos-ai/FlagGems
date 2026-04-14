@@ -1,10 +1,8 @@
 #!/bin/bash
 
-# TODO(Qiming): Drop this ... this script is only for Iluvatar.
-VENDOR=${1:?"Usage: bash tools/run_backend_tests_iluvatar.sh <vendor>"}
-export GEMS_VENDOR=$VENDOR
+VENDOR=${1:-iluvatar}
 
-# Common setup
+#=== Common setup ===
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init - bash)"
@@ -66,3 +64,8 @@ TEST_FILES=(
   "tests/test_FLA/test_fla_utils_input_guard.py"
   "tests/test_FLA/test_fused_recurrent_gated_delta_rule.py"
 )
+
+for testcase in "${TEST_FILES[@]}"; do
+    echo "Testing $testcase"
+    pytest -s --tb=line $testcase --ref cpu
+done
