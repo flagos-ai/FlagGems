@@ -23,6 +23,21 @@ DEFAULT_STRATEGIES = {
     "addmm": ["align32", "align32", "align32"],
     "baddbmm": ["align32", "align32", "align32"],
     "mv": ["align32", "align32"],
+    "w8a8_block_fp8_general": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
+    "w8a8_block_fp8_general_tma": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
     "mm_general_tma": [
         "align32",
         "align32",
@@ -39,6 +54,8 @@ OP_KEY_ORDERS = {
     "addmm": ["M", "N", "K"],
     "baddbmm": ["M", "N", "K"],
     "mv": ["M", "N"],
+    "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
+    "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
 }
@@ -209,6 +226,51 @@ class ConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "w8a8_block_fp8_general":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "GROUP_M": group_m,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for group_m in ranges["GROUP_M"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "w8a8_block_fp8_general_tma":
+            group_m_values = ranges.get("GROUP_M", [None])
+            return [
+                triton.Config(
+                    dict(
+                        {
+                            "BLOCK_M": block_m,
+                            "BLOCK_N": block_n,
+                            "BLOCK_K": block_k,
+                        },
+                        **({} if group_m is None else {"GROUP_M": group_m}),
+                    ),
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for group_m in group_m_values
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         return []
 
     def _build_single_expand_spec(
@@ -237,6 +299,12 @@ class ConfigLoader(object):
             ),
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=DEFAULT_EXPAND_CONFIG_PATH
+            ),
+            "w8a8_block_fp8_general": self._build_single_expand_spec(
+                "w8a8_block_fp8_general"
+            ),
+            "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
+                "w8a8_block_fp8_general_tma"
             ),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "gemv": self._build_single_expand_spec("gemv"),
