@@ -103,7 +103,6 @@ if get_device_capability(current_device())[0] >= 3:
     from .gelu import gelu  # noqa: F401
     from .mm import mm  # noqa: F401
     from .tanh import tanh  # noqa: F401
-    from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul  # noqa: F401
 
     __all__.extend(
         [
@@ -112,6 +111,5 @@ if get_device_capability(current_device())[0] >= 3:
             "gelu",
             "mm",
             "tanh",
-            "w8a8_block_fp8_matmul",
         ]
     )
