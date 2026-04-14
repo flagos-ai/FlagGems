@@ -65,7 +65,7 @@ read the environment requirements from the FlagTree project before
 installing it.
 
 ```shell
-pip install -r flag_tree_requirements/requirements_nvidia.txt
+pip install -r requirements/requirements_nvidia.txt
 ```
 
 > [!TIP]
@@ -73,7 +73,7 @@ pip install -r flag_tree_requirements/requirements_nvidia.txt
 >
 > - For [non-NVIDIA platforms](/FlagGems/usage/non-nvidia/), you
 >   **have to** use different `requirements_<backend>.txt` under
->   the `flag_tree_requirements/` directory.
+>   the `requirements/` directory.
 > - There are on-going efforts to simplify this step. Stay tuned.
 
 ### 3.3. Prepare the build dependencies
@@ -87,7 +87,7 @@ as its [build backend](https://peps.python.org/pep-0517/#build-backend-interface
 You can run the following command to install/upgrade the build dependencies.
 
 ```shell
-pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
+pip install -U "scikit-build-core>=0.11" pybind11 ninja cmake
 ```
 
 You can refer to [scikit-build-core](#scikit-build-core-options) reference
