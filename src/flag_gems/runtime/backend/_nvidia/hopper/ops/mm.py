@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 
 import torch
@@ -12,8 +13,20 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
 CACHE_USAGE_THRESHOLD = 0.8
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
+)
+
+
+def _has_valid_tma_stride(t):
+    """Check that tensor has no zero strides (e.g. from expand) and that
+    either row-major or column-major layout has a contiguous inner dim."""
+    if any(s == 0 for s in t.stride()):
+        return False
+    # At least one of the two dims must have stride == 1
+    return t.stride(0) == 1 or t.stride(1) == 1
 
 
 def is_tma_compatible(a, b, N, K):
@@ -26,13 +39,18 @@ def is_tma_compatible(a, b, N, K):
     - For FP32 (4 bytes/element): N and K must be multiples of 4
       (4 elements × 4 bytes = 16 bytes)
 
+    Additionally, tensors must have valid strides (no zero strides from
+    expand) and a contiguous inner dimension.
+
     Args:
         a, b: Input tensors
         N, K: Matrix dimensions
 
     Returns:
-        bool: True if compatible with TMA's 128-bit alignment requirement
+        bool: True if compatible with TMA's alignment and stride requirements
     """
+    if not (_has_valid_tma_stride(a) and _has_valid_tma_stride(b)):
+        return False
     return (
         a.dtype in (torch.float16, torch.bfloat16)
         and b.dtype in (torch.float16, torch.bfloat16)
@@ -50,6 +68,23 @@ def is_tma_compatible(a, b, N, K):
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
     return tl.cdiv(a, b) * b - b
+
+
+def matmul_tma_set_block_size_hook(nargs):
+    BLOCK_M = nargs["BLOCK_M"]
+    BLOCK_N = nargs["BLOCK_N"]
+    BLOCK_K = nargs["BLOCK_K"]
+    if nargs["A_ROW_MAJOR"]:
+        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
+    else:
+        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
+
+    if nargs["B_ROW_MAJOR"]:
+        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
+    else:
+        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
+
+    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
 
 
 @libentry()
@@ -79,6 +114,7 @@ def mm_kernel_general(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    dtype: tl.constexpr = "float32",
 ):
     # matrix multiplication
     pid = tle.program_id(0)
@@ -185,23 +221,6 @@ def mm_kernel_general(
         tl.store(offsets, acc, mask=mask)
 
 
-def matmul_tma_set_block_size_hook(nargs):
-    BLOCK_M = nargs["BLOCK_M"]
-    BLOCK_N = nargs["BLOCK_N"]
-    BLOCK_K = nargs["BLOCK_K"]
-    if nargs["A_ROW_MAJOR"]:
-        nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
-    else:
-        nargs["a_desc"].block_shape = [BLOCK_K, BLOCK_M]
-
-    if nargs["B_ROW_MAJOR"]:
-        nargs["b_desc"].block_shape = [BLOCK_K, BLOCK_N]
-    else:
-        nargs["b_desc"].block_shape = [BLOCK_N, BLOCK_K]
-
-    nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
-
-
 def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     return [
         triton.Config(
@@ -220,9 +239,19 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
 
 @libentry()
 @libtuner(
-    configs=matmul_get_configs(),
+    configs=runtime.ops_get_configs(
+        "mm_general_tma",
+        pre_hook=matmul_tma_set_block_size_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=runtime.get_expand_config(
+        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+    )["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
 )
@@ -380,11 +409,31 @@ def general_mm(a, b, c, M, N, K):
                 c.stride(0),
                 c.stride(1),
                 GROUP_M=8,
+                dtype=str(a.dtype).split(".")[-1],
             )
     return c
 
 
 @libentry()
+@libtuner(
+    configs=runtime.ops_get_configs(
+        "gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_K": 256},
+        )
+    ],
+    key=["M", "K", "stride_am", "stride_bk"],
+    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=10,
+)
 @triton.jit
 def gemv_kernel(
     A,
@@ -439,9 +488,7 @@ def gemv_mm(a, b, c, M, K):
         K,
     )
 
-    BLOCK_M = 32
-    BLOCK_K = 256
-    grid = lambda META: (triton.cdiv(M, BLOCK_M),)
+    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
     with torch_device_fn.device(a.device):
         gemv_kernel[grid](
@@ -453,8 +500,6 @@ def gemv_mm(a, b, c, M, K):
             a.stride(0),
             a.stride(1),
             b.stride(0),
-            BLOCK_M=BLOCK_M,
-            BLOCK_K=BLOCK_K,
         )
     return c
 

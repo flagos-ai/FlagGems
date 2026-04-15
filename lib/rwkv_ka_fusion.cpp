@@ -1,7 +1,7 @@
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -39,10 +39,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &
 
   const unsigned int num_blocks = (T * C + block_size - 1) / block_size;
 
-  // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   c10::DeviceGuard guard(o_k.device());
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
   f(raw_stream,
     num_blocks,
     1,

@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -70,6 +74,7 @@ def topk_softmax(
     gating_output: torch.Tensor,
     renormalize: bool = False,
 ) -> None:
+    logger.debug("GEMS TOPK SOFTMAX")
     num_tokens, num_experts = gating_output.shape
     topk = topk_weights.size(-1)
     assert topk <= 32
