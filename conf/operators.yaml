@@ -50,6 +50,18 @@ ops:
       - Tensor
     stages:
       beta: '5.0'
+  - name: _grouped_mm
+    description: |
+      Grouped matrix multiply is a functional operator designed to accelerate Mixture-of-Experts (MoE) models
+      by computing multiple matrix multiplications in a single kernel launch.
+    for:
+      - _grouped_mm
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      beta: '5.1'
   - name: _log_softmax_backward_data
     description: |
       Computes the gradient of the input tensor with respect to a `log_softmax` operation
@@ -3880,7 +3892,7 @@ ops:
       - Reduction
     stages:
       stable: '4.2'
-  - name: scatter
+  - name: scatter_reduce
     description: |
       Writes all values from the tensor `src` into provided tensor at the indices
       specified in the `index` tensor. For each value in `src`, its output index
@@ -3891,6 +3903,22 @@ ops:
       specified in the `index`.
     for:
       - scatter.reduce
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      stable: '2.2'
+  - name: scatter_src
+    description: |
+      Writes all values from the tensor `src` into provided tensor at the indices
+      specified in the `index` tensor. For each value in `src`, its output index
+      is specified by its index in `src` for `dimension != dim` and by the corresponding value
+      in `index` for `dimension = dim`.
+      The optional `reduce` argument allows specification of an optional reduction operation,
+      which is applied to all values in the tensor `src` into the tensor at the indices
+      specified in the `index`.
+    for:
       - scatter.src
     labels:
       - aten
@@ -3898,10 +3926,19 @@ ops:
       - Tensor
     stages:
       stable: '2.2'
-  - name: scatter_
-    description: This is the in-place version of `scatter()`.
+  - name: scatter_reduce_
+    description: This is the in-place version of `scatter_reduce()`.
     for:
       - scatter_.reduce
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      stable: '3.0'
+  - name: scatter_src_
+    description: This is the in-place version of `scatter_src()`.
+    for:
       - scatter_.src
     labels:
       - aten

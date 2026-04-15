@@ -14,10 +14,10 @@ pip install uv
 uv venv
 source .venv/bin/activate
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-uv pip install -e .[nvidia,test]
 # Override triton
 uv pip uninstall triton
 uv pip install flagtree==0.5.0+3.5 --index https://resource.flagos.net/repository/flagos-pypi-hosted/simple
+uv pip install -e .[nvidia,test]
 
 # Start testing
 TEST_FILES=(

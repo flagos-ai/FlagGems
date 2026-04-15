@@ -3,7 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.language.extra.mlu.libdevice import rsqrt as _rsqrt
+from triton.language.extra.mlu.libdevice import isnan as _isnan
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -24,7 +24,15 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
     key=["n_elements"],
 )
 @triton.jit
-def rsqrt_kernel(X_ptr, OUT_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def nan_to_num_kernel(
+    X_ptr,
+    OUT_ptr,
+    nan_val,
+    posinf_val,
+    neginf_val,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(0)
     block_start = pid * BLOCK_SIZE
@@ -34,12 +42,24 @@ def rsqrt_kernel(X_ptr, OUT_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
         offsets = off + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
         x = tl.load(X_ptr + offsets, mask=mask)
-        result = _rsqrt(x.to(tl.float32))
-        tl.store(OUT_ptr + offsets, result.to(x.dtype), mask=mask)
+        x_nan = _isnan(x)
+        x_posinf = x == float("inf")
+        x_neginf = x == float("-inf")
+        result = tl.where(x_nan, nan_val, x)
+        result = tl.where(x_posinf, posinf_val, result)
+        result = tl.where(x_neginf, neginf_val, result)
+        tl.store(OUT_ptr + offsets, result, mask=mask)
 
 
-def rsqrt(A):
-    logger.debug("GEMS_CAMBRICON RSQRT")
+def nan_to_num(A, nan=None, posinf=None, neginf=None):
+    logger.debug("GEMS_CAMBRICON NAN_TO_NUM")
+    if posinf is None:
+        posinf = torch.finfo(A.dtype).max
+    if neginf is None:
+        neginf = torch.finfo(A.dtype).min
+    if nan is None:
+        nan = 0.0
+
     A = A.contiguous()
     out = torch.empty_like(A)
     N = A.numel()
@@ -47,19 +67,5 @@ def rsqrt(A):
         return out
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(A.device):
-        rsqrt_kernel[grid_fn](A, out, N)
+        nan_to_num_kernel[grid_fn](A, out, nan, posinf, neginf, N)
     return out
-
-
-def rsqrt_(A):
-    logger.debug("GEMS_CAMBRICON RSQRT_")
-    A_contig = A.contiguous()
-    N = A_contig.numel()
-    if N == 0:
-        return A
-    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
-    with torch_device_fn.device(A.device):
-        rsqrt_kernel[grid_fn](A_contig, A_contig, N)
-    if not A.is_contiguous():
-        A.copy_(A_contig)
-    return A
