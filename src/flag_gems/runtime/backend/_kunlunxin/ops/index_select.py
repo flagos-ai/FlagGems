@@ -44,7 +44,7 @@ def index_select(inp, dim, index):
     logger.debug("GEMS INDEX SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
-    assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
+    assert all((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
 
     if index.ndim == 0:
         index = index.unsqueeze(0)

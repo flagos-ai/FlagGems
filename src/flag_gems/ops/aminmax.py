@@ -148,7 +148,7 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
     else:
         if isinstance(dim, int):
             dim = [dim]
-        assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
+        assert all((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
         dtype = inp.dtype
 
         shape = list(inp.shape)
