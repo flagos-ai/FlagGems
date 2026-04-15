@@ -11,7 +11,6 @@ import yaml
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(
     "flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_matmul"
@@ -134,12 +133,6 @@ def is_tma_compatible(a, b, n, k):
     )
 
 
-@triton.jit
-def prev_multiple_of(a, b):
-    # the largest x<a that x%b ==0
-    return tl.cdiv(a, b) * b - b
-
-
 def matmul_tma_set_block_size_hook(nargs):
     BLOCK_M = nargs["BLOCK_M"]
     BLOCK_N = nargs["BLOCK_N"]
@@ -194,119 +187,64 @@ def w8a8_block_fp8_matmul_kernel_general(
     group_k,
     stride_am,
     stride_ak,
-    stride_bn,
     stride_bk,
+    stride_bn,
     stride_cm,
     stride_cn,
     stride_As_m,
     stride_As_k,
-    stride_Bs_n,
     stride_Bs_k,
+    stride_Bs_n,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
 ):
-    # matrix multiplication
-    pid = tle.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    # re-order program ID for better L2 performance
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // group_size
+    pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_M)
+    num_pid_n = tl.cdiv(N, BLOCK_N)
+    num_pid_in_group = GROUP_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
+    pid_m = first_pid_m + (pid % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
 
-    if M % BLOCK_M == 0 and N % BLOCK_N == 0 and K % BLOCK_K == 0:
-        # offset
-        offset_am = pid_m * BLOCK_M
-        offset_bn = pid_n * BLOCK_N
-        offs_am = offset_am + tl.arange(0, BLOCK_M)
-        offs_bn = offset_bn + tl.arange(0, BLOCK_N)
-        offset_k = 0
+    offs_am = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
+    offs_bn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
+    offs_k = tl.arange(0, BLOCK_K)
+    a_ptrs = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = B + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
-        a_desc = tl.make_tensor_descriptor(
-            base=A,
-            shape=[M, K],
-            strides=[K, 1],
-            block_shape=[BLOCK_M, BLOCK_K],
-        )
+    As_ptrs = As + offs_am * stride_As_m
+    offs_bsn = offs_bn // group_n
+    Bs_ptrs = Bs + offs_bsn * stride_Bs_n
 
-        # B is stored as [N, K] in row-major order for w8a8 block FP8 matmul.
-        b_desc = tl.make_tensor_descriptor(
-            base=B,
-            shape=[N, K],
-            strides=[K, 1],
-            block_shape=[BLOCK_N, BLOCK_K],
-        )
-        c_desc = tl.make_tensor_descriptor(
-            base=C,
-            shape=[M, N],
-            strides=[N, 1],
-            block_shape=[BLOCK_M, BLOCK_N],
-        )
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_K, other=0.0)
 
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-        for k in range(0, tl.cdiv(K, BLOCK_K)):
-            a = a_desc.load([offset_am.to(tl.int32), offset_k.to(tl.int32)])
-            b_t = b_desc.load([offset_bn.to(tl.int32), offset_k.to(tl.int32)])
-            b = tl.trans(b_t)
-            offs_ks = (offset_k // group_k).to(tl.int32)
-            a_s = tl.load(As + offs_am * stride_As_m + offs_ks * stride_As_k)
-            b_s = tl.load(
-                Bs + (offs_bn // group_n) * stride_Bs_n + offs_ks * stride_Bs_k
-            )
-            acc += tl.dot(a, b, out_dtype=tl.float32) * a_s[:, None] * b_s[None, :]
-            offset_k += BLOCK_K
-
-        c_desc.store(
-            [offset_am.to(tl.int32), offset_bn.to(tl.int32)], acc.to(c_desc.dtype)
-        )
-    else:
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(tl.int64)
-        prev_multiple = prev_multiple_of(K, BLOCK_K)
-
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-        for start_k in range(0, prev_multiple, BLOCK_K):
-            rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
-            a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
-            b_t = tl.load(B + (rbn[:, None] * stride_bn + rk[None, :] * stride_bk))
-            b = tl.trans(b_t)
-            offs_ks = start_k // group_k
-            a_s = tl.load(As + ram * stride_As_m + offs_ks * stride_As_k)
-            b_s = tl.load(Bs + (rbn // group_n) * stride_Bs_n + offs_ks * stride_Bs_k)
-            acc += tl.dot(a, b, out_dtype=tl.float32) * a_s[:, None] * b_s[None, :]
-
-        # loop peeling
-        rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
-        mask_k = rk < K
-        a = tl.load(
-            A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
-            mask=mask_k[None, :],
-            other=0.0,
-        )
-        b_t = tl.load(
-            B + (rbn[:, None] * stride_bn + rk[None, :] * stride_bk),
-            mask=mask_k[None, :],
-            other=0.0,
-        )
-        b = tl.trans(b_t)
-        offs_ks = prev_multiple // group_k
-        a_s = tl.load(As + ram * stride_As_m + offs_ks * stride_As_k)
-        b_s = tl.load(Bs + (rbn // group_n) * stride_Bs_n + offs_ks * stride_Bs_k)
+        k_start = k * BLOCK_K
+        offs_ks = k_start // group_k
+        a_s = tl.load(As_ptrs + offs_ks * stride_As_k)
+        b_s = tl.load(Bs_ptrs + offs_ks * stride_Bs_k)
         acc += tl.dot(a, b, out_dtype=tl.float32) * a_s[:, None] * b_s[None, :]
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
 
-        # rematerialize rm and rn to save registers
-        rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
-        rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
-        c_ptrs = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
-        mask = (rm < M)[:, None] & (rn < N)[None, :]
-        # handles write-back with reduction-splitting
-        tl.store(c_ptrs, acc.to(C.dtype.element_ty), mask=mask)
+    if C.dtype.element_ty == tl.bfloat16:
+        c = acc.to(tl.bfloat16)
+    elif C.dtype.element_ty == tl.float16:
+        c = acc.to(tl.float16)
+    else:
+        c = acc.to(tl.float32)
+
+    offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, c, mask=c_mask)
 
 
 @libentry()
@@ -537,14 +475,14 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
                 group_k,
                 a.stride(0),
                 a.stride(1),
-                b.stride(0),
                 b.stride(1),
+                b.stride(0),
                 c.stride(0),
                 c.stride(1),
                 a_s.stride(0),
                 a_s.stride(1),
-                b_s.stride(0),
                 b_s.stride(1),
+                b_s.stride(0),
             )
         else:
             launch = lambda: w8a8_block_fp8_matmul_kernel_general.fn.fn[grid](
@@ -560,14 +498,14 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
                 group_k,
                 a.stride(0),
                 a.stride(1),
-                b.stride(0),
                 b.stride(1),
+                b.stride(0),
                 c.stride(0),
                 c.stride(1),
                 a_s.stride(0),
                 a_s.stride(1),
-                b_s.stride(0),
                 b_s.stride(1),
+                b_s.stride(0),
                 **fixed_meta,
             )
 
