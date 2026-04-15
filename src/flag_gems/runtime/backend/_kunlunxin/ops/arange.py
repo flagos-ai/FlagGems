@@ -21,15 +21,16 @@ def arange_func(
     step,
     size,
     BLOCK_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
 ):
     pid = tle.program_id(0)
-    offset = pid * BLOCK_SIZE
-    step_offset = offset * step
+    y_ptr += pid * BLOCK_SIZE
+    step_offset = pid * BLOCK_SIZE * step
 
     cols = tl.arange(0, BLOCK_SIZE)
     arange_val = cols * step + step_offset + start
-    mask = cols + offset < size
-    tl.store(y_ptr + offset + cols, arange_val, mask=mask)
+    mask = cols + pid * BLOCK_SIZE
+    tl.store(y_ptr + cols, arange_val, mask=mask < size)
 
 
 def arange_start(
@@ -56,6 +57,14 @@ def arange_start(
         size = math.ceil((end - start) / step)
     size = int(size)
 
+    cluster_num = 12
+    tmp = torch.tensor([], dtype=dtype)
+    BLOCK_SIZE = min(
+        triton.next_power_of_2(triton.cdiv(size, cluster_num)),
+        int(2048 * 64 / tmp.element_size()),
+    )
+    grid = triton.cdiv(size, BLOCK_SIZE)
+
     if dtype is None:
         dtype = torch.int64
 
@@ -63,26 +72,14 @@ def arange_start(
         pin_memory = False
 
     if device is None:
-        device = runtime.device.name
-
-    # Size-based heuristic for BLOCK_SIZE and num_warps
-    if size <= 1024:
-        BLOCK_SIZE = 256
-        num_warps = 2
-    elif size <= 8192:
-        BLOCK_SIZE = 1024
-        num_warps = 4
-    elif size <= 65536:
-        BLOCK_SIZE = 4096
-        num_warps = 8
-    else:
-        BLOCK_SIZE = 8192
-        num_warps = 8
-
-    grid = triton.cdiv(size, BLOCK_SIZE)
+        device = (
+            runtime.device.name
+        )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
-    arange_func[grid,](result, start, end, step, size, BLOCK_SIZE, num_warps=num_warps)
+    arange_func[grid,](
+        result, start, end, step, size, BLOCK_SIZE, buffer_size_limit=2048
+    )
     return result
 
 

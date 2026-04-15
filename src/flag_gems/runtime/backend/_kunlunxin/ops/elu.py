@@ -13,11 +13,10 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 )
 @triton.jit
 def elu_forward_kernel(x, alpha, scale, input_scale):
-    x_fp32 = x.to(tl.float32)
     return tl.where(
-        x_fp32 > 0,
-        scale * input_scale * x_fp32,
-        scale * alpha * (tl.exp(x_fp32 * input_scale) - 1),
+        x.to(tl.float32) > 0,
+        scale * input_scale * x.to(tl.float32),
+        scale * alpha * (tl.exp(x.to(tl.float32) * input_scale) - 1),
     )
 
 
