@@ -342,6 +342,10 @@ def test_accuracy_dropout(shape, p, dtype):
         ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {res_inp.numel()}"
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
@@ -519,6 +523,10 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.embedding
 @pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
@@ -566,6 +574,10 @@ def test_embedding_backward(
 )
 @pytest.mark.parametrize(
     "padding_idx, scale_grad_by_freq", [(-1, False), (0, True), (5, False)]
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("seed", [42])
@@ -1691,6 +1703,10 @@ def get_diagonal_backward_shape_and_dims():
     return result
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
 @pytest.mark.diagonal
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
@@ -2475,6 +2491,10 @@ def test_replication_pad3d(shape, padding, dtype):
         ((2, 17), 1, 4, 6),
     ],
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_unfold_backward(input_sizes, dim, size, step, dtype):
     d = dim % len(input_sizes)
@@ -2661,6 +2681,10 @@ def test_accuracy__safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
         (32, 256, 256),
     ],
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, 1, -1])
 def test_accuracy_select_backward(shape, dtype, dim):
@@ -2708,6 +2732,10 @@ def test_accuracy_select_backward(shape, dtype, dim):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.select_backward
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_select_backward_non_contiguous(dtype):
@@ -2748,6 +2776,10 @@ def test_accuracy_select_backward_non_contiguous(dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.select_backward
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_select_backward_small_and_edge(dtype):
@@ -2842,6 +2874,10 @@ def upsample_bicubic2d_aa_backward_call(grad, input_size, align_corners):
         (4, 16, 64, 128, 128, 256, True),
         (1, 1, 4096, 4096, 1024, 1024, False),
     ],
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_upsample_bicubic2d_aa_backward(

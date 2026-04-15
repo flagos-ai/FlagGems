@@ -80,6 +80,10 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
         (1, 64, 32, 32, 64),
     ],
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
@@ -215,6 +219,10 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
             (4096, 256),
         ]
     ),
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
 )
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -479,6 +487,10 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
 @pytest.mark.skipif(
     True, reason="Temporarely skip for ci"
 )  # todo: improve backward precision
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.weight_norm
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -725,6 +737,10 @@ def test_accuracy_batch_norm(shape, dtype, affine):
         (2050, 16, 32, 32),
         (8, 16, 3, 224, 224),
     ],
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])

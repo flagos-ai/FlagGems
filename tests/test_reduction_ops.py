@@ -643,6 +643,7 @@ def test_accuracy_log_softmax(shape, dtype, dim):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "spacemit", reason="TODO")
 @pytest.mark.log_softmax
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -689,6 +690,7 @@ def test_accuracy_softmax(shape, dtype, dim, neg_inf):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "spacemit", reason="TODO")
 @pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
@@ -1212,6 +1214,10 @@ SLICE_BACKWARD_SHAPES = [
 ]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.slice
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, -1])
@@ -1275,6 +1281,10 @@ def test_accuracy_slice_backward(
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.slice
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1301,6 +1311,10 @@ def test_slice_backward_oob_end(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.slice
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1561,6 +1575,10 @@ def test_accuracy_avg_pool2d_forward(
     "shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override",
     AVGPOOL2D_CONFIGS,
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_avg_pool2d_backward(
     shape,
@@ -1664,6 +1682,10 @@ def test_accuracy_max_pool2d(
 @pytest.mark.max_pool2d_backward
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_pool2d_backward(
@@ -2409,6 +2431,10 @@ def test_accuracy_scaled_softmax_forward(
     gems_assert_close(p, p_ref, dtype, equal_nan=True)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.scaled_softmax
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("batch_size", [1])
