@@ -206,6 +206,8 @@ _FULL_CONFIG = (
     ("full_like", full_like),
     ("gather", gather),
     ("gather_backward", gather_backward),
+    ("gcd", gcd),
+    ("gcd_", gcd_),
     ("ge.Scalar", ge_scalar),
     ("ge.Tensor", ge),
     ("gelu", gelu),

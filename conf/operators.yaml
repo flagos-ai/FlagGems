@@ -1837,6 +1837,28 @@ ops:
       - Tensor
     stages:
       stable: '2.2'
+  - name: gcd
+    description: Computes the element-wise greatest common divisor (GCD) of `input` and `other`.
+    for:
+      - gcd
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.0'
+  - name: gcd_
+    description: The in-place version of `gcd()`.
+    for:
+      - gcd_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.0'
   - name: ge
     description: Computes `input` is greater or equal to `other` element-wise.
     for:
