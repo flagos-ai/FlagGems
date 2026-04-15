@@ -1,7 +1,8 @@
+import dataclasses
 import random
 from itertools import product
 from math import ceil
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import pytest
 import torch
@@ -13,16 +14,12 @@ from .conftest import QUICK_MODE
 random.seed(42)
 
 
-def is_vllm_available():
-    try:
-        import vllm  # noqa: 401
+try:
+    import vllm  # noqa: 401
 
-        return True
-    except ImportError:
-        return False
-
-
-VLLM_AVAILABLE = is_vllm_available()
+    VLLM_AVAILABLE = True
+except ImportError:
+    VLLM_AVAILABLE = False
 
 
 def is_cuda_available():
@@ -418,6 +415,7 @@ def test_accuracy_fused_moe_vs_vllm(config, dtype):
         w2,
         topk_weights,
         topk_ids,
+        inplace=False,
     )
 
     torch.cuda.synchronize()
@@ -446,6 +444,19 @@ if not QUICK_MODE:
         (1, 8, 4096, 14336, 2),
         (16, 8, 4096, 14336, 2),
         (64, 8, 4096, 14336, 2),
+    ]
+
+FUSED_MOE_FP8_BLOCKWISE_CONFIGS = list(FUSED_MOE_QUANT_CONFIGS)
+
+if not QUICK_MODE:
+    FUSED_MOE_FP8_BLOCKWISE_CONFIGS += [
+        # Qwen3.5-397B-A17B
+        (1, 512, 4096, 1024, 10),
+        (4, 512, 4096, 1024, 10),
+        (16, 512, 4096, 1024, 10),
+        (64, 512, 4096, 1024, 10),
+        (128, 512, 4096, 1024, 10),
+        (256, 512, 4096, 1024, 10),
     ]
 
 
@@ -509,6 +520,139 @@ def torch_fused_moe_quantized_reference(
             output[m] += (weight.float() * r).to(output.dtype)
 
     return output
+
+
+def torch_w8a8_block_matmul(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    a_scales: torch.Tensor,
+    b_scales: torch.Tensor,
+    block_size: list[int],
+    output_dtype: torch.dtype,
+    compute_type: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    a = a.to(compute_type)
+    b = b.to(compute_type)
+    assert a.shape[-1] == b.shape[-1]
+    assert b.ndim == 2 and b.is_contiguous() and b_scales.ndim == 2
+    assert len(block_size) == 2
+    block_n, block_k = block_size
+    assert (a.shape[-1] + block_k - 1) // block_k == a_scales.shape[-1]
+    assert a.shape[:-1] == a_scales.shape[:-1]
+
+    m = a.numel() // a.shape[-1]
+    n, k = b.shape
+    origin_c_shape = a.shape[:-1] + (n,)
+    a = a.reshape(m, a.shape[-1])
+    a_scales = a_scales.reshape(m, a_scales.shape[-1])
+    n_tiles = (n + block_n - 1) // block_n
+    k_tiles = (k + block_k - 1) // block_k
+    assert n_tiles == b_scales.shape[0]
+    assert k_tiles == b_scales.shape[1]
+
+    c = torch.zeros((m, n), dtype=compute_type, device=a.device)
+    a_tiles = [a[:, i * block_k : min((i + 1) * block_k, k)] for i in range(k_tiles)]
+    b_tiles = [
+        [
+            b[
+                j * block_n : min((j + 1) * block_n, n),
+                i * block_k : min((i + 1) * block_k, k),
+            ]
+            for i in range(k_tiles)
+        ]
+        for j in range(n_tiles)
+    ]
+    c_tiles = [c[:, j * block_n : min((j + 1) * block_n, n)] for j in range(n_tiles)]
+    a_scale_tiles = [a_scales[:, i : i + 1] for i in range(k_tiles)]
+
+    for i in range(k_tiles):
+        for j in range(n_tiles):
+            scale = a_scale_tiles[i] * b_scales[j][i]
+            c_tiles[j][:, :] += torch.matmul(a_tiles[i], b_tiles[j][i].t()) * scale
+
+    return c.reshape(origin_c_shape).to(output_dtype)
+
+
+def torch_per_token_group_quant_fp8(
+    x: torch.Tensor,
+    group_size: int,
+    eps: float = 1e-10,
+    dtype: torch.dtype = torch.float8_e4m3fn,
+):
+    assert x.shape[-1] % group_size == 0
+    assert x.is_contiguous()
+
+    finfo = torch.finfo(dtype)
+    x_reshaped = x.reshape(x.numel() // group_size, group_size)
+    amax = (
+        x_reshaped.abs().max(dim=-1, keepdim=True)[0].clamp(min=eps).to(torch.float32)
+    )
+    x_scales = amax / finfo.max
+    x_quant = (x_reshaped / x_scales).clamp(min=finfo.min, max=finfo.max).to(dtype)
+    x_quant = x_quant.reshape(x.shape)
+    x_scales = x_scales.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
+    return x_quant, x_scales
+
+
+def torch_w8a8_block_fp8_moe(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    block_shape: list[int],
+):
+    batch_size, hidden_size = hidden_states.shape
+    topk = topk_ids.size(1)
+    expanded_hidden = hidden_states.view(batch_size, -1, hidden_size).repeat(1, topk, 1)
+    expanded_hidden = expanded_hidden.reshape(-1, hidden_size)
+    out = torch.zeros(
+        batch_size * topk,
+        w2.shape[1],
+        dtype=hidden_states.dtype,
+        device=hidden_states.device,
+    )
+
+    flat_weights = topk_weights.view(-1)
+    flat_ids = topk_ids.view(-1)
+    _, block_k = block_shape
+    hidden_q, hidden_scale = torch_per_token_group_quant_fp8(expanded_hidden, block_k)
+    hidden_q = hidden_q.to(torch.float32)
+
+    def silu_and_mul(x):
+        import torch.nn.functional as F
+
+        d = x.shape[-1] // 2
+        return F.silu(x[..., :d]) * x[..., d:]
+
+    for expert_idx in range(w1.shape[0]):
+        mask = flat_ids == expert_idx
+        if mask.sum():
+            inter = torch_w8a8_block_matmul(
+                hidden_q[mask],
+                w1[expert_idx],
+                hidden_scale[mask],
+                w1_scale[expert_idx],
+                block_shape,
+                output_dtype=hidden_states.dtype,
+            )
+            act = silu_and_mul(inter)
+            act_q, act_scale = torch_per_token_group_quant_fp8(act, block_k)
+            out[mask] = torch_w8a8_block_matmul(
+                act_q,
+                w2[expert_idx],
+                act_scale,
+                w2_scale[expert_idx],
+                block_shape,
+                output_dtype=hidden_states.dtype,
+            )
+
+    return (
+        out.view(batch_size, -1, w2.shape[1])
+        * flat_weights.view(batch_size, -1, 1).to(out.dtype)
+    ).sum(dim=1)
 
 
 @pytest.mark.fused_moe
@@ -604,6 +748,96 @@ def test_accuracy_fused_moe_fp8(config):
     # Two quantized GEMMs + activation create cumulative rounding error.
     rtol = 5e-1
     atol = max(2e-1, ref.abs().max().item() * 1e-1)
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_moe
+@pytest.mark.parametrize("config", FUSED_MOE_FP8_BLOCKWISE_CONFIGS)
+@pytest.mark.parametrize("block_shape", [[128, 128]])
+@pytest.mark.skipif(
+    not is_cuda_available(),
+    reason="FP8 blockwise quantization requires NVIDIA Hopper architecture",
+)
+def test_accuracy_fused_moe_fp8_blockwise(config, block_shape):
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    if hidden_size % block_shape[1] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+    if intermediate_size % block_shape[0] != 0:
+        pytest.skip("Invalid shape for block-wise quantization")
+
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1_fp8 = (
+        torch.randn(
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=torch.float32,
+        )
+        * (1.0 / hidden_size**0.5)
+    ).to(torch.float8_e4m3fn)
+    w2_fp8 = (
+        torch.randn(
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            device=device,
+            dtype=torch.float32,
+        )
+        * (1.0 / intermediate_size**0.5)
+    ).to(torch.float8_e4m3fn)
+
+    w1_scale = torch.randn(
+        num_experts,
+        ceil(intermediate_size * 2 / block_shape[0]),
+        ceil(hidden_size / block_shape[1]),
+        device=device,
+        dtype=torch.float32,
+    )
+    w2_scale = torch.randn(
+        num_experts,
+        ceil(hidden_size / block_shape[0]),
+        ceil(intermediate_size / block_shape[1]),
+        device=device,
+        dtype=torch.float32,
+    )
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1_fp8,
+        w2_fp8,
+        topk_weights,
+        topk_ids,
+        use_fp8_w8a8=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        block_shape=block_shape,
+    )
+
+    ref = torch_w8a8_block_fp8_moe(
+        hidden_states,
+        w1_fp8,
+        w2_fp8,
+        w1_scale,
+        w2_scale,
+        topk_weights,
+        topk_ids,
+        block_shape,
+    )
+
+    torch.cuda.synchronize()
+
+    rtol = 2e-1
+    atol = max(5e-2, ref.abs().max().item() * 5e-2)
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
@@ -992,3 +1226,431 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
         result_on_input
     ).all(), "result_on_input has non-finite values"
     assert result_on_input.abs().sum() > 0, "result_on_input is all zeros"
+
+
+try:
+    from vllm.utils.deep_gemm import get_num_sms, get_paged_mqa_logits_metadata
+    from vllm.utils.import_utils import has_deep_gemm
+
+    DEEPGEMM_AVAILABLE = has_deep_gemm()
+except Exception:
+    DEEPGEMM_AVAILABLE = False
+
+
+@pytest.mark.get_paged_mqa_logits_metadata
+@pytest.mark.skipif(not DEEPGEMM_AVAILABLE, reason="vllm with deep_gemm is required.")
+@pytest.mark.parametrize("batch_size, next_n", [(4, 1), (2, 2)])
+@pytest.mark.parametrize("avg_ctx_len", [1024, 2048])
+def test_get_paged_mqa_logits_metadata(batch_size, next_n, avg_ctx_len):
+    context_lens_2d = (
+        torch.randint(
+            int(0.8 * avg_ctx_len), int(1.2 * avg_ctx_len), (batch_size, next_n)
+        )
+        .cuda()
+        .to(torch.int32)
+    )
+
+    ref = get_paged_mqa_logits_metadata(context_lens_2d, 64, get_num_sms())
+    res = flag_gems.get_paged_mqa_logits_metadata(context_lens_2d, 64, get_num_sms())
+
+    assert torch.equal(ref, res)
+
+
+# ---------------------- flashmla_sparse op test ----------------------
+try:
+    from vllm.v1.attention.ops.flashmla import (
+        flash_mla_sparse_fwd as vllm_flash_mla_sparse_fwd,
+    )
+
+    HAS_VLLM_FLASHMLA_SPARSE = True
+except ImportError:
+    HAS_VLLM_FLASHMLA_SPARSE = False
+    print(
+        "Since vllm not installed, we adopt the native pytorch implementation of FlashMLA for comparison"
+    )
+    torch.set_float32_matmul_precision("high")
+
+
+@dataclasses.dataclass
+class Flashmla_Sparse_Test_Param:
+    s_q: int
+    s_kv: int
+    topk: int
+    h_q: int = 128
+    h_kv: int = 1
+    d_qk: int = 512
+    d_v: int = 512
+    is_all_indices_invalid: bool = False
+    num_warmup: int = 5
+    num_runs: int = 10
+    have_attn_sink: bool = False
+    have_topk_length: bool = False
+    dtype: torch.dtype = torch.bfloat16
+    device: torch.device = flag_gems.device
+
+
+# used by make_input_flashmla
+_flashmla_sparse_counter = 0
+
+
+class FlashmlaSparseTestKit:
+    # used by torch vertion flashmla_sparse
+    @staticmethod
+    def _merge_two_lse(
+        lse0: torch.Tensor, lse1: Optional[torch.Tensor], s_q: int, h_q: int
+    ) -> torch.Tensor:
+        if lse1 is None:
+            return lse0
+        else:
+            return torch.logsumexp(
+                torch.stack([lse0.view(s_q, h_q), lse1.broadcast_to(s_q, h_q)], dim=0),
+                dim=0,
+            )
+
+    # torch version flashmla_sparse
+    @staticmethod
+    def torch_flash_mla_sparse_fwd(
+        s_q: int,
+        s_kv: int,
+        h_q: int,
+        h_kv: int,
+        d_qk: int,
+        topk: int,
+        q: torch.Tensor,  # [s_q, h_q, d_qk]
+        kv: torch.Tensor,  # [s_q, 1, d_qk]
+        indices: torch.Tensor,  # [s_q, 1, topk]
+        sm_scale: float,
+        d_v: int,
+        attn_sink: Optional[torch.Tensor],  # [h_q]
+        topk_length: Optional[torch.Tensor],  # [s_q]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Returns:
+        - o: [s_q, h_q, dv]
+        - o_fp32: [s_q, h_q, dv]
+        - max_logits: [s_q, h_q]
+        - lse: [s_q, h_q]
+        """
+        indices = indices.clone().squeeze(1)
+        if topk_length is not None:
+            mask = torch.arange(topk, device=topk_length.device).unsqueeze(
+                0
+            ).broadcast_to(s_q, topk) >= topk_length.unsqueeze(1)
+            indices[mask] = -1
+        invalid_mask = (indices < 0) | (indices >= s_kv)
+        indices[invalid_mask] = 0
+        q = q.float()
+        gathered_kv = (
+            kv.index_select(dim=0, index=indices.flatten())
+            .reshape(s_q, topk, d_qk)
+            .float()
+        )
+        P = q @ gathered_kv.transpose(1, 2)
+        P *= sm_scale
+        P[invalid_mask.unsqueeze(1).broadcast_to(P.shape)] = float("-inf")
+
+        orig_lse = torch.logsumexp(P, dim=-1)
+        max_logits = P.max(dim=-1).values
+
+        lse_for_o = FlashmlaSparseTestKit._merge_two_lse(orig_lse, attn_sink, s_q, h_q)
+        if not torch.is_inference_mode_enabled():
+            lse_for_o = lse_for_o.clone()
+        lse_for_o[lse_for_o == float("-inf")] = float(
+            "+inf"
+        )  # So that corresponding O will be 0
+        s_for_o = torch.exp(P - lse_for_o.unsqueeze(-1))
+        out = s_for_o @ gathered_kv[..., :d_v]
+
+        lonely_q_mask = orig_lse == float("-inf")
+        orig_lse[lonely_q_mask] = float("+inf")
+        return (out.to(torch.bfloat16), max_logits, orig_lse)
+
+    @staticmethod
+    def get_correctness_test_params():
+        cases = [
+            Flashmla_Sparse_Test_Param(s_q, s_kv, topk, h_q, h_kv, d_qk, d_v)
+            for s_q in [64, 128, 512]
+            for s_kv in [1024, 2048, 4096]
+            for h_q in [64, 128, 256]
+            for h_kv in [1]
+            for d_qk in [576]
+            for d_v in [512]
+            for topk in [64, 128, 256]
+        ]
+        return cases
+
+    @staticmethod
+    def _init_seed(seed):
+        random.seed(seed)
+        torch.manual_seed(seed)
+
+    @staticmethod
+    def make_input(param: Flashmla_Sparse_Test_Param):
+        """Create input data for sparse MLA operator"""
+        S = param.s_q
+        H = param.h_q
+        DQK = param.d_qk
+        SKV = param.s_kv
+        HKV = param.h_kv
+        topk = param.topk
+        dtype = param.dtype
+        device = param.device
+        requires_grad = False
+
+        FlashmlaSparseTestKit._init_seed(42)
+
+        q = torch.randn((S, H, DQK), dtype=dtype, device=device).requires_grad_(
+            requires_grad
+        )
+        kv = torch.randn((SKV, HKV, DQK), dtype=dtype, device=device).requires_grad_(
+            requires_grad
+        )
+
+        indices = torch.full((S, HKV, topk), SKV, dtype=torch.int32, device=device)
+        for t in range(S):
+            for h in range(HKV):
+                i_i = torch.randperm(max(1, t))[:topk]
+                indices[t, h, : len(i_i)] = i_i
+
+        return q, kv, indices
+
+    @staticmethod
+    def get_correctness_test_params_flashmla():
+        cases = [
+            Flashmla_Sparse_Test_Param(
+                s_q,
+                s_kv,
+                topk,
+                h_q,
+                d_qk=d_qk,
+                have_attn_sink=have_attn_sink,
+                have_topk_length=have_topk_length,
+            )
+            for s_q in [1, 62, 213]
+            for h_q in [128, 64]
+            for d_qk in [512, 576]
+            for s_kv, topk in [
+                (592, 128),
+                (1840, 256),
+                (1592, 384),
+                (1521, 512),
+                (95, 128),
+                (153, 256),
+                (114, 384),
+            ]
+            for have_attn_sink in [True, False]
+            for have_topk_length in [True, False]
+        ]
+        return cases
+
+    @staticmethod
+    def _randperm_batch(
+        batch_size: int, perm_range: torch.Tensor, perm_size: int, paddings: List[int]
+    ) -> torch.Tensor:
+        """
+        Generate random permutations in batch
+        The return tensor, denoted as `res`, has a shape of [batch_size, perm_size]. `0 <= res[i, :] < perm_range[i]`
+        holds.
+        Values within each row are unique.
+        If, for some `i`, `perm_range[i] < perm_size` holds, then `res[i, :]` contains values in `[0, perm_range[i])`
+        as many as possible, and the rest are filled with `padding`.
+        """
+        assert not torch.are_deterministic_algorithms_enabled()
+        torch.use_deterministic_algorithms(True)
+        perm_range_max = max(int(torch.max(perm_range).item()), perm_size)
+        rand = torch.rand(batch_size, perm_range_max, dtype=torch.float32)
+        rand[
+            torch.arange(0, perm_range_max).broadcast_to(batch_size, perm_range_max)
+            >= perm_range.view(batch_size, 1)
+        ] = float("-inf")
+        res = rand.topk(perm_size, dim=-1, sorted=True).indices.to(torch.int32)
+        if len(paddings) == 1:
+            res[res >= perm_range.view(batch_size, 1)] = paddings[0]
+        else:
+            fillers = torch.tensor(paddings, dtype=torch.int32).index_select(
+                0, torch.randint(0, len(paddings), (res.numel(),), dtype=torch.int32)
+            )
+            res.masked_scatter_(res >= perm_range.view(batch_size, 1), fillers)
+        torch.use_deterministic_algorithms(False)
+        return res
+
+    @staticmethod
+    def make_input_flashmla(param: Flashmla_Sparse_Test_Param):
+        """Create input data for sparse MLA operator by referring to the FlashMLA examples"""
+        s_q = param.s_q
+        s_kv = param.s_kv
+        h_q = param.h_q
+        h_kv = param.h_kv
+        d_qk = param.d_qk
+        topk = param.topk
+        have_attn_sink = param.have_attn_sink
+        have_topk_length = param.have_topk_length
+        is_all_indices_invalid = param.is_all_indices_invalid
+        dtype = param.dtype
+        device = param.device
+
+        global _flashmla_sparse_counter
+        FlashmlaSparseTestKit._init_seed(_flashmla_sparse_counter)
+        _flashmla_sparse_counter = _flashmla_sparse_counter + 1
+
+        q = (
+            torch.randn((s_q, h_q, d_qk), dtype=dtype, device=device) / 10
+            + (random.random() - 0.5) / 10
+        )
+        kv = (
+            torch.randn((s_kv, h_kv, d_qk), dtype=dtype, device=device) / 10
+            + (random.random() - 0.5) / 10
+        )
+        q = q.clamp_(-10, 10)
+        kv = kv.clamp_(-10, 10)
+        invalid_indices_candidate = [
+            -2147483648,
+            -123456,
+            -1,
+            s_kv,
+            114514,
+            1919810,
+            2147480000,
+            2147483647,
+        ]
+        indices = FlashmlaSparseTestKit._randperm_batch(
+            s_q,
+            torch.full((s_q,), s_kv, dtype=torch.int32),
+            topk,
+            invalid_indices_candidate,
+        ).view(s_q, h_kv, topk)
+        if is_all_indices_invalid:
+            all_indices_invalid_mask = torch.randn(s_q, device="cpu") < -2
+            indices[
+                all_indices_invalid_mask[:, None, None].broadcast_to(indices.shape)
+            ] = random.choice(invalid_indices_candidate)
+        indices = indices.to(device)
+
+        attn_sink = None
+        if have_attn_sink:
+            attn_sink = torch.randn((h_q,), dtype=torch.float32, device=device)
+            mask = torch.randn((h_q,), dtype=torch.float32, device=device)
+            attn_sink[mask < -0.5] = float("-inf")
+            attn_sink[mask > +0.5] = float("+inf")
+
+        topk_length = None
+        if have_topk_length:
+            topk_length = torch.randint(
+                0, max(topk + 1, 64), (s_q,), dtype=torch.int32, device=device
+            ).clamp_max(topk)
+        return q, kv, indices, attn_sink, topk_length
+
+
+@pytest.mark.flashmla_sparse
+@pytest.mark.parametrize("param", FlashmlaSparseTestKit.get_correctness_test_params())
+def test_flashmla_sparse_correctness(param: Flashmla_Sparse_Test_Param):
+    """Sparse MLA forward propagation test"""
+    # Skip FlashMLA unsupported cases
+    if param.h_q != 64 and param.h_q != 128:
+        # RuntimeError: Unsupported h_q: 256
+        # FlashMLA csrc/api/sparse_fwd.h:197
+        pytest.skip("h_q unsupported by FlashMLA")
+    if param.topk % 128 != 0:
+        # Assertion `params.topk % (2*B_TOPK) == 0` failed
+        # FlashMLA csrc/sm90/prefill/sparse/phase1.cuh:577
+        # FlashMLA csrc/sm90/prefill/sparse/config.h:27 "B_TOPK = 64"
+        pytest.skip("topk unsupported by FlashMLA")
+
+    # Create input
+    q, kv, indices = FlashmlaSparseTestKit.make_input(param)
+    sm_scale = param.d_qk**-0.5
+
+    if HAS_VLLM_FLASHMLA_SPARSE:
+        ref_output, ref_max_logbits, ref_lse = vllm_flash_mla_sparse_fwd(
+            q, kv, indices, sm_scale, param.d_v
+        )
+    else:
+        (
+            ref_output,
+            ref_max_logbits,
+            ref_lse,
+        ) = FlashmlaSparseTestKit.torch_flash_mla_sparse_fwd(
+            param.s_q,
+            param.s_kv,
+            param.h_q,
+            param.h_kv,
+            param.d_qk,
+            param.topk,
+            q,
+            kv,
+            indices,
+            sm_scale,
+            param.d_v,
+            None,
+            None,
+        )
+
+    # Your operator implementation
+    your_output, your_max_logbits, your_lse = flag_gems.flash_mla_sparse_fwd(
+        q,
+        kv,
+        indices,
+        sm_scale,
+        param.d_v,
+    )
+
+    # Accuracy comparison
+    flag_gems.testing.assert_close(your_output, ref_output, param.dtype, atol=1e-2)
+    flag_gems.testing.assert_close(
+        your_max_logbits, ref_max_logbits, torch.float32, atol=1e-4
+    )
+    flag_gems.testing.assert_close(your_lse, ref_lse, torch.float32, atol=1e-4)
+
+
+@pytest.mark.flashmla_sparse
+@pytest.mark.parametrize(
+    "param", FlashmlaSparseTestKit.get_correctness_test_params_flashmla()
+)
+def test_flashmla_sparse_correctness_flashmla(param: Flashmla_Sparse_Test_Param):
+    """Sparse MLA forward propagation test from FlashMLA"""
+    # Create input
+    q, kv, indices, attn_sink, topk_length = FlashmlaSparseTestKit.make_input_flashmla(
+        param
+    )
+    sm_scale = 0.5
+
+    if HAS_VLLM_FLASHMLA_SPARSE:
+        ref_output, ref_max_logbits, ref_lse = vllm_flash_mla_sparse_fwd(
+            q, kv, indices, sm_scale, param.d_v, attn_sink, topk_length
+        )
+    else:
+        (
+            ref_output,
+            ref_max_logbits,
+            ref_lse,
+        ) = FlashmlaSparseTestKit.torch_flash_mla_sparse_fwd(
+            param.s_q,
+            param.s_kv,
+            param.h_q,
+            param.h_kv,
+            param.d_qk,
+            param.topk,
+            q,
+            kv,
+            indices,
+            sm_scale,
+            param.d_v,
+            attn_sink,
+            topk_length,
+        )
+
+    # Your operator implementation
+    your_output, your_max_logbits, your_lse = flag_gems.flash_mla_sparse_fwd(
+        q, kv, indices, sm_scale, param.d_v, attn_sink, topk_length
+    )
+
+    # Accuracy comparison
+    torch.testing.assert_close(
+        your_output, ref_output, atol=8e-4, rtol=3.01 / 128, equal_nan=False
+    )  # cos_diff_tol=7e-6
+    torch.testing.assert_close(
+        your_max_logbits, ref_max_logbits, atol=1e-6, rtol=2.01 / 65536, equal_nan=False
+    )
+    torch.testing.assert_close(
+        your_lse, ref_lse, atol=1e-6, rtol=2.01 / 65536, equal_nan=False
+    )

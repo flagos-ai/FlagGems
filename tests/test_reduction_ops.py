@@ -85,6 +85,45 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.aminmax
+@pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_aminmax(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # torch.aminmax only supports single dim, use torch.amin/amax for multi-dim
+    if isinstance(dim, list):
+        ref_min = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
+        ref_max = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+    else:
+        ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        if isinstance(dim, list):
+            res_min = torch.amin(inp, dim=dim, keepdim=keepdim)
+            res_max = torch.amax(inp, dim=dim, keepdim=keepdim)
+        else:
+            res_min, res_max = torch.aminmax(inp, dim=dim, keepdim=keepdim)
+
+    gems_assert_equal(res_min, ref_min)
+    gems_assert_equal(res_max, ref_max)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_aminmax_no_dim(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_min, ref_max = torch.aminmax(ref_inp)
+    with flag_gems.use_gems():
+        res_min, res_max = torch.aminmax(inp)
+
+    gems_assert_equal(res_min, ref_min)
+    gems_assert_equal(res_max, ref_max)
+
+
 EMPTY_SHAPES = [(0, 5), (3, 0, 4), (2, 5, 0), (0,)]
 
 
@@ -630,7 +669,10 @@ def test_accuracy_log_softmax_backward(shape, dtype, dim):
 # TODO: failed at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize(
-    "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
+    "shape",
+    [(1, 256)]
+    if QUICK_MODE
+    else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -655,6 +697,12 @@ def test_accuracy_softmax(shape, dtype, dim, neg_inf):
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
 def test_accuracy_softmax_backward(shape, dtype, dim, neg_inf):
+    if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
+        pytest.skip(
+            "XPU _softmax_backward_data short-circuits to zero when reduction dim "
+            "is 1, while the Triton kernel computes normally with synthetic inputs, "
+            "causing a mismatch that does not reflect a real correctness issue."
+        )
     res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if neg_inf:
         res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
@@ -1223,6 +1271,58 @@ def test_accuracy_slice_backward(
         end,
         step,
     )
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.slice
+@pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_slice_backward_oob_end(shape, dtype):
+    # Regression test: end > dim_size caused out-of-bounds write in kernel.
+    device = flag_gems.device
+    dim = 1 % len(shape)
+    dim_size = shape[dim]
+    start = 0
+    end = dim_size + 100  # intentionally out of bounds
+    step = 1
+
+    # grad_output shape matches what PyTorch would produce (clamped slice)
+    valid_shape = list(shape)
+    valid_shape[dim] = dim_size
+    grad_output = torch.randn(valid_shape, dtype=dtype, device=device)
+    ref_grad_output = to_reference(grad_output)
+
+    ref_out = torch.ops.aten.slice_backward(
+        ref_grad_output, shape, dim, start, end, step
+    )
+    res_out = flag_gems.ops.slice_backward(grad_output, shape, dim, start, end, step)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.slice
+@pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_slice_backward_oob_start(shape, dtype):
+    # Regression test: start > dim_size caused out-of-bounds write in kernel.
+    device = flag_gems.device
+    dim = 1 % len(shape)
+    dim_size = shape[dim]
+    start = dim_size + 50  # intentionally out of bounds
+    end = dim_size + 100
+    step = 1
+
+    # grad_output is empty since clamped slice is empty
+    valid_shape = list(shape)
+    valid_shape[dim] = 0
+    grad_output = torch.randn(valid_shape, dtype=dtype, device=device)
+    ref_grad_output = to_reference(grad_output)
+
+    ref_out = torch.ops.aten.slice_backward(
+        ref_grad_output, shape, dim, start, end, step
+    )
+    res_out = flag_gems.ops.slice_backward(grad_output, shape, dim, start, end, step)
 
     gems_assert_equal(res_out, ref_out)
 
