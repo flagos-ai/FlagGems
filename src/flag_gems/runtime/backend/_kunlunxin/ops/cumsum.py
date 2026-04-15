@@ -159,8 +159,8 @@ def add_base_sum_abc_kernel(
 
 def scan_then_fan_col(inp, out, n_ele, dtype):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 2048
-    if n_ele <= 2048 * 4:
+    BLOCK_SIZE = 1024
+    if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
     partial_sum = torch.empty(part_num, dtype=dtype, device=inp.device)
@@ -177,8 +177,8 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
 
 def scan_then_fan(inp, out, A, B, C, dtype):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 2048
-    if B <= 2048 * 4:
+    BLOCK_SIZE = 1024
+    if B <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
