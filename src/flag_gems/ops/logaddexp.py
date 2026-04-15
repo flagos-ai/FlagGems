@@ -5,7 +5,6 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 
-
 logger = logging.getLogger(__name__)
 
 
