@@ -278,6 +278,11 @@ def get_env(gpu_ids):
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
+    # TODO(Qiming): check T-Head vendor name
+    if vendor == "thead":
+        env["PPU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
     # MetaX is using CUDA_VISIBLE_DEVICES as well
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
