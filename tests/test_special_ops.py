@@ -2553,7 +2553,8 @@ def test_accuracy_margin_ranking_loss(shape, dtype, margin, reduction):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("margin", [0.0, 0.5, 1.0])
 @pytest.mark.parametrize(
-    "reduction", ["none", "mean", "sum"],
+    "reduction",
+    ["none", "mean", "sum"],
 )
 def test_accuracy_margin_ranking_loss_backward(shape, dtype, margin, reduction):
     # Use torch.nn.functional.margin_ranking_loss as reference because
