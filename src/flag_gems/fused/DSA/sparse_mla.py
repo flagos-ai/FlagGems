@@ -1,3 +1,13 @@
+"""
+Combined Sparse MLA kernel: v91 + v99 with s_q-based dispatch.
+
+- v99 (explicit software pipelining): better for small s_q (decode)
+- v91 (flash-style softmax + overlapped K loads): better for large s_q (prefill)
+
+Threshold tuning:
+    Run: python benchmark.py --s_q 1 32 64 128 256 512 1024 2048 4096
+    then adjust SQ_THRESHOLD below.
+"""
 import logging
 
 import torch
@@ -6,213 +16,404 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-spar_mla_fwd_configs = [
-    triton.Config({"num_stages": 4, "num_warps": 8}),
-    triton.Config({"num_stages": 2, "num_warps": 4}),
-]
+# ============================================================
+# Crossover threshold: v99 when s_q <= this, v91 otherwise
+# ============================================================
+SQ_THRESHOLD = 128
 
 
-@triton.autotune(  # Decorate the kernel
-    configs=spar_mla_fwd_configs,
-    key=["K", "is_causal"],
+# ============================================================
+# v91 kernel — Flash-style softmax + overlapped K loads
+# ============================================================
+
+
+@triton.autotune(
+    configs=[
+        triton.Config({"BK": 128, "BH": 16}, num_warps=8, num_stages=5),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=8, num_stages=6),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=4, num_stages=5),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=4, num_stages=6),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=2, num_stages=5),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=2, num_stages=7),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=2, num_stages=8),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=2, num_stages=10),
+        triton.Config({"BK": 128, "BH": 32}, num_warps=8, num_stages=4),
+        triton.Config({"BK": 128, "BH": 32}, num_warps=8, num_stages=5),
+        triton.Config({"BK": 128, "BH": 32}, num_warps=4, num_stages=5),
+        triton.Config({"BK": 64, "BH": 16}, num_warps=4, num_stages=5),
+        triton.Config({"BK": 64, "BH": 16}, num_warps=4, num_stages=7),
+        triton.Config({"BK": 64, "BH": 16}, num_warps=8, num_stages=5),
+        triton.Config({"BK": 64, "BH": 16}, num_warps=2, num_stages=5),
+        triton.Config({"BK": 64, "BH": 16}, num_warps=2, num_stages=8),
+        triton.Config({"BK": 64, "BH": 32}, num_warps=8, num_stages=5),
+        triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=4),
+    ],
+    key=["topk", "num_qo_heads", "D_CKV", "HAS_KPE"],
 )
 @triton.jit
-def triton_sparse_mla_fwd(
-    q,
-    kv,
-    indices,
+def _kernel_v91(
+    q_nope_ptr,
+    q_pe_ptr,
+    kv_cache_ptr,
+    sparse_indices_ptr,
+    output_ptr,
+    lse_ptr,
+    num_tokens,
+    num_qo_heads,
+    topk,
+    stride_qn_b,
+    stride_qn_h,
+    stride_qn_d,
+    stride_qp_b,
+    stride_qp_h,
+    stride_qp_d,
+    stride_kv_row,
+    stride_kv_d,
+    stride_sparse_b,
+    stride_sparse_t,
+    stride_out_b,
+    stride_out_h,
+    stride_out_d,
+    stride_lse_b,
+    stride_lse_h,
     sm_scale: tl.constexpr,
-    output,
-    lse,
-    stride_qb,
-    stride_qh,
-    stride_qm,
-    stride_qd,
-    stride_kvb,
-    stride_kvg,
-    stride_kvn,
-    stride_kvd,
-    stride_tb,
-    stride_tg,
-    stride_tm,
-    stride_tt,  # indices dim
-    stride_ob,
-    stride_oh,
-    stride_om,
-    stride_od,
-    stride_lb,
-    stride_lh,
-    stride_lm,
-    SQ: tl.constexpr,  # seqlen
-    K: tl.constexpr,  # topk
-    D: tl.constexpr,  # QKV dim
-    TD: tl.constexpr,  # tail dim
-    DP: tl.constexpr,
-    TDP: tl.constexpr,
-    G: tl.constexpr,  # group_size
     BK: tl.constexpr,
     BH: tl.constexpr,
-    is_causal: tl.constexpr,
+    D_CKV: tl.constexpr,
+    D_KPE: tl.constexpr,
+    HAS_KPE: tl.constexpr,
 ):
-    i_b, i_sq, i_gbh = tl.program_id(0), tl.program_id(1), tl.program_id(2)
-    NH = tl.cdiv(G, BH)
-    i_g, i_bh = i_gbh // NH, i_gbh % NH
-    q_base = q + i_b * stride_qb + i_sq * stride_qm + i_gbh * (BH * stride_qh)
-    tq_base = q_base + D * stride_qd
-    kv_base = kv + i_b * stride_kvb + i_g * stride_kvg
-    tkv_base = kv_base + D * stride_kvd
-    t_base = indices + i_b * stride_tb + i_sq * stride_tm + i_g * stride_tg
-    o_base = output + i_b * stride_ob + i_sq * stride_om + i_gbh * (BH * stride_oh)
-    l_base = lse + i_b * stride_lb + i_sq * stride_lm + i_gbh * (BH * stride_lh)
+    num_head_blocks: tl.constexpr = (num_qo_heads + BH - 1) // BH
+    pid = tl.program_id(0)
+    token_idx = pid // num_head_blocks
+    head_block_idx = pid % num_head_blocks
 
-    offs_h = tl.arange(0, BH)
-    offs_d = tl.arange(0, DP)
-    offs_td = tl.arange(0, TDP)
-    offs_od = tl.arange(0, DP)
-    offs_t = tl.arange(0, BK)
-    mask_h = i_bh * BH + offs_h < G
-    mask_d = offs_d < D
-    mask_td = offs_td < TD
-    mask_od = mask_d
-
-    q_ptr = q_base + offs_h[:, None] * stride_qh + offs_d[None, :] * stride_qd
-    q_msk = mask_h[:, None] & mask_d[None, :]
-    q_blk = tl.load(q_ptr, q_msk, other=0.0).to(tl.float16)
-
-    tq_ptr = tq_base + offs_h[:, None] * stride_qh + offs_td[None, :] * stride_qd
-    tq_msk = mask_h[:, None] & mask_td[None, :]
-    tq_blk = tl.load(tq_ptr, tq_msk, other=0.0).to(tl.float16)
-
-    max_log = tl.full([BH], float("-inf"), dtype=tl.float16)
-    sum_exp = tl.full([BH], 1.0, dtype=tl.float16)
-    acc = tl.zeros([BH, DP], dtype=tl.float16)
-    qk = tl.zeros([BH, BK], dtype=tl.float16)
-
+    offs_bh = tl.arange(0, BH)
+    offs_d_nope = tl.arange(0, D_CKV)
+    offs_bk = tl.arange(0, BK)
+    head_mask = head_block_idx * BH + offs_bh < num_qo_heads
     log_scale: tl.constexpr = sm_scale * 1.44269504
 
-    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1
-    max_col = i_sq if is_causal else SQ - 1
+    q_base = q_nope_ptr + token_idx * stride_qn_b + head_block_idx * BH * stride_qn_h
+    q_nope = tl.load(
+        q_base + offs_bh[:, None] * stride_qn_h + offs_d_nope[None, :] * stride_qn_d,
+        mask=head_mask[:, None],
+        other=0.0,
+    )
+    if HAS_KPE:
+        offs_d_pe = tl.arange(0, D_KPE)
+        qp_base = q_pe_ptr + token_idx * stride_qp_b + head_block_idx * BH * stride_qp_h
+        q_pe = tl.load(
+            qp_base + offs_bh[:, None] * stride_qp_h + offs_d_pe[None, :] * stride_qp_d,
+            mask=head_mask[:, None],
+            other=0.0,
+        )
 
-    NK = tl.cdiv(K, BK)
-    for ck in range(NK):
-        t_ptr = (BK * ck + offs_t) * stride_tt
-        t_msk = t_ptr < K
-        t_ptr += t_base
-        kv_ids = tl.load(t_ptr, t_msk, other=-1)
-        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)
+    m_i = tl.full([BH], float("-inf"), dtype=tl.float32)
+    l_i = tl.zeros([BH], dtype=tl.float32)
+    acc = tl.zeros([BH, D_CKV], dtype=tl.float32)
+    idx_base = sparse_indices_ptr + token_idx * stride_sparse_b
 
-        if tl.max(mask_ids, axis=0) > 0:
-            kv_ptr = (
-                kv_base + offs_d[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
+    for offset in range(0, topk, BK):
+        kv_mask = offset + offs_bk < topk
+        flat_kv_idx = tl.load(
+            idx_base + (offset + offs_bk) * stride_sparse_t,
+            mask=kv_mask,
+            other=0,
+            eviction_policy="evict_first",
+        )
+        row_offsets = flat_kv_idx * stride_kv_row
+        k_nope = tl.load(
+            kv_cache_ptr + row_offsets[:, None] + offs_d_nope[None, :] * stride_kv_d,
+            mask=kv_mask[:, None],
+            other=0.0,
+            eviction_policy="evict_last",
+        )
+        if HAS_KPE:
+            k_pe = tl.load(
+                kv_cache_ptr
+                + row_offsets[:, None]
+                + (D_CKV + offs_d_pe)[None, :] * stride_kv_d,
+                mask=kv_mask[:, None],
+                other=0.0,
+                eviction_policy="evict_last",
             )
-            kv_msk = mask_d[:, None] & mask_ids[None, :]
-            kv_blk = tl.load(kv_ptr, kv_msk, other=0.0).to(tl.float16)  # [DP, BK]
 
-            tkv_ptr = (
-                tkv_base + offs_td[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
-            )
-            tkv_msk = mask_td[:, None] & mask_ids[None, :]
-            tkv_blk = tl.load(tkv_ptr, tkv_msk, other=0.0).to(tl.float16)  # [TDP, BK]
+        qk = tl.dot(q_nope, tl.trans(k_nope))
+        if HAS_KPE:
+            qk += tl.dot(q_pe, tl.trans(k_pe))
+        qk = qk * log_scale
+        qk = tl.where(kv_mask[None, :], qk, float("-inf"))
 
-            qk = tl.dot(q_blk, kv_blk, out_dtype=tl.float16)
-            qk = tl.dot(tq_blk, tkv_blk, qk, out_dtype=tl.float16) * log_scale
-            # qk = tl.dot(tq_blk, tkv_blk, qk, out_dtype=tl.float16) * sm_scale
+        qk_max = tl.max(qk, axis=1)
+        m_i_new = tl.maximum(m_i, qk_max)
+        alpha = tl.math.exp2(m_i - m_i_new)
+        p = tl.math.exp2(qk - m_i_new[:, None])
+        acc = acc * alpha[:, None]
+        acc = tl.dot(p.to(tl.bfloat16), k_nope, acc)
+        l_i = l_i * alpha + tl.sum(p, axis=1)
+        m_i = m_i_new
 
-            qk = tl.where(mask_ids[None, :], qk, float("-inf"))  # [BH, BK]
+    acc = acc / l_i[:, None]
+    lse_val = m_i * 0.6931471805599453 + tl.log(l_i)
 
-            new_max = tl.maximum(max_log, tl.max(qk, axis=1))
-            exp_qk = tl.math.exp2(qk - new_max[:, None]).to(tl.float16)
-            # exp_qk = tl.math.exp(qk - new_max[:, None]).to(tl.float16)
-            sum_qk = tl.sum(exp_qk, axis=1)
-            alpha = tl.math.exp2(max_log - new_max).to(tl.float16)
-            # alpha = tl.math.exp(max_log - new_max).to(tl.float16)
-            sum_exp = sum_exp * alpha + sum_qk
-            acc = acc * alpha[:, None]
-            acc = tl.dot(
-                exp_qk, kv_blk.trans(), acc, out_dtype=tl.float16
-            )  # [BH, BK] @ [BK, DP] = [BH, DP]
-
-            max_log = new_max.to(tl.float16)
-
-    out_vals = acc / sum_exp[:, None]
-    o_ptr = o_base + offs_h[:, None] * stride_oh + offs_od[None, :] * stride_od
-    o_msk = mask_h[:, None] & mask_od[None, :]
-    # o_msk &= tl.zeros_like(o_msk)
-    tl.store(o_ptr, out_vals.to(q_blk.dtype), o_msk)
-
-    fin_log = max_log + tl.math.log2(sum_exp.to(tl.float32))  # return lse / ln2
-    # fin_log *= 0.69314718
-    # fin_log = max_log + tl.math.log(sum_exp.to(tl.float32))
-    # fin_log *= 1.44269504 # return lse / ln2
-    l_ptr = l_base + offs_h * stride_lh
-    l_msk = mask_h
-    tl.store(l_ptr, fin_log.to(q_blk.dtype), l_msk)
+    o_base = output_ptr + token_idx * stride_out_b + head_block_idx * BH * stride_out_h
+    tl.store(
+        o_base + offs_bh[:, None] * stride_out_h + offs_d_nope[None, :] * stride_out_d,
+        acc.to(tl.bfloat16),
+        mask=head_mask[:, None],
+    )
+    l_base = lse_ptr + token_idx * stride_lse_b + head_block_idx * BH * stride_lse_h
+    tl.store(l_base + offs_bh * stride_lse_h, lse_val, mask=head_mask)
 
 
-def triton_sparse_mla_fwd_interface(
-    q, kv, indices, sm_scale=None, return_p_sum: bool = False, d_v=512
+# ============================================================
+# v99 kernel — Explicit software pipelining
+# ============================================================
+
+
+@triton.autotune(
+    configs=[
+        triton.Config({"BK": 128, "BH": 16}, num_warps=4, num_stages=4),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=4, num_stages=3),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=8, num_stages=4),
+        triton.Config({"BK": 128, "BH": 16}, num_warps=2, num_stages=4),
+        triton.Config({"BK": 128, "BH": 32}, num_warps=4, num_stages=4),
+        triton.Config({"BK": 64, "BH": 16}, num_warps=4, num_stages=4),
+        triton.Config({"BK": 64, "BH": 16}, num_warps=4, num_stages=3),
+        triton.Config({"BK": 64, "BH": 16}, num_warps=8, num_stages=4),
+        triton.Config({"BK": 64, "BH": 32}, num_warps=4, num_stages=4),
+        triton.Config({"BK": 64, "BH": 64}, num_warps=4, num_stages=3),
+    ],
+    key=["topk", "num_qo_heads", "D_CKV", "HAS_KPE"],
+)
+@triton.jit
+def _kernel_v99(
+    q_nope_ptr,
+    q_pe_ptr,
+    kv_cache_ptr,
+    sparse_indices_ptr,
+    output_ptr,
+    lse_ptr,
+    num_tokens,
+    num_qo_heads,
+    topk,
+    stride_qn_b,
+    stride_qn_h,
+    stride_qn_d,
+    stride_qp_b,
+    stride_qp_h,
+    stride_qp_d,
+    stride_kv_row,
+    stride_kv_d,
+    stride_sparse_b,
+    stride_sparse_t,
+    stride_out_b,
+    stride_out_h,
+    stride_out_d,
+    stride_lse_b,
+    stride_lse_h,
+    sm_scale: tl.constexpr,
+    BK: tl.constexpr,
+    BH: tl.constexpr,
+    D_CKV: tl.constexpr,
+    D_KPE: tl.constexpr,
+    HAS_KPE: tl.constexpr,
 ):
-    logger.debug("GEMS SPARSE MLA FWD INTERFACE")
-    is_causal = True
-    assert return_p_sum is False, "This kernel file is for fwd only"
-    assert q.is_contiguous() and kv.is_contiguous() and indices.is_contiguous()
-    B, SQ, H, DT = q.shape
-    _, _, VG, _ = kv.shape
+    num_head_blocks: tl.constexpr = (num_qo_heads + BH - 1) // BH
+    pid = tl.program_id(0)
+    token_idx = pid // num_head_blocks
+    head_block_idx = pid % num_head_blocks
 
-    # assert DT == 576, "you should assign dim otherwise"
-    D = d_v
+    offs_bh = tl.arange(0, BH)
+    offs_d_nope = tl.arange(0, D_CKV)
+    offs_bk = tl.arange(0, BK)
+    head_mask = head_block_idx * BH + offs_bh < num_qo_heads
+    log_scale: tl.constexpr = sm_scale * 1.44269504
 
-    assert kv.shape[-1] == DT
-    TD = DT - D
-    DP = triton.next_power_of_2(D)
-    TDP = triton.next_power_of_2(TD)
-    assert kv.shape[0] == B
-    _, _, _, K = indices.shape
-    assert indices.shape == (B, SQ, VG, K)
-    G = H // VG
-    if sm_scale is None:
-        sm_scale = DT**-0.5
-    BH = max(16, min(64, triton.next_power_of_2(G)))
-    NH = triton.cdiv(G, BH)
-    BK = 32
-    output = torch.zeros((B, SQ, H, D), device=q.device, dtype=q.dtype)
-    lse = torch.full((B, SQ, H), float("-inf"), device=q.device, dtype=q.dtype)
-    grid = (B, SQ, VG * NH)  # (SQ//BQ, B*H)
-    triton_sparse_mla_fwd[grid](
-        q,
-        kv,
-        indices,
+    q_base = q_nope_ptr + token_idx * stride_qn_b + head_block_idx * BH * stride_qn_h
+    q_nope = tl.load(
+        q_base + offs_bh[:, None] * stride_qn_h + offs_d_nope[None, :] * stride_qn_d,
+        mask=head_mask[:, None],
+        other=0.0,
+    )
+    if HAS_KPE:
+        offs_d_pe = tl.arange(0, D_KPE)
+        qp_base = q_pe_ptr + token_idx * stride_qp_b + head_block_idx * BH * stride_qp_h
+        q_pe = tl.load(
+            qp_base + offs_bh[:, None] * stride_qp_h + offs_d_pe[None, :] * stride_qp_d,
+            mask=head_mask[:, None],
+            other=0.0,
+        )
+
+    m_i = tl.full([BH], float("-inf"), dtype=tl.float32)
+    l_i = tl.zeros([BH], dtype=tl.float32)
+    acc = tl.zeros([BH, D_CKV], dtype=tl.float32)
+    idx_base = sparse_indices_ptr + token_idx * stride_sparse_b
+    num_iters = (topk + BK - 1) // BK
+
+    for iter_idx in range(num_iters):
+        offset = iter_idx * BK
+        kv_mask = offset + offs_bk < topk
+        flat_kv_idx = tl.load(
+            idx_base + (offset + offs_bk) * stride_sparse_t,
+            mask=kv_mask,
+            other=0,
+        )
+        row_offsets = flat_kv_idx * stride_kv_row
+        k_nope = tl.load(
+            kv_cache_ptr + row_offsets[:, None] + offs_d_nope[None, :] * stride_kv_d,
+            mask=kv_mask[:, None],
+            other=0.0,
+        )
+
+        if HAS_KPE:
+            k_pe = tl.load(
+                kv_cache_ptr
+                + row_offsets[:, None]
+                + (D_CKV + offs_d_pe)[None, :] * stride_kv_d,
+                mask=kv_mask[:, None],
+                other=0.0,
+            )
+            qk = tl.dot(q_nope, tl.trans(k_nope), out_dtype=tl.float32)
+            qk = tl.dot(q_pe, tl.trans(k_pe), qk, out_dtype=tl.float32)
+        else:
+            qk = tl.dot(q_nope, tl.trans(k_nope), out_dtype=tl.float32)
+
+        qk = qk * log_scale
+        qk = tl.where(kv_mask[None, :], qk, float("-inf"))
+
+        qk_max = tl.max(qk, axis=1)
+        m_i_new = tl.maximum(m_i, qk_max)
+        alpha = tl.math.exp2(m_i - m_i_new)
+        p = tl.math.exp2(qk - m_i_new[:, None])
+        acc = acc * alpha[:, None]
+        acc = tl.dot(p.to(tl.bfloat16), k_nope, acc)
+        l_i = l_i * alpha + tl.sum(p, axis=1)
+        m_i = m_i_new
+
+    acc = acc / l_i[:, None]
+    lse_val = m_i * 0.6931471805599453 + tl.log(l_i)
+
+    o_base = output_ptr + token_idx * stride_out_b + head_block_idx * BH * stride_out_h
+    tl.store(
+        o_base + offs_bh[:, None] * stride_out_h + offs_d_nope[None, :] * stride_out_d,
+        acc.to(tl.bfloat16),
+        mask=head_mask[:, None],
+    )
+    l_base = lse_ptr + token_idx * stride_lse_b + head_block_idx * BH * stride_lse_h
+    tl.store(l_base + offs_bh * stride_lse_h, lse_val, mask=head_mask)
+
+
+# ============================================================
+# Shared launcher
+# ============================================================
+
+
+def _run_kernel(
+    kernel_fn,
+    q_nope,
+    q_pe,
+    kv_cache,
+    sparse_indices,
+    sm_scale,
+    output,
+    lse,
+    d_ckv,
+    d_kpe,
+    has_kpe=True,
+):
+    num_tokens, num_qo_heads, _ = q_nope.shape
+    topk = sparse_indices.shape[-1]
+    D_CKV = triton.next_power_of_2(d_ckv)
+    D_KPE = triton.next_power_of_2(d_kpe) if d_kpe > 0 else 16
+
+    def grid(META):
+        return (triton.cdiv(num_qo_heads, META["BH"]) * num_tokens,)
+
+    kernel_fn[grid](
+        q_nope,
+        q_pe,
+        kv_cache,
+        sparse_indices,
+        output,
+        lse,
+        num_tokens,
+        num_qo_heads,
+        topk,
+        q_nope.stride(0),
+        q_nope.stride(1),
+        q_nope.stride(2),
+        q_pe.stride(0),
+        q_pe.stride(1),
+        q_pe.stride(2),
+        kv_cache.stride(0),
+        kv_cache.stride(1),
+        sparse_indices.stride(0),
+        sparse_indices.stride(1),
+        output.stride(0),
+        output.stride(1),
+        output.stride(2),
+        lse.stride(0),
+        lse.stride(1),
+        sm_scale=sm_scale,
+        D_CKV=D_CKV,
+        D_KPE=D_KPE,
+        HAS_KPE=has_kpe,
+    )
+    return output, lse
+
+
+# ============================================================
+# Unified entry point with s_q dispatch
+# ============================================================
+
+
+def sparse_prefill_fwd(q, kv, indices, sm_scale, d_v, attn_sink=None, topk_length=None):
+    """Sparse MLA forward with automatic kernel dispatch.
+
+    Uses v99 for s_q <= SQ_THRESHOLD (decode), v91 otherwise (prefill).
+
+    Args:
+        q:       [s_q, h_q, d_qk]       bf16
+        kv:      [s_kv, h_kv, d_qk]     bf16
+        indices: [s_q, h_kv, topk]       int32
+    Returns:
+        (output, max_logits, lse)
+    """
+    logger.debug("GEMS SPARSE MLA")
+    s_q, h_q, d_qk = q.shape
+    d_kpe = d_qk - d_v
+    MIN_KPE = 16
+
+    q_nope = q[:, :, :d_v].contiguous()
+    if d_kpe > 0:
+        q_pe = q[:, :, d_v:].contiguous()
+    else:
+        q_pe = torch.zeros(s_q, h_q, MIN_KPE, dtype=q.dtype, device=q.device)
+
+    kv_cache = kv.squeeze(1)
+    sparse_indices = indices.squeeze(1).contiguous()
+    output = torch.zeros(s_q, h_q, d_v, dtype=q.dtype, device=q.device)
+    lse = torch.zeros(s_q, h_q, dtype=torch.float32, device=q.device)
+    has_kpe = d_kpe > 0
+
+    # Dispatch
+    kernel_fn = _kernel_v99 if s_q <= SQ_THRESHOLD else _kernel_v91
+
+    _run_kernel(
+        kernel_fn,
+        q_nope,
+        q_pe,
+        kv_cache,
+        sparse_indices,
         sm_scale,
         output,
         lse,
-        q.stride(0),
-        q.stride(2),
-        q.stride(1),
-        q.stride(3),  # [B, H, SQ, DT]
-        kv.stride(0),
-        kv.stride(2),
-        kv.stride(1),
-        kv.stride(3),  # [B, VG, SKV, DT]
-        indices.stride(0),
-        indices.stride(2),
-        indices.stride(1),
-        indices.stride(3),  # [B, VG, SQ, K]
-        output.stride(0),
-        output.stride(2),
-        output.stride(1),
-        output.stride(3),  # [B, H, SQ, D]
-        lse.stride(0),
-        lse.stride(2),
-        lse.stride(1),  # [B, H, SQ]
-        SQ,
-        K,
-        D,
-        TD,
-        DP,
-        TDP,
-        G,
-        BK,
-        BH,
-        is_causal,
+        d_ckv=d_v,
+        d_kpe=d_kpe if d_kpe > 0 else MIN_KPE,
+        has_kpe=has_kpe,
     )
-    return output, lse
+
+    max_logits = torch.zeros(s_q, h_q, dtype=torch.float32, device=q.device)
+    return output, max_logits, lse
