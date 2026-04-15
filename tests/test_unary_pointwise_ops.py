@@ -2653,6 +2653,9 @@ def test_accuracy_floor_(shape, dtype):
     with flag_gems.use_gems():
         res_out = inp.floor_()
 
+    gems_assert_equal(res_out, ref_out)
+
+
 ROLL_SHIFTS_DIMS = [
     (1, 0),
     (-1, 0),
@@ -2719,6 +2722,7 @@ def test_accuracy_special_i0e_out(shape, dtype):
         act_out = torch.ops.aten.special_i0e.out(x, out=out_act)
     gems_assert_close(act_out, ref_out, dtype)
     gems_assert_close(out_act, out_ref, dtype)
+
 
 ROLL_MULTI_DIMS = [
     ((1, 2), (0, 1)),
