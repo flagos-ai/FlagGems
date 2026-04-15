@@ -31,7 +31,6 @@ def gcd_func(x, y):
     a = tl.abs(x)
     b = tl.abs(y)
 
-    # ---------- dtype 对齐 ----------
     if x.dtype != y.dtype:
         if x.dtype == tl.int64 or y.dtype == tl.int64:
             a = a.to(tl.int64)
