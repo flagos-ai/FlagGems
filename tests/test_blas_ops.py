@@ -315,8 +315,6 @@ def test_w8a8_block_fp8_matmul(M, N, K):
 
 
 @pytest.mark.baddbmm
-@pytest.mark.linear
-@pytest.mark.matmul
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -342,9 +340,7 @@ def test_baddbmm(M, N, K, scalar, dtype):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.baddbmm_backward
-@pytest.mark.linear
-@pytest.mark.matmul
+@pytest.mark.baddbmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
