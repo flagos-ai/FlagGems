@@ -14,7 +14,11 @@ def lerp_tensor_kernel(input, end, weight):
     input32 = input.to(tl.float32)
     end32 = end.to(tl.float32)
     weight32 = weight.to(tl.float32)
-    res32 = input32 + weight32 * (end32 - input32)
+    res32 = tl.where(
+        tl.abs(weight32) < 0.5,
+        input32 + weight32 * (end32 - input32),
+        end32 - (end32 - input32) * (1 - weight32),
+    )
     return res32.to(input.dtype)
 
 

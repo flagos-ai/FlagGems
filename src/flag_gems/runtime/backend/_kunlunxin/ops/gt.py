@@ -28,7 +28,7 @@ config_ = CodeGenConfig(
 )
 @triton.jit
 def gt_func(x, y):
-    return x > y
+    return x.to(tl.float32) > y
 
 
 def gt(A, B):
@@ -48,7 +48,7 @@ def gt(A, B):
 )
 @triton.jit
 def gt_func_scalar(x, y):
-    return x > y
+    return x.to(tl.float32) > y
 
 
 def gt_scalar(A, B):
