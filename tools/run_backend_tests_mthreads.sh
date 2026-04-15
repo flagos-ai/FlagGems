@@ -20,7 +20,7 @@ uv pip install setuptools==79.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 'cma
 
 # Setup
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-uv pip install --index $FLAGOS_PYPI \
+uv pip install --index $FLAGOS_PYPI
    "torch==2.7.1+musa.4.0.0" \
    "torch_musa==2.7.1" \
    "triton==3.1.0+musa1.4.6"
@@ -33,8 +33,6 @@ export PATH=$MUSA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
 # For the intel math library
 export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH
-# For the Flagtree dynamic library
-export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.10/site-packages/triton/_C:$LD_LIBRARY_PATH
 
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 

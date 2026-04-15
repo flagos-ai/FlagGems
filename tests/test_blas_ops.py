@@ -93,7 +93,7 @@ def test_addmm(M, N, K, scalar, dtype, b_column_major):
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype_a, dtype_b", MIXED_DTYPE_PAIRS)
-def test_addmm_mixed_dtype(M, N, K, scalar, dtype_a, dtype_b):
+def test_accuracy_addmm_mixed_dtype(M, N, K, scalar, dtype_a, dtype_b):
     mat1 = torch.randn((M, K), dtype=dtype_a, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype_b, device=flag_gems.device)
     out_dtype = torch.promote_types(dtype_a, dtype_b)
@@ -411,14 +411,13 @@ def test_mm(M, N, K, dtype, b_column_major):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.grouped_mm
 @pytest.mark.skipif(
     SkipVersion("torch", "<2.8"),
     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
 )
 @pytest.mark.parametrize("groups, N, K", GNK_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_grouped_mm(groups, N, K, dtype):
+def test_accuracy_groupmm(groups, N, K, dtype):
     assert dtype == torch.bfloat16
     group_A_list = []
     group_B_list = []
@@ -456,7 +455,7 @@ def test_grouped_mm(groups, N, K, dtype):
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype_a, dtype_b", MIXED_DTYPE_PAIRS)
 @pytest.mark.parametrize("b_column_major", [True, False])
-def test_mm_mixed_dtype(M, N, K, dtype_a, dtype_b, b_column_major):
+def test_accuracy_mm_mixed_dtype(M, N, K, dtype_a, dtype_b, b_column_major):
     torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
     np.random.seed(0)
