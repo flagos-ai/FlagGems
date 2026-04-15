@@ -374,6 +374,27 @@ PerTokenGroupQuantFp8Benchmark:
     - [83, 512, 64]
     - [2048, 4096, 256]
     - [2048, 13824, 512]
+DynamicScaledFp8QuantBenchmark:
+  shapes:
+    - [7, 512]
+    - [7, 4096]
+    - [83, 512]
+    - [2048, 4096]
+    - [2048, 13824]
+PerTokenGroupQuantInt8Benchmark:
+  shapes:
+    - [7, 512, 512]
+    - [7, 4096, 256]
+    - [83, 512, 64]
+    - [2048, 4096, 256]
+    - [2048, 13824, 512]
+PerTokenQuantInt8Benchmark:
+  shapes:
+    - [7, 512]
+    - [7, 4096]
+    - [83, 512]
+    - [2048, 4096]
+    - [2048, 13824]
 ReshapeAndCacheBenchmark:
   shapes:
     - [21, 4, 64, 8, 512]
