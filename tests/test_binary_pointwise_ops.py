@@ -2279,7 +2279,6 @@ def test_accuracy_logaddexp_boundary_extremes(dtype):
     shape = (256,)
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    # 混入极值：一个 inf/−inf 配一个有限值
     inp1[0] = float("inf")
     inp1[1] = float("-inf")
     inp2[2] = float("inf")
@@ -2337,7 +2336,6 @@ def test_accuracy_logaddexp_empty_tensor(dtype):
 @pytest.mark.logaddexp
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_logaddexp_large_diff(dtype):
-    """当两个输入差异很大时，测试数值稳定性"""
     shape = (256,)
     inp1 = torch.full(shape, 100.0, dtype=dtype, device=flag_gems.device)
     inp2 = torch.full(shape, -100.0, dtype=dtype, device=flag_gems.device)
