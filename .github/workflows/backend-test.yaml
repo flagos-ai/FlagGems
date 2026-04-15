@@ -17,12 +17,13 @@ on:
         required: false
         type: string
         default: ''
-      test_script:
-        description: 'Path to test script under tools/'
-        required: true
-        type: string
       changed_files:
         description: 'List of changed files in a PR'
+        required: false
+        type: string
+        default: ''
+      pr_id:
+        description: 'ID of the PR'
         required: false
         type: string
         default: ''
@@ -38,8 +39,7 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.vendor }}-
-        ${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v6
@@ -55,4 +55,4 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
         shell: bash
         run: |
-          bash ${{ inputs.test_script }} ${{ inputs.vendor }}
+          bash tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
