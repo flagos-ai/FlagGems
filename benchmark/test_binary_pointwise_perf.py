@@ -104,6 +104,8 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
             # Log operations
             ("logaddexp", torch.logaddexp, FLOAT_DTYPES),
+            # Integer operations
+            ("gcd", torch.gcd, INT_DTYPES),
         ]
     ],
 )
@@ -135,6 +137,8 @@ def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
             # Bitwise operations
             ("bitwise_and_", lambda a, b: a.bitwise_and_(b), INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or_", lambda a, b: a.bitwise_or_(b), INT_DTYPES + BOOL_DTYPES),
+            # Integer operations
+            ("gcd_", lambda a, b: a.gcd_(b), INT_DTYPES),
         ]
     ],
 )
