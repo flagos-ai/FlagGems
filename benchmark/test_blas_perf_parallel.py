@@ -16,9 +16,24 @@ import flag_gems
 from benchmark.attri_util import BenchmarkMetrics, BenchmarkResult, OperationAttribute
 from benchmark.conftest import Config, emit_record_logger
 
+try:
+    from vllm.utils.deep_gemm import (
+        fp8_gemm_nt,
+        is_deep_gemm_supported,
+        transform_sf_into_required_layout,
+    )
+
+    DEEPGEMM_AVAILABLE = is_deep_gemm_supported()
+except Exception:
+    fp8_gemm_nt = None
+    transform_sf_into_required_layout = None
+    DEEPGEMM_AVAILABLE = False
+
 PARALLEL_WORKER_ENV = "FLAGGEMS_BENCH_PARALLEL_WORKER"
 PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
 torch_device_object = flag_gems.runtime.backend.gen_torch_device_object()
+DEEPGEMM_N_MULTIPLE = 64
+DEEPGEMM_K_MULTIPLE = 128
 
 
 def _parallel_device_is_available():
@@ -197,6 +212,7 @@ class ParallelBenchmarkMixin:
                 "bmm",
                 "baddbmm",
                 "w8a8_block_fp8_matmul",
+                "w8a8_block_fp8_matmul_deepgemm",
             }:
                 normalized_shape = shape
                 if len(shape) == 3:
@@ -209,7 +225,11 @@ class ParallelBenchmarkMixin:
                 if normalized_shape is None:
                     return 1
 
-                if self.op_name in {"mm", "bmm", "w8a8_block_fp8_matmul"}:
+                if self.op_name in {
+                    "mm",
+                    "bmm",
+                    "w8a8_block_fp8_matmul",
+                }:
                     return m * n * k * 2
                 return m * n * (2 * k + 1)
 
@@ -482,7 +502,7 @@ class ParallelAddrBenchmark(ParallelBenchmarkMixin, blas_perf.AddrBenchmark):
 class ParallelW8A8BlockFP8MatmulBenchmark(
     ParallelBenchmarkMixin, blas_perf.W8A8BlockFP8MatmulBenchmark
 ):
-    SHAPE_CONFIG_KEYS = ("mm", "BlasBenchmark")
+    SHAPE_CONFIG_KEYS = ("w8a8_block_fp8_matmul", "BlasBenchmark")
 
     def set_more_shapes(self):
         if os.environ.get(PARALLEL_WORKER_ENV):
@@ -537,6 +557,118 @@ class ParallelW8A8BlockFP8MatmulBenchmark(
         self.shape_desc = "M, N, K"
 
 
+def _deepgemm_block_scaled_mm(A, B, As_dg, Bs_dg, output):
+    fp8_gemm_nt((A, As_dg), (B, Bs_dg), output)
+    return output
+
+
+class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark):
+    def __init__(self, *args, output_dtype=torch.bfloat16, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.output_dtype = output_dtype
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        self.shapes = [
+            (m, n, k)
+            for m, n, k in self.shapes
+            if n % DEEPGEMM_N_MULTIPLE == 0 and k % DEEPGEMM_K_MULTIPLE == 0
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        fp8_dtype = blas_perf.get_w8a8_block_fp8_dtype()
+        if fp8_dtype is None:
+            raise RuntimeError(
+                "DeepGEMM benchmark requires CUDA device with FP8 support"
+            )
+
+        block_n, block_k = self.block_size
+        recipe = (1, 128, 128)
+
+        for m, n, k in self.shapes:
+            num_k_groups = (k + block_k - 1) // block_k
+            num_n_groups = (n + block_n - 1) // block_n
+
+            A = blas_perf.rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
+            B = blas_perf.rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
+            As = (
+                0.01
+                * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
+                + 0.005
+            ).contiguous()
+            Bs = (
+                0.01
+                * torch.rand(
+                    (num_n_groups, num_k_groups),
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+                + 0.005
+            ).contiguous()
+
+            As_dg = transform_sf_into_required_layout(
+                sf=As.unsqueeze(0),
+                mn=m,
+                k=k,
+                recipe=recipe,
+                num_groups=1,
+                is_sfa=True,
+            ).squeeze(0)
+            Bs_dg = transform_sf_into_required_layout(
+                sf=Bs.unsqueeze(0),
+                mn=n,
+                k=k,
+                recipe=recipe,
+                num_groups=1,
+                is_sfa=False,
+            ).squeeze(0)
+            output = torch.empty((m, n), dtype=self.output_dtype, device=self.device)
+
+            yield (
+                A,
+                B,
+                As_dg,
+                Bs_dg,
+                output,
+            ), (
+                A,
+                B,
+                As,
+                Bs,
+                self.block_size[:],
+                self.output_dtype,
+            )
+
+    def _build_metric_from_input(self, input_item):
+        dg_input, gems_input = input_item
+        metric = BenchmarkMetrics()
+
+        dg_args, dg_kwargs = self.unpack_to_args_kwargs(dg_input)
+        gems_args, gems_kwargs = self.unpack_to_args_kwargs(gems_input)
+        metric.shape_detail = self.record_shapes(*gems_args, **gems_kwargs)
+
+        if "latency_base" in self.to_bench_metrics:
+            metric.latency_base = self.get_latency(self.torch_op, *dg_args, **dg_kwargs)
+        if "latency" in self.to_bench_metrics:
+            metric.latency = self.get_latency(self.gems_op, *gems_args, **gems_kwargs)
+        if "speedup" in self.to_bench_metrics:
+            metric.speedup = metric.latency_base / metric.latency
+        if "tflops" in self.to_bench_metrics:
+            metric.tflops = (
+                self.get_tflops(self.torch_op, *dg_args, **dg_kwargs)
+                / metric.latency
+                / 1e12
+                * 1e3
+            )
+        return metric
+
+    def get_tflops(self, op, *args, **kwargs):
+        A, B = args[0], args[1]
+        m, k = A.shape
+        n = B.shape[0]
+        return 2 * m * n * k
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, bench_cls",
     [
@@ -571,7 +703,7 @@ class ParallelW8A8BlockFP8MatmulBenchmark(
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
-    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
+    if flag_gems.vendor_name == "mthreads" and op_name not in ("mm", "baddbmm"):
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
     bench = bench_cls(
@@ -582,7 +714,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     )
     bench.run()
 
-    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
+    if flag_gems.vendor_name == "mthreads" and op_name not in ("mm", "baddbmm"):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
@@ -599,6 +731,25 @@ def test_perf_w8a8_block_fp8_matmul():
         op_name="w8a8_block_fp8_matmul",
         torch_op=blas_perf.vllm_w8a8_triton_block_scaled_mm,
         dtypes=["fp8"],
+    )
+    bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
+    bench.run()
+
+
+@pytest.mark.w8a8_block_fp8_matmul_deepgemm
+def test_perf_w8a8_block_fp8_matmul_deepgemm():
+    if not DEEPGEMM_AVAILABLE:
+        pytest.skip("DeepGEMM is not available on this platform")
+    if blas_perf.get_w8a8_block_fp8_dtype() is None:
+        pytest.skip(
+            "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
+        )
+
+    bench = ParallelW8A8BlockFP8DeepGemmBenchmark(
+        op_name="w8a8_block_fp8_matmul_deepgemm",
+        torch_op=_deepgemm_block_scaled_mm,
+        dtypes=["fp8"],
+        output_dtype=torch.bfloat16,
     )
     bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
     bench.run()

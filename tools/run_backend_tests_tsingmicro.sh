@@ -3,6 +3,14 @@
 VENDOR=${1}
 echo "Running FlagGems tests with GEMS_VENDOR=$VENDOR"
 
+# Tsingmicro dependencies
+export TX8_DEPS_ROOT=/opt/tsingmicro/tx8_deps
+export LLVM_SYSPATH=/opt/tsingmicro/llvm21
+export LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin
+export PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core:$PYTHONPATH
+export LD_LIBRARY_PATH=$TX8_DEPS_ROOT/lib:/usr/local/kuiper/lib:$LD_LIBRARY_PATH
+export FLAGOS_PYPI=https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple
+
 # PyEnv settings
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
@@ -13,17 +21,18 @@ source .venv/bin/activate
 
 # Setup
 uv pip install setuptools==82.0.1 scikit-build-core==0.12.2 pybind11==3.0.3 cmake==3.31.10 ninja==1.13.0
-uv pip install torch_txda==0.1.0+20260310.294fc4a6 --index https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple
-uv pip install triton==3.3.0+gitfe2a28fa --index https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple
-uv pip install txops==0.1.0+20260225.5cc33e4e --index https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple
+uv pip install torch_txda==0.1.0+20260310.294fc4a6 --index $FLAGOS_PYPI
+uv pip uninstall triton
+# Use flagtree
+uv pip install flagtree==0.5.0+tsingmicro3.3 --index $FLAGOS_PYPI
+# uv pip install triton==3.3.0+gitfe2a28fa --index $FLAGOS_PYPI
+uv pip install txops==0.1.0+20260225.5cc33e4e --index $FLAGOS_PYPI
 
 uv pip install -e .[tsingmicro,test]
 
-# For the Triton library
-SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
-
-# NOTE: special settings for triton==3.3.0+gitfe2a28fa
-export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
+# The following is needed when using `triton==3.3.0+gitfe2a28fa` rather than `flagtree`
+# SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
+# export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
 
 # NOTE: The following setting may be needed if there are exceptions related to txops.
 # export LD_LIBRARY_PATH=$SITE_PACKAGES/txops/lib:$LD_LIBRARY_PATH
@@ -66,5 +75,5 @@ TEST_FILES=(
 )
 
 for testcase in "${TEST_FILES[@]}"; do
-    pytest -s --tb=line $testcase --ref --cpu
+    pytest -s --tb=line $testcase --ref cpu
 done

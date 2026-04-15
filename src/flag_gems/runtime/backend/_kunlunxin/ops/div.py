@@ -98,8 +98,35 @@ def trunc_div_func_scalar_tensor(x, y):
     return xpu_trunc_div(x, y)
 
 
+# Integer truncation division: Triton's // on integers is C-style (truncates toward zero)
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func(x, y):
+    return x // y
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func_tensor_scalar(x, y):
+    return x // y
+
+
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func_scalar_tensor(x, y):
+    return x // y
+
+
 def trunc_divide(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE")
+    logger.debug("GEMS_KUNLUNXIN TRUNC_DIVIDE")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if isinstance(A, torch.Tensor) and not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B)
+    if isinstance(B, torch.Tensor) and not B.is_floating_point():
+        return trunc_div_int_func_scalar_tensor(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -112,7 +139,13 @@ def trunc_divide(A, B):
 
 
 def trunc_divide_(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE_")
+    logger.debug("GEMS_KUNLUNXIN TRUNC_DIVIDE_")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B, out0=A)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B, out0=A)
     if isinstance(B, torch.Tensor):
         return trunc_div_func(A, B, out0=A)
     else:

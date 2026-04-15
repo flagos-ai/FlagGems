@@ -1,3 +1,4 @@
+from .bincount import bincount
 from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
 from .flash_mla import flash_mla
@@ -44,4 +45,5 @@ __all__ = [
     "dreglu",
     "reglu",
     "sparse_attn_triton",
+    "bincount",
 ]
