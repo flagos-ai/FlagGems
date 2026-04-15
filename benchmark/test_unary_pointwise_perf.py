@@ -444,3 +444,14 @@ def test_perf_prelu():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.log10
+def test_log10_out_perf():
+    """Benchmark for log10.out variant."""
+    bench = UnaryPointwiseBenchmark(
+        op_name="log10.out",
+        torch_op=lambda inp: torch.log10(inp, out=torch.empty_like(inp)),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
