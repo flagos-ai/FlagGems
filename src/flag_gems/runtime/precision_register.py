@@ -162,18 +162,12 @@ def _wrap_op_with_precision_check(op_key, fn):
             if not is_close:
                 cfg["logged_ops"].add(op_key)
                 logger = get_precision_logger()
-                input_info = [
-                    get_tensor_info(a) for a in args if get_tensor_info(a)
-                ]
+                input_info = [get_tensor_info(a) for a in args if get_tensor_info(a)]
                 output_info = get_tensor_info(fg_result)
 
-                msg = (
-                    f"Op: {op_key} | FAIL | in: {input_info} | out: {output_info}"
-                )
+                msg = f"Op: {op_key} | FAIL | in: {input_info} | out: {output_info}"
                 if "error" in info:
-                    msg += (
-                        f" | {info['error']}: fg={info['fg']}, pt={info['pt']}"
-                    )
+                    msg += f" | {info['error']}: fg={info['fg']}, pt={info['pt']}"
                 else:
                     msg += (
                         f" | max_abs: {info['max_abs']:.6e}"
