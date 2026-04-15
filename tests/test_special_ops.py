@@ -2548,6 +2548,62 @@ def test_accuracy_margin_ranking_loss(shape, dtype, margin, reduction):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.margin_ranking_loss
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (1024, 256)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("margin", [0.0, 0.5, 1.0])
+@pytest.mark.parametrize(
+    "reduction", ["none", "mean", "sum"],
+)
+def test_accuracy_margin_ranking_loss_backward(shape, dtype, margin, reduction):
+    # Use torch.nn.functional.margin_ranking_loss as reference because
+    # torch.ops.aten.margin_ranking_loss has no registered autograd kernel,
+    # making its backward pass unreliable.
+    # Do NOT upcast reference inputs to float64 — both paths must use the same
+    # precision so that clamp(min=0) boundary decisions are identical.
+    input1 = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    input2 = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    target = (
+        torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2 - 1
+    ).to(dtype)
+
+    ref_input1 = to_reference(input1)
+    ref_input1.requires_grad_(True)
+    ref_input2 = to_reference(input2)
+    ref_input2.requires_grad_(True)
+    ref_target = to_reference(target)
+
+    reduction_int = {"none": 0, "mean": 1, "sum": 2}[reduction]
+
+    ref_out = torch.nn.functional.margin_ranking_loss(
+        ref_input1, ref_input2, ref_target, margin=margin, reduction=reduction
+    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.margin_ranking_loss(
+            input1, input2, target, margin, reduction_int
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad)
+
+    (ref_in1_grad, ref_in2_grad) = torch.autograd.grad(
+        ref_out, (ref_input1, ref_input2), ref_grad
+    )
+    with flag_gems.use_gems():
+        (res_in1_grad, res_in2_grad) = torch.autograd.grad(
+            res_out, (input1, input2), out_grad
+        )
+
+    gems_assert_close(res_in1_grad, ref_in1_grad, dtype)
+    gems_assert_close(res_in2_grad, ref_in2_grad, dtype)
+
+
 @pytest.mark.soft_margin_loss
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
