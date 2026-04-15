@@ -38,13 +38,14 @@ using namespace triton_jit;
 // Shape utilities
 // ==========================================================================
 
-inline std::vector<int64_t> broadcast_shapes(const std::vector<std::vector<int64_t>>& shapes) {
+inline c10::SmallVector<int64_t, 8> broadcast_shapes(
+    const c10::SmallVector<c10::SmallVector<int64_t, 8>, 4>& shapes) {
   if (shapes.empty()) return {};
   size_t max_ndim = 0;
   for (const auto& shape : shapes) {
     max_ndim = std::max(max_ndim, shape.size());
   }
-  std::vector<int64_t> result(max_ndim, 1);
+  c10::SmallVector<int64_t, 8> result(max_ndim, 1);
   for (const auto& shape : shapes) {
     size_t offset = max_ndim - shape.size();
     for (size_t i = 0; i < shape.size(); ++i) {
@@ -60,12 +61,12 @@ inline std::vector<int64_t> broadcast_shapes(const std::vector<std::vector<int64
   return result;
 }
 
-inline std::vector<int64_t> broadcasted_stride(const std::vector<int64_t>& shape,
-                                               const std::vector<int64_t>& stride,
-                                               const std::vector<int64_t>& target_shape) {
+inline c10::SmallVector<int64_t, 8> broadcasted_stride(at::IntArrayRef shape,
+                                                       at::IntArrayRef stride,
+                                                       const c10::SmallVector<int64_t, 8>& target_shape) {
   size_t ndim = target_shape.size();
   size_t offset = ndim - shape.size();
-  std::vector<int64_t> result(ndim, 0);
+  c10::SmallVector<int64_t, 8> result(ndim, 0);
   for (size_t i = 0; i < shape.size(); ++i) {
     if (shape[i] == target_shape[offset + i]) {
       result[offset + i] = stride[i];
@@ -79,8 +80,8 @@ inline std::vector<int64_t> broadcasted_stride(const std::vector<int64_t>& shape
 // Sorts dimension indices by ascending absolute stride value.
 // ==========================================================================
 
-inline std::vector<int64_t> compute_stride_order(const std::vector<int64_t>& strides) {
-  std::vector<int64_t> order(strides.size());
+inline c10::SmallVector<int64_t, 8> compute_stride_order(at::IntArrayRef strides) {
+  c10::SmallVector<int64_t, 8> order(strides.size());
   std::iota(order.begin(), order.end(), int64_t {0});
   std::sort(order.begin(), order.end(), [&](int64_t lhs, int64_t rhs) {
     return std::llabs(strides[lhs]) < std::llabs(strides[rhs]);
@@ -92,10 +93,39 @@ inline std::vector<int64_t> compute_stride_order(const std::vector<int64_t>& str
 // Launch heuristics
 // ==========================================================================
 
+inline int64_t next_power_of_2(int64_t n) {
+  if (n <= 1) return 1;
+  n--;
+  n |= n >> 1;
+  n |= n >> 2;
+  n |= n >> 4;
+  n |= n >> 8;
+  n |= n >> 16;
+  n |= n >> 32;
+  return n + 1;
+}
+
+// 1D heuristic: used for fast-path (1D tile) kernels
 inline int64_t heuristics_for_tile_size(int64_t num_tasks) {
   int64_t tile = 1;
   while (tile < 1024 && tile < num_tasks) tile *= 2;
   return std::min(tile, int64_t(1024));
+}
+
+// ND heuristic: budget-based per-dimension tile sizes.
+// Mirrors Python's heuristics_for_tile_size(max_tile_size, *shape) in
+// flag_gems/utils/shape_utils.py.  Distributes the tile budget starting
+// from the innermost (last) dimension.
+inline c10::SmallVector<int64_t, 8> heuristics_for_nd_tile_sizes(int64_t max_tile_size,
+                                                                 const c10::SmallVector<int64_t, 8>& shape) {
+  int ndim = static_cast<int>(shape.size());
+  c10::SmallVector<int64_t, 8> tile_sizes(ndim, 0);
+  for (int i = ndim - 1; i >= 0; --i) {
+    int64_t ts = std::min(max_tile_size, next_power_of_2(shape[i]));
+    tile_sizes[i] = ts;
+    max_tile_size = std::max(int64_t(1), max_tile_size / ts);
+  }
+  return tile_sizes;
 }
 
 inline int heuristics_for_num_warps(int64_t tile_size) {
@@ -109,7 +139,7 @@ inline int heuristics_for_num_warps(int64_t tile_size) {
 // Fast-path detection (same logic as Python pointwise_dynamic)
 // ==========================================================================
 
-inline bool all_same_shape(const std::vector<at::Tensor>& tensors) {
+inline bool all_same_shape(const c10::SmallVector<at::Tensor, 4>& tensors) {
   if (tensors.empty()) return true;
   const auto& first_sizes = tensors[0].sizes();
   for (size_t i = 1; i < tensors.size(); ++i) {
@@ -120,7 +150,7 @@ inline bool all_same_shape(const std::vector<at::Tensor>& tensors) {
   return true;
 }
 
-inline bool all_contiguous(const std::vector<at::Tensor>& tensors) {
+inline bool all_contiguous(const c10::SmallVector<at::Tensor, 4>& tensors) {
   for (const auto& t : tensors) {
     if (!t.is_contiguous()) {
       return false;
@@ -129,7 +159,7 @@ inline bool all_contiguous(const std::vector<at::Tensor>& tensors) {
   return true;
 }
 
-inline bool all_same_stride(const std::vector<at::Tensor>& tensors) {
+inline bool all_same_stride(const c10::SmallVector<at::Tensor, 4>& tensors) {
   if (tensors.empty()) return true;
   const auto& first_strides = tensors[0].strides();
   for (size_t i = 1; i < tensors.size(); ++i) {
@@ -142,7 +172,7 @@ inline bool all_same_stride(const std::vector<at::Tensor>& tensors) {
 
 // Fast path: when all tensors have same shape and are contiguous (or same
 // stride + non-overlapping dense), we can collapse to 1D for simpler indexing.
-inline bool use_fast_path(const std::vector<at::Tensor>& tensors) {
+inline bool use_fast_path(const c10::SmallVector<at::Tensor, 4>& tensors) {
   if (!all_same_shape(tensors)) {
     return false;
   }
@@ -161,7 +191,10 @@ inline bool use_fast_path(const std::vector<at::Tensor>& tensors) {
 
 inline bool has_internal_overlapping(const at::Tensor& t) {
   if (t.numel() <= 1) return false;
-  return !t.is_non_overlapping_and_dense();
+  // Match Python: at::has_internal_overlap returns MemOverlap::Yes for actual
+  // overlap. Using !is_non_overlapping_and_dense() is too strict — it rejects
+  // non-dense views (e.g. KV cache slices) that have no overlap.
+  return at::has_internal_overlap(t) == at::MemOverlap::Yes;
 }
 
 // ==========================================================================
@@ -190,33 +223,38 @@ inline at::ScalarType to_opmath_dtype(at::ScalarType dtype) {
 
 // Compute (computation_dtype, result_dtype) for a set of inputs given a
 // promotion rule.  Mirrors Python's torch._prims_common.elementwise_dtypes.
+//
+// Optimized: avoids creating temporary at::scalar_tensor objects for scalar
+// args — uses ScalarType directly for type promotion.
+template <typename TensorContainer>
 inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
-    const std::vector<at::Tensor>& inputs,
+    const TensorContainer& inputs,
     const std::vector<double>& scalar_args,
     const std::vector<bool>& is_tensor_mask,
     const PromotionRule& rule) {
-  // Gather the referenced args as tensors for promote_types
-  std::vector<at::Tensor> promote_tensors;
+  // Collect ScalarTypes directly — no tensor allocation needed
+  at::ScalarType common_dtype = at::ScalarType::Undefined;
+  bool first = true;
+
   for (int idx : rule.arg_indices) {
+    at::ScalarType this_dtype;
     if (is_tensor_mask[idx]) {
       int tensor_idx = 0;
       for (int k = 0; k < idx; ++k) {
         if (is_tensor_mask[k]) tensor_idx++;
       }
-      promote_tensors.push_back(inputs[tensor_idx]);
+      this_dtype = inputs[tensor_idx].scalar_type();
     } else {
-      int scalar_idx = 0;
-      for (int k = 0; k < idx; ++k) {
-        if (!is_tensor_mask[k]) scalar_idx++;
-      }
-      promote_tensors.push_back(at::scalar_tensor(scalar_args[scalar_idx]));
+      // Python scalars default to float64 (double)
+      this_dtype = at::kDouble;
     }
-  }
 
-  // Use PyTorch's promote_types to find the common dtype
-  at::ScalarType common_dtype = promote_tensors[0].scalar_type();
-  for (size_t i = 1; i < promote_tensors.size(); ++i) {
-    common_dtype = at::promote_types(common_dtype, promote_tensors[i].scalar_type());
+    if (first) {
+      common_dtype = this_dtype;
+      first = false;
+    } else {
+      common_dtype = at::promote_types(common_dtype, this_dtype);
+    }
   }
 
   at::ScalarType computation_dtype = common_dtype;
@@ -283,9 +321,9 @@ inline std::pair<at::ScalarType, at::ScalarType> compute_promoted_dtype(
 // ==========================================================================
 
 inline at::Tensor make_strided_view(const at::Tensor& base,
-                                    const std::vector<int64_t>& shape,
-                                    const std::vector<int64_t>& strides) {
-  return base.as_strided(shape, strides, /*storage_offset=*/0);
+                                    const c10::SmallVector<int64_t, 8>& shape,
+                                    const c10::SmallVector<int64_t, 8>& strides) {
+  return base.as_strided(shape, strides, base.storage_offset());
 }
 
 // ==========================================================================
@@ -295,23 +333,47 @@ inline at::Tensor make_strided_view(const at::Tensor& base,
 // Mirrors Python's PointwiseDynamicFunction.prepare_args + __call__
 // ==========================================================================
 
-inline at::Tensor dispatch_pointwise(const std::string& op_name,
-                                     const std::vector<at::Tensor>& inputs,
-                                     const std::vector<double>& scalar_args = {},
-                                     const std::vector<bool>& is_tensor_mask = {},
-                                     const std::vector<c10::optional<at::Tensor>>& pre_outputs = {}) {
-  // Lookup kernel metadata (all ranks share the same metadata)
-  const KernelInfo* info_meta = get_kernel_info(op_name, 0);
-  if (!info_meta) {
-    throw std::runtime_error("Unknown op: " + op_name);
+// Internal implementation that takes a pre-resolved kernel registry to avoid
+// repeated string-based hash map lookups.  The public dispatch_pointwise()
+// overloads resolve the registry once and delegate here.
+inline at::Tensor dispatch_pointwise_impl(const std::unordered_map<int, KernelInfo>& op_registry,
+                                          const std::vector<at::Tensor>& inputs_orig,
+                                          const std::vector<double>& scalar_args,
+                                          const std::vector<bool>& is_tensor_mask,
+                                          const std::vector<c10::optional<at::Tensor>>& pre_outputs) {
+  // =========================================================================
+  // Device promotion: move CPU scalar tensors (0-dim) to the target device.
+  // =========================================================================
+  c10::Device target_device = c10::kCPU;
+  for (const auto& t : inputs_orig) {
+    if (t.device() != c10::kCPU) {
+      target_device = t.device();
+      break;
+    }
   }
+  c10::SmallVector<at::Tensor, 4> inputs;
+  inputs.reserve(inputs_orig.size());
+  for (const auto& t : inputs_orig) {
+    if (t.device() == c10::kCPU && t.dim() == 0 && target_device != c10::kCPU) {
+      inputs.push_back(t.to(target_device));
+    } else {
+      inputs.push_back(t);
+    }
+  }
+
+  // Lookup kernel metadata (rank 0 entry carries shared metadata)
+  auto meta_it = op_registry.find(0);
+  if (meta_it == op_registry.end()) {
+    throw std::runtime_error("No kernel metadata found (rank 0)");
+  }
+  const KernelInfo* info_meta = &meta_it->second;
   int num_outputs = info_meta->num_outputs;
 
   // =========================================================================
   // Collect pre-allocated outputs and determine which need allocation
   // =========================================================================
-  std::vector<at::Tensor> out_tensors;
-  std::vector<int> outputs_that_need_allocation;
+  c10::SmallVector<at::Tensor, 2> out_tensors;
+  c10::SmallVector<int, 2> outputs_that_need_allocation;
   for (int i = 0; i < num_outputs; ++i) {
     if (i < static_cast<int>(pre_outputs.size()) && pre_outputs[i].has_value()) {
       out_tensors.push_back(pre_outputs[i].value());
@@ -321,9 +383,10 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   }
 
   // Compute broadcast shape from input tensors
-  std::vector<std::vector<int64_t>> shapes;
+  c10::SmallVector<c10::SmallVector<int64_t, 8>, 4> shapes;
+  shapes.reserve(inputs.size());
   for (const auto& t : inputs) {
-    shapes.push_back(t.sizes().vec());
+    shapes.emplace_back(t.sizes().begin(), t.sizes().end());
   }
   auto out_shape = broadcast_shapes(shapes);
 
@@ -332,7 +395,9 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   // =========================================================================
   for (size_t i = 0; i < out_tensors.size(); ++i) {
     const auto& ot = out_tensors[i];
-    if (ot.sizes().vec() != out_shape) {
+    auto ot_sizes = ot.sizes();
+    if (ot_sizes.size() != out_shape.size() ||
+        !std::equal(ot_sizes.begin(), ot_sizes.end(), out_shape.begin())) {
       throw std::runtime_error("out tensor at index " + std::to_string(i) +
                                " has invalid shape, expected broadcast shape");
     }
@@ -343,17 +408,14 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
 
   // =========================================================================
   // Fast-path detection: includes BOTH pre-allocated outputs and inputs
-  // Mirrors Python: tensors = out_tensors + in_tensors
   // =========================================================================
-  std::vector<at::Tensor> all_tensors;
+  c10::SmallVector<at::Tensor, 4> all_tensors;
   all_tensors.reserve(out_tensors.size() + inputs.size());
   all_tensors.insert(all_tensors.end(), out_tensors.begin(), out_tensors.end());
   all_tensors.insert(all_tensors.end(), inputs.begin(), inputs.end());
 
   // =========================================================================
-  // INT32_MAX check: disable block pointer for very large tensors
-  // Mirrors Python: if tensors[0].numel() > INT32_MAX:
-  //                      self.config.prefer_block_pointer = False
+  // INT32_MAX check
   // =========================================================================
   constexpr int64_t INT32_MAX_VAL = std::numeric_limits<int32_t>::max();
   bool prefer_block_pointer = true;
@@ -361,7 +423,7 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
     prefer_block_pointer = false;
   }
 
-  std::vector<int64_t> task_shape;
+  c10::SmallVector<int64_t, 8> task_shape;
   int ndim;
 
   bool fast_path = use_fast_path(all_tensors);
@@ -376,25 +438,30 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
     ndim = static_cast<int>(out_shape.size());
   }
 
-  // Lookup kernel by effective rank
-  const KernelInfo* info = get_kernel_info(op_name, ndim);
-  if (!info) {
-    throw std::runtime_error("No kernel for " + op_name + " rank " + std::to_string(ndim));
+  // Lookup kernel by effective rank — direct map lookup, no string hash
+  auto rank_it = op_registry.find(ndim);
+  if (rank_it == op_registry.end()) {
+    throw std::runtime_error("No kernel for rank " + std::to_string(ndim));
   }
+  const KernelInfo* info = &rank_it->second;
 
   // =========================================================================
   // Dtype promotion: only for outputs that need allocation
   // =========================================================================
-  std::vector<bool> tensor_mask = is_tensor_mask;
-  if (tensor_mask.empty()) {
+  const std::vector<bool>& tensor_mask =
+      !is_tensor_mask.empty() ? is_tensor_mask : [&]() -> const std::vector<bool>& {
+    // Build default mask on first use; cached via static thread_local
+    // to avoid repeated allocation for the common case.
+    thread_local std::vector<bool> default_mask;
     int total_args = info->num_input_tensors + info->num_non_tensor_inputs;
-    tensor_mask.resize(total_args, false);
-    for (int i = 0; i < total_args; ++i) {
-      tensor_mask[i] = (i < info->num_input_tensors);
+    default_mask.assign(total_args, false);
+    for (int i = 0; i < info->num_input_tensors; ++i) {
+      default_mask[i] = true;
     }
-  }
+    return default_mask;
+  }();
 
-  std::vector<at::ScalarType> alloc_dtypes;
+  c10::SmallVector<at::ScalarType, 2> alloc_dtypes;
   for (int out_idx : outputs_that_need_allocation) {
     if (out_idx < static_cast<int>(info->promotion_rules.size())) {
       auto [comp_dtype, result_dtype] =
@@ -408,7 +475,7 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   // =========================================================================
   // Allocate missing outputs
   // =========================================================================
-  std::vector<at::Tensor> allocated_outputs;
+  c10::SmallVector<at::Tensor, 2> allocated_outputs;
   if (fast_path) {
     for (auto dtype : alloc_dtypes) {
       allocated_outputs.push_back(at::empty_like(all_tensors[0], at::TensorOptions().dtype(dtype)));
@@ -416,7 +483,9 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   } else {
     const at::Tensor* template_tensor = nullptr;
     for (const auto& t : all_tensors) {
-      if (t.sizes().vec() == task_shape) {
+      auto t_sizes = t.sizes();
+      if (t_sizes.size() == task_shape.size() &&
+          std::equal(t_sizes.begin(), t_sizes.end(), task_shape.begin())) {
         template_tensor = &t;
         break;
       }
@@ -433,7 +502,7 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   // =========================================================================
   // Build final output list: merge pre-allocated + newly allocated
   // =========================================================================
-  std::vector<at::Tensor> outputs(num_outputs);
+  c10::SmallVector<at::Tensor, 2> outputs(num_outputs);
   int alloc_idx = 0;
   for (int i = 0; i < num_outputs; ++i) {
     if (i < static_cast<int>(pre_outputs.size()) && pre_outputs[i].has_value()) {
@@ -445,19 +514,15 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
 
   // Early return for empty tensors
   if (outputs[0].numel() == 0) {
-    return outputs[0];  // TODO: multi-output support
+    return outputs[0];
   }
 
   // =========================================================================
   // Create strided views via as_strided
-  // Mirrors Python: StridedBuffer(tensor, task_shape, strides)
-  //   Fast path: shape={numel}, strides={1}
-  //   Slow path: shape=task_shape, strides=broadcasted_stride(...)
   // =========================================================================
-  std::vector<int64_t> unit_strides(ndim, 1);  // used in fast path
+  c10::SmallVector<int64_t, 8> unit_strides(ndim, 1);
 
-  // Input views
-  std::vector<at::Tensor> input_views;
+  c10::SmallVector<at::Tensor, 4> input_views;
   input_views.reserve(inputs.size());
   if (fast_path) {
     for (const auto& t : inputs) {
@@ -466,14 +531,11 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   } else {
     for (const auto& t : inputs) {
       input_views.push_back(
-          make_strided_view(t,
-                            task_shape,
-                            broadcasted_stride(t.sizes().vec(), t.strides().vec(), out_shape)));
+          make_strided_view(t, task_shape, broadcasted_stride(t.sizes(), t.strides(), out_shape)));
     }
   }
 
-  // Output views
-  std::vector<at::Tensor> output_views;
+  c10::SmallVector<at::Tensor, 2> output_views;
   output_views.reserve(outputs.size());
   if (fast_path) {
     for (const auto& t : outputs) {
@@ -482,9 +544,7 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   } else {
     for (const auto& t : outputs) {
       output_views.push_back(
-          make_strided_view(t,
-                            task_shape,
-                            broadcasted_stride(t.sizes().vec(), t.strides().vec(), task_shape)));
+          make_strided_view(t, task_shape, broadcasted_stride(t.sizes(), t.strides(), task_shape)));
     }
   }
 
@@ -496,8 +556,24 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   int64_t num_tasks = 1;
   for (auto d : task_shape) num_tasks *= d;
 
-  int64_t tile_size = heuristics_for_tile_size(num_tasks);
-  int64_t num_tiles = (num_tasks + tile_size - 1) / tile_size;
+  c10::SmallVector<int64_t, 8> nd_tile_sizes;
+  int64_t tile_size;
+  int64_t num_tiles;
+
+  bool use_nd_tiles = !info->is_1d_tile && ndim > 1;
+  if (use_nd_tiles) {
+    nd_tile_sizes = heuristics_for_nd_tile_sizes(info->max_tile_size, task_shape);
+    tile_size = 1;
+    num_tiles = 1;
+    for (int d = 0; d < ndim; ++d) {
+      tile_size *= nd_tile_sizes[d];
+      num_tiles *= (task_shape[d] + nd_tile_sizes[d] - 1) / nd_tile_sizes[d];
+    }
+  } else {
+    tile_size = heuristics_for_tile_size(num_tasks);
+    num_tiles = (num_tasks + tile_size - 1) / tile_size;
+  }
+
   int64_t num_ctas = std::min(num_tiles, int64_t(65535));
   int64_t tiles_per_cta = (num_tiles + num_ctas - 1) / num_ctas;
   int num_warps = heuristics_for_num_warps(tile_size);
@@ -509,14 +585,7 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
   CUstream raw_stream = static_cast<CUstream>(cuda_stream.stream());
 
   // =========================================================================
-  // Build kernel arguments dynamically using ParameterBuffer + ArgHandle
-  //
-  // Argument order for _bptr kernels (mirrors Python gen_kernel_launch):
-  //   1. Data args: input tensors (interleaved with scalars by position) + output tensors
-  //   2. Per-input: strides[0..ndim-1], stride_order[0..ndim-1]
-  //   3. Per-output: strides[0..ndim-1], stride_order[0..ndim-1]
-  //   4. Shape dims: shape[0..ndim-1]
-  //   5. Trailing: num_tasks, tiles_per_cta, tile_size(s), one_tile_per_cta
+  // Build kernel arguments
   // =========================================================================
   {
     ParameterBuffer buffer;
@@ -526,41 +595,36 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
     signature.reserve(ssig.num_args);
     ArgHandle handler = {ssig, buffer, signature, 0};
 
-    // --- 1. Data args: inputs (tensors + scalars interleaved) + outputs ---
-    // Reconstruct the interleaved order using is_tensor_mask:
-    //   tensor_mask[i] == true  → next input tensor
-    //   tensor_mask[i] == false → next scalar arg
+    // --- 1. Data args ---
     int tensor_idx = 0;
     int scalar_idx = 0;
     for (size_t i = 0; i < tensor_mask.size(); ++i) {
       if (tensor_mask[i]) {
-        // Pass the view tensor — ArgHandle::handle_tensor extracts data_ptr
         handler.handle_arg(input_views[tensor_idx]);
         tensor_idx++;
       } else {
-        // Pass scalar as double
         handler.handle_arg(scalar_args[scalar_idx]);
         scalar_idx++;
       }
     }
-    // Output tensors
     for (int i = 0; i < num_outputs; ++i) {
       handler.handle_arg(output_views[i]);
     }
 
-    // --- 2. Per-input strides + stride_order (for ndim > 0) ---
+    // --- 2. Per-input strides + stride_order ---
+    bool with_stride_order = info->is_block_pointer;
+
     if (ndim > 0) {
       for (size_t i = 0; i < input_views.size(); ++i) {
         auto strides = input_views[i].strides();
         for (int d = 0; d < ndim; ++d) {
           handler.handle_arg(strides[d]);
         }
-        // stride_order for block pointer kernels
-        // For ndim >= 2, compute stride order; for ndim == 1, order is just (0,)
-        auto stride_order =
-            (ndim >= 2) ? compute_stride_order({strides.begin(), strides.end()}) : std::vector<int64_t> {0};
-        for (int d = 0; d < ndim; ++d) {
-          handler.handle_arg(stride_order[d]);
+        if (with_stride_order) {
+          auto stride_order = (ndim >= 2) ? compute_stride_order(strides) : c10::SmallVector<int64_t, 8> {0};
+          for (int d = 0; d < ndim; ++d) {
+            handler.handle_arg(stride_order[d]);
+          }
         }
       }
 
@@ -570,10 +634,11 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
         for (int d = 0; d < ndim; ++d) {
           handler.handle_arg(strides[d]);
         }
-        auto stride_order =
-            (ndim >= 2) ? compute_stride_order({strides.begin(), strides.end()}) : std::vector<int64_t> {0};
-        for (int d = 0; d < ndim; ++d) {
-          handler.handle_arg(stride_order[d]);
+        if (with_stride_order) {
+          auto stride_order = (ndim >= 2) ? compute_stride_order(strides) : c10::SmallVector<int64_t, 8> {0};
+          for (int d = 0; d < ndim; ++d) {
+            handler.handle_arg(stride_order[d]);
+          }
         }
       }
 
@@ -583,45 +648,57 @@ inline at::Tensor dispatch_pointwise(const std::string& op_name,
       }
 
       // --- 5. Trailing launch parameters ---
-      handler.handle_arg(num_tasks);      // num_tasks
-      handler.handle_arg(tiles_per_cta);  // tiles_per_cta
+      handler.handle_arg(num_tasks);
+      handler.handle_arg(tiles_per_cta);
 
-      // tile_sizes: 1D fast path uses single tile_size; nD uses per-dim
-      if (ndim == 1) {
-        handler.handle_arg(tile_size);  // tile_size (single)
-      } else {
-        // For nD, compute per-dim tile sizes using heuristics
+      if (use_nd_tiles) {
         for (int d = 0; d < ndim; ++d) {
-          int64_t dim_tile = heuristics_for_tile_size(task_shape[d]);
-          handler.handle_arg(dim_tile);  // tile_size{d}
+          handler.handle_arg(nd_tile_sizes[d]);
         }
+      } else {
+        handler.handle_arg(tile_size);
       }
-      handler.handle_arg(one_tile_per_cta);  // one_tile_per_cta
+      handler.handle_arg(one_tile_per_cta);
     }
 
-    // Append global scratch (required by triton runtime)
-    handler.append_scratch();
+    handler.append_global_scratch();
+    handler.append_global_scratch();
 
-    // Build signature and launch
     std::string full_signature = join_sig(signature);
 
-    ensure_cuda_context();
-    CUdevice device_index;
-    checkCudaErrors(cuCtxGetDevice(&device_index));
-
-    const TritonKernel& compiled_kernel =
-        kernel.get_kernel(full_signature, num_warps, 1 /* num_stages */, device_index);
     c10::SmallVector<void*> ptrs = buffer.get_ptrs();
-    compiled_kernel.launch(static_cast<unsigned int>(num_ctas), 1, 1, num_warps, raw_stream, ptrs.data());
+    kernel.launch_with_raw_args(raw_stream,
+                                static_cast<unsigned int>(num_ctas),
+                                1,
+                                1,
+                                num_warps,
+                                1 /* num_stages */,
+                                full_signature,
+                                ptrs.data(),
+                                ptrs.size());
   }
 
-  // =========================================================================
-  // Return the output tensor
-  // The kernel wrote into the output's storage via the strided view,
-  // so we return the original output tensor (not the view).
-  // =========================================================================
-  // TODO: multi-output support — return tuple of tensors
   return outputs[0];
+}
+
+// ==========================================================================
+// Public API: dispatch_pointwise with string-based op_name lookup.
+// Resolves the registry once per op via static local cache, then delegates
+// to dispatch_pointwise_impl which uses the pre-resolved registry.
+// ==========================================================================
+
+inline at::Tensor dispatch_pointwise(const std::string& op_name,
+                                     const std::vector<at::Tensor>& inputs_orig,
+                                     const std::vector<double>& scalar_args = {},
+                                     const std::vector<bool>& is_tensor_mask = {},
+                                     const std::vector<c10::optional<at::Tensor>>& pre_outputs = {}) {
+  // Resolve op registry — the KERNEL_REGISTRY is a compile-time constant map,
+  // so this lookup is safe to cache for the process lifetime.
+  auto op_it = KERNEL_REGISTRY.find(op_name);
+  if (op_it == KERNEL_REGISTRY.end()) {
+    throw std::runtime_error("Unknown op: " + op_name);
+  }
+  return dispatch_pointwise_impl(op_it->second, inputs_orig, scalar_args, is_tensor_mask, pre_outputs);
 }
 
 // Convenience overload: dispatch with a single pre-allocated output tensor

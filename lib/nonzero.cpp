@@ -2,7 +2,7 @@
 #include "flag_gems/utils.h"
 
 #include <iostream>
-#include "c10/cuda/CUDAStream.h"
+#include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -26,16 +26,17 @@ at::Tensor nonzero(const at::Tensor &inp) {
   at::Tensor prefix_sum = at::cumsum(inp_bool, /*dim=*/0);
 
   int64_t num_nonzeros = n_elements;
-  at::Tensor out =
-      at::empty({num_nonzeros, inp_ndim}, at::TensorOptions().dtype(torch::kInt64).device(inp_ctg.device()));
+
+  at::Tensor out = at::empty({num_nonzeros + 1, inp_ndim},
+                             at::TensorOptions().dtype(torch::kInt64).device(inp_ctg.device()));
 
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "nonzero.py"),
                                       "nonzero_kernel");
 
   c10::DeviceGuard guard(out.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   int BLOCK_SIZE = 1024;
   unsigned int grid_x = (n_elements + BLOCK_SIZE - 1) / BLOCK_SIZE;

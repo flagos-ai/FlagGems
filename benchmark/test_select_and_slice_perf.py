@@ -78,7 +78,6 @@ def index_select_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
-@pytest.mark.index_select
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",
     [
@@ -128,7 +127,6 @@ def test_perf_masked_scatter_inplace():
     bench.run()
 
 
-@pytest.mark.masked_select
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",
     [
@@ -142,7 +140,7 @@ def test_perf_masked_scatter_inplace():
         ),
     ],
 )
-def test_perf_masked_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
+def test_masked_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
@@ -193,8 +191,8 @@ def scatter_inplace_input_fn_factory(reduce=None):
     return inner
 
 
-@pytest.mark.scatter
-def test_perf_scatter():
+@pytest.mark.scatter_src
+def test_scatter_src():
     bench = TensorSelectBenchmark(
         op_name="scatter.src",
         torch_op=torch.scatter,
@@ -205,8 +203,8 @@ def test_perf_scatter():
     bench.run()
 
 
-@pytest.mark.scatter
-def test_perf_scatter_add():
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_add():
     bench = TensorSelectBenchmark(
         op_name="scatter.reduce",
         torch_op=torch.scatter,
@@ -217,8 +215,59 @@ def test_perf_scatter_add():
     bench.run()
 
 
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_multiply():
+    bench = TensorSelectBenchmark(
+        op_name="scatter.reduce",
+        torch_op=torch.scatter,
+        input_fn=scatter_input_fn_factory("multiply"),
+        get_gbps=gather_scatter_gbps,
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_src_
+def test_scatter_src_inplace():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_.src",
+        torch_op=torch.Tensor.scatter_,
+        input_fn=scatter_inplace_input_fn_factory(),
+        get_gbps=gather_scatter_gbps,
+        dtypes=FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_
+def test_scatter_reduce_add_inplace():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_.reduce",
+        torch_op=torch.Tensor.scatter_,
+        input_fn=scatter_inplace_input_fn_factory("add"),
+        get_gbps=gather_scatter_gbps,
+        dtypes=[torch.float16, torch.float32],
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_reduce_
+def test_scatter_reduce_multiply_inplace():
+    bench = TensorSelectBenchmark(
+        op_name="scatter_.reduce",
+        torch_op=torch.Tensor.scatter_,
+        input_fn=scatter_inplace_input_fn_factory("multiply"),
+        get_gbps=gather_scatter_gbps,
+        dtypes=[torch.float16, torch.float32],
+        is_inplace=True,
+    )
+    bench.run()
+
+
 @pytest.mark.scatter_add_
-def test_perf_scatter_add_():
+def test_scatter_add_inplace():
     def scatter_input_fn(shape, dtype, device):
         input_gen = gather_input_fn(shape, dtype, device)
         inp, dim, index = next(input_gen)
@@ -233,58 +282,6 @@ def test_perf_scatter_add_():
         input_fn=scatter_input_fn,
         get_gbps=gather_scatter_gbps,
         dtypes=FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.scatter_multiply
-@pytest.mark.scatter
-def test_perf_scatter_multiply():
-    bench = TensorSelectBenchmark(
-        op_name="scatter.reduce",
-        torch_op=torch.scatter,
-        input_fn=scatter_input_fn_factory("multiply"),
-        get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
-    )
-    bench.run()
-
-
-@pytest.mark.scatter_
-def test_perf_scatter_inplace():
-    bench = TensorSelectBenchmark(
-        op_name="scatter_.src",
-        torch_op=torch.Tensor.scatter_,
-        input_fn=scatter_inplace_input_fn_factory(),
-        get_gbps=gather_scatter_gbps,
-        dtypes=FLOAT_DTYPES,
-        is_inplace=True,
-    )
-    bench.run()
-
-
-@pytest.mark.scatter_
-def test_perf_scatter_add_inplace():
-    bench = TensorSelectBenchmark(
-        op_name="scatter_.reduce",
-        torch_op=torch.Tensor.scatter_,
-        input_fn=scatter_inplace_input_fn_factory("add"),
-        get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
-        is_inplace=True,
-    )
-    bench.run()
-
-
-@pytest.mark.scatter_
-def test_perf_scatter_multiply_inplace():
-    bench = TensorSelectBenchmark(
-        op_name="scatter_.reduce",
-        torch_op=torch.Tensor.scatter_,
-        input_fn=scatter_inplace_input_fn_factory("multiply"),
-        get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
-        is_inplace=True,
     )
     bench.run()
 
@@ -329,6 +326,79 @@ def test_perf_gather_backward():
         dtypes=[torch.float32, torch.float16],
         is_backward=True,
     )
+    bench.run()
+
+
+class SliceBackwardBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        SLICE_BACKWARD_SHAPES = (
+            (128, 256),
+            (1024, 1024),
+            (512, 1024, 512),
+            (16, 8192, 4096),
+            (8, 4096, 11008),
+            (4, 32, 4096, 128),
+            (32, 256, 256, 128),
+        )
+
+        self.shapes = SLICE_BACKWARD_SHAPES
+        return None
+
+
+def slice_backward_gbps(args, latency):
+    grad_output, shape, dim, start, end, step = args
+
+    bytes_per_element = grad_output.element_size()
+
+    output_numel = 1
+    for s in shape:
+        output_numel *= s
+
+    total_bytes = (grad_output.numel() + output_numel) * bytes_per_element
+
+    return total_bytes / latency / 1e9
+
+
+@pytest.mark.slice
+def test_slice_backward_perf():
+    def slice_backward_input_fn(shape, dtype, device):
+        dim = 0 if len(shape) == 1 else 1
+
+        start = 0
+        end = shape[dim]
+        step = 2
+
+        size = shape[dim]
+
+        start = start % size
+        end = end % (size + 1)
+
+        if end < start:
+            end, start = start, end
+        elif end == start:
+            end = size
+
+        slice_len = (end - start + step - 1) // step
+
+        valid_shape = list(shape)
+        valid_shape[dim] = slice_len
+
+        grad_output = torch.randn(
+            valid_shape,
+            dtype=dtype,
+            device=device,
+        )
+
+        yield grad_output, shape, dim, start, end, step
+
+    bench = SliceBackwardBenchmark(
+        op_name="slice_backward",
+        torch_op=torch.ops.aten.slice_backward,
+        input_fn=slice_backward_input_fn,
+        dtypes=FLOAT_DTYPES,
+        get_gbps=slice_backward_gbps,
+    )
+
     bench.run()
 
 
