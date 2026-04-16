@@ -8,13 +8,14 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+from .bmm import bmm
 from .mul import mul
 
 logger = logging.getLogger(__name__)
 
 
 def heur_tile_m(args):
-    M = args["M"]
+    M = args.get("M", 0)
     if M <= 16:
         return 16
     elif M <= 32:
@@ -26,7 +27,7 @@ def heur_tile_m(args):
 
 
 def heur_tile_n(args):
-    N = args["N"]
+    N = args.get("N", 0)
     if N <= 16:
         return 16
     elif N <= 32:
@@ -42,15 +43,15 @@ def heur_tile_k(args):
 
 
 def heur_divisible_m(args):
-    return args["M"] % args["TILE_M"] == 0
+    return args.get("M", 0) % args.get("TILE_M", 1) == 0
 
 
 def heur_divisible_n(args):
-    return args["N"] % args["TILE_N"] == 0
+    return args.get("N", 0) % args.get("TILE_N", 1) == 0
 
 
 def heur_divisible_k(args):
-    return args["K"] % args["TILE_K"] == 0
+    return args.get("K", 0) % args.get("TILE_K", 1) == 0
 
 
 @libentry()
@@ -186,7 +187,7 @@ def baddbmm_kernel(
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
-        logger.debug("GEMS BADDBMM FORWARD")
+        logger.debug("GEMS_KUNLUNXIN BADDBMM FORWARD")
 
         ctx.save_for_backward(A, B, bias)
         ctx.alpha = alpha
@@ -236,7 +237,7 @@ class BaddbmmFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS BADDBMM BACKWARD")
+        logger.debug("GEMS_KUNLUNXIN BADDBMM BACKWARD")
         A, B, bias = ctx.saved_tensors
 
         grad_A = None
@@ -269,11 +270,11 @@ def compute_A_grad(d_output, B, alpha):
     if B.dtype == torch.float16:
         Bcopy = B_T.to(torch.float32)
         dcopye = d_output.to(torch.float32)
-        mul1 = torch.bmm(dcopye, Bcopy)
+        mul1 = bmm(dcopye, Bcopy)
         grad_A = mul(mul1, alpha)
         grad_A = grad_A.to(torch.float16)
     else:
-        mul1 = torch.bmm(d_output, B_T)
+        mul1 = bmm(d_output, B_T)
         grad_A = mul(mul1, alpha)
     return grad_A
 
@@ -283,11 +284,11 @@ def compute_B_grad(A, d_output, alpha):
     if A.dtype == torch.float16:
         Acopy = A_T.to(torch.float32)
         dcopye = d_output.to(torch.float32)
-        mul2 = torch.bmm(Acopy, dcopye)
+        mul2 = bmm(Acopy, dcopye)
         grad_B = mul(mul2, alpha)
         grad_B = grad_B.to(torch.float16)
     else:
-        mul2 = torch.bmm(A_T, d_output)
+        mul2 = bmm(A_T, d_output)
         grad_B = mul(mul2, alpha)
     return grad_B
 
