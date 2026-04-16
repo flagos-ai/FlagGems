@@ -1241,29 +1241,30 @@ def _baseline_w8a16_mxq_wrapper(
     w1_scale, w2_scale, w3_scale,
     topk_weights, topk_ids, num_experts, topk,
 ):
-    """Baseline: dequantize only used experts, then use FP16 path."""
-    group_size = 128
+    """Baseline: run the MXQ W8A16 Triton kernel directly (no Python dequant)."""
+    from flag_gems.fused_moe_mxq import fused_moe, QuantConfig, QuantMode
 
-    unique_experts = topk_ids.unique()
-    w1_deq = torch.zeros_like(w1_q, dtype=torch.float32)
-    w2_deq = torch.zeros_like(w2_q, dtype=torch.float32)
-
-    for e in unique_experts:
-        e = int(e.item())
-        s1 = w1_scale[e]
-        n_out1, num_groups1 = s1.shape
-        k_in1 = w1_q.shape[2]
-        s1_expanded = s1.unsqueeze(-1).expand(n_out1, num_groups1, group_size).reshape(n_out1, k_in1)
-        w1_deq[e] = (w1_q[e].float() - 128.0) * s1_expanded.float()
-
-        s2 = w2_scale[e]
-        n_out2, num_groups2 = s2.shape
-        k_in2 = w2_q.shape[2]
-        s2_expanded = s2.unsqueeze(-1).expand(n_out2, num_groups2, group_size).reshape(n_out2, k_in2)
-        w2_deq[e] = (w2_q[e].float() - 128.0) * s2_expanded.float()
-
-    return flag_gems.fused_experts_impl(
-        hidden_states.clone(), w1_deq.to(hidden_states.dtype), w2_deq.to(hidden_states.dtype), topk_weights, topk_ids,
+    quant_config = QuantConfig(mode=QuantMode.W8A16, has_zero_point=False)
+    return fused_moe(
+        hidden_states,
+        w1=None,
+        w2=None,
+        w3=None,
+        topk_weights=topk_weights,
+        topk_ids=topk_ids,
+        quant_config=quant_config,
+        num_experts=num_experts,
+        top_k=topk,
+        # Use pre-quantized weights to avoid re-quantizing in Python.
+        w1_q=w1_q,
+        w1_scales=w1_scale,
+        w1_zeros=None,
+        w2_q=w2_q,
+        w2_scales=w2_scale,
+        w2_zeros=None,
+        w3_q=w3_q,
+        w3_scales=w3_scale,
+        w3_zeros=None,
     )
 
 def _baseline_w8a16_mxq_wrapper_vllm(
