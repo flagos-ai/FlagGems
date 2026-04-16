@@ -129,16 +129,14 @@ class CutlassScaledMMTestKit:
     def get_scale_shape(M, N, K, category, is_a_scale=True):
         if category == "scalar":
             return (1,)
-        elif category == "vector":
+        if category == "vector":
             if is_a_scale:
                 return (M,)
-            else:
-                return (N,)
-        else:
-            if is_a_scale:
-                return (M, ceil(K / 128))
-            else:
-                return (ceil(K / 128), ceil(N / 128))
+            return (N,)
+        # a matrix
+        if is_a_scale:
+            return (M, ceil(K / 128))
+        return (ceil(K / 128), ceil(N / 128))
 
     @staticmethod
     def baseline_scaled_mm(
