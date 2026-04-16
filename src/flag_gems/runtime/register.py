@@ -123,7 +123,11 @@ class Register:
                 )
             except Exception:
                 pass
-            self.lib.impl(key, fn, device_key, allow_override=True)
+            try:
+                self.lib.impl(key, fn, device_key, allow_override=True)
+            except TypeError:
+                # Older torch versions don't support allow_override
+                self.lib.impl(key, fn, device_key)
         else:
             self.lib.impl(key, fn, device_key)
 
