@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 
@@ -12,6 +13,8 @@ from flag_gems.utils.libentry import libentry
 from .all import reduce_all
 from .any import reduce_any
 from .unique import _unique2
+
+logger = logging.getLogger(__name__)
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -271,6 +274,7 @@ def isin(
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
+    logger.debug("GEMS_KUNLUNXIN ISIN")
     if not torch.is_tensor(in0):
         assert torch.is_tensor(in1)
         in0 = torch.tensor(in0, device=in1.device)
@@ -279,12 +283,10 @@ def isin(
         in1 = torch.tensor(in1, device=in0.device)
     if in0.numel() == 0 or in1.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
-    elif in0.numel() <= 12288 and in1.numel() <= 12288:  # 1024 * 12
-        # print("hit isin_by_comparation!")
+    elif in0.numel() <= 2048 and in1.numel() <= 2048:
+        # Use comparison only for very small sizes where kernel launch overhead dominates
         return isin_by_comparation(in0, in1, invert)
     elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096
-        # print("hit isin_by_search unique_in1=False!")
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=False)
     else:
-        # print("hit isin_by_search unique_in1=True!")
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=True)
