@@ -594,7 +594,7 @@ def test_accuracy_skip_layernorm(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.fused_add_rms_norm
+@pytest.mark.skip_rms_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_fused_add_rms_norm(shape, dtype):
