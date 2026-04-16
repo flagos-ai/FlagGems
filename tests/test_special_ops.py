@@ -2170,7 +2170,8 @@ def test_accuracy_moe_align_block_size(
                 f"actual={actual_expert_tokens[expert_id]}"
             )
 
-    torch.cuda.synchronize()
+    torch.cuda.synchronize() if flag_gems.vendor_name != "ascend" else torch.npu.synchronize()
+
     _verify_expert_level_sorting(
         sorted_ids,
         sorted_ids_vllm,
