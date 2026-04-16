@@ -262,8 +262,6 @@ def jacobi_svd_kernel(
 @triton.autotune(
     configs=[
         triton.Config({}, num_warps=1, num_stages=1),
-        triton.Config({}, num_warps=2, num_stages=1),
-        triton.Config({}, num_warps=2, num_stages=2),
     ],
     key=["N_dim", "M_dim"],
 )
@@ -830,11 +828,11 @@ def svd(input, some=True, compute_uv=True):
         A_work = torch.empty(batch_size, n, m, device=input.device, dtype=torch.float32)
         U_work = torch.empty(batch_size, n, n, device=input.device, dtype=torch.float64)
         V_work = torch.empty(batch_size, n, n, device=input.device, dtype=torch.float64)
-        diag = torch.empty(batch_size, n, device=input.device, dtype=torch.float64)
-        superdiag = torch.empty(batch_size, n, device=input.device, dtype=torch.float64)
+        diag = torch.zeros(batch_size, n, device=input.device, dtype=torch.float64)
+        superdiag = torch.zeros(batch_size, n, device=input.device, dtype=torch.float64)
 
-        tau_left = torch.empty(batch_size, n, device=input.device, dtype=torch.float32)
-        tau_right = torch.empty(batch_size, n, device=input.device, dtype=torch.float32)
+        tau_left = torch.zeros(batch_size, n, device=input.device, dtype=torch.float32)
+        tau_right = torch.zeros(batch_size, n, device=input.device, dtype=torch.float32)
 
         max_qr_iters = 3 * n
 
