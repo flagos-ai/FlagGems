@@ -5,18 +5,13 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from benchmark.performance_utils import (
-    Benchmark,
-    Config,
-    GenericBenchmark,
-    GenericBenchmark2DOnly,
-    GenericBenchmark4DOnly,
-    SkipVersion,
-    generate_tensor_input,
-    unary_input_fn,
-    vendor_name,
-)
+from benchmark.attri_util import (BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES,
+                                  BenchLevel)
+from benchmark.performance_utils import (Benchmark, Config, GenericBenchmark,
+                                         GenericBenchmark2DOnly,
+                                         GenericBenchmark4DOnly, SkipVersion,
+                                         generate_tensor_input, unary_input_fn,
+                                         vendor_name)
 from flag_gems.utils import shape_utils
 
 
