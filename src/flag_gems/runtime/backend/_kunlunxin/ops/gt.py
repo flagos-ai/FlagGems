@@ -2,7 +2,6 @@ import logging
 import os
 
 import triton
-import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -28,11 +27,11 @@ config_ = CodeGenConfig(
 )
 @triton.jit
 def gt_func(x, y):
-    return x.to(tl.float32) > y
+    return x > y
 
 
 def gt(A, B):
-    logger.debug("GEMS GT")
+    logger.debug("GEMS_KUNLUNXIN GT")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = gt_func(A, B)
@@ -48,10 +47,10 @@ def gt(A, B):
 )
 @triton.jit
 def gt_func_scalar(x, y):
-    return x.to(tl.float32) > y
+    return x > y
 
 
 def gt_scalar(A, B):
-    logger.debug("GEMS GT SCALAR")
+    logger.debug("GEMS_KUNLUNXIN GT SCALAR")
     res = gt_func_scalar(A, B)
     return res
