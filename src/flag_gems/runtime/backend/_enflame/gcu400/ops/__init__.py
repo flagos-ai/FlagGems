@@ -3,7 +3,6 @@ from .abs import abs, abs_
 from .add import add, add_
 from .angle import angle
 from .arange import arange, arange_start
-from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .argmax import argmax
 from .argmin import argmin
 from .bitwise_and import (
@@ -134,6 +133,7 @@ from .sin import sin, sin_
 from .slice_scatter import slice_scatter
 from .sort import sort, sort_stable
 from .sub import sub, sub_
+# from .sum import sum_dim, sum_dim_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .to import to_dtype
@@ -351,6 +351,6 @@ __all__ = [
     "max_pool2d_with_indices",
     "max_pool2d_backward",
     "upsample_linear1d",
-    "avg_pool2d",
-    "avg_pool2d_backward",
+    "sum_dim",
+    "sum_dim_out",
 ]
