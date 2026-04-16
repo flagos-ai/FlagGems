@@ -13,11 +13,11 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+    return triton.next_power_of_2(triton.cdiv(args.get("M", 0), 12))
 
 
 def heur_block_n(args):
-    return min(8192, triton.next_power_of_2(args["N"]))
+    return min(8192, triton.next_power_of_2(args.get("N", 0)))
 
 
 @triton.jit
@@ -115,7 +115,7 @@ def var_mean_kernel_1(
 
 
 def heur_block_n(args):
-    return triton.next_power_of_2(args["BLOCK_NUM"])
+    return triton.next_power_of_2(args.get("BLOCK_NUM", 0))
 
 
 @libentry()
@@ -154,7 +154,7 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR MEAN")
+    logger.debug("GEMS_KUNLUNXIN VAR MEAN")
     if correction is None:
         correction = 1.0
 
