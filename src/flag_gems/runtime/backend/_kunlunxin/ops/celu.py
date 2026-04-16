@@ -29,10 +29,10 @@ def celu_forward_kernel(x, alpha):
 
 
 def celu(A, alpha=1.0):
-    logger.debug("GEMS CELU")
+    logger.debug("GEMS_KUNLUNXIN CELU")
     return celu_forward_kernel(A, alpha)
 
 
 def celu_(A, alpha=1.0):
-    logger.debug("GEMS CELU_")
+    logger.debug("GEMS_KUNLUNXIN CELU_")
     return celu_forward_kernel(A, alpha, out0=A)
