@@ -138,7 +138,7 @@ def isclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> torch.Tensor:
-    logger.debug("GEMS ISCLOSE")
+    logger.debug("GEMS_KUNLUNXIN ISCLOSE")
     if not equal_nan:
         os.environ["XPU_cmp_nan"] = "1"
     else:
@@ -169,7 +169,7 @@ def allclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> bool:
-    logger.debug("GEMS ALLCLOSE")
+    logger.debug("GEMS_KUNLUNXIN ALLCLOSE")
     if A.dtype == torch.bool:
         return all(A == B).item()
     if A.dtype != B.dtype:
