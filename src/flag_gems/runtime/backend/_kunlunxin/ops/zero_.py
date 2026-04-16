@@ -26,7 +26,7 @@ def zeros_kernel(
 
 
 def zero_(x: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS ZERO_")
+    logger.debug("GEMS_KUNLUNXIN ZERO_")
     N = x.numel()
     if N == 0:
         return x
