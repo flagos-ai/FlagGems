@@ -27,6 +27,11 @@ on:
         required: false
         type: string
         default: ''
+      test_script:
+        description: "Temporary parameter for alpha-ops test"
+        required: false
+        type: string
+        default: ''
     secrets:
       RUNNER_SSH_KEY:
         required: true
@@ -50,7 +55,15 @@ jobs:
         shell: bash
         run: |
           bash ${{ inputs.gpu_check_script }}
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
       - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
         shell: bash
