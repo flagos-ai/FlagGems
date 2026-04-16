@@ -186,17 +186,17 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
 
     ref_grad = to_reference(out_grad, True)
     if bias is not None:
-        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_in_grad, ref_weight_grad, ref_bias_grad = torch.autograd.grad(
             ref_out, (ref_inp, ref_weight, bias_ref), ref_grad
         )
-        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+        res_in_grad, res_weight_grad, res_bias_grad = torch.autograd.grad(
             res_out, (inp, weight, bias), out_grad
         )
     else:
-        (ref_in_grad, ref_weight_grad) = torch.autograd.grad(
+        ref_in_grad, ref_weight_grad = torch.autograd.grad(
             ref_out, (ref_inp, ref_weight), ref_grad
         )
-        (res_in_grad, res_weight_grad) = torch.autograd.grad(
+        res_in_grad, res_weight_grad = torch.autograd.grad(
             res_out, (inp, weight), out_grad
         )
 
@@ -271,17 +271,17 @@ def test_accuracy_conv2d_padding(
 
     ref_grad = to_reference(out_grad, True)
     if bias is not None:
-        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_in_grad, ref_weight_grad, ref_bias_grad = torch.autograd.grad(
             ref_out, (ref_inp, ref_weight, bias_ref), ref_grad
         )
-        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+        res_in_grad, res_weight_grad, res_bias_grad = torch.autograd.grad(
             res_out, (inp, weight, bias), out_grad
         )
     else:
-        (ref_in_grad, ref_weight_grad) = torch.autograd.grad(
+        ref_in_grad, ref_weight_grad = torch.autograd.grad(
             ref_out, (ref_inp, ref_weight), ref_grad
         )
-        (res_in_grad, res_weight_grad) = torch.autograd.grad(
+        res_in_grad, res_weight_grad = torch.autograd.grad(
             res_out, (inp, weight), out_grad
         )
 
