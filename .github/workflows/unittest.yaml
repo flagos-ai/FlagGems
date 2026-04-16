@@ -41,7 +41,7 @@ jobs:
           echo "PR_ID: ${PR_ID}"
 
       - id: get-labels
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             // Determine if the event is a pull request
