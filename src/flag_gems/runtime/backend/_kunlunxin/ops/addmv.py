@@ -12,9 +12,7 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def heur_block_n(args):
-    import builtins
-
-    N = args["N"]
+    N = args.get("N", 0)
     # Use smaller BLOCK_N for more parallelism
     if N <= 64:
         return triton.next_power_of_2(N)
@@ -29,7 +27,7 @@ def heur_block_n(args):
 def heur_block_m(args):
     import builtins
 
-    M = args["M"]
+    M = args.get("M", 0)
     # Larger BLOCK_M for better memory coalescing
     return builtins.min(triton.next_power_of_2(M), 4096)
 
@@ -83,7 +81,7 @@ def addmv_kernel(
 
 
 def addmv(self, mat, vec, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDMV")
+    logger.debug("GEMS_KUNLUNXIN ADDMV")
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape
@@ -110,7 +108,7 @@ def addmv(self, mat, vec, *, beta=1, alpha=1):
 
 
 def addmv_out(self, mat, vec, *, beta=1, alpha=1, out=None):
-    logger.debug("GEMS ADDMV OUT")
+    logger.debug("GEMS_KUNLUNXIN ADDMV OUT")
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape

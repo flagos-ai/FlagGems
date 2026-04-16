@@ -127,9 +127,6 @@ def instance_norm_persistent_kernel_multiline(
 
 def instance_norm_loop_kernel_heur_tile_n(args):
     return 8192
-    import builtins
-
-    return builtins.min(args["N"], 8192)
 
 
 @libentry()
@@ -292,9 +289,6 @@ def instancenorm_fwd_kernel_xpu(
 
 def instance_norm_use_running_stats_kernel_heur_tile_n(args):
     return 8192
-    import builtins
-
-    return builtins.min(args["N"], 8192)
 
 
 @libentry()
@@ -393,13 +387,12 @@ def update_running_stats_kernel(
 
 def instance_norm_backward_kernel_heur_block_row_size(args):
     return 1
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
 
 def instance_norm_backward_kernel_heur_block_col_size(args):
     import builtins
 
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+    return builtins.min(triton.next_power_of_2(args.get("N", 0)), 8192)
 
 
 @libentry()
@@ -477,13 +470,10 @@ def instance_norm_backward_kernel(
 
 def weight_bias_backward_kernel_heur_block_batch_size(args):
     return 1
-    import builtins
-
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
 
 def weight_bias_backward_kernel_heur_block_col_size(args):
-    return triton.next_power_of_2(triton.cdiv(args["C"], 12))  # cluster_num
+    return triton.next_power_of_2(triton.cdiv(args.get("C", 1), 12))  # cluster_num
 
 
 @libentry()
@@ -556,7 +546,7 @@ class InstanceNorm(torch.autograd.Function):
         eps=1e-05,
         cudnn_enable=False,
     ):
-        logger.debug("GEMS INSTANCENORM FORWARD")
+        logger.debug("GEMS_KUNLUNXIN INSTANCENORM FORWARD")
         assert len(x.shape) in [
             3,
             4,
@@ -571,9 +561,7 @@ class InstanceNorm(torch.autograd.Function):
         bias = bias.contiguous() if bias is not None else None
         y = torch.empty_like(x)
 
-        has_weight_bias = weight is not None
-        if has_weight_bias:
-            assert weight is not None and bias is not None
+        has_weight_bias = weight is not None and bias is not None
 
         has_running_stats = running_mean is not None
         if has_running_stats:
@@ -670,7 +658,7 @@ class InstanceNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS INSTANCENORM BACKWARD")
+        logger.debug("GEMS_KUNLUNXIN INSTANCENORM BACKWARD")
         out_grad = out_grad.contiguous()
         x, weight, mean, rstd = ctx.saved_tensors
         M = ctx.M
