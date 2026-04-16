@@ -1127,13 +1127,11 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
 
-    (ref_inp1_grad, ref_inp2_grad) = torch.autograd.grad(
+    ref_inp1_grad, ref_inp2_grad = torch.autograd.grad(
         ref_out, (ref_inp1, ref_inp2), ref_grad
     )
 
-    (res_inp1_grad, res_inp2_grad) = torch.autograd.grad(
-        res_out, (inp1, inp2), out_grad
-    )
+    res_inp1_grad, res_inp2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
 
     gems_assert_close(res_out, ref_out, dtype)
     gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
@@ -1706,13 +1704,11 @@ def test_accuracy_silu_and_mul(shape, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
 
-    (ref_inp1_grad, ref_inp2_grad) = torch.autograd.grad(
+    ref_inp1_grad, ref_inp2_grad = torch.autograd.grad(
         ref_out, (ref_inp1, ref_inp2), ref_grad
     )
 
-    (res_inp1_grad, res_inp2_grad) = torch.autograd.grad(
-        res_out, (inp1, inp2), out_grad
-    )
+    res_inp1_grad, res_inp2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
 
     gems_assert_close(res_out, ref_out, dtype)
     gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
