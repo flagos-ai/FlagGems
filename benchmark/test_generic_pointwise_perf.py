@@ -4,6 +4,7 @@ import torch
 from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES
 from benchmark.conftest import BenchLevel, Config
 from benchmark.performance_utils import (
+    Benchmark,
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
     SkipVersion,
@@ -75,6 +76,28 @@ def addcdiv_input_fn(shape, cur_dtype, device):
     inp2 = generate_tensor_input(shape, cur_dtype, device)
     inp3 = generate_tensor_input(shape, cur_dtype, device)
     yield inp1, inp2, inp3, {"value": 0.5}
+
+
+class TrilBenchmark(Benchmark):
+    DEFAULT_DTYPES = FLOAT_DTYPES
+    DEFAULT_SHAPE_DESC = "(B), M, N"
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (64, 64),
+            (1024, 1024),
+            (4096, 4096),
+            (64, 512, 512),
+            (256, 1024, 1024),
+        ]
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+    def get_input_iter(self, cur_dtype):
+        diagonals = (0, -32, 32)
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            for diagonal in diagonals:
+                yield inp, {"diagonal": diagonal}
 
 
 @pytest.mark.parametrize(
@@ -180,13 +203,6 @@ def test_generic_inplace_pointwise_benchmark(op_name, torch_op, input_fn, dtypes
     "op_name, torch_op, input_fn, dtypes",
     [
         pytest.param(
-            "tril",
-            torch.tril,
-            unary_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.tril,
-        ),
-        pytest.param(
             "triu",
             torch.triu,
             unary_input_fn,
@@ -199,6 +215,12 @@ def test_generic_pointwise_benchmark_exclude_1d(op_name, torch_op, input_fn, dty
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
+    bench.run()
+
+
+@pytest.mark.tril
+def test_perf_tril():
+    bench = TrilBenchmark(op_name="tril", torch_op=torch.tril, dtypes=FLOAT_DTYPES)
     bench.run()
 
 
