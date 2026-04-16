@@ -100,7 +100,7 @@ mthreads = [
     "torch_musa==2.7.1",
     "flagtree==0.5.0+mthreads3.1",
     "numpy==1.26.4",
-    "mkl==2024.0.0",
+    "mkl==2024.2.1",
 ]
 
 nvidia = [
