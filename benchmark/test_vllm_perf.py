@@ -1266,6 +1266,25 @@ def _baseline_w8a16_mxq_wrapper(
         hidden_states.clone(), w1_deq.to(hidden_states.dtype), w2_deq.to(hidden_states.dtype), topk_weights, topk_ids,
     )
 
+def _baseline_w8a16_mxq_wrapper_vllm(
+    hidden_states, w1_q, w2_q, w3_q,
+    w1_scale, w2_scale, w3_scale,
+    topk_weights, topk_ids, num_experts, topk,
+):
+    """Wrapper to call vllm fused_experts_impl with W8A16 quantized weights."""
+    del w3_q, w3_scale, num_experts, topk
+    return vllm_fused_experts_impl(
+        hidden_states.clone(),
+        w1_q,
+        w2_q,
+        topk_weights,
+        topk_ids,
+        inplace=False,
+        activation="silu",
+        use_int8_w8a16=True,
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+    )
 
 def _gems_fused_moe_mxq_w8a16_wrapper(
     hidden_states, w1_q, w2_q, w3_q,
@@ -1297,6 +1316,21 @@ def test_perf_fused_moe_w8a16_mxq():
     bench = FusedMoEMXQW8A16Benchmark(
         op_name="fused_moe_w8a16_mxq_gems_vs_bf16_deq",
         torch_op=_baseline_w8a16_mxq_wrapper,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(_gems_fused_moe_mxq_w8a16_wrapper)
+    bench.run()
+
+@pytest.mark.fused_moe
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
+def test_perf_fused_moe_w8a16_mxq_gems_vs_vllm():
+    """
+    Benchmark flag_gems.fused_moe_mxq.fused_moe with W8A16 mixed precision.
+    """
+    bench = FusedMoEMXQW8A16Benchmark(
+        op_name="fused_moe_w8a16_mxq_gems_vs_vllm",
+        torch_op=_baseline_w8a16_mxq_wrapper_vllm,
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_fused_moe_mxq_w8a16_wrapper)
