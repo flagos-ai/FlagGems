@@ -4,14 +4,10 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import (
-    BOOL_DTYPES,
-    COMPLEX_DTYPES,
-    DEFAULT_METRICS,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-)
-from benchmark.performance_utils import Benchmark, SkipVersion, generate_tensor_input
+from benchmark.attri_util import (BOOL_DTYPES, COMPLEX_DTYPES, DEFAULT_METRICS,
+                                  FLOAT_DTYPES, INT_DTYPES)
+from benchmark.performance_utils import (Benchmark, SkipVersion,
+                                         generate_tensor_input)
 
 vendor_name = flag_gems.vendor_name
 fp64_is_supported = flag_gems.runtime.device.support_fp64
