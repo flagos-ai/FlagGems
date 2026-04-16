@@ -296,7 +296,7 @@ def index_select(inp, dim, index):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
     # TODO: index is on device, should it be a kernel (like cnnl __assert_fail__) to check this?
-    assert all((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
+    assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
 
     # TODO: make sure input is contiguous
 

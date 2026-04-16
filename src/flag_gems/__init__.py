@@ -29,6 +29,7 @@ def torch_ge(v):
 
 _FULL_CONFIG = (
     ("_assert_async", _assert_async),
+    ("_conv_depthwise2d", _conv_depthwise2d),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
@@ -308,7 +309,7 @@ _FULL_CONFIG = (
     ("ne.Tensor", ne),
     ("neg", neg),
     ("neg_", neg_),
-    ("new_full", new_full),
+    ("new_full.Tensor", new_full),
     ("nll_loss_backward", nll_loss_backward),
     ("nll_loss_forward", nll_loss_forward),
     ("nll_loss_nd_forward", nll_loss_nd_forward),
