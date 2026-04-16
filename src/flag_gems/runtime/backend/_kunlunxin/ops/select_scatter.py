@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -10,38 +9,32 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @triton.jit
-def select_scatter_kernel(
+def scatter_slice_kernel(
     out_ptr,
-    inp_ptr,
     src_ptr,
-    total_elements,
-    dim_size,
+    src_elements,
     dim_prod_post,
-    index,
+    out_stride_dim,
+    index_offset,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
     offsets = tl.arange(0, BLOCK_SIZE)
-    mask = block_start + offsets < total_elements
     idx = block_start + offsets
+    mask = idx < src_elements
 
-    pre_idx = idx // (dim_size * dim_prod_post)
-    dim_idx = (idx // dim_prod_post) % dim_size
+    pre_idx = idx // dim_prod_post
     post_idx = idx % dim_prod_post
 
-    select_mask = dim_idx == index
+    out_idx = pre_idx * out_stride_dim + index_offset + post_idx
 
-    inp_data = tl.load(inp_ptr + idx, mask=mask)
-
-    src_idx = pre_idx * dim_prod_post + post_idx
-    src_data = tl.load(src_ptr + src_idx, mask=mask & select_mask)
-    result = tl.where(select_mask, src_data, inp_data)
-    tl.store(out_ptr + idx, result, mask=mask)
+    src_data = tl.load(src_ptr + idx, mask=mask)
+    tl.store(out_ptr + out_idx, src_data, mask=mask)
 
 
 def select_scatter(inp, src, dim, index):
-    logger.debug("GEMS SELECT_SCATTER")
+    logger.debug("GEMS_KUNLUNXIN SELECT_SCATTER")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index >= -inp.size(dim) and index < inp.size(dim), "Invalid index"
     dim = dim % inp.ndim
@@ -54,34 +47,40 @@ def select_scatter(inp, src, dim, index):
     ), "Expected src to have a size equal to the slice of self"
 
     if has_internal_overlapping(inp) == MemOverlap.Yes:
-        out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
+        out = inp.clone()
     else:
-        out = torch.empty_strided(
-            inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
-        )
+        out = inp.clone()
 
-    inp = inp.contiguous()
     src = src.contiguous()
+    out_contig = out.contiguous()
 
-    total_elements = inp.numel()
-    dim_size = inp.size(dim)
+    src_elements = src.numel()
+    if src_elements == 0:
+        return out
 
     dim_prod_post = 1
     for d in range(dim + 1, inp.ndim):
         dim_prod_post *= inp.size(d)
 
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(total_elements, BLOCK_SIZE),)
+    out_stride_dim = inp.size(dim) * dim_prod_post
+    out_offset = index * dim_prod_post
 
-    select_scatter_kernel[grid](
-        out,
-        inp,
+    BLOCK_SIZE = 1024
+    if src_elements >= 1024 * 1024:
+        BLOCK_SIZE = 4096
+    elif src_elements >= 4096:
+        BLOCK_SIZE = 2048
+
+    grid = (triton.cdiv(src_elements, BLOCK_SIZE),)
+
+    scatter_slice_kernel[grid](
+        out_contig,
         src,
-        total_elements,
-        dim_size,
+        src_elements,
         dim_prod_post,
-        index,
+        out_stride_dim,
+        out_offset,
         BLOCK_SIZE=BLOCK_SIZE,
     )
 
-    return out
+    return out_contig
