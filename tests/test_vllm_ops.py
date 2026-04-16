@@ -238,6 +238,9 @@ FUSED_MOE_CONFIGS = [
     (8, 4, 64, 128, 2),
     (16, 8, 256, 512, 2),
     (32, 8, 128, 256, 4),
+    # Qwen3.5 shapes (TP=4)
+    (10, 256, 2048, 128, 8),
+    (256, 256, 2048, 128, 8),
 ]
 
 if not QUICK_MODE:
@@ -351,7 +354,7 @@ def test_accuracy_fused_moe_vs_ref(config, dtype):
         topk_ids,
     )
 
-    torch.cuda.synchronize()
+    torch.cuda.synchronize() if flag_gems.vendor_name != "ascend" else torch.npu.synchronize()
 
     # Fused bf16/fp16 kernels accumulate rounding errors across two GEMMs
     # and an activation; use tolerances proportional to output magnitude.
