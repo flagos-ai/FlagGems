@@ -1165,7 +1165,7 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
-            # Mixtral-like shapes
+ # Mixtral-like shapes
             (1, 8, 4096, 14336, 2),
             (4, 8, 4096, 14336, 2),
             (16, 8, 4096, 14336, 2),
@@ -1188,6 +1188,10 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
             (128, 128, 4096, 1024, 10),
             (256, 128, 4096, 1024, 10),
         ]
+
+    def set_more_metrics(self):
+        # Display both QC TFLOPS (gems latency) and FP16 ref TFLOPS (torch latency_base).
+        return ["tflops", "tflops_base"]
 
     def get_input_iter(self, cur_dtype):
         for config in self.shapes:
@@ -1229,51 +1233,113 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
         topk_weights = topk_weights.to(dtype)
 
         yield (
-            hidden_states, w1_q, w2_q, w3_q,
-            w1_scale, w2_scale, w3_scale,
-            topk_weights, topk_ids,
-            num_experts, topk,
+            hidden_states,
+            # FP16/BF16 reference weights (pure fused_experts_impl path)
+            w1_fp16,
+            w2_fp16,
+            # Pre-quantized weights for QC W8A16 (fused_moe_mxq path)
+            w1_q,
+            w2_q,
+            w3_q,
+            w1_scale,
+            w2_scale,
+            w3_scale,
+            topk_weights,
+            topk_ids,
+            num_experts,
+            topk,
         )
+
+    def get_tflops(
+        self,
+        op,
+        hidden_states,
+        w1_fp16,
+        w2_fp16,
+        w1_q,
+        w2_q,
+        w3_q,
+        w1_scale,
+        w2_scale,
+        w3_scale,
+        topk_weights,
+        topk_ids,
+        num_experts,
+        topk,
+    ):
+        """
+        Proxy FLOPs estimate for SwiGLU MoE.
+
+        This is an algorithmic FLOPs estimate (not hardware-instruction FLOPs).
+        It is derived strictly from tensor shapes to avoid hard-coded constants.
+
+        For each (token, expert) dispatch, we approximate:
+          - W1 projection: (H) x (Nw1)  => 2 * H * Nw1
+          - W3 projection: (H) x (Nw1)  => 2 * H * Nw1
+          - W2 projection: (I) x (H)    => 2 * H * I
+
+        Total FLOPs:
+          num_tokens * topk * (2*H*Nw1 + 2*H*Nw1 + 2*H*I)
+        """
+        # hidden_states: [num_tokens, H]
+        num_tokens = int(hidden_states.shape[0])
+        hidden_size = int(hidden_states.shape[1])
+        # w1_fp16: [E, Nw1, H] where Nw1 is typically 2*I (gated)
+        n_w1 = int(w1_fp16.shape[1])
+        # w2_fp16: [E, H, I]
+        intermediate_size = int(w2_fp16.shape[2])
+        topk = int(topk)
+        per_dispatch_flops = (
+            2.0 * hidden_size * n_w1
+            + 2.0 * hidden_size * n_w1
+            + 2.0 * hidden_size * intermediate_size
+        )
+        total_flops = num_tokens * topk * per_dispatch_flops
+        return total_flops
 
 
 def _baseline_w8a16_mxq_wrapper(
-    hidden_states, w1_q, w2_q, w3_q,
-    w1_scale, w2_scale, w3_scale,
-    topk_weights, topk_ids, num_experts, topk,
+    hidden_states,
+    w1_fp16,
+    w2_fp16,
+    w1_q,
+    w2_q,
+    w3_q,
+    w1_scale,
+    w2_scale,
+    w3_scale,
+    topk_weights,
+    topk_ids,
+    num_experts,
+    topk,
 ):
-    """Baseline: run the MXQ W8A16 Triton kernel directly (no Python dequant)."""
-    from flag_gems.fused_moe_mxq import fused_moe, QuantConfig, QuantMode
-
-    quant_config = QuantConfig(mode=QuantMode.W8A16, has_zero_point=False)
-    return fused_moe(
-        hidden_states,
-        w1=None,
-        w2=None,
-        w3=None,
-        topk_weights=topk_weights,
-        topk_ids=topk_ids,
-        quant_config=quant_config,
-        num_experts=num_experts,
-        top_k=topk,
-        # Use pre-quantized weights to avoid re-quantizing in Python.
-        w1_q=w1_q,
-        w1_scales=w1_scale,
-        w1_zeros=None,
-        w2_q=w2_q,
-        w2_scales=w2_scale,
-        w2_zeros=None,
-        w3_q=w3_q,
-        w3_scales=w3_scale,
-        w3_zeros=None,
+    """FP16/BF16 reference: run flag_gems.fused_experts_impl pure FP16 path."""
+    del w1_q, w2_q, w3_q, w1_scale, w2_scale, w3_scale, num_experts, topk
+    return flag_gems.fused_experts_impl(
+        hidden_states.clone(),
+        w1_fp16,
+        w2_fp16,
+        topk_weights,
+        topk_ids,
     )
 
 def _baseline_w8a16_mxq_wrapper_vllm(
-    hidden_states, w1_q, w2_q, w3_q,
-    w1_scale, w2_scale, w3_scale,
-    topk_weights, topk_ids, num_experts, topk,
+    hidden_states,
+    w1_fp16,
+    w2_fp16,
+    w1_q,
+    w2_q,
+    w3_q,
+    w1_scale,
+    w2_scale,
+    w3_scale,
+    topk_weights,
+    topk_ids,
+    num_experts,
+    topk,
 ):
     """Wrapper to call vllm fused_experts_impl with W8A16 quantized weights."""
-    del w3_q, w3_scale, num_experts, topk
+    del w1_fp16, w2_fp16, w3_q, w3_scale, num_experts, topk
     return vllm_fused_experts_impl(
         hidden_states.clone(),
         w1_q,
@@ -1288,11 +1354,22 @@ def _baseline_w8a16_mxq_wrapper_vllm(
     )
 
 def _gems_fused_moe_mxq_w8a16_wrapper(
-    hidden_states, w1_q, w2_q, w3_q,
-    w1_scale, w2_scale, w3_scale,
-    topk_weights, topk_ids, num_experts, topk,
+    hidden_states,
+    w1_fp16,
+    w2_fp16,
+    w1_q,
+    w2_q,
+    w3_q,
+    w1_scale,
+    w2_scale,
+    w3_scale,
+    topk_weights,
+    topk_ids,
+    num_experts,
+    topk,
 ):
     """Test flag_gems.fused_moe_mxq.fused_moe with W8A16."""
+    del w1_fp16, w2_fp16
     from flag_gems.fused_moe_mxq import fused_moe, QuantConfig, QuantMode
 
     quant_config = QuantConfig(mode=QuantMode.W8A16, has_zero_point=False)
