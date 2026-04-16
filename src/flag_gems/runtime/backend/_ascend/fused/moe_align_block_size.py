@@ -538,7 +538,7 @@ def moe_align_block_size_triton(
     expert_ids: torch.Tensor,
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
-    logger.debug("GEMS MOE ALIGN BLOCK SIZE")
+    logger.debug("GEMS_ASCEND MOE ALIGN BLOCK SIZE")
     numel = topk_ids.numel()
     numel_sorted_token_ids = sorted_token_ids.numel()
     numel_expert_ids = expert_ids.numel()

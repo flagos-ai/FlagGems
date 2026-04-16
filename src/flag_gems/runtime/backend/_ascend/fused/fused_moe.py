@@ -31,7 +31,7 @@ from flag_gems.runtime.backend._ascend.fused.moe_align_block_size import (
 from flag_gems.runtime.backend._ascend.fused.moe_sum import moe_sum
 from flag_gems.utils import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 # OCP MX quantization helpers (requires amd-quark)
 
@@ -1413,7 +1413,7 @@ def fused_experts_impl(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS FUSED MOE")
+    logger.debug("GEMS_ASCEND FUSED MOE")
     if hasattr(activation, "value"):
         activation = activation.value
     assert (
