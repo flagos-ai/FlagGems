@@ -5,8 +5,7 @@ import triton.language as tl
 
 # ---------------------------------------------------------------------------
 # Triton kernel: sparse attention with attention-sink
-# grid = (m, b)  — one program per (seq_pos, batch), handles ALL heads
-# Aligned with tilelang version: uses tl.dot (GEMM) instead of vector dot
+# Original version - baseline for comparison
 # ---------------------------------------------------------------------------
 @triton.jit
 def sparse_attn_triton_kernel(
@@ -126,6 +125,6 @@ def sparse_attn_triton(
         BLOCK=BLOCK,
         D=d,
         H=H_padded,
-        num_warps=8,  # 256 threads, matching tilelang
+        num_warps=32,  # Even more threads for better parallelism
     )
     return o
