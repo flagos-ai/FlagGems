@@ -6,17 +6,10 @@ from packaging import version
 
 import flag_gems
 
-from .accuracy_utils import (
-    ALL_FLOAT_DTYPES,
-    ALL_INT_DTYPES,
-    BOOL_TYPES,
-    DISTRIBUTION_SHAPES,
-    FLOAT_DTYPES,
-    POINTWISE_SHAPES,
-    gems_assert_close,
-    gems_assert_equal,
-    to_reference,
-)
+from .accuracy_utils import (ALL_FLOAT_DTYPES, ALL_INT_DTYPES, BOOL_TYPES,
+                             DISTRIBUTION_SHAPES, FLOAT_DTYPES,
+                             POINTWISE_SHAPES, gems_assert_close,
+                             gems_assert_equal, to_reference)
 from .conftest import TO_CPU
 
 device = flag_gems.device
