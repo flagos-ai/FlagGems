@@ -71,13 +71,13 @@ official_torch_251 = [
 ]
 
 ascend = [
-    "flagtree==0.5.0+ascend3.2",
+    "flagtree==0.5.1+mthreads3.1",
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
 ]
 
 hygon = [
-    "flagtree==0.5.0+hcu3.0",
+    "flagtree==0.5.1+mthreads3.1",
     "torch==2.9.0+das.opt1.dtk2604",
 ]
 
@@ -98,19 +98,19 @@ kunlunxin = [
 mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
-    "flagtree==0.5.0+mthreads3.1",
+    "flagtree==0.5.1+mthreads3.1",
     "numpy==1.26.4",
     "mkl==2024.0.0",
 ]
 
 nvidia = [
     "flag_gems[official_torch_290]",
-    "flagtree==0.5.0+3.5",
+    "flagtree==0.5.1+mthreads3.1",
 ]
 
 tsingmicro = [
     "flag_gems[official_torch_270]",
-    "flagtree==0.5.0+tsingmicro3.3",
+    "flagtree==0.5.1+mthreads3.1",
     "torch_txda==0.1.0+20260310.294fc4a6",
     "txops==0.1.0+20260225.5cc33e4e",
     # "triton==3.3.0+gitfe2a28fa",
