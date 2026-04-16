@@ -11,23 +11,23 @@ logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 @pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def clamp_func_tensor(x, mini, maxi):
-    return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))
+    return tl.minimum(maxi, tl.maximum(mini, x))
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_min_tensor(x, mini):
-    return tl.maximum(mini, x.to(tl.float32))
+    return tl.maximum(mini, x)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_max_tensor(x, maxi):
-    return tl.minimum(maxi, x.to(tl.float32))
+    return tl.minimum(maxi, x)
 
 
 def clamp_tensor(A, mini=None, maxi=None):
-    logger.debug("GEMS CLAMP TENSOR")
+    logger.debug("GEMS_KUNLUNXIN CLAMP TENSOR")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
@@ -39,7 +39,7 @@ def clamp_tensor(A, mini=None, maxi=None):
 
 
 def clamp_tensor_(A, mini=None, maxi=None):
-    logger.debug("GEMS CLAMP_ TENSOR")
+    logger.debug("GEMS_KUNLUNXIN CLAMP_ TENSOR")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
@@ -55,37 +55,37 @@ def clamp_tensor_(A, mini=None, maxi=None):
 )
 @triton.jit
 def clamp_func(x, mini, maxi):
-    return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))
+    return tl.minimum(maxi, tl.maximum(mini, x))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_min(x, mini):
-    return tl.maximum(mini, x.to(tl.float32))
+    return tl.maximum(mini, x)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_max(x, maxi):
-    return tl.minimum(maxi, x.to(tl.float32))
+    return tl.minimum(maxi, x)
 
 
 def clamp_min(A, mini):
-    logger.debug("GEMS CLAMP MIN")
+    logger.debug("GEMS_KUNLUNXIN CLAMP MIN")
     if mini is None:
         raise ValueError("Mini must not be None")
     return clamp_func_min(A, mini)
 
 
 def clamp_min_(A, mini):
-    logger.debug("GEMS CLAMP_ MIN")
+    logger.debug("GEMS_KUNLUNXIN CLAMP_ MIN")
     if mini is None:
         raise ValueError("Mini must not be None")
     return clamp_func_min(A, mini, out0=A)
 
 
 def clamp(A, mini=None, maxi=None):
-    logger.debug("GEMS CLAMP")
+    logger.debug("GEMS_KUNLUNXIN CLAMP")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
@@ -97,7 +97,7 @@ def clamp(A, mini=None, maxi=None):
 
 
 def clamp_(A, mini=None, maxi=None):
-    logger.debug("GEMS CLAMP_")
+    logger.debug("GEMS_KUNLUNXIN CLAMP_")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
