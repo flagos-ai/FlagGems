@@ -240,7 +240,7 @@ def all_dims(inp, dim=None, keepdim=False):
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)
-    assert all((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
+    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
