@@ -3,11 +3,18 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (ALL_FLOAT_DTYPES, ALL_INT_DTYPES, FLOAT_DTYPES,
-                             POINTWISE_SHAPES, REDUCTION_SHAPES,
-                             REDUCTION_SMALL_SHAPES, SkipVersion,
-                             gems_assert_close, gems_assert_equal,
-                             to_reference)
+from .accuracy_utils import (
+    ALL_FLOAT_DTYPES,
+    ALL_INT_DTYPES,
+    FLOAT_DTYPES,
+    POINTWISE_SHAPES,
+    REDUCTION_SHAPES,
+    REDUCTION_SMALL_SHAPES,
+    SkipVersion,
+    gems_assert_close,
+    gems_assert_equal,
+    to_reference,
+)
 from .conftest import QUICK_MODE
 
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
