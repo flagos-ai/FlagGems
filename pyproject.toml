@@ -46,7 +46,7 @@ dependencies = [
     "packaging==26.0",
     "PyYAML==6.0.3",
     "sqlalchemy==2.0.48",
-    "numpy==1.26.4",
+    "numpy==2.0.1",
 ]
 
 [project.optional-dependencies]
@@ -99,7 +99,7 @@ mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
     "flagtree==0.5.0+mthreads3.1",
-    "numpy==1.26.4",
+    "numpy==2.0.1",
     "mkl==2024.0.0",
 ]
 
