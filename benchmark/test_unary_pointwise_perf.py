@@ -4,14 +4,10 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import (
-    BOOL_DTYPES,
-    COMPLEX_DTYPES,
-    DEFAULT_METRICS,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-)
-from benchmark.performance_utils import Benchmark, SkipVersion, generate_tensor_input
+from benchmark.attri_util import (BOOL_DTYPES, COMPLEX_DTYPES, DEFAULT_METRICS,
+                                  FLOAT_DTYPES, INT_DTYPES)
+from benchmark.performance_utils import (Benchmark, SkipVersion,
+                                         generate_tensor_input)
 
 vendor_name = flag_gems.vendor_name
 fp64_is_supported = flag_gems.runtime.device.support_fp64
@@ -53,6 +49,7 @@ forward_operations = [
     ("neg", torch.neg, FLOAT_DTYPES),
     ("square", torch.square, FLOAT_DTYPES),
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
+    ("round", torch.round, FLOAT_DTYPES),
     ("sqrt", torch.sqrt, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
     ("special_i0e", torch.ops.aten.special_i0e, FLOAT_DTYPES),
@@ -131,6 +128,7 @@ forward_inplace_operations = [
     ("expm1_", torch.expm1_, FLOAT_DTYPES),
     ("neg_", torch.neg_, FLOAT_DTYPES),
     ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
+    ("round_", torch.round_, FLOAT_DTYPES),
     ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
     ("square_", torch.square_, FLOAT_DTYPES),

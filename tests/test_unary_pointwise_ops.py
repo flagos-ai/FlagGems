@@ -11,22 +11,11 @@ try:
 except ImportError:
     TE_AVAILABLE = False
 
-from .accuracy_utils import (
-    ALL_FLOAT_DTYPES,
-    ALL_INT_DTYPES,
-    BOOL_TYPES,
-    COMPLEX_DTYPES,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-    POINTWISE_SHAPES,
-    SWIGLU_SPECIAL_SHAPES,
-    SkipVersion,
-    gems_assert_close,
-    gems_assert_equal,
-    to_reference,
-    unsqueeze_tensor,
-    unsqueeze_tuple,
-)
+from .accuracy_utils import (ALL_FLOAT_DTYPES, ALL_INT_DTYPES, BOOL_TYPES,
+                             COMPLEX_DTYPES, FLOAT_DTYPES, INT_DTYPES,
+                             POINTWISE_SHAPES, SWIGLU_SPECIAL_SHAPES,
+                             SkipVersion, gems_assert_close, gems_assert_equal,
+                             to_reference, unsqueeze_tensor, unsqueeze_tuple)
 
 
 @pytest.mark.abs
@@ -2276,6 +2265,7 @@ def test_accuracy_round_(shape, dtype):
     ref_inp = to_reference(inp.clone())
 
     ref_out = torch.round_(ref_inp)
+    ref_out = ref_inp.round_()
     with flag_gems.use_gems():
         res_out = inp.round_()
 
