@@ -19,7 +19,7 @@ def addcdiv_kernel(x, t1, t2, value):
 
 
 def addcdiv(inp, tensor1, tensor2, value=1.0, out=None):
-    logger.debug("GEMS ADDCDIV FORWARD")
+    logger.debug("GEMS_KUNLUNXIN ADDCDIV FORWARD")
 
     if out is None:
         out = torch.empty_like(inp)
