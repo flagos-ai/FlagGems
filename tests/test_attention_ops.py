@@ -328,7 +328,7 @@ def gems_flash_fwd(
 )
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_sdpa_legacy(
+def test_scaled_dot_product_attention_legacy(
     batch,
     num_q_head,
     num_kv_head,
@@ -430,7 +430,7 @@ def test_sdpa_legacy(
 )
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_sdpa_legacy_backward(
+def test_scaled_dot_product_attention_legacy_legacy_backward(
     batch,
     num_q_head,
     num_kv_head,
@@ -514,7 +514,7 @@ def test_sdpa_legacy_backward(
 @pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_sdpa_square_qk_even_mn(
+def test_scaled_dot_product_attention_square_qk_even_mn(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
     if flag_gems.vendor_name == "mthreads":
@@ -546,7 +546,7 @@ def test_sdpa_square_qk_even_mn(
 @pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_sdpa_nonsquare_qk(
+def test_scaled_dot_product_attention_nonsquare_qk(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
     if flag_gems.vendor_name == "mthreads":
@@ -587,7 +587,7 @@ def test_sdpa_nonsquare_qk(
 @pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_fwd_nonsquare_qk(
+def test_flash_attention_foward_nonsquare_qk(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
     device = torch_device_fn.current_device()
@@ -626,7 +626,7 @@ def test_flash_fwd_nonsquare_qk(
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_fwd_gqa_alibi_softcap(
+def test_flash_attention_forward_gqa_alibi_softcap(
     batch,
     num_head,
     num_head_k,
@@ -704,7 +704,7 @@ def test_flash_fwd_gqa_alibi_softcap(
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_splitkv(
+def test_flash_attention_foward_splitkv(
     batch,
     num_head,
     num_head_k,
@@ -783,7 +783,7 @@ def test_flash_splitkv(
 )
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_fwd_swa(
+def test_flash_attention_foward_swa(
     batch,
     num_head,
     q_seq_len,
@@ -928,6 +928,7 @@ def ref_paged_attn(
 @pytest.mark.parametrize("alibi", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("num_blocks", [32768, 2048])
+@pytest.mark.parametrize("optimize_init", [False, True])
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
     seq_lens: List[Tuple[int, int]],
@@ -939,6 +940,7 @@ def test_flash_attn_varlen_func(
     alibi: bool,
     soft_cap: Optional[float],
     num_blocks: int,
+    optimize_init: bool,
 ) -> None:
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
@@ -1017,22 +1019,36 @@ def test_flash_attn_varlen_func(
                 fa_version=2,
             )
         else:
-            output = flag_gems.ops.flash_attn_varlen_func(
-                q=query,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_query_lens,
-                seqused_k=seqused_k,
-                max_seqlen_q=max_query_len,
-                max_seqlen_k=max_kv_len,
-                softmax_scale=scale,
-                causal=causal,
-                window_size=window_size,
-                block_table=block_tables,
-                softcap=soft_cap if soft_cap is not None else 0,
-                alibi_slopes=alibi_slopes,
-                fa_version=2,
-            )
+            if optimize_init is not None:
+                output = flag_gems.ops.flash_attn_varlen_opt_func(
+                    q=query,
+                    k=key_cache,
+                    v=value_cache,
+                    cu_seqlens_q=cu_query_lens,
+                    seqused_k=seqused_k,
+                    max_seqlen_q=max_query_len,
+                    max_seqlen_k=max_kv_len,
+                    softmax_scale=scale,
+                    causal=causal,
+                    window_size=window_size,
+                    block_table=block_tables,
+                    softcap=soft_cap if soft_cap is not None else 0,
+                    alibi_slopes=alibi_slopes,
+                    fa_version=2,
+                )
+            else:
+                output = flag_gems.ops.flash_attn_varlen_func(
+                    q=query,
+                    k=key_cache,
+                    v=value_cache,
+                    cu_seqlens_q=cu_query_lens,
+                    seqused_k=seqused_k,
+                    max_seqlen_q=max_query_len,
+                    max_seqlen_k=max_kv_len,
+                    softmax_scale=scale,
+                    causal=causal,
+                    window_size=window_size,
+                )
 
         ref_output = ref_paged_attn(
             query=query,

@@ -1629,7 +1629,7 @@ MAXPOOL2D_CONFIGS = [
 ]
 
 
-@pytest.mark.max_pool2d
+@pytest.mark.max_pool2d_with_indices
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS
 )

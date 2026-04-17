@@ -193,6 +193,40 @@ def test_accuracy_full_like(shape, dtype, xdtype, fill_value):
     gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
+@pytest.mark.new_full
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BOOL_TYPES + ALL_INT_DTYPES + ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize("xdtype", BOOL_TYPES + ALL_INT_DTYPES + ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "fill_value", [3.1415926, 2, False, float("inf"), float("nan")]
+)
+def test_accuracy_new_full(shape, dtype, xdtype, fill_value):
+    inp = torch.empty(size=shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+
+    # without dtype: output dtype inherits from self (dtype), skip if dtype doesn't support inf/nan
+    if isinstance(fill_value, float) and (
+        math.isinf(fill_value) or math.isnan(fill_value)
+    ):
+        if dtype not in ALL_FLOAT_DTYPES:
+            pytest.skip("Skipping inf/nan test for non-float dtypes")
+    ref_out = ref_inp.new_full(shape, fill_value)
+    with flag_gems.use_gems():
+        res_out = inp.new_full(shape, fill_value)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+    # with dtype: output dtype is xdtype, skip if xdtype doesn't support inf/nan
+    if isinstance(fill_value, float) and (
+        math.isinf(fill_value) or math.isnan(fill_value)
+    ):
+        if xdtype not in ALL_FLOAT_DTYPES:
+            pytest.skip("Skipping inf/nan test for non-float dtypes")
+    ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
+    with flag_gems.use_gems():
+        res_out = inp.new_full(shape, fill_value, dtype=xdtype)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
+
+
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.randperm
 @pytest.mark.parametrize("n", [123, 12345, 123456])
@@ -263,7 +297,7 @@ def test_accuracy_eye(shape, dtype):
 
 @pytest.mark.one_hot
 def test_accuracy_one_hot():
-    from flag_gems.ops.one_hot import one_hot as gems_one_hot
+    gems_one_hot = flag_gems.one_hot
 
     dev_type = torch.device(device).type
     expected_device = "cpu" if TO_CPU else device

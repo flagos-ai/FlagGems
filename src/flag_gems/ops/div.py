@@ -5,9 +5,42 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.pointwise_dynamic import ComplexMode
 from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
 
 logger = logging.getLogger(__name__)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, True, True],
+    num_outputs=2,
+    promotion_methods=[
+        (0, 1, 2, 3, "INT_TO_FLOAT"),
+        (0, 1, 2, 3, "INT_TO_FLOAT"),
+    ],
+)
+@triton.jit
+def div_complex_kernel(ar, ai, br, bi):
+    # Smith's method: avoid overflow by dividing by the larger component
+    abs_br = tl.abs(br)
+    abs_bi = tl.abs(bi)
+    use_br = abs_br >= abs_bi
+
+    # When |br| >= |bi|: ratio = bi/br, denom = br + bi*ratio
+    ratio1 = tl.where(br == 0, 0.0, bi / br)
+    denom1 = br + bi * ratio1
+    real1 = (ar + ai * ratio1) / denom1
+    imag1 = (ai - ar * ratio1) / denom1
+
+    # When |bi| > |br|: ratio = br/bi, denom = bi + br*ratio
+    ratio2 = tl.where(bi == 0, 0.0, br / bi)
+    denom2 = bi + br * ratio2
+    real2 = (ar * ratio2 + ai) / denom2
+    imag2 = (ai * ratio2 - ar) / denom2
+
+    real = tl.where(use_br, real1, real2)
+    imag = tl.where(use_br, imag1, imag2)
+    return real, imag
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -26,6 +59,16 @@ def true_div_func_tensor_scalar(x, y):
 @triton.jit
 def true_div_func_scalar_tensor(x, y):
     return x / y
+
+
+# Register complex support
+true_div_func.register_complex(mode=ComplexMode.CROSS, cross_kernel=div_complex_kernel)
+true_div_func_tensor_scalar.register_complex(
+    mode=ComplexMode.CROSS, tensorize_scalars=True, fallback_target=true_div_func
+)
+true_div_func_scalar_tensor.register_complex(
+    mode=ComplexMode.CROSS, tensorize_scalars=True, fallback_target=true_div_func
+)
 
 
 def true_divide(A, B):

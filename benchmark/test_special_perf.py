@@ -1305,6 +1305,55 @@ def test_perf_unfold_backward():
     bench.run()
 
 
+@pytest.mark.assert_async
+def test_perf_assert_async():
+    def assert_async_input_fn(shape, dtype, device):
+        if dtype == torch.bool:
+            tensor = torch.ones(shape, dtype=dtype, device=device)
+        else:
+            tensor = torch.ones(shape, dtype=dtype, device=device)
+
+        msg = "Benchmark assert_async"
+
+        yield (
+            tensor,
+            msg,
+        )
+
+    class AssertAsyncBenchmark(GenericBenchmark):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def set_shapes(self, shape_file_path=None):
+            self.shapes = [
+                (),
+                (1,),
+                (1, 1),
+                (1, 1, 1),
+            ]
+
+        def set_more_shapes(self):
+            return None
+
+    gems_op = flag_gems._assert_async
+
+    bench = AssertAsyncBenchmark(
+        op_name="assert_async",
+        input_fn=assert_async_input_fn,
+        torch_op=torch._assert_async,
+        dtypes=[
+            torch.bool,
+            torch.int32,
+            torch.float32,
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+
+    bench.set_gems(gems_op)
+    bench.run()
+
+
 @pytest.mark.lift_fresh_copy
 def test_perf_lift_fresh_copy():
     bench = GenericBenchmark(
@@ -1411,46 +1460,46 @@ def test_perf_t_copy():
     bench.run()
 
 
-class SelectBackwardBenchmark(Benchmark):
-    """
-    Benchmark for select_backward operator.
-    """
-
-    def set_more_shapes(self):
-        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-        return special_shapes_2d + sp_shapes_3d
+class UpsampleBicubic2dAaBackwardBenchmark(Benchmark):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cfgs = [
+            # Small / medium — fused path targets
+            (4, 16, 4, 4, 1, 1, False, "tiny 4x down"),
+            (4, 16, 4, 4, 16, 16, False, "small 4x up"),
+            (4, 16, 16, 16, 4, 4, False, "small 4x down"),
+            (4, 16, 16, 32, 64, 128, False, "small->med 4x up"),
+            (1, 1, 64, 64, 16, 16, False, "C=1 4x down"),
+            (1, 1, 64, 64, 32, 32, False, "C=1 2x down"),
+            (1, 1, 64, 64, 128, 128, False, "C=1 2x up"),
+            (4, 3, 256, 256, 128, 128, False, "C=3 2x down"),
+            (4, 3, 128, 128, 256, 256, False, "C=3 2x up"),
+            (4, 64, 64, 64, 32, 32, False, "C=64 2x down"),
+            # Large — 2-pass path targets
+            (1, 64, 512, 512, 128, 128, False, "C=64 4x down"),
+            (1, 64, 512, 512, 1024, 1024, False, "C=64 2x up"),
+            (512, 1024, 32, 32, 8, 8, False, "NC=524K 4x down"),
+            (256, 512, 64, 64, 16, 16, False, "NC=131K 4x down"),
+            (256, 512, 64, 64, 32, 32, False, "NC=131K 2x down"),
+            (256, 512, 64, 64, 128, 128, False, "NC=131K 2x up"),
+        ]
 
     def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            x = generate_tensor_input(shape, cur_dtype, self.device)
-            ndim = len(shape)
-
-            dim = 1 if ndim > 1 else 0
-            actual_dim = dim if dim >= 0 else dim + ndim
-
-            index = shape[actual_dim] // 2
-
-            y = torch.select(x, actual_dim, index)
-            grad = torch.randn_like(y)
-
-            yield grad, shape, actual_dim, index
+        for N, C, Hi, Wi, Ho, Wo, ac, label in self._cfgs:
+            grad = torch.randn([N, C, Ho, Wo], device=self.device, dtype=cur_dtype)
+            yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None, label
 
     def get_tflops(self, op, *args, **kwargs):
-        grad, shape, _, _ = args
-        return grad.numel()
+        grad = args[0]
+        return grad.numel() * 2
 
 
-@pytest.mark.select_backward
-@pytest.mark.parametrize(
-    "dtype",
-    FLOAT_DTYPES,
-)
-def test_select_backward_perf(dtype):
-    bench = SelectBackwardBenchmark(
-        op_name="select_backward",
-        torch_op=torch.ops.aten.select_backward,
-        dtypes=[dtype],
+@pytest.mark.upsample_bicubic2d_aa_backward
+def test_upsample_bicubic2d_aa_backward():
+    bench = UpsampleBicubic2dAaBackwardBenchmark(
+        op_name="upsample_bicubic2d_aa_backward",
+        torch_op=torch.ops.aten._upsample_bicubic2d_aa_backward,
+        dtypes=FLOAT_DTYPES,
     )
 
     bench.run()
@@ -1462,8 +1511,7 @@ def _functional_sym_constrain_range_for_size_input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.functional_sym_constrain_range_for_size
-@pytest.mark.performance
-def test_perf_functional_sym_constrain_range_for_size():
+def test_functional_sym_constrain_range_for_size():
     bench = GenericBenchmark(
         op_name="functional_sym_constrain_range_for_size",
         torch_op=torch.ops.aten._functional_sym_constrain_range_for_size,
