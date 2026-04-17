@@ -38,7 +38,7 @@ def mean_kernel_1(
 
 
 def mean(inp, *, dtype=None):
-    logger.debug("GEMS MEAN")
+    logger.debug("GEMS_ASCEND MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -79,7 +79,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logger.debug("GEMS MEAN DIM")
+    logger.debug("GEMS_ASCEND MEAN DIM")
 
     if dtype is None:
         dtype = x.dtype

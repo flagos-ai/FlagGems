@@ -34,14 +34,14 @@ def fused_exponential_kernel(
 
     for task_index in range(tasks_per_worker):
         task_id = pid + task_index * n_workers
-        philox_seed = philox_seed.to(tl.int64)
+        philox_seed_64 = philox_seed.to(tl.int64)
         philox_offset_64 = philox_offset.to(tl.int64)
         c0 = (philox_offset_64 & 0xFFFFFFFF).to(tl.uint32)
         c1 = ((philox_offset_64 >> 32) & 0xFFFFFFFF).to(tl.uint32)
         i4 = task_id * BLOCK + tl.arange(0, BLOCK)
         c0 += i4
         _O = c0 * 0
-        r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
+        r0, r1, r2, r3 = tl.philox(philox_seed_64, c0, c1, _O, _O)
         if is_double:
             d0 = uint_to_uniform_float(paste_u64(r0, r2))
             d1 = uint_to_uniform_float(paste_u64(r1, r3))

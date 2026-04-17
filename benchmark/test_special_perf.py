@@ -266,6 +266,8 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
+    if vendor_name == "ascend":
+        dtypes = [dtype for dtype in dtypes if dtype != torch.complex64]
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )

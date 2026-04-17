@@ -14,7 +14,7 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 try:
     import torch_npu  # noqa: F401
 
-    atan2 = tl_extra_shim.atan2
+    atan2 = triton.language.extra.libdevice.atan2
 except ImportError:  # noqa: E722
     atan2 = tl_extra_shim.atan2
 

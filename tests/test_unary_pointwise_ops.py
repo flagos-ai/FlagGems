@@ -2083,6 +2083,8 @@ def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
     else:
         if flag_gems.vendor_name == "mthreads":
             src = torch.arange(numel, device="cpu", dtype=src_dtype).to(device)
+        elif flag_gems.vendor_name == "ascend" and src_dtype == torch.int16:
+            pytest.skip("Skipping torch.int16 tests on Ascend platform")
         else:
             src = torch.arange(numel, device=device, dtype=src_dtype)
 

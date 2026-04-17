@@ -125,6 +125,8 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
             pytest.skip(
                 "There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead"
             )
+    if vendor_name == "ascend":
+        dtypes = [dtype for dtype in dtypes if dtype != torch.complex64]
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 

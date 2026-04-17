@@ -28,8 +28,11 @@ CUSTOMIZED_UNUSED_OPS = (
     "_to_copy",
     "contiguous",
     "copy_",
+    "_to_copy",
+    "cumsum",
     "sort",
     "sort_stable",
+    "topk",
 )
 
 

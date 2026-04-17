@@ -106,6 +106,8 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
+    if op_name in ["var_mean"] and vendor_name == "ascend":
+        dtypes = [dtype for dtype in dtypes if dtype != torch.bfloat16]
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
