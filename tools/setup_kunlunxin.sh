@@ -13,7 +13,10 @@ uv pip install --index ${FLAGOS_PYPI} \
     nvidia-cusolver-cu11==11.4.1.48 \
     nvidia-cusparse-cu11==11.7.5.86 \
     nvidia-nccl-cu11==2.21.5 \
-    nvidia-nvtx-cu11==11.8.86 \
+    nvidia-nvtx-cu11==11.8.86
+
+# Install this to make torch happy
+uv pip install triton==3.1.0
 
 uv pip install --index ${FLAGOS_PYPI} \
     "benchflow==1.0.0" \
@@ -23,8 +26,12 @@ uv pip install --index ${FLAGOS_PYPI} \
     "torchvision==0.20.1+cu118" \
     "torch_klx==0.1.0" \
     "torch_xray==0.2.1" \
-    "triton==3.0.0+0762702f" \
     "xmlir==1.0.0.1"
+
+# Install flagtree
+uv pip uninstall triton
+uv pip install --index ${FLAGOS_PYPI} \
+    "flagtree=0.5.1+xpu3.0"
 
 # Remove some wheels that might be problematic
 uv pip uninstall pytest-repeat pytest-timeout
