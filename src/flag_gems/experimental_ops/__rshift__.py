@@ -14,12 +14,12 @@ def rshift_func(x, y):
 
 
 def rshift_tensor(A, B):
-    logger.debug("GEMS RSHIFT TENSOR")
+    logger.debug("GEMS RSHIFT_TENSOR")
     return rshift_func(A, B)
 
 
 def rshift_tensor_(A, B):
-    logger.debug("GEMS RSHIFT TENSOR_")
+    logger.debug("GEMS RSHIFT_TENSOR_")
     return rshift_func(A, B, out0=A)
 
 
@@ -30,10 +30,10 @@ def rshift_func_scalar(x, y):
 
 
 def rshift_scalar(A, B):
-    logger.debug("GEMS RSHIFT SCALAR")
+    logger.debug("GEMS RSHIFT_SCALAR")
     return rshift_func_scalar(A, B)
 
 
 def rshift_scalar_(A, B):
-    logger.debug("GEMS RSHIFT SCALAR_")
+    logger.debug("GEMS RSHIFT_SCALAR_")
     return rshift_func_scalar(A, B, out0=A)
