@@ -47,25 +47,21 @@ w8a8_block_fp8_general_tma:
       num_warps: warps
     block_m:
       - 16
-      - 32
       - 64
       - 128
-      - 256
     block_n:
-      - 64
-      - 128
       - 32
-      - 256
+      - 128
     block_k:
-      - 64
       - 128
     group_m:
       - 1
+      - 4
+      - 8
       - 16
       - 32
       - 64
     stages:
-      - 2
       - 3
       - 4
       - 5
