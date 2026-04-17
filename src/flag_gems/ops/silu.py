@@ -1,5 +1,6 @@
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -7,6 +8,10 @@ from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.triton_lang_extension import div_rn
 
 logger = logging.getLogger(__name__)
+
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
+)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
@@ -35,6 +40,10 @@ def silu(self):
 
 def silu_backward(grad_output, self):
     logger.debug("GEMS SILU BACKWARD")
+    if torch.is_grad_enabled():
+        return torch.ops.aten.silu_backward.default.redispatch(
+            _FALLBACK_KEYSET, grad_output, self
+        )
     grad_input = silu_backward_kernel(self, grad_output)
     return grad_input
 
