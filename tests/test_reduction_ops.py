@@ -2620,10 +2620,7 @@ def test__index_put_impl__acc_false(
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        if flag_gems.vendor_name == "tsingmicro":
-            K = indices[0].to(device="cpu").sum().item()
-        else:
-            K = indices[0].sum().item()
+        K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -2650,20 +2647,6 @@ def test__index_put_impl__acc_true(
     input_shape, indices_shape, values_shape, is_bool, dtype
 ):
     init_seed(0)
-    if flag_gems.vendor_name == "metax":
-        torch.manual_seed(0)
-        torch.cuda.manual_seed_all(0)
-    if flag_gems.vendor_name == "kunlunxin":
-        torch.manual_seed(0)
-        torch.cuda.manual_seed_all(0)
-        np.random.seed(0)
-        random.seed(0)
-    if flag_gems.vendor_name == "mthreads":
-        torch.manual_seed(0)
-        torch.musa.manual_seed_all(0)
-    if flag_gems.vendor_name == "cambricon":
-        torch.manual_seed(42)
-        torch.mlu.manual_seed_all(42)
     accumulate = True
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
@@ -2672,10 +2655,7 @@ def test__index_put_impl__acc_true(
     indices = gen_indices_for_index_put(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
-        if flag_gems.vendor_name == "tsingmicro":
-            K = indices[0].to(device="cpu").sum().item()
-        else:
-            K = indices[0].sum().item()
+        K = indices[0].sum().item()
         values = torch.randn(
             (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
         )
@@ -2690,14 +2670,7 @@ def test__index_put_impl__acc_true(
     torch._index_put_impl_(ref_inp, ref_indices, ref_values, accumulate, unsafe=False)
     with flag_gems.use_gems():
         torch._index_put_impl_(inp, indices, values, accumulate, unsafe=False)
-    if flag_gems.vendor_name == "cambricon" and dtype == torch.float16:
-        from .accuracy_utils import to_cpu
-
-        inp = to_cpu(inp, ref_inp)
-        ref_inp = ref_inp.to(dtype)
-        torch.testing.assert_close(inp, ref_inp, atol=3e-3, rtol=3e-2)
-    else:
-        gems_assert_close(inp, ref_inp, dtype)
+    gems_assert_close(inp, ref_inp, dtype)
 
 
 @pytest.mark.index_put_impl
