@@ -36,7 +36,7 @@ def generate_gather_kernel(
     code.newline()
 
     code.writeline("@libentry()")
-    code.writeline("@triton.heuristics({'BLOCK_SIZE_N': lambda args: 16384})")
+    code.writeline("@triton.heuristics({'BLOCK_SIZE_N': lambda args: 8192})")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
