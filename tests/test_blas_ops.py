@@ -412,8 +412,9 @@ def test_grouped_mm(groups, N, K, dtype):
         dtype=torch.int32,
         device="cuda",
     )
-
-    ref_out = torch._grouped_mm(mat_a, mat_b, offs)
+    ref_mat_a = to_reference(mat_a, True)
+    ref_mat_b = to_reference(mat_b, True)
+    ref_out = torch._grouped_mm(ref_mat_a, ref_mat_b, offs)
     with flag_gems.use_gems():
         res_out = torch._grouped_mm(mat_a, mat_b, offs)
 
