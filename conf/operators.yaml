@@ -617,6 +617,16 @@ ops:
       - LinearAlg
     stages:
       - stable: '2.2'
+  - name: argsort
+    description: Returns the indices that sort a tensor along a given dimension in ascending order by value.
+    for:
+      - argsort
+    labels:
+      - aten
+    kind:
+      - Data
+    stages:
+      - stable: '3.0'
   - name: asinh_
     description: Computes the inverse hyperbolic sine for each element of a tensor in-place.
     for:
