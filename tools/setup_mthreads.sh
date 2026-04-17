@@ -7,6 +7,8 @@ uv pip install --index $FLAGOS_PYPI \
    "flagtree==0.5.0+mthreads3.1"
 
 uv pip install -e .[mthreads,test]
+uv pip install --index $FLAGOS_PYPI \
+   "torch_musa==2.7.1"
 
 export MUSA_HOME=/usr/local/musa
 export PATH=$MUSA_HOME/bin:$PATH
