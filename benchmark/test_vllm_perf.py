@@ -1165,7 +1165,7 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
- # Mixtral-like shapes
+            # Mixtral-like shapes
             (1, 8, 4096, 14336, 2),
             (4, 8, 4096, 14336, 2),
             (16, 8, 4096, 14336, 2),
@@ -1208,16 +1208,25 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
 
         # Generate INT8 weights with scales (group-wise quantization)
         w1_fp16 = torch.randn(
-            num_experts, intermediate_size * 2, hidden_size,
-            device=device, dtype=dtype,
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=dtype,
         ) * (1.0 / hidden_size**0.5)
         w2_fp16 = torch.randn(
-            num_experts, hidden_size, intermediate_size,
-            device=device, dtype=dtype,
+            num_experts,
+            hidden_size,
+            intermediate_size,
+            device=device,
+            dtype=dtype,
         ) * (1.0 / intermediate_size**0.5)
         w3_fp16 = torch.randn(
-            num_experts, intermediate_size * 2, hidden_size,
-            device=device, dtype=dtype,
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=dtype,
         ) * (1.0 / hidden_size**0.5)
 
         # Quantize to W8A16
@@ -1227,7 +1236,9 @@ class FusedMoEMXQW8A16Benchmark(Benchmark):
         w3_q, w3_scale, _ = quantize_weights_moe(w3_fp16, num_experts, quant_config)
 
         # Routing
-        gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+        gating = torch.randn(
+            num_tokens, num_experts, device=device, dtype=torch.float32
+        )
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
         topk_weights = topk_weights.to(dtype)
@@ -1323,6 +1334,7 @@ def _baseline_w8a16_mxq_wrapper(
         topk_ids,
     )
 
+
 def _baseline_w8a16_mxq_wrapper_vllm(
     hidden_states,
     w1_fp16,
@@ -1353,6 +1365,7 @@ def _baseline_w8a16_mxq_wrapper_vllm(
         w2_scale=w2_scale,
     )
 
+
 def _gems_fused_moe_mxq_w8a16_wrapper(
     hidden_states,
     w1_fp16,
@@ -1370,18 +1383,28 @@ def _gems_fused_moe_mxq_w8a16_wrapper(
 ):
     """Test flag_gems.fused_moe_mxq.fused_moe with W8A16."""
     del w1_fp16, w2_fp16
-    from flag_gems.fused_moe_mxq import fused_moe, QuantConfig, QuantMode
+    from flag_gems.fused_moe_mxq import QuantConfig, QuantMode, fused_moe
 
     quant_config = QuantConfig(mode=QuantMode.W8A16, has_zero_point=False)
     return fused_moe(
         hidden_states,
-        w1=None, w2=None, w3=None,
-        topk_weights=topk_weights, topk_ids=topk_ids,
+        w1=None,
+        w2=None,
+        w3=None,
+        topk_weights=topk_weights,
+        topk_ids=topk_ids,
         quant_config=quant_config,
-        num_experts=num_experts, top_k=topk,
-        w1_q=w1_q, w1_scales=w1_scale, w1_zeros=None,
-        w2_q=w2_q, w2_scales=w2_scale, w2_zeros=None,
-        w3_q=w3_q, w3_scales=w3_scale, w3_zeros=None,
+        num_experts=num_experts,
+        top_k=topk,
+        w1_q=w1_q,
+        w1_scales=w1_scale,
+        w1_zeros=None,
+        w2_q=w2_q,
+        w2_scales=w2_scale,
+        w2_zeros=None,
+        w3_q=w3_q,
+        w3_scales=w3_scale,
+        w3_zeros=None,
     )
 
 
@@ -1398,6 +1421,7 @@ def test_perf_fused_moe_w8a16_mxq():
     )
     bench.set_gems(_gems_fused_moe_mxq_w8a16_wrapper)
     bench.run()
+
 
 @pytest.mark.fused_moe
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
