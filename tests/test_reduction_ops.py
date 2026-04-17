@@ -1704,6 +1704,189 @@ def test_accuracy_max_pool2d_backward(
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
+MAXPOOL3D_CONFIGS = [
+    # ======== Input Scale: Small ========
+    # Minimal 5D input: single batch, single channel, tiny spatial
+    ((1, 1, 2, 2, 2), 2, 1, 0, 1, False),
+    # Small spatial with kernel_size=1 (identity-like pooling)
+    ((1, 2, 4, 4, 4), 1, 1, 0, 1, False),
+    # Small input where kernel covers entire spatial dimension
+    ((1, 1, 3, 3, 3), 3, 1, 0, 1, False),
+    # Small input with padding
+    ((1, 1, 3, 3, 3), 3, 1, 1, 1, False),
+    # ======== Input Scale: Regular ========
+    # Classic 3x3x3 kernel, stride 2, padding 1
+    ((4, 3, 8, 16, 16), 3, 2, 1, 1, False),
+    # Regular with moderate channels
+    ((2, 8, 8, 16, 16), 3, 2, 1, 1, False),
+    # ======== Input Scale: Large ========
+    # Large spatial dimensions
+    ((2, 4, 16, 64, 64), 3, 2, 1, 1, False),
+    # Large depth and spatial
+    ((1, 16, 32, 32, 32), 3, 2, 1, 1, False),
+    # ======== Input Dimensions: 4D (no batch dim) ========
+    # 4D regular input (C, D, H, W)
+    ((3, 8, 16, 16), 3, 2, 1, 1, False),
+    # 4D small input
+    ((2, 4, 8, 8), 2, 2, 0, 1, False),
+    # ======== Parameter: kernel_size ========
+    # kernel_size = 1 (pass-through, no reduction)
+    ((2, 3, 8, 8, 8), 1, 1, 0, 1, False),
+    # kernel_size = 2 (even kernel)
+    ((2, 4, 8, 8, 8), 2, 2, 0, 1, False),
+    # kernel_size as non-cubic tuple
+    ((2, 4, 6, 14, 14), (3, 3, 5), (1, 2, 2), 1, 1, False),
+    # Asymmetric kernel (1, 2, 3)
+    ((2, 2, 8, 8, 10), (1, 2, 3), 1, 0, 1, False),
+    # ======== Parameter: stride ========
+    # stride = None (default, equals kernel_size)
+    ((2, 3, 8, 8, 8), 2, None, 0, 1, False),
+    # stride = 1 (fully overlapping windows)
+    ((2, 3, 6, 8, 8), 3, 1, 1, 1, False),
+    # stride as non-cubic tuple
+    ((2, 4, 8, 16, 16), 3, (1, 2, 2), 1, 1, False),
+    # stride = kernel_size (non-overlapping, tiled)
+    ((2, 4, 9, 9, 9), 3, 3, 0, 1, False),
+    # ======== Parameter: padding ========
+    # padding = 0 (default, no padding)
+    ((2, 4, 8, 8, 8), 3, 2, 0, 1, False),
+    # padding as int
+    ((2, 2, 7, 9, 9), 3, 2, 1, 1, False),
+    # padding as non-cubic tuple
+    ((2, 4, 8, 8, 10), 2, 2, (1, 0, 1), 1, False),
+    # ======== Parameter: dilation ========
+    # dilation = 2 (dilated pooling)
+    ((1, 1, 5, 7, 7), 2, 1, 0, 2, False),
+    # dilation as non-cubic tuple
+    ((2, 2, 8, 12, 12), 2, 1, 0, (1, 2, 2), False),
+    # ======== Parameter: ceil_mode ========
+    # ceil_mode = True with padding
+    ((2, 2, 7, 9, 9), 3, 2, 1, 1, True),
+    # ceil_mode = True without padding
+    ((2, 4, 5, 11, 11), 3, 2, 0, 1, True),
+    # ======== Edge / Combined cases ========
+    # Large batch, small spatial
+    ((16, 2, 4, 8, 8), 2, 2, 0, 1, False),
+    # Single channel, large spatial
+    ((2, 1, 8, 16, 16), 3, 2, 1, 1, False),
+    # Combined: non-cubic kernel + ceil_mode + padding
+    ((2, 3, 7, 11, 13), (2, 3, 3), 2, 1, 1, True),
+]
+
+
+@pytest.mark.max_pool3d
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool3d(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.nn.functional.max_pool3d(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+        return_indices=False,
+    )
+
+    res_out = flag_gems.max_pool3d(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+        return_indices=False,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.max_pool3d
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool3d_return_indices(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+
+    ref_out, ref_indices = torch.nn.functional.max_pool3d(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+        return_indices=True,
+    )
+
+    res_out, res_indices = flag_gems.max_pool3d(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+        return_indices=True,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.max_pool3d_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool3d_backward(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, upcast=True)
+    ref_out = torch.nn.functional.max_pool3d(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+        return_indices=False,
+    )
+    res_out, res_indices = flag_gems.max_pool3d(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+        return_indices=True,
+    )
+    out_grad = torch.randn_like(res_out, device=flag_gems.device)
+    ref_grad = to_reference(out_grad, upcast=True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    res_in_grad = flag_gems.max_pool3d_backward(
+        out_grad,
+        inp,
+        res_indices,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 INDEX_PUT_SHAPE_ACC_FALSE = (
     ((2**28,), ((2**16,),), (2**16,), False),
     ((32, 32), ((8,), (8,)), (8,), False),

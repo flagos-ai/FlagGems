@@ -3020,6 +3020,42 @@ ops:
       - IR
     stages:
       stable: '4.0'
+  - name: max_pool3d_backward
+    description: |
+      Applies a 3D max pooling over an input signal composed of several input planes.
+      This is an IR representation rather than a public API and it is for the backward step.
+    for:
+      - max_pool3d_backward
+    labels:
+      - aten
+    kind:
+      - IR
+    stages:
+      stable: '4.0'
+  - name: max_pool3d_with_indices
+    description: |
+      Applies a 3D max pooling over an input signal composed of several input planes.
+      This is an IR representation rather than a public API.
+    for:
+      - max_pool3d_with_indices
+    labels:
+      - aten
+    kind:
+      - IR
+    stages:
+      stable: '4.0'
+  - name: max_pool3d
+    description: |
+      Applies a 3D max pooling over an input signal composed of several input planes.
+      Matches torch.nn.functional.max_pool3d API with return_indices parameter.
+    for:
+      - max_pool3d
+    labels:
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      stable: '4.0'
   - name: maximum
     description: Computes the element-wise maximum of `input` and `other`.
     for:
