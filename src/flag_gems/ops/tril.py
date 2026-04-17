@@ -13,16 +13,10 @@ logger = logging.getLogger(__name__)
 
 _TRIL_AUTOTUNE_CONFIGS = [
     triton.Config({"M_BLOCK_SIZE": 32, "N_BLOCK_SIZE": 64}, num_warps=4, num_stages=2),
-    triton.Config(
-        {"M_BLOCK_SIZE": 32, "N_BLOCK_SIZE": 128}, num_warps=4, num_stages=2
-    ),
+    triton.Config({"M_BLOCK_SIZE": 32, "N_BLOCK_SIZE": 128}, num_warps=4, num_stages=2),
     triton.Config({"M_BLOCK_SIZE": 64, "N_BLOCK_SIZE": 64}, num_warps=4, num_stages=2),
-    triton.Config(
-        {"M_BLOCK_SIZE": 64, "N_BLOCK_SIZE": 128}, num_warps=8, num_stages=2
-    ),
-    triton.Config(
-        {"M_BLOCK_SIZE": 128, "N_BLOCK_SIZE": 64}, num_warps=8, num_stages=2
-    ),
+    triton.Config({"M_BLOCK_SIZE": 64, "N_BLOCK_SIZE": 128}, num_warps=8, num_stages=2),
+    triton.Config({"M_BLOCK_SIZE": 128, "N_BLOCK_SIZE": 64}, num_warps=8, num_stages=2),
     triton.Config(
         {"M_BLOCK_SIZE": 128, "N_BLOCK_SIZE": 128}, num_warps=8, num_stages=2
     ),
