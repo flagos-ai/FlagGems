@@ -2,23 +2,25 @@
 # QC-MoE: Quantized Mixture of Experts kernel for FlagGems
 # Main module integrating MoE kernels with quantization support
 
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, List, Optional, Tuple
+
 import torch
 import triton
 import triton.language as tl
-import torch.nn.functional as F
-from typing import Optional, List, Tuple, Union, Any
-from dataclasses import dataclass
-from enum import Enum
-
 
 # Device detection
 _is_cuda = torch.cuda.is_available()
 
 if _is_cuda:
+
     def is_sm90_supported():
         device_cap = torch.cuda.get_device_capability()
         return device_cap[0] >= 9  # H100, H200, etc.
+
 else:
+
     def is_sm90_supported():
         return False
 
@@ -27,8 +29,10 @@ else:
 # QuantMode and QuantConfig
 # ============================================================================
 
+
 class QuantMode(Enum):
     """Quantization modes supported by QC-MoE."""
+
     FP16 = "fp16"
     FP8 = "fp8"
     INT8 = "int8"
@@ -39,11 +43,12 @@ class QuantMode(Enum):
 @dataclass
 class QuantConfig:
     """Configuration for MoE quantization."""
+
     mode: QuantMode = QuantMode.FP16
     group_size: int = 128
     has_zero_point: bool = True
     per_channel_quant: bool = False
-    
+
     @property
     def w_nbits(self) -> int:
         """Get weight bit width from mode."""
@@ -52,11 +57,11 @@ class QuantConfig:
         elif self.mode in (QuantMode.W8A16, QuantMode.INT8, QuantMode.FP8):
             return 8
         return 16
-    
+
     @property
     def use_int4(self) -> bool:
         return self.mode == QuantMode.W4A16
-    
+
     @property
     def use_int8(self) -> bool:
         return self.mode in (QuantMode.W8A16, QuantMode.INT8)
@@ -65,6 +70,7 @@ class QuantConfig:
 # ============================================================================
 # Triton Kernels
 # ============================================================================
+
 
 @triton.jit
 def fused_moe_kernel_gptq_awq(
@@ -117,16 +123,16 @@ def fused_moe_kernel_gptq_awq(
     Each program processes one (token, expert) pair.
     """
     pid = tl.program_id(0)
-    
+
     # Check bounds
     if pid >= num_valid_tokens:
         return
-    
+
     # Load dispatch information
     token_id = tl.load(sorted_token_ids + pid).to(tl.int64)
     expert_id = tl.load(expert_ids + pid).to(tl.int64)
     weight = tl.load(topk_weights + pid).to(compute_type)
-    
+
     # Precompute strides
     stride_bn_c = tl.constexpr(stride_bn)
     stride_bk_c = tl.constexpr(stride_bk)
@@ -137,52 +143,69 @@ def fused_moe_kernel_gptq_awq(
     stride_be_c = tl.constexpr(stride_be)
     stride_bse_c = tl.constexpr(stride_bse)
     stride_bze_c = tl.constexpr(stride_bze)
-    
+
     # offs_n: range of N elements
     offs_n = tl.arange(0, BLOCK_SIZE_N)
     n_mask = offs_n < N
-    
+
     # Initialize accumulator
     accumulator = tl.zeros((BLOCK_SIZE_N,), dtype=tl.float32)
-    
+
     # Process all K elements in BLOCK_SIZE_K chunks
     for k_block in range(tl.cdiv(K, BLOCK_SIZE_K)):
         k_base = k_block * BLOCK_SIZE_K
         offs_k = tl.arange(0, BLOCK_SIZE_K)
         k_indices = k_base + offs_k
         k_mask = k_indices < K
-        
+
         # Load activation: A[token_id, k_indices]
-        a = tl.load(A + (token_id * stride_am + k_indices * stride_ak), mask=k_mask, other=0.0).to(tl.float32)
-        
+        a = tl.load(
+            A + (token_id * stride_am + k_indices * stride_ak), mask=k_mask, other=0.0
+        ).to(tl.float32)
+
         # Load weight values: W[expert_id, offs_n, k_indices]
         w = tl.load(
-            B + (expert_id * stride_be_c + offs_n[None, :] * stride_bn_c + k_indices[:, None] * stride_bk_c),
+            B
+            + (
+                expert_id * stride_be_c
+                + offs_n[None, :] * stride_bn_c
+                + k_indices[:, None] * stride_bk_c
+            ),
             mask=k_mask[:, None] & n_mask[None, :],
-            other=0.0
+            other=0.0,
         )
-        
+
         # Dequantize weights
         if use_int4_w4a16:
             w = (w & 0xF).to(compute_type)
         elif use_int8_w8a16:
             w = w.to(compute_type)
-        
+
         # Load scales: scales[expert_id, offs_n, group]
         scale_group = k_indices // group_size
         scales = tl.load(
-            B_scale + (expert_id * stride_bse_c + offs_n[None, :] * stride_bsn_c + scale_group[:, None] * stride_bsk_c),
+            B_scale
+            + (
+                expert_id * stride_bse_c
+                + offs_n[None, :] * stride_bsn_c
+                + scale_group[:, None] * stride_bsk_c
+            ),
             mask=k_mask[:, None] & n_mask[None, :],
-            other=1.0
+            other=1.0,
         ).to(tl.float32)
-        
+
         # Dequantize based on quantization mode
         if use_int4_w4a16:
             if has_zp:
                 zp = tl.load(
-                    B_zp + (expert_id * stride_bze_c + offs_n[None, :] * stride_bzn_c + scale_group[:, None] * stride_bzk_c),
+                    B_zp
+                    + (
+                        expert_id * stride_bze_c
+                        + offs_n[None, :] * stride_bzn_c
+                        + scale_group[:, None] * stride_bzk_c
+                    ),
                     mask=k_mask[:, None] & n_mask[None, :],
-                    other=0.0
+                    other=0.0,
                 ).to(tl.float32)
                 w_dequant = (w.to(tl.float32) - zp) * scales
             else:
@@ -190,9 +213,14 @@ def fused_moe_kernel_gptq_awq(
         elif use_int8_w8a16:
             if has_zp:
                 zp = tl.load(
-                    B_zp + (expert_id * stride_bze_c + offs_n[None, :] * stride_bzn_c + scale_group[:, None] * stride_bzk_c),
+                    B_zp
+                    + (
+                        expert_id * stride_bze_c
+                        + offs_n[None, :] * stride_bzn_c
+                        + scale_group[:, None] * stride_bzk_c
+                    ),
                     mask=k_mask[:, None] & n_mask[None, :],
-                    other=0.0
+                    other=0.0,
                 ).to(tl.float32)
                 w_dequant = (w.to(tl.float32) - zp) * scales
             else:
@@ -200,20 +228,20 @@ def fused_moe_kernel_gptq_awq(
         else:
             # No quantization - weights are already in compute_type (FP16)
             w_dequant = w.to(tl.float32) * scales
-        
+
         # Compute matrix multiply using expand and sum: [BLOCK_SIZE_K, BLOCK_SIZE_N] * [BLOCK_SIZE_K, 1]
         a_expanded = a[:, None]  # [BLOCK_SIZE_K, BLOCK_SIZE_N]
         result = tl.sum(a_expanded * w_dequant, axis=0)  # [BLOCK_SIZE_N]
-        
+
         # Accumulate
         accumulator = accumulator + result
-    
+
     # Apply routing weight
     if MUL_ROUTED_WEIGHT:
         accumulator = accumulator * weight
-    
+
     accumulator = accumulator.to(compute_type)
-    
+
     # Store result using atomic add
     offs_n = tl.arange(0, BLOCK_SIZE_N)
     n_mask = offs_n < N
@@ -223,19 +251,35 @@ def fused_moe_kernel_gptq_awq(
 
 @triton.jit
 def fused_moe_kernel_fp16_swiglu(
-    A, C,
-    B_gate, B_up, B_down,
-    topk_weights, sorted_token_ids, expert_ids,
+    A,
+    C,
+    B_gate,
+    B_up,
+    B_down,
+    topk_weights,
+    sorted_token_ids,
+    expert_ids,
     num_tokens_post_padded,
     inter_ptr,
-    N, K, EM, num_valid_tokens,
-    stride_am, stride_ak,
-    stride_bn, stride_bk,
-    stride_cm, stride_cn,
-    stride_gate_e, stride_up_e, stride_down_e,
-    stride_gate_n, stride_gate_k,
-    stride_up_n, stride_up_k,
-    stride_down_k, stride_down_n,
+    N,
+    K,
+    EM,
+    num_valid_tokens,
+    stride_am,
+    stride_ak,
+    stride_bn,
+    stride_bk,
+    stride_cm,
+    stride_cn,
+    stride_gate_e,
+    stride_up_e,
+    stride_down_e,
+    stride_gate_n,
+    stride_gate_k,
+    stride_up_n,
+    stride_up_k,
+    stride_down_k,
+    stride_down_n,
     stride_inter_m,
     BLOCK_SIZE_K: tl.constexpr,
     top_k: tl.constexpr,
@@ -265,7 +309,9 @@ def fused_moe_kernel_fp16_swiglu(
         for kb in range(tl.cdiv(K, BLOCK_SIZE_K)):
             k_offs = kb * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
             k_mask = k_offs < K
-            a_vals = tl.load(A + token_id * stride_am + k_offs, mask=k_mask, other=0.0).to(tl.float32)
+            a_vals = tl.load(
+                A + token_id * stride_am + k_offs, mask=k_mask, other=0.0
+            ).to(tl.float32)
             w_gate = tl.load(
                 B_gate
                 + expert_id * stride_gate_e
@@ -285,12 +331,11 @@ def fused_moe_kernel_fp16_swiglu(
         for kb in range(tl.cdiv(K, BLOCK_SIZE_K)):
             k_offs = kb * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
             k_mask = k_offs < K
-            a_vals = tl.load(A + token_id * stride_am + k_offs, mask=k_mask, other=0.0).to(tl.float32)
+            a_vals = tl.load(
+                A + token_id * stride_am + k_offs, mask=k_mask, other=0.0
+            ).to(tl.float32)
             w_up = tl.load(
-                B_up
-                + expert_id * stride_up_e
-                + n * stride_up_n
-                + k_offs * stride_up_k,
+                B_up + expert_id * stride_up_e + n * stride_up_n + k_offs * stride_up_k,
                 mask=k_mask,
                 other=0.0,
             ).to(tl.float32)
@@ -307,7 +352,9 @@ def fused_moe_kernel_fp16_swiglu(
             base_n = nb * 32
             n_offs = base_n + tl.arange(0, 32)
             n_mask = n_offs < N
-            inter_vals = tl.load(inter_ptr + inter_off + n_offs, mask=n_mask, other=0.0).to(tl.float32)
+            inter_vals = tl.load(
+                inter_ptr + inter_off + n_offs, mask=n_mask, other=0.0
+            ).to(tl.float32)
             w_down = tl.load(
                 B_down
                 + expert_id * stride_down_e
@@ -327,9 +374,10 @@ def fused_moe_kernel_fp16_swiglu(
 # Helper Functions
 # ============================================================================
 
+
 def get_num_experts(shape_desc: str) -> int:
     """Extract number of experts from shape description.
-    
+
     Common patterns:
     - Qwen3.5-397B-A17B: 8 experts
     - Mixtral-8x7B: 8 experts
@@ -355,13 +403,13 @@ def prepare_moe_inputs(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Prepare inputs for fused MoE kernel.
-    
+
     Args:
         x: Input tensor of shape (num_tokens, hidden_dim)
         topk_weights: Weights for selected experts, shape (num_tokens, topk)
         topk_ids: Expert indices, shape (num_tokens, topk)
         num_experts: Total number of experts
-        
+
     Returns:
         sorted_token_ids: Sorted token indices
         expert_ids: Expert index for each block
@@ -370,21 +418,23 @@ def prepare_moe_inputs(
     """
     num_tokens = x.shape[0]
     topk = topk_ids.shape[1]
-    
+
     # Flatten and prepare for MoE dispatch
     flat_topk_weights = topk_weights.view(-1)
     flat_topk_ids = topk_ids.view(-1)
-    
+
     # Create mapping from token to expert selection
     _, sorted_token_ids = torch.sort(flat_topk_weights, dim=0, descending=True)
-    
+
     # Get expert assignments
     expert_ids = flat_topk_ids[sorted_token_ids]
-    
+
     # Pad to block size
     block_size_m = 32  # Default block size
-    num_tokens_post_padded = ((num_tokens * topk + block_size_m - 1) // block_size_m) * block_size_m
-    
+    num_tokens_post_padded = (
+        (num_tokens * topk + block_size_m - 1) // block_size_m
+    ) * block_size_m
+
     return sorted_token_ids, expert_ids, num_tokens_post_padded, block_size_m
 
 
@@ -395,12 +445,12 @@ def quantize_weights_moe(
 ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     """
     Quantize MoE expert weights.
-    
+
     Args:
         weights: Expert weights of shape (num_experts, out_features, in_features)
         num_experts: Number of experts
         quant_config: Quantization configuration
-        
+
     Returns:
         W_q: Quantized weights (same shape as input if int8, packed if int4)
         scales: Quantization scales of shape (num_experts, out_features, num_groups)
@@ -408,28 +458,30 @@ def quantize_weights_moe(
     """
     if quant_config.mode == QuantMode.FP16:
         return weights, None, None
-    
+
     num_experts_e, n_out, k_in = weights.shape
     num_groups = k_in // quant_config.group_size
-    
+
     if quant_config.use_int4:
         w_bits = 4
     else:
         w_bits = 8
-    
+
     # Reshape for per-group quantization along the last dimension
     # weights shape: (E, n_out, k_in) -> (E, n_out, num_groups, group_size)
-    weights_reshaped = weights.view(num_experts, n_out, num_groups, quant_config.group_size)
+    weights_reshaped = weights.view(
+        num_experts, n_out, num_groups, quant_config.group_size
+    )
     w_min = weights_reshaped.min(dim=-1, keepdim=True)[0]
     w_max = weights_reshaped.max(dim=-1, keepdim=True)[0]
-    scale = (w_max - w_min) / ((2 ** w_bits) - 1)
+    scale = (w_max - w_min) / ((2**w_bits) - 1)
     scale = torch.where(scale > 0, scale, torch.ones_like(scale))
-    
+
     # Quantize
     W_normalized = (weights_reshaped - w_min) / (scale + 1e-8)
-    W_q = W_normalized.round().clamp(0, 2 ** w_bits - 1)
+    W_q = W_normalized.round().clamp(0, 2**w_bits - 1)
     W_q = W_q.to(torch.uint8)
-    
+
     # Reshape back - pack if int4
     if quant_config.use_int4:
         # Pack 2 int4 values per byte
@@ -438,15 +490,15 @@ def quantize_weights_moe(
         W_q = W_q_packed.view(num_experts, n_out, -1)
     else:
         W_q = W_q.view(num_experts, n_out, -1)
-    
+
     # Scales shape: (num_experts, n_out, num_groups)
     scales = scale.squeeze(-1).view(num_experts, n_out, num_groups)
-    
+
     # Zero points if needed
     zeros = None
     if quant_config.has_zero_point:
         zeros = w_min.squeeze(-1).view(num_experts, n_out, num_groups)
-    
+
     return W_q, scales, zeros
 
 
@@ -462,8 +514,12 @@ def get_default_config(block_size_m=1, block_size_n=128, block_size_k=64):
 def get_autotune_config():
     """Get autotuning configurations for MoE kernel with reduced sizes for H20."""
     return [
-        triton.Config({'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64}, num_stages=2, num_warps=4),
-        triton.Config({'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 64}, num_stages=2, num_warps=4),
+        triton.Config(
+            {"BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64}, num_stages=2, num_warps=4
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 64}, num_stages=2, num_warps=4
+        ),
     ]
 
 
@@ -498,8 +554,6 @@ def invoke_fused_moe(
     Invoke the fused MoE kernel.
     FP16 mode uses a dedicated SwiGLU path; quantized modes use fused_moe_kernel_gptq_awq.
     """
-    global _fp16_intermediate_buf
-
     num_tokens, hidden_dim = x.shape
     num_experts, inter_dim, _ = W1_q.shape
     num_valid_tokens = sorted_token_ids.shape[0]
@@ -522,17 +576,15 @@ def invoke_fused_moe(
     # FP16 fast path — complete SwiGLU MoE: gate(W1) * up(W3), then W2 @ act
     if quant_config.mode.value == "fp16" and W2_q is not None:
         # FP16 SwiGLU mode requires all weights (W1, W2, optionally W3)
-        inter_buf = torch.empty(
-            num_valid_tokens * N, dtype=x.dtype, device=x.device
-        )
+        inter_buf = torch.empty(num_valid_tokens * N, dtype=x.dtype, device=x.device)
         _W3 = W3_q if W3_q is not None else W1_q  # use W1 if W3 missing
 
         fused_moe_kernel_fp16_swiglu[grid](
             x,
             output,
-            W1_q,          # gate
-            _W3,           # up
-            W2_q,          # down
+            W1_q,  # gate
+            _W3,  # up
+            W2_q,  # down
             topk_weights,
             sorted_token_ids,
             expert_ids,
@@ -569,57 +621,59 @@ def invoke_fused_moe(
     # (weights were not quantized, so W1_scales is None)
     if quant_config.mode.value == "fp16" and W2_q is None:
         num_experts = W1_q.shape[0]
-        n_out = W1_q.shape[1]
-        
+
         # topk_weights is already flattened at this point
         # Vectorized approach: process each expert in batch using torch.matmul
         for e in range(num_experts):
             # Find all dispatch entries for expert e
-            mask = (expert_ids == e)
+            mask = expert_ids == e
             if not mask.any():
                 continue
-            
+
             indices = mask.nonzero(as_tuple=True)[0]
             # Bounds check for padding
             valid_mask = indices < num_valid_tokens
             indices = indices[valid_mask]
-            
+
             # Skip if no valid entries
             if indices.numel() == 0:
                 continue
-            
+
             # Get token indices and weights
             token_indices = sorted_token_ids[indices]
             weights_e = topk_weights[indices]
-            
+
             # Batch compute: W1[e] @ x[token_indices].T
             # W1[e]: [n_out, k_in], x_e: [num_selections, k_in]
             # Result: [n_out, num_selections]
             x_e = x[token_indices]  # [num_selections, k_in]
             result = torch.matmul(W1_q[e], x_e.t())  # [n_out, num_selections]
-            
+
             # Apply weights and transpose: result.T * weights
             # result.T: [num_selections, n_out], weights: [num_selections]
             result = result.t() * weights_e.unsqueeze(1)  # [num_selections, n_out]
-            
+
             # Use index_add for efficient accumulation (avoids Python loop)
             output.index_add_(0, token_indices, result)
-        
+
         return
 
     # Quantized path (W8A16 / W4A16) OR FP16 W1-only path
     # W2_q is None means W1-only projection (quantized or FP16)
     if W2_q is None:
         # Determine if we should skip dequantization (FP16 mode with unit scales)
-        is_fp16_w1_only = (quant_config.mode.value == "fp16" and 
-                          W1_q is not None and W1_scales is not None and
-                          W1_zeros is None)
-        
+        is_fp16_w1_only = (
+            quant_config.mode.value == "fp16"
+            and W1_q is not None
+            and W1_scales is not None
+            and W1_zeros is None
+        )
+
         # For FP16 W1-only: skip INT8 offset (use_int8_w8a16=False)
         # For quantized modes: use appropriate dequantization
         kernel_use_int8 = quant_config.use_int8 and not is_fp16_w1_only
         kernel_has_zp = quant_config.has_zero_point and not is_fp16_w1_only
-        
+
         # W1-only quantization path
         fused_moe_kernel_gptq_awq[grid](
             x,
@@ -711,6 +765,7 @@ def invoke_fused_moe(
 # Main fused_moe Function
 # ============================================================================
 
+
 def fused_moe(
     x: torch.Tensor,
     w1: torch.Tensor,
@@ -735,13 +790,13 @@ def fused_moe(
 ) -> torch.Tensor:
     """
     Fused Mixture of Experts computation with quantization support.
-    
+
     This implements:
         y = sum_i(topk_weights_i * FFN(experts_i(topk_ids_i)))
-    
+
     For SwiGLU MoE:
         FFN(x) = Gate(x) * Up(x) = (silu(W1(x)) * W3(x)) @ W2
-    
+
     Args:
         x: Input tensor of shape (batch_size, seq_len, hidden_dim) or (num_tokens, hidden_dim)
         w1: First FFN layer weights (FP16) or can be pre-quantized (uint8)
@@ -757,51 +812,57 @@ def fused_moe(
         w1_q, w1_scales, w1_zeros: Pre-quantized W1 weights
         w2_q, w2_scales, w2_zeros: Pre-quantized W2 weights
         w3_q, w3_scales, w3_zeros: Pre-quantized W3 weights
-        
+
     Returns:
         Output tensor of same shape as x
     """
     if quant_config is None:
         quant_config = QuantConfig()
-    
+
     # Handle input shape
     original_shape = x.shape
     if len(x.shape) == 3:
         x = x.view(-1, x.shape[-1])  # (B*S, H)
-    
+
     num_tokens = x.shape[0]
-    
+
     # Prepare routing information
     if topk_weights is None or topk_ids is None:
         # Create dummy routing for testing
-        topk_weights = torch.ones(num_tokens, top_k, device=x.device, dtype=x.dtype) / top_k
+        topk_weights = (
+            torch.ones(num_tokens, top_k, device=x.device, dtype=x.dtype) / top_k
+        )
         topk_ids = torch.randint(0, num_experts, (num_tokens, top_k), device=x.device)
-    
+
     # Create dispatch arrays for MoE
     # Each token has top_k expert selections, create entries for each (token, expert) pair
     # sorted_token_ids: token index for each dispatch entry (repeated for each expert selection)
     # expert_ids: expert index for each dispatch entry
-    
+
     # Create token indices: [0,0,1,1,...] where each token repeats top_k times
     token_indices = torch.arange(num_tokens, device=x.device, dtype=torch.int64)
-    sorted_token_ids = token_indices.unsqueeze(1).expand(num_tokens, top_k).contiguous().view(-1)
-    
+    sorted_token_ids = (
+        token_indices.unsqueeze(1).expand(num_tokens, top_k).contiguous().view(-1)
+    )
+
     # Expert IDs: [e0_0, e0_1, ..., e1_0, e1_1, ...]
     flat_expert_ids = topk_ids.view(-1)
-    
+
     # Weights: [w0_0, w0_1, ..., w1_0, w1_1, ...]
     flat_weights = topk_weights.view(-1)
-    
+
     # Sort by weight for efficient processing (optional, helps with cache locality)
     sorted_indices = torch.argsort(flat_weights, dim=0, descending=True)
     sorted_token_ids = sorted_token_ids[sorted_indices]
     sorted_expert_ids = flat_expert_ids[sorted_indices]
     sorted_weights = flat_weights[sorted_indices]
-    
+
     # Pad to block size
     block_size_m = 32
-    num_tokens_post_padded = ((num_tokens * top_k + block_size_m - 1) // block_size_m) * block_size_m
-    
+    num_tokens_post_padded = (
+        (num_tokens * top_k + block_size_m - 1) // block_size_m
+    ) * block_size_m
+
     # Quantize weights if not pre-quantized
     if w1_q is not None and w1_scales is not None:
         # Use pre-quantized weights from benchmark
@@ -812,7 +873,7 @@ def fused_moe(
         W1_q, W1_scales, W1_zeros = quantize_weights_moe(w1, num_experts, quant_config)
     else:
         raise ValueError("Either w1 or w1_q must be provided")
-    
+
     if w2_q is not None and w2_scales is not None:
         W2_q = w2_q.contiguous()
         W2_scales = w2_scales.contiguous()
@@ -824,21 +885,23 @@ def fused_moe(
         W2_q = None
         W2_scales = None
         W2_zeros = None
-    
+
     if w3 is not None:
         if w3_q is not None and w3_scales is not None:
             W3_q = w3_q.contiguous()
             W3_scales = w3_scales.contiguous()
             W3_zeros = w3_zeros.contiguous() if w3_zeros is not None else None
         else:
-            W3_q, W3_scales, W3_zeros = quantize_weights_moe(w3, num_experts, quant_config)
+            W3_q, W3_scales, W3_zeros = quantize_weights_moe(
+                w3, num_experts, quant_config
+            )
     else:
         W3_q, W3_scales, W3_zeros = None, None, None
-    
+
     # For FP16 W1-only mode, the weights are not quantized (quantize returns them as-is)
     # W1_scales will be None, so invoke_fused_moe handles this case directly
     # No need to create fake scales here
-    
+
     # Allocate output
     # For W1-only projection (W2_q is None): output shape is (num_tokens, inter_dim)
     # For SwiGLU (W2_q is not None): output shape is same as input (num_tokens, hidden_dim)
@@ -848,11 +911,11 @@ def fused_moe(
         output = torch.zeros(num_tokens, n_out, dtype=x.dtype, device=x.device)
     else:
         output = torch.zeros_like(x)
-    
+
     # Default block shape
     if block_shape is None:
         block_shape = [128, 128]
-    
+
     # Invoke fused MoE kernel
     invoke_fused_moe(
         x,
@@ -874,11 +937,11 @@ def fused_moe(
         quant_config,
         block_shape,
     )
-    
+
     # Reshape output
     if len(original_shape) == 3:
         output = output.view(original_shape)
-    
+
     return output
 
 
@@ -886,13 +949,14 @@ def fused_moe(
 # FusedMoELinear Module
 # ============================================================================
 
+
 class FusedMoELinear(torch.nn.Module):
     """
     Fused MoE Linear layer with quantization support.
-    
+
     This module wraps the fused MoE computation for use in neural networks.
     """
-    
+
     def __init__(
         self,
         hidden_dim: int,
@@ -903,13 +967,13 @@ class FusedMoELinear(torch.nn.Module):
         bias: bool = False,
     ):
         super().__init__()
-        
+
         self.hidden_dim = hidden_dim
         self.inter_dim = inter_dim
         self.num_experts = num_experts
         self.top_k = top_k
         self.quant_config = quant_config or QuantConfig()
-        
+
         # SwiGLU MoE weights
         self.w1 = torch.nn.Parameter(
             torch.randn(num_experts, inter_dim, hidden_dim, requires_grad=False)
@@ -920,9 +984,9 @@ class FusedMoELinear(torch.nn.Module):
         self.w2 = torch.nn.Parameter(
             torch.randn(num_experts, hidden_dim, inter_dim, requires_grad=False)
         )
-        
+
         self._packed = False
-    
+
     def pack(self):
         """Prepare weights for quantized computation."""
         self.W1_q, self.W1_scales, self.W1_zeros = quantize_weights_moe(
@@ -935,7 +999,7 @@ class FusedMoELinear(torch.nn.Module):
             self.w2.data, self.num_experts, self.quant_config
         )
         self._packed = True
-    
+
     def forward(
         self,
         x: torch.Tensor,
@@ -944,18 +1008,18 @@ class FusedMoELinear(torch.nn.Module):
     ) -> torch.Tensor:
         """
         Forward pass for MoE.
-        
+
         Args:
             x: Input tensor (B, S, H) or (T, H)
             topk_weights: Expert weights (B, S, K) or (T, K)
             topk_ids: Expert indices (B, S, K) or (T, K)
-            
+
         Returns:
             Output tensor same shape as x
         """
         if not self._packed:
             self.pack()
-        
+
         return fused_moe(
             x,
             self.w1,
@@ -967,7 +1031,7 @@ class FusedMoELinear(torch.nn.Module):
             self.num_experts,
             self.top_k,
         )
-    
+
     def set_weights(self, w1: torch.Tensor, w3: torch.Tensor, w2: torch.Tensor):
         """Set weights from external source (e.g., model loading)."""
         self.w1.data = w1
