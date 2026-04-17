@@ -17,12 +17,18 @@ on:
         required: false
         type: string
         default: ''
-      test_script:
-        description: 'Path to test script under tools/'
-        required: true
-        type: string
       changed_files:
         description: 'List of changed files in a PR'
+        required: false
+        type: string
+        default: ''
+      pr_id:
+        description: 'ID of the PR'
+        required: false
+        type: string
+        default: ''
+      test_script:
+        description: "Temporary parameter for alpha-ops test"
         required: false
         type: string
         default: ''
@@ -38,8 +44,7 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.vendor }}-
-        ${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v6
@@ -50,9 +55,17 @@ jobs:
         shell: bash
         run: |
           bash ${{ inputs.gpu_check_script }}
-      - name: Run backend tests
+      - name: Test alpha ops
+        if: ${{ inputs.test_script != '' }}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
         shell: bash
         run: |
-          bash ${{ inputs.test_script }} ${{ inputs.vendor }}
+          bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
+      - name: Run backend tests
+        if: ${{ inputs.test_script == '' }}
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}

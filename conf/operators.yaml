@@ -25,6 +25,19 @@ ops:
       - NeuralNetwork
     stages:
       alpha: '5.0'
+  - name: _assert_async
+    description: |
+      A utility used to perform data-dependent assertions on GPU tensors
+      without triggering an immediate, performance-heavy GPU-to-CPU
+      synchronization.
+    for:
+      - _assert_async
+    labels:
+      - utility
+    kind:
+      - Tensor
+    stages:
+      stable: '5.1'
   - name: _conv_depthwise2d
     description: A depthwise convolution for the conv2d neural network function.
     for:
@@ -50,6 +63,18 @@ ops:
       - Tensor
     stages:
       beta: '5.0'
+  - name: _grouped_mm
+    description: |
+      Grouped matrix multiply is a functional operator designed to accelerate Mixture-of-Experts (MoE) models
+      by computing multiple matrix multiplications in a single kernel launch.
+    for:
+      - _grouped_mm
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      beta: '5.1'
   - name: _log_softmax_backward_data
     description: |
       Computes the gradient of the input tensor with respect to a `log_softmax` operation
@@ -75,6 +100,20 @@ ops:
       - NeuralNetwork
     stages:
       alpha: '5.0'
+  - name: _safe_softmax
+    description: |
+      Apply a softmax function.
+      Note this version may not be functional.
+    for:
+      - _safe_softmax
+    labels:
+      - aten
+      - IR
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.1'
   - name: _unique2
     description: Returns the unique elements of the input tensor. This is an internal PyTorch function.
     for:
@@ -122,6 +161,17 @@ ops:
       - NeuralNetwork
     stages:
       stable: '2.2'
+  - name: _upsample_bicubic2d_aa_backward
+    description: A backward case for `_upsample_bicubic2d_aa()`.
+    for:
+      - _upsample_bicubic2d_aa_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      stable: '5.0'
   - name: _upsample_nearest_exact1d
     description: |
       Increases the length of a 1D tensor using nearest-neighbor interpolation,
@@ -392,6 +442,17 @@ ops:
       - LinearAlg
     stages:
       stable: '2.0'
+  - name: aminmax
+    description: |
+      Computes the minimum and maximum values of the `input` tensor.
+    for:
+      - aminmax
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - name: angle
     description: Computes the element-wise angle (in radians) of the given `input` tensor.
     for:
@@ -589,10 +650,36 @@ ops:
       - Math
     stages:
       stable: '4.0'
+  - name: atan2
+    description: |
+      Computes the element-wise arc tangent of `input/other(y/x)`,
+      returning angles in radians between `-PI` and `PI`.
+    for:
+      - atan2
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      stable: '5.1'
+  - name: atan2_out
+    description: |
+      A variant of `atan2` that allows the output to be saved into `out`.
+    for:
+      - atan2.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
   - name: avg_pool2d
     description: |
       Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.
       The number of output features is equal to the number of input planes.
+      This is for the forward case.
     for:
       - avg_pool2d
     labels:
@@ -996,6 +1083,18 @@ ops:
       - Attention
     stages:
       beta: '3.0'
+  - name: conj_physical
+    description: |
+      Computes the element-wise conjugate of the given `input` tensor.
+      If `input` has a non-complex dtype, this function just returns `input`.
+    for:
+      - conj_physical
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      beta: '5.1'
   - name: constant_pad_nd
     description: |
       Pads the input tensor boundaries with a constant value.
@@ -1027,6 +1126,15 @@ ops:
     description: Applies a 1D convolution over a quantized 1D input composed of several input planes.
     for:
       - conv1d
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      stable: '4.2'
+  - name: conv1d_padding
+    description: Applies a 1D convolution over a quantized 1D input composed of several input planes.
+    for:
       - conv1d.padding
     labels:
       - aten
@@ -1045,10 +1153,29 @@ ops:
       - Convolution
     stages:
       stable: '4.2'
+  - name: conv2d_padding
+    description: Applies a 2D convolution over a quantized 2D input composed of several input planes.
+    for:
+      - conv2d.padding
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      stable: '4.2'
   - name: conv3d
     description: Applies a 3D convolution over a quantized 3D input composed of several input planes.
     for:
       - conv3d
+    labels:
+      - aten
+    kind:
+      - Convolution
+    stages:
+      stable: '4.2'
+  - name: conv3d_padding
+    description: Applies a 3D convolution over a quantized 3D input composed of several input planes.
+    for:
       - conv3d.padding
     labels:
       - aten
@@ -1071,7 +1198,7 @@ ops:
       beta: '4.2'
     exposed: False
   - name: copy_
-    description: Copies the elements from `src` into `self` tensor and returns self`.
+    description: Copies the elements from `src` into `self` tensor and returns `self`.
     for:
       - copy_
     condition:
@@ -1085,6 +1212,30 @@ ops:
       - Tensor
     stages:
       stable: '4.1'
+  - name: copysign
+    description: |
+      Create a new floating-point tensor with the magnitude of input and the sign of other, elementwise.
+    for:
+      - copysign
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      beta: '5.1'
+  - name: copysign_out
+    description: |
+      A variant of `copysign` that allows the output to be saved into `out`.
+    for:
+      - copysign.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      beta: '5.1'
   - name: cos
     description: Returns a new tensor with the cosine of the elements of `input` given in radians.
     for:
@@ -1543,6 +1694,36 @@ ops:
       - Math
     stages:
       stable: '4.0'
+  - name: expm1
+    description: Computes the exponential of the elements minus 1 of `input`.
+    for:
+      - expm1
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
+  - name: expm1_
+    description: The inplace version of `expm1`.
+    for:
+      - expm1_
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
+  - name: expm1_out
+    description: A variant of `expm1` that saves the output to the specified `out`.
+    for:
+      - expm1.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
   - name: exponential_
     description: Fills `self` tensor with elements drawn from a PDF (probability density function).
     for:
@@ -1683,6 +1864,17 @@ ops:
       - NeuralNetwork
     stages:
       stable: '3.0'
+  - name: flash_mla_sparse_fwd
+    description: Part of the FlashMLA.
+    for:
+      - vllm.v1.attention.backends.mla.flashmla_sparse
+    labels:
+      - fused
+      - Attention
+      - vLLM
+    stages:
+      alpha: '5.1'
+    exposed: False
   - name: flip
     description: Reverse the order of an n-D tensor along given axis in dims.
     for:
@@ -1790,6 +1982,17 @@ ops:
       stable: '2.0'
     exposed: False
     cpp: '4.0'
+  - name: fused_experts_impl
+    description:
+    for:
+      - None
+    labels:
+      - fused
+      - MoE
+    kind:
+      - NeuralNetwork
+    stages:
+      beta: '5.1'
   - name: fused_recurrent_gated_delta_rule_fwd
     description: |
       The forward case for `fused_recurrent_gated_delta_rule` used in Flash Linear Attention (FLA).
@@ -1910,6 +2113,16 @@ ops:
       - NeuralNetwork
     stages:
       stable: '3.0'
+  - name: get_paged_mqa_logits_metadata
+    description: Build scheduling metadata for paged MQA logits.
+    for:
+      vllm.utils.deep_gemm.get_paged_mqa_logits_metadata
+    labels:
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      beta: '5.1'
   - name: get_scheduler_metadata
     description: |
       Computes scheduling metadata for attention work partitioning so that
@@ -1947,6 +2160,46 @@ ops:
       - NeuralNetwork
     stages:
       stable: '4.0'
+  - name: greater
+    description: Test if input is greater than `other` elementwise.
+    for:
+      - greater.Tensor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      stable: '5.1'
+  - name: greater_out
+    description: A variant of `greater` that saves the output to the specified `out`.
+    for:
+      - greater.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      stable: '5.1'
+  - name: greater_scalar
+    description: A variant of `greater` for scalar variables.
+    for:
+      - greater.Scalar
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      stable: '5.1'
+  - name: greater_scalar_out
+    description: A variant of `greater_out` that saves the output to the specified `out`.
+    for:
+      - greater.Scalar_out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      stable: '5.1'
   - name: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
     for:
@@ -2280,6 +2533,28 @@ ops:
       - Math
     stages:
       stable: '2.0'
+  - name: isneginf
+    description: Tests if each element of `input` is negative infinity or not.
+    for:
+      - isneginf
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      stable: '5.1'
+  - name: isneginf_out
+    description: A variant of `isneginf` that saves the output to the specified `out`.
+    for:
+      - isneginf.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      stable: '5.1'
   - name: kron
     description: Computes the Kronecker product of `input` and `other`.
     for:
@@ -2625,6 +2900,18 @@ ops:
       - Math
     stages:
       stable: '2.0'
+  - name: margin_ranking_loss
+    description: Compute the margin ranking loss.
+    for:
+      - margin_ranking_loss
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.0'
+      beta: '5.1'
   - name: masked_fill
     description: Fills elements of given tensor with `value` where `mask` is True.
     for:
@@ -2983,6 +3270,20 @@ ops:
       - Math
     stages:
       stable: '2.2'
+  - name: new_full
+    description: |
+      Returns a Tensor of size `size` filled with `fill_value`.
+      By default, the returned Tensor has the same `torch.dtype` and `torch.device`
+      as this tensor.
+    for:
+      - new_full.Tensor
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      beta: '5.1'
   - name: nll_loss2d_backward
     description: |
       An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated
@@ -3757,6 +4058,39 @@ ops:
     stages:
       stable: '3.0'
     cpp: '3.0'
+  - name: round
+    description: Rounds elements of input to the nearest integer.
+    for:
+      - round
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
+  - name: round_
+    description: The inplace version of `round`.
+    for:
+      - round_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
+  - name: round_out
+    description: A variant of `round` that assigns the output to the specifiec `out`.
+    for:
+      - round.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
   - name: rrelu_with_noise_backward
     description: |
       Computes the gradient of the Randomized Leaky ReLU (RReLU) activation function with respect to
@@ -3949,6 +4283,16 @@ ops:
       - Tensor
     stages:
       stable: '4.2'
+  - name: select_backward
+    description: Calculate the gradient during the backward pass in the neural network.
+    for:
+      - select_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      beta: '5.1'
   - name: select_scatter
     description: |
       Embeds the values of the `src` tensor into `input` at the given index.
@@ -4038,6 +4382,28 @@ ops:
       - NeuralNetwork
     stages:
       stable: '3.0'
+  - name: signbit
+    description: Tests if each element of `input` has its sign bit set or not.
+    for:
+      - signbit
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      beta: '5.1'
+  - name: signbit_out
+    description: A variant of `signbit` that assigns the output to `out`.
+    for:
+      - signbit.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Tensor
+    stages:
+      beta: '5.1'
   - name: silu
     description: |
       SiLU (Sigmoid Linear Unit), a simple approximation of ReLU but
@@ -4174,6 +4540,17 @@ ops:
       - Tensor
     stages:
       stable: '2.2'
+  - name: soft_margin_loss
+    description: Compute the soft margin loss.
+    for:
+      - soft_margin_loss
+    labels:
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      beta: '5.1'
   - name: softmax
     description: Apply a softmax function.
     for:
@@ -4270,7 +4647,21 @@ ops:
     kind:
       - DSA
     stages:
-      stable: '5.0'
+      beta: '5.0'
+  - name: special_i0e
+    description: |
+      Computes the exponentially scaled zeroth order modified Bessel function
+      of the first kind for each element of `input`.
+    for:
+      - special_i0e
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      beta: '5.0'
   - name: special_i1
     description: |
       Computes the modified Bessel function of the first kind of order 1 (I_1(x)) for each element
@@ -4319,6 +4710,39 @@ ops:
       - Math
     stages:
       stable: '4.0'
+  - name: square
+    description: Returns a new tensor with the square of the elements of input.
+    for:
+      - square
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
+  - name: square_
+    description: The inplace version of `square`.
+    for:
+      - square_
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
+  - name: square_out
+    description: A variant of `square` that assigns the output to the provided `out`.
+    for:
+      - square.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - Math
+    stages:
+      beta: '5.1'
   - name: stack
     description: Concatenates a sequence of tensors along a new dimension.
     for:
@@ -4604,6 +5028,17 @@ ops:
       - BLAS
     stages:
       beta: '5.0'
+  - name: triton_lighting_indexer_k_tiled_interface
+    description: Part of FP8 MQA framework.
+    for:
+      - None
+    labels:
+      - fused
+    kind:
+      - DSA
+    stages:
+      alpha: '5.1'
+    exposed: False
   - name: triu
     description: |
       Returns the upper triangular part of a matrix (2-D tensor) or batch of matrices `input`,
@@ -4809,6 +5244,17 @@ ops:
       - Tensor
     stages:
       stable: '2.2'
+  - name: w8a8_block_fp8_matmul
+    description: Performs matrix multiplication with block-wise quantization.
+    for:
+      - vllm.model_executor.layers.quantization.utils.fp8_utils.w8a8_block_fp8_matmul
+    labels:
+      - vLLM
+    kind:
+      - NeuralNetwork
+    stages:
+      alpha: '5.1'
+    exposed: False
   - name: weight_norm
     description: |
       Reparameterizes a module's weight tensor by decoupling its magnitude (g)
