@@ -1488,7 +1488,7 @@ def test_accuracy_tril_special_values(dtype):
     with flag_gems.use_gems():
         res_out = torch.tril(inp, diagonal=0)
 
-    torch.testing.assert_close(res_out, ref_out, equal_nan=True)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.tril
