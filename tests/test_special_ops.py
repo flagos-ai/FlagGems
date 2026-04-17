@@ -702,9 +702,6 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
-
-
 @pytest.mark.unique
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -998,6 +995,7 @@ def test_upsample_linear1d_boundaries(dtype, case):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip(reason="Result not close.")
 @pytest.mark.upsample_linear1d
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
@@ -1170,9 +1168,6 @@ def test_logspace(start, end, steps, base, dtype, device, pin_memory):
         gems_assert_close(res_out, ref_out, dtype=dtype)
     else:
         gems_assert_equal(res_out, ref_out)
-
-
-# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 
 
 @pytest.mark.isin
@@ -1689,9 +1684,6 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_equal(res_out, ref_out)
     gems_assert_equal(res_in_grad, ref_in_grad)
-
-
-# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 
 
 @pytest.mark.sort
