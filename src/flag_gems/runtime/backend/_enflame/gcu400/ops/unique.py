@@ -684,6 +684,7 @@ def _unique2(
         )
     else:
         sorted_data, _ = torch.sort(in0.ravel())
+        print(f"sorted_data:{sorted_data.to('cpu')}")
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
             sorted_data, return_counts
         )

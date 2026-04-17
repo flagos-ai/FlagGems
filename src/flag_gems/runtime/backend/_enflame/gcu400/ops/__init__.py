@@ -133,7 +133,6 @@ from .sin import sin, sin_
 from .slice_scatter import slice_scatter
 from .sort import sort, sort_stable
 from .sub import sub, sub_
-# from .sum import sum_dim, sum_dim_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .to import to_dtype
