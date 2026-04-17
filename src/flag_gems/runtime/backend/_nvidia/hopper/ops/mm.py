@@ -35,7 +35,7 @@ def is_tma_compatible(a, b, N, K):
         N, K: Matrix dimensions
 
     Returns:
-        bool: True if compatible with TMA's 128-bit alignment requirement
+        bool: True if compatible with TMA's alignment requirements
     """
     return (
         a.dtype in (torch.float16, torch.bfloat16)

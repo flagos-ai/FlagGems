@@ -9,13 +9,12 @@ import re
 import shutil
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal, getcontext
 from importlib import metadata
+from multiprocessing import Process
 from pathlib import Path
 
 import distro
-import openpyxl
 import yaml
 
 # increase decimal precision
@@ -29,6 +28,7 @@ HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
 OP_LIST = []
+TIMEOUT = -100
 
 NO_CPU_LIST = [
     "flash_attention_forward",
@@ -210,7 +210,12 @@ def run_cmd_capture(cmd, cwd=None, env=None):
         stderr=subprocess.PIPE,
         text=True,
     )
-    out, err = p.communicate()
+    try:
+        out, err = p.communicate(timeout=300)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        out, err = p.communicate()
+        return out or "", err or "", TIMEOUT
     return out or "", err or "", p.returncode
 
 
@@ -273,6 +278,11 @@ def get_env(gpu_ids):
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
+    # TODO(Qiming): check T-Head vendor name
+    if vendor == "thead":
+        env["PPU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
     # MetaX is using CUDA_VISIBLE_DEVICES as well
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
@@ -298,21 +308,30 @@ def dedup(fn):
 def run_accuracy(gpu_id, start, index, count):
     op = OP_LIST[start + index].strip()
     n = (index + 1) * 10 // count
-    total = len(OP_LIST)
     prog = "█" * n + " " * (10 - n)
-    pinfo(
-        f"[GPU {gpu_id:2d}][{start + index:3d}/{total:3d}][{prog}] "
-        f"Running accuracy tests for '{op}'"
-    )
+    nums = f"{index + 1}/{count}"
+    pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running accuracy tests for '{op}'")
+
     env = get_env(str(gpu_id))
 
     if op in NO_CPU_LIST:
         cmd = f'pytest -m "{op}" -vs'
     else:
         cmd = f'pytest -m "{op}" --ref cpu -vs'
-    out, err, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
+    stdout, stderr, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
 
-    combined = out + "\n" + err
+    if code == TIMEOUT:  # Timeout
+        return {
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 0,
+            "total": 0,
+            "status": "TIMEOUT",
+            "exit_code": TIMEOUT,
+        }
+
+    combined = stdout + "\n---\n" + stderr
     op_dir = OUTPUT_DIR.joinpath(op)
     log_file = op_dir.joinpath("accuracy.log")
     with open(log_file, "w") as f:
@@ -418,13 +437,10 @@ def run_benchmark(gpu_id, start, index, count):
     This returns a dict as report summary.
     """
     op = OP_LIST[start + index].strip()
-    total = len(OP_LIST)
     n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
-    pinfo(
-        f"[GPU {gpu_id:2d}][{start + index:3d}/{total:3d}][{prog}] "
-        f"Running perf benchmark for '{op}'"
-    )
+    nums = f"{index + 1}/{count}"
+    pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running perf benchmark for '{op}'")
 
     env = get_env(str(gpu_id))
 
@@ -437,13 +453,13 @@ def run_benchmark(gpu_id, start, index, count):
             pass
 
     cmd = f'pytest -m "{op}" --level core --record log'
-    out, err, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
+    stdout, stderr, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
 
     # Write raw command output
     op_dir = OUTPUT_DIR.joinpath(op)
     output_file = op_dir.joinpath("performance_output.log")
     with open(output_file, "w") as f:
-        f.write(out + "\n---\n" + err)
+        f.write(stdout + "\n---\n" + stderr)
 
     # Search for record logs which may and may not be there
     result_file = None
@@ -453,11 +469,14 @@ def run_benchmark(gpu_id, start, index, count):
 
     # Not found
     if not result_file:
+        status = "No Result"
+        if code == TIMEOUT:
+            status = "TIMEOUT"
         return {
-            "status": "No Result",
+            "status": status,
             "log": str(output_file.relative_to(OUTPUT_DIR)),
             "result": None,
-            "exit_code": code,
+            "exit_code": TIMEOUT,
             "data": [],
         }
 
@@ -506,75 +525,6 @@ def worker_proc(gpu_id, start, count):
     return
 
 
-def write_xlsx(path):
-    xlsx_path = path / "summary.xlsx"
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Summary"
-
-    ws.append(
-        [
-            "operator",
-            "acc_status",
-            "passed",
-            "failed",
-            "skipped",
-            "errors",
-            "total",
-            "acc_exit_code",
-            "func_name",
-            "avg_speedup",
-            "float16",
-            "float32",
-            "bfloat16",
-            "int16",
-            "int32",
-            "bool",
-            "cfloat",
-            "perf_status",
-            "perf_console_log",
-            "perf_result_file",
-            "parsed_summary",
-        ]
-    )
-
-    for op, info in GLOBAL_RESULTS.items():
-        acc = info["accuracy"]
-        perf = info["performance"]
-        rows = perf["performance_rows"] or [{}]
-        first = True
-
-        for r in rows:
-            ws.append(
-                [
-                    op if first else "",
-                    acc["status"] if first else "",
-                    acc["passed"] if first else "",
-                    acc["failed"] if first else "",
-                    acc["skipped"] if first else "",
-                    acc["errors"] if first else "",
-                    acc["total"] if first else "",
-                    acc["exit_code"] if first else "",
-                    r.get("func_name", ""),
-                    r.get("avg_speedup", ""),
-                    r.get("float16", ""),
-                    r.get("float32", ""),
-                    r.get("bfloat16", ""),
-                    r.get("int16", ""),
-                    r.get("int32", ""),
-                    r.get("bool", ""),
-                    r.get("cfloat", ""),
-                    perf["status"],
-                    perf["log"],
-                    perf["result"],
-                    perf["summary"],
-                ]
-            )
-            first = False
-
-    wb.save(str(xlsx_path))
-
-
 def main():
     global OUTPUT_DIR
     global OP_LIST
@@ -584,6 +534,7 @@ def main():
     parser = argparse.ArgumentParser()
     # parser.add_argument("--flaggems", required=False)
     parser.add_argument("--op-list", required=False)
+    parser.add_argument("--ops", required=False)
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
@@ -607,6 +558,8 @@ def main():
             sys.exit(1)
 
         ops = [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
+    elif args.ops:
+        ops = [op.strip() for op in args.ops.split(",")]
 
     OP_LIST = ops
     op_count = len(ops)
@@ -628,24 +581,32 @@ def main():
     if gpu_count == 1:
         worker_proc(gpu_ids[0], 0, op_count)
     else:
-        with ThreadPoolExecutor(max_workers=gpu_count) as exe:
-            futures = []
-            m, n = divmod(op_count, gpu_count)
-            start = 0
-            for i, gpu in enumerate(gpu_ids):
-                if i < n:
-                    count = m + 1
-                else:
-                    count = m
-                futures.append(exe.submit(worker_proc, gpu, start, count))
-                start += count
-            for f in as_completed(futures):
-                f.result()
+        # with ThreadPoolExecutor(max_workers=gpu_count) as exe:
+        #    futures = []
+        processes = []
+        m, n = divmod(op_count, gpu_count)
+        start = 0
+        for i, gpu in enumerate(gpu_ids):
+            if i < n:
+                count = m + 1
+            else:
+                count = m
+            # futures.append(exe.submit(worker_proc, gpu, start, count))
+            p = Process(target=worker_proc, args=(gpu, start, count))
+            p.start()
+            processes.append(p)
+            start += count
+
+        for p in processes:
+            p.join()
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     op_data = {}
     for gpu_id in gpu_ids:
         gpu_file = OUTPUT_DIR.joinpath(f"summary{gpu_id}.json")
+        if not gpu_file.exists():
+            perror(f"GPU {gpu_id} failed to produce a summary, recovery needed.")
+            continue
         with gpu_file.open("r") as f:
             result = json.load(f)
             op_data.update(result)
