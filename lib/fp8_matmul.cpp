@@ -11,7 +11,8 @@ using namespace triton_jit;
 at::Tensor fp8_matmul(const at::Tensor& a,
                       const at::Tensor& a_s,
                       const at::Tensor& b,
-                      const at::Tensor& b_s) {
+                      const at::Tensor& b_s,
+                      const at::ScalarType scale_dtype) {
   TORCH_CHECK(b.dim() == 2, "b must be 2D");
   TORCH_CHECK(a.is_contiguous() && b.is_contiguous(),
               "a and b must be contiguous");
@@ -23,11 +24,18 @@ at::Tensor fp8_matmul(const at::Tensor& a,
   int64_t N = b.size(0);
   TORCH_CHECK(b.size(1) == K, "a and b must have the same K dimension");
 
+  auto a_s_new = a_s;
+  auto b_s_new = b_s;
+
+  if (scale_dtype == at::kFloat8_e8m0fnu) {
+    a_s_new = a_s.to(at::kFloat);
+    b_s_new = b_s.to(at::kFloat);
+  }
   auto out_shape = a.sizes().vec();
   out_shape.back() = N;
 
   at::Tensor a_2d = a.view({M, K});
-  at::Tensor a_s_2d = a_s.view({M, -1});
+  at::Tensor a_s_2d = a_s_new.view({M, -1});
   at::Tensor C = at::empty({M, N}, a.options().dtype(at::kBFloat16));
 
   const int BLOCK_M = 64;
@@ -57,13 +65,13 @@ at::Tensor fp8_matmul(const at::Tensor& a,
          /* num_warps = */ num_warps,
          /* num_stages = */ num_stages,
          a_2d, b, C,
-         a_s_2d, b_s,
+         a_s_2d, b_s_new,
          static_cast<int>(M), static_cast<int>(N), static_cast<int>(K),
          static_cast<int>(a_2d.stride(0)), static_cast<int>(a_2d.stride(1)),
          static_cast<int>(b.stride(0)), static_cast<int>(b.stride(1)),
          static_cast<int>(C.stride(0)), static_cast<int>(C.stride(1)),
          static_cast<int>(a_s_2d.stride(0)), static_cast<int>(a_s_2d.stride(1)),
-         static_cast<int>(b_s.stride(0)), static_cast<int>(b_s.stride(1)),
+         static_cast<int>(b_s_new.stride(0)), static_cast<int>(b_s_new.stride(1)),
          GROUP_K,
          BLOCK_M, BLOCK_N, BLOCK_K,
          GROUP_SIZE_M);

@@ -112,6 +112,7 @@ def fp8_matmul(
     a_s: torch.Tensor,
     b: torch.Tensor,
     b_s: torch.Tensor,
+    scale_dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     """
     Block-wise scaled FP8 matrix multiplication.
@@ -134,6 +135,10 @@ def fp8_matmul(
     assert K == K2
 
     # _p(f"M={M}, K={K}, N={N}, a.shape={tuple(a.shape)}, b.shape={tuple(b.shape)}, a.dtype={a.dtype}, b.dtype={b.dtype}, a_s.shape={tuple(a_s.shape)}, b_s.shape={tuple(b_s.shape)}, grid={triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)}")
+
+    if scale_dtype == torch.float8_e8m0fnu:
+        a_s = a_s.to(torch.float32)
+        b_s = b_s.to(torch.float32)
 
     out_shape = (*a.size()[:-1], N)
     a_2d = a.view(M, K)

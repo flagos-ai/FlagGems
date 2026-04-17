@@ -117,9 +117,11 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
                             int64_t dim,
                             at::ScalarType input_dtype);
 at::Tensor fp8_matmul(const at::Tensor& a, const at::Tensor& a_s,
-                      const at::Tensor& b, const at::Tensor& b_s);
+                      const at::Tensor& b, const at::Tensor& b_s,
+                      const at::ScalarType scale_dtype = at::kFloat);
 at::Tensor fp8_matmul_direct(const at::Tensor& a, const at::Tensor& a_s,
-                             const at::Tensor& b, const at::Tensor& b_s);
+                             const at::Tensor& b, const at::Tensor& b_s,
+                             const at::ScalarType scale_dtype = at::kFloat);
 
 void reshape_and_cache_flash(const at::Tensor &key,
                              const at::Tensor &value,
