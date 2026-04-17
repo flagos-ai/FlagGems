@@ -27,7 +27,7 @@ def create_tma_device_descriptor(tensor, block_m, block_n, device):
         block_m,
         block_n,
         tensor.element_size(),
-        desc_np,
+        int(desc_np.ctypes.data),
     )
     desc = torch.tensor(desc_np, device=device)
     return desc
