@@ -213,8 +213,6 @@ _FULL_CONFIG = (
     ("gelu", gelu),
     ("gelu_", gelu_),
     ("gelu_backward", gelu_backward),
-    ("gemm", gemm),
-    ("gemm_out", gemm_out),
     ("glu", glu),
     ("glu_backward", glu_backward),
     ("greater.Scalar", greater_scalar),
