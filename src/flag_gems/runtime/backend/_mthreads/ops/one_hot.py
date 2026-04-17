@@ -137,6 +137,10 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     if (tensor < 0).any():
         raise RuntimeError("Class values must be non-negative.")
 
+    # Validate that all indices are within num_classes range
+    if (tensor >= num_classes).any():
+        raise RuntimeError("Class values must be smaller than num_classes.")
+
     if num_classes < 1:
         raise RuntimeError("num_classes should be positive")
 

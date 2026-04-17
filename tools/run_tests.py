@@ -9,27 +9,26 @@ import re
 import shutil
 import subprocess
 import sys
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal, getcontext
 from importlib import metadata
+from multiprocessing import Process
 from pathlib import Path
 
 import distro
-import openpyxl
 import yaml
 
 # increase decimal precision
 getcontext().prec = 18
 
 # Global lock for writing result file and the result file
-SUMMARY_LOCK = threading.Lock()
 GLOBAL_RESULTS = {}
 ENV_INFO = {}
 HAS_TRITON = False
 HAS_FLAGTREE = False
 ROOT = Path(__file__).parent.parent
 OUPUT_DIR = None
+OP_LIST = []
+TIMEOUT = -100
 
 NO_CPU_LIST = [
     "flash_attention_forward",
@@ -211,39 +210,45 @@ def run_cmd_capture(cmd, cwd=None, env=None):
         stderr=subprocess.PIPE,
         text=True,
     )
-    out, err = p.communicate()
+    try:
+        out, err = p.communicate(timeout=300)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        out, err = p.communicate()
+        return out or "", err or "", TIMEOUT
     return out or "", err or "", p.returncode
 
 
 def parse_accuracy_log(text):
-    counter = {
+    record = {
         "passed": 0,
         "failed": 0,
         "skipped": 0,
         "errors": 0,
         "total": 0,
+        "status": "",
     }
 
     clean = ANSI_RE.sub("", text)
     for m in re.finditer(r"(\d+)\s+([A-Za-z_]+)", clean):
         num = int(m.group(1))
         key = m.group(2).lower()
-        if key in counter:
-            counter[key] = num
+        if key in record:
+            record[key] = num
 
-    total = counter["failed"] + counter["passed"] + counter["skipped"]
-    counter["total"] = total
+    total = record["failed"] + record["passed"] + record["skipped"]
+    record["total"] = total
 
-    if counter["failed"] > 0:
-        counter["status"] = "FAIL"
-    elif counter["errors"] > 0 and total == 0:
-        counter["status"] = "FAIL"  # pytest failed to start
-    elif counter["passed"] == 0:
-        counter["status"] = "FAIL"
+    if record["failed"] > 0:
+        record["status"] = "FAIL"
+    elif record["errors"] > 0 and total == 0:
+        record["status"] = "FAIL"  # pytest failed to start
+    elif record["passed"] == 0:
+        record["status"] = "FAIL"
     else:
-        counter["status"] = "PASS"
+        record["status"] = "PASS"
 
-    return counter
+    return record
 
 
 def get_env(gpu_ids):
@@ -273,6 +278,11 @@ def get_env(gpu_ids):
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
+    # TODO(Qiming): check T-Head vendor name
+    if vendor == "thead":
+        env["PPU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
     # MetaX is using CUDA_VISIBLE_DEVICES as well
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
@@ -295,17 +305,34 @@ def dedup(fn):
         f.writelines(uniq)
 
 
-def run_accuracy(op, gpu_id, op_dir):
-    pinfo(f"[GPU {gpu_id:2d}] Running accuracy tests for '{op}'")
+def run_accuracy(gpu_id, start, index, count):
+    op = OP_LIST[start + index].strip()
+    n = (index + 1) * 10 // count
+    prog = "█" * n + " " * (10 - n)
+    nums = f"{index + 1}/{count}"
+    pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running accuracy tests for '{op}'")
+
     env = get_env(str(gpu_id))
 
-    if f"{op}" in NO_CPU_LIST:
+    if op in NO_CPU_LIST:
         cmd = f'pytest -m "{op}" -vs'
     else:
         cmd = f'pytest -m "{op}" --ref cpu -vs'
-    out, err, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
+    stdout, stderr, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
 
-    combined = out + "\n" + err
+    if code == TIMEOUT:  # Timeout
+        return {
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 0,
+            "total": 0,
+            "status": "TIMEOUT",
+            "exit_code": TIMEOUT,
+        }
+
+    combined = stdout + "\n---\n" + stderr
+    op_dir = OUTPUT_DIR.joinpath(op)
     log_file = op_dir.joinpath("accuracy.log")
     with open(log_file, "w") as f:
         f.write(combined)
@@ -326,13 +353,11 @@ def parse_perf_log(op_dir):
     with perf_log_file.open("r") as f:
         lines = f.readlines()
     line_no = 0
+    data = {}
     while line_no < len(lines):
         line = lines[line_no]
         if "deselected / 0 selected" in line:
-            record = {
-                "result": "NOT TESTED",
-                "error": "No test case.",
-            }
+            record = {"status": "Unkown", "error": "No test case.", "data": {}}
             return record
 
         if "FAILED" in line and "Operator" in line and "dtype" in line:
@@ -351,9 +376,10 @@ def parse_perf_log(op_dir):
                 line = lines[line_no]
                 pos2 = line.find(">>>")
                 err_str += line[:pos2]
-            record.setdefault(dtype, {})
-            record[dtype].setdefault("result", "FAILED")
-            record[dtype].setdefault("error", err_str)
+            data[dtype] = {
+                "result": "FAILED",
+                "error": err_str,
+            }
         line_no += 1
 
     # Check if there are usable records
@@ -378,7 +404,7 @@ def parse_perf_log(op_dir):
         count = 0
         # Iterate through shapes
         for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+            shape = str(res.get("shape_detail", "UNKNOWN")).replace(" ", "")
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base", 0.0)
             details[shape]["gems"] = res.get("latency", 0.0)
@@ -388,27 +414,33 @@ def parse_perf_log(op_dir):
             total += speedup
 
         if details:
-            record[dtype] = {
+            data[dtype] = {
                 "result": "OK",
                 "details": details,
                 "speedup": total / count,
             }
         else:
-            record[dtype] = {
-                "result": "Incomplete",
+            data[dtype] = {
+                "result": "UNKNOWN",
                 "details": details,
                 "speedup": 0,
             }
 
-    return record
+    return {
+        "data": data,
+    }
 
 
-def run_benchmark(op, gpu_id, op_dir):
+def run_benchmark(gpu_id, start, index, count):
     """Run benchmark for a specific operator on a specific GPU/DCU.
 
     This returns a dict as report summary.
     """
-    pinfo(f"[GPU {gpu_id:2d}] Running performance benchmark for '{op}'")
+    op = OP_LIST[start + index].strip()
+    n = (index + 1) * 10 // count
+    prog = "█" * n + " " * (10 - n)
+    nums = f"{index + 1}/{count}"
+    pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running perf benchmark for '{op}'")
 
     env = get_env(str(gpu_id))
 
@@ -421,12 +453,13 @@ def run_benchmark(op, gpu_id, op_dir):
             pass
 
     cmd = f'pytest -m "{op}" --level core --record log'
-    out, err, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
+    stdout, stderr, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
 
     # Write raw command output
+    op_dir = OUTPUT_DIR.joinpath(op)
     output_file = op_dir.joinpath("performance_output.log")
     with open(output_file, "w") as f:
-        f.write(out + "\n---\n" + err)
+        f.write(stdout + "\n---\n" + stderr)
 
     # Search for record logs which may and may not be there
     result_file = None
@@ -436,10 +469,14 @@ def run_benchmark(op, gpu_id, op_dir):
 
     # Not found
     if not result_file:
+        status = "No Result"
+        if code == TIMEOUT:
+            status = "TIMEOUT"
         return {
-            "status": "NO_RESULT",
+            "status": status,
             "log": str(output_file.relative_to(OUTPUT_DIR)),
             "result": None,
+            "exit_code": TIMEOUT,
             "data": [],
         }
 
@@ -451,131 +488,53 @@ def run_benchmark(op, gpu_id, op_dir):
     # Remove duplicate lines in the result file
     dedup(result_file)
 
-    perf_result = parse_perf_log(op_dir)
-
-    return {
+    record = {
         "status": "OK",
+        "exit_code": code,
         "log": str(output_file.relative_to(OUTPUT_DIR)),
-        "result": str(result_file.relative_to(OUTPUT_DIR)),
-        "data": perf_result,
+        "result_file": str(result_file.relative_to(OUTPUT_DIR)),
     }
+    record.update(parse_perf_log(op_dir))
+
+    return record
 
 
-def worker_proc(gpu_id, ops_list):
-    for op in ops_list:
-        op = op.strip()
+def worker_proc(gpu_id, start, count):
+    worker_result = {}
+    for i in range(count):
+        op = OP_LIST[start + i].strip()
         if not op:
             continue
 
         op_dir = OUTPUT_DIR.joinpath(op)
         ensure_dir(op_dir)
 
-        acc = run_accuracy(op, gpu_id, op_dir)
-        perf = run_benchmark(op, gpu_id, op_dir)
+        acc = run_accuracy(gpu_id, start, i, count)
+        perf = run_benchmark(gpu_id, start, i, count)
 
-        with SUMMARY_LOCK:
-            GLOBAL_RESULTS[op] = {
-                "gpu": gpu_id,
-                "accuracy": acc,
-                "performance": perf,
-            }
-            write_summary()
-
-            # TODO(Qiming): Enable this conditionally
-            # write_xlsx()
-
-
-def write_summary():
-    json_path = OUTPUT_DIR.joinpath("summary.json")
-    data = [
-        {
-            "operator": op,
-            "accuracy": info["accuracy"],
-            "performance": info["performance"],
+        result = {
+            "accuracy": acc,
+            "performance": perf,
         }
-        for op, info in GLOBAL_RESULTS.items()
-    ]
-    with open(json_path, "w") as f:
-        json.dump(data, f, indent=2)
+        worker_result.setdefault(op, result)
 
+        json_path = OUTPUT_DIR.joinpath(f"summary{gpu_id}.json")
+        with open(json_path, "w") as f:
+            json.dump(worker_result, f, indent=2)
 
-def write_xlsx(path):
-    xlsx_path = path / "summary.xlsx"
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Summary"
-
-    ws.append(
-        [
-            "operator",
-            "acc_status",
-            "passed",
-            "failed",
-            "skipped",
-            "errors",
-            "total",
-            "acc_exit_code",
-            "func_name",
-            "avg_speedup",
-            "float16",
-            "float32",
-            "bfloat16",
-            "int16",
-            "int32",
-            "bool",
-            "cfloat",
-            "perf_status",
-            "perf_console_log",
-            "perf_result_file",
-            "parsed_summary",
-        ]
-    )
-
-    for op, info in GLOBAL_RESULTS.items():
-        acc = info["accuracy"]
-        perf = info["performance"]
-        rows = perf["performance_rows"] or [{}]
-        first = True
-
-        for r in rows:
-            ws.append(
-                [
-                    op if first else "",
-                    acc["status"] if first else "",
-                    acc["passed"] if first else "",
-                    acc["failed"] if first else "",
-                    acc["skipped"] if first else "",
-                    acc["errors"] if first else "",
-                    acc["total"] if first else "",
-                    acc["exit_code"] if first else "",
-                    r.get("func_name", ""),
-                    r.get("avg_speedup", ""),
-                    r.get("float16", ""),
-                    r.get("float32", ""),
-                    r.get("bfloat16", ""),
-                    r.get("int16", ""),
-                    r.get("int32", ""),
-                    r.get("bool", ""),
-                    r.get("cfloat", ""),
-                    perf["status"],
-                    perf["log"],
-                    perf["result"],
-                    perf["summary"],
-                ]
-            )
-            first = False
-
-    wb.save(str(xlsx_path))
+    return
 
 
 def main():
     global OUTPUT_DIR
+    global OP_LIST
 
     init()
     op_catalog = get_ops()
     parser = argparse.ArgumentParser()
     # parser.add_argument("--flaggems", required=False)
     parser.add_argument("--op-list", required=False)
+    parser.add_argument("--ops", required=False)
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
@@ -599,12 +558,16 @@ def main():
             sys.exit(1)
 
         ops = [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
+    elif args.ops:
+        ops = [op.strip() for op in args.ops.split(",")]
 
-    if len(ops) == 0:
+    OP_LIST = ops
+    op_count = len(ops)
+    if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
         sys.exit(1)
     else:
-        pinfo(f"Testing {len(ops)} operators ...")
+        pinfo(f"Testing {op_count} operators ...")
 
     now_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     OUTPUT_DIR = ROOT.joinpath(f"results_{now_ts}")
@@ -615,29 +578,48 @@ def main():
     # Split the operators among GPUs
     gpu_ids = [int(x) for x in args.gpus.split(",") if x.strip()]
     gpu_count = len(gpu_ids)
-    tasks = {gpu_id: [] for gpu_id in gpu_ids}
-    for i, op in enumerate(ops):
-        tasks[gpu_ids[i % gpu_count]].append(op)
+    if gpu_count == 1:
+        worker_proc(gpu_ids[0], 0, op_count)
+    else:
+        # with ThreadPoolExecutor(max_workers=gpu_count) as exe:
+        #    futures = []
+        processes = []
+        m, n = divmod(op_count, gpu_count)
+        start = 0
+        for i, gpu in enumerate(gpu_ids):
+            if i < n:
+                count = m + 1
+            else:
+                count = m
+            # futures.append(exe.submit(worker_proc, gpu, start, count))
+            p = Process(target=worker_proc, args=(gpu, start, count))
+            p.start()
+            processes.append(p)
+            start += count
 
-    with ThreadPoolExecutor(max_workers=gpu_count) as exe:
-        futures = []
-        for gpu in gpu_ids:
-            if tasks[gpu]:
-                futures.append(exe.submit(worker_proc, gpu, tasks[gpu]))
-        for f in as_completed(futures):
-            f.result()
+        for p in processes:
+            p.join()
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    json_path = OUTPUT_DIR.joinpath("summary.json")
-    data = {}
-    with open(json_path, "r") as f:
-        result = json.load(f)
-        data["result"] = result
-        data["env"] = ENV_INFO
-        data["timestamp"] = timestamp
+    op_data = {}
+    for gpu_id in gpu_ids:
+        gpu_file = OUTPUT_DIR.joinpath(f"summary{gpu_id}.json")
+        if not gpu_file.exists():
+            perror(f"GPU {gpu_id} failed to produce a summary, recovery needed.")
+            continue
+        with gpu_file.open("r") as f:
+            result = json.load(f)
+            op_data.update(result)
 
-    with open(json_path, "w") as f:
-        f.write(json.dumps(data))
+    final_data = {
+        "timestamp": timestamp,
+        "env": ENV_INFO,
+        "result": op_data,
+    }
+
+    json_path = OUTPUT_DIR.joinpath("summary.json")
+    with json_path.open("w") as f:
+        f.write(json.dumps(final_data))
 
     pinfo("Test completed.")
 
