@@ -498,9 +498,9 @@ SHAPE_CONV_TRANSPOSE1D = [
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-def test_accuracy_conv_transpose1d(shape, kernel, stride, padding, dtype):
+def test_accuracy_conv_transpose1d(shape, kernel, stride, padding, dtype, monkeypatch):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, False)
@@ -519,18 +519,17 @@ def test_accuracy_conv_transpose1d(shape, kernel, stride, padding, dtype):
     kernel_width = kernel[2]
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels)
 
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        del os.environ["MUSA_ENABLE_SQMMA"]
-
 
 @pytest.mark.conv_transpose1d_bias
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV_TRANSPOSE1D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-def test_accuracy_conv_transpose1d_bias(shape, kernel, stride, padding, dtype):
+def test_accuracy_conv_transpose1d_bias(
+    shape, kernel, stride, padding, dtype, monkeypatch
+):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, False)
@@ -554,9 +553,6 @@ def test_accuracy_conv_transpose1d_bias(shape, kernel, stride, padding, dtype):
     in_channels = kernel[0]
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels)
 
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        del os.environ["MUSA_ENABLE_SQMMA"]
-
 
 @pytest.mark.conv_transpose1d_groups
 @pytest.mark.parametrize(
@@ -570,10 +566,10 @@ def test_accuracy_conv_transpose1d_bias(shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_accuracy_conv_transpose1d_groups(
-    shape, kernel, groups, stride, padding, dtype
+    shape, kernel, groups, stride, padding, dtype, monkeypatch
 ):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, False)
@@ -606,6 +602,3 @@ def test_accuracy_conv_transpose1d_groups(
     gems_assert_close(
         res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels_per_group
     )
-
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        del os.environ["MUSA_ENABLE_SQMMA"]
