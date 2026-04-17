@@ -438,8 +438,7 @@ UNSUPPORTED_VENDORS = {
     flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported"
 )
 @pytest.mark.apply_repetition_penalties
-@pytest.mark.performance
-def test_perf_repetition_penalty():
+def test_apply_repetition_penalties():
     vllm_ops = pytest.importorskip("vllm._custom_ops")
 
     bench = RepetitionPenaltyBenchmark(

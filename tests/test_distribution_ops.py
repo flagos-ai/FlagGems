@@ -11,10 +11,25 @@ device = flag_gems.device
 
 
 @pytest.mark.normal
-@pytest.mark.parametrize("float", ["none", "mean", "std"])
+@pytest.mark.parametrize(
+    "op_name, float_t, scale_t",
+    [
+        pytest.param(
+            name,
+            float,
+            scale,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, float, scale in [
+            ("normal_float_tensor", "mean", "std"),
+            ("normal_tensor_float", "std", "mean"),
+            ("normal_tnsor_tensor", "std", "std"),
+        ]
+    ],
+)
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_normal(float, shape, dtype):
+def test_accuracy_normal(op_name, float_t, scale_t, shape, dtype):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
@@ -23,14 +38,14 @@ def test_accuracy_normal(float, shape, dtype):
         torch.cuda.manual_seed_all(42)
     loc = (
         3.0
-        if float == "mean"
+        if float_t == "mean"
         else torch.full(
             size=shape, fill_value=3.0, dtype=dtype, device=flag_gems.device
         )
     )
     scale = (
         10.0
-        if float == "std"
+        if scale_t == "mean"
         else torch.full(
             size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
         )
