@@ -1697,6 +1697,7 @@ def test_accuracy_log(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
+
 @pytest.mark.log10
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1918,6 +1919,8 @@ def test_accuracy_logit(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.logit(inp, eps=1e-6)
     gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + COMPLEX_DTYPES)
