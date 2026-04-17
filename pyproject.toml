@@ -98,32 +98,36 @@ kunlunxin = [
 mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
-    "triton==3.1.0+musa.4.0.0",
+    "flagtree==0.5.0+mthreads3.1",
     "numpy==1.26.4",
     "mkl==2024.0.0",
 ]
 
 nvidia = [
     "flag_gems[official_torch_290]",
+    "flagtree==0.5.0+3.5",
 ]
 
 tsingmicro = [
     "flag_gems[official_torch_270]",
+    "flagtree==0.5.0+tsingmicro3.3",
     "torch_txda==0.1.0+20260310.294fc4a6",
     "txops==0.1.0+20260225.5cc33e4e",
-    "triton==3.3.0+gitfe2a28fa",
+    # "triton==3.3.0+gitfe2a28fa",
 ]
 
 # Test packages
 test = [
     "distro==1.9.0",
+    "coverage==7.13.5",
+    "openpyxl==3.1.5",
     "pytest==9.0.2",
     "scipy>=1.15.3",
 ]
 
 # Package for running example tests
 example = [
-    "transformers>=4.40.2",
+    "transformers>=4.44.0",
 ]
 
 [project.urls]
@@ -196,6 +200,13 @@ name = "mthreads-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-mthreads/simple"
 explicit = true
 
+# Source for NVIDIA packages
+# Mainly for flagtree installation
+[[tool.uv.index]]
+name = "nvidia-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-hosted/simple"
+explicit = true
+
 # Source for TsingMicro packages
 [[tool.uv.index]]
 name = "tsingmicro-pypi"
@@ -226,6 +237,7 @@ hygon = { index = "hygon-pypi" }
 iluvatar = { index = "iluvatar-pypi" }
 kunlunxin = { index = "kunlunxin-pypi" }
 mthreads = { index = "mthreads-pypi" }
+nvidia = { index = "nvidia-pypi" }
 tsingmicro = { index = "tsingmicro-pypi" }
 official_torch_290 = { index = "torch-pypi-128" }
 official_torch_270 = { index = "torch-pypi-128" }

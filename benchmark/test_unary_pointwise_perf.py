@@ -44,6 +44,7 @@ forward_operations = [
     ("absolute", torch.absolute, FLOAT_DTYPES),
     ("alias_copy", torch.ops.aten.alias_copy, FLOAT_DTYPES),
     ("ceil", torch.ceil, FLOAT_DTYPES),
+    ("round", torch.round, FLOAT_DTYPES),
     ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
@@ -74,6 +75,7 @@ forward_operations = [
     ("softshrink", torch.nn.functional.softshrink, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
+    ("signbit", torch.signbit, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     # Trigonometric operations
     ("cos", torch.cos, FLOAT_DTYPES),
@@ -122,6 +124,7 @@ forward_inplace_operations = [
     ("ceil_", torch.ceil_, FLOAT_DTYPES),
     # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
+    ("round_", torch.round_, FLOAT_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
@@ -415,8 +418,7 @@ UNSUPPORTED_VENDORS = {
     flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported"
 )
 @pytest.mark.apply_repetition_penalties
-@pytest.mark.performance
-def test_perf_repetition_penalty():
+def test_apply_repetition_penalties():
     vllm_ops = pytest.importorskip("vllm._custom_ops")
 
     bench = RepetitionPenaltyBenchmark(
