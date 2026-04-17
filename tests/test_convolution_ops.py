@@ -499,10 +499,10 @@ SHAPE_CONVOLUTION = [
 @pytest.mark.parametrize("dilation", [1])
 @pytest.mark.parametrize("bias", [True, False])
 def test_accuracy__convolution(
-    shape, kernel, stride, padding, groups, dtype, dilation, bias
+    monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
 ):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
@@ -561,9 +561,6 @@ def test_accuracy__convolution(
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        del os.environ["MUSA_ENABLE_SQMMA"]
-
 
 # Test shapes for _convolution 1D
 SHAPE_CONVOLUTION_1D = [
@@ -577,9 +574,9 @@ SHAPE_CONVOLUTION_1D = [
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy__convolution_1d(shape, kernel, stride, padding, dtype):
+def test_accuracy__convolution_1d(monkeypatch, shape, kernel, stride, padding, dtype):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
@@ -626,9 +623,6 @@ def test_accuracy__convolution_1d(shape, kernel, stride, padding, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        del os.environ["MUSA_ENABLE_SQMMA"]
-
 
 # Test shapes for _convolution 3D
 SHAPE_CONVOLUTION_3D = [
@@ -642,9 +636,11 @@ SHAPE_CONVOLUTION_3D = [
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy__convolution_3d(shape, kernel, stride, padding, groups, dtype):
+def test_accuracy__convolution_3d(
+    monkeypatch, shape, kernel, stride, padding, groups, dtype
+):
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+        monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
@@ -691,6 +687,3 @@ def test_accuracy__convolution_3d(shape, kernel, stride, padding, groups, dtype)
         )
 
     gems_assert_close(res_out, ref_out, dtype)
-
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
-        del os.environ["MUSA_ENABLE_SQMMA"]
