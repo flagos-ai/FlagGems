@@ -15,7 +15,7 @@ SHAPE_CONVOLUTION = [
 ]
 
 
-@pytest.mark.convolution_general
+@pytest.mark.convolution
 @pytest.mark.parametrize("shape, kernel, groups", SHAPE_CONVOLUTION)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
@@ -96,7 +96,7 @@ SHAPE_CONVOLUTION_1D = [
 ]
 
 
-@pytest.mark.convolution_general_1d
+@pytest.mark.convolution
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONVOLUTION_1D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
@@ -161,7 +161,7 @@ SHAPE_CONVOLUTION_3D = [
 ]
 
 
-@pytest.mark.convolution_general_3d
+@pytest.mark.convolution
 @pytest.mark.parametrize("shape, kernel, groups", SHAPE_CONVOLUTION_3D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
