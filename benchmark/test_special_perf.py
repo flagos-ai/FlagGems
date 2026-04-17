@@ -1519,3 +1519,52 @@ def test_functional_sym_constrain_range_for_size():
         input_fn=_functional_sym_constrain_range_for_size_input_fn,
     )
     bench.run()
+
+
+class UpsampleLinear1dBackwardBenchmark(Benchmark):
+    def set_more_shapes(self):
+        shapes = [
+            (512 * 1024 * 1024,),
+            (512, 1024, 1024),
+        ]  # Stress tests: massive 1D and large 3D tensors to verify memory limits and index overflow handling
+        shapes_3d = [
+            (4, 16, 2**i) for i in range(4, 14, 2)
+        ]  # 3D scalability: pow-of-2 spatial dimensions to test boundary conditions and indexing accuracy across sizes
+        shapes_2d = [
+            (16, 2**i) for i in range(6, 16, 2)
+        ]  # 2D scalability: larger pow-of-2 spatial dimensions to test scaling limits efficiently without OOM
+        return shapes + shapes_3d + shapes_2d
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            if len(shape) == 1:
+                shape_3d = (1, 1, shape[0])
+            elif len(shape) == 2:
+                shape_3d = (1, shape[0], shape[1])
+            else:
+                shape_3d = shape
+            for scale_factor in [0.5, 2.0]:
+                for align_corners in [False, True]:
+                    N, C, W_in = shape_3d
+                    W_out = max(1, int(W_in * scale_factor))
+                    if N * C * max(W_in, W_out) >= 2**30:
+                        continue
+                    grad = torch.randn(
+                        [N, C, W_out], device=self.device, dtype=cur_dtype
+                    )
+                    yield grad, [W_out], [N, C, W_in], align_corners, scale_factor
+
+    def get_tflops(self, op, *args, **kwargs):
+        grad, output_size, input_size, align_corners, scale_factors = args
+        return grad.numel() * 2
+
+
+@pytest.mark.upsample_linear1d_backward
+def test_upsample_linear1d_backward_perf():
+    bench = UpsampleLinear1dBackwardBenchmark(
+        op_name="upsample_linear1d_backward",
+        torch_op=torch.ops.aten.upsample_linear1d_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+
+    bench.run()
