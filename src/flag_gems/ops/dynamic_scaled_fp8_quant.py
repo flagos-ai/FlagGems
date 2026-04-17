@@ -4,6 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.device_info import get_device_capability
+
 FP8_DTYPE = torch.float8_e4m3fn
 FP8_MAX = float(torch.finfo(FP8_DTYPE).max)
 FP8_MIN = float(torch.finfo(FP8_DTYPE).min)
@@ -240,6 +243,24 @@ def _dynamic_scaled_fp8_quant_large_m(
     return output, scale_out
 
 
+def _supports_triton_e4m3fn() -> bool:
+    if not torch_device_fn.is_available():
+        return False
+    return get_device_capability() >= (9, 0)
+
+
+def _dynamic_scaled_fp8_quant_torch(
+    output: torch.Tensor,
+    input: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    absmax = input.abs().amax().to(torch.float32)
+    scale_out = (absmax / FP8_MAX).clamp_(min=FP8_MIN_SCALE).reshape(1)
+    quantized = input.to(torch.float32).div(scale_out)
+    quantized = quantized.clamp_(min=FP8_MIN, max=FP8_MAX).to(FP8_DTYPE)
+    output.copy_(quantized)
+    return output, scale_out
+
+
 def dynamic_scaled_fp8_quant(
     input: torch.Tensor,
     output: Optional[torch.Tensor] = None,
@@ -250,6 +271,9 @@ def dynamic_scaled_fp8_quant(
         output = torch.empty_like(input, dtype=FP8_DTYPE)
     else:
         assert output.shape == input.shape and output.dtype == FP8_DTYPE
+
+    if not _supports_triton_e4m3fn():
+        return _dynamic_scaled_fp8_quant_torch(output, input)
 
     use_single_launch_kernel = input.shape[0] <= 8 and input.numel() <= 65536
     if use_single_launch_kernel:
