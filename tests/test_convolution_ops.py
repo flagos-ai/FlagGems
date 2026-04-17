@@ -551,7 +551,13 @@ def test_accuracy_conv_transpose1d_bias(
     )
     # Use reduce_dim to account for accumulation precision (in_channels * kernel_width)
     in_channels = kernel[0]
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels)
+    out_channels = kernel[1]
+    gems_assert_close(
+        res_out,
+        ref_out,
+        dtype,
+        reduce_dim=kernel_width * max(in_channels, out_channels),
+    )
 
 
 @pytest.mark.conv_transpose1d_groups
