@@ -12,6 +12,10 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
+)
+
 
 @triton.jit
 def prev_multiple_of(a, b):
@@ -318,4 +322,8 @@ class RmsNorm(torch.autograd.Function):
 
 
 def rms_norm(x, normalized_shape, weight, eps=1e-5):
+    if torch.is_grad_enabled():
+        return torch.ops.aten.rms_norm.default.redispatch(
+            _FALLBACK_KEYSET, x, normalized_shape, weight, eps
+        )
     return RmsNorm.apply(x, normalized_shape, weight, eps)
