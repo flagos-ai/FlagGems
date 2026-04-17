@@ -371,20 +371,36 @@ def mm_sqmma_kernel(
     tme_load_ab_dtype = ab_dtype
     c_store_dtype = c_dtype
     for k in range(0, tl.cdiv(K, BLOCK_K)):
-        a = tl._experimental_descriptor_load(
-            a_desc_ptr,
-            [offs_am, offs_k],
-            [BLOCK_M, BLOCK_K],
-            tme_load_ab_dtype,
-            is_transpose_a,
-        )
-        b = tl._experimental_descriptor_load(
-            b_desc_ptr,
-            [offs_k, offs_bn],
-            [BLOCK_K, BLOCK_N],
-            tme_load_ab_dtype,
-            is_transpose_b,
-        )
+        if is_transpose_a:
+            a = tl._experimental_descriptor_load(
+                a_desc_ptr,
+                [offs_k, offs_am],
+                [BLOCK_K, BLOCK_M],
+                tme_load_ab_dtype,
+            )
+            a = tl.trans(a)
+        else:
+            a = tl._experimental_descriptor_load(
+                a_desc_ptr,
+                [offs_am, offs_k],
+                [BLOCK_M, BLOCK_K],
+                tme_load_ab_dtype,
+            )
+        if is_transpose_b:
+            b = tl._experimental_descriptor_load(
+                b_desc_ptr,
+                [offs_bn, offs_k],
+                [BLOCK_N, BLOCK_K],
+                tme_load_ab_dtype,
+            )
+            b = tl.trans(b)
+        else:
+            b = tl._experimental_descriptor_load(
+                b_desc_ptr,
+                [offs_k, offs_bn],
+                [BLOCK_K, BLOCK_N],
+                tme_load_ab_dtype,
+            )
         accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
         offs_k += BLOCK_K
     accumulator = accumulator.to(c_store_dtype)

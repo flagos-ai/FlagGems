@@ -36,6 +36,7 @@ _FULL_CONFIG = (
         _functional_sym_constrain_range_for_size,
     ),
     ("_grouped_mm", group_mm),
+    ("_is_all_true", _is_all_true),
     ("_log_softmax", log_softmax),
     ("_log_softmax_backward_data", log_softmax_backward),
     ("_safe_softmax", _safe_softmax),
