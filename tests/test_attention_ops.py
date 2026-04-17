@@ -389,10 +389,10 @@ def test_scaled_dot_product_attention_legacy(
         del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
-@pytest.mark.skipif(True, reason="something wrong here, disable it for temp")
+# @pytest.mark.skipif(True, reason="something wrong here, disable it for temp")
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
 )
@@ -453,9 +453,14 @@ def test_scaled_dot_product_attention_legacy_legacy_backward(
         device,
         requires_grad=True,
     )
-    ref_q = to_reference(q, False)
-    ref_k = to_reference(k, False)
-    ref_v = to_reference(v, False)
+    # Upcast to fp64 to reduce CPU reference error. The CPU bf16 math backend
+    # accumulates in bf16, introducing significant rounding over long sequences
+    # (e.g. dV sums q_seq_len elements). XPU flash attention uses fp32 internal
+    # accumulation and is actually more precise. Using fp64 reference gives a
+    # near-exact baseline so the comparison measures XPU's true accuracy.
+    ref_q = to_reference(q, True).detach().clone().requires_grad_(True)
+    ref_k = to_reference(k, True).detach().clone().requires_grad_(True)
+    ref_v = to_reference(v, True).detach().clone().requires_grad_(True)
     scale = float(1.0 / np.sqrt(head_size))
 
     # forward
@@ -487,9 +492,10 @@ def test_scaled_dot_product_attention_legacy_legacy_backward(
     gems_assert_close(gems_result, torch_result, dtype)
 
     # backward
-    dout = torch.randn_like(ref_q)
-    torch_result.backward(dout)
-    gems_result.backward(dout)
+    gems_dout = torch.randn_like(gems_result)
+    ref_dout = gems_dout.to(device=ref_q.device, dtype=ref_q.dtype)
+    torch_result.backward(ref_dout)
+    gems_result.backward(gems_dout)
     torch_q_grad = ref_q.grad.clone() if ref_q.grad is not None else None
     torch_k_grad = ref_k.grad.clone() if ref_k.grad is not None else None
     torch_v_grad = ref_v.grad.clone() if ref_v.grad is not None else None

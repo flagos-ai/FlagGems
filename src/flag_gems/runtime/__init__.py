@@ -31,16 +31,26 @@ def replace_customized_ops(_globals):
     backend_customization_operators = backend.get_current_device_extend_op(
         device.vendor_name
     )
+
+    try:
+        from flag_gems import ops as ops_module
+    except ImportError:
+        ops_module = None
+
     if device.vendor != common.vendors.NVIDIA:
         try:
             for fn_name, fn in backend_customization_operators:
                 _globals[fn_name] = fn
+                if ops_module is not None and hasattr(ops_module, fn_name):
+                    setattr(ops_module, fn_name, fn)
         except RuntimeError as e:
             error.customized_op_replace_error(e)
     if arch_specialization_operators:
         try:
             for fn_name, fn in arch_specialization_operators:
                 _globals[fn_name] = fn
+                if ops_module is not None and hasattr(ops_module, fn_name):
+                    setattr(ops_module, fn_name, fn)
         except RuntimeError as e:
             error.customized_op_replace_error(e)
 
