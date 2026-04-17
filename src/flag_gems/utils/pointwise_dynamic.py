@@ -824,6 +824,20 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
+            # Check if all input and output dtypes are complex
+            all_complex = True
+            for i in range(self.fx.num_inputs()):
+                if self.fx.is_tensor(i):
+                    input_dtype = self.fx.input_type(i)
+                    if input_dtype is not None and not (
+                        input_dtype == torch.complex64
+                        or input_dtype == torch.complex128
+                    ):
+                        all_complex = False
+                        break
+            if all_complex:
+                # If all inputs are complex, set max_tile_size to half
+                max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("tile_sizes = tuple([64])")
@@ -860,7 +874,19 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-
+            # Check if all input and output dtypes are complex
+            all_complex = True
+            for i in range(self.fx.num_inputs()):
+                if self.fx.is_tensor(i):
+                    input_dtype = self.fx.input_type(i)
+                    if input_dtype is not None and not (
+                        input_dtype == torch.complex64
+                        or input_dtype == torch.complex128
+                    ):
+                        all_complex = False
+                        break
+            if all_complex:
+                max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("tile_sizes = tuple([1024])")
