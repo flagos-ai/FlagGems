@@ -2641,8 +2641,6 @@ def test_accuracy_atan2_out(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    gems_assert_close(res_out, ref_out, dtype)
-
 
 @pytest.mark.dunder_or
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
