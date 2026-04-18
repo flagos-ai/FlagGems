@@ -2610,6 +2610,8 @@ def test_softshrink_out(shape, dtype):
         res_out = torch.ops.aten.softshrink.out(inp, 0.5, out=res_out_buf)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.floor
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -2704,7 +2706,6 @@ def test_special_i0e_out(shape, dtype):
         act_out = torch.ops.aten.special_i0e.out(x, out=out_act)
     gems_assert_close(act_out, ref_out, dtype)
     gems_assert_close(out_act, out_ref, dtype)
-
 
 
 ROLL_MULTI_DIMS = [
