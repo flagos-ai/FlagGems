@@ -306,6 +306,7 @@ from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
+from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
@@ -726,6 +727,9 @@ __all__ = [
     "upsample_nearest2d",
     "upsample_nearest3d",
     "var_mean",
+    "var",
+    "var_correction",
+    "var_dim",
     "vdot",
     "vector_norm",
     "vstack",
