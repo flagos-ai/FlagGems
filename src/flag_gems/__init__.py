@@ -28,6 +28,10 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__ior__.Scalar", bitwise_or_scalar_),
+    ("__ior__.Tensor", bitwise_or_tensor_),
+    ("__or__.Scalar", bitwise_or_scalar),
+    ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_flash_attention_forward", flash_attention_forward),
