@@ -250,7 +250,9 @@ torchvision = [
 ]
 torch_txda = { index = "tsingmicro-pypi" }
 txops = { index = "tsingmicro-pypi" }
-torch_musa = { index = "mthreads-pypi" }
+torch_musa = [
+  { index = "mthreads-pypi", marker = "extra=='mthreads'" }
+]
 triton = [
   { index = "iluvatar-pypi", marker = "extra=='iluvatar'" }
 ]

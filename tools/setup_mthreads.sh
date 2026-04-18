@@ -1,12 +1,16 @@
 #!/bin/bash
 
+echo "Setting up mthreads ..."
+
 # TODO: Drop the following lines
-uv pip install -v --index $FLAGOS_PYPI \
+uv pip install --index $FLAGOS_PYPI \
   "torch==2.7.1+musa4.0.0" \
   "torch_musa==2.7.1" \
   "flagtree==0.5.0+mthreads3.1"
 
-uv pip install -e .[mthreads,test]
+uv pip install .[mthreads,test]
+
+uv pip list
 
 export MUSA_HOME=/usr/local/musa
 export PATH=$MUSA_HOME/bin:$PATH
