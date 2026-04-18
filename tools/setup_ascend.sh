@@ -10,8 +10,8 @@ fi
 # export TRITON_ALL_BLOCKS_PARALLEL=1
 
 # The following command will install torch==2.9.0+cpu as well
-uv pip install --index ${FLAGOS_PYPI} \
-  torch-npu==2.9.0 \
-  flagtree==0.5.0+ascend3.2
+# uv pip install --index ${FLAGOS_PYPI} \
+#  torch-npu==2.9.0 \
+#  flagtree==0.5.0+ascend3.2
 
 uv pip install -e .[ascend,test]
