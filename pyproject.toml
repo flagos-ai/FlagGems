@@ -82,8 +82,7 @@ kunlunxin = [
 mthreads = [
     "torch==2.7.1+musa4.0.0",
     "torch_musa==2.7.1",
-    "flagtree==0.5.0+mthreads3.1",
-    # "triton==3.1.0+musa1.4.6",
+    "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
     "mkl==2024.0.0",
 ]
@@ -224,7 +223,7 @@ url = "https://mirrors.aliyun.com/pypi/simple/"
 flagtree = [
   { index = "ascend-pypi", marker = "extra=='ascend'" },
   { index = "hygon-pypi", marker = "extra != 'ascend' and extra=='hygon'" },
-  { index = "mthreads-pypi", marker = "extra!='ascned' and extra!='hygon' and extra=='mthreads'" },
+  { index = "mthreads-pypi", marker = "extra!='ascend' and extra!='hygon' and extra=='mthreads'" },
   { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra=='tsingmicro'" },
 ]
 torch = [
