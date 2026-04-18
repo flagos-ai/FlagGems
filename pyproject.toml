@@ -253,5 +253,6 @@ torch_musa = [
   { index = "mthreads-pypi", marker = "extra=='mthreads'" }
 ]
 triton = [
-  { index = "iluvatar-pypi", marker = "extra=='iluvatar'" }
+  { index = "iluvatar-pypi", marker = "extra=='iluvatar'" },
+  { index = "mthreads-pypi", marker = "extra!='iluvatar' and extra=='mthreads'" },
 ]
