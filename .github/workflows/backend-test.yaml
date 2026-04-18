@@ -47,6 +47,11 @@ jobs:
         op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
+      - name: Set global proxy
+        shell: bash
+        run: |
+          echo "HTTP_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
+          echo "HTTPS_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
       - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
@@ -62,6 +67,11 @@ jobs:
         shell: bash
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
+      - name: Set china proxy
+        shell: bash
+        run: |
+          echo "HTTP_PROXY=http://10.1.12.38:38002" >> $GITHUB_ENV
+          echo "HTTPS_PROXY=http://10.1.12.38:38002" >> $GITHUB_ENV
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
         env:

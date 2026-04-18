@@ -215,9 +215,9 @@ url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 # Source for common packages
-# [[tool.uv.index]]
-# name = "default"
-# url = "https://mirrors.aliyun.com/pypi/simple/"
+[[tool.uv.index]]
+name = "default"
+url = "https://mirrors.aliyun.com/pypi/simple/"
 
 [tool.uv.sources]
 # Mapping from optional groups to index servers
