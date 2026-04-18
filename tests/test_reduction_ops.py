@@ -1115,6 +1115,16 @@ def test_accuracy_trace(shape, dtype):
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gather(inp_shape, dim, dtype):
+    # Test ndim mismatch raises IndexError (only once to avoid redundant checks)
+    if dim == 0 and dtype == torch.float32:
+        mismatch_inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+        mismatch_index = torch.zeros(
+            inp_shape[:2], dtype=torch.long, device=flag_gems.device
+        )
+        with pytest.raises(IndexError):
+            with flag_gems.use_gems():
+                torch.gather(mismatch_inp, 0, mismatch_index)
+
     inp = torch.randn(
         inp_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
     )

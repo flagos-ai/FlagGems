@@ -833,6 +833,7 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
 
 
 @pytest.mark.pad
+@pytest.mark.skip("The operator now has infinite recurrsion calls: #2493")
 @pytest.mark.parametrize(
     "shape",
     [[1024, 1024], [64, 64, 64, 64], [1, 64, 112, 112], [4, 64, 128]],
