@@ -788,6 +788,24 @@ def _normalize_lengths(
     return lengths
 
 
+def _validate_concatenated_targets(
+    targets: torch.Tensor,
+    target_lengths: torch.Tensor,
+) -> None:
+    if targets.ndim != 1:
+        return
+
+    expected_num_targets = int(target_lengths.sum().item())
+    actual_num_targets = targets.shape[0]
+    if actual_num_targets != expected_num_targets:
+        raise RuntimeError(
+            f"Expected tensor to have size {expected_num_targets} "
+            f"at dimension 0, but got size {actual_num_targets} "
+            "for argument #2 'targets' "
+            "(while checking arguments for ctc_loss_allocate_outputs)"
+        )
+
+
 def _prepare_triton_forward_inputs(
     log_probs: torch.Tensor,
     targets: torch.Tensor,
@@ -805,6 +823,7 @@ def _prepare_triton_forward_inputs(
     if targets.dtype != torch.long:
         raise RuntimeError("ctc_loss expects targets to have dtype torch.long")
     normalized_targets = _normalize_targets(targets, batch_size, log_probs.device)
+    _validate_concatenated_targets(normalized_targets, target_lengths)
     return log_probs, normalized_targets, input_lengths, target_lengths, is_batched
 
 
@@ -827,14 +846,10 @@ def _maybe_prepare_triton_forward_inputs(
     target_lengths,
     blank: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, bool] | None:
-    try:
-        prepared = _prepare_triton_forward_inputs(
-            log_probs, targets, input_lengths, target_lengths
-        )
-        normalized_log_probs, _, _, _, _ = prepared
-    except Exception:
-        return None
-
+    prepared = _prepare_triton_forward_inputs(
+        log_probs, targets, input_lengths, target_lengths
+    )
+    normalized_log_probs, _, _, _, _ = prepared
     return prepared if _supports_triton_ctc_loss(normalized_log_probs, blank) else None
 
 

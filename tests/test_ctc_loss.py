@@ -585,7 +585,7 @@ def test_accuracy_ctc_loss_invalid_concatenated_targets():
             ref_log_probs, ref_targets, ref_input_lengths, ref_target_lengths
         )
     with flag_gems.use_gems():
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="ctc_loss_allocate_outputs"):
             torch.nn.functional.ctc_loss(
                 log_probs, targets, input_lengths, target_lengths
             )
