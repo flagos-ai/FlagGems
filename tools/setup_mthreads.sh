@@ -8,7 +8,7 @@ echo "Setting up mthreads ..."
 
 uv pip install .[mthreads,test]
 
-uv pip uninstall triton
+# uv pip uninstall triton
 uv pip install --index $FLAGOS_PYPI \
   "flagtree==0.5.0+mthreads3.1"
 
