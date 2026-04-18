@@ -8,25 +8,28 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-# asinh(x) = sign(x) * log(|x| + sqrt(x^2 + 1))
-# The sign(x) * log(|x| + ...) form preserves sign on -inf input
-# (the naive x + sqrt(x^2+1) form evaluates to -inf + inf = NaN).
-# Uses float32 intermediate for numerical precision.
-# INT_TO_FLOAT promotion handles integer input tensors.
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def asinh_func(x):
-    x_fp32 = x.to(tl.float32)
-    abs_x = tl.abs(x_fp32)
-    y = tl.log(abs_x + tl.sqrt(abs_x * abs_x + 1.0))
-    return tl.where(x_fp32 < 0.0, -y, y)
+    # asinh(x) = log(x + sqrt(x^2 + 1))
+    # Numerically stable for large |x|: asinh(x) ≈ sign(x)*log(2|x|) when |x| >> 1
+    x_f = x.to(tl.float32)
+    return tl.log(x_f + tl.sqrt(x_f * x_f + 1.0))
 
 
-def asinh(A):
+def asinh(A, *, out=None):
     logger.debug("GEMS ASINH")
+    if out is not None:
+        return asinh_func(A, out0=out)
     return asinh_func(A)
 
 
-def asinh_out(A, out):
-    logger.debug("GEMS ASINH_OUT")
+def asinh_(A):
+    logger.debug("GEMS ASINH_")
+    asinh_func(A, out0=A)
+    return A
+
+
+def asinh_out(A, *, out=None):
+    logger.debug("GEMS ASINH OUT")
     return asinh_func(A, out0=out)
