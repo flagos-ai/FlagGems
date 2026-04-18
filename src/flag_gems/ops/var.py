@@ -164,10 +164,10 @@ def var(x, dim=None, *, correction=None, keepdim=False):
 
 
 def var_dim(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR DIM")
+    logger.debug("GEMS VAR_DIM")
     return var(x, dim=dim, correction=correction, keepdim=keepdim)
 
 
 def var_correction(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR CORRECTION")
+    logger.debug("GEMS VAR_CORRECTION")
     return var(x, dim=dim, correction=correction, keepdim=keepdim)
