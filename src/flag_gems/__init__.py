@@ -28,6 +28,10 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__ior__.Scalar", bitwise_or_scalar_),
+    ("__ior__.Tensor", bitwise_or_tensor_),
+    ("__or__.Scalar", bitwise_or_scalar),
+    ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_flash_attention_forward", flash_attention_forward),
@@ -94,6 +98,7 @@ _FULL_CONFIG = (
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("baddbmm", baddbmm),
+    ("bernoulli_.float", bernoulli_),
     ("bincount", bincount),
     ("bitwise_and.Scalar", bitwise_and_scalar),
     ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
@@ -447,6 +452,7 @@ _FULL_CONFIG = (
     ("true_divide_.Tensor", true_divide_),
     ("unfold_backward", unfold_backward),
     ("uniform_", uniform_),
+    ("unique_consecutive", unique_consecutive),
     ("upsample_bicubic2d", upsample_bicubic2d),
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_nearest1d", upsample_nearest1d),

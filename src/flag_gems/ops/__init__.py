@@ -41,6 +41,7 @@ from flag_gems.ops.attention import (
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.baddbmm import baddbmm
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
+from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -298,6 +299,7 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
+from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -377,6 +379,7 @@ __all__ = [
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
+    "bernoulli_",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",
@@ -719,6 +722,7 @@ __all__ = [
     "true_divide_out",
     "unfold_backward",
     "uniform_",
+    "unique_consecutive",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_nearest1d",
