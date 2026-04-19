@@ -81,7 +81,7 @@ def to_decimal(s):
     return Decimal(stripped)
 
 
-def get_ops():
+def get_ops_from_inventory():
     catalog = []
     try:
         op_inventory = ROOT / "conf" / "operators.yaml"  # noqa: E226
@@ -545,42 +545,67 @@ def worker_proc(gpu_id, start, count):
     return
 
 
-def main():
-    global OUTPUT_DIR
-    global OP_LIST
+def get_ops_to_test(ops_file, ops_list, stages):
+    if ops_list:
+        return [op.strip() for op in ops_list.split(",")]
 
-    init()
-    op_catalog = get_ops()
-    parser = argparse.ArgumentParser()
-    # parser.add_argument("--flaggems", required=False)
-    parser.add_argument("--op-list", required=False)
-    parser.add_argument("--ops", required=False)
-    parser.add_argument("--gpus", default="0")
-    parser.add_argument("--output-dir", default=None)
-    args = parser.parse_args()
+    if ops_file:
+        lines = []
+        try:
+            with open(ops_file, "r") as f:
+                lines = f.readlines()
+        except Exception as e:
+            perror(f"Failed reading the specified op list file: {e}")
+            return []
 
+        return [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
+
+    # Now fall-back to inventory
+    effective_stages = []
+    for s in stages.split(","):
+        stage = s.strip()
+        if stage not in ["alpha", "beta", "stable", "all"]:
+            pwarn(f"ignoring unsupported stage name '{s}'...")
+            continue
+        # Stop checking if 'all' specified
+        if stage == "all":
+            effective_stages = ["alpha", "beta", "stable"]
+            break
+        effective_stages.append(stage)
+
+    # Fall back to 'stable' if no effective filter specified
+    if not effective_stages:
+        effective_stages = ["stable"]
+
+    op_catalog = get_ops_from_inventory()
     ops = []
     for op in op_catalog:
-        if not op.get("stages", {}).get("stable", None):
-            continue
+        stage = op.get("stages", {}).get("stable", None)
+
+        # Always skip operators not exposed.
         if "exposed" in op and op["exposed"] is False:
             continue
         ops.append(op["name"])
 
-    if args.op_list:
-        lines = []
-        try:
-            with open(args.op_list, "r") as f:
-                lines = f.readlines()
-        except Exception as e:
-            perror(f"Failed reading the specified op list file: {e}")
-            sys.exit(1)
+    return ops
 
-        ops = [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
-    elif args.ops:
-        ops = [op.strip() for op in args.ops.split(",")]
 
-    OP_LIST = ops
+def main():
+    global OUTPUT_DIR
+    global OP_LIST
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--op-list", required=False)
+    parser.add_argument("--ops", required=False)
+    parser.add_argument("--gpus", default="0")
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--stages", required=False, default="stable")
+    args = parser.parse_args()
+
+    # Probe environment setttings
+    init()
+
+    ops = get_ops_to_test(args.op_list, args.ops, args.stages)
     op_count = len(ops)
     if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
@@ -588,8 +613,10 @@ def main():
     else:
         pinfo(f"Testing {op_count} operators ...")
 
-    now_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    OUTPUT_DIR = ROOT.joinpath(f"results_{now_ts}")
+    # Set global variable for convenience
+    OP_LIST = ops
+
+    OUTPUT_DIR = ROOT.joinpath("results")
     if args.output_dir:
         OUTPUT_DIR = Path(args.output_dir)
     ensure_dir(OUTPUT_DIR)
