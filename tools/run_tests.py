@@ -66,7 +66,7 @@ def perror(str, **args):
 
 
 def pwarn(str, **args):
-    print(f"\033[93m[WARNING]\033[0m {str}", **args)
+    print(f"\033[93m[WARN]\033[0m {str}", **args)
 
 
 def ensure_dir(p):
@@ -450,6 +450,8 @@ def run_benchmark(gpu_id, start, index, count):
     op = OP_LIST[start + index].strip()
     n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
+    if (index + 1) == count:
+        prog = f"\033[32m{prog}\033[0m"
     nums = f"{index + 1}/{count}"
     pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running perf benchmark for '{op}'")
 
