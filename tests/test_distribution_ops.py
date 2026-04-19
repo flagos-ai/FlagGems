@@ -11,25 +11,10 @@ device = flag_gems.device
 
 
 @pytest.mark.normal
-@pytest.mark.parametrize(
-    "op_name, float_t, scale_t",
-    [
-        pytest.param(
-            name,
-            float,
-            scale,
-            marks=getattr(pytest.mark, name, None),
-        )
-        for name, float, scale in [
-            ("normal_float_tensor", "mean", "std"),
-            ("normal_tensor_float", "std", "mean"),
-            ("normal_tnsor_tensor", "std", "std"),
-        ]
-    ],
-)
+@pytest.mark.parametrize("float", ["none", "mean", "std"])
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_normal(op_name, float_t, scale_t, shape, dtype):
+def test_accuracy_normal(float, shape, dtype):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
@@ -38,14 +23,14 @@ def test_accuracy_normal(op_name, float_t, scale_t, shape, dtype):
         torch.cuda.manual_seed_all(42)
     loc = (
         3.0
-        if float_t == "mean"
+        if float == "mean"
         else torch.full(
             size=shape, fill_value=3.0, dtype=dtype, device=flag_gems.device
         )
     )
     scale = (
         10.0
-        if scale_t == "mean"
+        if float == "std"
         else torch.full(
             size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
         )
@@ -120,42 +105,6 @@ def test_accuracy_fast_exponential_(shape, dtype):
     var_ref = 1.0 / (lambd**2)
     assert torch.abs(mean_res - mean_ref) < mean_tol
     assert torch.abs(var_res - var_ref) < var_tol
-
-
-@pytest.mark.bernoulli_
-@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_bernoulli_(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    p = 0.5
-    with flag_gems.use_gems():
-        x.bernoulli_(p)
-    # Check that all values are 0 or 1
-    assert ((x == 0) | (x == 1)).all()
-    # Check that the mean is approximately p (statistical test)
-    mean = x.float().mean().item()
-    assert abs(mean - p) < 0.1
-
-
-@pytest.mark.bernoulli_
-@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("p", [0.0, 0.3, 0.7, 1.0])
-def test_accuracy_bernoulli_various_p(shape, dtype, p):
-    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.bernoulli_(p)
-    # Check that all values are 0 or 1
-    assert ((x == 0) | (x == 1)).all()
-    # Check boundary cases
-    if p == 0.0:
-        assert (x == 0).all()
-    elif p == 1.0:
-        assert (x == 1).all()
-    else:
-        # Check that the mean is approximately p
-        mean = x.float().mean().item()
-        assert abs(mean - p) < 0.15
 
 
 @pytest.mark.multinomial

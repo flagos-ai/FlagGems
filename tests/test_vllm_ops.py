@@ -129,14 +129,16 @@ class CutlassScaledMMTestKit:
     def get_scale_shape(M, N, K, category, is_a_scale=True):
         if category == "scalar":
             return (1,)
-        if category == "vector":
+        elif category == "vector":
             if is_a_scale:
                 return (M,)
-            return (N,)
-        # a matrix
-        if is_a_scale:
-            return (M, ceil(K / 128))
-        return (ceil(K / 128), ceil(N / 128))
+            else:
+                return (N,)
+        else:
+            if is_a_scale:
+                return (M, ceil(K / 128))
+            else:
+                return (ceil(K / 128), ceil(N / 128))
 
     @staticmethod
     def baseline_scaled_mm(
@@ -238,9 +240,6 @@ FUSED_MOE_CONFIGS = [
     (8, 4, 64, 128, 2),
     (16, 8, 256, 512, 2),
     (32, 8, 128, 256, 4),
-    # Qwen3.5 shapes (TP=4)
-    (10, 256, 2048, 128, 8),
-    (256, 256, 2048, 128, 8),
 ]
 
 if not QUICK_MODE:
@@ -311,7 +310,7 @@ def torch_fused_moe_reference(
     return output
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_accuracy_fused_moe_vs_ref(config, dtype):
@@ -354,7 +353,7 @@ def test_accuracy_fused_moe_vs_ref(config, dtype):
         topk_ids,
     )
 
-    torch.cuda.synchronize() if flag_gems.vendor_name != "ascend" else torch.npu.synchronize()
+    torch.cuda.synchronize()
 
     # Fused bf16/fp16 kernels accumulate rounding errors across two GEMMs
     # and an activation; use tolerances proportional to output magnitude.
@@ -374,7 +373,7 @@ except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vllm not installed")
@@ -656,7 +655,7 @@ def torch_w8a8_block_fp8_moe(
     ).sum(dim=1)
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 @pytest.mark.skipif(
     not is_cuda_available(),
@@ -752,7 +751,7 @@ def test_accuracy_fused_moe_fp8(config):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize("config", FUSED_MOE_FP8_BLOCKWISE_CONFIGS)
 @pytest.mark.parametrize("block_shape", [[128, 128]])
 @pytest.mark.skipif(
@@ -842,7 +841,7 @@ def test_accuracy_fused_moe_fp8_blockwise(config, block_shape):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 def test_accuracy_fused_moe_int8(config):
     """Test FlagGems fused_moe with INT8 W8A8 per-channel quantization."""
@@ -954,7 +953,7 @@ def torch_fused_moe_weight_only_reference(
     return output
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 def test_accuracy_fused_moe_int8_w8a16(config):
     """Test FlagGems fused_moe with INT8 W8A16 (weight-only) quantization."""
@@ -1029,7 +1028,7 @@ def test_accuracy_fused_moe_int8_w8a16(config):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 def test_accuracy_fused_moe_int4_w4a16(config):
     """Test FlagGems fused_moe with INT4 W4A16 (weight-only) quantization."""
@@ -1105,7 +1104,7 @@ def test_accuracy_fused_moe_int4_w4a16(config):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize(
     "config",
     [
@@ -1162,7 +1161,7 @@ def test_fused_moe_inplace(config, dtype):
     torch.testing.assert_close(result, ref, rtol=1e-3, atol=1e-3)
 
 
-@pytest.mark.fused_experts_impl
+@pytest.mark.fused_moe
 @pytest.mark.parametrize(
     "config",
     [

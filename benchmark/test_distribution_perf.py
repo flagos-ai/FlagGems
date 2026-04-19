@@ -18,12 +18,6 @@ def normal_inplace_input_fn(shape, cur_dtype, device):
     yield self, loc, scale
 
 
-def bernoulli__input_fn(shape, cur_dtype, device):
-    self = torch.randn(shape, dtype=cur_dtype, device=device)
-    p = 0.5
-    yield self, p
-
-
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
@@ -50,12 +44,6 @@ def bernoulli__input_fn(shape, cur_dtype, device):
             torch.Tensor.exponential_,
             unary_input_fn,
             marks=pytest.mark.exponential_,
-        ),
-        pytest.param(
-            "bernoulli_",
-            torch.Tensor.bernoulli_,
-            bernoulli__input_fn,
-            marks=pytest.mark.bernoulli_,
         ),
     ],
 )

@@ -123,56 +123,6 @@ def test_perf_conv2d():
         del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
 
-class ConvDepthwise2DBenchmark(GenericBenchmark):
-    def set_more_shapes(self):
-        # Additional shapes for COMPREHENSIVE mode
-        return [
-            (1, 64, 224, 224, 3, 3, 1, 1, 1),
-            (1, 128, 112, 112, 5, 5, 2, 2, 1),
-        ]
-
-
-@pytest.mark.conv_depthwise2d
-def test_perf_conv_depthwise2d():
-    def conv_depthwise2d_input_fn(shape, dtype, device):
-        (
-            batch,
-            channels,
-            input_h,
-            input_w,
-            kernel_h,
-            kernel_w,
-            stride,
-            padding,
-            dilation,
-        ) = shape
-        input_shape = (batch, channels, input_h, input_w)
-        weight_shape = (channels, 1, kernel_h, kernel_w)
-        input_tensor = torch.randn(size=input_shape, device=device, dtype=dtype)
-        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
-
-        # Pass as positional args since the first arg is named 'self' in aten op
-        yield (
-            input_tensor,
-            weight,
-            [kernel_h, kernel_w],
-            None,  # bias
-            [stride, stride],
-            [padding, padding],
-            [dilation, dilation],
-        )
-
-    torch.backends.cudnn.allow_tf32 = False
-    bench = ConvDepthwise2DBenchmark(
-        input_fn=conv_depthwise2d_input_fn,
-        op_name="_conv_depthwise2d",
-        torch_op=torch.ops.aten._conv_depthwise2d,
-        dtypes=[torch.float16, torch.float32],
-    )
-    bench.set_gems(flag_gems._conv_depthwise2d)
-    bench.run()
-
-
 class Conv3DBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         return None

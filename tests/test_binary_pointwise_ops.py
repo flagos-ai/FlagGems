@@ -1127,11 +1127,13 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
 
-    ref_inp1_grad, ref_inp2_grad = torch.autograd.grad(
+    (ref_inp1_grad, ref_inp2_grad) = torch.autograd.grad(
         ref_out, (ref_inp1, ref_inp2), ref_grad
     )
 
-    res_inp1_grad, res_inp2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
+    (res_inp1_grad, res_inp2_grad) = torch.autograd.grad(
+        res_out, (inp1, inp2), out_grad
+    )
 
     gems_assert_close(res_out, ref_out, dtype)
     gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
@@ -1704,11 +1706,13 @@ def test_accuracy_silu_and_mul(shape, dtype):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
 
-    ref_inp1_grad, ref_inp2_grad = torch.autograd.grad(
+    (ref_inp1_grad, ref_inp2_grad) = torch.autograd.grad(
         ref_out, (ref_inp1, ref_inp2), ref_grad
     )
 
-    res_inp1_grad, res_inp2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
+    (res_inp1_grad, res_inp2_grad) = torch.autograd.grad(
+        res_out, (inp1, inp2), out_grad
+    )
 
     gems_assert_close(res_out, ref_out, dtype)
     gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
@@ -2644,99 +2648,3 @@ def test_accuracy_atan2_out(shape, dtype):
         res_out = torch.ops.aten.atan2.out(x, y, out=res_out_buf)
 
     gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.dunder_or
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
-def test_accuracy_dunder_or(shape, dtype):
-    if dtype in BOOL_TYPES:
-        inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
-        inp2 = torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
-    else:
-        inp1 = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
-        inp2 = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
-    ref_inp1 = to_reference(inp1)
-    ref_inp2 = to_reference(inp2)
-
-    ref_out = ref_inp1 | ref_inp2
-    with flag_gems.use_gems():
-        res_out = inp1 | inp2
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.dunder_ior
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
-def test_accuracy_dunder_ior(shape, dtype):
-    if dtype in BOOL_TYPES:
-        inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
-        inp2 = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
-    else:
-        inp1 = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
-        inp2 = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
-    ref_inp1 = to_reference(inp1.clone())
-    ref_inp2 = to_reference(inp2)
-
-    ref_inp1 |= ref_inp2
-    with flag_gems.use_gems():
-        inp1 |= inp2
-
-    gems_assert_equal(inp1, ref_inp1)
-
-
-@pytest.mark.dunder_or
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
-def test_accuracy_dunder_or_scalar(shape, dtype):
-    if dtype in BOOL_TYPES:
-        inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(
-            flag_gems.device
-        )
-        inp2 = bool(random.randint(0, 1))
-    else:
-        inp1 = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
-        inp2 = 0x00FF
-    ref_inp1 = to_reference(inp1)
-
-    ref_out = ref_inp1 | inp2
-    with flag_gems.use_gems():
-        res_out = inp1 | inp2
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.dunder_ior
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
-def test_accuracy_dunder_ior_scalar(shape, dtype):
-    if dtype in BOOL_TYPES:
-        inp1 = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
-        inp2 = bool(random.randint(0, 1))
-    else:
-        inp1 = torch.randint(
-            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
-        ).to(flag_gems.device)
-        inp2 = 0x00FF
-    ref_inp1 = to_reference(inp1.clone())
-
-    ref_inp1 |= inp2
-    with flag_gems.use_gems():
-        inp1 |= inp2
-
-    gems_assert_equal(inp1, ref_inp1)

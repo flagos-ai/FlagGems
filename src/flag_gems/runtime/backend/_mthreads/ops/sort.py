@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
 )
 
 
@@ -195,8 +195,6 @@ def sweep(
     arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
     arr_u = convert_to_uint_preverse_order(arr, descending)
     key = (arr_u >> bit_offset) & bfe_mask  # (TILE_N, )
-    if associate_arr_ptr is not None:
-        associate_arr = tl.load(associate_arr_ptr + pid_m * N + n_offsets, mask=mask)
 
     # since triton can only use scalar as condition, loop by bin_index
     # status must be pre zero-initialized, or else we have to initialize it
@@ -242,6 +240,9 @@ def sweep(
         # scatter
         tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
         if associate_arr_ptr is not None:
+            associate_arr = tl.load(
+                associate_arr_ptr + pid_m * N + n_offsets, mask=mask
+            )
             tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
 
 

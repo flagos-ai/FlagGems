@@ -152,7 +152,7 @@ def reference_lighting_indexer_implementation(q, kv, weights, ks, ke):
 @pytest.mark.skip(
     "RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
 )
-@pytest.mark.triton_lighting_indexer_k_tiled_interface
+@pytest.mark.lighting_indexer_forward
 @pytest.mark.parametrize("seq_len_q", [1024, 2048, 4096])
 @pytest.mark.parametrize("seq_len_kv", [2048, 4096, 8192])
 @pytest.mark.parametrize("num_heads", [16, 32, 64])
@@ -180,3 +180,8 @@ def test_lighting_indexer_forward(
 
     # Accuracy comparison
     assert_close_inf(your_output, ref_output, 1e-2)
+
+
+if __name__ == "__main__":
+    # Can directly run this file for testing
+    pytest.main([__file__, "-v"])

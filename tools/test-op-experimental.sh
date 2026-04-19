@@ -11,6 +11,8 @@ CUDA_VISIBLE_DEVICES=6
 source "/home/zhangzhihui/miniconda3/etc/profile.d/conda.sh"
 conda activate flag_gems
 
+source tools/run_command.sh
+
 source_dir="src/flag_gems/experimental_ops"
 unit_test_dir="experimental_tests/unit"
 performance_test_dir="experimental_tests/performance"
@@ -64,10 +66,10 @@ fi
 
 if [[ -n "$unit_tests_to_run" ]]; then
     unique_files=$(echo "$unit_tests_to_run" | tr ' ' '\n' | sort -u | xargs)
-    pytest -s $unique_files
+    run_command pytest -s $unique_files
 fi
 
 if [[ -n "$performance_tests_to_run" ]]; then
     unique_files=$(echo "$performance_tests_to_run" | tr ' ' '\n' | sort -u | xargs)
-    pytest -s $unique_files
+    run_command pytest -s $unique_files
 fi

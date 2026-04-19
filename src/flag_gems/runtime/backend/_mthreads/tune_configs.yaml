@@ -172,21 +172,6 @@ layer_norm_loop:
       - 2048
       - 4096
       - 8192
-rms_norm_loop:
-  - gen: true
-    param_map:
-      META:
-        TILE_N: tile_n
-      num_warps: warps
-    warps:
-      - 4
-      - 8
-      - 16
-    tile_n:
-      - 1024
-      - 2048
-      - 4096
-      - 8192
 layer_norm_backward:
   - gen: true
     param_map:
