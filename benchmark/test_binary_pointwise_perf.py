@@ -108,7 +108,7 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
         ]
     ],
 )
-def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
+def test_general_binary_pointwise(op_name, torch_op, dtypes):
     bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -140,7 +140,7 @@ def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
         ]
     ],
 )
-def test_general_inplace_binary_pointwise_perf(op_name, torch_op, dtypes):
+def test_general_inplace_binary_pointwise(op_name, torch_op, dtypes):
     bench = BinaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
     )
