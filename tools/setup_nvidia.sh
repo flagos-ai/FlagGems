@@ -1,6 +1,6 @@
 #!/bin/bash
 
-uv pip install -e . flag_gems[nvidia,test]
+uv pip install -e . .[nvidia,test]
 
 if [ -n "${USE_FLAGTREE}" ]; then
   uv pip uninstall triton

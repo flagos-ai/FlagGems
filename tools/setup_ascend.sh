@@ -8,7 +8,7 @@ fi
 # TODO: Check if this is necessary
 # export TRITON_ALL_BLOCKS_PARALLEL=1
 
-uv pip install -e . flag_gems[ascend,test]
+uv pip install -e . .[ascend,test]
 
 if [ -n "${USE_FLAGTREE}" ]; then
   uv pip uninstall triton
