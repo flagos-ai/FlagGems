@@ -24,7 +24,7 @@ class Conv1DBenchmark(GenericBenchmark):
 
 
 @pytest.mark.conv1d
-def test_perf_conv1d():
+def test_conv1d():
     def conv1d_input_fn(shape, dtype, device):
         (
             batch,
@@ -80,7 +80,7 @@ class Conv2DBenchmark(GenericBenchmark):
 
 
 @pytest.mark.conv2d
-def test_perf_conv2d():
+def test_conv2d():
     def conv2d_input_fn(shape, dtype, device):
         (
             batch,
@@ -110,6 +110,7 @@ def test_perf_conv2d():
 
     if flag_gems.vendor_name == "hygon":
         os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"] = "0"
+
     torch.backends.cudnn.allow_tf32 = False
     bench = Conv2DBenchmark(
         input_fn=conv2d_input_fn,
@@ -119,6 +120,7 @@ def test_perf_conv2d():
     )
     bench.set_gems(flag_gems.conv2d)
     bench.run()
+
     if flag_gems.vendor_name == "hygon":
         del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
 
@@ -133,7 +135,7 @@ class ConvDepthwise2DBenchmark(GenericBenchmark):
 
 
 @pytest.mark.conv_depthwise2d
-def test_perf_conv_depthwise2d():
+def test_conv_depthwise2d():
     def conv_depthwise2d_input_fn(shape, dtype, device):
         (
             batch,
@@ -179,7 +181,7 @@ class Conv3DBenchmark(GenericBenchmark):
 
 
 @pytest.mark.conv3d
-def test_perf_conv3d():
+def test_conv3d():
     def conv3d_input_fn(shape, dtype, device):
         (
             batch,

@@ -119,7 +119,7 @@ forward_operations = [
         for name, op, dtype in forward_operations
     ],
 )
-def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+def test_general_unary_pointwise(op_name, torch_op, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["celu"] and SkipVersion("torch", "<2.5"):
             pytest.skip(
@@ -132,30 +132,28 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
 forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
     ("ceil_", torch.ceil_, FLOAT_DTYPES),
+    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
-    ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
-    ("round_", torch.round_, FLOAT_DTYPES),
+    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
     ("expm1_", torch.expm1_, FLOAT_DTYPES),
-    ("neg_", torch.neg_, FLOAT_DTYPES),
-    ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
-    ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
-    ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
-    ("square_", torch.square_, FLOAT_DTYPES),
-    ("log10_", torch.log10_, FLOAT_DTYPES),
-    # Activation operations
-    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
-    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
+    ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("hardswish_", torch.ops.aten.hardswish_, FLOAT_DTYPES),
+    ("log10_", torch.log10_, FLOAT_DTYPES),
+    ("neg_", torch.neg_, FLOAT_DTYPES),
+    ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
+    ("round_", torch.round_, FLOAT_DTYPES),
+    ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
+    ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
     ("selu_", torch.ops.aten.selu_, FLOAT_DTYPES),
-    ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("sgn_", lambda a: a.sgn_(), FLOAT_DTYPES),
+    ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
-    # Trigonometric operations
+    ("square_", torch.square_, FLOAT_DTYPES),
     ("cos_", torch.cos_, FLOAT_DTYPES),
     ("cosh_", torch.cosh_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
@@ -218,6 +216,16 @@ def test_arcsinh_out():
     bench = UnaryPointwiseOutBenchmark(
         op_name="arcsinh_out",
         torch_op=torch.arcsinh,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.ceil_out
+def test_ceil_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="ceil_out",
+        torch_op=torch.ceil,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
