@@ -1,6 +1,6 @@
 #!/bin/bash
 
-pip install -e .[metax,test]
+uv pip install -e .[metax,test]
 
 export MACA_PATH=/opt/maca
 export LD_LIBRARY_PATH=$MACA_PATH/lib:$LD_LIBRARY_PATH
