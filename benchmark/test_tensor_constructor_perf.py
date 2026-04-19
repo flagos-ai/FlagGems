@@ -276,7 +276,7 @@ class ZeroBenchmark(Benchmark):
 
 
 @pytest.mark.zero
-def test_perf_zero():
+def test_zero():
     bench = ZeroBenchmark(
         op_name="zero",
         torch_op=torch.ops.aten.zero,

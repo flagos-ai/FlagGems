@@ -203,7 +203,27 @@ def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
-@pytest.mark.cosh
+@pytest.mark.alias_copy_out
+def test_alias_copy_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="alias_copy_out",
+        torch_op=torch.ops.aten.alias_copy,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.arcsinh_out
+def test_arcsinh_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="arcsinh_out",
+        torch_op=torch.arcsinh,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.cosh_out
 def test_cosh_out_perf():
     bench = UnaryPointwiseOutBenchmark(
         op_name="cosh_out",
@@ -213,11 +233,101 @@ def test_cosh_out_perf():
     bench.run()
 
 
-@pytest.mark.log10
-def test_log10_out_perf():
+@pytest.mark.expm1_out
+def test_expm1_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="expm1_out",
+        torch_op=torch.expm1,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.hardsigmoid_out
+def test_hardsigmoid_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="hardsigmoid_out",
+        torch_op=torch.nn.functional.hardsigmoid,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.i0_out
+def test_i0_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="i0_out",
+        torch_op=torch.i0,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.logit_out
+def test_logit_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="logit_out",
+        torch_op=lambda a: torch.logit(a, eps=1e-6),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.log10_out
+def test_log10_out():
     bench = UnaryPointwiseOutBenchmark(
         op_name="log10_out",
         torch_op=torch.log10,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.round_out
+def test_round_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="round_out",
+        torch_op=torch.round,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.signbit_out
+def test_signbit_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="signbit_out",
+        torch_op=torch.signbit,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.softshrink_out
+def test_softshrink_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="softshrink_out",
+        torch_op=torch.nn.functional.softshrink,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.special_i1_out
+def test_special_i1_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="special_i1_out",
+        torch_op=torch.special.i1,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.square_out
+def test_square_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="square_out",
+        torch_op=torch.square,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
