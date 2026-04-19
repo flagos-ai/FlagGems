@@ -4,7 +4,7 @@ export MUSA_HOME=/usr/local/musa
 export PATH=$MUSA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
 
-uv pip install -e . flag_gems[mthreads,test]
+uv pip install -e . .[mthreads,test]
 
 # For the intel math library
 export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH

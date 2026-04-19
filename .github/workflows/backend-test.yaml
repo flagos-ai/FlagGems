@@ -67,15 +67,12 @@ jobs:
         shell: bash
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
-      - name: Set china proxy
-        shell: bash
-        run: |
-          echo "HTTP_PROXY=http://10.1.12.38:38002" >> $GITHUB_ENV
-          echo "HTTPS_PROXY=http://10.1.12.38:38002" >> $GITHUB_ENV
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          HTTP_PROXY: http://10.1.12.38:38002
+          HTTPS_PROXY: http://10.1.12.38:38002
         shell: bash
         run: |
-          bash tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
+          tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}

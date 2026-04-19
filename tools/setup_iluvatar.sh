@@ -2,7 +2,7 @@
 
 export LD_LIBRARY_PATH=/usr/local/corex/lib:$LD_LIBRARY_PATH
 
-uv pip install -e . flag_gems[iluvatar,test]
+uv pip install -e . .[iluvatar,test]
 
 if [ -z "${USE_FLAGTREE}" ]; then
   uv pip install --index $FLAGOS_PYPI \

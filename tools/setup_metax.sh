@@ -4,7 +4,7 @@ export MACA_PATH=/opt/maca
 export LD_LIBRARY_PATH=$MACA_PATH/lib:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
 
-uv pip install -e . flag_gems[metax,test]
+uv pip install -e . .[metax,test]
 
 if [ -n "${USE_FLAGTREE}" ]; then
   uv pip uninstall triton
