@@ -2569,7 +2569,7 @@ def test_accuracy_t_copy(shape, dtype):
     gems_assert_close(act_out, ref_out, dtype)
 
 
-@pytest.mark.t_copy
+@pytest.mark.t_copy_out
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_t_copy_out(shape, dtype):
