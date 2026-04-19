@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from decimal import Decimal, getcontext
 from importlib import metadata
 from multiprocessing import Process
@@ -211,6 +212,7 @@ def run_cmd_capture(cmd, cwd=None, env=None):
         stderr=subprocess.PIPE,
         text=True,
     )
+    # TODO(Qiming): chk if pytest-timeout is more suitable for this purpose
     try:
         out, err = p.communicate(timeout=300)
     except subprocess.TimeoutExpired:
@@ -222,12 +224,12 @@ def run_cmd_capture(cmd, cwd=None, env=None):
 
 def parse_accuracy_log(text):
     record = {
+        "status": "",
+        "total": 0,
         "passed": 0,
         "failed": 0,
         "skipped": 0,
         "errors": 0,
-        "total": 0,
-        "status": "",
     }
 
     clean = ANSI_RE.sub("", text)
@@ -322,17 +324,21 @@ def run_accuracy(gpu_id, start, index, count):
         cmd = f'pytest -m "{op}" -vs'
     else:
         cmd = f'pytest -m "{op}" --ref cpu -vs'
+
+    start = time.time()
     stdout, stderr, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
+    end = time.time()
 
     if code == TIMEOUT:  # Timeout
         return {
+            "status": "TIMEOUT",
+            "exit_code": TIMEOUT,
+            "total": 0,
             "passed": 0,
             "failed": 0,
             "skipped": 0,
             "errors": 0,
-            "total": 0,
-            "status": "TIMEOUT",
-            "exit_code": TIMEOUT,
+            "duration": end - start,
         }
 
     combined = stdout + "\n---\n" + stderr
@@ -342,8 +348,9 @@ def run_accuracy(gpu_id, start, index, count):
         f.write(combined)
 
     result = parse_accuracy_log(combined)
-    result["log"] = str(log_file.relative_to(OUTPUT_DIR))
     result["exit_code"] = code
+    result["duration"] = end - start
+    result["log_file"] = str(log_file.relative_to(OUTPUT_DIR))
 
     return result
 
@@ -456,8 +463,10 @@ def run_benchmark(gpu_id, start, index, count):
         except Exception:
             pass
 
+    start = time.time()
     cmd = f'pytest -m "{op}" --level core --record log'
     stdout, stderr, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
+    end = time.time()
 
     # Write raw command output
     op_dir = OUTPUT_DIR.joinpath(op)
@@ -478,9 +487,10 @@ def run_benchmark(gpu_id, start, index, count):
             status = "TIMEOUT"
         return {
             "status": status,
-            "log": str(output_file.relative_to(OUTPUT_DIR)),
-            "result": None,
+            "duration": end - start,
             "exit_code": TIMEOUT,
+            "log_file": str(output_file.relative_to(OUTPUT_DIR)),
+            "result_file": None,
             "data": [],
         }
 
@@ -494,9 +504,11 @@ def run_benchmark(gpu_id, start, index, count):
 
     record = {
         "status": "OK",
+        "duration": end - start,
         "exit_code": code,
-        "log": str(output_file.relative_to(OUTPUT_DIR)),
+        "log_file": str(output_file.relative_to(OUTPUT_DIR)),
         "result_file": str(result_file.relative_to(OUTPUT_DIR)),
+        "data": [],
     }
     record.update(parse_perf_log(op_dir))
 
@@ -547,7 +559,6 @@ def main():
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 
-    # TODO(Qiming): parse backend and probe customized or not
     ops = []
     for op in op_catalog:
         if not op.get("stages", {}).get("stable", None):
