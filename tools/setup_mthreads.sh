@@ -1,16 +1,19 @@
 #!/bin/bash
 
-# Setup
-uv pip install --index $FLAGOS_PYPI \
-   "torch==2.7.1+musa.4.0.0" \
-   "torch_musa==2.7.1" \
-   "flagtree==0.5.0+mthreads3.1"
-
-uv pip install -e .[mthreads,test]
-
 export MUSA_HOME=/usr/local/musa
 export PATH=$MUSA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
+
+echo "Setting up mthreads ..."
+
+uv pip install .[mthreads,test]
+
+uv pip uninstall triton
+uv pip install --index $FLAGOS_PYPI \
+  "flagtree==0.5.0+mthreads3.1"
+
+uv pip list
+
 # For the intel math library
 export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib:$LD_LIBRARY_PATH
 # For the Flagtree dynamic library

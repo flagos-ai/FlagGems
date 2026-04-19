@@ -5161,7 +5161,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      beta: '5.0'
+      alpha: '5.0'
   - name: upsample_nearest1d
     description: |
       Upsamples the `input`, using nearest neighbours' pixel values.
