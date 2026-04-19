@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pytest
 import torch
+import triton  # noqa: F401
 import yaml
 
 import flag_gems
