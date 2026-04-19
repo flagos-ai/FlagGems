@@ -260,12 +260,16 @@ def get_env(gpu_ids):
         env["NPU_VISIBLE_DEVICES"] = gpu_ids
         return env
 
-    if vendor == "mthreads":
-        env["MUSA_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
     if vendor == "hygon":
         env["HIP_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "metax":
+        env["MACA_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "mthreads":
+        env["MUSA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
     if vendor == "tsingmicro":
@@ -283,7 +287,6 @@ def get_env(gpu_ids):
         env["PPU_VISIBLE_DEVICES"] = gpu_ids
         return env
 
-    # MetaX is using CUDA_VISIBLE_DEVICES as well
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
     return env
