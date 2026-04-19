@@ -580,8 +580,13 @@ def get_ops_to_test(ops_file, ops_list, stages):
     op_catalog = get_ops_from_inventory()
     ops = []
     for op in op_catalog:
-        stage = op.get("stages", {}).get("stable", None)
-
+        stages = op.get("stages", [])
+        if len(stages) == 0:
+            # won't happen
+            continue
+        stage = next(iter(stages[-1].keys()), None)
+        if stage not in effective_stages:
+            continue
         # Always skip operators not exposed.
         if "exposed" in op and op["exposed"] is False:
             continue
