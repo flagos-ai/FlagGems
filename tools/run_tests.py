@@ -547,7 +547,12 @@ def worker_proc(gpu_id, start, count):
 
 def get_ops_to_test(ops_file, ops_list, stages):
     if ops_list:
-        return [op.strip() for op in ops_list.split(",")]
+        ops = []
+        for op in ops_list.split(","):
+            # Leading underscores are not valid pytest marks
+            ops.append(op.strip().lstrip("_"))
+
+        return ops
 
     if ops_file:
         lines = []
@@ -558,7 +563,16 @@ def get_ops_to_test(ops_file, ops_list, stages):
             perror(f"Failed reading the specified op list file: {e}")
             return []
 
-        return [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
+        ops = []
+        for ln in lines:
+            ln = ln.strip()
+            # comment line
+            if ln.startswith("#"):
+                continue
+            # Remove leading underscore to make valid pytest mark
+            ops.append(ln.lstrip("_"))
+
+        return ops
 
     # Now fall-back to inventory
     effective_stages = []
@@ -590,7 +604,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
         # Always skip operators not exposed.
         if "exposed" in op and op["exposed"] is False:
             continue
-        ops.append(op["name"])
+        ops.append(op["name"].lstrip("_"))
 
     return ops
 
