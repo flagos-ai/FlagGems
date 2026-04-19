@@ -260,7 +260,7 @@ def get_vendor_infos():
     return infos
 
 
-def get_current_device_extend_op(vendor_name=None):
+def get_customized_ops(vendor_name=None):
     import_vendor_extra_lib(vendor_name)
     global customized_ops
     if customized_ops is not None:
@@ -275,7 +275,7 @@ def get_current_device_extend_op(vendor_name=None):
     return customized_ops
 
 
-def get_curent_device_unused_op(vendor_name=None):
+def get_unused_ops(vendor_name=None):
     global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
     return list(vendor_module.CUSTOMIZED_UNUSED_OPS)
