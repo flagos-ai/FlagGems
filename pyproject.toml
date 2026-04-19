@@ -88,7 +88,7 @@ metax = [
 ]
 
 mthreads = [
-    "torch==2.7.1+musa4.0.0",
+    "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
     "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
