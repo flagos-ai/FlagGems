@@ -3656,7 +3656,7 @@ ops:
       - LinearAlg
     stages:
       stable: '2.0'
-  - name: prod_dim
+  - name: prod_dim_int
     description: Returns the product of each row of the `input` tensor in the given dimension `dim`.
     for:
       - prod.dim_int
