@@ -23,6 +23,53 @@ current_work_registrar = None
 runtime.replace_customized_ops(globals())
 
 
+def _grid_sampler_setup_context(ctx, inputs, output):
+    input, grid, interpolation_mode, padding_mode, align_corners = inputs
+    ctx.save_for_backward(input, grid)
+    ctx.interpolation_mode = interpolation_mode
+    ctx.padding_mode = padding_mode
+    ctx.align_corners = align_corners
+
+
+def _grid_sampler_backward(ctx, grad_output):
+    input, grid = ctx.saved_tensors
+    output_mask = [ctx.needs_input_grad[0], ctx.needs_input_grad[1]]
+    if input.dim() == 4:
+        grad_input, grad_grid = torch.ops.aten.grid_sampler_2d_backward(
+            grad_output,
+            input,
+            grid,
+            ctx.interpolation_mode,
+            ctx.padding_mode,
+            ctx.align_corners,
+            output_mask,
+        )
+    else:
+        grad_input, grad_grid = torch.ops.aten.grid_sampler_3d_backward(
+            grad_output,
+            input,
+            grid,
+            ctx.interpolation_mode,
+            ctx.padding_mode,
+            ctx.align_corners,
+            output_mask,
+        )
+    return (
+        grad_input if ctx.needs_input_grad[0] else None,
+        grad_grid if ctx.needs_input_grad[1] else None,
+        None,
+        None,
+        None,
+    )
+
+
+torch.library.register_autograd(
+    "aten::grid_sampler",
+    _grid_sampler_backward,
+    setup_context=_grid_sampler_setup_context,
+)
+
+
 def torch_ge(v):
     return version.parse(torch.__version__) >= version.parse(v)
 
@@ -230,6 +277,11 @@ _FULL_CONFIG = (
     ("gelu_backward", gelu_backward),
     ("glu", glu),
     ("glu_backward", glu_backward),
+    ("grid_sampler", grid_sampler),
+    ("grid_sampler_2d", grid_sampler_2d),
+    ("grid_sampler_2d_backward", grid_sampler_2d_backward),
+    ("grid_sampler_3d", grid_sampler_3d),
+    ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("greater.Scalar", greater_scalar),
     ("greater.Tensor", greater),
     ("greater.Scalar_out", greater_scalar_out),

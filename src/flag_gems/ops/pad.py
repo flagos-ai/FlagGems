@@ -452,9 +452,7 @@ class PadFunction:
 _pad_func = PadFunction()
 
 
-def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS CONSTANT PAD ND")
-
+def _pad_impl(self, pad, mode="constant", value=None):
     ndim = self.ndim
 
     if value is None:
@@ -483,5 +481,15 @@ def pad(self, pad, mode="constant", value=None):
     return out
 
 
+def pad(self, pad, mode="constant", value=None):
+    logger.debug("GEMS CONSTANT PAD ND")
+    if torch.is_grad_enabled() and self.requires_grad:
+        return torch.ops.aten.pad.default.redispatch(
+            _FALLBACK_KEYSET, self, pad, mode, value=value
+        )
+
+    return _pad_impl(self, pad, mode, value)
+
+
 def constant_pad_nd(self, pad_list, value=0):
-    return pad(self, pad_list, mode="constant", value=value)
+    return _pad_impl(self, pad_list, mode="constant", value=value)
