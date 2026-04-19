@@ -3,7 +3,7 @@
 # Environment setting for DTK-26.04
 source /opt/dtk-26.04/env.sh
 
-uv pip install -e . flag_gems[hygon,test]
+uv pip install -e . .[hygon,test]
 
 if [ -n "${USE_FLAGTREE}" ]; then
   uv pip uninstall triton

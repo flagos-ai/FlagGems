@@ -7,7 +7,7 @@ export LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin
 export PYTHONPATH=${LLVM_SYSPATH}/python_packages/mlir_core:$PYTHONPATH
 export LD_LIBRARY_PATH=$TX8_DEPS_ROOT/lib:/usr/local/kuiper/lib:$LD_LIBRARY_PATH
 
-uv pip install -e . flag_gems[tsingmicro,test]
+uv pip install -e . .[tsingmicro,test]
 
 # NOTE: Triton
 # uv pip install --index ${FLAGOS_PYPI} \
