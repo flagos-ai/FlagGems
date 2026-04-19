@@ -1511,12 +1511,26 @@ def _functional_sym_constrain_range_for_size_input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.functional_sym_constrain_range_for_size
-@pytest.mark.performance
-def test_perf_functional_sym_constrain_range_for_size():
+def test_functional_sym_constrain_range_for_size():
     bench = GenericBenchmark(
         op_name="functional_sym_constrain_range_for_size",
         torch_op=torch.ops.aten._functional_sym_constrain_range_for_size,
         dtypes=FLOAT_DTYPES,
         input_fn=_functional_sym_constrain_range_for_size_input_fn,
+    )
+    bench.run()
+
+
+@pytest.mark.unique_consecutive
+def test_perf_unique_consecutive():
+    def unique_consecutive_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp, {"return_inverse": True, "return_counts": False},
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=unique_consecutive_input_fn,
+        op_name="unique_consecutive",
+        torch_op=torch.unique_consecutive,
+        dtypes=INT_DTYPES,
     )
     bench.run()

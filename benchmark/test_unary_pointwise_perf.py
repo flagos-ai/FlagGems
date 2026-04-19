@@ -39,6 +39,14 @@ class UnaryPointwiseBenchmark(Benchmark):
         return torch.tensor(shape).prod().item()
 
 
+class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty_like(inp)
+            yield inp, {"out": out}
+
+
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
     ("absolute", torch.absolute, FLOAT_DTYPES),
@@ -58,6 +66,7 @@ forward_operations = [
     ("special_i0e", torch.ops.aten.special_i0e, FLOAT_DTYPES),
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     ("log", torch.log, FLOAT_DTYPES),
+    ("log10", torch.log10, FLOAT_DTYPES),
     ("special_i1", torch.special.i1, FLOAT_DTYPES),
     ("logit", lambda a: torch.logit(a, eps=1e-6), FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
@@ -79,6 +88,7 @@ forward_operations = [
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     # Trigonometric operations
     ("cos", torch.cos, FLOAT_DTYPES),
+    ("cosh", torch.cosh, FLOAT_DTYPES),
     ("sin", torch.sin, FLOAT_DTYPES),
     ("tan", torch.tan, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
@@ -134,6 +144,7 @@ forward_inplace_operations = [
     ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
     ("square_", torch.square_, FLOAT_DTYPES),
+    ("log10_", torch.log10_, FLOAT_DTYPES),
     # Activation operations
     ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
@@ -146,6 +157,7 @@ forward_inplace_operations = [
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
     # Trigonometric operations
     ("cos_", torch.cos_, FLOAT_DTYPES),
+    ("cosh_", torch.cosh_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
     ("sinh_", lambda a: a.sinh_(), FLOAT_DTYPES),
     ("tan_", torch.tan_, FLOAT_DTYPES),
@@ -187,6 +199,26 @@ def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
             )
     bench = UnaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
+    bench.run()
+
+
+@pytest.mark.cosh
+def test_cosh_out_perf():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="cosh_out",
+        torch_op=torch.cosh,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.log10
+def test_log10_out_perf():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="log10_out",
+        torch_op=torch.log10,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 
@@ -418,8 +450,7 @@ UNSUPPORTED_VENDORS = {
     flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported"
 )
 @pytest.mark.apply_repetition_penalties
-@pytest.mark.performance
-def test_perf_repetition_penalty():
+def test_apply_repetition_penalties():
     vllm_ops = pytest.importorskip("vllm._custom_ops")
 
     bench = RepetitionPenaltyBenchmark(
