@@ -27,19 +27,17 @@ def get_heuristic_config(op_name):
 
 def replace_customized_ops(_globals):
     event = backend.BackendArchEvent()
-    arch_specialization_operators = event.get_arch_ops() if event.has_arch else None
-    backend_customization_operators = backend.get_current_device_extend_op(
-        device.vendor_name
-    )
+    arch_specific_ops = event.get_arch_ops() if event.has_arch else None
+    extended_ops = backend.get_customized_ops(device.vendor_name)
     if device.vendor != common.vendors.NVIDIA:
         try:
-            for fn_name, fn in backend_customization_operators:
+            for fn_name, fn in extended_ops:
                 _globals[fn_name] = fn
         except RuntimeError as e:
             error.customized_op_replace_error(e)
-    if arch_specialization_operators:
+    if arch_specific_ops:
         try:
-            for fn_name, fn in arch_specialization_operators:
+            for fn_name, fn in arch_specific_ops:
                 _globals[fn_name] = fn
         except RuntimeError as e:
             error.customized_op_replace_error(e)
