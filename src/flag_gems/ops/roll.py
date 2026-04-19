@@ -1,107 +1,105 @@
 import logging
-from typing import Sequence, Union
 
 import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 
-def _normalize_shifts_dims(
-    inp: torch.Tensor,
-    shifts: Union[int, Sequence[int]],
-    dims: Union[None, int, Sequence[int]],
-) -> tuple:
-    """Normalize shifts and dims to lists, handling the flatten case."""
-    if isinstance(shifts, int):
-        shifts = [shifts]
-    else:
-        shifts = list(shifts)
+@libentry()
+@triton.jit
+def roll_kernel(
+    inp_ptr,
+    out_ptr,
+    N,
+    dim_size,
+    shift,
+    inner_size,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    mask = offset < N
 
-    if dims is None:
-        # Flatten case: roll on flattened tensor
-        return shifts, None
+    # Decompose flat index into (outer, dim_idx, inner)
+    outer_stride = dim_size * inner_size
+    outer_idx = offset // outer_stride
+    remainder = offset % outer_stride
+    dim_idx = remainder // inner_size
+    inner_idx = remainder % inner_size
 
-    if isinstance(dims, int):
-        dims = [dims]
-    else:
-        dims = list(dims)
+    # Apply roll: source_dim_idx = (dim_idx - shift) % dim_size
+    source_dim_idx = (dim_idx - shift + dim_size) % dim_size
 
-    if len(shifts) != len(dims):
-        raise RuntimeError(
-            f"shifts and dims must have the same size, got shifts={len(shifts)} and dims={len(dims)}"
-        )
+    # Reconstruct source flat index
+    source_offset = outer_idx * outer_stride + source_dim_idx * inner_size + inner_idx
 
-    # Normalize negative dims
-    ndim = inp.ndim
-    normalized_dims = []
-    for d in dims:
-        if d < -ndim or d >= ndim:
-            raise IndexError(
-                f"Dimension out of range (expected to be in range of [{-ndim}, {ndim - 1}], but got {d})"
-            )
-        normalized_dims.append(d % ndim)
-
-    return shifts, normalized_dims
+    val = tl.load(inp_ptr + source_offset, mask=mask, other=0.0)
+    tl.store(out_ptr + offset, val, mask=mask)
 
 
 def _roll_single_dim(inp: torch.Tensor, shift: int, dim: int) -> torch.Tensor:
-    """Roll along a single dimension using slicing and concatenation."""
-    size = inp.shape[dim]
+    size = inp.size(dim)
     if size == 0:
-        return inp
+        return inp.clone()
 
-    # Normalize shift to [0, size)
     shift = shift % size
     if shift == 0:
-        return inp
+        return inp.clone()
 
-    # torch.roll with shift=k along dim means element at position i goes to position (i+k)%size
-    # So output[i] = input[(i - k) % size]
-    # Using narrow: we want output = cat([input[size-shift:], input[:size-shift]], dim)
-    first_part = inp.narrow(dim, size - shift, shift)
-    second_part = inp.narrow(dim, 0, size - shift)
-    return torch.cat([first_part, second_part], dim=dim)
+    inp_contig = inp.contiguous()
+    out = torch.empty_like(inp_contig)
+
+    inner_size = 1
+    for i in range(dim + 1, inp.ndim):
+        inner_size *= inp.size(i)
+
+    N = inp.numel()
+    BLOCK_SIZE = 512
+    grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
+
+    roll_kernel[grid](
+        inp_contig,
+        out,
+        N,
+        size,
+        shift,
+        inner_size,
+        BLOCK_SIZE=BLOCK_SIZE,
+    )
+    return out
 
 
-def roll(
-    inp: torch.Tensor,
-    shifts: Union[int, Sequence[int]],
-    dims: Union[None, int, Sequence[int]] = None,
-) -> torch.Tensor:
+def roll(inp: torch.Tensor, shifts, dims=None) -> torch.Tensor:
     logger.debug("GEMS ROLL")
 
-    shifts_list, dims_list = _normalize_shifts_dims(inp, shifts, dims)
-
-    # Handle empty tensor
     if inp.numel() == 0:
         return inp.clone()
 
-    # Handle flatten case (dims is None)
-    if dims_list is None:
-        # Flatten, roll along dim 0, reshape back
+    if dims is None:
+        if isinstance(shifts, (list, tuple)):
+            shift = shifts[0] if len(shifts) == 1 else sum(shifts)
+        else:
+            shift = shifts
         original_shape = inp.shape
-        flat = inp.contiguous().flatten()
-        shift = shifts_list[0] if shifts_list else 0
+        flat = inp.contiguous().reshape(-1)
+        out_flat = _roll_single_dim(flat, shift, 0)
+        return out_flat.reshape(original_shape)
 
-        if flat.numel() == 0:
-            return inp.clone()
+    if isinstance(dims, int):
+        dims = [dims]
+    if isinstance(shifts, int):
+        shifts = [shifts]
 
-        # Normalize shift
-        shift = shift % flat.numel()
-        if shift == 0:
-            return inp.clone()
+    assert len(shifts) == len(dims), "shifts and dims must have the same length"
 
-        # Roll the flattened tensor
-        rolled_flat = _roll_single_dim(flat, shift, 0)
-        return rolled_flat.view(original_shape)
+    ndim = inp.ndim
+    dims = [d % ndim for d in dims]
 
-    # Handle no-op case
-    if not dims_list:
-        return inp.clone()
-
-    # Apply rolls for each dimension
     result = inp
-    for shift, dim in zip(shifts_list, dims_list):
+    for shift, dim in zip(shifts, dims):
         result = _roll_single_dim(result, shift, dim)
-
     return result
