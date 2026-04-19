@@ -17,6 +17,8 @@ from pathlib import Path
 import distro
 import yaml
 
+import flag_gems
+
 # increase decimal precision
 getcontext().prec = 18
 
@@ -166,7 +168,6 @@ def init():
 
     try:
         # This may print an error "no device detected on your machine."
-        import flag_gems
 
         version = flag_gems.__version__
         ENV_INFO["flag_gems"] = {"version": version}
@@ -512,7 +513,11 @@ def worker_proc(gpu_id, start, count):
         acc = run_accuracy(gpu_id, start, i, count)
         perf = run_benchmark(gpu_id, start, i, count)
 
+        customized_ops = [
+            op[0] for op in flag_gems.runtime.backend.get_customized_ops()
+        ]
         result = {
+            "customized": op in customized_ops,
             "accuracy": acc,
             "performance": perf,
         }
