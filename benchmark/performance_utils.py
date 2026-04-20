@@ -93,7 +93,7 @@ class Benchmark:
         if is_backward and self.op_name.find("_backward") == -1:
             self.op_name += "_backward"
         self.torch_op = torch_op
-        self.gems_op = None
+        self.gems_op = kwargs.get("gems_op", None)
         self.is_backward = is_backward
         self.is_inplace = is_inplace
         self._input_iter = None
