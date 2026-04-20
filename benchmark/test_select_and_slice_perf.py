@@ -710,3 +710,48 @@ def test_index_acc_perf():
     )
     bench.set_gems(gems_op)
     bench.run()
+
+
+def index_put_impl_input_fn(accumulate, unsafe=False):
+    def inner(shapes, dtype, device):
+        input_shape, indices_shape, values_shape, is_bool = shapes
+        inp = torch.randn(
+            input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+
+        indices = gen_indices_bool(input_shape, indices_shape, accumulate, is_bool)
+
+        if is_bool:
+            K = indices[0].sum().item()
+            values = torch.randn(
+                (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+            )
+        else:
+            values = torch.randn(
+                values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+            )
+        yield inp, indices, values, accumulate, unsafe
+
+    return inner
+
+
+@pytest.mark.index_put_impl
+def test_index_put_impl_acc_false_perf():
+    bench = IndexPutAccFalseBenchmark(
+        op_name="_index_put_impl_",
+        torch_op=torch._index_put_impl_,
+        input_fn=index_put_impl_input_fn(False, unsafe=False),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.index_put_impl
+def test_index_put_impl_acc_true_perf():
+    bench = IndexPutAccTrueBenchmark(
+        op_name="_index_put_impl_",
+        torch_op=torch._index_put_impl_,
+        input_fn=index_put_impl_input_fn(True, unsafe=False),
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()
