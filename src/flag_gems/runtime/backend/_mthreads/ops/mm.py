@@ -208,6 +208,10 @@ def mm_fma(a, b):
     # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
+    # fp32 requires SQMMA disabled to use FMA path correctly
+    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
+    if a.dtype == torch.float32 or b.dtype == torch.float32:
+        os.environ.pop("MUSA_ENABLE_SQMMA", None)
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -229,6 +233,9 @@ def mm_fma(a, b):
             dtype=str(a.dtype).split(".")[-1],
             GROUP_M=8,
         )
+    # restore SQMMA env var
+    if prev_sqmma is not None:
+        os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
     return c
 
 
