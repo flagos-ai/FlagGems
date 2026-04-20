@@ -1296,7 +1296,7 @@ FILL_SLICE_CASES = [
 @pytest.mark.parametrize(
     "value", [0, 1, True, float("-inf")], ids=["zero", "one", "true", "neginf"]
 )
-def test_fill_sliced_view(shape, slc, dtype, value):
+def test_fill_sliced_view_scalar(shape, slc, dtype, value):
     if dtype == torch.bool and value == float("-inf"):
         pytest.skip("bool tensor does not support -inf")
 
@@ -1306,6 +1306,22 @@ def test_fill_sliced_view(shape, slc, dtype, value):
     ref_x[slc] = value
     with flag_gems.use_gems():
         x[slc] = value
+
+    gems_assert_equal(x, ref_x)
+
+
+@pytest.mark.fill
+@pytest.mark.parametrize("shape, slc", FILL_SLICE_CASES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + BOOL_TYPES)
+@pytest.mark.parametrize("value", [0, 1, True], ids=["zero", "one", "true"])
+def test_fill_sliced_view_tensor(shape, slc, dtype, value):
+    x = torch.randn(shape, device=flag_gems.device).to(dtype)
+    ref_x = x.clone()
+
+    value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
+    ref_x[slc] = value_tensor
+    with flag_gems.use_gems():
+        x[slc] = value_tensor
 
     gems_assert_equal(x, ref_x)
 
