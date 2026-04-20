@@ -12,7 +12,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
 )
 
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
@@ -123,6 +123,11 @@ def _launch_triton(
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
     logger.debug("GEMS_MTHREADS GATHER")
+    if inp.ndim != index.ndim:
+        raise IndexError(
+            f"self and index must have the same number of dimensions, "
+            f"got self.ndim = {inp.ndim} and index.ndim = {index.ndim}"
+        )
     if not _use_triton_kernel(inp, dim, index, out):
         return default_gather(inp, dim, index, out, sparse_grad)
 
