@@ -41,6 +41,7 @@ from flag_gems.ops.attention import (
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.baddbmm import baddbmm
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
+from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -79,6 +80,7 @@ from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
+from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -164,6 +166,7 @@ from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p_ import log1p_
+from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
@@ -252,6 +255,7 @@ from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from flag_gems.ops.roll import roll
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
@@ -296,6 +300,7 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
+from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -303,6 +308,7 @@ from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
+from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
@@ -375,6 +381,7 @@ __all__ = [
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
+    "bernoulli_",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",
@@ -414,6 +421,9 @@ __all__ = [
     "copysign_out",
     "cos",
     "cos_",
+    "cosh",
+    "cosh_",
+    "cosh_out",
     "count_nonzero",
     "cummax",
     "cummin",
@@ -524,6 +534,9 @@ __all__ = [
     "lift_fresh_copy_out",
     "linspace",
     "log",
+    "log10",
+    "log10_",
+    "log10_out",
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
@@ -628,6 +641,7 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "roll",
     "round",
     "round_",
     "round_out",
@@ -710,12 +724,16 @@ __all__ = [
     "true_divide_out",
     "unfold_backward",
     "uniform_",
+    "unique_consecutive",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_nearest3d",
     "var_mean",
+    "var",
+    "var_correction",
+    "var_dim",
     "vdot",
     "vector_norm",
     "vstack",

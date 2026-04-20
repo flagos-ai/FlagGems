@@ -1,8 +1,12 @@
 #!/bin/bash
 
-uv pip install --index ${FLAGOS_PYPI} \
-    flagtree==0.5.0+hcu3.0 \
-    torch==2.9.0+das.opt1.dtk2604
-uv pip install -e .[hygon,test]
-
+# Environment setting for DTK-26.04
 source /opt/dtk-26.04/env.sh
+
+uv pip install -e . .[hygon,test]
+
+if [ -n "${USE_FLAGTREE}" ]; then
+  uv pip uninstall triton
+  uv pip install --index ${FLAGOS_PYPI} \
+    "flagtree==0.5.0+hcu3.0"
+fi
