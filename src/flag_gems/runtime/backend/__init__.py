@@ -218,6 +218,22 @@ import torch
 fn = torch.{device_name}
 """
     torch_device_object = get_codegen_result(code, "fn")
+
+    # SPACEMIT CPU backend needs special device guard handling
+    if vendor_name == "spacemit":
+        backends_module = importlib.import_module("flag_gems.runtime.backend._spacemit")
+        setattr(
+            torch_device_object,
+            "_DeviceGuard",
+            getattr(backends_module, "_DeviceGuard"),
+        )
+        setattr(
+            torch_device_object,
+            "device",
+            getattr(backends_module, "_DeviceWrapper"),
+        )
+        # Override current_device to return integer 0 for kernel cache indexing
+        setattr(torch_device_object, "current_device", lambda: 0)
     return torch_device_object
 
 

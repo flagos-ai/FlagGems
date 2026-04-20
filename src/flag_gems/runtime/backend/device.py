@@ -19,16 +19,19 @@ UNSUPPORT_FP64 = [
     vendors.TSINGMICRO,
     vendors.SUNRISE,
     vendors.ENFLAME,
+    vendors.SPACEMIT,
 ]
 UNSUPPORT_BF16 = [
     vendors.AIPU,
     vendors.SUNRISE,
+    vendors.SPACEMIT,
 ]
 UNSUPPORT_INT64 = [
     vendors.AIPU,
     vendors.TSINGMICRO,
     vendors.SUNRISE,
     vendors.ENFLAME,
+    vendors.SPACEMIT,
 ]
 
 

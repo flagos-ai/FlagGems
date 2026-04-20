@@ -142,6 +142,13 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
+    vendors.SPACEMIT: CodeGenConfig(
+        512,
+        (8, 512, 512),
+        16,
+        True,
+        prefer_1d_tile=True,
+    ),
 }
 
 HEURISTICS_CONFIG = {

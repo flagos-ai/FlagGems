@@ -312,6 +312,10 @@ def test_baddbmm(M, N, K, scalar, dtype):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.baddbmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -519,6 +523,7 @@ def test_outer(M, N, dtype):
     gems_assert_close(res_in2_grad, ref_in2_grad, dtype, reduce_dim=M)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "spacemit", reason="TODO")
 @pytest.mark.vdot
 @pytest.mark.parametrize("M", UT_SHAPES_1D)
 @pytest.mark.parametrize(

@@ -428,6 +428,10 @@ def test_scaled_dot_product_attention_legacy(
         (1, 2, 1, 8192, 8192, 32, True),
     ],
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "spacemit",
+    reason="TODO: backward not supported on spacemit",
+)
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_scaled_dot_product_attention_legacy_legacy_backward(
