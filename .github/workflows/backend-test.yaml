@@ -47,6 +47,11 @@ jobs:
         op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
+      - name: Set global proxy
+        shell: bash
+        run: |
+          echo "HTTP_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
+          echo "HTTPS_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
       - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
@@ -66,6 +71,8 @@ jobs:
         if: ${{ inputs.test_script == '' }}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          HTTP_PROXY: http://10.1.12.38:38002
+          HTTPS_PROXY: http://10.1.12.38:38002
         shell: bash
         run: |
-          bash tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
+          tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
