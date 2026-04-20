@@ -268,13 +268,13 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.nll_loss
+@pytest.mark.nll_loss_forward
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
-def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
+def test_nll_loss_forward(shape, dtype, ignore_index, reduction, weight):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -318,7 +318,7 @@ NLLLOSS2D_SHAPES = (
 )
 
 
-@pytest.mark.nll_loss2d
+@pytest.mark.nll_loss2d_forward
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("shape", [(2, 4, 4, 8)])
@@ -376,7 +376,7 @@ NLL_LOSS_ND_SHAPES = (
 @pytest.mark.parametrize("shape", NLL_LOSS_ND_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
-def test_accuracy_nll_loss_nd(shape, dtype, ignore_index, reduction, weight):
+def test_nll_loss_nd(shape, dtype, ignore_index, reduction, weight):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -425,7 +425,7 @@ CUMSUM_SHAPES = (
 @pytest.mark.cumsum
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
-def test_accuracy_cumsum(shape, dtype):
+def test_cumsum(shape, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -630,7 +630,7 @@ def test_accuracy_count_nonzero(shape, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, 1] if flag_gems.vendor_name == "cambricon" else [1])
-def test_accuracy_log_softmax(shape, dtype, dim):
+def test_log_softmax(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
@@ -643,11 +643,11 @@ def test_accuracy_log_softmax(shape, dtype, dim):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.log_softmax
+@pytest.mark.log_softmax_backward
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, 1] if flag_gems.vendor_name == "cambricon" else [1])
-def test_accuracy_log_softmax_backward(shape, dtype, dim):
+def test_log_softmax_backward(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
@@ -747,7 +747,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     gems_assert_close(res_var, ref_var, dtype)
 
 
-@pytest.mark.scatter
+@pytest.mark.scatter_src
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
 )
@@ -756,7 +756,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
+def test_scatter_src(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
@@ -791,7 +791,7 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.scatter
+@pytest.mark.scatter_reduce
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
 )
@@ -800,7 +800,7 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
+def test_scatter_reduce_add(src_shape, inp_shape, dim, dtype):
     init_seed(0)
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
@@ -845,7 +845,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-def test_accuracy_scatter_add_(src_shape, inp_shape, dim, dtype):
+def test_scatter_add_(src_shape, inp_shape, dim, dtype):
     init_seed(0)
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
@@ -882,7 +882,7 @@ def test_accuracy_scatter_add_(src_shape, inp_shape, dim, dtype):
 
 
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.scatter
+@pytest.mark.scatter_reduce
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
 )
@@ -891,7 +891,7 @@ def test_accuracy_scatter_add_(src_shape, inp_shape, dim, dtype):
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
+def test_scatter_reduce_mul(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
@@ -926,7 +926,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.scatter_
+@pytest.mark.scatter_src_
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
 )
@@ -935,7 +935,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_inplace_scatter_src(src_shape, inp_shape, dim, dtype):
+def test_scatter_src_(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
@@ -970,7 +970,7 @@ def test_accuracy_inplace_scatter_src(src_shape, inp_shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.scatter_
+@pytest.mark.scatter_reduce_
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
 )
@@ -979,7 +979,7 @@ def test_accuracy_inplace_scatter_src(src_shape, inp_shape, dim, dtype):
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_inplace_scatter_add(src_shape, inp_shape, dim, dtype):
+def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
     init_seed(0)
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
@@ -1016,7 +1016,7 @@ def test_accuracy_inplace_scatter_add(src_shape, inp_shape, dim, dtype):
 
 
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.scatter_
+@pytest.mark.scatter_reduce_
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
 )
@@ -1025,7 +1025,7 @@ def test_accuracy_inplace_scatter_add(src_shape, inp_shape, dim, dtype):
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_inplace_scatter_mul(src_shape, inp_shape, dim, dtype):
+def test_scatter_reduce_mul_(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
@@ -1081,7 +1081,7 @@ TRACE_SHAPES = [
     "dtype",
     FLOAT_DTYPES + INT_DTYPES + [torch.bool],
 )
-def test_accuracy_trace(shape, dtype):
+def test_trace(shape, dtype):
     if dtype == torch.bool:
         inp = torch.randint(0, 2, size=shape, device=flag_gems.device).to(dtype)
     elif dtype in INT_DTYPES:
@@ -1114,7 +1114,7 @@ def test_accuracy_trace(shape, dtype):
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_gather(inp_shape, dim, dtype):
+def test_gather(inp_shape, dim, dtype):
     # Test ndim mismatch raises IndexError (only once to avoid redundant checks)
     if dim == 0 and dtype == torch.float32:
         mismatch_inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
@@ -1222,14 +1222,14 @@ SLICE_BACKWARD_SHAPES = [
 ]
 
 
-@pytest.mark.slice
+@pytest.mark.slice_backward
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, -1])
 @pytest.mark.parametrize("start", [0, 16])
 @pytest.mark.parametrize("end", [64, 128])
 @pytest.mark.parametrize("step", [1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_slice_backward(
+def test_slice_backward(
     shape,
     dim,
     start,
@@ -1285,7 +1285,7 @@ def test_accuracy_slice_backward(
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.slice
+@pytest.mark.slice_backward
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_slice_backward_oob_end(shape, dtype):
@@ -1311,7 +1311,7 @@ def test_slice_backward_oob_end(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.slice
+@pytest.mark.slice_backward
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_slice_backward_oob_start(shape, dtype):
@@ -1530,7 +1530,7 @@ AVGPOOL2D_CONFIGS = [
     AVGPOOL2D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_avg_pool2d_forward(
+def test_avg_pool2d(
     shape,
     kernel_size,
     stride,
@@ -1566,13 +1566,13 @@ def test_accuracy_avg_pool2d_forward(
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.avg_pool2d_bwd
+@pytest.mark.avg_pool2d_backward
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override",
     AVGPOOL2D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_avg_pool2d_backward(
+def test_avg_pool2d_backward(
     shape,
     kernel_size,
     stride,
@@ -2430,14 +2430,14 @@ def test_accuracy_var(shape, dim, correction, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.scaled_softmax
+@pytest.mark.scaled_softmax_forward
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
 @pytest.mark.parametrize("query_seq_len", [64, 128])
 @pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
 @pytest.mark.parametrize("scale_factor", [0.1])
-def test_accuracy_scaled_softmax_forward(
+def test_scaled_softmax_forward(
     batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
 ):
     try:
@@ -2458,14 +2458,14 @@ def test_accuracy_scaled_softmax_forward(
     gems_assert_close(p, p_ref, dtype, equal_nan=True)
 
 
-@pytest.mark.scaled_softmax
+@pytest.mark.scaled_softmax_backward
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize("attn_heads", [2] if QUICK_MODE else [2, 4, 8, 16, 32])
 @pytest.mark.parametrize("query_seq_len", [64, 128])
 @pytest.mark.parametrize("key_seq_len", [128, 256, 512, 1024])
 @pytest.mark.parametrize("scale_factor", [0.1])
-def test_accuracy_scaled_softmax_backward(
+def test_scaled_softmax_backward(
     batch_size, attn_heads, query_seq_len, key_seq_len, scale_factor, dtype
 ):
     try:
