@@ -21,6 +21,14 @@ def flip_input_fn(shape, cur_dtype, device):
         yield inp, {"dims": (0,)}
 
 
+def roll_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    if len(shape) > 1:
+        yield inp, {"shifts": (1, 2), "dims": (0, 1)}
+    else:
+        yield inp, {"shifts": 1, "dims": 0}
+
+
 def where_input_fn(shape, cur_dtype, device):
     inp1 = generate_tensor_input(shape, cur_dtype, device)
     inp2 = generate_tensor_input(shape, cur_dtype, device)
@@ -109,6 +117,13 @@ def addcdiv_input_fn(shape, cur_dtype, device):
             marks=pytest.mark.flip,
         ),
         pytest.param(
+            "roll",
+            torch.roll,
+            roll_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=pytest.mark.roll,
+        ),
+        pytest.param(
             "where", torch.where, where_input_fn, FLOAT_DTYPES, marks=pytest.mark.where
         ),
         pytest.param(
@@ -146,80 +161,59 @@ def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
     bench.run()
 
 
-@pytest.mark.parametrize(
-    "op_name, torch_op, input_fn, dtypes",
-    [
-        pytest.param(
-            "clamp_",
-            torch.clamp_,
-            clamp_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.clamp_,
-        ),
-        pytest.param(
-            "clamp_min_",
-            torch.clamp_min_,
-            clamp_min_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.clamp_min_,
-        ),
-    ],
-)
-def test_generic_inplace_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
+@pytest.mark.clamp_
+def test_clamp_inplace():
     bench = GenericBenchmark(
-        input_fn=input_fn,
-        op_name=op_name,
-        torch_op=torch_op,
-        dtypes=dtypes,
+        input_fn=clamp_input_fn,
+        op_name="clamp_",
+        torch_op=torch.clamp_,
+        dtypes=FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()
 
 
-@pytest.mark.parametrize(
-    "op_name, torch_op, input_fn, dtypes",
-    [
-        pytest.param(
-            "tril",
-            torch.tril,
-            unary_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.tril,
-        ),
-        pytest.param(
-            "triu",
-            torch.triu,
-            unary_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.triu,
-        ),
-    ],
-)
-def test_generic_pointwise_benchmark_exclude_1d(op_name, torch_op, input_fn, dtypes):
-    bench = GenericBenchmarkExcluse1D(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+@pytest.mark.clamp_min_
+def test_clamp_min_inplace():
+    bench = GenericBenchmark(
+        input_fn=clamp_min_input_fn,
+        op_name="clamp_min_",
+        torch_op=torch.clamp_min_,
+        dtypes=FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()
 
 
-@pytest.mark.parametrize(
-    "op_name, torch_op, input_fn, dtypes",
-    [
-        pytest.param(
-            "triu_",
-            torch.Tensor.triu_,
-            unary_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.triu_,
-        ),
-    ],
-)
-def test_generic_inplace_pointwise_benchmark_triu(op_name, torch_op, input_fn, dtypes):
+@pytest.mark.tril
+def test_tril():
     bench = GenericBenchmarkExcluse1D(
-        input_fn=input_fn,
-        op_name=op_name,
-        torch_op=torch_op,
-        dtypes=dtypes,
+        input_fn=unary_input_fn,
+        op_name="tril",
+        torch_op=torch.tril,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.triu
+def test_triu():
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=unary_input_fn,
+        op_name="triu",
+        torch_op=torch.triu,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.triu_
+def test_triu_inplace():
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=unary_input_fn,
+        op_name="triu_",
+        torch_op=torch.Tensor.triu_,
+        dtypes=FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()
