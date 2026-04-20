@@ -152,7 +152,7 @@ def triton_sparse_mla_fwd(
 def triton_sparse_mla_fwd_interface(
     q, kv, indices, sm_scale=None, return_p_sum: bool = False, d_v=512
 ):
-    logger.debug("GEMS SPARSE MLA FWD INTERFACE")
+    logger.debug("GEMS SPARSE_MLA_FWD_INTERFACE")
     is_causal = True
     assert return_p_sum is False, "This kernel file is for fwd only"
     assert q.is_contiguous() and kv.is_contiguous() and indices.is_contiguous()

@@ -39,6 +39,14 @@ class UnaryPointwiseBenchmark(Benchmark):
         return torch.tensor(shape).prod().item()
 
 
+class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty_like(inp)
+            yield inp, {"out": out}
+
+
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
     ("absolute", torch.absolute, FLOAT_DTYPES),
@@ -58,6 +66,7 @@ forward_operations = [
     ("special_i0e", torch.ops.aten.special_i0e, FLOAT_DTYPES),
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     ("log", torch.log, FLOAT_DTYPES),
+    ("log10", torch.log10, FLOAT_DTYPES),
     ("special_i1", torch.special.i1, FLOAT_DTYPES),
     ("logit", lambda a: torch.logit(a, eps=1e-6), FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
@@ -79,6 +88,7 @@ forward_operations = [
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     # Trigonometric operations
     ("cos", torch.cos, FLOAT_DTYPES),
+    ("cosh", torch.cosh, FLOAT_DTYPES),
     ("sin", torch.sin, FLOAT_DTYPES),
     ("tan", torch.tan, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
@@ -109,7 +119,7 @@ forward_operations = [
         for name, op, dtype in forward_operations
     ],
 )
-def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+def test_general_unary_pointwise(op_name, torch_op, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["celu"] and SkipVersion("torch", "<2.5"):
             pytest.skip(
@@ -122,30 +132,30 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
 forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
     ("ceil_", torch.ceil_, FLOAT_DTYPES),
+    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
-    ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
-    ("round_", torch.round_, FLOAT_DTYPES),
+    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
     ("expm1_", torch.expm1_, FLOAT_DTYPES),
-    ("neg_", torch.neg_, FLOAT_DTYPES),
-    ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
-    ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
-    ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
-    ("square_", torch.square_, FLOAT_DTYPES),
-    # Activation operations
-    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
-    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
+    ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("hardswish_", torch.ops.aten.hardswish_, FLOAT_DTYPES),
+    ("log10_", torch.log10_, FLOAT_DTYPES),
+    ("neg_", torch.neg_, FLOAT_DTYPES),
+    ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
+    ("round_", torch.round_, FLOAT_DTYPES),
+    ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
+    ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
     ("selu_", torch.ops.aten.selu_, FLOAT_DTYPES),
-    ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("sgn_", lambda a: a.sgn_(), FLOAT_DTYPES),
+    ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
-    # Trigonometric operations
+    ("square_", torch.square_, FLOAT_DTYPES),
     ("cos_", torch.cos_, FLOAT_DTYPES),
+    ("cosh_", torch.cosh_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
     ("sinh_", lambda a: a.sinh_(), FLOAT_DTYPES),
     ("tan_", torch.tan_, FLOAT_DTYPES),
@@ -187,6 +197,146 @@ def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
             )
     bench = UnaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
+    bench.run()
+
+
+@pytest.mark.alias_copy_out
+def test_alias_copy_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="alias_copy_out",
+        torch_op=torch.ops.aten.alias_copy,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.arcsinh_out
+def test_arcsinh_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="arcsinh_out",
+        torch_op=torch.arcsinh,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.ceil_out
+def test_ceil_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="ceil_out",
+        torch_op=torch.ceil,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.cosh_out
+def test_cosh_out_perf():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="cosh_out",
+        torch_op=torch.cosh,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.expm1_out
+def test_expm1_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="expm1_out",
+        torch_op=torch.expm1,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.hardsigmoid_out
+def test_hardsigmoid_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="hardsigmoid_out",
+        torch_op=torch.nn.functional.hardsigmoid,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.i0_out
+def test_i0_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="i0_out",
+        torch_op=torch.i0,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.logit_out
+def test_logit_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="logit_out",
+        torch_op=lambda a: torch.logit(a, eps=1e-6),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.log10_out
+def test_log10_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="log10_out",
+        torch_op=torch.log10,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.round_out
+def test_round_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="round_out",
+        torch_op=torch.round,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.signbit_out
+def test_signbit_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="signbit_out",
+        torch_op=torch.signbit,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.softshrink_out
+def test_softshrink_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="softshrink_out",
+        torch_op=torch.nn.functional.softshrink,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.special_i1_out
+def test_special_i1_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="special_i1_out",
+        torch_op=torch.special.i1,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.square_out
+def test_square_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="square_out",
+        torch_op=torch.square,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 
@@ -418,8 +568,7 @@ UNSUPPORTED_VENDORS = {
     flag_gems.vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported"
 )
 @pytest.mark.apply_repetition_penalties
-@pytest.mark.performance
-def test_perf_repetition_penalty():
+def test_apply_repetition_penalties():
     vllm_ops = pytest.importorskip("vllm._custom_ops")
 
     bench = RepetitionPenaltyBenchmark(

@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from decimal import Decimal, getcontext
 from importlib import metadata
 from multiprocessing import Process
@@ -16,6 +17,8 @@ from pathlib import Path
 
 import distro
 import yaml
+
+import flag_gems
 
 # increase decimal precision
 getcontext().prec = 18
@@ -63,7 +66,7 @@ def perror(str, **args):
 
 
 def pwarn(str, **args):
-    print(f"\033[93m[WARNING]\033[0m {str}", **args)
+    print(f"\033[93m[WARN]\033[0m {str}", **args)
 
 
 def ensure_dir(p):
@@ -78,7 +81,7 @@ def to_decimal(s):
     return Decimal(stripped)
 
 
-def get_ops():
+def get_ops_from_inventory():
     catalog = []
     try:
         op_inventory = ROOT / "conf" / "operators.yaml"  # noqa: E226
@@ -166,7 +169,6 @@ def init():
 
     try:
         # This may print an error "no device detected on your machine."
-        import flag_gems
 
         version = flag_gems.__version__
         ENV_INFO["flag_gems"] = {"version": version}
@@ -210,6 +212,7 @@ def run_cmd_capture(cmd, cwd=None, env=None):
         stderr=subprocess.PIPE,
         text=True,
     )
+    # TODO(Qiming): chk if pytest-timeout is more suitable for this purpose
     try:
         out, err = p.communicate(timeout=300)
     except subprocess.TimeoutExpired:
@@ -221,12 +224,12 @@ def run_cmd_capture(cmd, cwd=None, env=None):
 
 def parse_accuracy_log(text):
     record = {
+        "status": "",
+        "total": 0,
         "passed": 0,
         "failed": 0,
         "skipped": 0,
         "errors": 0,
-        "total": 0,
-        "status": "",
     }
 
     clean = ANSI_RE.sub("", text)
@@ -260,12 +263,16 @@ def get_env(gpu_ids):
         env["NPU_VISIBLE_DEVICES"] = gpu_ids
         return env
 
-    if vendor == "mthreads":
-        env["MUSA_VISIBLE_DEVICES"] = gpu_ids
-        return env
-
     if vendor == "hygon":
         env["HIP_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "metax":
+        env["MACA_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
+    if vendor == "mthreads":
+        env["MUSA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
     if vendor == "tsingmicro":
@@ -278,7 +285,11 @@ def get_env(gpu_ids):
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids
         return env
 
-    # MetaX is using CUDA_VISIBLE_DEVICES as well
+    # TODO(Qiming): check T-Head vendor name
+    if vendor == "thead":
+        env["PPU_VISIBLE_DEVICES"] = gpu_ids
+        return env
+
     env["CUDA_VISIBLE_DEVICES"] = gpu_ids
 
     return env
@@ -313,17 +324,21 @@ def run_accuracy(gpu_id, start, index, count):
         cmd = f'pytest -m "{op}" -vs'
     else:
         cmd = f'pytest -m "{op}" --ref cpu -vs'
+
+    start = time.time()
     stdout, stderr, code = run_cmd_capture(cmd, cwd=ROOT.joinpath("tests"), env=env)
+    end = time.time()
 
     if code == TIMEOUT:  # Timeout
         return {
+            "status": "TIMEOUT",
+            "exit_code": TIMEOUT,
+            "total": 0,
             "passed": 0,
             "failed": 0,
             "skipped": 0,
             "errors": 0,
-            "total": 0,
-            "status": "TIMEOUT",
-            "exit_code": TIMEOUT,
+            "duration": end - start,
         }
 
     combined = stdout + "\n---\n" + stderr
@@ -333,8 +348,9 @@ def run_accuracy(gpu_id, start, index, count):
         f.write(combined)
 
     result = parse_accuracy_log(combined)
-    result["log"] = str(log_file.relative_to(OUTPUT_DIR))
     result["exit_code"] = code
+    result["duration"] = end - start
+    result["log_file"] = str(log_file.relative_to(OUTPUT_DIR))
 
     return result
 
@@ -434,6 +450,8 @@ def run_benchmark(gpu_id, start, index, count):
     op = OP_LIST[start + index].strip()
     n = (index + 1) * 10 // count
     prog = "█" * n + " " * (10 - n)
+    if (index + 1) == count:
+        prog = f"\033[32m{prog}\033[0m"
     nums = f"{index + 1}/{count}"
     pinfo(f"[GPU {gpu_id:2d}][{nums:>7}][{prog}] Running perf benchmark for '{op}'")
 
@@ -447,8 +465,10 @@ def run_benchmark(gpu_id, start, index, count):
         except Exception:
             pass
 
+    start = time.time()
     cmd = f'pytest -m "{op}" --level core --record log'
     stdout, stderr, code = run_cmd_capture(cmd, cwd=benchmark_dir, env=env)
+    end = time.time()
 
     # Write raw command output
     op_dir = OUTPUT_DIR.joinpath(op)
@@ -469,9 +489,10 @@ def run_benchmark(gpu_id, start, index, count):
             status = "TIMEOUT"
         return {
             "status": status,
-            "log": str(output_file.relative_to(OUTPUT_DIR)),
-            "result": None,
+            "duration": end - start,
             "exit_code": TIMEOUT,
+            "log_file": str(output_file.relative_to(OUTPUT_DIR)),
+            "result_file": None,
             "data": [],
         }
 
@@ -485,9 +506,11 @@ def run_benchmark(gpu_id, start, index, count):
 
     record = {
         "status": "OK",
+        "duration": end - start,
         "exit_code": code,
-        "log": str(output_file.relative_to(OUTPUT_DIR)),
+        "log_file": str(output_file.relative_to(OUTPUT_DIR)),
         "result_file": str(result_file.relative_to(OUTPUT_DIR)),
+        "data": [],
     }
     record.update(parse_perf_log(op_dir))
 
@@ -507,7 +530,11 @@ def worker_proc(gpu_id, start, count):
         acc = run_accuracy(gpu_id, start, i, count)
         perf = run_benchmark(gpu_id, start, i, count)
 
+        customized_ops = [
+            op[0] for op in flag_gems.runtime.backend.get_customized_ops()
+        ]
         result = {
+            "customized": op in customized_ops,
             "accuracy": acc,
             "performance": perf,
         }
@@ -520,43 +547,86 @@ def worker_proc(gpu_id, start, count):
     return
 
 
+def get_ops_to_test(ops_file, ops_list, stages):
+    if ops_list:
+        ops = []
+        for op in ops_list.split(","):
+            # Leading underscores are not valid pytest marks
+            ops.append(op.strip().lstrip("_"))
+
+        return ops
+
+    if ops_file:
+        lines = []
+        try:
+            with open(ops_file, "r") as f:
+                lines = f.readlines()
+        except Exception as e:
+            perror(f"Failed reading the specified op list file: {e}")
+            return []
+
+        ops = []
+        for ln in lines:
+            ln = ln.strip()
+            # comment line
+            if ln.startswith("#"):
+                continue
+            # Remove leading underscore to make valid pytest mark
+            ops.append(ln.lstrip("_"))
+
+        return ops
+
+    # Now fall-back to inventory
+    effective_stages = []
+    for s in stages.split(","):
+        stage = s.strip()
+        if stage not in ["alpha", "beta", "stable", "all"]:
+            pwarn(f"ignoring unsupported stage name '{s}'...")
+            continue
+        # Stop checking if 'all' specified
+        if stage == "all":
+            effective_stages = ["alpha", "beta", "stable"]
+            break
+        effective_stages.append(stage)
+
+    # Fall back to 'stable' if no effective filter specified
+    if not effective_stages:
+        effective_stages = ["stable"]
+
+    op_catalog = get_ops_from_inventory()
+    ops = []
+    for op in op_catalog:
+        stages = op.get("stages", [])
+        if len(stages) == 0:
+            # won't happen
+            continue
+        stage = next(iter(stages[-1].keys()), None)
+        if stage not in effective_stages:
+            continue
+        # Always skip operators not exposed.
+        if "exposed" in op and op["exposed"] is False:
+            continue
+        ops.append(op["name"].lstrip("_"))
+
+    return ops
+
+
 def main():
     global OUTPUT_DIR
     global OP_LIST
 
-    init()
-    op_catalog = get_ops()
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--flaggems", required=False)
     parser.add_argument("--op-list", required=False)
     parser.add_argument("--ops", required=False)
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--stages", required=False, default="stable")
     args = parser.parse_args()
 
-    # TODO(Qiming): parse backend and probe customized or not
-    ops = []
-    for op in op_catalog:
-        if not op.get("stages", {}).get("stable", None):
-            continue
-        if "exposed" in op and op["exposed"] is False:
-            continue
-        ops.append(op["name"])
+    # Probe environment setttings
+    init()
 
-    if args.op_list:
-        lines = []
-        try:
-            with open(args.op_list, "r") as f:
-                lines = f.readlines()
-        except Exception as e:
-            perror(f"Failed reading the specified op list file: {e}")
-            sys.exit(1)
-
-        ops = [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
-    elif args.ops:
-        ops = [op.strip() for op in args.ops.split(",")]
-
-    OP_LIST = ops
+    ops = get_ops_to_test(args.op_list, args.ops, args.stages)
     op_count = len(ops)
     if op_count == 0:
         pwarn("No operators to test. Please specify at lease one operator.")
@@ -564,8 +634,10 @@ def main():
     else:
         pinfo(f"Testing {op_count} operators ...")
 
-    now_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    OUTPUT_DIR = ROOT.joinpath(f"results_{now_ts}")
+    # Set global variable for convenience
+    OP_LIST = ops
+
+    OUTPUT_DIR = ROOT.joinpath("results")
     if args.output_dir:
         OUTPUT_DIR = Path(args.output_dir)
     ensure_dir(OUTPUT_DIR)

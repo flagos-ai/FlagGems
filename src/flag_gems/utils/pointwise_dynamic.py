@@ -1,6 +1,7 @@
 import importlib
 import os
 from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
@@ -823,9 +824,23 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
+            # Check if all input and output dtypes are complex
+            all_complex = True
+            for i in range(self.fx.num_inputs()):
+                if self.fx.is_tensor(i):
+                    input_dtype = self.fx.input_type(i)
+                    if input_dtype is not None and not (
+                        input_dtype == torch.complex64
+                        or input_dtype == torch.complex128
+                    ):
+                        all_complex = False
+                        break
+            if all_complex:
+                # If all inputs are complex, set max_tile_size to half
+                max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("tile_sizes = heuristics_for_tile_size(64, *shape)")
+                code.writeline("tile_sizes = tuple([64])")
             else:
                 code.writeline(
                     f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
@@ -859,7 +874,19 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-
+            # Check if all input and output dtypes are complex
+            all_complex = True
+            for i in range(self.fx.num_inputs()):
+                if self.fx.is_tensor(i):
+                    input_dtype = self.fx.input_type(i)
+                    if input_dtype is not None and not (
+                        input_dtype == torch.complex64
+                        or input_dtype == torch.complex128
+                    ):
+                        all_complex = False
+                        break
+            if all_complex:
+                max_tile_size = max_tile_size // 2
             major, _ = get_device_capability()
             if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("tile_sizes = tuple([1024])")
@@ -1186,6 +1213,28 @@ class KernelInfo:
     ndim: int
 
 
+class ComplexMode(Enum):
+    NONE = auto()
+    ELEMENTWISE = auto()  # add/sub: view_as_real → same kernel → view_as_complex
+    CROSS = auto()  # mul/div: split ar/ai/br/bi → cross_kernel
+
+
+@dataclass
+class ComplexStrategy:
+    mode: ComplexMode = ComplexMode.NONE
+    cross_kernel: object = None
+    tensorize_scalars: bool = False
+    fallback_target: object = None
+
+
+_REAL_TO_COMPLEX = {
+    torch.float16: torch.complex32,
+    torch.bfloat16: torch.complex32,
+    torch.float32: torch.complex64,
+    torch.float64: torch.complex128,
+}
+
+
 class PointwiseDynamicFunction:
     """Utility to generate function for general pointwise operation. It generate wrapper & JITFunction
     which are specialized according to the rank of the task space(the broadcasted shape of all input tensors).
@@ -1207,18 +1256,217 @@ class PointwiseDynamicFunction:
         # cached kernel info for C++ integration
         self._kernel_info_cache: Mapping[str, KernelInfo] = {}
 
+        # complex dispatch support
+        self.complex_strategy = ComplexStrategy()
+        self._operand_indices = self._infer_operand_indices()
+
+    # -------------------- operand index inference --------------------
+
+    def _infer_operand_indices(self):
+        """Infer operand indices from schema._promotion_methods, done once at init."""
+        indices = set()
+        for pm in self.fx._promotion_methods:
+            for idx in pm[:-1]:
+                indices.add(idx)
+        return frozenset(indices)
+
+    # -------------------- register_complex --------------------
+
+    def register_complex(
+        self, mode, cross_kernel=None, tensorize_scalars=False, fallback_target=None
+    ):
+        """Register complex number support for this kernel.
+
+        Args:
+            mode: ComplexMode.ELEMENTWISE (add/sub) or ComplexMode.CROSS (mul/div).
+            cross_kernel: A PointwiseDynamicFunction for cross-term ops (mul/div).
+            tensorize_scalars: If True, scalar operands are converted to tensors
+                before delegating to fallback_target.
+            fallback_target: A PointwiseDynamicFunction (tensor-tensor version)
+                to delegate to after tensorizing scalar operands.
+        """
+        self.complex_strategy = ComplexStrategy(
+            mode=mode,
+            cross_kernel=cross_kernel,
+            tensorize_scalars=tensorize_scalars,
+            fallback_target=fallback_target,
+        )
+        return self
+
+    # -------------------- call entry --------------------
+
     def __call__(self, *args, **kwargs):
-        # inputs must be passed by position, outputs must be passed by keyword
+        if self._should_use_complex_path(args):
+            return self._call_complex_dispatch(*args, **kwargs)
+        return self._call_real_impl(*args, **kwargs)
+
+    def _call_real_impl(self, *args, **kwargs):
+        """Single entry point for real kernel invocation."""
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
         overload = self.instantiate(ndim)
         out = overload(*args, **kwargs)
-        # NOTE: overload keeps the type of outputs:
-        # if a pre-defiend output is a Tensor or StridedBuffer, the corresponding
-        # output is also a Tensor StridedBuffer, respectively
-        # since prepare_args Wraps all the arguments, the outputs are all StridedBuffer
-        # but if manually instantiated overload is directly called, take care of
-        # that manually
         return self._unwrap(out)
+
+    # -------------------- complex helpers --------------------
+
+    @staticmethod
+    def _is_complex_arg(a):
+        return (isinstance(a, torch.Tensor) and a.is_complex()) or isinstance(
+            a, complex
+        )
+
+    def _should_use_complex_path(self, args):
+        if self.complex_strategy.mode == ComplexMode.NONE:
+            return False
+        return any(
+            self._is_complex_arg(args[i])
+            for i in self._operand_indices
+            if i < len(args)
+        )
+
+    def _split_args(self, args):
+        """Split args into operands and others by original position index."""
+        operands = {}
+        others = {}
+        for i, a in enumerate(args):
+            if i in self._operand_indices:
+                operands[i] = a
+            else:
+                others[i] = a
+        return operands, others
+
+    def _merge_args(self, operands, others):
+        """Rebuild args tuple from operands and others by original position index."""
+        total = len(operands) + len(others)
+        merged = [None] * total
+        for i, v in operands.items():
+            merged[i] = v
+        for i, v in others.items():
+            merged[i] = v
+        return tuple(merged)
+
+    def _classify_complex_inputs(self, operands):
+        """Classify operands as 'all_complex', 'mixed', or 'real'."""
+        complex_count = sum(1 for v in operands.values() if self._is_complex_arg(v))
+        if complex_count == len(operands):
+            return "all_complex"
+        elif complex_count > 0:
+            return "mixed"
+        return "real"
+
+    def _infer_device(self, operands):
+        for v in operands.values():
+            if isinstance(v, torch.Tensor):
+                return v.device
+        return None
+
+    def _infer_complex_dtype(self, operands):
+        return torch.result_type(*operands.values())
+
+    def _tensorize_scalar_operands(self, operands, dtype, device):
+        """Convert scalar operands to tensors."""
+        result = {}
+        for i, v in operands.items():
+            if not isinstance(v, torch.Tensor):
+                if isinstance(v, complex):
+                    result[i] = torch.tensor(v, dtype=dtype, device=device)
+                elif isinstance(v, float):
+                    result[i] = torch.tensor(v, dtype=torch.float32, device=device)
+                elif isinstance(v, (int, bool)):
+                    result[i] = torch.tensor(v, dtype=torch.int64, device=device)
+                else:
+                    result[i] = v
+            else:
+                result[i] = v
+        return result
+
+    def _to_complex_tensor(self, a, target_dtype, device):
+        """Convert a scalar or real tensor to a complex tensor."""
+        if isinstance(a, torch.Tensor):
+            if a.is_complex():
+                return a
+            if a.is_floating_point():
+                cdtype = _REAL_TO_COMPLEX.get(a.dtype, torch.complex64)
+            else:
+                a = a.to(torch.float32)
+                cdtype = torch.complex64
+            return torch.complex(a, torch.zeros_like(a)).to(cdtype)
+        elif isinstance(a, complex):
+            return torch.tensor(a, dtype=target_dtype, device=device)
+        elif isinstance(a, (int, float)):
+            return torch.tensor(complex(a, 0), dtype=target_dtype, device=device)
+        return a
+
+    # -------------------- complex dispatch --------------------
+
+    def _call_complex_dispatch(self, *args, **kwargs):
+        """Unified complex dispatch entry point."""
+        strategy = self.complex_strategy
+        operands, others = self._split_args(args)
+
+        device = self._infer_device(operands)
+        result_dtype = self._infer_complex_dtype(operands)
+
+        # tensorize scalar operands and delegate to fallback_target
+        if strategy.tensorize_scalars and strategy.fallback_target is not None:
+            operands = self._tensorize_scalar_operands(operands, result_dtype, device)
+            new_args = self._merge_args(operands, others)
+            return strategy.fallback_target(*new_args, **kwargs)
+
+        # convert all operands to complex tensors
+        for i in list(operands.keys()):
+            operands[i] = self._to_complex_tensor(operands[i], result_dtype, device)
+
+        # broadcast complex tensor operands
+        complex_tensors = [operands[i] for i in sorted(operands.keys())]
+        complex_tensors = torch.broadcast_tensors(*complex_tensors)
+        for idx, key in enumerate(sorted(operands.keys())):
+            operands[key] = complex_tensors[idx]
+
+        classification = self._classify_complex_inputs(operands)
+
+        if strategy.mode == ComplexMode.CROSS and classification == "all_complex":
+            return self._call_complex_cross(operands, result_dtype)
+        elif classification in ("all_complex", "mixed"):
+            return self._call_complex_elementwise(
+                operands, others, result_dtype, kwargs
+            )
+        else:
+            new_args = self._merge_args(operands, others)
+            return self._call_real_impl(*new_args, **kwargs)
+
+    def _call_complex_elementwise(self, operands, others, result_dtype, kwargs):
+        """Elementwise: view_as_real -> call real kernel -> view_as_complex."""
+        real_tensors = {i: torch.view_as_real(t) for i, t in operands.items()}
+
+        # promote to common real dtype
+        dtypes = [t.dtype for t in real_tensors.values()]
+        common_dtype = dtypes[0]
+        for d in dtypes[1:]:
+            common_dtype = torch.promote_types(common_dtype, d)
+        real_tensors = {i: t.to(common_dtype) for i, t in real_tensors.items()}
+
+        new_args = self._merge_args(real_tensors, others)
+        out_real = self._call_real_impl(*new_args, **kwargs)
+        return torch.view_as_complex(out_real.contiguous()).to(result_dtype)
+
+    def _call_complex_cross(self, operands, result_dtype):
+        """Cross-term: split ar/ai/br/bi -> call cross_kernel -> stack -> view_as_complex."""
+        sorted_keys = sorted(operands.keys())
+        A, B = operands[sorted_keys[0]], operands[sorted_keys[1]]
+        Ar = torch.view_as_real(A)
+        Br = torch.view_as_real(B)
+        ar, ai = Ar[..., 0], Ar[..., 1]
+        br, bi = Br[..., 0], Br[..., 1]
+
+        common_dtype = torch.promote_types(ar.dtype, br.dtype)
+        ar, ai = ar.to(common_dtype), ai.to(common_dtype)
+        br, bi = br.to(common_dtype), bi.to(common_dtype)
+
+        real, imag = self.complex_strategy.cross_kernel(ar, ai, br, bi)
+
+        out = torch.stack((real, imag), dim=-1)
+        return torch.view_as_complex(out.contiguous()).to(result_dtype)
 
     @staticmethod
     def use_fast_path(tensors):
@@ -1230,7 +1478,7 @@ class PointwiseDynamicFunction:
             )
         )
 
-    def prepare_args(self, *args, **kwargs):
+    def prepare_args(self, *args, _skip_tensor_check=False, **kwargs):
         # output allocation(when needed)
         # task simplification & task-rank infernece & input-output reinterpretation
         schema = self.fx
@@ -1243,7 +1491,7 @@ class PointwiseDynamicFunction:
             else:
                 outputs_that_need_allocation.append(i)
         # input arguments must be passed by position
-        if schema._is_tensor is not None:
+        if not _skip_tensor_check and schema._is_tensor is not None:
             if not check_tensor_attributes(args, (schema._is_tensor)):
                 raise ValueError(
                     "Input arguments must be passed by position, and the corresponding dtype must be specified."

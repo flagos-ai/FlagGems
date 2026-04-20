@@ -72,9 +72,7 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
         for name, op, dtype in [
             # Arithmetic operations
             ("add", torch.add, FLOAT_DTYPES + COMPLEX_DTYPES),
-            ("atan2", torch.atan2, FLOAT_DTYPES),
-            ("copysign", torch.copysign, FLOAT_DTYPES),
-            ("div", torch.div, FLOAT_DTYPES),
+            ("div", torch.div, FLOAT_DTYPES + COMPLEX_DTYPES),
             ("mul", torch.mul, FLOAT_DTYPES + COMPLEX_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES + COMPLEX_DTYPES),
             ("pow", torch.pow, FLOAT_DTYPES),
@@ -101,6 +99,7 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
+            ("dunder_or", lambda a, b: a | b, INT_DTYPES + BOOL_DTYPES),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
@@ -109,7 +108,7 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
         ]
     ],
 )
-def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
+def test_general_binary_pointwise(op_name, torch_op, dtypes):
     bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -137,10 +136,11 @@ def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
             # Bitwise operations
             ("bitwise_and_", lambda a, b: a.bitwise_and_(b), INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or_", lambda a, b: a.bitwise_or_(b), INT_DTYPES + BOOL_DTYPES),
+            ("dunder_ior", lambda a, b: a.__ior__(b), INT_DTYPES + BOOL_DTYPES),
         ]
     ],
 )
-def test_general_inplace_binary_pointwise_perf(op_name, torch_op, dtypes):
+def test_general_inplace_binary_pointwise(op_name, torch_op, dtypes):
     bench = BinaryPointwiseBenchmark(
         op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
     )
