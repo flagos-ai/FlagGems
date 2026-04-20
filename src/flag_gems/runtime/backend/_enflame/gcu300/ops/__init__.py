@@ -138,6 +138,7 @@ from .repeat_interleave import (
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
+from .replication_pad3d import replication_pad3d
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
 from .select_scatter import select_scatter
@@ -395,4 +396,5 @@ __all__ = [
     "_upsample_bicubic2d_aa",
     "softmax",
     "softmax_backward",
+    "replication_pad3d",
 ]
