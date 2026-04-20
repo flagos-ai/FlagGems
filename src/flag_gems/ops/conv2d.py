@@ -10,6 +10,10 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
+)
+
 
 def conv2d_output_size(
     in_size: int,
@@ -592,6 +596,28 @@ class Conv2d(torch.autograd.Function):
 
 # todo test SymInt[2] of stride or padding
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
+    if torch.is_grad_enabled():
+        if isinstance(padding, str):
+            return torch.ops.aten.conv2d.padding.redispatch(
+                _FALLBACK_KEYSET,
+                input,
+                weight,
+                bias,
+                stride,
+                padding,
+                dilation,
+                groups,
+            )
+        return torch.ops.aten.conv2d.default.redispatch(
+            _FALLBACK_KEYSET,
+            input,
+            weight,
+            bias,
+            stride,
+            padding,
+            dilation,
+            groups,
+        )
     if isinstance(padding, str):
         if padding == "same":
             assert (

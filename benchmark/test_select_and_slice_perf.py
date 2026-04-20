@@ -298,7 +298,7 @@ def gather_input_fn(shape, dtype, device):
 
 
 @pytest.mark.gather
-def test_perf_gather():
+def test_gather():
     bench = TensorSelectBenchmark(
         op_name="gather",
         torch_op=torch.gather,
@@ -316,10 +316,10 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
-@pytest.mark.gather
-def test_perf_gather_backward():
+@pytest.mark.gather_backward
+def test_gather_backward():
     bench = TensorSelectBenchmark(
-        op_name="gather",
+        op_name="gather_backward",
         torch_op=torch.gather,
         input_fn=gather_input_fn,
         get_gbps=gather_scatter_gbps,
@@ -359,8 +359,8 @@ def slice_backward_gbps(args, latency):
     return total_bytes / latency / 1e9
 
 
-@pytest.mark.slice
-def test_slice_backward_perf():
+@pytest.mark.slice_backward
+def test_slice_backward():
     def slice_backward_input_fn(shape, dtype, device):
         dim = 0 if len(shape) == 1 else 1
 
@@ -403,7 +403,7 @@ def test_slice_backward_perf():
 
 
 @pytest.mark.slice_scatter
-def test_slice_scatter_perf():
+def test_slice_scatter():
     def slice_scatter_input_fn(shape, dtype, device):
         dim = 0 if len(shape) == 1 else 1
         start = 0
@@ -436,7 +436,7 @@ def test_slice_scatter_perf():
 
 
 @pytest.mark.select_scatter
-def test_select_scatter_perf():
+def test_select_scatter():
     def select_scatter_input_fn(shape, dtype, device):
         dim = 0 if len(shape) == 1 else 1
         index = random.randint(0, shape[dim] - 1)
@@ -466,7 +466,7 @@ def index_add_gbps(bench_fn_args, latency):
 
 
 @pytest.mark.index_add
-def test_index_add_perf():
+def test_index_add():
     def index_add_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
         dim = 0 if len(shape) == 1 else 1
@@ -489,7 +489,7 @@ def test_index_add_perf():
 
 
 @pytest.mark.index_add_
-def test_index_add__perf():
+def test_index_add_():
     def index_add__input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
         dim = 0 if len(shape) == 1 else 1
