@@ -277,7 +277,8 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
-    bench = GenericBenchmarkExcluse1D(
+    bench_cls = TopKBenchmark if op_name == "topk" else GenericBenchmarkExcluse1D
+    bench = bench_cls(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
