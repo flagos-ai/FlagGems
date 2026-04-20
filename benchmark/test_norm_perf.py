@@ -149,8 +149,8 @@ def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn
         del os.environ["DISABLE_LLVM_OPT"]
 
 
-@pytest.mark.batch_norm_backward
-def test_perf_batch_norm_backward():
+@pytest.mark.native_batch_norm_backward
+def test_native_batch_norm_backward():
     def batch_norm_backward_input_fn(shape, dtype, device):
         for forward_args in batchnorm_input_fn(shape, dtype, device):
             (
@@ -217,25 +217,24 @@ def weight_norm_input_fn(shape, dtype, device):
     yield v, g, 0
 
 
-norm_operations = [
-    ("weight_norm", torch._weight_norm, weight_norm_input_fn),
-    ("vector_norm", torch.linalg.vector_norm, unary_input_fn),
-]
-
-
-@pytest.mark.parametrize(
-    "op_name, torch_op, input_fn",
-    [
-        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
-        for op, fn, input_fn in norm_operations
-    ],
-)
-def test_weight_vector_norm_benchmark(op_name, torch_op, input_fn):
+@pytest.mark.vector_norm
+def test_vector_norm():
     bench = GenericBenchmarkExcluse1D(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op
+        op_name="vector_norm",
+        input_fn=unary_input_fn,
+        torch_op=torch.linalg.vector_norm,
     )
-    if op_name == "weight_norm":
-        bench.set_gems(flag_gems.weight_norm)
+    bench.run()
+
+
+@pytest.mark.weight_norm_interface
+def test_weight_vector_norm_benchmark():
+    bench = GenericBenchmarkExcluse1D(
+        op_name="weight_norm_interface",
+        input_fn=weight_norm_input_fn,
+        torch_op=torch._weight_norm,
+    )
+    bench.set_gems(flag_gems.weight_norm)
     bench.run()
 
 
@@ -244,7 +243,7 @@ def test_weight_vector_norm_benchmark(op_name, torch_op, input_fn):
     SkipVersion("torch", "<2.4"),
     reason="The version prior to 2.4 does not include the rms_norm API in torch.",
 )
-def test_perf_rms_norm():
+def tes_rms_norm():
     def rms_norm_input_fn(shape, dtype, device):
         M, N = shape
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -252,8 +251,8 @@ def test_perf_rms_norm():
         yield inp, (N,), weight
 
     bench = GenericBenchmark2DOnly(
-        input_fn=rms_norm_input_fn,
         op_name="rms_norm",
+        input_fn=rms_norm_input_fn,
         torch_op=torch.nn.functional.rms_norm,
     )
     bench.run()
