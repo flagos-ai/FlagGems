@@ -329,6 +329,13 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
+
+    orig_dtype = inp.dtype
+    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    if needs_upcast:
+        inp = inp.to(torch.float32)
+        src = src.to(torch.float32)
+
     out = inp.clone()
 
     if reduce is not None:
@@ -359,15 +366,24 @@ def scatter(inp, dim, index, src, reduce=None):
         int32_offset=use_int32_offset,
     )
 
+    if needs_upcast:
+        out = out.to(orig_dtype)
     return out
 
 
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER_")
-    out = inp
+
+    orig_dtype = inp.dtype
+    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    if needs_upcast:
+        out = inp.to(torch.float32)
+        src = src.to(torch.float32)
+    else:
+        out = inp
 
     if reduce is not None:
-        assert inp.dtype not in (
+        assert orig_dtype not in (
             torch.bfloat16,
         ), "Unsupported operation: reduce scatter bfloat tensors."
 
@@ -376,13 +392,13 @@ def scatter_(inp, dim, index, src, reduce=None):
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
     src_restrided = src.as_strided(index.shape, src.stride())
-    inp_restrided = restride_dim(inp, dim, index.shape)
-    dim_size = inp.size(dim)
-    dim_stride = inp.stride(dim)
+    inp_restrided = restride_dim(out, dim, index.shape)
+    dim_size = out.size(dim)
+    dim_stride = out.stride(dim)
     N = index.numel()
 
     int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
-    use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
+    use_int32_offset = all(map(int32_size_dim, (out, index, src)))
     _scatter_func(
         src_restrided,
         index,
@@ -395,4 +411,6 @@ def scatter_(inp, dim, index, src, reduce=None):
         int32_offset=use_int32_offset,
     )
 
+    if needs_upcast:
+        inp.copy_(out.to(orig_dtype))
     return inp
