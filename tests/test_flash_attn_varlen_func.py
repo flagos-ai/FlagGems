@@ -228,6 +228,10 @@ def test_flash_attn_varlen_func(
                     softmax_scale=scale,
                     causal=causal,
                     window_size=window_size,
+                    block_table=block_tables,
+                    softcap=soft_cap if soft_cap is not None else 0,
+                    alibi_slopes=alibi_slopes,
+                    fa_version=2,
                 )
 
         ref_output = ref_paged_attn(
