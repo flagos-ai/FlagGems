@@ -381,7 +381,7 @@ def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
         assert (
             sizes_shape[i] >= 0
         ), f"the number of repetitions per dimension out of range (expected to >= 0) but got {sizes_shape[i]}"
-        if sizes_shape[i] == 0:
+        if in0_shape[i] * sizes_shape[i] == 0:
             is_empty = True
         out_shape.append(in0_shape[i] * sizes_shape[i])
 

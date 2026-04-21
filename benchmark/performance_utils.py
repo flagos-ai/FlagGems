@@ -37,7 +37,11 @@ elif device == "npu":
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
 else:
-    torch_backend_device.matmul.allow_tf32 = False
+    # Attempt to disallow tf32
+    try:
+        torch_backend_device.matmul.allow_tf32 = False
+    except Exception:
+        pass
 
 
 def SkipVersion(module_name, skip_pattern):
@@ -89,7 +93,7 @@ class Benchmark:
         if is_backward and self.op_name.find("_backward") == -1:
             self.op_name += "_backward"
         self.torch_op = torch_op
-        self.gems_op = None
+        self.gems_op = kwargs.get("gems_op", None)
         self.is_backward = is_backward
         self.is_inplace = is_inplace
         self._input_iter = None
@@ -389,7 +393,22 @@ class Benchmark:
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
             metrics = []
-            for input in self.get_input_iter(dtype):
+            input_iter = self.get_input_iter(dtype)
+
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+
                 metric = BenchmarkMetrics()
                 try:
                     args, kwargs = self.unpack_to_args_kwargs(input)
@@ -430,7 +449,7 @@ class Benchmark:
                             * 1e3
                         )
                         # utilization = metric.tflops / metric.latency / 1e12 * 1e3
-                except Exception as e:
+                except (RuntimeError, Exception) as e:
                     metric.error_msg = str(e)
                     pytest.fail(str(e))  # raise exception again
                 finally:

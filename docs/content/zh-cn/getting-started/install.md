@@ -116,17 +116,25 @@ If you want to use the vanilla Triton compiler instead of *FlagTree*, you can sk
 unified compiler for multiple AI platforms. Please make sure you have
 read the environment requirements from the FlagTree project before
 installing it.
+
+The `requirements_<backend>.txt` files include both FlagTree and the build
+dependencies (such as `scikit-build-core`, `pybind11`, `ninja`, and `cmake`).
+You can install them together with one command.
 -->
 ### 3.2 安装 FlagTree
 
 如果你希望使用原生的 Triton 编译器而不是 *FlagTree*，可以跳过这一步。
 
-[FlagTree](/https://github.com/flagos-ai/FlagTree) 是一个针对多种
+[FlagTree](https://github.com/flagos-ai/FlagTree) 是一个针对多种
 AI 平台的、开源的统一编译器。在安装 FlagTree 之前，请先阅读 FlagTree
 项目的运行环境需求。
 
+`requirements_<backend>.txt` 文件已经包含 FlagTree 以及构建依赖
+（如 `scikit-build-core`、`pybind11`、`ninja`、`cmake`），
+可以通过以下命令一起安装。
+
 ```shell
-pip install -r flag_tree_requirements/requirements_nvidia.txt
+pip install -r requirements/requirements_nvidia.txt
 ```
 
 <!--
@@ -135,69 +143,36 @@ pip install -r flag_tree_requirements/requirements_nvidia.txt
 >
 > - For [non-NVIDIA platforms](/FlagGems/usage/non-nvidia/), you
 >   **have to** use different `requirements_<backend>.txt` under
->   the `flag_tree_requirements/` directory.
+>   the `requirements/` directory.
 > - There are on-going efforts to simplify this step. Stay tuned.
 -->
 > [!TIP]
 > **提示**
 >
 > - 对于[非 NVIDIA 平台](/FlagGems/zh-cn/usage/non-nvidia/)，
->   你必须**使用** `flag_tree_requirements/` 目录下的其他
+>   你必须**使用** `requirements/` 目录下的其他
 >   `requirements_<backend>.txt` 文件。
 > - 我们正在努力简化这一安装步骤。请持续关注。
 
 <!--
-### 3.3. Prepare the build dependencies
-
-FlagGems follows the [PEP 518](https://peps.python.org/pep-0518/) standard
-and provides a `pyproject.toml` file to govern the installation process.
--->
-### 3.3 准备构建依赖项
-
-*FlagGems* 遵从 [PEP 518](https://peps.python.org/pep-0518/) 标准，
-提供 `pyproject.toml` 文件来管理整个安装过程。
-
-<!--
-The Python package `flag_gems` uses [`scikit-build-core`](https://scikit-build-core.readthedocs.io/en/latest/)
-as its [build backend](https://peps.python.org/pep-0517/#build-backend-interface).
-
-You can run the following command to install/upgrade the build dependencies.
--->
-`flag_gems` Python 软件包使用 [`scikit-build-core`](https://scikit-build-core.readthedocs.io/en/latest/)
-作为其[构建后端（build backend）](https://peps.python.org/pep-0517/#build-backend-interface)。
-
-你可以运行下面的命令来安装（或升级）构建依赖环境。
-
-```shell
-pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
-```
-
-<!--
-You can refer to [scikit-build-core](#scikit-build-core-options) reference
-for more details about the commonly used options.
--->
-关于 `scikit-build-core` 的一些常用选项细节，可以参阅
-[scikit-build-core](#scikit-build-core-options) 参考资料小节。
-
-<!--
-### 3.4. Install the package
+### 3.3. Install the package
 
 FlagGems can be installed either a pure Python package or a package with C++ extensions.
 The C++ extensions are  still an experimental feature, so please make sure
 you have conducted some assessments before using them in production environments.
 -->
-### 3.4 安装软件包
+### 3.3 安装软件包
 
 *FlagGems* 既可以作为纯 Python 软件包来安装，也支持带 C++ 扩展特性的安装。
 C++ 扩展特性仍然是一种实验性特性，所以如果你计划在生产环境中使用，
 请确保在开始使用之前进行必要的评估测试。
 
 <!--
-#### 3.4.1 Install with C++ extension
+#### 3.3.1 Install with C++ extension
 
 If you are NOT enabling the C++ wrapped operators, you can skip to the next step.
 -->
-### 3.4.1 带 C++ 扩展特性的安装
+### 3.3.1 带 C++ 扩展特性的安装
 
 如果你不打算启用 C++ 封装的算子，可以跳过这一步。
 
@@ -225,6 +200,42 @@ Note that the above command installs the
 [libtriton_jit library](https://github.com/flagos-ai/libtriton_jit)
 by cloning its GIT repository and installing it from source.
 -->
+上面的命令默认构建 **CUDA** 后端。如需构建其他后端或启用 pointwise 动态 C++ 模块，
+请传递相应的 CMake 选项。以下是各平台的编译示例：
+
+**NVIDIA CUDA（启用 pointwise 动态 C++ 支持）**
+
+```shell
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON" \
+pip install --no-build-isolation -v -e .
+```
+
+**天数智芯 CoreX (IX)**
+
+```shell
+export LIBRARY_PATH=<corex-install-dir>/lib64:$LIBRARY_PATH
+
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=IX -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_CTESTS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install --no-build-isolation -v -e .
+```
+
+**摩尔线程 (MUSA)**
+
+```shell
+export MUSA_HOME=<musa-install-dir>
+
+LD_PRELOAD=$CONDA_PREFIX/lib/libittnotify.so \
+pip install --no-build-isolation -v -e . \
+  --config-settings=cmake.args="-DFLAGGEMS_BACKEND=MUSA;-DFLAGGEMS_BUILD_C_EXTENSIONS=ON;-DFLAGGEMS_BUILD_CTESTS=ON"
+```
+
+**华为昇腾 (NPU)**
+
+```shell
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=NPU -DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
+pip install --no-build-isolation -e .
+```
+
 注意，上面的命令会安装 [libtriton_jit 库](https://github.com/flagos-ai/libtriton_jit)，
 并且安装方式是克隆其 GIT 仓库并从源码来安装。
 
@@ -245,13 +256,13 @@ check the following sections:
 - [安装 libtriton_jit](#libtriton-jit)
 
 <!--
-#### 3.4.2 Install the Python package only
+#### 3.3.2 Install the Python package only
 
 You can install *flag_gems* as a pure Python package.
 If you are using *FlagGems* as is with no intent to customize it,
 you can install the package to your Python environment:
 -->
-#### 3.4.2 仅安装 Python 软件包
+#### 3.3.2 仅安装 Python 软件包
 
 你可以将 `flag_gems` 作为纯 Python 软件包来安装。
 如果你希望直接使用 `flag_gems`，无意对其实现作任何修改或定制，
@@ -449,6 +460,22 @@ The CMake options for configuring `flag_gems` are listed below:
     是否安装 FlagGems 的 CMake 包。建议以开发模式安装时启用此选项。
   </td>
   <td>ON</td>
+</tr>
+<tr>
+  <td><code>FLAGGEMS_BACKEND</code></td>
+  <td>
+    <!--Target backend for building.-->
+    目标后端平台。合法取值为 <code>CUDA</code>、<code>IX</code>、<code>MUSA</code> 和 <code>NPU</code>。
+  </td>
+  <td><code>CUDA</code></td>
+</tr>
+<tr>
+  <td><code>FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP</code></td>
+  <td>
+    <!--Whether to build the pointwise dynamic C++ support module.-->
+    是否构建 pointwise 动态 C++ 支持模块。
+  </td>
+  <td><code>OFF</code></td>
 </tr>
 </tbody>
 </table>

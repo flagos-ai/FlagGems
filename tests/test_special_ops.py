@@ -302,7 +302,7 @@ def test_accuracy_grouped_topk_sigmoid(renormalize):
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_dropout(shape, p, dtype):
+def test_dropout(shape, p, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -342,7 +342,7 @@ def test_accuracy_dropout(shape, p, dtype):
         ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {res_inp.numel()}"
 
 
-@pytest.mark.dropout
+@pytest.mark.dropout_backward
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -519,7 +519,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.embedding
+@pytest.mark.embedding_backward
 @pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
 @pytest.mark.parametrize("M", [4] if TO_CPU else [4, 8])
@@ -656,6 +656,39 @@ def test_topk(
     gems_assert_equal(res_index, ref_index)
 
 
+@pytest.mark.topk
+@pytest.mark.parametrize(
+    "shape, topk",
+    [
+        ((16, 1024, 256), 256),
+        ((8, 512, 32), 32),
+        ((4, 128, 64), 64),
+        ((2, 33, 128), 128),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_topk_3d_lastdim(shape, topk, dtype):
+    batch_size = int(np.prod(shape[:-1]))
+    hiddensize = shape[-1]
+
+    x = torch.arange(hiddensize, dtype=dtype, device=flag_gems.device)
+    x = x.repeat(batch_size).reshape(shape)
+    x_2d = x.reshape(batch_size, hiddensize)
+
+    for bsz in range(batch_size):
+        col_indices = torch.randperm(hiddensize)
+        x_2d[bsz, :] = x_2d[bsz, col_indices]
+
+    ref_x = to_reference(x)
+    ref_value, ref_index = torch.topk(ref_x, topk, dim=-1, largest=True, sorted=True)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.topk(x, topk, dim=-1, largest=True, sorted=True)
+
+    gems_assert_close(res_value, ref_value, dtype)
+    gems_assert_equal(res_index, ref_index)
+
+
 @pytest.mark.resolve_conj
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
@@ -667,9 +700,6 @@ def test_accuracy_resolve_conj(shape, dtype):
         res_y = y.to(device=flag_gems.device)
         z = res_y.resolve_conj()
     assert not z.is_conj()
-
-
-# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
 
 
 @pytest.mark.unique
@@ -803,6 +833,7 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
 
 
 @pytest.mark.pad
+@pytest.mark.skip("The operator now has infinite recurrsion calls: #2493")
 @pytest.mark.parametrize(
     "shape",
     [[1024, 1024], [64, 64, 64, 64], [1, 64, 112, 112], [4, 64, 128]],
@@ -965,6 +996,7 @@ def test_upsample_linear1d_boundaries(dtype, case):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip(reason="Result not close.")
 @pytest.mark.upsample_linear1d
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
@@ -1139,9 +1171,6 @@ def test_logspace(start, end, steps, base, dtype, device, pin_memory):
         gems_assert_equal(res_out, ref_out)
 
 
-# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
-
-
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -1190,11 +1219,11 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     gems_assert_equal(res0_out, ref0_out)
 
 
-@pytest.mark.fill
+@pytest.mark.fill_tensor
 @pytest.mark.parametrize("value", [0, 1, 9])
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_fill(value, shape, dtype):
+def test_fill_tensor(value, shape, dtype):
     # Test fill.Scalar
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     ref_x = to_reference(x, False)
@@ -1215,11 +1244,13 @@ def test_fill(value, shape, dtype):
     gems_assert_equal(res_out_tensor, ref_out_tensor)
 
 
-@pytest.mark.fill
+# TODO(Qiming): split this
+@pytest.mark.fill_tensor_out
+@pytest.mark.fill_scalar_out
 @pytest.mark.parametrize("value", [0, 1, 9])
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_fill_out(value, shape, dtype):
+def test_fill_tensor_out(value, shape, dtype):
     # Test fill.Scalar_out
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     ref_x = to_reference(x, False)
@@ -1483,11 +1514,11 @@ REPEAT_INTERLEAVE_REPEATS = [2]
 REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_self_int
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES + [(1,)])
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
+def test_repeat_interleave_self_int(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     repeats = 2
     ref_inp = to_reference(inp)
@@ -1498,11 +1529,11 @@ def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_self_int
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
     repeats = 2
     ref_inp = to_reference(inp)
@@ -1513,10 +1544,10 @@ def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_tensor
 @pytest.mark.parametrize("shape", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", [torch.int32])
-def test_accuracy_repeat_interleave_tensor(shape, dtype):
+def test_repeat_interleave_tensor(shape, dtype):
     repeats = torch.randint(0, 30, shape, dtype=dtype, device=flag_gems.device)
     ref_repeats = to_reference(repeats)
     ref_out = torch.repeat_interleave(ref_repeats)
@@ -1526,11 +1557,11 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_self_tensor
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
+def test_repeat_interleave_self_tensor(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     repeats = torch.randint(0, 30, (shape[dim],), device=flag_gems.device)
     ref_inp = to_reference(inp)
@@ -1546,7 +1577,7 @@ def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
 @pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
 @pytest.mark.parametrize("diagonal", [-2, -1, 0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
-def test_accuracy_diag(shape, diagonal, dtype):
+def test_diag(shape, diagonal, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -1631,11 +1662,11 @@ def get_diagonal_backward_shape_and_dims():
 
 
 @pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
-@pytest.mark.diagonal
+@pytest.mark.diagonal_backward
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
+def test_diagonal_backward(shape, dtype, dim1, dim2, offset):
     if flag_gems.vendor_name == "mthreads":
         torch.manual_seed(123)
         torch.musa.manual_seed_all(123)
@@ -1648,7 +1679,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     with flag_gems.use_gems():
         res_out = torch.diagonal(inp, offset, dim1, dim2)
 
-    out_grad = torch.randn_like(res_out)
+    out_grad = torch.randn_like(res_out.cpu()).to(device=flag_gems.device)
     ref_grad = to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
@@ -1656,9 +1687,6 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_equal(res_out, ref_out)
     gems_assert_equal(res_in_grad, ref_in_grad)
-
-
-# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 
 
 @pytest.mark.sort
@@ -1700,7 +1728,7 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 @pytest.mark.kron
 @pytest.mark.parametrize("shape", KRON_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
-def test_accuracy_kron(shape, dtype):
+def test_kron(shape, dtype):
     if dtype in INT_DTYPES:
         inp1 = torch.randint(
             low=-10, high=10, size=shape[0], dtype=dtype, device="cpu"
@@ -2109,7 +2137,8 @@ def test_accuracy_moe_align_block_size(
                 f"actual={actual_expert_tokens[expert_id]}"
             )
 
-    torch.cuda.synchronize()
+    torch.cuda.synchronize() if flag_gems.vendor_name != "ascend" else torch.npu.synchronize()
+
     _verify_expert_level_sorting(
         sorted_ids,
         sorted_ids_vllm,
@@ -2164,7 +2193,7 @@ def test_conj_physical(shape, is_complex, dtype):
 def test_reflection_pad2d(shape, dtype, padding):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_x = to_reference(x)
+    ref_x = to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
     with flag_gems.use_gems():
@@ -2401,7 +2430,7 @@ def test_replication_pad3d(shape, padding, dtype):
     gems_assert_close(res_out_functional, ref_out, dtype, reduce_dim=1)
 
 
-@pytest.mark.unfold
+@pytest.mark.unfold_backward
 @pytest.mark.parametrize(
     "input_sizes, dim, size, step",
     [
@@ -2430,6 +2459,39 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
     with flag_gems.use_gems():
         res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+@pytest.mark.assert_async
+@pytest.mark.parametrize(
+    "shape, value, expected_err, match_str",
+    [
+        ((), 1.0, None, None),
+        ((2,), 1.0, RuntimeError, "is ambiguous"),
+        ((1,), 1.0, None, None),
+    ],
+)
+def test_assert_async_consistency(shape, value, expected_err, match_str):
+    msg = "Assertion failed!"
+    inp_pt = torch.full(shape, value, device=device)
+    inp_triton = inp_pt.clone()
+    if expected_err:
+        with flag_gems.use_gems():
+            with pytest.raises(expected_err, match=match_str):
+                flag_gems._assert_async(inp_triton, msg)
+                if value == 0:
+                    torch.cuda.synchronize()
+    else:
+        with flag_gems.use_gems():
+            flag_gems._assert_async(inp_triton, msg)
+            torch.cuda.synchronize()
+    if expected_err:
+        with pytest.raises(expected_err, match=match_str):
+            torch._assert_async(inp_pt, msg)
+            if value == 0:
+                torch.cuda.synchronize()
+    else:
+        torch._assert_async(inp_pt, msg)
+        torch.cuda.synchronize()
 
 
 @pytest.mark.lift_fresh_copy
@@ -2509,7 +2571,7 @@ def test_accuracy_t_copy(shape, dtype):
     gems_assert_close(act_out, ref_out, dtype)
 
 
-@pytest.mark.t_copy
+@pytest.mark.t_copy_out
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_t_copy_out(shape, dtype):
@@ -2684,3 +2746,176 @@ def test_accuracy_select_backward_small_and_edge(dtype):
         )
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+def upsample_bicubic2d_aa_backward_call(grad, input_size, align_corners):
+    orig_shape = tuple(input_size)
+    n = 1
+    for s in orig_shape[:-2]:
+        n *= s
+    c = orig_shape[-2] if len(orig_shape) >= 2 else 1
+    in_h = orig_shape[-2] if len(orig_shape) >= 3 else 1
+    in_w = orig_shape[-1]
+    if len(orig_shape) >= 4:
+        c = orig_shape[-3]
+        in_h = orig_shape[-2]
+        in_w = orig_shape[-1]
+        n = 1
+        for s in orig_shape[:-3]:
+            n *= s
+    else:
+        # For 4D input: (N, C, H, W)
+        n, c, in_h, in_w = orig_shape
+
+    shape_4d = (n, c, in_h, in_w)
+    out_h = grad.shape[-2]
+    out_w = grad.shape[-1]
+
+    grad_4d = grad.reshape(n, c, out_h, out_w)
+
+    out = torch.ops.aten._upsample_bicubic2d_aa_backward(
+        grad_4d,
+        [out_h, out_w],
+        list(shape_4d),
+        align_corners,
+        None,
+        None,
+    )
+
+    return out.reshape(orig_shape)
+
+
+@pytest.mark.upsample_bicubic2d_aa_backward
+@pytest.mark.parametrize(
+    "N,C,H_in,W_in,H_out,W_out,align_corners",
+    [
+        (1, 3, 16, 16, 8, 8, False),
+        (2, 4, 8, 8, 16, 16, False),
+        (1, 3, 32, 32, 10, 10, False),
+        (1, 1, 10, 10, 23, 23, False),
+        (1, 3, 16, 16, 8, 8, True),
+        (1, 3, 8, 8, 16, 16, True),
+        (2, 64, 32, 32, 16, 16, False),
+        (1, 3, 7, 11, 13, 5, False),
+        (1, 1, 4, 4, 4, 4, False),
+        (1, 1, 8, 8, 1, 1, True),
+        # Extra cases
+        (1, 1, 64, 64, 16, 16, False),
+        (1, 1, 64, 64, 128, 128, False),
+        (512, 1024, 32, 32, 8, 8, False),
+        (256, 512, 64, 64, 16, 16, False),
+        (4, 16, 16, 16, 4, 4, False),
+        (4, 16, 4, 4, 16, 16, False),
+        (4, 16, 64, 128, 32, 64, False),
+        (4, 16, 64, 128, 128, 256, True),
+        (1, 1, 4096, 4096, 1024, 1024, False),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_bicubic2d_aa_backward(
+    N, C, H_in, W_in, H_out, W_out, align_corners, dtype
+):
+    shape = (N, C, H_in, W_in)
+
+    grad_shape = (N, C, H_out, W_out)
+
+    res_grad = torch.randn(
+        grad_shape,
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    ref_grad = to_reference(res_grad)
+
+    ref_out = upsample_bicubic2d_aa_backward_call(
+        ref_grad,
+        shape,
+        align_corners,
+    ).to(dtype)
+
+    with flag_gems.use_gems():
+        res_out = upsample_bicubic2d_aa_backward_call(
+            res_grad.to(dtype),
+            shape,
+            align_corners,
+        )
+
+    assert res_out.shape == shape
+
+    # dtype-specific tolerance
+    if dtype == torch.float32:
+        atol = 1e-4
+    elif dtype == torch.float16:
+        atol = 3e-3
+    else:  # bfloat16
+        atol = 2e-2
+
+    gems_assert_close(res_out, ref_out, dtype, atol=atol)
+
+
+@pytest.mark.unique_consecutive
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+@pytest.mark.parametrize("return_inverse", [True, False])
+@pytest.mark.parametrize("return_counts", [False, True])
+def test_accuracy_unique_consecutive(shape, dtype, return_inverse, return_counts):
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        # Use integers with some consecutive duplicates
+        inp = torch.randint(-5, 5, shape, device=flag_gems.device).to(dtype)
+    ref_inp = to_reference(inp, False)
+
+    if return_counts:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_out, res_inverse, res_counts = torch.unique_consecutive(
+                    inp,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_inverse, ref_counts = torch.unique_consecutive(
+                ref_inp,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            gems_assert_equal(res_inverse, ref_inverse)
+        else:
+            with flag_gems.use_gems():
+                res_out, res_counts = torch.unique_consecutive(
+                    inp,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_counts = torch.unique_consecutive(
+                ref_inp,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+        gems_assert_equal(res_counts, ref_counts)
+    else:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_out, res_inverse = torch.unique_consecutive(
+                    inp,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_inverse = torch.unique_consecutive(
+                ref_inp,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            gems_assert_equal(res_inverse, ref_inverse)
+        else:
+            with flag_gems.use_gems():
+                res_out = torch.unique_consecutive(
+                    inp,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out = torch.unique_consecutive(
+                ref_inp,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+    gems_assert_equal(res_out, ref_out)

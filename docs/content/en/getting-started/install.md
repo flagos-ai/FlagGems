@@ -64,8 +64,12 @@ unified compiler for multiple AI platforms. Please make sure you have
 read the environment requirements from the FlagTree project before
 installing it.
 
+The `requirements_<backend>.txt` files include both FlagTree and the build
+dependencies (such as `scikit-build-core`, `pybind11`, `ninja`, and `cmake`).
+You can install them together with one command.
+
 ```shell
-pip install -r flag_tree_requirements/requirements_nvidia.txt
+pip install -r requirements/requirements_nvidia.txt
 ```
 
 > [!TIP]
@@ -73,33 +77,16 @@ pip install -r flag_tree_requirements/requirements_nvidia.txt
 >
 > - For [non-NVIDIA platforms](/FlagGems/usage/non-nvidia/), you
 >   **have to** use different `requirements_<backend>.txt` under
->   the `flag_tree_requirements/` directory.
+>   the `requirements/` directory.
 > - There are on-going efforts to simplify this step. Stay tuned.
 
-### 3.3. Prepare the build dependencies
-
-FlagGems follows the [PEP 518](https://peps.python.org/pep-0518/) standard
-and provides a `pyproject.toml` file to govern the installation process.
-
-The Python package `flag_gems` uses [`scikit-build-core`](https://scikit-build-core.readthedocs.io/en/latest/)
-as its [build backend](https://peps.python.org/pep-0517/#build-backend-interface).
-
-You can run the following command to install/upgrade the build dependencies.
-
-```shell
-pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
-```
-
-You can refer to [scikit-build-core](#scikit-build-core-options) reference
-for more details about the commonly used options.
-
-### 3.4. Install the package
+### 3.3. Install the package
 
 FlagGems can be installed either a pure Python package or a package with C++ extensions.
 The C++ extensions are  still an experimental feature, so please make sure
 you have conducted some assessments before using them in production environments.
 
-#### 3.4.1 Install with C++ extension
+#### 3.3.1 Install with C++ extension
 
 If you are NOT enabling the C++ wrapped operators, you can skip to the next step.
 
@@ -115,7 +102,45 @@ CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
 pip install --no-build-isolation -v -e .
 ```
 
-Note that the above command installs the
+The above command builds for the default **CUDA** backend. To build for
+a different backend or to enable the pointwise dynamic C++ module,
+pass the corresponding CMake options. Below are examples for each
+supported platform:
+
+**NVIDIA CUDA (with pointwise dynamic C++ support)**
+
+```shell
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON" \
+pip install --no-build-isolation -v -e .
+```
+
+**Iluvatar CoreX (IX)**
+
+```shell
+export LIBRARY_PATH=<corex-install-dir>/lib64:$LIBRARY_PATH
+
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=IX -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_CTESTS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install --no-build-isolation -v -e .
+```
+
+**Moore Threads (MUSA)**
+
+```shell
+export MUSA_HOME=<musa-install-dir>
+
+LD_PRELOAD=$CONDA_PREFIX/lib/libittnotify.so \
+pip install --no-build-isolation -v -e . \
+  --config-settings=cmake.args="-DFLAGGEMS_BACKEND=MUSA;-DFLAGGEMS_BUILD_C_EXTENSIONS=ON;-DFLAGGEMS_BUILD_CTESTS=ON"
+```
+
+**Huawei Ascend (NPU)**
+
+```shell
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=NPU -DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
+pip install --no-build-isolation -e .
+```
+
+Note that the above commands install the
 [libtriton_jit library](https://github.com/flagos-ai/libtriton_jit)
 by cloning its GIT repository and installing it from source.
 
@@ -127,7 +152,7 @@ check the following sections:
 - [build isolation](#build-isolation)
 - [installing libtriton_jit](#libtriton-jit)
 
-#### 3.4.2 Install the Python package only
+#### 3.3.2 Install the Python package only
 
 You can install *flag_gems* as a pure Python package.
 If you are using *FlagGems* as is with no intent to customize it,
@@ -240,6 +265,17 @@ The CMake options for configuring `flag_gems` are listed below:
   <td>Whether to install FlagGems's cmake package.
       Recommended for development mode installation.</td>
   <td>ON</td>
+</tr>
+<tr>
+  <td><code>FLAGGEMS_BACKEND</code></td>
+  <td>Target backend for building. Valid values are <code>CUDA</code>,
+      <code>IX</code>, <code>MUSA</code>, and <code>NPU</code>.</td>
+  <td><code>CUDA</code></td>
+</tr>
+<tr>
+  <td><code>FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP</code></td>
+  <td>Whether to build the pointwise dynamic C++ support module.</td>
+  <td><code>OFF</code></td>
 </tr>
 </tbody>
 </table>
