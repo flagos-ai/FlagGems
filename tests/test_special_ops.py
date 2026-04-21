@@ -2560,7 +2560,7 @@ def test_accuracy_soft_margin_loss(shape, dtype, reduction):
 
 
 @pytest.mark.t_copy
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", [(512, 512), (128, 256), (2, 3)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_t_copy(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
