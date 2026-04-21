@@ -46,7 +46,7 @@ static std::unordered_map<std::string, RegisterFunc>& get_op_registry() {
   // C++ wrapper to work simultaneously, `func.__name__` is used as the key here.
   // However, I personally think that using op_item is a better approach; let's leave that as a TODO for now.
   static std::unordered_map<std::string, RegisterFunc> registry = {
-      {       "addmm",                    [](torch::Library& m) { m.impl("addmm", TORCH_FN(flag_gems::addmm)); }},
+      {       "addmm",[](torch::Library& m) { m.impl("addmm", TORCH_FN(flag_gems::addmm)); }                      },
       {   "addmm_out",                [](torch::Library& m) { m.impl("addmm.out", TORCH_FN(flag_gems::addmm)); }},
       {         "bmm",                        [](torch::Library& m) { m.impl("bmm", TORCH_FN(flag_gems::bmm)); }},
       {          "mm",                   [](torch::Library& m) { m.impl("mm", TORCH_FN(flag_gems::mm_tensor)); }},
@@ -63,9 +63,9 @@ static std::unordered_map<std::string, RegisterFunc>& get_op_registry() {
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
       {         "add",          [](torch::Library& m) { m.impl("add.Tensor", TORCH_FN(flag_gems::add_tensor)); }},
       {        "add_", [](torch::Library& m) { m.impl("add_.Tensor", TORCH_FN(flag_gems::add_tensor_inplace)); }},
- // {  "add.Scalar",     [](torch::Library& m) { m.impl("add.Scalar", TORCH_FN(flag_gems::add_scalar));
-  // }},     { "add_.Scalar",
-  //  [](torch::Library& m) { m.impl("add_.Scalar", TORCH_FN(flag_gems::add_scalar_inplace)); }  },
+      {  "add_scalar",          [](torch::Library& m) { m.impl("add.Scalar", TORCH_FN(flag_gems::add_scalar)); }},
+      { "add_scalar_",
+       [](torch::Library& m) { m.impl("add_.Scalar", TORCH_FN(flag_gems::add_scalar_inplace)); }                },
       { "fill_scalar",        [](torch::Library& m) { m.impl("fill.Scalar", TORCH_FN(flag_gems::fill_scalar)); }},
       {"fill_scalar_",      [](torch::Library& m) { m.impl("fill_.Scalar", TORCH_FN(flag_gems::fill_scalar_)); }},
       { "fill_tensor",        [](torch::Library& m) { m.impl("fill.Tensor", TORCH_FN(flag_gems::fill_tensor)); }},
