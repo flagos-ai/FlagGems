@@ -131,7 +131,7 @@ from .repeat_interleave import (
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
-from .scatter import scatter_
+from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
@@ -164,6 +164,7 @@ __all__ = [
     "mean_dim",
     "zeros",
     "zero_",
+    "scatter",
     "scatter_",
     "scatter_add_",
     "sort",

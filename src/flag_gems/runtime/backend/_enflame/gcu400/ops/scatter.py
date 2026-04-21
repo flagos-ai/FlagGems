@@ -42,15 +42,16 @@ def generate_scatter_kernel(
 
     code.writeline("def heur_block(args):")
     with code.indent():
-        # TODO: tune the block size
-        code.writeline("return 4096")
+        code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
+        with code.indent():
+            code.writeline("return 256")
+        code.writeline("return 128")
     code.newline()
     code.newline()
 
     code.writeline("def loop_count(args):")
     with code.indent():
-        # TODO: tune the loop Count
-        code.writeline("return 8")
+        code.writeline("return 4")
     code.newline()
     code.newline()
 
@@ -108,9 +109,9 @@ def generate_scatter_kernel(
     # Kernel Code
     with code.indent():
         code.writeline("pid = tl.program_id(0)")
-        # code.writeline("if not INT32_OFFSET:")
-        # with code.indent():
-        #     code.writeline("pid = pid.to(tl.int64)")
+        code.writeline("if not INT32_OFFSET:")
+        with code.indent():
+            code.writeline("pid = pid.to(tl.int64)")
         code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
 
         #   1. Calculate inp_offsets and idx_offsets
@@ -218,25 +219,6 @@ def generate_destination_passing_wrapper(
     code.writeline(wrapper_signature)
 
     with code.indent():
-        code.writeline("# convert all the inputs to int32 only if they are int64")
-        code.writeline("if src_strided.dtype == torch.int64:")
-        code.writeline("  if isinstance(src_strided, StridedBuffer):")
-        code.writeline("    src_strided.convert_to_int32()")
-        code.writeline("  else:")
-        code.writeline("    src_strided = src_strided.to(torch.int32)")
-        code.writeline("if inp.dtype == torch.int64:")
-        code.writeline("  if isinstance(inp, StridedBuffer):")
-        code.writeline("    inp.convert_to_int32()")
-        code.writeline("  else:")
-        code.writeline("    inp = inp.to(torch.int32)")
-        code.writeline("if out.dtype == torch.int64:")
-        code.writeline("  if isinstance(out, StridedBuffer):")
-        code.writeline("    out.convert_to_int32()")
-        code.writeline("  else:")
-        code.writeline("    out = out.to(torch.int32)")
-        code.writeline("if index.dtype == torch.int64:")
-        code.writeline("  index = index.to(torch.int32)")
-
         code.writeline("inp_strides = list(inp.stride())")
         code.writeline("index_strides = index.stride()")
         code.writeline("src_strides = src_strided.stride()")
@@ -322,8 +304,7 @@ class ScatterFunction:
             file_name = f"scatter_rank_{key}.py"
             file_path = code_cache_dir() / file_name
             write_atomic(file_path, code.getvalue())
-            # print(f"[scatter]file_path: {file_path}")
-            # print(f"[scatter]code: {code.getvalue()}")
+
             # load
             spec = importlib.util.spec_from_file_location(
                 f"_gen_module_rank_{key}",
@@ -348,6 +329,13 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
+
+    orig_dtype = inp.dtype
+    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    if needs_upcast:
+        inp = inp.to(torch.float32)
+        src = src.to(torch.float32)
+
     out = inp.clone()
 
     if reduce is not None:
@@ -378,15 +366,24 @@ def scatter(inp, dim, index, src, reduce=None):
         int32_offset=use_int32_offset,
     )
 
+    if needs_upcast:
+        out = out.to(orig_dtype)
     return out
 
 
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER_")
-    out = inp
+
+    orig_dtype = inp.dtype
+    needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
+    if needs_upcast:
+        out = inp.to(torch.float32)
+        src = src.to(torch.float32)
+    else:
+        out = inp
 
     if reduce is not None:
-        assert inp.dtype not in (
+        assert orig_dtype not in (
             torch.bfloat16,
         ), "Unsupported operation: reduce scatter bfloat tensors."
 
@@ -395,13 +392,14 @@ def scatter_(inp, dim, index, src, reduce=None):
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
     src_restrided = src.as_strided(index.shape, src.stride())
-    inp_restrided = restride_dim(inp, dim, index.shape)
-    dim_size = inp.size(dim)
-    dim_stride = inp.stride(dim)
+    inp_restrided = restride_dim(out, dim, index.shape)
+    dim_size = out.size(dim)
+    dim_stride = out.stride(dim)
     N = index.numel()
 
     int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
-    use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
+    use_int32_offset = all(map(int32_size_dim, (out, index, src)))
+    print(f"out.dtype: {out.dtype}")
     _scatter_func(
         src_restrided,
         index,
@@ -414,4 +412,6 @@ def scatter_(inp, dim, index, src, reduce=None):
         int32_offset=use_int32_offset,
     )
 
+    if needs_upcast:
+        inp.copy_(out.to(orig_dtype))
     return inp
