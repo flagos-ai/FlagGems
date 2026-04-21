@@ -10,10 +10,6 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
-
 
 # --------------------------- tile wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
@@ -442,8 +438,6 @@ _tile_func = TileFunction()
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
     logger.debug("GEMS TILE")
-    if torch.is_grad_enabled():
-        return torch.ops.aten.tile.default.redispatch(_FALLBACK_KEYSET, inp, dims)
 
     out = _tile_func(inp, dims)
     return out

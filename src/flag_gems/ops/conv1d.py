@@ -1,41 +1,13 @@
 import logging
 import math
 
-import torch
-
 from flag_gems.ops.conv2d import conv2d
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
-
 
 def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     logger.debug("GEMS CONV1D")
-    if torch.is_grad_enabled():
-        if isinstance(padding, str):
-            return torch.ops.aten.conv1d.padding.redispatch(
-                _FALLBACK_KEYSET,
-                input,
-                weight,
-                bias,
-                stride,
-                padding,
-                dilation,
-                groups,
-            )
-        return torch.ops.aten.conv1d.default.redispatch(
-            _FALLBACK_KEYSET,
-            input,
-            weight,
-            bias,
-            stride,
-            padding,
-            dilation,
-            groups,
-        )
     if isinstance(stride, (list, tuple)):
         stride_width = stride[0]
     else:

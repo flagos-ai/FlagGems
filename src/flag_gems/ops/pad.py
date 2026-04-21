@@ -10,10 +10,6 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
-
 
 # --------------------------- padding wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
@@ -458,10 +454,6 @@ _pad_func = PadFunction()
 
 def pad(self, pad, mode="constant", value=None):
     logger.debug("GEMS CONSTANT PAD ND")
-    if torch.is_grad_enabled():
-        return torch.ops.aten.pad.default.redispatch(
-            _FALLBACK_KEYSET, self, pad, mode, value=value
-        )
 
     ndim = self.ndim
 
