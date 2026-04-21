@@ -1,11 +1,13 @@
 import functools
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import torch
 import triton
 import triton.language as tl
+import triton_tvm_ffi
 import yaml
 
 from flag_gems import runtime
@@ -155,7 +157,7 @@ def matmul_tma_set_block_size_hook(nargs):
     nargs["c_desc"].block_shape = [BLOCK_M, BLOCK_N]
 
 
-@libentry()
+@triton_tvm_ffi.jit
 @libtuner(
     configs=runtime.ops_get_configs(
         "w8a8_block_fp8_general",
@@ -173,7 +175,25 @@ def matmul_tma_set_block_size_hook(nargs):
     warmup=5,
     rep=5,
 )
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "M",
+        "N",
+        "K",
+        "group_n",
+        "group_k",
+        "stride_am",
+        "stride_ak",
+        "stride_bk",
+        "stride_bn",
+        "stride_cm",
+        "stride_cn",
+        "stride_As_m",
+        "stride_As_k",
+        "stride_Bs_k",
+        "stride_Bs_n",
+    ]
+)
 def w8a8_block_fp8_matmul_kernel_general(
     A,
     B,
@@ -345,6 +365,38 @@ def w8a8_block_fp8_matmul_kernel_host_tma(
     c_desc.store([offset_am, offset_bn], acc.to(c_desc.dtype))
 
 
+@triton_tvm_ffi.torch_wrap(
+    [w8a8_block_fp8_matmul_kernel_general],
+    Path(__file__).with_suffix(".cc"),
+    extra_include_paths=[
+        str(Path(triton_tvm_ffi.__file__).resolve().parents[2] / "include")
+    ],
+)
+def w8a8_block_fp8_matmul_general_tvm_ffi(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    As: torch.Tensor,
+    Bs: torch.Tensor,
+    M: int,
+    N: int,
+    K: int,
+    group_n: int,
+    group_k: int,
+    stride_am: int,
+    stride_ak: int,
+    stride_bk: int,
+    stride_bn: int,
+    stride_cm: int,
+    stride_cn: int,
+    stride_As_m: int,
+    stride_As_k: int,
+    stride_Bs_k: int,
+    stride_Bs_n: int,
+) -> torch.Tensor:
+    ...
+
+
 def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
     logger.debug(
         "GEMS w8a8_block_fp8_matmul-hopper, [scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
@@ -355,19 +407,18 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
-    use_flagtune = os.environ.get("USE_FLAGTUNE") == "1"
-    fixed_meta = (
-        None
-        if use_flagtune
-        else _get_fixed_matmul_meta(M, N, K, block_n=group_n, block_k=group_k)
-    )
-
     if hasattr(
         triton.tools.tensor_descriptor, "TensorDescriptor"
     ) and is_tma_compatible(a, b, N, K):
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
+        )
+        use_flagtune = os.environ.get("USE_FLAGTUNE") == "1"
+        fixed_meta = (
+            None
+            if use_flagtune
+            else _get_fixed_matmul_meta(M, N, K, block_n=group_n, block_k=group_k)
+        )
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -457,61 +508,29 @@ def general_w8a8_block_fp8_matmul(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         with torch_device_fn.device(a.device):
             launch()
     else:
-
-        def alloc_fn(size: int, align: int, stream: Optional[int]):
-            return torch.empty(size, dtype=torch.int8, device=a.device)
-
-        triton.set_allocator(alloc_fn)
-        if use_flagtune:
-            launch = lambda: w8a8_block_fp8_matmul_kernel_general[grid](
-                a,
-                b,
-                c,
-                a_s,
-                b_s,
-                M,
-                N,
-                K,
-                group_n,
-                group_k,
-                a.stride(0),
-                a.stride(1),
-                b.stride(1),
-                b.stride(0),
-                c.stride(0),
-                c.stride(1),
-                a_s.stride(0),
-                a_s.stride(1),
-                b_s.stride(1),
-                b_s.stride(0),
-            )
-        else:
-            launch = lambda: w8a8_block_fp8_matmul_kernel_general.fn.fn[grid](
-                a,
-                b,
-                c,
-                a_s,
-                b_s,
-                M,
-                N,
-                K,
-                group_n,
-                group_k,
-                a.stride(0),
-                a.stride(1),
-                b.stride(1),
-                b.stride(0),
-                c.stride(0),
-                c.stride(1),
-                a_s.stride(0),
-                a_s.stride(1),
-                b_s.stride(1),
-                b_s.stride(0),
-                **fixed_meta,
-            )
-
         with torch_device_fn.device(a.device):
-            launch()
+            w8a8_block_fp8_matmul_general_tvm_ffi(
+                a,
+                b,
+                c,
+                a_s,
+                b_s,
+                M,
+                N,
+                K,
+                group_n,
+                group_k,
+                a.stride(0),
+                a.stride(1),
+                b.stride(1),
+                b.stride(0),
+                c.stride(0),
+                c.stride(1),
+                a_s.stride(0),
+                a_s.stride(1),
+                b_s.stride(1),
+                b_s.stride(0),
+            )
     return c
 
 

@@ -100,6 +100,7 @@ nvidia = [
     "torchvision==0.24.0+cu128",
     "torchaudio==2.9.0+cu128",
     "flagtree==0.5.0+3.5",
+    "triton-tvm-ffi @ git+https://github.com/sgjzfzzf/triton-tvm-ffi.git",
 ]
 
 tsingmicro = [
