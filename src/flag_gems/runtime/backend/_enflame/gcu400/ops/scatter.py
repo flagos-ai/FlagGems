@@ -399,7 +399,6 @@ def scatter_(inp, dim, index, src, reduce=None):
 
     int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
     use_int32_offset = all(map(int32_size_dim, (out, index, src)))
-    print(f"out.dtype: {out.dtype}")
     _scatter_func(
         src_restrided,
         index,
