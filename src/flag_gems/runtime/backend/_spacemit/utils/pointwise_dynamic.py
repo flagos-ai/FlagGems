@@ -143,3 +143,6 @@ class SpacemitModuleGenerator(BaseModuleGenerator):
         code.writeline("import triton.language.extra.smt as smt")
         code.newline()
         return code
+
+
+ModuleGenerator = SpacemitModuleGenerator

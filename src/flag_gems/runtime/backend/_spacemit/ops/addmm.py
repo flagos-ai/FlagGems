@@ -4,9 +4,6 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.extra.smt as smt
-from triton.backends.spine_triton.driver import CPUDriver
-
-triton.runtime.driver.set_active(CPUDriver())
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +104,7 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS SPACEMIT ADDMM")
+    logger.debug("GEMS_SPACEMIT ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     M, K = mat1.shape
     _, N = mat2.shape

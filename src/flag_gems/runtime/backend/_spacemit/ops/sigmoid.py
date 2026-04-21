@@ -3,7 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import tl_extra_shim
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 exp = tl_extra_shim.exp
@@ -27,18 +29,18 @@ def sigmoid_backward_kernel(dy, y):
 
 
 def sigmoid(self):
-    logger.debug("GEMS SIGMOID FORWARD")
+    logger.debug("GEMS_SPACEMIT SIGMOID_FORWARD")
     output = sigmoid_forward(self)
     return output
 
 
 def sigmoid_backward(grad_output, output):
-    logger.debug("GEMS SIGMOID BACKWARD")
+    logger.debug("GEMS_SPACEMIT SIGMOID_BACKWARD")
     grad_input = sigmoid_backward_kernel(grad_output, output)
     return grad_input
 
 
 def sigmoid_(A):
-    logger.debug("GEMS SIGMOID_ FORWARD")
+    logger.debug("GEMS_SPACEMIT SIGMOID__FORWARD")
     out = sigmoid_forward(A, out0=A)
     return out

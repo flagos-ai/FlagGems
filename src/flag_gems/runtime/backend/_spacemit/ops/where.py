@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ def where_inner(condition, self, other):
 
 
 def where_self_out(condition, self, other, out=None):
-    logger.debug("GEMS WHERE_SELF_OUT")
+    logger.debug("GEMS_SPACEMIT WHERE_SELF_OUT")
     result_type = torch.result_type(self, other)
     if out is not None:
         assert (
@@ -38,10 +38,11 @@ def where_self_out(condition, self, other, out=None):
     if b.dtype != result_type:
         b = b.to(result_type)
 
-    devices = map(lambda x: x.device, (c, a, b))
-    devices = list(filter(lambda k: k.type == "cpu", devices))
+    devices = [x.device for x in (c, a, b)]
 
-    assert len(devices), "CPU only. There seems a mistake to dispatch to here."
+    assert all(device.type == "cpu" for device in devices), (
+        "CPU only. Expected all tensors to be on CPU, " f"but found devices {devices}"
+    )
 
     device = devices[0]
     if c.device != device and c.ndim == 0:
@@ -69,15 +70,15 @@ def where_self_out(condition, self, other, out=None):
 
 
 def where_self(condition, self, other):
-    logger.debug("GEMS WHERE_SELF")
+    logger.debug("GEMS_SPACEMIT WHERE_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_self(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_SELF")
+    logger.debug("GEMS_SPACEMIT WHERE_SCALAR_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_other(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_OTHER")
+    logger.debug("GEMS_SPACEMIT WHERE_SCALAR_OTHER")
     return where_self_out(condition, self, other)

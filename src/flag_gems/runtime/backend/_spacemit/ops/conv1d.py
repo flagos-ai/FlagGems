@@ -6,6 +6,8 @@ logger = logging.getLogger(__name__)
 
 
 def conv1d(input, weight, bias=None, padding=0, stride=1, dilation=1, groups=1):
+    logger.debug("GEMS_SPACEMIT CONV1D")
+
     if isinstance(stride, (list, tuple)):
         stride_width = stride[0]
     else:

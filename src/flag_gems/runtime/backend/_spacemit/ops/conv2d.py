@@ -179,6 +179,8 @@ def fused_im2col_bmm_kernel(
 
 
 def conv2d(input, weight, bias=None, padding=0, stride=1, dilation=1, groups=1):
+    logger.debug("GEMS_SPACEMIT CONV2D")
+
     N, C, H, W = input.shape
     OC, _, KH, KW = weight.shape
 
@@ -280,9 +282,3 @@ def conv2d(input, weight, bias=None, padding=0, stride=1, dilation=1, groups=1):
         )
 
     return output
-
-
-def thnn_conv2d(input, weight, kernel_size=0, bias=None, stride=1, padding=0, groups=1):
-    logger.debug("GEMS THNN_CONV2D")
-    dilation = 1
-    return conv2d(input, weight, bias, padding, stride, dilation, groups)

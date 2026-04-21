@@ -26,7 +26,7 @@ def bmm_heur_divisible_n(args):
 
 
 def bmm_heur_divisible_k(args):
-    return args["K"] // args["TILE_K"] == 0
+    return args["K"] % args["TILE_K"] == 0
 
 
 def dropout_heur_block(args):
@@ -79,7 +79,7 @@ def index_select_heur_block_n(args):
 
 
 def mm_heur_even_k(args):
-    return args["K"] // (args["BLOCK_SIZE_K"]) == 0
+    return args["K"] % args["BLOCK_SIZE_K"] == 0
 
 
 def rand_heur_block(args):

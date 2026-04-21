@@ -4,9 +4,7 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.extra.smt as smt
-from triton.backends.spine_triton.driver import CPUDriver
 
-triton.runtime.driver.set_active(CPUDriver())
 from flag_gems.fused import outer  # noqa: E402
 from flag_gems.ops import mul  # noqa: E402
 
@@ -106,7 +104,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logger.debug("GEMS SPACEMIT BMM")
+    logger.debug("GEMS_SPACEMIT BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     if A.stride(0) > 1 and A.stride(1) > 1:

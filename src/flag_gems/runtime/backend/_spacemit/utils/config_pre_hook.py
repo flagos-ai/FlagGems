@@ -1,3 +1,5 @@
+import logging
+
 import torch
 
 from flag_gems.runtime.configloader import ConfigLoader
@@ -47,6 +49,8 @@ LEGAL_CONFIGS = {
 
 SUPPORTED_OPS = ["mm"]
 
+logger = logging.getLogger(__name__)
+
 
 def get_current_arch_id():
     import triton
@@ -56,6 +60,9 @@ def get_current_arch_id():
 
 
 def validate_and_fix_config(config, arch_id, op_name, dtype):
+    if arch_id not in LEGAL_CONFIGS:
+        return config
+
     if op_name not in LEGAL_CONFIGS[arch_id]:
         return config
 
@@ -81,10 +88,18 @@ def validate_and_fix_config(config, arch_id, op_name, dtype):
         config.kwargs["MICRO_K"] = fixed_config["MICRO_K"]
         config.kwargs["MICRO_N"] = fixed_config["MICRO_N"]
 
-        print(
-            f"Warning: Invalid config for op_name={op_name}, arch_id={arch_id}, dtype={dtype}. "
-            f"Changed from MICRO_M={current_m},MICRO_N={current_n},MICRO_K={current_k} "
-            f"to MICRO_M={fixed_config['MICRO_M']},MICRO_K={fixed_config['MICRO_K']},MICRO_N={fixed_config['MICRO_N']}"
+        logger.warning(
+            "Invalid config for op_name=%s, arch_id=%s, dtype=%s. Changed from "
+            "MICRO_M=%s, MICRO_N=%s, MICRO_K=%s to MICRO_M=%s, MICRO_K=%s, MICRO_N=%s",
+            op_name,
+            arch_id,
+            dtype,
+            current_m,
+            current_n,
+            current_k,
+            fixed_config["MICRO_M"],
+            fixed_config["MICRO_K"],
+            fixed_config["MICRO_N"],
         )
 
     return config
