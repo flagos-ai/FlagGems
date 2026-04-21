@@ -29,11 +29,20 @@ static torch::Library& get_aten_lib() {
 using RegisterFunc = std::function<void(torch::Library&)>;
 static std::unordered_map<std::string, RegisterFunc>& get_op_registry() {
   static std::unordered_map<std::string, RegisterFunc> registry = {
-      { "max.dim_max",[](torch::Library& m) { m.impl("max.dim_max", TORCH_FN(flag_gems::max_dim_max)); }                      },
+      {       "addmm",[](torch::Library& m) { m.impl("addmm", TORCH_FN(flag_gems::addmm)); }                      },
+      {   "addmm.out",           [](torch::Library& m) { m.impl("addmm.out", TORCH_FN(flag_gems::addmm)); }},
+      {         "bmm",                   [](torch::Library& m) { m.impl("bmm", TORCH_FN(flag_gems::bmm)); }},
+      {          "mm",              [](torch::Library& m) { m.impl("mm", TORCH_FN(flag_gems::mm_tensor)); }},
+      {      "mm.out",          [](torch::Library& m) { m.impl("mm.out", TORCH_FN(flag_gems::mm_tensor)); }},
+      { "max.dim_max",   [](torch::Library& m) { m.impl("max.dim_max", TORCH_FN(flag_gems::max_dim_max)); }},
       {     "max.dim",           [](torch::Library& m) { m.impl("max.dim", TORCH_FN(flag_gems::max_dim)); }},
       {         "max",                   [](torch::Library& m) { m.impl("max", TORCH_FN(flag_gems::max)); }},
       {         "sum",                   [](torch::Library& m) { m.impl("sum", TORCH_FN(flag_gems::sum)); }},
       {       "zeros",               [](torch::Library& m) { m.impl("zeros", TORCH_FN(flag_gems::zeros)); }},
+      {    "_to_copy",          [](torch::Library& m) { m.impl("_to_copy", TORCH_FN(flag_gems::to_copy)); }},
+      {       "copy_",               [](torch::Library& m) { m.impl("copy_", TORCH_FN(flag_gems::copy_)); }},
+      {     "nonzero",           [](torch::Library& m) { m.impl("nonzero", TORCH_FN(flag_gems::nonzero)); }},
+
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
       {  "add.Tensor",     [](torch::Library& m) { m.impl("add.Tensor", TORCH_FN(flag_gems::add_tensor)); }},
       { "add_.Tensor",
