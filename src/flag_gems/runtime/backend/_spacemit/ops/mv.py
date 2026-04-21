@@ -69,7 +69,7 @@ def mv_kernel(
 
 
 def mv(inp, vec):
-    logger.debug("GEMS MV")
+    logger.debug("GEMS_SPACEMIT MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)

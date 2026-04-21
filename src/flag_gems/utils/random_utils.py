@@ -5,6 +5,8 @@ import triton.language as tl
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 
+_SPACEMIT_CPU_GENERATOR = None
+
 try:
     uint_to_uniform_float = tl.uint_to_uniform_float
 except AttributeError:
@@ -36,11 +38,15 @@ except AttributeError:
 # It returns the current state of the default Philox RNG in seed and offset and
 # updates the next offset by adding `increment`.
 def philox_backend_seed_offset(increment, generator=None):
+    global _SPACEMIT_CPU_GENERATOR
+
     if generator is None:
         device = torch_device_fn.current_device()
         # SPACEMIT uses CPU generator
         if flag_gems.vendor_name == "spacemit":
-            generator = torch.Generator(device="cpu")
+            if _SPACEMIT_CPU_GENERATOR is None:
+                _SPACEMIT_CPU_GENERATOR = torch.Generator(device="cpu")
+            generator = _SPACEMIT_CPU_GENERATOR
         else:
             generator = torch_device_fn.default_generators[device]
     state_copy = generator.get_state()

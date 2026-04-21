@@ -248,7 +248,7 @@ def weight_bias_backward_kernel(
 class LayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-        logging.debug("GEMS LAYERNORM FORWARD")
+        logging.debug("GEMS_SPACEMIT LAYERNORM_FORWARD")
         # dim = x.ndim - len(normalized_shape)
         # M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
@@ -281,7 +281,7 @@ class LayerNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS LAYERNORM BACKWARD")
+        logging.debug("GEMS_SPACEMIT LAYERNORM_BACKWARD")
         out_grad = out_grad.contiguous()
         (x, weight, bias, mean, rstd) = ctx.saved_tensors
         M = ctx.M

@@ -108,8 +108,7 @@ def _spacemit_softmax_lastdim(inp, out):
 
 
 def softmax(self, dim, half_to_float=False):
-    print("[DEBUG] ⭐ SPACEMIT SOFTMAX CALLED!")
-    logger.debug("SPACEMIT SOFTMAX")
+    logger.debug("GEMS_SPACEMIT SOFTMAX")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim
@@ -130,6 +129,5 @@ def softmax(self, dim, half_to_float=False):
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    print("[DEBUG] ⭐ SPACEMIT SOFTMAX BACKWARD CALLED!")
-    logger.debug("SPACEMIT SOFTMAX VJP")
+    logger.debug("GEMS_SPACEMIT SOFTMAX_VJP")
     return common_softmax_backward(grad_output, output, dim, input_dtype)

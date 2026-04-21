@@ -3,7 +3,7 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -14,10 +14,10 @@ def rsqrt_func(x):
 
 
 def rsqrt(A):
-    logging.debug("GEMS RSQRT")
+    logging.debug("GEMS_SPACEMIT RSQRT")
     return rsqrt_func(A)
 
 
 def rsqrt_(A):
-    logging.debug("GEMS RSQRT_")
+    logging.debug("GEMS_SPACEMIT RSQRT_")
     return rsqrt_func(A, out0=A)

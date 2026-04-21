@@ -41,7 +41,7 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
-    logging.debug("GEMS MEAN")
+    logging.debug("GEMS_SPACEMIT MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -97,7 +97,7 @@ def mean_dim_kernel(X, Mean, M, N, TILE_N: tl.constexpr):
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logging.debug("GEMS MEAN DIM")
+    logging.debug("GEMS_SPACEMIT MEAN_DIM")
 
     if dtype is None:
         dtype = x.dtype
