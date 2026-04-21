@@ -35,8 +35,8 @@ def test_grouped_mm(groups, N, K, dtype):
         M_g = random.randint(1, 16384)
         N_g = N
         K_g = K
-        A_g = torch.rand([M_g, K_g], device="cuda", dtype=dtype)
-        B_g = torch.rand([K_g, N_g], device="cuda", dtype=dtype)
+        A_g = torch.rand([M_g, K_g], device=flag_gems.device, dtype=dtype)
+        B_g = torch.rand([K_g, N_g], device=flag_gems.device, dtype=dtype)
         group_A_list.append(A_g)
         group_B_list.append(B_g)
         M_list.append(M_g)
@@ -48,7 +48,7 @@ def test_grouped_mm(groups, N, K, dtype):
     offs = torch.tensor(
         [sum(M_list[: i + 1]) for i in range(groups)],
         dtype=torch.int32,
-        device="cuda",
+        device=flag_gems.device,
     )
 
     ref_out = torch._grouped_mm(mat_a, mat_b, offs)
