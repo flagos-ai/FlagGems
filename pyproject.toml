@@ -206,7 +206,7 @@ explicit = true
 # Mainly for flagtree installation
 [[tool.uv.index]]
 name = "nvidia-pypi"
-url = "https://resource.flagos.net/repository/flagos-pypi-hosted/simple"
+url = "https://resource.flagos.net/repository/flagos-pypi-nvidia/simple"
 explicit = true
 
 # Source for TsingMicro packages
