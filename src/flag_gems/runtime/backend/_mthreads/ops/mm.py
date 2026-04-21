@@ -4,6 +4,7 @@ import os
 import torch
 import triton
 import triton.language as tl
+import yaml
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -14,6 +15,11 @@ from .utils import create_tma_device_descriptor, get_cached_tma_device_descripto
 
 logger = logging.getLogger("flag_gems.runtime.backend._mthreads.ops.mm")
 
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "mm_mthreads_expand.yaml")
+)
+
+SQMMA_SWITCH = False
 
 def is_supported_sqmma_layout(tensor):
     return tensor.is_contiguous() or (
@@ -24,6 +30,7 @@ def is_supported_sqmma_layout(tensor):
 def is_sqmma_compatible(a, b, N, K):
     return (
         os.getenv("MUSA_ENABLE_SQMMA", "0") == "1"
+        and SQMMA_SWITCH
         and a.dim() == 2
         and b.dim() == 2
         and a.dtype == b.dtype
@@ -35,7 +42,92 @@ def is_sqmma_compatible(a, b, N, K):
     )
 
 
+def get_expand_config(op):
+    default_strategies = {
+        "mm_sqmma": ["align32", "align32", "align32", "align32", "align32", "default"],
+        "mm": ["align32", "align32", "align32", "align32", "align32"],
+        "gemv": ["align32", "align32", "align32", "default"],
+    }
+    op_key_orders = {
+        "mm_sqmma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+        "mm": ["M", "N", "K", "stride_am", "stride_bk"],
+        "gemv": ["M", "K", "stride_am", "stride_bk"],
+    }
+    op_meta_map = {
+        "mm_sqmma": {
+            "BM": "BLOCK_M",
+            "BN": "BLOCK_N",
+            "BK": "BLOCK_K",
+        },
+        "mm": {
+            "BM": "BLOCK_M",
+            "BN": "BLOCK_N",
+            "BK": "BLOCK_K",
+        },
+        "gemv": {
+            "BM": "BLOCK_M",
+            "BK": "BLOCK_K",
+        },
+    }
+
+    if op not in default_strategies:
+        return -1
+
+    default_strategy = default_strategies[op]
+    if not os.path.exists(EXPAND_CONFIG_FILENAME):
+        return -1
+
+    try:
+        with open(EXPAND_CONFIG_FILENAME, "r") as file:
+            config = yaml.safe_load(file) or {}
+
+        expand_configs = config.get(op)
+        gen_config = None
+        strategy_config = None
+        for single_config in expand_configs:
+            if isinstance(single_config, dict) and "param_map" in single_config:
+                gen_config = single_config
+            if isinstance(single_config, dict) and "strategy" in single_config:
+                strategy_config = single_config.get("strategy")
+
+        param_map = gen_config["param_map"]
+        meta_map = param_map["META"]
+
+        strategy = default_strategy
+        if isinstance(strategy_config, dict):
+            strategy = [
+                strategy_config.get(k, default_strategy[idx])
+                for idx, k in enumerate(op_key_orders[op])
+            ]
+
+        ranges = {}
+        for range_key, meta_key in op_meta_map[op].items():
+            ranges[range_key] = gen_config[meta_map[meta_key]]
+        ranges["s"] = gen_config[param_map["num_stages"]]
+        ranges["w"] = gen_config[param_map["num_warps"]]
+
+        return {"ranges": ranges, "strategy": strategy}
+    except Exception:
+        return -1
+
+
 def matmul_get_configs():
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        expand_config = get_expand_config("mm")
+        if expand_config != -1:
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+                    num_stages=s,
+                    num_warps=w,
+                )
+                for BM in ranges["BM"]
+                for BN in ranges["BN"]
+                for BK in ranges["BK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
     return runtime.get_tuned_config("mm")
 
 
@@ -49,7 +141,11 @@ def prev_multiple_of(a, b):
 @libtuner(
     configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=["align32", "align32", "align32", "align32", "align32"],
+    strategy=get_expand_config("mm")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("mm") != -1
+    else ["align32", "align32", "align32", "align32", "align32"],
+    warmup=5,
+    rep=5,
 )
 @triton.jit
 def mm_kernel(
@@ -125,6 +221,21 @@ def mm_kernel(
 
 
 def gemv_get_configs():
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        expand_config = get_expand_config("gemv")
+        if expand_config != -1:
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {"BLOCK_M": BM, "BLOCK_K": BK},
+                    num_stages=s,
+                    num_warps=w,
+                )
+                for BM in ranges["BM"]
+                for BK in ranges["BK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
     return [triton.Config({"BLOCK_M": 64, "BLOCK_K": 64})]
 
 
@@ -133,6 +244,8 @@ def gemv_get_configs():
     configs=gemv_get_configs(),
     key=["M", "K", "stride_am", "stride_bk"],
     strategy=["align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=5,
 )
 @triton.jit
 def gemv_kernel(
@@ -312,6 +425,23 @@ def sqmma_descriptor_pre_hook(nargs):
 
 
 def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        expand_config = get_expand_config("mm_sqmma")
+        if expand_config != -1:
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {"BLOCK_M": BM, "BLOCK_N": BN, "BLOCK_K": BK},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for BM in ranges["BM"]
+                for BN in ranges["BN"]
+                for BK in ranges["BK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
     return [
         triton.Config(
             {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64},
@@ -326,7 +456,11 @@ def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
 @libtuner(
     configs=sqmma_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
+    strategy=get_expand_config("mm_sqmma")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("mm_sqmma") != -1
+    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=5,
 )
 @triton.jit
 def mm_sqmma_kernel(
@@ -371,36 +505,20 @@ def mm_sqmma_kernel(
     tme_load_ab_dtype = ab_dtype
     c_store_dtype = c_dtype
     for k in range(0, tl.cdiv(K, BLOCK_K)):
-        if is_transpose_a:
-            a = tl._experimental_descriptor_load(
-                a_desc_ptr,
-                [offs_k, offs_am],
-                [BLOCK_K, BLOCK_M],
-                tme_load_ab_dtype,
-            )
-            a = tl.trans(a)
-        else:
-            a = tl._experimental_descriptor_load(
-                a_desc_ptr,
-                [offs_am, offs_k],
-                [BLOCK_M, BLOCK_K],
-                tme_load_ab_dtype,
-            )
-        if is_transpose_b:
-            b = tl._experimental_descriptor_load(
-                b_desc_ptr,
-                [offs_bn, offs_k],
-                [BLOCK_N, BLOCK_K],
-                tme_load_ab_dtype,
-            )
-            b = tl.trans(b)
-        else:
-            b = tl._experimental_descriptor_load(
-                b_desc_ptr,
-                [offs_k, offs_bn],
-                [BLOCK_K, BLOCK_N],
-                tme_load_ab_dtype,
-            )
+        a = tl._experimental_descriptor_load(
+            a_desc_ptr,
+            [offs_am, offs_k],
+            [BLOCK_M, BLOCK_K],
+            tme_load_ab_dtype,
+            is_transpose_a,
+        )
+        b = tl._experimental_descriptor_load(
+            b_desc_ptr,
+            [offs_k, offs_bn],
+            [BLOCK_K, BLOCK_N],
+            tme_load_ab_dtype,
+            is_transpose_b,
+        )
         accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
         offs_k += BLOCK_K
     accumulator = accumulator.to(c_store_dtype)
@@ -474,33 +592,19 @@ def mm(a, b):
     b_dtype = b.dtype
     M, K = a.shape
     _, N = b.shape
-    # fp32 does not support MMA instructions, only enable SQMMA for fp16/bf16
-    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
-    prev_sqmma = None
-    if need_sqmma:
-        prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-        os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    try:
-        if N == 1:
-            c_dtype = get_higher_dtype(a_dtype, b_dtype)
-            c = torch.empty((M, N), device=a.device, dtype=c_dtype)
-            return gemv_mm(a, b, c, M, K)
-
-        if is_sqmma_compatible(a, b, N, K):
-            GROUP_M = 8
-            return mm_sqmma(
-                a,
-                b,
-                M,
-                N,
-                K,
-                GROUP_M,
-            )
-        else:
-            return mm_fma(a, b)
-    finally:
-        if need_sqmma:
-            if prev_sqmma is None:
-                os.environ.pop("MUSA_ENABLE_SQMMA", None)
-            else:
-                os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+    if N == 1:
+        c_dtype = get_higher_dtype(a_dtype, b_dtype)
+        c = torch.empty((M, N), device=a.device, dtype=c_dtype)
+        return gemv_mm(a, b, c, M, K)
+    if is_sqmma_compatible(a, b, N, K):
+        GROUP_M = 8
+        return mm_sqmma(
+            a,
+            b,
+            M,
+            N,
+            K,
+            GROUP_M,
+        )
+    else:
+        return mm_fma(a, b)
