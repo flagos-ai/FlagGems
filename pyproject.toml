@@ -239,7 +239,8 @@ flagtree = [
   { index = "ascend-pypi", marker = "extra=='ascend'" },
   { index = "hygon-pypi", marker = "extra != 'ascend' and extra=='hygon'" },
   { index = "mthreads-pypi", marker = "extra!='ascend' and extra!='hygon' and extra=='mthreads'" },
-  { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra=='tsingmicro'" },
+  { index = "nvidia-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra!='nvidia' and extra=='tsingmicro'" },
 ]
 torch = [
   { index = "ascend-pypi", marker = "extra=='ascend'"},
