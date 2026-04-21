@@ -2684,3 +2684,61 @@ def test_accuracy_select_backward_small_and_edge(dtype):
         )
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+PDIST_SHAPES = [
+    (4, 8),
+    (8, 16),
+    (16, 32),
+    (32, 64),
+    (64, 128),
+    (128, 256),
+]
+
+
+@pytest.mark.pdist_backward
+@pytest.mark.parametrize("shape", PDIST_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_pdist_backward(shape, dtype):
+    if shape[0] < 2:
+        pytest.skip("pdist requires at least 2 rows")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # Compute pdist forward
+    p = 2.0
+    pdist_out = torch.pdist(ref_inp, p=p)
+    pdist_out_gems = torch.pdist(inp, p=p)
+
+    # Compute backward with gradient of ones
+    grad_output = torch.ones_like(pdist_out)
+
+    ref_out = torch.ops.aten._pdist_backward(grad_output, ref_inp, p, pdist_out)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.pdist_backward
+@pytest.mark.parametrize("shape", PDIST_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_pdist_backward_p1(shape, dtype):
+    if shape[0] < 2:
+        pytest.skip("pdist requires at least 2 rows")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    # Compute pdist forward with p=1
+    p = 1.0
+    pdist_out = torch.pdist(ref_inp, p=p)
+    pdist_out_gems = torch.pdist(inp, p=p)
+
+    # Compute backward with gradient of ones
+    grad_output = torch.ones_like(pdist_out)
+
+    ref_out = torch.ops.aten._pdist_backward(grad_output, ref_inp, p, pdist_out)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
+
+    gems_assert_close(res_out, ref_out, dtype)
