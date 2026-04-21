@@ -26,11 +26,11 @@ import yaml
 
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
-from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime.backend import vendor_module
 from flag_gems.ops.dynamic_scaled_fp8_quant import dynamic_scaled_fp8_quant
 from flag_gems.ops.per_token_group_quant_int8 import per_token_group_quant_int8
 from flag_gems.ops.per_token_quant_int8 import per_token_quant_int8
+from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend import vendor_module
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
