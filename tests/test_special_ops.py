@@ -1813,7 +1813,10 @@ def native_per_token_group_quant_fp8(
     return x_q, x_s
 
 
-def native_dynamic_scaled_fp8_quant(x):
+def native_dynamic_scaled_fp8_quant(x, dtype=None):
+    if dtype is None:
+        dtype = flag_gems.SUPPORTED_FP8_DTYPE
+
     assert x.ndim == 2 and x.stride(-1) == 1
     fp8_max = float(torch.finfo(torch.float8_e4m3fn).max)
     fp8_min = float(torch.finfo(torch.float8_e4m3fn).min)
@@ -1822,7 +1825,7 @@ def native_dynamic_scaled_fp8_quant(x):
     scale = (x.abs().max().clamp(min=1e-10).to(torch.float32) / fp8_max).clamp(
         min=min_scale
     )
-    x_q = (x.float() / scale).clamp(min=fp8_min, max=fp8_max).to(torch.float8_e4m3fn)
+    x_q = (x.float() / scale).clamp(min=fp8_min, max=fp8_max).to(dtype)
     return x_q, scale.reshape(1)
 
 
@@ -1865,7 +1868,9 @@ def test_accuracy_dynamic_scaled_fp8_quant(num_tokens, d, dtype, seed):
     x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device)
     ref_x = to_reference(x)
 
-    ref_out, ref_scale = native_dynamic_scaled_fp8_quant(ref_x)
+    ref_out, ref_scale = native_dynamic_scaled_fp8_quant(
+        ref_x, dtype=flag_gems.SUPPORTED_FP8_DTYPE
+    )
     with flag_gems.use_gems():
         out, scale = flag_gems.dynamic_scaled_fp8_quant(x)
 

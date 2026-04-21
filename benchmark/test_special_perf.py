@@ -1035,6 +1035,7 @@ def torch_per_token_group_quant_fp8_ref(x, group_size, scale_ue8m0):
 
 
 def torch_dynamic_scaled_fp8_quant_ref(x):
+    dtype = flag_gems.SUPPORTED_FP8_DTYPE
     assert x.ndim == 2 and x.stride(-1) == 1
     fp8_max = float(torch.finfo(torch.float8_e4m3fn).max)
     fp8_min = float(torch.finfo(torch.float8_e4m3fn).min)
@@ -1043,7 +1044,7 @@ def torch_dynamic_scaled_fp8_quant_ref(x):
     scale = (x.abs().max().clamp(min=1e-10).to(torch.float32) / fp8_max).clamp(
         min=min_scale
     )
-    x_q = (x.float() / scale).clamp(min=fp8_min, max=fp8_max).to(torch.float8_e4m3fn)
+    x_q = (x.float() / scale).clamp(min=fp8_min, max=fp8_max).to(dtype)
     return x_q, scale.reshape(1)
 
 
