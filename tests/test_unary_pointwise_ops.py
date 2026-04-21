@@ -2520,7 +2520,7 @@ def test_round_half_to_even(shape, dtype):
 @pytest.mark.prelu
 @pytest.mark.parametrize(
     "shape",
-    [(2, 3), (128, 256), (512, 512), (4, 8, 16), (2, 32, 16, 16), (2, 128, 64, 64)],
+    [(2, 128, 64, 64), (512, 512), (128, 256), (4, 8, 16), (2, 32, 16, 16), (2, 3)],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("weight_kind", ["scalar", "per_channel"])
