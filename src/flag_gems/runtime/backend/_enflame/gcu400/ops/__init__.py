@@ -5,6 +5,13 @@ from .angle import angle
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
+from .attention import (
+    flash_attention_forward,
+    flash_attn_varlen_func,
+    scaled_dot_product_attention,
+    scaled_dot_product_attention_backward,
+    scaled_dot_product_attention_forward,
+)
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -352,4 +359,9 @@ __all__ = [
     "upsample_linear1d",
     "sum_dim",
     "sum_dim_out",
+    "flash_attention_forward",
+    "flash_attn_varlen_func",
+    "scaled_dot_product_attention",
+    "scaled_dot_product_attention_backward",
+    "scaled_dot_product_attention_forward",
 ]

@@ -11,17 +11,15 @@ attention:
   - 64
   - 128
   block_n:
-  - 32
   - 64
   - 128
   pre_load_v:
   - true
   - false
   warps:
+  - 2
   - 4
   stages:
-  - 1
-  - 2
   - 3
 addmm:
 - META:
