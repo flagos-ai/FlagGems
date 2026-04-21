@@ -149,7 +149,7 @@ from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
-from flag_gems.ops.index_put import index_put, index_put_
+from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
@@ -332,6 +332,7 @@ __all__ = [
     "_assert_async",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
+    "_index_put_impl_",
     "_is_all_true",
     "_safe_softmax",
     "_unique2",

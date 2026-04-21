@@ -241,6 +241,16 @@ def test_cosh_out_perf():
     bench.run()
 
 
+@pytest.mark.exp_out
+def test_exp_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="exp_out",
+        torch_op=torch.exp,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.expm1_out
 def test_expm1_out():
     bench = UnaryPointwiseOutBenchmark(
@@ -266,6 +276,16 @@ def test_i0_out():
     bench = UnaryPointwiseOutBenchmark(
         op_name="i0_out",
         torch_op=torch.i0,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.isneginf_out
+def test_isneginf_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="isneginf_out",
+        torch_op=torch.isneginf,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
@@ -341,28 +361,12 @@ def test_square_out():
     bench.run()
 
 
-backward_operations = [
-    ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
-]
-
-
-@pytest.mark.parametrize(
-    "op_name, torch_op, dtypes",
-    [
-        pytest.param(
-            name,
-            op,
-            dtype,
-            marks=getattr(pytest.mark, name, None),
-        )
-        for name, op, dtype in backward_operations
-    ],
-)
-def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
+@pytest.mark.gelu_backward
+def test_gelu_backward():
     bench = UnaryPointwiseBenchmark(
-        op_name=op_name,
-        torch_op=torch_op,
-        dtypes=dtypes,
+        op_name="gelu_backward",
+        torch_op=torch.nn.functional.gelu,
+        dtypes=FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()
@@ -376,7 +380,7 @@ class ToCopyBenchmark(UnaryPointwiseBenchmark):
 
 
 @pytest.mark.to_copy
-def test_to_copy_perf():
+def test_to_copy():
     bench = ToCopyBenchmark(
         op_name="to_copy",
         torch_op=torch.ops.aten._to_copy,
@@ -399,7 +403,7 @@ class CopyInplaceBenchmark(Benchmark):
     SkipVersion("torch", "<2.4"),
     reason="The copy operator implement required for torch >= 2.4",
 )
-def test_copy_inplace_perf():
+def test_copy_inplace():
     bench = CopyInplaceBenchmark(
         op_name="copy_",
         torch_op=torch.ops.aten.copy_,
@@ -422,8 +426,8 @@ class EluBackwardBenchmark(UnaryPointwiseBenchmark):
             yield grad_out, alpha, scale, input_scale, is_result, inp
 
 
-@pytest.mark.elu
-def test_elu_backward_perf():
+@pytest.mark.elu_backward
+def test_elu_backward():
     bench = EluBackwardBenchmark(
         op_name="elu_backward",
         torch_op=torch.ops.aten.elu_backward,
@@ -473,10 +477,10 @@ def test_glu_perf():
     bench.run()
 
 
-@pytest.mark.glu
+@pytest.mark.glu_backward
 def test_glu_backward_perf():
     bench = GluBenchmark(
-        op_name="glu",
+        op_name="glu_backward",
         torch_op=torch.nn.functional.glu,
         dtypes=FLOAT_DTYPES,
         is_backward=True,
@@ -500,7 +504,7 @@ class BinaryPointwiseBenchmark(Benchmark):
 
 
 @pytest.mark.bitwise_left_shift
-def test_bitwise_left_shift_perf():
+def test_bitwise_left_shift():
     bench = BinaryPointwiseBenchmark(
         op_name="bitwise_left_shift",
         torch_op=torch.bitwise_left_shift,
@@ -510,7 +514,7 @@ def test_bitwise_left_shift_perf():
 
 
 @pytest.mark.bitwise_right_shift
-def test_bitwise_right_shift_perf():
+def test_bitwise_right_shift():
     bench = BinaryPointwiseBenchmark(
         op_name="bitwise_right_shift",
         torch_op=torch.bitwise_right_shift,
@@ -592,7 +596,7 @@ class PreluBenchmark(Benchmark):
 
 
 @pytest.mark.prelu
-def test_perf_prelu():
+def test_prelu():
     bench = PreluBenchmark(
         op_name="prelu",
         torch_op=torch.ops.aten.prelu,

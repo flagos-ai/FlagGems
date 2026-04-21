@@ -491,11 +491,11 @@ class MaxPool2dBenchmark(GenericBenchmark):
             yield from self.input_fn(shape, cur_dtype, self.device)
 
 
-@pytest.mark.max_pool2d
-def test_perf_max_pool2d():
+@pytest.mark.max_pool2d_with_indices
+def test_max_pool2d_with_indices():
     bench = MaxPool2dBenchmark(
+        op_name="max_pool2d_with_indices",
         input_fn=max_pool2d_input_fn,
-        op_name="max_pool2d",
         torch_op=torch.nn.functional.max_pool2d_with_indices,
         dtypes=FLOAT_DTYPES,
     )
@@ -503,8 +503,8 @@ def test_perf_max_pool2d():
     bench.run()
 
 
-@pytest.mark.max_pool2d
-def test_perf_max_pool2d_backward():
+@pytest.mark.max_pool2d_backward
+def test_max_pool2d_backward():
     def max_pool2d_backward_input_fn(shape, dtype, device):
         for forward_args in max_pool2d_input_fn(shape, dtype, device):
             inp, params = forward_args

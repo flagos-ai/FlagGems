@@ -277,7 +277,8 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
-    bench = GenericBenchmarkExcluse1D(
+    bench_cls = TopKBenchmark if op_name == "topk" else GenericBenchmarkExcluse1D
+    bench = bench_cls(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
@@ -900,9 +901,9 @@ def test_moe_sum():
     bench.run()
 
 
-@pytest.mark.moe_align_block_size
+@pytest.mark.moe_align_block_size_triton
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
-def test_perf_moe_align_block_size():
+def test_moe_align_block_size_triton():
     def moe_align_block_size_input_fn(shape, dtype, device):
         num_experts = shape[0]
         block_size = shape[1]
@@ -1265,7 +1266,7 @@ def test_replication_pad1d():
     bench.run()
 
 
-@pytest.mark.unfold
+@pytest.mark.unfold_backward
 def test_unfold_backward():
     def unfold_backward_input_fn(config, dtype, device):
         input_sizes, dim, size, step = config
