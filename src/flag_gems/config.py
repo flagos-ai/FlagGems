@@ -14,7 +14,7 @@ except Exception:  # noqa: BLE001
 has_c_extension = False
 use_c_extension = False
 aten_patch_list = []
-aten_patch = None  # 保存 aten_patch 模块引用
+aten_patch = None
 
 # set FLAGGEMS_SOURCE_DIR for cpp extension to find
 os.environ["FLAGGEMS_SOURCE_DIR"] = str(Path(__file__).parent.resolve())
@@ -48,21 +48,18 @@ if has_c_extension and use_env_c_extension:
 
 
 def get_available_cpp_ops():
-    """获取所有可用的 cpp wrapper 算子名称"""
     if aten_patch is not None:
         return aten_patch.get_available_ops()
     return []
 
 
 def get_registered_cpp_ops():
-    """获取已注册的 cpp wrapper 算子名称"""
     if aten_patch is not None:
         return aten_patch.get_registered_ops()
     return []
 
 
 def register_cpp_ops(op_names):
-    """注册指定的 cpp wrapper 算子"""
     global aten_patch_list
     if aten_patch is not None:
         aten_patch.register_cpp_ops(op_names)
@@ -71,7 +68,6 @@ def register_cpp_ops(op_names):
 
 
 def register_all_cpp_ops():
-    """注册所有可用的 cpp wrapper 算子"""
     global aten_patch_list
     if aten_patch is not None:
         aten_patch.register_all_cpp_ops()

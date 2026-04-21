@@ -10,10 +10,8 @@
 
 std::vector<std::string> registered_ops;
 
-// 用于动态注册的 Library 对象
 static std::unique_ptr<torch::Library> aten_lib;
 
-// 确保 Library 对象已初始化
 static torch::Library& get_aten_lib() {
   if (!aten_lib) {
 // Define dispatch key based on backend
@@ -36,7 +34,6 @@ static torch::Library& get_aten_lib() {
   return *aten_lib;
 }
 
-// 定义算子注册表：算子名 -> 注册函数
 using RegisterFunc = std::function<void(torch::Library&)>;
 static std::unordered_map<std::string, RegisterFunc>& get_op_registry() {
   // NOTE: For "addmm.out" why we use "addmm_out" as the key?
@@ -87,14 +84,13 @@ std::vector<std::string> get_available_ops() {
   return ops;
 }
 
-// 动态注册指定的算子
 void register_cpp_ops(const std::vector<std::string>& op_names) {
   auto& lib = get_aten_lib();
   auto& registry = get_op_registry();
   std::unordered_set<std::string> already_registered(registered_ops.begin(), registered_ops.end());
 
   for (const auto& name : op_names) {
-    if (already_registered.count(name)) continue;  // 避免重复注册
+    if (already_registered.count(name)) continue;
 
     auto it = registry.find(name);
     if (it != registry.end()) {
@@ -104,7 +100,6 @@ void register_cpp_ops(const std::vector<std::string>& op_names) {
   }
 }
 
-// 注册所有可用算子
 void register_all_cpp_ops() {
   register_cpp_ops(get_available_ops());
 }

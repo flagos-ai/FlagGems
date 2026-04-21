@@ -518,7 +518,6 @@ def enable(
     global current_work_registrar
     exclude_ops = resolve_user_setting(unused, "exclude")
 
-    # 动态注册 cpp wrapper 算子：注册所有可用的，排除 exclude_ops 中的
     available_cpp_ops = get_available_cpp_ops()
     if available_cpp_ops:
         cpp_ops_to_register = [op for op in available_cpp_ops if op not in exclude_ops]
@@ -577,7 +576,6 @@ def only_enable(
         )
         return
 
-    # 动态注册 cpp wrapper 算子：只注册 include_ops 中包含的
     available_cpp_ops = get_available_cpp_ops()
     if available_cpp_ops:
         cpp_ops_to_register = [op for op in available_cpp_ops if op in include_ops]
