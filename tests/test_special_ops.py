@@ -2177,7 +2177,7 @@ def test_conj_physical(shape, is_complex, dtype):
 
 @pytest.mark.reflection_pad2d
 @pytest.mark.parametrize(
-    "shape", [(3, 33, 33), (2, 4, 32, 64), (8, 16, 64, 64), (32, 64, 128, 256)]
+    "shape", [(32, 64, 128, 256), (8, 16, 64, 64), (2, 4, 32, 64), (3, 33, 33)]
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize(
