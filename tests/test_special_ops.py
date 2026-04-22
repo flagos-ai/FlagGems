@@ -2495,7 +2495,7 @@ def test_assert_async_consistency(shape, value, expected_err, match_str):
 
 
 @pytest.mark.lift_fresh_copy
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", [(512, 512), (128, 256), (2, 3)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_lift_fresh_copy(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
