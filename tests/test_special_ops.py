@@ -2587,7 +2587,7 @@ def test_accuracy_t_copy_out(shape, dtype):
 
 
 @pytest.mark.safe_softmax
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", [(512, 512), (128, 256), (2, 3)])
 @pytest.mark.parametrize("in_dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [-1, 0])
 @pytest.mark.parametrize(
