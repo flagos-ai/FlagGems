@@ -116,6 +116,7 @@ from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
+from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fill import (
     fill_scalar,
     fill_scalar_,
@@ -472,6 +473,8 @@ __all__ = [
     "expm1_",
     "expm1_out",
     "exponential_",
+    "feature_dropout",
+    "feature_dropout_",
     "eye",
     "eye_m",
     "fill_scalar",
