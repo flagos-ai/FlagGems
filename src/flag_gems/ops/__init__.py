@@ -155,6 +155,7 @@ from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
+from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
@@ -526,6 +527,8 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_copy",
+    "index_copy_",
     "index_put",
     "index_put_",
     "index_select",
