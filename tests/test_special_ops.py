@@ -2024,7 +2024,7 @@ def torch_moe_align_block_size(
 
 
 @pytest.mark.moe_align_block_size
-@pytest.mark.parametrize("num_experts", [10, 128, 250, 512])
+@pytest.mark.parametrize("num_experts", [512, 250, 128, 10])
 @pytest.mark.parametrize("block_size", [16, 32, 64])
 @pytest.mark.parametrize(
     "topk_ids_shape",
