@@ -96,7 +96,7 @@ depending on which interfaces are registered.
 
 ### Environment
 
-- LLVM/MLIR version: `main` branch (as of <!-- insert date/commit -->)
+- LLVM/MLIR version: `main` branch (as of `<insert git commit hash or YYYY-MM-DD date here>`)
 - Relevant files inspected:
   - `mlir/include/mlir/Conversion/PtrToLLVM/PtrToLLVM.h`
   - `mlir/lib/Conversion/PtrToLLVM/PtrToLLVM.cpp`
