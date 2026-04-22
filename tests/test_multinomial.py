@@ -1,7 +1,9 @@
 import random
 import time
 
+import numpy as np
 import pytest
+import scipy
 import torch
 
 import flag_gems
@@ -41,6 +43,26 @@ def test_multinomial_with_replacement(shape, dtype, n_samples):
             res_dist = torch.gather(dist, -1, res_out)
             # assert torch.all(res_dist)
             assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
+
+
+@pytest.mark.multinomial
+@pytest.mark.parametrize("shape", [(1024, 10)])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("n_samples", [2048])
+def test_multinomial_with_replacement_1(shape, dtype, n_samples):
+    # First use multinomial to generate a series of indices, then
+    # use the index counts as the input probabilities (scaled)
+    rand_indices = torch.multinomial(torch.rand(shape), n_samples, True).to(device)
+    inp_counts = torch.nn.functional.one_hot(rand_indices).sum(1)
+    with flag_gems.use_gems():
+        out_indices = torch.multinomial(inp_counts.to(dtype=dtype), n_samples, True)
+    out_counts = torch.nn.functional.one_hot(out_indices).sum(1)
+
+    # Do a simple Chi-square test
+    assert torch.equal(inp_counts.sum(-1), out_counts.sum(-1))
+
+    _, pvalue = scipy.stats.chisquare(out_counts.tolist(), inp_counts.tolist(), axis=-1)
+    assert np.sum(pvalue < 0.05) / len(pvalue) < 0.1
 
 
 @pytest.mark.multinomial
