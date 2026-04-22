@@ -135,6 +135,21 @@ class GroupmmBenchmark(BlasBenchmark):
         return total_flops
 
 
+class MmSelfTransposeBenchmark(GenericBenchmark2DOnly):
+    """
+    Benchmark for the mm(a, a.t()) fast path.
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        return None
+
+    def get_tflops(self, op, *args, **kwargs):
+        m, k = args[0].shape
+        return m * (m + 1) * k
+
+
 def addmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
     bias = torch.randn([m, n], dtype=cur_dtype, device=device)
@@ -182,6 +197,16 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     else:
         inp2 = torch.randn([k, n], dtype=cur_dtype, device=device)
         yield inp1, inp2
+
+
+def torch_mm_self_transpose(inp):
+    return torch.mm(inp, inp.t())
+
+
+def mm_self_transpose_input_fn(shape, cur_dtype, device):
+    m, k = shape
+    inp = torch.randn([k, m], dtype=cur_dtype, device=device).t()
+    yield inp,
 
 
 def group_mm_input_fn(groups, N, K, cur_dtype, device):
@@ -434,6 +459,17 @@ def test_mv_and_outer_benchmark(op_name, torch_op, input_fn):
         input_fn=input_fn,
         op_name=op_name,
         torch_op=torch_op,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.mm
+def test_mm_self_transpose_benchmark():
+    bench = MmSelfTransposeBenchmark(
+        input_fn=mm_self_transpose_input_fn,
+        op_name="mm_self_transpose",
+        torch_op=torch_mm_self_transpose,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
