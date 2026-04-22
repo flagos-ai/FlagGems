@@ -5,6 +5,7 @@ from .angle import angle
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
+from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .attention import (
     flash_attention_forward,
     flash_attn_varlen_func,
@@ -160,6 +161,8 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "argmin",
+    "avg_pool2d",
+    "avg_pool2d_backward",
     "count_nonzero",
     "mean_dim",
     "zeros",
