@@ -4,7 +4,9 @@ import os
 from datetime import datetime
 
 import pytest
-import torch
+
+# TODO(Qiming): Try remove this line
+import torch  # noqa: F401
 import yaml
 
 import flag_gems
@@ -44,16 +46,9 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
-        (
-            "--mode"
-            if not (flag_gems.vendor_name == "kunlunxin" and torch.__version__ < "2.5")
-            else "--fg_mode"
-        ),  # TODO: fix pytest-* common --mode args,
-        action="store",
-        default="normal",
-        required=False,
-        choices=["normal", "quick"],
-        help="run tests on normal or quick mode",
+        "--quick",
+        action="store_true",
+        help="run tests on quick mode",
     )
 
     parser.addoption(
@@ -85,7 +80,7 @@ def pytest_configure(config):
 
     RECORD_LOG = config.getoption("--record") == "log"
     TO_CPU = config.getoption("--ref") == "cpu"
-    QUICK_MODE = config.getoption("--mode") == "quick"
+    QUICK_MODE = config.getoption("--quick") is True
 
     if RECORD_LOG:
         RUNTEST_INFO = {}
