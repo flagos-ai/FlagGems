@@ -2742,3 +2742,38 @@ def test_accuracy_pdist_backward_p1(shape, dtype):
         res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.multilabel_margin_loss_forward
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (16, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+def test_accuracy_multilabel_margin_loss_forward(shape, dtype, reduction):
+    N, C = shape
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Target tensor contains class indices in [0, C-1] or 0 (stop marker)
+    # Generate valid target tensor: for each row, generate class indices followed by 0s
+    target = torch.zeros((N, C), dtype=torch.long, device=flag_gems.device)
+    for i in range(N):
+        num_classes = random.randint(1, C)
+        classes = torch.randperm(C)[:num_classes].sort()[0]
+        target[i, :num_classes] = classes
+        target[i, num_classes] = 0  # stop marker
+        # Fill remaining with 0s (already done by initialization)
+
+    ref_input = to_reference(input)
+    ref_target = to_reference(target)
+
+    ref_out, ref_is_target = torch.ops.aten.multilabel_margin_loss_forward(
+        ref_input, ref_target, reduction
+    )
+    with flag_gems.use_gems():
+        res_out, res_is_target = torch.ops.aten.multilabel_margin_loss_forward(
+            input, target, reduction
+        )
+
+    # Compare is_target tensors first
+    gems_assert_equal(res_is_target, ref_is_target, dtype)
+
+    # Compare output tensors
+    gems_assert_close(res_out, ref_out, dtype)
