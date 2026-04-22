@@ -2545,7 +2545,7 @@ def test_accuracy_margin_ranking_loss(shape, dtype, margin, reduction):
 
 
 @pytest.mark.soft_margin_loss
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", [(512, 512), (128, 256), (2, 3)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 def test_accuracy_soft_margin_loss(shape, dtype, reduction):
