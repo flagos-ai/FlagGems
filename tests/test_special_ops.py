@@ -302,7 +302,7 @@ def test_accuracy_grouped_topk_sigmoid(renormalize):
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_dropout(shape, p, dtype):
+def test_dropout(shape, p, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -342,7 +342,7 @@ def test_accuracy_dropout(shape, p, dtype):
         ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {res_inp.numel()}"
 
 
-@pytest.mark.dropout
+@pytest.mark.dropout_backward
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -519,7 +519,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.embedding
+@pytest.mark.embedding_backward
 @pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
 @pytest.mark.parametrize("M", [4] if TO_CPU else [4, 8])
@@ -1219,11 +1219,11 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     gems_assert_equal(res0_out, ref0_out)
 
 
-@pytest.mark.fill
+@pytest.mark.fill_tensor
 @pytest.mark.parametrize("value", [0, 1, 9])
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_fill(value, shape, dtype):
+def test_fill_tensor(value, shape, dtype):
     # Test fill.Scalar
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     ref_x = to_reference(x, False)
@@ -1244,11 +1244,13 @@ def test_fill(value, shape, dtype):
     gems_assert_equal(res_out_tensor, ref_out_tensor)
 
 
-@pytest.mark.fill
+# TODO(Qiming): split this
+@pytest.mark.fill_tensor_out
+@pytest.mark.fill_scalar_out
 @pytest.mark.parametrize("value", [0, 1, 9])
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_fill_out(value, shape, dtype):
+def test_fill_tensor_out(value, shape, dtype):
     # Test fill.Scalar_out
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     ref_x = to_reference(x, False)
@@ -1512,11 +1514,11 @@ REPEAT_INTERLEAVE_REPEATS = [2]
 REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_self_int
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES + [(1,)])
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
+def test_repeat_interleave_self_int(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     repeats = 2
     ref_inp = to_reference(inp)
@@ -1527,11 +1529,11 @@ def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_self_int
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
     repeats = 2
     ref_inp = to_reference(inp)
@@ -1542,10 +1544,10 @@ def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_tensor
 @pytest.mark.parametrize("shape", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", [torch.int32])
-def test_accuracy_repeat_interleave_tensor(shape, dtype):
+def test_repeat_interleave_tensor(shape, dtype):
     repeats = torch.randint(0, 30, shape, dtype=dtype, device=flag_gems.device)
     ref_repeats = to_reference(repeats)
     ref_out = torch.repeat_interleave(ref_repeats)
@@ -1555,11 +1557,11 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.repeat_interleave
+@pytest.mark.repeat_interleave_self_tensor
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
+def test_repeat_interleave_self_tensor(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     repeats = torch.randint(0, 30, (shape[dim],), device=flag_gems.device)
     ref_inp = to_reference(inp)
@@ -1575,7 +1577,7 @@ def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
 @pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
 @pytest.mark.parametrize("diagonal", [-2, -1, 0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
-def test_accuracy_diag(shape, diagonal, dtype):
+def test_diag(shape, diagonal, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -1660,11 +1662,11 @@ def get_diagonal_backward_shape_and_dims():
 
 
 @pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
-@pytest.mark.diagonal
+@pytest.mark.diagonal_backward
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
+def test_diagonal_backward(shape, dtype, dim1, dim2, offset):
     if flag_gems.vendor_name == "mthreads":
         torch.manual_seed(123)
         torch.musa.manual_seed_all(123)
@@ -1726,7 +1728,7 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 @pytest.mark.kron
 @pytest.mark.parametrize("shape", KRON_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
-def test_accuracy_kron(shape, dtype):
+def test_kron(shape, dtype):
     if dtype in INT_DTYPES:
         inp1 = torch.randint(
             low=-10, high=10, size=shape[0], dtype=dtype, device="cpu"
@@ -2428,7 +2430,7 @@ def test_replication_pad3d(shape, padding, dtype):
     gems_assert_close(res_out_functional, ref_out, dtype, reduce_dim=1)
 
 
-@pytest.mark.unfold
+@pytest.mark.unfold_backward
 @pytest.mark.parametrize(
     "input_sizes, dim, size, step",
     [

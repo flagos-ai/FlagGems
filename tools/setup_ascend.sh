@@ -10,8 +10,15 @@ fi
 
 uv pip install -e . .[ascend,test]
 
+uv pip install --index ${FLAGOS_PYPI} \
+    "flagtree==0.5.0+ascend3.2" \
+    "torch==2.9.0+cpu" \
+    "torch-npu==2.9.0"
+
 if [ -n "${USE_FLAGTREE}" ]; then
-  uv pip uninstall triton
   uv pip install --index ${FLAGOS_PYPI} \
     flagtree==0.5.0+ascend3.2
+else
+  uv pip install --index ${FLAGOS_PYPI} \
+    triton_ascend==3.2.0
 fi
