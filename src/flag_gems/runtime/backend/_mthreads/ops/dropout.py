@@ -33,7 +33,7 @@ def dropout_forward_kernel(
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    i4 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
