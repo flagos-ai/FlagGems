@@ -8,6 +8,7 @@ import torch
 from flag_gems.fused.DSA.bin_topk import (
     bucket_sort_topk,  # Replace with actual module name
 )
+from flag_gems.fused.DSA.bin_topk import HAS_TLE
 
 
 def assert_set_similar(actual, expected, dtype, equal_nan=False):
@@ -132,6 +133,37 @@ def debug_topk_results(actual, expected, inputs, test_name=""):
             f"  Actual top values: {np.sort(actual_values)[-m:][::-1]}"
         )  # Top 5 largest values
         print(f"  Expected top values: {np.sort(expected_values)[-m:][::-1]}")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required")
+@pytest.mark.skipif(not HAS_TLE, reason="TLE bucket_sort_topk is unavailable")
+@pytest.mark.bucket_sort_topk
+@pytest.mark.parametrize(
+    ("starts_list", "ends_list"),
+    [
+        ([0, 0, 0], [512, 768, 1024]),
+        ([7, 31, 63], [700, 900, 1024]),
+    ],
+)
+def test_bucket_sort_topk_public_entrypoint_matches_torch_topk(starts_list, ends_list):
+    batch_size = len(starts_list)
+    seq_len = 1024
+    topk = 32
+    dtype = torch.float32
+
+    init_seed(2026)
+    inputs = torch.randn((batch_size, seq_len), dtype=dtype, device=device)
+    starts = torch.tensor(starts_list, dtype=torch.int32, device=device)
+    ends = torch.tensor(ends_list, dtype=torch.int32, device=device)
+
+    ref_indices = reference_topk_implementation(
+        to_reference(inputs), to_reference(starts), to_reference(ends), topk
+    )
+    actual_indices = bucket_sort_topk(inputs, starts, ends, topk)
+
+    assert actual_indices.shape == (batch_size, topk)
+    assert actual_indices.dtype == torch.int32
+    assert_set_similar(actual_indices, ref_indices, dtype)
 
 
 @pytest.mark.skip(
