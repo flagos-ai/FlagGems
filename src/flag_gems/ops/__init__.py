@@ -104,6 +104,7 @@ from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
+from flag_gems.ops.expm1_ import expm1_
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
@@ -424,6 +425,7 @@ __all__ = [
     "exp_out",
     "exp2",
     "exp2_",
+    "expm1_",
     "exponential_",
     "eye",
     "eye_m",

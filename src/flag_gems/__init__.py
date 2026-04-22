@@ -179,6 +179,7 @@ _FULL_CONFIG = (
     ("exp.out", exp_out),
     ("exp2", exp2),
     ("exp2_", exp2_),
+    ("expm1_", expm1_),
     ("exponential_", exponential_),
     ("eye", eye),
     ("eye.m", eye_m),

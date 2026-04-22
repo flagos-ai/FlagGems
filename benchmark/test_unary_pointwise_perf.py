@@ -122,6 +122,7 @@ forward_inplace_operations = [
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
+    ("expm1_", torch.expm1_, FLOAT_DTYPES),
     ("neg_", torch.neg_, FLOAT_DTYPES),
     ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
     ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
