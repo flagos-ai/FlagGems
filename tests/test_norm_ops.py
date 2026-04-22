@@ -1,5 +1,4 @@
 import math
-import os
 
 import numpy as np
 import pytest
@@ -37,7 +36,7 @@ KEEPDIM_DIMS = (
 )
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
+def test_group_norm(N, C, H, W, num_groups, dtype, wb_none):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -67,7 +66,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.group_norm
+@pytest.mark.group_norm_backward
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
@@ -82,7 +81,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 )
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
+def test_group_norm_backward(N, C, H, W, num_groups, dtype, wb_none):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -164,7 +163,7 @@ def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
 )
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_layernorm(shape, dtype, wb_none):
+def test_layer_norm(shape, dtype, wb_none):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -201,7 +200,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.layer_norm
+@pytest.mark.layer_norm_backward
 @pytest.mark.parametrize(
     "shape",
     (
@@ -218,13 +217,13 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 )
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_layernorm_backward(shape, dtype, wb_none):
+def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
     if flag_gems.vendor_name == "mthreads":
         # Compatible with older versions of LLVM
-        os.environ["DISABLE_LLVM_OPT"] = "1"
+        monkeypatch.env("DISABLE_LLVM_OPT", "1")
 
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_grad = torch.randn_like(res_inp)
@@ -283,10 +282,6 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
         gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=shape[0])
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0])
 
-    if flag_gems.vendor_name == "mthreads":
-        # Compatible with older versions of LLVM
-        del os.environ["DISABLE_LLVM_OPT"]
-
 
 @pytest.mark.instance_norm
 @pytest.mark.parametrize(
@@ -314,7 +309,7 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
 @pytest.mark.parametrize("has_weight_bias", [True] if QUICK_MODE else [False, True])
 @pytest.mark.parametrize("use_input_stats", [True] if QUICK_MODE else [False, True])
 @pytest.mark.parametrize("has_running_stats", [False] if QUICK_MODE else [False, True])
-def test_accuracy_instancenorm(
+def test_instance_norm(
     shape, dtype, has_weight_bias, use_input_stats, has_running_stats
 ):
     if use_input_stats is False and has_running_stats is False:
@@ -412,7 +407,7 @@ WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -
 @pytest.mark.weight_norm
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_weightnorm(shape, dtype, dim):
+def test_weight_norm(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
@@ -454,10 +449,10 @@ WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
 )
 
 
-@pytest.mark.weight_norm
+@pytest.mark.weight_norm_interface
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_weightnorm_interface(shape, dtype, dim):
+def test_weight_norm_interface(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
@@ -479,10 +474,10 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
 @pytest.mark.skipif(
     True, reason="Temporarely skip for ci"
 )  # todo: improve backward precision
-@pytest.mark.weight_norm
+@pytest.mark.weight_norm_interface_backward
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_weightnorm_interface_backward(shape, dtype, dim):
+def test_weight_norm_interface_backward(shape, dtype, dim):
     dim = dim % len(shape)
     res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_v = torch.randn_like(res_w_grad)
@@ -516,7 +511,7 @@ def test_accuracy_weightnorm_interface_backward(shape, dtype, dim):
 @pytest.mark.rms_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rmsnorm(shape, dtype):
+def test_rms_norm(shape, dtype):
     N = shape[1]
     layer_shape = [
         N,
@@ -564,7 +559,7 @@ def test_accuracy_rmsnorm(shape, dtype):
 @pytest.mark.skip_layer_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_skip_layernorm(shape, dtype):
+def test_skip_layernorm(shape, dtype):
     N = shape[1]
     layer_shape = [
         N,
@@ -597,7 +592,7 @@ def test_accuracy_skip_layernorm(shape, dtype):
 @pytest.mark.fused_add_rms_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_fused_add_rms_norm(shape, dtype):
+def test_fused_add_rms_norm(shape, dtype):
     N = shape[1]
     layer_shape = [
         N,
@@ -667,7 +662,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
-def test_accuracy_batch_norm(shape, dtype, affine):
+def test_batch_norm(shape, dtype, affine):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(23)
         torch.mlu.manual_seed_all(23)
@@ -715,7 +710,7 @@ def test_accuracy_batch_norm(shape, dtype, affine):
     gems_assert_close(running_var, ref_running_var, dtype)
 
 
-@pytest.mark.batch_norm
+@pytest.mark.batch_norm_backward
 @pytest.mark.parametrize(
     "shape",
     [
@@ -728,7 +723,7 @@ def test_accuracy_batch_norm(shape, dtype, affine):
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
-def test_accuracy_batch_norm_backward(shape, dtype, affine):
+def test_batch_norm_backward(shape, dtype, affine):
     C = shape[1]
     res_grad = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     res_inp = torch.randn_like(res_grad)

@@ -437,11 +437,11 @@ def test_prod(shape, dtype):
 
 
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
-@pytest.mark.prod_dim
+@pytest.mark.prod_dim_int
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_prod_dim(shape, dim, keepdim, dtype):
+def test_prod_dim_int(shape, dim, keepdim, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
