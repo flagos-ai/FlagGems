@@ -47,6 +47,15 @@ jobs:
         op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
+      - name: Set global proxy
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+        run: |
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            echo "HTTP_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
+            echo "HTTPS_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
+          fi
       - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
@@ -64,8 +73,14 @@ jobs:
           bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
+        shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
-        shell: bash
+          RUNNER_LABEL: ${{ inputs.runner_label }}
         run: |
-          bash tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            export HTTP_PROXY="http://10.1.12.38:38002"
+            export HTTPS_PROXY="http://10.1.12.38:38002"
+          fi
+
+          tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
