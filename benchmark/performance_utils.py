@@ -298,18 +298,30 @@ class Benchmark:
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         elif Config.mode == BenchMode.KERNEL:
-            do_bench = (
-                triton.musa_testing.do_bench
-                if device == "musa"
-                else triton.testing.do_bench
-            )
-            latency = do_bench(
-                fn,
-                warmup=Config.warm_up,
-                rep=Config.repetition,
-                return_mode="median",
-                grad_to_none=xs if self.is_backward else None,
-            )
+            if Config.use_cudagraph:
+                do_bench = triton.testing.do_bench_cudagraph
+                for i in range(5):
+                    fn()
+                torch_device_fn.synchronize()
+                latency = do_bench(
+                    fn,
+                    rep=Config.repetition,
+                    return_mode="median",
+                    grad_to_none=xs if self.is_backward else None,
+                )
+            else:
+                do_bench = (
+                    triton.musa_testing.do_bench
+                    if device == "musa"
+                    else triton.testing.do_bench
+                )
+                latency = do_bench(
+                    fn,
+                    warmup=Config.warm_up,
+                    rep=Config.repetition,
+                    return_mode="median",
+                    grad_to_none=xs if self.is_backward else None,
+                )
         elif Config.mode == BenchMode.WRAPPER:
             for i in range(Config.warm_up):
                 fn()
