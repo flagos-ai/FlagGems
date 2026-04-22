@@ -2507,7 +2507,7 @@ def test_accuracy_lift_fresh_copy(shape, dtype):
 
 
 @pytest.mark.upsample_nearest_exact1d
-@pytest.mark.parametrize("shape", [(2, 3, 16), (4, 8, 64), (8, 16, 256)])
+@pytest.mark.parametrize("shape", [(8, 16, 256), (4, 8, 64), (2, 3, 16)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("factor", [2, 3])
 def test_accuracy__upsample_nearest_exact1d(shape, dtype, factor):
