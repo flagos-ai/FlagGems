@@ -6,7 +6,6 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.ops.mm import get_higher_dtype
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
@@ -70,9 +69,6 @@ def addmm_kernel(
             mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
             other=0.0,
         )
-        if a.dtype != b.dtype:
-            a = a.to(c_ptr.dtype.element_ty)
-            b = b.to(c_ptr.dtype.element_ty)
         accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
@@ -109,8 +105,7 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     )
     mat1 = mat1.contiguous()
     # mat2 = mat2.contiguous()
-    c_dtype = get_higher_dtype(mat1.dtype, mat2.dtype)
-    out = torch.empty((M, N), device=mat1.device, dtype=c_dtype)
+    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
@@ -148,8 +143,7 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     M, K = mat1.shape
     _, N = mat2.shape
     if out is None:
-        c_dtype = get_higher_dtype(mat1.dtype, mat2.dtype)
-        out = torch.empty((M, N), device=mat1.device, dtype=c_dtype)
+        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
     logger.debug(

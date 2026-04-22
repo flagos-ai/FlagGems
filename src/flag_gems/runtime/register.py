@@ -105,7 +105,7 @@ class Register:
 
     def get_vendor_unused_op(self):
         if self.device.vendor != common.vendors.NVIDIA:
-            return backend.get_curent_device_unused_op(self.device.vendor_name)
+            return backend.get_unused_ops(self.device.vendor_name)
         return []
 
     def register_impl(self, key, fn):
@@ -123,7 +123,11 @@ class Register:
                 )
             except Exception:
                 pass
-            self.lib.impl(key, fn, device_key, allow_override=True)
+            try:
+                self.lib.impl(key, fn, device_key, allow_override=True)
+            except TypeError:
+                # Older torch versions don't support allow_override
+                self.lib.impl(key, fn, device_key)
         else:
             self.lib.impl(key, fn, device_key)
 

@@ -41,7 +41,7 @@ jobs:
           echo "PR_ID: ${PR_ID}"
 
       - id: get-labels
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             // Determine if the event is a pull request
@@ -112,7 +112,8 @@ jobs:
       vendor: ascend
       runner_label: ascend
       gpu_check_script: tools/gpu_check_ascend.sh
-      test_script: tools/run_backend_tests_ascend.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -124,7 +125,8 @@ jobs:
       vendor: hygon
       runner_label: hygon
       gpu_check_script: tools/gpu_check_hygon.sh
-      test_script: tools/run_backend_tests_hygon.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -136,19 +138,23 @@ jobs:
       vendor: iluvatar
       runner_label: iluvatar
       gpu_check_script: tools/gpu_check_iluvatar.sh
-      test_script: tools/run_backend_tests_iluvatar.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
   backend-kunlunxin:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
+    # Skipping backend-kunlunxin because we don't have a backend runner
+    if: false
+    # if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: kunlunxin
       runner_label: kunlunxin
       gpu_check_script: tools/gpu_check_kunlunxin.sh
-      test_script: tools/run_backend_tests_kunlunxin.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -158,8 +164,10 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
-      runner_label: metax_CI
-      test_script: tools/run_backend_tests_metax.sh
+      runner_label: metax
+      gpu_check_script: tools/gpu_check_metax.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -171,7 +179,8 @@ jobs:
       vendor: mthreads
       runner_label: moore
       gpu_check_script: tools/gpu_check_mthreads.sh
-      test_script: tools/run_backend_tests_mthreads.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -183,7 +192,8 @@ jobs:
       vendor: nvidia
       runner_label: h20
       gpu_check_script: tools/gpu_check.sh
-      test_script: tools/run_backend_tests_nvidia.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -195,7 +205,8 @@ jobs:
       vendor: tsingmicro
       runner_label: tsingmicro
       gpu_check_script: tools/gpu_check_tsingmicro.sh
-      test_script: tools/run_backend_tests_tsingmicro.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
@@ -207,7 +218,8 @@ jobs:
       vendor: thead
       runner_label: thead
       gpu_check_script: tools/gpu_check_thead.sh
-      test_script: tools/run_backend_tests_thead.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
