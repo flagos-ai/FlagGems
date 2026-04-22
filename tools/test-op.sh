@@ -25,17 +25,18 @@ else
 fi
 
 # Test cases that needs to run quick cpu tests
-QUICK_CPU_TESTS=(
-  "tests/test_attention_ops.py"
-  "tests/test_binary_pointwise_ops.py"
-  "tests/test_blas_ops.py"
-  "tests/test_general_reduction_ops.py"
-  "tests/test_norm_ops.py"
+NO_QUICK_CPU_TESTS=(
+  "tests/ks_tests.py"
+  "tests/test_conv3d.py"
+  "tests/test_convolution_ops.py"
+  "tests/test_distribution_ops.py"
+  "tests/test_enable_api.py"
+  "tests/test_libentry.py"
   "tests/test_pointwise_type_promotion.py"
-  "tests/test_reduction_ops.py"
-  "tests/test_special_ops.py"
-  "tests/test_tensor_constructor_ops.py"
-  "tests/test_unary_pointwise_ops.py"
+  "tests/test_quant.py"
+  "tests/test_shape_utils.py"
+  "tests/test_tensor_wrapper.py"
+  "tests/test_vllm_ops.py"
 )
 
 # Extract test cases from CHANGED_FILES
@@ -53,13 +54,16 @@ for item in $CHANGED_FILES; do
   esac
 
   # filter out tests that do not need quick CPU mode tests
-  for item_cpu in "${QUICK_CPU_TESTS[@]}"; do
+  found=0
+  for item_cpu in "${NO_QUICK_CPU_TESTS[@]}"; do
     if [[ "$item" == "$item_cpu" ]]; then
-      TEST_CASES_CPU+=($item)
+      found=1
       break
     fi
   done
-
+  if (( $found == 0 )); then
+    TEST_CASES_CPU+=($item)
+  fi
 done
 
 # Skip tests if no tests file is found
@@ -77,7 +81,7 @@ coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES[@]}
 # Run quick-cpu test if necessary
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
+  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --quick
 fi
 
 # Process coverage data only when full-range testing
