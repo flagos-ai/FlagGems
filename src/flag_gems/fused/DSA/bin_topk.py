@@ -2,6 +2,13 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils.triton_version_utils import HAS_TLE
+
+if HAS_TLE:
+    import triton.experimental.tle.language as tle_gpu
+else:
+    tle_gpu = None
+
 
 @triton.jit
 def convert_to_uint16(x):
@@ -230,25 +237,336 @@ def kernel_bucket_sort_topk(  # grid(B, BS)
             sum += BSS
 
 
+if HAS_TLE:
+
+    @triton.jit
+    def tle_topk_selector_kernel(
+        x_ptr,
+        out_ptr,
+        starts_ptr,
+        ends_ptr,
+        stride_xm,
+        stride_xn,
+        stride_outm,
+        stride_outn,
+        seq_len,
+        RADIX: tl.constexpr,
+        HIST_SIZE: tl.constexpr,
+        ASSUME_ALIGNED: tl.constexpr,
+        TOPK: tl.constexpr,
+        BLOCK_SIZE: tl.constexpr,
+        N_TILES: tl.constexpr,
+        SMEM_INPUT: tl.constexpr,
+        NUM_INPUT_TILES: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        row_start = tl.load(starts_ptr + pid).to(tl.int32)
+        row_end = tl.load(ends_ptr + pid).to(tl.int32)
+
+        row_ptr = x_ptr + pid * stride_xm
+        out_row = out_ptr + pid * stride_outm
+
+        if ASSUME_ALIGNED:
+            tl.assume(row_start == 0)
+            tl.assume(row_end == seq_len)
+            tl.assume(stride_xn == 1)
+            tl.assume(stride_outn == 1)
+            seq_len = tl.multiple_of(seq_len, BLOCK_SIZE)
+
+        lane = tl.arange(0, BLOCK_SIZE)
+        ones = tl.full([BLOCK_SIZE], 1, tl.int32)
+
+        s_histogram = tle_gpu.gpu.alloc(
+            [HIST_SIZE],
+            dtype=tl.int32,
+            layout=None,
+            scope=tle_gpu.gpu.smem,
+            nv_mma_shared_layout=False,
+        )
+        s_num_input = tle_gpu.gpu.alloc(
+            [2],
+            dtype=tl.int32,
+            layout=None,
+            scope=tle_gpu.gpu.smem,
+            nv_mma_shared_layout=False,
+        )
+        s_input_idx = tle_gpu.gpu.alloc(
+            [2, SMEM_INPUT],
+            dtype=tl.int32,
+            layout=None,
+            scope=tle_gpu.gpu.smem,
+            nv_mma_shared_layout=False,
+        )
+
+        hist_idx = tl.arange(0, RADIX)
+        hist_last = tl.full([1], RADIX, tl.int32)
+
+        hist_ptrs = tle_gpu.gpu.local_ptr(s_histogram, (hist_idx,))
+        hist_last_ptrs = tle_gpu.gpu.local_ptr(s_histogram, (hist_last,))
+        tl.store(hist_ptrs, 0)
+        tl.store(hist_last_ptrs, 0)
+        tl.store(tle_gpu.gpu.local_ptr(s_num_input, (tl.arange(0, 2),)), 0)
+        tl.debug_barrier()
+
+        l_new_topk = tl.full((), TOPK, tl.int32)
+
+        # Stage 1: coarse 8-bit histogram with uint16 conversion
+        for t in tl.static_range(N_TILES):
+            offs = t * BLOCK_SIZE + lane
+            in_range = (offs < seq_len) & (offs >= row_start) & (offs < row_end)
+            x = tl.load(row_ptr + offs * stride_xn, mask=in_range, other=0.0)
+            bin_u16 = convert_to_uint16(x)
+            bin_i32 = bin_u16.to(tl.int32)
+            hist_bin_ptrs = tle_gpu.gpu.local_ptr(s_histogram, (bin_i32,))
+            tl.atomic_add(hist_bin_ptrs, ones, mask=in_range)
+
+        rev_idx = (RADIX - 1) - hist_idx
+        hist_rev = tl.load(tle_gpu.gpu.local_ptr(s_histogram, (rev_idx,)))
+        hist_cum_rev = tl.cumsum(hist_rev, axis=0)
+        tl.store(tle_gpu.gpu.local_ptr(s_histogram, (rev_idx,)), hist_cum_rev)
+        tl.debug_barrier()
+
+        hist_cum = tl.load(hist_ptrs)
+        hist_cum_next = tl.load(
+            tle_gpu.gpu.local_ptr(s_histogram, (hist_idx + 1,)),
+            mask=hist_idx + 1 < RADIX,
+            other=0,
+        )
+        cond = (hist_cum > l_new_topk) & (hist_cum_next <= l_new_topk)
+        cand = tl.where(cond, hist_idx.to(tl.int32), -1)
+        threshold = tl.max(cand, axis=0)
+        hist_next = tl.max(tl.where(hist_idx == threshold + 1, hist_cum, 0), axis=0)
+        l_new_topk = tl.maximum(l_new_topk - hist_next, 0)
+
+        num_ptrs = tle_gpu.gpu.local_ptr(
+            s_num_input, (tl.zeros([BLOCK_SIZE], tl.int32),)
+        )
+
+        # Compact: > threshold → direct output, == threshold → s_input_idx
+        for t in tl.static_range(N_TILES):
+            offs = t * BLOCK_SIZE + lane
+            in_range = (offs < seq_len) & (offs >= row_start) & (offs < row_end)
+            x = tl.load(row_ptr + offs * stride_xn, mask=in_range, other=0.0)
+            bin_u16 = convert_to_uint16(x)
+            bin_i32 = bin_u16.to(tl.int32)
+            gt_thr = bin_i32 > threshold
+            eq_thr = bin_i32 == threshold
+
+            pos = tl.atomic_add(
+                tle_gpu.gpu.local_ptr(s_histogram, (bin_i32 + 1,)),
+                ones,
+                mask=in_range & gt_thr,
+            )
+            pos = tl.where(in_range & gt_thr, pos, 0)
+            tl.store(
+                out_row + pos * stride_outn,
+                offs.to(tl.int32),
+                mask=in_range & gt_thr & (pos < TOPK),
+            )
+
+            pos_eq = tl.atomic_add(
+                num_ptrs, ones, mask=in_range & eq_thr & (l_new_topk > 0)
+            )
+            pos_eq = tl.where(in_range & eq_thr, pos_eq, 0)
+            tl.store(
+                tle_gpu.gpu.local_ptr(
+                    s_input_idx, (tl.zeros([BLOCK_SIZE], tl.int32), pos_eq)
+                ),
+                offs.to(tl.int32),
+                mask=in_range & eq_thr & (pos_eq < SMEM_INPUT) & (l_new_topk > 0),
+            )
+
+        # Stage 2: fine 32-bit refinement (4 rounds × 8 bits)
+        for round_id in tl.static_range(4):
+            r_idx = round_id & 1
+            next_idx = r_idx ^ 1
+            start_pos = TOPK - l_new_topk
+
+            tl.store(hist_ptrs, 0)
+            tl.store(hist_last_ptrs, 0)
+            num_ptrs_next = tle_gpu.gpu.local_ptr(
+                s_num_input, (tl.full([BLOCK_SIZE], next_idx, tl.int32),)
+            )
+            tl.store(num_ptrs_next, 0, mask=lane == 0)
+            tl.debug_barrier()
+
+            num_ptrs_r = tle_gpu.gpu.local_ptr(
+                s_num_input, (tl.full([BLOCK_SIZE], r_idx, tl.int32),)
+            )
+            l_num_input = tl.max(tl.load(num_ptrs_r), axis=0).to(tl.int32)
+            max_input = tl.full((), SMEM_INPUT, tl.int32)
+            l_num_input = tl.minimum(l_num_input, max_input)
+            active = l_new_topk > 0
+
+            shift = 24 - round_id * 8
+            for t in tl.static_range(NUM_INPUT_TILES):
+                offs = t * BLOCK_SIZE + lane
+                valid = offs < l_num_input
+                cand_idx = tl.load(
+                    tle_gpu.gpu.local_ptr(
+                        s_input_idx,
+                        (tl.full([BLOCK_SIZE], r_idx, tl.int32), offs),
+                    ),
+                    mask=valid,
+                    other=0,
+                )
+                x = tl.load(row_ptr + cand_idx * stride_xn, mask=valid, other=0.0)
+                bin_u32 = convert_to_uint32(x)
+                bin_i32 = ((bin_u32 >> shift) & 0xFF).to(tl.int32)
+                tl.atomic_add(
+                    tle_gpu.gpu.local_ptr(s_histogram, (bin_i32,)),
+                    ones,
+                    mask=valid & active,
+                )
+
+            rev_idx = (RADIX - 1) - hist_idx
+            hist_rev = tl.load(tle_gpu.gpu.local_ptr(s_histogram, (rev_idx,)))
+            hist_cum_rev = tl.cumsum(hist_rev, axis=0)
+            tl.store(tle_gpu.gpu.local_ptr(s_histogram, (rev_idx,)), hist_cum_rev)
+            tl.debug_barrier()
+
+            hist_cum = tl.load(hist_ptrs)
+            hist_cum_next = tl.load(
+                tle_gpu.gpu.local_ptr(s_histogram, (hist_idx + 1,)),
+                mask=hist_idx + 1 < RADIX,
+                other=0,
+            )
+            cond = (hist_cum > l_new_topk) & (hist_cum_next <= l_new_topk)
+            cand = tl.where(cond, hist_idx.to(tl.int32), -1)
+            threshold = tl.max(cand, axis=0)
+            hist_next = tl.max(tl.where(hist_idx == threshold + 1, hist_cum, 0), axis=0)
+            l_new_topk = tl.maximum(l_new_topk - hist_next, 0)
+
+            for t in tl.static_range(NUM_INPUT_TILES):
+                offs = t * BLOCK_SIZE + lane
+                valid = offs < l_num_input
+                cand_idx = tl.load(
+                    tle_gpu.gpu.local_ptr(
+                        s_input_idx,
+                        (tl.full([BLOCK_SIZE], r_idx, tl.int32), offs),
+                    ),
+                    mask=valid,
+                    other=0,
+                )
+                x = tl.load(row_ptr + cand_idx * stride_xn, mask=valid, other=0.0)
+                bin_u32 = convert_to_uint32(x)
+                bin_i32 = ((bin_u32 >> shift) & 0xFF).to(tl.int32)
+
+                gt_thr = bin_i32 > threshold
+                eq_thr = bin_i32 == threshold
+
+                pos = tl.atomic_add(
+                    tle_gpu.gpu.local_ptr(s_histogram, (bin_i32 + 1,)),
+                    ones,
+                    mask=valid & gt_thr & active,
+                )
+                pos = tl.where(valid & gt_thr & active, pos, 0)
+                out_pos = pos + start_pos
+                tl.store(
+                    out_row + out_pos * stride_outn,
+                    cand_idx,
+                    mask=valid & gt_thr & active & (out_pos < TOPK),
+                )
+
+                if round_id == 3:
+                    pos_eq = tl.atomic_add(
+                        tle_gpu.gpu.local_ptr(s_histogram, (bin_i32 + 1,)),
+                        ones,
+                        mask=valid & eq_thr & active & (l_new_topk > 0),
+                    )
+                    pos_eq = tl.where(valid & eq_thr & active, pos_eq, 0)
+                    out_pos = pos_eq + start_pos
+                    tl.store(
+                        out_row + out_pos * stride_outn,
+                        cand_idx,
+                        mask=valid
+                        & eq_thr
+                        & active
+                        & (out_pos < TOPK)
+                        & (l_new_topk > 0),
+                    )
+                else:
+                    num_ptrs = tle_gpu.gpu.local_ptr(
+                        s_num_input,
+                        (tl.full([BLOCK_SIZE], next_idx, tl.int32),),
+                    )
+                    pos_eq = tl.atomic_add(
+                        num_ptrs,
+                        ones,
+                        mask=valid & eq_thr & active & (l_new_topk > 0),
+                    )
+                    pos_eq = tl.where(valid & eq_thr & active, pos_eq, 0)
+                    tl.store(
+                        tle_gpu.gpu.local_ptr(
+                            s_input_idx,
+                            (
+                                tl.full([BLOCK_SIZE], next_idx, tl.int32),
+                                pos_eq,
+                            ),
+                        ),
+                        cand_idx,
+                        mask=valid
+                        & eq_thr
+                        & active
+                        & (pos_eq < SMEM_INPUT)
+                        & (l_new_topk > 0),
+                    )
+
+
 def bucket_sort_topk(inputs, starts, ends, topk):
     B, S = inputs.shape
     K = topk
     HISTOGRAM_SIZE = 256
     SMEM_INPUT_SIZE = 4096
     indices = torch.full((B, topk), -1, dtype=torch.int32, device=inputs.device)
-    s_input_idx = torch.zeros(
-        B, SMEM_INPUT_SIZE, dtype=torch.int32, device=inputs.device
-    )
-    grid = (B,)
-    kernel_bucket_sort_topk[grid](
-        inputs,
-        indices,
-        s_input_idx,
-        starts,
-        ends,
-        S,
-        K,
-        HISTOGRAM_SIZE,
-        SMEM_INPUT_SIZE,
-    )
+
+    if HAS_TLE and inputs.is_cuda:
+        block_size = 1024
+        n_tiles = triton.cdiv(S, block_size)
+        num_input_tiles = triton.cdiv(SMEM_INPUT_SIZE, block_size)
+        hist_size = HISTOGRAM_SIZE * 2
+        x = inputs.float() if inputs.dtype != torch.float32 else inputs
+        assume_aligned = (
+            x.is_contiguous()
+            and indices.is_contiguous()
+            and S % block_size == 0
+            and torch.all(starts == 0).item()
+            and torch.all(ends == S).item()
+        )
+        tle_topk_selector_kernel[(B,)](
+            x,
+            indices,
+            starts,
+            ends,
+            x.stride(0),
+            x.stride(1),
+            indices.stride(0),
+            indices.stride(1),
+            S,
+            RADIX=HISTOGRAM_SIZE,
+            HIST_SIZE=hist_size,
+            ASSUME_ALIGNED=assume_aligned,
+            TOPK=topk,
+            BLOCK_SIZE=block_size,
+            N_TILES=n_tiles,
+            SMEM_INPUT=SMEM_INPUT_SIZE,
+            NUM_INPUT_TILES=num_input_tiles,
+            num_warps=32,
+        )
+    else:
+        s_input_idx = torch.zeros(
+            B, SMEM_INPUT_SIZE, dtype=torch.int32, device=inputs.device
+        )
+        grid = (B,)
+        kernel_bucket_sort_topk[grid](
+            inputs,
+            indices,
+            s_input_idx,
+            starts,
+            ends,
+            S,
+            K,
+            HISTOGRAM_SIZE,
+            SMEM_INPUT_SIZE,
+        )
     return indices
