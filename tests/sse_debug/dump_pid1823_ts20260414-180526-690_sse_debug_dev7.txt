@@ -1,0 +1,43 @@
+ex_st     = 00000000	ex_mask   = 00000000
+wr_err_h  = 00000000	wr_err_l  = 00000000
+rd_err_h  = 00000000	rd_err_l  = 00000000
+--
+mode      = 00000001	dual_thr  = 00000fff	pover_en  = 00000001
+i_q_sz    = 00000100	i_p_sz    = 00001000
+user_q#   = 00000008	user_v#   = 00000100	user_mode = 00000001
+user_cl#  = 0000000c	user_sd#  = 0000000c	user_dma# = 00000008
+--
+cl_dis    = 00000000
+sd_dis    = 00000000
+dma_dis   = 00000000
+cl_stopi  = 00000000
+sd_stopi  = 00000000
+dma_stopi = 00000000
+cl_busy   = 00000000
+sdcl_busy = 00000000
+sdth_busy = 00000000
+dma_busy  = 00000000
+--
+cl_id  |0    |1    |2    |3    |4    |5    |6    |7    |8    |9    |10   |11   |
+ q_id  |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |
+sd_id  |0    |1    |2    |3    |4    |5    |6    |7    |8    |9    |10   |11   |
+ q_id  |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |
+dma_id |wr0  |rd0  |wr1  |rd1  |wr2  |rd2  |wr3  |rd3  |
+  q_id |0    |0    |0    |0    |0    |0    |0    |0    |
+--
+q_0 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 0
+q_1 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 0
+q_2 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 0
+q_3 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 0
+q_4 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 0
+q_5 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 0
+q_6 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 0
+q_7 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 0
+--
+--
+timer_seq= 00001e85   excp_work_seq= 00000000   excp_work_running= 0
+excp_board_v= 
+excp_board_q= 
+excp_board_cl= 
+excp_board_sd= 
+--

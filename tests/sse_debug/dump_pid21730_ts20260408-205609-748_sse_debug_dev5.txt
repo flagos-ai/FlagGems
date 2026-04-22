@@ -1,0 +1,67 @@
+ex_st     = 00000000	ex_mask   = 00000000
+wr_err_h  = 00000000	wr_err_l  = 00000000
+rd_err_h  = 00000000	rd_err_l  = 00000000
+--
+mode      = 00000001	dual_thr  = 00000fff	pover_en  = 00000001
+i_q_sz    = 00000100	i_p_sz    = 00001000
+user_q#   = 00000008	user_v#   = 00000100	user_mode = 00000001
+user_cl#  = 0000000c	user_sd#  = 0000000c	user_dma# = 00000008
+--
+cl_dis    = 00000000
+sd_dis    = 00000000
+dma_dis   = 00000000
+cl_stopi  = 00000000
+sd_stopi  = 00000000
+dma_stopi = 00000000
+cl_busy   = 000007e2(1|5|6|7|8|9|10)
+sdcl_busy = 00000000
+sdth_busy = 00000000
+dma_busy  = 00000000
+--
+cl_id  |0    |1    |2    |3    |4    |5    |6    |7    |8    |9    |10   |11   |
+ q_id  |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |
+sd_id  |0    |1    |2    |3    |4    |5    |6    |7    |8    |9    |10   |11   |
+ q_id  |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |
+dma_id |wr0  |rd0  |wr1  |rd1  |wr2  |rd2  |wr3  |rd3  |
+  q_id |0    |0    |0    |0    |0    |0    |0    |0    |
+--
+q_0 pending= 30 underway= 1  head_tk= 10056faa sess_cnt= 3
+q_1 pending= 0  underway= 0  head_tk= 092b4d54 sess_cnt= 3
+q_2 pending= 0  underway= 0  head_tk= 020050a9 sess_cnt= 3
+q_3 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 3
+q_4 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 3
+q_5 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 3
+q_6 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 3
+q_7 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 3
+--
+v_0 unfinished= 4  enq= b0 done= ac|ac fetch= b0 rec= 0000000005d4707a err= 00000000
+v_1 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000188404 err= 00000000
+v_2 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000001c9377 err= 00000000
+v_3 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_4 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_5 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_6 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_7 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_8 unfinished= 0  enq= d2 done= d2|d2 fetch= d2 rec= 0000000000b1df78 err= 00000000
+v_9 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000002b4d54 err= 00000000
+v_10 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_11 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_12 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_13 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_14 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_15 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_16 unfinished= 26 enq= c3 done= a9|a9 fetch= c3 rec= 0000000000056fa8 err= 00000000
+v_17 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_18 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_19 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_20 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_21 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_22 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_23 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+--
+timer_seq= 00009764   excp_work_seq= 0000000a   excp_work_running= 0
+excp_board_v= 
+excp_board_q= 
+excp_board_cl= 
+excp_board_sd= 
+--

@@ -431,11 +431,11 @@ def test_accuracy_sum_without_dim(shape, dtype):
 def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
-
+    #print("ref_inp=",ref_inp,"dim=",dim,"keepdim=",keepdim)
     ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
         res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
-
+    
     if isinstance(dim, int):
         dim = [dim]
     dim = [d % inp.ndim for d in dim]
@@ -444,6 +444,7 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
         _dim *= shape[d]
     if dim == []:
         _dim = inp.numel()
+    
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 

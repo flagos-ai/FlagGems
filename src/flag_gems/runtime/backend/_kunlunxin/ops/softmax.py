@@ -265,7 +265,9 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
     grad_output = grad_output.contiguous()
     output = output.contiguous()
-    in_grad = torch.empty_like(output, dtype=torch.float64)
+    in_grad = torch.empty_like(output)
+    if N==1:
+        return torch.zeros_like(output)
     K = output.numel() // M // N
 
     with torch_device_fn.device(in_grad.device):
@@ -280,7 +282,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
             # 分配输入梯度的视图
             in_grad_view = in_grad.view(M, N, K).transpose(1, 2).contiguous()
             in_grad_reshaped = in_grad_view.view(M * K, N)
-
+           # print("M=",M,"N=",N,"K=",K)
             grid = lambda meta: (12, 1, 1)
 
             # 调用 Triton 反向内核
@@ -308,7 +310,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 in_grad = in_grad_reshaped.view(m, k, n).transpose(1, 2)
         else:
             grid = lambda meta: (12, 1, 1)
-
+            #print("M=",M,"N=",N)
             softmax_backward_kernel_inner[grid](
                 output,
                 grad_output,

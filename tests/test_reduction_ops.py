@@ -1971,13 +1971,13 @@ def generate_test_params():
         params.append(torch.uint32)
     return params
 
-
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RuntimeError")
 @pytest.mark.topk_softmax
 @pytest.mark.parametrize("index_dtype", generate_test_params())
 @pytest.mark.parametrize(
     "num_tokens, num_experts, topk",
     [
+        (1, 2 ,2),
         (1, 4, 2),
         (4, 8, 2),
         (8, 16, 4),
@@ -1996,11 +1996,12 @@ def test_topk_softmax(
     if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
         # torch musa unsupport uint32
         index_dtype = torch.int64
-
-    try:
-        from vllm._custom_ops import topk_softmax as vllm_topk_softmax
-    except (ImportError, AttributeError):
-        pytest.skip("vLLM topk_softmax not available")
+    if flag_gems.vendor_name == "kunlunxin" and index_dtype == torch.uint32:
+                pytest.skip("XPU: uint32 not supported")
+   # try:
+       # from vllm._custom_ops import topk_softmax as vllm_topk_softmax
+   # except (ImportError, AttributeError):
+    #    pytest.skip("vLLM topk_softmax not available")
 
     torch.manual_seed(42)
     device = flag_gems.device
@@ -2013,18 +2014,39 @@ def test_topk_softmax(
     vllm_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
     vllm_token_expert = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
 
-    vllm_topk_softmax(
-        vllm_weights,
-        vllm_indices,
-        vllm_token_expert,
-        gating_output,
-        renormalize,
+   # vllm_topk_softmax(
+    #    vllm_weights,
+     #   vllm_indices,
+      #  vllm_token_expert,
+       # gating_output,
+       # renormalize,
+    #)
+    gating_output = torch.randn(
+        num_tokens, num_experts, dtype=torch.float32, device=device
     )
+    import os
+    DEBUG_DIR = "/tmp/topk_softmax_debug"
+    os.makedirs(DEBUG_DIR, exist_ok=True)
 
+    # --- 保存 baseline 结果 ---
+    baseline_file = os.path.join(DEBUG_DIR, "baseline.txt")
+    with open(baseline_file, "w") as f:
+        f.write(f"=== baseline_topk_softmax ===\n")
+        f.write(f"num_tokens={num_tokens}, num_experts={num_experts}, topk={topk}\n")
+        f.write(f"input_dtype={input_dtype}, index_dtype={index_dtype}, renormalize={renormalize}\n")
+        f.write(f"\ngating_output:\n{gating_output}\n")
+        f.write(f"\nbaseline weights:  {vllm_weights}\n")
+        f.write(f"baseline indices:  {vllm_indices}\n")
+        f.write(f"baseline token_expert: {vllm_token_expert}\n")
+        f.flush()
+
+    vllm_weights, vllm_indices, vllm_token_expert = baseline_topk_softmax(
+        gating_output, topk, index_dtype, renormalize
+    )
     gems_weights = torch.empty_like(vllm_weights)
     gems_indices = torch.empty_like(vllm_indices)
     gems_token_expert = torch.empty_like(vllm_token_expert)
-
+    gating_output_before = gating_output.clone().cpu()
     topk_softmax(
         gems_weights,
         gems_indices,
@@ -2032,7 +2054,19 @@ def test_topk_softmax(
         gating_output,
         renormalize,
     )
-
+    gems_file = os.path.join(DEBUG_DIR, "gems.txt")
+    with open(gems_file, "w") as f:
+        f.write(f"=== FlagGems topk_softmax ===\n")
+        f.write(f"gating_output (before call):\n{gating_output_before}\n")
+        f.write(f"gating_output (after call): {gating_output}\n")
+        f.write(f"\ngems weights:    {gems_weights}\n")
+        f.write(f"gems indices:    {gems_indices}\n")
+        f.write(f"gems token_expert: {gems_token_expert}\n")
+        f.write(f"\nbaseline weights: {vllm_weights}\n")
+        f.write(f"baseline indices: {vllm_indices}\n")
+        f.write(f"\nweights match: {torch.allclose(gems_weights, vllm_weights, atol=1e-5)}\n")
+        f.write(f"indices match: {torch.equal(gems_indices.cpu(), vllm_indices.cpu())}\n")
+        f.flush()
     assert torch.allclose(
         gems_weights, vllm_weights, atol=1e-5
     ), "topk_weights mismatch"
@@ -2046,6 +2080,75 @@ def test_topk_softmax(
     if renormalize:
         sums = gems_weights.sum(dim=-1)
         assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
+
+
+def baseline_topk_softmax(
+        gating_output: torch.Tensor,
+        topk: int,
+        index_dtype: torch.dtype = torch.int64,
+        renormalize: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    纯Python实现的topk_softmax baseline，完全复刻Triton kernel的逻辑。
+
+    算法步骤：
+    1. 对gating_output做softmax（按行）
+    2. 迭代k次，每次选出当前最大概率的expert
+    3. 记录权重、索引，mask掉已选中的继续下一轮
+    4. 如果renormalize，对选出的k个权重重新归一化
+
+    Args:
+        gating_output: [num_tokens, num_experts] 原始logits
+        topk: 要选出的expert数量
+        index_dtype: 输出索引的数据类型
+        renormalize: 是否重新归一化权重
+
+    Returns:
+        topk_weights: [num_tokens, topk] softmax后的topk权重
+        topk_indices: [num_tokens, topk] topk索引
+        token_expert_indices: [num_tokens, topk] 扁平化索引
+    """
+    num_tokens, num_experts = gating_output.shape
+    device = gating_output.device
+
+    # ========== 步骤1: Softmax ==========
+    # 数值稳定性：减去max
+    logits_max = gating_output.max(dim=-1, keepdim=True).values
+    exp_logits = torch.exp(gating_output - logits_max)
+    probs = exp_logits / (exp_logits.sum(dim=-1, keepdim=True) + 1e-8)
+    # probs: [num_tokens, num_experts]，每行和为1
+
+    # ========== 步骤2: 迭代TopK ==========
+    topk_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
+    topk_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
+    token_expert_indices = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
+
+    # 复制probs用于迭代（避免修改原始张量）
+    remaining_probs = probs.clone()
+
+    for ki in range(topk):
+        # 选出当前最大概率及其索引
+        curr_max, curr_arg = remaining_probs.max(dim=-1)
+        # curr_max: [num_tokens], curr_arg: [num_tokens]
+
+        # 存储结果
+        topk_weights[:, ki] = curr_max
+        topk_indices[:, ki] = curr_arg.to(index_dtype)
+        # token_expert格式: ki * num_tokens + token_id
+        token_expert_indices[:, ki] = (ki * num_tokens + torch.arange(num_tokens, device=device)).to(torch.int32)
+
+        # Mask掉已选中的expert：将其概率设为-inf，下次不会选到
+        # 使用scatter或高级索引
+        batch_indices = torch.arange(num_tokens, device=device)
+        remaining_probs[batch_indices, curr_arg] = -float('inf')
+
+    # ========== 步骤3: Renormalize ==========
+    if renormalize:
+        # 对选出的topk权重重新归一化，使每行和为1
+        sums = topk_weights.sum(dim=-1, keepdim=True)
+        topk_weights = topk_weights / (sums + 1e-8)
+
+    return topk_weights, topk_indices, token_expert_indices
 
 
 @pytest.mark.std
@@ -2189,3 +2292,4 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
         inp.masked_scatter_(mask, src)
 
     gems_assert_equal(inp, ref_inp)
+

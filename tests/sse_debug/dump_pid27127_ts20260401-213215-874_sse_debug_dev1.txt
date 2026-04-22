@@ -1,0 +1,171 @@
+ex_st     = 00000000	ex_mask   = 00000000
+wr_err_h  = 00000000	wr_err_l  = 00000000
+rd_err_h  = 00000000	rd_err_l  = 00000000
+--
+mode      = 00000001	dual_thr  = 00000fff	pover_en  = 00000001
+i_q_sz    = 00000100	i_p_sz    = 00001000
+user_q#   = 00000008	user_v#   = 00000100	user_mode = 00000001
+user_cl#  = 0000000c	user_sd#  = 0000000c	user_dma# = 00000008
+--
+cl_dis    = 00000000
+sd_dis    = 00000000
+dma_dis   = 00000000
+cl_stopi  = 00000000
+sd_stopi  = 00000000
+dma_stopi = 00000000
+cl_busy   = 00000800(11)
+sdcl_busy = 00000000
+sdth_busy = 00000000
+dma_busy  = 00000000
+--
+cl_id  |0    |1    |2    |3    |4    |5    |6    |7    |8    |9    |10   |11   |
+ q_id  |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |1    |
+sd_id  |0    |1    |2    |3    |4    |5    |6    |7    |8    |9    |10   |11   |
+ q_id  |2    |2    |2    |2    |2    |2    |2    |2    |2    |2    |2    |2    |
+dma_id |wr0  |rd0  |wr1  |rd1  |wr2  |rd2  |wr3  |rd3  |
+  q_id |0    |0    |0    |0    |0    |0    |0    |0    |
+--
+q_0 pending= 1  underway= 0  head_tk= 3800000b sess_cnt= 16
+q_1 pending= 3  underway= 1  head_tk= 39000008 sess_cnt= 16
+q_2 pending= 0  underway= 0  head_tk= 02001593 sess_cnt= 16
+q_3 pending= 0  underway= 0  head_tk= 03001338 sess_cnt= 16
+q_4 pending= 0  underway= 0  head_tk= 04001598 sess_cnt= 16
+q_5 pending= 0  underway= 0  head_tk= 05001576 sess_cnt= 16
+q_6 pending= 0  underway= 0  head_tk= 0600158e sess_cnt= 16
+q_7 pending= 0  underway= 0  head_tk= 07000f9b sess_cnt= 16
+--
+v_0 unfinished= 53 enq= 35 done= 0 |0  fetch= 0  rec= 0000000000ab28a7 err= 00000000
+v_1 unfinished= 197 enq= c5 done= 0 |0  fetch= 0  rec= 00000000057040ba err= 00000000
+v_2 unfinished= 30 enq= 1e done= 0 |0  fetch= 0  rec= 0000000003a71327 err= 00000000
+v_3 unfinished= 134 enq= 86 done= 0 |0  fetch= 0  rec= 00000000023c6696 err= 00000000
+v_4 unfinished= 75 enq= 4b done= 0 |0  fetch= 0  rec= 0000000000290030 err= 00000000
+v_5 unfinished= 62 enq= 3e done= 0 |0  fetch= 0  rec= 000000000359f059 err= 00000000
+v_6 unfinished= 110 enq= 6e done= 0 |0  fetch= 0  rec= 0000000001ed973b err= 00000000
+v_7 unfinished= 29 enq= 1d done= 0 |0  fetch= 0  rec= 0000000001581949 err= 00000000
+v_8 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000005ce5e2 err= 00000000
+v_9 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000005a459c err= 00000000
+v_10 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000038bf2b err= 00000000
+v_11 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000001c8f9c err= 00000000
+v_12 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000210c9 err= 00000000
+v_13 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000094b3b err= 00000000
+v_14 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000d3a2b err= 00000000
+v_15 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000c3632 err= 00000000
+v_16 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000b3aae err= 00000000
+v_17 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000484ea err= 00000000
+v_18 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000007cff5 err= 00000000
+v_19 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000087d5e err= 00000000
+v_20 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000076809 err= 00000000
+v_21 unfinished= 0  enq= 4  done= 4 |4  fetch= 4  rec= 000000000004a0cd err= 00000000
+v_22 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000048bcc err= 00000000
+v_23 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000484a3 err= 00000000
+v_24 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000004f2 err= 00000000
+v_25 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000b4c10 err= 00000000
+v_26 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000077c2b err= 00000000
+v_27 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000485b7 err= 00000000
+v_28 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000007ed err= 00000000
+v_29 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000b7ac9 err= 00000000
+v_30 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000075baa err= 00000000
+v_31 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000495dd err= 00000000
+v_32 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000fad err= 00000000
+v_33 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000b9707 err= 00000000
+v_34 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000007d214 err= 00000000
+v_35 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000004b73e err= 00000000
+v_36 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000205 err= 00000000
+v_37 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000abd6f err= 00000000
+v_38 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000008693a err= 00000000
+v_39 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000048596 err= 00000000
+v_40 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_41 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000ae834 err= 00000000
+v_42 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000006ee80 err= 00000000
+v_43 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000458ef err= 00000000
+v_44 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_45 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000ae55a err= 00000000
+v_46 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000007212f err= 00000000
+v_47 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000046083 err= 00000000
+v_48 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_49 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000a09d8 err= 00000000
+v_50 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000007971c err= 00000000
+v_51 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000042f4c err= 00000000
+v_52 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000400 err= 00000000
+v_53 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000070a87 err= 00000000
+v_54 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000524c6 err= 00000000
+v_55 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000002e2db err= 00000000
+v_56 unfinished= 1  enq= 7  done= 6 |6  fetch= 7  rec= 000000000000000c err= 00000000
+v_57 unfinished= 3  enq= 4  done= 1 |1  fetch= 4  rec= 0000000000000004 err= 00000000
+v_58 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000af7f4 err= 00000000
+v_59 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000a26e7 err= 00000000
+v_60 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000006e90c err= 00000000
+v_61 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000711e9 err= 00000000
+v_62 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000460cd err= 00000000
+v_63 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000042614 err= 00000000
+v_64 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000a3f64 err= 00000000
+v_65 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000043c777 err= 00000000
+v_66 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000002dbbcc err= 00000000
+v_67 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000002878f6 err= 00000000
+v_68 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000abc97 err= 00000000
+v_69 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000a6a50 err= 00000000
+v_70 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000a0e14 err= 00000000
+v_71 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000003ebe15 err= 00000000
+v_72 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000003c3a1f err= 00000000
+v_73 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000003ca028 err= 00000000
+v_74 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000029a674 err= 00000000
+v_75 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000002b1a29 err= 00000000
+v_76 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000002eea87 err= 00000000
+v_77 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000022eac4 err= 00000000
+v_78 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000001d872e err= 00000000
+v_79 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000001fc72a err= 00000000
+v_80 unfinished= 0  enq= 4  done= 4 |4  fetch= 4  rec= 00000000000987d7 err= 00000000
+v_81 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000078a5e err= 00000000
+v_82 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000046a89 err= 00000000
+v_83 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000045b80 err= 00000000
+v_84 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_85 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000a3a0a err= 00000000
+v_86 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000007da0e err= 00000000
+v_87 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000044895 err= 00000000
+v_88 unfinished= 0  enq= 4  done= 4 |4  fetch= 4  rec= 0000000000038350 err= 00000000
+v_89 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000321994 err= 00000000
+v_90 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000244223 err= 00000000
+v_91 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000001b0e6e err= 00000000
+v_92 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000005e6e4 err= 00000000
+v_93 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000002d1140 err= 00000000
+v_94 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000198f9d err= 00000000
+v_95 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000001d00f0 err= 00000000
+v_96 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000009cbd4 err= 00000000
+v_97 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000008fd98 err= 00000000
+v_98 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000006b46b err= 00000000
+v_99 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000006f530 err= 00000000
+v_100 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000084df3 err= 00000000
+v_101 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000414bf err= 00000000
+v_102 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000040005 err= 00000000
+v_103 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000003f5d0 err= 00000000
+v_104 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_105 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_106 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_107 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000003f8de err= 00000000
+v_108 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000486c9 err= 00000000
+v_109 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_110 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_111 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000a0c32 err= 00000000
+v_112 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000009b57c err= 00000000
+v_113 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000009de54 err= 00000000
+v_114 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_115 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000007168a err= 00000000
+v_116 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000009e900 err= 00000000
+v_117 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000b2f23 err= 00000000
+v_118 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000074c04 err= 00000000
+v_119 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000069885 err= 00000000
+v_120 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000077477 err= 00000000
+v_121 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000053616 err= 00000000
+v_122 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000302ce err= 00000000
+v_123 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000067264 err= 00000000
+v_124 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 00000000000791c7 err= 00000000
+v_125 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000004234f err= 00000000
+v_126 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000041d21 err= 00000000
+v_127 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 000000000003f288 err= 00000000
+--
+timer_seq= 00035c36   excp_work_seq= 0000000a   excp_work_running= 0
+excp_board_v= 
+excp_board_q= 
+excp_board_cl= 
+excp_board_sd= 
+--

@@ -1,0 +1,115 @@
+ex_st     = 00000000	ex_mask   = 00000000
+wr_err_h  = 00000000	wr_err_l  = 00000000
+rd_err_h  = 00000000	rd_err_l  = 00000000
+--
+mode      = 00000001	dual_thr  = 00000fff	pover_en  = 00000001
+i_q_sz    = 00000100	i_p_sz    = 00001000
+user_q#   = 00000008	user_v#   = 00000100	user_mode = 00000001
+user_cl#  = 0000000c	user_sd#  = 0000000c	user_dma# = 00000008
+--
+cl_dis    = 00000000
+sd_dis    = 00000000
+dma_dis   = 00000000
+cl_stopi  = 00000000
+sd_stopi  = 00000000
+dma_stopi = 00000000
+cl_busy   = 00000fff(0|1|2|3|4|5|6|7|8|9|10|11)
+sdcl_busy = 00000000
+sdth_busy = 00000000
+dma_busy  = 00000000
+--
+cl_id  |0    |1    |2    |3    |4    |5    |6    |7    |8    |9    |10   |11   |
+ q_id  |1    |1    |1    |1    |1    |1    |1    |1    |1    |1    |1    |1    |
+sd_id  |0    |1    |2    |3    |4    |5    |6    |7    |8    |9    |10   |11   |
+ q_id  |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |0    |
+dma_id |wr0  |rd0  |wr1  |rd1  |wr2  |rd2  |wr3  |rd3  |
+  q_id |0    |0    |0    |0    |0    |0    |0    |0    |
+--
+q_0 pending= 64 underway= 1  head_tk= 00765679 sess_cnt= 9
+q_1 pending= 13 underway= 1  head_tk= 01765673 sess_cnt= 9
+q_2 pending= 11 underway= 0  head_tk= 02765676 sess_cnt= 9
+q_3 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 9
+q_4 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 9
+q_5 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 9
+q_6 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 9
+q_7 pending= 0  underway= 0  head_tk= 00000000 sess_cnt= 9
+--
+v_0 unfinished= 255 enq= af done= b0|b0 fetch= f6 rec= 0000000000b4e101 err= 00000000
+v_1 unfinished= 44 enq= 71 done= 45|45 fetch= 53 rec= 00000000000ab38a err= 00000000
+v_2 unfinished= 46 enq= ac done= 7e|7e fetch= 8a rec= 00000000000c7a7e err= 00000000
+v_3 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_4 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_5 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_6 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_7 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_8 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_9 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_10 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_11 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_12 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_13 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_14 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_15 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_16 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_17 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_18 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_19 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_20 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_21 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_22 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_23 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_24 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_25 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_26 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_27 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_28 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_29 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_30 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_31 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_32 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_33 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_34 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_35 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_36 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_37 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_38 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_39 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_40 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_41 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_42 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_43 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_44 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_45 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_46 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_47 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_48 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_49 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_50 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_51 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_52 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_53 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_54 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_55 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_56 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_57 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_58 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_59 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_60 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_61 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_62 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_63 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_64 unfinished= 7  enq= 1a done= 13|13 fetch= 14 rec= 0000000000000010 err= 00000000
+v_65 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_66 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_67 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_68 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_69 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_70 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+v_71 unfinished= 0  enq= 0  done= 0 |0  fetch= 0  rec= 0000000000000000 err= 00000000
+--
+timer_seq= 00003259   excp_work_seq= 00000000   excp_work_running= 0
+excp_board_v= 
+excp_board_q= 
+excp_board_cl= 
+excp_board_sd= 
+--

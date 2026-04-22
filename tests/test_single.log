@@ -1,0 +1,132 @@
+XCCL /root/miniconda/envs/python310_torch25_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+============================= test session starts ==============================
+platform linux -- Python 3.10.15, pytest-9.0.2, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch25_cuda/bin/python
+cachedir: .pytest_cache
+metadata: {'Python': '3.10.15', 'Platform': 'Linux-5.10.0-1.0.0.35-x86_64-with-glibc2.31', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'html': '4.1.1', 'typeguard': '4.4.4', 'anyio': '4.9.0', 'metadata': '3.1.1', 'timeout': '2.3.1'}}
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: html-4.1.1, typeguard-4.4.4, anyio-4.9.0, metadata-3.1.1, timeout-2.3.1
+collecting ... collected 1 item
+
+test_reduction_ops.py::test_topk_softmax[False-input_dtype0-1-4-2-index_dtype0] === DEBUG PYTHON: topk_softmax called ===
+=== shape=torch.Size([1, 4]), topk=2, renormalize=False ===
+FAILED
+
+=================================== FAILURES ===================================
+___________ test_topk_softmax[False-input_dtype0-1-4-2-index_dtype0] ___________
+
+num_tokens = 1, num_experts = 4, topk = 2, input_dtype = torch.float32
+index_dtype = torch.int32, renormalize = False
+
+    @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RuntimeError")
+    @pytest.mark.topk_softmax
+    @pytest.mark.parametrize("index_dtype", generate_test_params())
+    @pytest.mark.parametrize(
+        "num_tokens, num_experts, topk",
+        [
+            (1, 4, 2),
+            (4, 8, 2),
+            (8, 16, 4),
+            (32, 64, 8),
+            (128, 128, 16),
+            (500, 255, 30),
+            (512, 256, 32),
+            (1024, 512, 32),
+        ],
+    )
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("renormalize", [False, True])
+    def test_topk_softmax(
+        num_tokens, num_experts, topk, input_dtype, index_dtype, renormalize
+    ):
+        if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
+            # torch musa unsupport uint32
+            index_dtype = torch.int64
+    
+       # try:
+           # from vllm._custom_ops import topk_softmax as vllm_topk_softmax
+       # except (ImportError, AttributeError):
+        #    pytest.skip("vLLM topk_softmax not available")
+    
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        gating_output = torch.randn(
+            num_tokens, num_experts, dtype=torch.float32, device=device
+        )
+    
+        vllm_weights = torch.empty(num_tokens, topk, device=device, dtype=torch.float32)
+        vllm_indices = torch.empty(num_tokens, topk, device=device, dtype=index_dtype)
+        vllm_token_expert = torch.empty(num_tokens, topk, device=device, dtype=torch.int32)
+    
+       # vllm_topk_softmax(
+        #    vllm_weights,
+         #   vllm_indices,
+          #  vllm_token_expert,
+           # gating_output,
+           # renormalize,
+        #)
+        gating_output = torch.randn(
+            num_tokens, num_experts, dtype=torch.float32, device=device
+        )
+        import os
+        DEBUG_DIR = "/tmp/topk_softmax_debug"
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+    
+        # --- 保存 baseline 结果 ---
+        baseline_file = os.path.join(DEBUG_DIR, "baseline.txt")
+        with open(baseline_file, "w") as f:
+            f.write(f"=== baseline_topk_softmax ===\n")
+            f.write(f"num_tokens={num_tokens}, num_experts={num_experts}, topk={topk}\n")
+            f.write(f"input_dtype={input_dtype}, index_dtype={index_dtype}, renormalize={renormalize}\n")
+            f.write(f"\ngating_output:\n{gating_output}\n")
+            f.write(f"\nbaseline weights:  {vllm_weights}\n")
+            f.write(f"baseline indices:  {vllm_indices}\n")
+            f.write(f"baseline token_expert: {vllm_token_expert}\n")
+            f.flush()
+    
+        vllm_weights, vllm_indices, vllm_token_expert = baseline_topk_softmax(
+            gating_output, topk, index_dtype, renormalize
+        )
+        gems_weights = torch.empty_like(vllm_weights)
+        gems_indices = torch.empty_like(vllm_indices)
+        gems_token_expert = torch.empty_like(vllm_token_expert)
+        gating_output_before = gating_output.clone().cpu()
+        topk_softmax(
+            gems_weights,
+            gems_indices,
+            gems_token_expert,
+            gating_output,
+            renormalize,
+        )
+        gems_file = os.path.join(DEBUG_DIR, "gems.txt")
+        with open(gems_file, "w") as f:
+            f.write(f"=== FlagGems topk_softmax ===\n")
+            f.write(f"gating_output (before call):\n{gating_output_before}\n")
+            f.write(f"gating_output (after call): {gating_output}\n")
+            f.write(f"\ngems weights:    {gems_weights}\n")
+            f.write(f"gems indices:    {gems_indices}\n")
+            f.write(f"gems token_expert: {gems_token_expert}\n")
+            f.write(f"\nbaseline weights: {vllm_weights}\n")
+            f.write(f"baseline indices: {vllm_indices}\n")
+            f.write(f"\nweights match: {torch.allclose(gems_weights, vllm_weights, atol=1e-5)}\n")
+            f.write(f"indices match: {torch.equal(gems_indices.cpu(), vllm_indices.cpu())}\n")
+            f.flush()
+>       assert torch.allclose(
+            gems_weights, vllm_weights, atol=1e-5
+        ), "topk_weights mismatch"
+E       AssertionError: topk_weights mismatch
+E       assert False
+E        +  where False = <built-in method allclose of type object at 0x7f10287051c0>(tensor([[0.3961, 0.1086]], device='cuda:0'), tensor([[0.4504, 0.3961]], device='cuda:0'), atol=1e-05)
+E        +    where <built-in method allclose of type object at 0x7f10287051c0> = torch.allclose
+
+test_reduction_ops.py:2069: AssertionError
+=========================== short test summary info ============================
+FAILED test_reduction_ops.py::test_topk_softmax[False-input_dtype0-1-4-2-index_dtype0] - AssertionError: topk_weights mismatch
+assert False
+ +  where False = <built-in method allclose of type object at 0x7f10287051c0>(tensor([[0.3961, 0.1086]], device='cuda:0'), tensor([[0.4504, 0.3961]], device='cuda:0'), atol=1e-05)
+ +    where <built-in method allclose of type object at 0x7f10287051c0> = torch.allclose
+============================== 1 failed in 0.92s ===============================
+XCCL /root/miniconda/envs/python310_torch25_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m

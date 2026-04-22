@@ -1,12 +1,13 @@
 import torch
 import triton
 import triton.language as tl
+import os
 
 
 @triton.jit
 def topk_gating_softmax_kernel(
     input_ptr,
-    finished_ptr,  # interface reserved, not yet used
+    #finished_ptr,  # interface reserved, not yet used
     output_ptr,
     indices_ptr,
     source_rows_ptr,
@@ -15,7 +16,8 @@ def topk_gating_softmax_kernel(
     num_experts,
     start_expert,
     end_expert,
-    INDEX_TY: tl.constexpr,
+    renormalize,  # index 10 ✅ 放在正确位置
+    INDEX_TY_VAL,
     BLOCK_SIZE_ROWS: tl.constexpr,
     BLOCK_SIZE_EXPERTS: tl.constexpr,
 ):
@@ -35,34 +37,62 @@ def topk_gating_softmax_kernel(
     row_max = tl.max(logits, axis=1)[:, None]
     exp_vals = tl.exp(logits - row_max)
     probs = exp_vals / (tl.sum(exp_vals, axis=1)[:, None] + 1e-8)
-
+    selected_sum = tl.zeros([BLOCK_SIZE_ROWS], dtype=tl.float32)
     for ki in range(k):
         curr_max = tl.max(probs, axis=1)
         curr_arg = tl.argmax(probs, axis=1) + start_expert
 
         tl.store(output_ptr + rows * k + ki, curr_max, mask=valid_rows)
-        tl.store(indices_ptr + rows * k + ki, curr_arg.to(INDEX_TY), mask=valid_rows)
+        tl.store(indices_ptr + rows * k + ki, curr_arg.to(tl.int32), mask=valid_rows)
         tl.store(
             source_rows_ptr + rows * k + ki,
             (ki * num_rows + rows).to(tl.int32),
             mask=valid_rows,
         )
+        if renormalize:
+            selected_sum += curr_max
 
         probs = tl.where(
             cols[None, :] == (curr_arg[:, None] - start_expert), -float("inf"), probs
         )
-
+    if renormalize:
+        norm = selected_sum + 1e-8
+        for ki in range(k):
+            idx = rows * k + ki
+            val = tl.load(output_ptr + idx, mask=valid_rows)
+            tl.store(output_ptr + idx, val / norm, mask=valid_rows)
 
 def topk_softmax(
     topk_weights: torch.Tensor,
     topk_indices: torch.Tensor,
     token_expert_indices: torch.Tensor,
     gating_output: torch.Tensor,
+    renormalize: bool = False,
 ) -> None:
+    print("=== DEBUG PYTHON: topk_softmax called ===")  # 加这一行
+    print(f"=== shape={gating_output.shape}, topk={topk_weights.size(-1)}, renormalize={renormalize} ===")  # 加这一行
+            
     num_tokens, num_experts = gating_output.shape
     topk = topk_weights.size(-1)
     assert topk <= 32
-
+     # ====== 调试日志开始 ======
+    DEBUG_DIR = "/tmp/topk_softmax_debug"
+    os.makedirs(DEBUG_DIR, exist_ok=True)
+    debug_file = os.path.join(DEBUG_DIR, "python_op.txt")
+    with open(debug_file, "w") as f:
+        f.write(f"=== Python topk_softmax called ===\n")
+        f.write(f"gating_output shape: {gating_output.shape}, dtype: {gating_output.dtype}\n")
+        f.write(f"gating_output data:\n{gating_output.cpu()}\n")
+        f.write(f"topk_weights shape: {topk_weights.shape}, dtype: {topk_weights.dtype}\n")
+        f.write(f"topk_indices shape: {topk_indices.shape}, dtype: {topk_indices.dtype}\n")
+        f.write(f"token_expert shape: {token_expert_indices.shape}, dtype: {token_expert_indices.dtype}\n")
+        f.write(f"topk: {topk}, renormalize: {renormalize}\n")
+        f.write(f"\n--- Before kernel call ---\n")
+        f.write(f"gating_output ptr: {gating_output.data_ptr()}\n")
+        f.write(f"topk_weights ptr: {topk_weights.data_ptr()}\n")
+        f.write(f"topk_indices ptr: {topk_indices.data_ptr()}\n")
+        f.write(f"token_expert ptr: {token_expert_indices.data_ptr()}\n")
+        f.flush()
     if topk_indices.dtype == torch.int32:
         index_ty = tl.int32
     # elif topk_indices.dtype == torch.uint32:
@@ -79,10 +109,25 @@ def topk_softmax(
     BLOCK_SIZE_ROWS = max(BLOCK_SIZE_ROWS, 1)
 
     grid = (triton.cdiv(num_tokens, BLOCK_SIZE_ROWS),)
+    index_ty_val = 0 if topk_indices.dtype == torch.int32 else 1
+    # ====== 记录 kernel 启动参数 ======
+    with open(debug_file, "a") as f:
+        f.write(f"\n--- Kernel launch params ---\n")
+        f.write(f"grid: {grid}\n")
+        f.write(f"BLOCK_SIZE_ROWS: {BLOCK_SIZE_ROWS}, BLOCK_SIZE_EXPERTS: {BLOCK_SIZE_EXPERTS}\n")
+        f.write(f"index_ty_val: {index_ty_val}\n")
+        f.write(f"num_tokens: {num_tokens}, num_experts: {num_experts}\n")
+        f.flush()
+    # 在 topk_softmax() 函数里，kernel 调用之前：
+    dtype_signal = f"/tmp/triton_dtype_{gating_output.data_ptr()}"
+    with open(dtype_signal, "w") as f:
+        f.write(str(index_ty_val))
+            # ... 调用 kernel ...os.remove(dtype_signal)  # 调用后删除
 
+    encoded_end = num_experts + index_ty_val * 10000
     topk_gating_softmax_kernel[grid](
         input_ptr=gating_output,
-        finished_ptr=None,
+     #   finished_ptr=None,
         output_ptr=topk_weights,
         indices_ptr=topk_indices,
         source_rows_ptr=token_expert_indices,
@@ -91,8 +136,11 @@ def topk_softmax(
         num_experts=num_experts,
         start_expert=0,
         end_expert=num_experts,
-        INDEX_TY=index_ty,
+        renormalize=renormalize,
+        INDEX_TY_VAL=index_ty_val,
         BLOCK_SIZE_ROWS=BLOCK_SIZE_ROWS,
         BLOCK_SIZE_EXPERTS=BLOCK_SIZE_EXPERTS,
         isCloseCoreTiling=True,
     )
+    os.remove(dtype_signal)
+

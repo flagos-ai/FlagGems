@@ -1,0 +1,1529 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.15, pytest-9.0.2, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch25_cuda/bin/python
+cachedir: .pytest_cache
+metadata: {'Python': '3.10.15', 'Platform': 'Linux-5.10.0-1.0.0.35-x86_64-with-glibc2.31', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'html': '4.1.1', 'typeguard': '4.4.4', 'anyio': '4.9.0', 'metadata': '3.1.1', 'timeout': '2.3.1'}}
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: html-4.1.1, typeguard-4.4.4, anyio-4.9.0, metadata-3.1.1, timeout-2.3.1
+collecting ... XDNN_COMMIT_775bba91c26721c6350a7e6a0d05e5c9ac43db95
+XDNN_VERSION_master-changed
+INFRA_COMMIT_7964c747704fd5e9e8cfc45dc080c576b77e7018
+XDNN_COMMIT_01ee14e4f9fa4bc5c613e2abab57cfcbeedc2ffd
+INIT CLUSTER_NUM = 12
+INIT SDNN_NUM = 12
+=== handler table has 20 entries, argmax_small_n=0x7f44415906b0, argmax_kernel_1=0x7f4441590a50 ===
+
+========================================
+=== [HANDLER] topk_gating_softmax_kernel ===
+  [DTYPE SIGNAL] file says index_ty=0 (param said 0)
+  renormalize=0, INDEX_TY_VAL=0
+  -> <float, int32_t>
+=== [KERNEL ENTRY] renorm=0 TID=i32 ===
+[PARSED] rows=1, k=2, experts=4, idx10=0, renorm=0
+INFRA_COMMIT_aa5ce8112aaf0b774b3b6181cea357411d8f8888
+XDNN_COMMIT_6532f37a577e0fd24dca1df1b3e7716983a8d7bd
+INIT CLUSTER_NUM = 12
+INIT SDNN_NUM = 12
+gtest_softmax<float>(api::kXPU3, "GM", "GM", {1, 4}, 1, 0);
+=== [KERNEL EXIT SUCCESS] ===
+=== [HANDLER EXIT] ret=0 ===
+
+xdnn_pytorch_isfinite(api::kXPU3, {{2}, {1}, kfloat32, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_isfinite<float>(api::kXPU3, "GM", "GM", 2, 0);
+xdnn_pytorch_ne_scalar(api::kXPU3, {{2}, {1}, kfloat32, "GM", Default, 0}, {kint64, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_ne_scalar<float>(api::kXPU3, "GM", 0, "GM", 2, 0);
+xdnn_pytorch_bitwise_and_tensor(api::kXPU3, {{2}, {1}, kbool, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_bitwise_and_tensor<bool>(api::kXPU3, "GM", "GM", "GM", {2}, {2}, 0);
+xdnn_pytorch_masked_select_count(api::kXPU3, {{2}, {1}, kfloat32, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0}, 0);
+    gtest_nonzero_count<bool, int64_t>(api::kXPU3, "GM", "GM", 2, "NULL", 0);
+xdnn_pytorch_masked_select(api::kXPU3, {{2}, {1}, kfloat32, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0}, {{0}, {1}, kfloat32, "NULL", Default, 0});
+xdnn_pytorch_isfinite(api::kXPU3, {{2}, {1}, kfloat32, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_isfinite<float>(api::kXPU3, "GM", "GM", 2, 0);
+xdnn_pytorch_ne_scalar(api::kXPU3, {{2}, {1}, kfloat32, "GM", Default, 0}, {kint64, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_ne_scalar<float>(api::kXPU3, "GM", 0, "GM", 2, 0);
+xdnn_pytorch_bitwise_and_tensor(api::kXPU3, {{2}, {1}, kbool, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_bitwise_and_tensor<bool>(api::kXPU3, "GM", "GM", "GM", {2}, {2}, 0);
+xdnn_pytorch_masked_select_count(api::kXPU3, {{2}, {1}, kfloat32, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0}, 0);
+    gtest_nonzero_count<bool, int64_t>(api::kXPU3, "GM", "GM", 2, "NULL", 0);
+xdnn_pytorch_masked_select(api::kXPU3, {{2}, {1}, kfloat32, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0}, {{0}, {1}, kfloat32, "NULL", Default, 0});
+=== DEBUG PYTHON: topk_softmax called ===
+=== shape=torch.Size([1, 4]), topk=2, renormalize=False ===
+indices raw: tensor([[3, 0]], device='cuda:0', dtype=torch.int32)
+indices reinterpret as float: tensor([[0., 0.]], device='cuda:0')
+token_expert raw: tensor([[0, 1]], device='cuda:0', dtype=torch.int32)
+token_expert reinterpret as float: tensor([[0., 0.]], device='cuda:0')
+collected 22994 items / 22868 deselected / 126 selected
+
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-0-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {42});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 2, 42, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 0, true, {{1, 2}, {2, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 0, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 2}, {2, 1}, kint64, "GM", Default, 0}, {{1, 2}, {2, 1}, kint64, "GM", Default, 0}, {{1, 2}, {2, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 2}, {1, 2}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 2}, {2, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 2, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-0-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {46});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1048576, 46, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 0, true, {{1, 256}, {256, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 4096, 256}, 1, 0);
+    [XDNN_MEM_DEMAND_INFO]: Max Memory Demand(Byte), 12288
+    [XDNN_MEM_DEMAND_INFO]: Max Memory Demand(Byte), 24576
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 256}, {256, 1}, kint64, "GM", Default, 0}, {{1, 256}, {256, 1}, kint64, "GM", Default, 0}, {{1, 256}, {256, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 256}, {1, 256}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 256}, {256, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 256, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-0-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {1048622});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1536000, 1048622, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 0, true, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 200, 7680}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0}, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0}, {{1, 2560, 3}, {7680, 3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 2560, 3}, {1, 2560, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 2560, 3}, {7680, 3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 7680, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-0-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-0-shape4] xdnn_pytorch_argmax(api::kXPU3, {{3, 0, 4}, {4, 4, 1}, kfloat16, "NULL", Default, 0}, 0, true, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0}, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0}, {{1, 0, 4}, {4, 4, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-0-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kfloat16, "NULL", Default, 0}, 0, true, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0}, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0}, {{1, 5, 0}, {5, 1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-0-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-1-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {2584622});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 2, 2584622, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 1, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 2, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-1-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {2584626});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1048576, 2584626, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 1, true, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 1, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0}, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0}, {{4096, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {4096, 1}, {4096, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{4096, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 4096, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-1-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {3633202});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1536000, 3633202, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 1, true, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+    [XDNN_MEM_DEMAND_INFO]: Max Memory Demand(Byte), 28800
+    [XDNN_MEM_DEMAND_INFO]: Max Memory Demand(Byte), 57600
+xdnn_pytorch_eq_tensor(api::kXPU3, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0}, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0}, {{200, 1, 3}, {3, 3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {200, 1, 3}, {200, 1, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{200, 1, 3}, {3, 3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 600, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-1-shape3] xdnn_pytorch_argmax(api::kXPU3, {{0, 5}, {5, 1}, kfloat16, "NULL", Default, 0}, 1, true, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0}, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0}, {{0, 1}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-1-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-1-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kfloat16, "NULL", Default, 0}, 1, true, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0}, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0}, {{2, 1, 0}, {1, 1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-1-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-None-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {5169202});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 2, 5169202, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, {}, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {2}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-None-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {5169206});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1048576, 5169206, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, {}, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1048576}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 1048576}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-None-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {6217782});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1536000, 6217782, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, {}, true, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1536000}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 1536000}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0}, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0}, {{1, 1, 1}, {1, 1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1, 1}, {1, 1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_cast(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kbool, "GM", Default, 0}, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0});
+    gtest_cast<bool, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_sum(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0}, {kbool}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_aten_sum<int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_sub_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {kint64, 1}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_sub_tensor<int64_t, int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 1, 0);
+xdnn_pytorch_abs(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+xdnn_pytorch_index_put(api::kXPU3, {{1}, {1}, kint64, "GM_0", Default, 0}, {{{1}, {1}, kbool, "GM", Default, 0}}, {{}, {}, kint64, "INVALID", Default, 0}, false, {{1}, {1}, kint64, "GM_0", Default, 0});
+    xdnn_pytorch_masked_select_update(api::kXPU3, {{1}, {1}, kint64, "GM_0", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, 0, false, {{1}, {1}, kint64, "GM_0", Default, 0});
+        gtest_copy<int64_t>(api::kXPU3, "GM_0", "GM_0", 1);
+xdnn_pytorch_max_dim(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, 0, false, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_cast<int64_t, int>(api::kXPU3, "GM", "GM", 1, 0);
+    gtest_transpose<int>(api::kXPU3, "GM", "GM", {1}, {0}, 0);
+        gtest_cast<float, float>(api::kXPU3, "GM", "GM", 1, 0);
+            gtest_copy<int8_t>(api::kXPU3, "GM", "GM", 4);
+    gtest_sorted_topk<int>(api::kXPU3, "GM", "GM", "GM", 1, 1, 1, true, 0, false);
+        gtest_topk<int, int>(api::kXPU3, "GM", "GM", "GM", {1, 1}, 1, 1, true, true, 0);
+    gtest_cast<int, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+    gtest_cast<int, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_abs(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+xdnn_pytorch_cast(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_cast<int64_t, float>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_cast(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_cast<int64_t, float>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_div_tensor(api::kXPU3, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_div_tensor<float>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_index_put(api::kXPU3, {{1}, {1}, kfloat32, "GM_0", Default, 0}, {{{1}, {1}, kbool, "GM", Default, 0}}, {{}, {}, kfloat32, "INVALID", Default, 0}, false, {{1}, {1}, kfloat32, "GM_0", Default, 0});
+    xdnn_pytorch_masked_select_update(api::kXPU3, {{1}, {1}, kfloat32, "GM_0", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0}, 0, false, {{1}, {1}, kfloat32, "GM_0", Default, 0});
+        gtest_copy<float>(api::kXPU3, "GM_0", "GM_0", 1);
+xdnn_pytorch_max_dim(api::kXPU3, {{1}, {1}, kfloat32, "GM", Default, 0}, 0, false, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_max_dim<float, int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, 0, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-None-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-None-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-None-shape5] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-True-None-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-0-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {7753782});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 2, 7753782, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 0, false, {{2}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 0, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2}, {1}, kint64, "GM", Default, 0}, {{2}, {1}, kint64, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {2}, {2}, 0);
+xdnn_pytorch_all(api::kXPU3, {{2}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 2, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-0-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {7753786});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1048576, 7753786, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 0, false, {{256}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 4096, 256}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{256}, {1}, kint64, "GM", Default, 0}, {{256}, {1}, kint64, "GM", Default, 0}, {{256}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {256}, {256}, 0);
+xdnn_pytorch_all(api::kXPU3, {{256}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 256, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-0-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {8802362});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1536000, 8802362, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 0, false, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 200, 7680}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0}, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0}, {{2560, 3}, {3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {2560, 3}, {2560, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{2560, 3}, {3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 7680, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-0-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-0-shape4] xdnn_pytorch_argmax(api::kXPU3, {{3, 0, 4}, {4, 4, 1}, kfloat16, "NULL", Default, 0}, 0, false, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0}, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0}, {{0, 4}, {4, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-0-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kfloat16, "NULL", Default, 0}, 0, false, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{5, 0}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-0-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-1-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {10338362});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 2, 10338362, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 1, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 2, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-1-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {10338366});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1048576, 10338366, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 1, false, {{4096}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 1, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{4096}, {1}, kint64, "GM", Default, 0}, {{4096}, {1}, kint64, "GM", Default, 0}, {{4096}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {4096}, {4096}, 0);
+xdnn_pytorch_all(api::kXPU3, {{4096}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 4096, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-1-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {11386942});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1536000, 11386942, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 1, false, {{200, 3}, {3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{200, 3}, {3, 1}, kint64, "GM", Default, 0}, {{200, 3}, {3, 1}, kint64, "GM", Default, 0}, {{200, 3}, {3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {200, 3}, {200, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{200, 3}, {3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 600, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-1-shape3] xdnn_pytorch_argmax(api::kXPU3, {{0, 5}, {5, 1}, kfloat16, "NULL", Default, 0}, 1, false, {{0}, {1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0}, {1}, kint64, "NULL", Default, 0}, {{0}, {1}, kint64, "NULL", Default, 0}, {{0}, {1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-1-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-1-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kfloat16, "NULL", Default, 0}, 1, false, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{2, 0}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-1-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {12922942});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 2, 12922942, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat16, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {2}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {12922946});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1048576, 12922946, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat16, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1048576}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 1048576}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, 0.000000, 1.000000, {13971522});
+    gtest_normal_<float16>(api::kXPU3, "GM", 0, 1, 1536000, 13971522, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat16, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1536000}, 0, 0);
+gtest_argmax<float16, int64_t>(api::kXPU3, "GM", "GM", {1, 1536000}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape5] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-0-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {15507522});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 2, 15507522, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 0, true, {{1, 2}, {2, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 0, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 2}, {2, 1}, kint64, "GM", Default, 0}, {{1, 2}, {2, 1}, kint64, "GM", Default, 0}, {{1, 2}, {2, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 2}, {1, 2}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 2}, {2, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 2, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-0-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {15507526});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1048576, 15507526, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 0, true, {{1, 256}, {256, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 4096, 256}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 256}, {256, 1}, kint64, "GM", Default, 0}, {{1, 256}, {256, 1}, kint64, "GM", Default, 0}, {{1, 256}, {256, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 256}, {1, 256}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 256}, {256, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 256, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-0-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {16556102});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1536000, 16556102, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 0, true, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 200, 7680}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0}, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0}, {{1, 2560, 3}, {7680, 3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 2560, 3}, {1, 2560, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 2560, 3}, {7680, 3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 7680, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-0-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-0-shape4] xdnn_pytorch_argmax(api::kXPU3, {{3, 0, 4}, {4, 4, 1}, kfloat32, "NULL", Default, 0}, 0, true, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0}, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0}, {{1, 0, 4}, {4, 4, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-0-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kfloat32, "NULL", Default, 0}, 0, true, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0}, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0}, {{1, 5, 0}, {5, 1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-0-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-1-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {18092102});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 2, 18092102, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 1, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 2, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-1-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {18092106});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1048576, 18092106, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 1, true, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 1, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {4096, 256, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0}, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0}, {{4096, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {4096, 1}, {4096, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{4096, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 4096, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-1-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {19140682});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1536000, 19140682, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 1, true, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0}, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0}, {{200, 1, 3}, {3, 3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {200, 1, 3}, {200, 1, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{200, 1, 3}, {3, 3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 600, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-1-shape3] xdnn_pytorch_argmax(api::kXPU3, {{0, 5}, {5, 1}, kfloat32, "NULL", Default, 0}, 1, true, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0}, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0}, {{0, 1}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-1-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-1-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kfloat32, "NULL", Default, 0}, 1, true, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0}, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0}, {{2, 1, 0}, {1, 1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-1-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-None-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {20676682});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 2, 20676682, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, {}, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {2}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-None-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {20676686});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1048576, 20676686, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, {}, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1048576}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 1048576}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-None-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {21725262});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1536000, 21725262, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, {}, true, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1536000}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 1536000}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0}, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0}, {{1, 1, 1}, {1, 1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1, 1}, {1, 1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_cast(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kbool, "GM", Default, 0}, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0});
+    gtest_cast<bool, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_sum(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0}, {kbool}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_aten_sum<int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_sub_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {kint64, 1}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_sub_tensor<int64_t, int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 1, 0);
+xdnn_pytorch_abs(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+xdnn_pytorch_index_put(api::kXPU3, {{1}, {1}, kint64, "GM_0", Default, 0}, {{{1}, {1}, kbool, "GM", Default, 0}}, {{}, {}, kint64, "INVALID", Default, 0}, false, {{1}, {1}, kint64, "GM_0", Default, 0});
+    xdnn_pytorch_masked_select_update(api::kXPU3, {{1}, {1}, kint64, "GM_0", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, 0, false, {{1}, {1}, kint64, "GM_0", Default, 0});
+        gtest_copy<int64_t>(api::kXPU3, "GM_0", "GM_0", 1);
+xdnn_pytorch_max_dim(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, 0, false, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_cast<int64_t, int>(api::kXPU3, "GM", "GM", 1, 0);
+    gtest_transpose<int>(api::kXPU3, "GM", "GM", {1}, {0}, 0);
+        gtest_cast<float, float>(api::kXPU3, "GM", "GM", 1, 0);
+            gtest_copy<int8_t>(api::kXPU3, "GM", "GM", 4);
+    gtest_sorted_topk<int>(api::kXPU3, "GM", "GM", "GM", 1, 1, 1, true, 0, false);
+        gtest_topk<int, int>(api::kXPU3, "GM", "GM", "GM", {1, 1}, 1, 1, true, true, 0);
+    gtest_cast<int, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+    gtest_cast<int, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_abs(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+xdnn_pytorch_cast(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_cast<int64_t, float>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_cast(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_cast<int64_t, float>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_div_tensor(api::kXPU3, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_div_tensor<float>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_index_put(api::kXPU3, {{1}, {1}, kfloat32, "GM_0", Default, 0}, {{{1}, {1}, kbool, "GM", Default, 0}}, {{}, {}, kfloat32, "INVALID", Default, 0}, false, {{1}, {1}, kfloat32, "GM_0", Default, 0});
+    xdnn_pytorch_masked_select_update(api::kXPU3, {{1}, {1}, kfloat32, "GM_0", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0}, 0, false, {{1}, {1}, kfloat32, "GM_0", Default, 0});
+        gtest_copy<float>(api::kXPU3, "GM_0", "GM_0", 1);
+xdnn_pytorch_max_dim(api::kXPU3, {{1}, {1}, kfloat32, "GM", Default, 0}, 0, false, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_max_dim<float, int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, 0, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-None-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-None-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-None-shape5] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-True-None-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-0-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {23261262});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 2, 23261262, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 0, false, {{2}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 0, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2}, {1}, kint64, "GM", Default, 0}, {{2}, {1}, kint64, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {2}, {2}, 0);
+xdnn_pytorch_all(api::kXPU3, {{2}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 2, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-0-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {23261266});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1048576, 23261266, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 0, false, {{256}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 4096, 256}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{256}, {1}, kint64, "GM", Default, 0}, {{256}, {1}, kint64, "GM", Default, 0}, {{256}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {256}, {256}, 0);
+xdnn_pytorch_all(api::kXPU3, {{256}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 256, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-0-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {24309842});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1536000, 24309842, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 0, false, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 200, 7680}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0}, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0}, {{2560, 3}, {3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {2560, 3}, {2560, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{2560, 3}, {3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 7680, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-0-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-0-shape4] xdnn_pytorch_argmax(api::kXPU3, {{3, 0, 4}, {4, 4, 1}, kfloat32, "NULL", Default, 0}, 0, false, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0}, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0}, {{0, 4}, {4, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-0-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kfloat32, "NULL", Default, 0}, 0, false, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{5, 0}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-0-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-1-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {25845842});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 2, 25845842, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 1, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 2, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-1-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {25845846});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1048576, 25845846, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 1, false, {{4096}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 1, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {4096, 256, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{4096}, {1}, kint64, "GM", Default, 0}, {{4096}, {1}, kint64, "GM", Default, 0}, {{4096}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {4096}, {4096}, 0);
+xdnn_pytorch_all(api::kXPU3, {{4096}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 4096, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-1-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {26894422});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1536000, 26894422, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 1, false, {{200, 3}, {3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{200, 3}, {3, 1}, kint64, "GM", Default, 0}, {{200, 3}, {3, 1}, kint64, "GM", Default, 0}, {{200, 3}, {3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {200, 3}, {200, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{200, 3}, {3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 600, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-1-shape3] xdnn_pytorch_argmax(api::kXPU3, {{0, 5}, {5, 1}, kfloat32, "NULL", Default, 0}, 1, false, {{0}, {1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0}, {1}, kint64, "NULL", Default, 0}, {{0}, {1}, kint64, "NULL", Default, 0}, {{0}, {1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-1-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-1-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kfloat32, "NULL", Default, 0}, 1, false, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{2, 0}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-1-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-None-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {28430422});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 2, 28430422, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kfloat32, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {2}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-None-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {28430426});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1048576, 28430426, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kfloat32, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1048576}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 1048576}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-None-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, 0.000000, 1.000000, {29479002});
+    gtest_normal_<float>(api::kXPU3, "GM", 0, 1, 1536000, 29479002, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kfloat32, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1536000}, 0, 0);
+gtest_argmax<float, int64_t>(api::kXPU3, "GM", "GM", {1, 1536000}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-None-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-None-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-None-shape5] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype1-False-None-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-0-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {31015002});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 2, 31015002, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 0, true, {{1, 2}, {2, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 0, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 2}, {2, 1}, kint64, "GM", Default, 0}, {{1, 2}, {2, 1}, kint64, "GM", Default, 0}, {{1, 2}, {2, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 2}, {1, 2}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 2}, {2, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 2, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-0-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {31015006});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1048576, 31015006, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 0, true, {{1, 256}, {256, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 4096, 256}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 256}, {256, 1}, kint64, "GM", Default, 0}, {{1, 256}, {256, 1}, kint64, "GM", Default, 0}, {{1, 256}, {256, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 256}, {1, 256}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 256}, {256, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 256, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-0-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {32063582});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1536000, 32063582, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 0, true, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 200, 7680}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0}, {{1, 2560, 3}, {7680, 3, 1}, kint64, "GM", Default, 0}, {{1, 2560, 3}, {7680, 3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 2560, 3}, {1, 2560, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 2560, 3}, {7680, 3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 7680, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-0-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-0-shape4] xdnn_pytorch_argmax(api::kXPU3, {{3, 0, 4}, {4, 4, 1}, kbfloat16, "NULL", Default, 0}, 0, true, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0}, {{1, 0, 4}, {4, 4, 1}, kint64, "NULL", Default, 0}, {{1, 0, 4}, {4, 4, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-0-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kbfloat16, "NULL", Default, 0}, 0, true, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0}, {{1, 5, 0}, {5, 1, 1}, kint64, "NULL", Default, 0}, {{1, 5, 0}, {5, 1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-0-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-1-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {33599582});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 2, 33599582, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 1, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 2, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-1-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {33599586});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1048576, 33599586, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 1, true, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 1, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0}, {{4096, 1}, {1, 1}, kint64, "GM", Default, 0}, {{4096, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {4096, 1}, {4096, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{4096, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 4096, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-1-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {34648162});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1536000, 34648162, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 1, true, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0}, {{200, 1, 3}, {3, 3, 1}, kint64, "GM", Default, 0}, {{200, 1, 3}, {3, 3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {200, 1, 3}, {200, 1, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{200, 1, 3}, {3, 3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 600, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-1-shape3] xdnn_pytorch_argmax(api::kXPU3, {{0, 5}, {5, 1}, kbfloat16, "NULL", Default, 0}, 1, true, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0}, {{0, 1}, {1, 1}, kint64, "NULL", Default, 0}, {{0, 1}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-1-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-1-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kbfloat16, "NULL", Default, 0}, 1, true, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0}, {{2, 1, 0}, {1, 1, 1}, kint64, "NULL", Default, 0}, {{2, 1, 0}, {1, 1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-1-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-None-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {36184162});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 2, 36184162, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, {}, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {2}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_cast(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_cast<bool, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_sum(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {kbool}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_aten_sum<int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_sub_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {kint64, 1}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_sub_tensor<int64_t, int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 1, 0);
+xdnn_pytorch_abs(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+xdnn_pytorch_index_put(api::kXPU3, {{1}, {1}, kint64, "GM_0", Default, 0}, {{{1}, {1}, kbool, "GM", Default, 0}}, {{}, {}, kint64, "INVALID", Default, 0}, false, {{1}, {1}, kint64, "GM_0", Default, 0});
+    xdnn_pytorch_masked_select_update(api::kXPU3, {{1}, {1}, kint64, "GM_0", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, 0, false, {{1}, {1}, kint64, "GM_0", Default, 0});
+        gtest_copy<int64_t>(api::kXPU3, "GM_0", "GM_0", 1);
+xdnn_pytorch_max_dim(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, 0, false, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_cast<int64_t, int>(api::kXPU3, "GM", "GM", 1, 0);
+    gtest_transpose<int>(api::kXPU3, "GM", "GM", {1}, {0}, 0);
+        gtest_cast<float, float>(api::kXPU3, "GM", "GM", 1, 0);
+            gtest_copy<int8_t>(api::kXPU3, "GM", "GM", 4);
+    gtest_sorted_topk<int>(api::kXPU3, "GM", "GM", "GM", 1, 1, 1, true, 0, false);
+        gtest_topk<int, int>(api::kXPU3, "GM", "GM", "GM", {1, 1}, 1, 1, true, true, 0);
+    gtest_cast<int, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+    gtest_cast<int, int64_t>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_abs(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+xdnn_pytorch_cast(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_cast<int64_t, float>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_cast(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_cast<int64_t, float>(api::kXPU3, "GM", "GM", 1, 0);
+xdnn_pytorch_div_tensor(api::kXPU3, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0});
+    gtest_div_tensor<float>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_index_put(api::kXPU3, {{1}, {1}, kfloat32, "GM_0", Default, 0}, {{{1}, {1}, kbool, "GM", Default, 0}}, {{}, {}, kfloat32, "INVALID", Default, 0}, false, {{1}, {1}, kfloat32, "GM_0", Default, 0});
+    xdnn_pytorch_masked_select_update(api::kXPU3, {{1}, {1}, kfloat32, "GM_0", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kfloat32, "GM", Default, 0}, 0, false, {{1}, {1}, kfloat32, "GM_0", Default, 0});
+        gtest_copy<float>(api::kXPU3, "GM_0", "GM_0", 1);
+xdnn_pytorch_max_dim(api::kXPU3, {{1}, {1}, kfloat32, "GM", Default, 0}, 0, false, {{1}, {1}, kfloat32, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_max_dim<float, int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, 0, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-None-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {36184166});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1048576, 36184166, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, {}, true, {{1, 1}, {1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1048576}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 1048576}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kint64, "GM", Default, 0}, {{1, 1}, {1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1}, {1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1}, {1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-None-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {37232742});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1536000, 37232742, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, {}, true, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1536000}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 1536000}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0}, {{1, 1, 1}, {1, 1, 1}, kint64, "GM", Default, 0}, {{1, 1, 1}, {1, 1, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1, 1, 1}, {1, 1, 1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1, 1, 1}, {1, 1, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-None-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-None-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-None-shape5] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-True-None-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-0-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {38768742});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 2, 38768742, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 0, false, {{2}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 0, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2}, {1}, kint64, "GM", Default, 0}, {{2}, {1}, kint64, "GM", Default, 0}, {{2}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {2}, {2}, 0);
+xdnn_pytorch_all(api::kXPU3, {{2}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 2, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-0-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {38768746});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1048576, 38768746, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 0, false, {{256}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 4096, 256}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{256}, {1}, kint64, "GM", Default, 0}, {{256}, {1}, kint64, "GM", Default, 0}, {{256}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {256}, {256}, 0);
+xdnn_pytorch_all(api::kXPU3, {{256}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 256, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-0-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {39817322});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1536000, 39817322, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 0, false, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 200, 7680}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0}, {{2560, 3}, {3, 1}, kint64, "GM", Default, 0}, {{2560, 3}, {3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {2560, 3}, {2560, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{2560, 3}, {3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 7680, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-0-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-0-shape4] xdnn_pytorch_argmax(api::kXPU3, {{3, 0, 4}, {4, 4, 1}, kbfloat16, "NULL", Default, 0}, 0, false, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0}, {{0, 4}, {4, 1}, kint64, "NULL", Default, 0}, {{0, 4}, {4, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-0-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kbfloat16, "NULL", Default, 0}, 0, false, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{5, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{5, 0}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-0-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-1-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {41353322});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 2, 41353322, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 1, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 2, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-1-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {41353326});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1048576, 41353326, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 1, false, {{4096}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256}, 1, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {4096, 256, 1}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{4096}, {1}, kint64, "GM", Default, 0}, {{4096}, {1}, kint64, "GM", Default, 0}, {{4096}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {4096}, {4096}, 0);
+xdnn_pytorch_all(api::kXPU3, {{4096}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 4096, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-1-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {42401902});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1536000, 42401902, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 1, false, {{200, 3}, {3, 1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {200, 2560, 3}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{200, 3}, {3, 1}, kint64, "GM", Default, 0}, {{200, 3}, {3, 1}, kint64, "GM", Default, 0}, {{200, 3}, {3, 1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {200, 3}, {200, 3}, 0);
+xdnn_pytorch_all(api::kXPU3, {{200, 3}, {3, 1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 600, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-1-shape3] xdnn_pytorch_argmax(api::kXPU3, {{0, 5}, {5, 1}, kbfloat16, "NULL", Default, 0}, 1, false, {{0}, {1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{0}, {1}, kint64, "NULL", Default, 0}, {{0}, {1}, kint64, "NULL", Default, 0}, {{0}, {1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-1-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-1-shape5] xdnn_pytorch_argmax(api::kXPU3, {{2, 5, 0}, {5, 1, 1}, kbfloat16, "NULL", Default, 0}, 1, false, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0});
+xdnn_pytorch_eq_tensor(api::kXPU3, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{2, 0}, {1, 1}, kint64, "NULL", Default, 0}, {{2, 0}, {1, 1}, kbool, "NULL", Default, 0});
+xdnn_pytorch_fill_scalar(api::kXPU3, {{1}, {1}, kbool, "GM_0", Default, 0}, {kint64, 1}, {{1}, {1}, kbool, "GM_0", Default, 0});
+    gtest_fill_scalar<bool>(api::kXPU3, "GM", 1, true, 0);
+PASSED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-1-shape6] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape0] xdnn_pytorch_normal_(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {43937902});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 2, 43937902, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{1, 2}, {2, 1}, kbfloat16, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {2}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 2}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape1] xdnn_pytorch_normal_(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {43937906});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1048576, 43937906, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{4096, 256}, {256, 1}, kbfloat16, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1048576}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 1048576}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape2] xdnn_pytorch_normal_(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, 0.000000, 1.000000, {44986482});
+    gtest_normal_<bfloat16>(api::kXPU3, "GM", 0, 1, 1536000, 44986482, 0, 0);
+xdnn_pytorch_argmax(api::kXPU3, {{200, 2560, 3}, {7680, 3, 1}, kbfloat16, "GM", Default, 0}, {}, false, {{1}, {1}, kint64, "GM", Default, 0});
+    gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1536000}, 0, 0);
+gtest_argmax<bfloat16, int64_t>(api::kXPU3, "GM", "GM", {1, 1536000}, 1, 0);
+xdnn_pytorch_eq_tensor(api::kXPU3, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kint64, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_eq_tensor<int64_t>(api::kXPU3, "GM", "GM", "GM", {1}, {1}, 0);
+xdnn_pytorch_all(api::kXPU3, {{1}, {1}, kbool, "GM", Default, 0}, {{1}, {1}, kbool, "GM", Default, 0});
+    gtest_all<bool, bool>(api::kXPU3, "GM", "GM", 1, 0);
+FAILED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape3] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape4] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape5] SKIPPED
+test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape6] SKIPPED
+
+=================================== FAILURES ===================================
+________________ test_accuracy_argmax[dtype0-True-None-shape2] _________________
+
+shape = (200, 2560, 3), dim = None, keepdim = True, dtype = torch.float16
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[1]]], device='cuda:0')
+ref = tensor([[[1298109]]], device='cuda:0'), equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Tensor-likes are not equal!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 1298108 at index (0, 0, 0)
+E       Greatest relative difference: 0.9999992251396179 at index (0, 0, 0)
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype0-False-None-shape0] ________________
+
+shape = (1, 2), dim = None, keepdim = False, dtype = torch.float16
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(205, device='cuda:0'), ref = tensor(1, device='cuda:0')
+equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 1 but got 205.
+E       Absolute difference: 204
+E       Relative difference: 204.0
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype0-False-None-shape1] ________________
+
+shape = (4096, 256), dim = None, keepdim = False, dtype = torch.float16
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(2347, device='cuda:0'), ref = tensor(499202, device='cuda:0')
+equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 499202 but got 2347.
+E       Absolute difference: 496855
+E       Relative difference: 0.9952984964002548
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype0-False-None-shape2] ________________
+
+shape = (200, 2560, 3), dim = None, keepdim = False, dtype = torch.float16
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(72340172838076673, device='cuda:0')
+ref = tensor(487079, device='cuda:0'), equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 487079 but got 72340172838076673.
+E       Absolute difference: 72340172837589594
+E       Relative difference: 148518357058.27924
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype1-True-None-shape2] _________________
+
+shape = (200, 2560, 3), dim = None, keepdim = True, dtype = torch.float32
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[234]]], device='cuda:0')
+ref = tensor([[[178328]]], device='cuda:0'), equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Tensor-likes are not equal!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 178094 at index (0, 0, 0)
+E       Greatest relative difference: 0.9986878037452698 at index (0, 0, 0)
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype1-False-None-shape2] ________________
+
+shape = (200, 2560, 3), dim = None, keepdim = False, dtype = torch.float32
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(2343, device='cuda:0'), ref = tensor(1136635, device='cuda:0')
+equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 1136635 but got 2343.
+E       Absolute difference: 1134292
+E       Relative difference: 0.9979386522498427
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype2-True-None-shape0] _________________
+
+shape = (1, 2), dim = None, keepdim = True, dtype = torch.bfloat16
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[599]], device='cuda:0'), ref = tensor([[1]], device='cuda:0')
+equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Tensor-likes are not equal!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 598 at index (0, 0)
+E       Greatest relative difference: 598.0 at index (0, 0)
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype2-False-None-shape0] ________________
+
+shape = (1, 2), dim = None, keepdim = False, dtype = torch.bfloat16
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(2157, device='cuda:0'), ref = tensor(0, device='cuda:0')
+equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 0 but got 2157.
+E       Absolute difference: 2157
+E       Relative difference: inf
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype2-False-None-shape1] ________________
+
+shape = (4096, 256), dim = None, keepdim = False, dtype = torch.bfloat16
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(498, device='cuda:0'), ref = tensor(477449, device='cuda:0')
+equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 477449 but got 498.
+E       Absolute difference: 476951
+E       Relative difference: 0.9989569566592453
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+________________ test_accuracy_argmax[dtype2-False-None-shape2] ________________
+
+shape = (200, 2560, 3), dim = None, keepdim = False, dtype = torch.bfloat16
+
+    @pytest.mark.argmax
+    @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + EMPTY_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST + [None])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_argmax(shape, dim, keepdim, dtype):
+        rank = len(shape)
+        is_empty_tensor = any(d == 0 for d in shape)
+    
+        if dim is not None:
+            if rank == 0 or dim >= rank or dim < -rank:
+                pytest.skip(f"Dimension {dim} is out of bounds for shape {shape}")
+    
+        if is_empty_tensor:
+            if dim is None:
+                pytest.skip(
+                    "PyTorch reference requires dim specification for empty tensor."
+                )
+    
+            dim_index = dim % rank
+            if shape[dim_index] == 0:
+                pytest.skip(
+                    f"PyTorch reference prohibits reduction on zero-sized dimension ({dim})."
+                )
+    
+        if is_empty_tensor:
+            inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = to_reference(inp)
+    
+        ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    
+>       gems_assert_equal(res_out, ref_out)
+
+test_reduction_ops.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:237: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(2478, device='cuda:0'), ref = tensor(967073, device='cuda:0')
+equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 967073 but got 2478.
+E       Absolute difference: 964595
+E       Relative difference: 0.9974376288036166
+
+../src/flag_gems/testing/__init__.py:77: AssertionError
+=============================== warnings summary ===============================
+test_binary_pointwise_ops.py:2053
+  /workspace/FlagGems/tests/test_binary_pointwise_ops.py:2053: UserWarning: AutoNonVariableTypeMode is deprecated and will be removed in 1.10 release. For kernel implementations please use AutoDispatchBelowADInplaceOrView instead, If you are looking for a user facing API to enable running your inference-only workload, please use c10::InferenceMode. Using AutoDispatchBelowADInplaceOrView in user code is under risk of producing silent wrong result in some edge cases. See Note [AutoDispatchBelowAutograd] for more details. (Triggered internally at /root/miniconda/envs/python310_torch25_cuda/lib/python3.10/site-packages/torch/include/ATen/core/LegacyTypeDispatch.h:79.)
+    torch.scalar_tensor(1024, device=flag_gems.device),
+
+tests/test_reduction_ops.py::test_accuracy_argmax[dtype0-True-0-shape0]
+  /root/miniconda/envs/python310_torch25_cuda/lib/python3.10/site-packages/torch/library.py:323: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+    Overriding a previously registered kernel for the same operator and the same dispatch key
+    operator: aten::_log_softmax(Tensor self, int dim, bool half_to_float) -> Tensor
+      registered at aten/src/ATen/RegisterSchema.cpp:6
+    dispatch key: CUDA
+    previous kernel: registered at aten/src/ATen/RegisterCPU.cpp:30476
+         new kernel: registered at /dev/null:125 (Triggered internally at ../aten/src/ATen/core/dispatch/OperatorEntry.cpp:155.)
+    self.m.impl(
+
+tests/test_reduction_ops.py: 17 warnings
+  /workspace/triton/python/triton/backends/xpu/compiler.py:231: UserWarning: XRE Version Must Be More than 5.0.21.37 (After 2025.07.22). And echo 1 > /proc/kunlun/dev4/dma_excp_mask
+    warnings.warn(f'XRE Version Must Be More than 5.0.21.37 (After 2025.07.22). And echo 1 > /proc/kunlun/dev4/dma_excp_mask', UserWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype0-True-None-shape2] - AssertionError: Tensor-likes are not equal!
+
+Mismatched elements: 1 / 1 (100.0%)
+Greatest absolute difference: 1298108 at index (0, 0, 0)
+Greatest relative difference: 0.9999992251396179 at index (0, 0, 0)
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape0] - AssertionError: Scalars are not equal!
+
+Expected 1 but got 205.
+Absolute difference: 204
+Relative difference: 204.0
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape1] - AssertionError: Scalars are not equal!
+
+Expected 499202 but got 2347.
+Absolute difference: 496855
+Relative difference: 0.9952984964002548
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype0-False-None-shape2] - AssertionError: Scalars are not equal!
+
+Expected 487079 but got 72340172838076673.
+Absolute difference: 72340172837589594
+Relative difference: 148518357058.27924
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype1-True-None-shape2] - AssertionError: Tensor-likes are not equal!
+
+Mismatched elements: 1 / 1 (100.0%)
+Greatest absolute difference: 178094 at index (0, 0, 0)
+Greatest relative difference: 0.9986878037452698 at index (0, 0, 0)
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype1-False-None-shape2] - AssertionError: Scalars are not equal!
+
+Expected 1136635 but got 2343.
+Absolute difference: 1134292
+Relative difference: 0.9979386522498427
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype2-True-None-shape0] - AssertionError: Tensor-likes are not equal!
+
+Mismatched elements: 1 / 1 (100.0%)
+Greatest absolute difference: 598 at index (0, 0)
+Greatest relative difference: 598.0 at index (0, 0)
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape0] - AssertionError: Scalars are not equal!
+
+Expected 0 but got 2157.
+Absolute difference: 2157
+Relative difference: inf
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape1] - AssertionError: Scalars are not equal!
+
+Expected 477449 but got 498.
+Absolute difference: 476951
+Relative difference: 0.9989569566592453
+FAILED test_reduction_ops.py::test_accuracy_argmax[dtype2-False-None-shape2] - AssertionError: Scalars are not equal!
+
+Expected 967073 but got 2478.
+Absolute difference: 964595
+Relative difference: 0.9974376288036166
+== 10 failed, 68 passed, 48 skipped, 22868 deselected, 19 warnings in 20.35s ===
