@@ -147,7 +147,7 @@ class MmSelfTransposeBenchmark(GenericBenchmark2DOnly):
 
     def get_tflops(self, op, *args, **kwargs):
         m, k = args[0].shape
-        return m * (m + 1) * k
+        return 2 * m * m * k
 
 
 def addmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
