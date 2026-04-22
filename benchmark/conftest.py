@@ -120,6 +120,13 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
+        "--use_cudagraph",
+        action="store_true",
+        default=False,
+        help="Enable CUDA Graph in Triton benchmark timing when supported.",
+    )
+
+    parser.addoption(
         "--metrics",
         action="append",
         default=None,
@@ -218,6 +225,8 @@ def pytest_configure(config):
 
     Config.query = config.getoption("--query")
 
+    Config.use_cudagraph = config.getoption("--use_cudagraph")
+
     level_value = config.getoption("--level")
     Config.bench_level = consts.BenchLevel(level_value)
 
@@ -268,6 +277,8 @@ def pytest_configure(config):
         recordLogger.addHandler(handler)
         recordLogger.setLevel(logging.INFO)
         emit_record_logger("Benchmark record logger enabled")
+
+    Config.use_cudagraph = config.getoption("--use_cudagraph")
 
 
 @pytest.fixture(scope="session", autouse=True)
