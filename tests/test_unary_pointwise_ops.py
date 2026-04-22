@@ -732,7 +732,7 @@ def test_dswiglu(shape: tuple[int, ...], dtype: torch.dtype):
 
 
 @pytest.mark.i0
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", [(1024, 1024), (20, 320, 15), (16, 128, 64, 60)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_i0(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)

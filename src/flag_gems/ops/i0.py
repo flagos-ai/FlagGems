@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +66,8 @@ def i0_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def _launch_i0(out: torch.Tensor, x: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Input and output must be CUDA tensors"
+    if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
+        raise ValueError(f"Input and output must be {flag_gems.device} tensors")
     assert (
         out.numel() == x.numel()
     ), "Input and output must have the same number of elements"
@@ -99,8 +102,8 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
 
 def i0(x: torch.Tensor):
     logger.debug("GEMS I0")
-    if not x.is_cuda:
-        raise ValueError("i0: input tensor must be on CUDA device")
+    if x.device.type != flag_gems.device:
+        raise ValueError(f"i0: input tensor must be on {flag_gems.device} device")
     # Result dtype follows PyTorch's floating type behavior
     out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
     out = torch.empty_like(x.to(dtype=out_dtype), dtype=out_dtype, device=x.device)
@@ -110,8 +113,10 @@ def i0(x: torch.Tensor):
 
 def i0_out(x: torch.Tensor, out: torch.Tensor):
     logger.debug("GEMS I0_OUT")
-    if not (x.is_cuda and out.is_cuda):
-        raise ValueError("i0_out: input and output tensors must be on CUDA device")
+    if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
+        raise ValueError(
+            f"i0_out: input and output tensors must be on {flag_gems.device} device"
+        )
     if not out.is_floating_point():
         raise TypeError("i0_out: output tensor must be a floating point type")
     if x.numel() != out.numel():
