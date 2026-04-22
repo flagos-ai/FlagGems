@@ -21,7 +21,7 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+    FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
 
 
 @pytest.mark.bmm
@@ -30,6 +30,8 @@ else:
 def test_bmm(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
 
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
@@ -62,6 +64,8 @@ def test_bmm(M, N, K, dtype):
 def test_bmm_non_contiguous(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
@@ -94,6 +98,8 @@ def test_bmm_non_contiguous(M, N, K, dtype):
 def test_bmm_out(M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skiping fp32 bmm test on tsingmicro platform")
+    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
 
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)

@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
+from .accuracy_utils import ALL_FLOAT_DTYPES as ORIG_ALL_FLOAT_DTYPES
 from .accuracy_utils import SCALARS, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
@@ -18,7 +18,7 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
-    FLOAT_DTYPES = ORIG_FLOAT_DTYPES
+    FLOAT_DTYPES = ORIG_ALL_FLOAT_DTYPES
 
 GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
 
@@ -37,6 +37,8 @@ FP8_MNK_SHAPES = [
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
+    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
     if flag_gems.vendor_name == "mthreads" and dtype in [torch.float16, torch.bfloat16]:
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
     batch = 4
@@ -60,6 +62,8 @@ def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm_backward(M, N, K, scalar, dtype):
+    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
     batch = 2
     mat1 = torch.randn(
         (batch, M, K), dtype=dtype, device=flag_gems.device, requires_grad=True

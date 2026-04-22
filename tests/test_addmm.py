@@ -17,7 +17,7 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+    FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
 
 
 @pytest.mark.addmm
@@ -28,6 +28,8 @@ else:
 def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skiping fp32 addmm test on tsingmicro platform")
+    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
 
     if flag_gems.vendor_name == "mthreads":
         monkeypatch.env("MUSA_ENABLE_SQMMA", "1")
@@ -67,6 +69,8 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
 def test_addmm_out(M, N, K, scalar, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skiping fp32 addmm_out test on tsingmicro platform")
+    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
 
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)

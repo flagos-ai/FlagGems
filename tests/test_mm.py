@@ -20,7 +20,8 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+    FLOAT_DTYPES = utils.ALL_FLOAT_DTYPES
+
 
 MK_SHAPES = (
     [(1, 32)]
@@ -44,7 +45,9 @@ MK_SHAPES = (
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_mm(M, N, K, dtype, b_column_major):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 mm test on tsingmicro platform")
+        pytest.skip("Skiping fp32 mm test on tsingmicro platform")
+    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
 
     torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
