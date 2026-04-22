@@ -225,6 +225,16 @@ def mse_loss_input_fn(shape, cur_dtype, device):
         yield inp, target, {"reduction": "none"}
 
 
+def smooth_l1_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        for reduction in ["mean", "sum", "none"]:
+            for beta in [1.0, 0.1, 0.0]:
+                yield inp, target, {"reduction": reduction, "beta": beta}
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [
@@ -283,6 +293,13 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             mse_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.mse_loss,
+        ),
+        pytest.param(
+            "smooth_l1_loss",
+            torch.nn.functional.smooth_l1_loss,
+            smooth_l1_loss_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.smooth_l1_loss,
         ),
     ],
 )

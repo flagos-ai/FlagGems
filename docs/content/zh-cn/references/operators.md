@@ -193,6 +193,7 @@ weight: 10
 - sin\_
 - skip_layer_norm
 - slice_scatter
+- smooth_l1_loss
 - softmax
 - softplus
 - sort

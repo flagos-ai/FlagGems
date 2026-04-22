@@ -2269,6 +2269,145 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
 
 
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("beta", [1.0, 0.1, 0.0])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss(shape, dtype, reduction, beta):
+    dim = 1
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction=reduction, beta=beta
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(
+            inp, target, reduction=reduction, beta=beta
+        )
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
+
+
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("beta", [1.0, 0.1, 0.0])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss_backward(shape, dtype, reduction, beta):
+    dim = 1
+    inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction=reduction, beta=beta
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(
+            inp, target, reduction=reduction, beta=beta
+        )
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+
+    gems_assert_close(
+        res_in_grad, ref_in_grad, dtype, equal_nan=True, reduce_dim=shape[dim]
+    )
+
+
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss_broadcast(dtype):
+    inp = torch.randn((16, 37), dtype=dtype, device=flag_gems.device)
+    target = torch.randn((37,), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction="none", beta=0.5
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(
+            inp, target, reduction="none", beta=0.5
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss_backward_broadcast(dtype):
+    inp = torch.randn(
+        (16, 37), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    target = torch.randn((37,), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction="none", beta=0.5
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(
+            inp, target, reduction="none", beta=0.5
+        )
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss_negative_beta(dtype):
+    inp = torch.randn((32, 16), dtype=dtype, device=flag_gems.device)
+    target = torch.randn((32, 16), dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        with pytest.raises(
+            RuntimeError, match="smooth_l1_loss does not support negative values for beta"
+        ):
+            torch.nn.functional.smooth_l1_loss(inp, target, beta=-0.5)
+
+
+@pytest.mark.smooth_l1_loss
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_smooth_l1_loss_empty_input(dtype, reduction):
+    inp = torch.empty((0,), dtype=dtype, device=flag_gems.device)
+    target = torch.empty((0,), dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+
+    ref_out = torch.nn.functional.smooth_l1_loss(
+        ref_inp, ref_target, reduction=reduction, beta=1.0
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.smooth_l1_loss(
+            inp, target, reduction=reduction, beta=1.0
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
 def generate_test_params():
     params = [torch.int32, torch.int64]
     if SkipVersion("torch", ">2.2"):
