@@ -4,24 +4,121 @@ import os
 import torch
 import triton
 import triton.language as tl
+import yaml
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-from .utils import create_tma_device_descriptor, should_enable_sqmma
+from .utils import (
+    create_tma_device_descriptor,
+    get_cached_tma_device_descriptor,
+    should_enable_sqmma,
+)
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
 )
 
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "bmm_mthreads_expand.yaml")
+)
+
+SQMMA_SWITCH = True
+
+def get_expand_config(op):
+    default_strategies = {
+        "bmm": ["default", "default", "default"],
+        "bmm_sqmma": ["default", "default", "default"],
+    }
+    op_key_orders = {
+        "bmm": ["M", "N", "K"],
+        "bmm_sqmma": ["M", "N", "K"],
+    }
+    op_meta_map = {
+        "bmm": {
+            "BM": "BLOCK_SIZE_M",
+            "BN": "BLOCK_SIZE_N",
+            "BK": "BLOCK_SIZE_K",
+        },
+        "bmm_sqmma": {
+            "BM": "BLOCK_SIZE_M",
+            "BN": "BLOCK_SIZE_N",
+            "BK": "BLOCK_SIZE_K",
+        },
+    }
+
+    if op not in default_strategies:
+        return -1
+
+    default_strategy = default_strategies[op]
+    if not os.path.exists(EXPAND_CONFIG_FILENAME):
+        return -1
+
+    try:
+        with open(EXPAND_CONFIG_FILENAME, "r") as file:
+            config = yaml.safe_load(file) or {}
+
+        expand_configs = config.get(op)
+        gen_config = None
+        strategy_config = None
+        for single_config in expand_configs:
+            if isinstance(single_config, dict) and "param_map" in single_config:
+                gen_config = single_config
+            if isinstance(single_config, dict) and "strategy" in single_config:
+                strategy_config = single_config.get("strategy")
+
+        param_map = gen_config["param_map"]
+        meta_map = param_map["META"]
+
+        strategy = default_strategy
+        if isinstance(strategy_config, dict):
+            strategy = [
+                strategy_config.get(k, default_strategy[idx])
+                for idx, k in enumerate(op_key_orders[op])
+            ]
+
+        ranges = {}
+        for range_key, meta_key in op_meta_map[op].items():
+            ranges[range_key] = gen_config[meta_map[meta_key]]
+        ranges["s"] = gen_config[param_map["num_stages"]]
+        ranges["w"] = gen_config[param_map["num_warps"]]
+
+        return {"ranges": ranges, "strategy": strategy}
+    except Exception:
+        return -1
+
+
+def bmm_get_configs():
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        expand_config = get_expand_config("bmm")
+        if expand_config != -1:
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {"BLOCK_SIZE_M": BM, "BLOCK_SIZE_N": BN, "BLOCK_SIZE_K": BK},
+                    num_stages=s,
+                    num_warps=w,
+                )
+                for BM in ranges["BM"]
+                for BN in ranges["BN"]
+                for BK in ranges["BK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+    return runtime.get_tuned_config("bmm")
+
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("bmm"),
+    configs=bmm_get_configs(),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
+    strategy=get_expand_config("bmm")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("bmm") != -1
+    else ["log", "log", "log"],
+    warmup=5,
+    rep=5,
 )
 @triton.heuristics(runtime.get_heuristic_config("bmm"))
 @triton.jit
@@ -141,11 +238,83 @@ def bmm_fma(A, B):
     return out
 
 
+def bmm_sqmma_descriptor_pre_hook(nargs):
+    a = nargs["A"]
+    b = nargs["B"]
+    c = nargs["C"]
+    batch = nargs["batch"]
+    M = nargs["M"]
+    N = nargs["N"]
+    K = nargs["K"]
+    block_m = nargs["BLOCK_SIZE_M"]
+    block_n = nargs["BLOCK_SIZE_N"]
+    block_k = nargs["BLOCK_SIZE_K"]
+    device = c.device
+
+    nargs["a_desc_ptr"].copy_(
+        get_cached_tma_device_descriptor(
+            a.reshape(batch * M, K), block_m, block_k, device
+        )
+    )
+    nargs["b_desc_ptr"].copy_(
+        get_cached_tma_device_descriptor(
+            b.reshape(batch * K, N), block_k, block_n, device
+        )
+    )
+    nargs["c_desc_ptr"].copy_(
+        create_tma_device_descriptor(
+            c.reshape(batch * M, N), block_m, block_n, device
+        )
+    )
+
+
+def bmm_sqmma_get_configs(pre_hook=bmm_sqmma_descriptor_pre_hook):
+    if os.environ.get("USE_FLAGTUNE") == "1":
+        expand_config = get_expand_config("bmm_sqmma")
+        if expand_config != -1:
+            ranges = expand_config["ranges"]
+            return [
+                triton.Config(
+                    {"BLOCK_SIZE_M": BM, "BLOCK_SIZE_N": BN, "BLOCK_SIZE_K": BK},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for BM in ranges["BM"]
+                for BN in ranges["BN"]
+                for BK in ranges["BK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+    return [
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=pre_hook,
+        ),
+    ]
+
+
+@libentry()
+@libtuner(
+    configs=bmm_sqmma_get_configs(),
+    key=["M", "N", "K"],
+    strategy=get_expand_config("bmm_sqmma")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1" and get_expand_config("bmm_sqmma") != -1
+    else ["default", "default", "default"],
+    warmup=5,
+    rep=5,
+)
 @triton.jit
 def bmm_sqmma_kernel(
+    A,
+    B,
+    C,
     a_desc_ptr,
     b_desc_ptr,
     c_desc_ptr,
+    batch,
     M,
     N,
     K,
@@ -189,36 +358,32 @@ def get_triton_type(elem_type):
     return type_map.get(elem_type, None)
 
 
-def bmm_sqmma(
-    A, B, elem_type, batch, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages
-):
+def bmm_sqmma(A, B, elem_type, batch, M, N, K):
     device = "musa"
     ab_type = elem_type
     c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
     C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
-    desc_a = create_tma_device_descriptor(
-        A.reshape(batch * M, K), BLOCK_M, BLOCK_K, device
+    desc_a = torch.empty((64,), dtype=torch.int8, device=device)
+    desc_b = torch.empty((64,), dtype=torch.int8, device=device)
+    desc_c = torch.empty((64,), dtype=torch.int8, device=device)
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        batch,
+        1,
     )
-    desc_b = create_tma_device_descriptor(
-        B.reshape(batch * K, N), BLOCK_K, BLOCK_N, device
-    )
-    desc_c = create_tma_device_descriptor(
-        C.reshape(batch * M, N), BLOCK_M, BLOCK_N, device
-    )
-    bmm_sqmma_kernel[(triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), batch, 1)](
+    bmm_sqmma_kernel[grid](
+        A,
+        B,
+        C,
         desc_a,
         desc_b,
         desc_c,
+        batch,
         M,
         N,
         K,
-        BLOCK_M,
-        BLOCK_N,
-        BLOCK_K,
-        get_triton_type(ab_type),
-        get_triton_type(c_type),
-        num_warps=num_warps,
-        num_stages=num_stages,
+        ab_type=get_triton_type(ab_type),
+        d_type=get_triton_type(c_type),
     )
     return C
 
@@ -230,11 +395,6 @@ def bmm(a, b):
     _, _, N = b.shape
     use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
     if use_sqmma:
-        BLOCK_M = 128
-        BLOCK_N = BLOCK_M
-        BLOCK_K = 64
-        num_warps = 16 if BLOCK_M == 256 else 4
-        num_stages = 1
         return bmm_sqmma(
             a,
             b,
@@ -243,11 +403,6 @@ def bmm(a, b):
             M,
             N,
             K,
-            BLOCK_M,
-            BLOCK_N,
-            BLOCK_K,
-            num_warps,
-            num_stages,
         )
     else:
         enable_sqmma = os.environ.pop("MUSA_ENABLE_SQMMA", None)

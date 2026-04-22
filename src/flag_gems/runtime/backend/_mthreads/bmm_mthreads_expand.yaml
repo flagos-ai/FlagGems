@@ -1,0 +1,67 @@
+bmm:
+  - config:
+    param_map:
+      META:
+        BLOCK_SIZE_M: block_m
+        BLOCK_SIZE_N: block_n
+        BLOCK_SIZE_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 32
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 64
+      - 128
+    block_k:
+      - 32
+      - 64
+      - 128
+    stages:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+    warps:
+      - 4
+      - 8
+  - strategy:
+     M: default
+     N: default
+     K: default
+bmm_sqmma:
+  - config:
+    param_map:
+      META:
+        BLOCK_SIZE_M: block_m
+        BLOCK_SIZE_N: block_n
+        BLOCK_SIZE_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 64
+      - 128
+    block_n:
+      - 64
+      - 128
+    block_k:
+      - 64
+      - 128
+    stages:
+      - 3
+      - 4
+      - 5
+      - 6
+    warps:
+      - 4
+      - 8
+  - strategy:
+     M: default
+     N: default
+     K: default
