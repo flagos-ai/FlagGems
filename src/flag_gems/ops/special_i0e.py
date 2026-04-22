@@ -3,6 +3,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 
 @triton.jit
 def _special_i0e_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -65,7 +67,8 @@ def _special_i0e_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def _run_special_i0e_kernel(x: torch.Tensor, out: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Tensors must be CUDA tensors"
+    if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
+        raise ValueError(f"Tensors must be {flag_gems.device} tensors")
     assert x.dtype in (
         torch.float16,
         torch.bfloat16,
