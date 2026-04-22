@@ -17,35 +17,32 @@ from .performance_utils import Benchmark, SkipVersion, vendor_name
 
 
 @pytest.mark.gelu_and_mul
-def test_perf_gelu_and_mul():
+def test_gelu_and_mul():
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.gelu(x), y)
 
-    gems_op = flag_gems.gelu_and_mul
     bench = GenericBenchmark(
         input_fn=binary_input_fn,
         op_name="gelu_and_mul",
         torch_op=torch_op,
+        gems_op=flag_gems.gelu_and_mul,
         dtypes=FLOAT_DTYPES,
     )
-    bench.set_gems(gems_op)
     bench.run()
 
 
 @pytest.mark.silu_and_mul
-def test_perf_silu_and_mul():
+def test_silu_and_mul():
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.silu(x), y)
-
-    gems_op = flag_gems.silu_and_mul
 
     bench = GenericBenchmark(
         input_fn=binary_input_fn,
         op_name="silu_and_mul",
+        gems_op=flag_gems.silu_and_mul,
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
-    bench.set_gems(gems_op)
     bench.run()
 
 
@@ -62,20 +59,18 @@ def test_perf_skip_layernorm():
     def torch_op(inp, residual, layer_shape, weight, bias):
         return torch.layer_norm(inp + residual, layer_shape, weight, bias)
 
-    gems_op = flag_gems.skip_layer_norm
-
     bench = GenericBenchmarkExcluse1D(
         input_fn=skip_layernorm_input_fn,
         op_name="skip_layernorm",
+        gems_op=flag_gems.skip_layer_norm,
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
-    bench.set_gems(gems_op)
     bench.run()
 
 
 @pytest.mark.fused_add_rms_norm
-def test_perf_fused_add_rms_norm():
+def test_fused_add_rms_norm():
     def fused_add_rms_norm_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
         residual = torch.randn(shape, dtype=dtype, device=device)
@@ -89,15 +84,13 @@ def test_perf_fused_add_rms_norm():
         hidden_states = x * torch.rsqrt(variance + eps)
         return weight * hidden_states
 
-    gems_op = flag_gems.fused_add_rms_norm
-
     bench = GenericBenchmarkExcluse1D(
         input_fn=fused_add_rms_norm_input_fn,
         op_name="fused_add_rms_norm",
         torch_op=torch_op,
+        gems_op=flag_gems.fused_add_rms_norm,
         dtypes=FLOAT_DTYPES,
     )
-    bench.set_gems(gems_op)
     bench.run()
 
 
@@ -169,16 +162,13 @@ def test_perf_apply_rotary_pos_emb():
         cos, sin = get_rope_cos_sin(seq_len, head_dim, dtype, device=device)
         yield q, k, cos, sin
 
-    torch_op = torch_apply_rotary_pos_emb
-    gems_op = flag_gems.apply_rotary_pos_emb
-
     bench = RopeBenchmark(
         input_fn=rope_input_fn,
         op_name="apply_rotary_pos_emb",
-        torch_op=torch_op,
+        torch_op=torch_apply_rotary_pos_emb,
+        gems_op=flag_gems.apply_rotary_pos_emb,
         dtypes=FLOAT_DTYPES,
     )
-    bench.set_gems(gems_op)
     bench.run()
 
 
@@ -240,7 +230,7 @@ class TopKSoftmaxBenchmark(Benchmark):
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
+@pytest.mark.skipif(vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.topk_softmax
 def test_perf_topk_softmax():
     try:
@@ -252,9 +242,8 @@ def test_perf_topk_softmax():
     bench = TopKSoftmaxBenchmark(
         op_name="topk_softmax",
         torch_op=vllm_topk_softmax,
+        gems_op=fused.topk_softmax,
         dtypes=[torch.float32, torch.float16, torch.bfloat16],
     )
-
-    bench.set_gems(fused.topk_softmax)
 
     bench.run()

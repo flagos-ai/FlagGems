@@ -474,8 +474,12 @@ def mm(a, b):
     b_dtype = b.dtype
     M, K = a.shape
     _, N = b.shape
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
-    os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    # fp32 does not support MMA instructions, only enable SQMMA for fp16/bf16
+    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
+    prev_sqmma = None
+    if need_sqmma:
+        prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
     try:
         if N == 1:
             c_dtype = get_higher_dtype(a_dtype, b_dtype)
@@ -495,7 +499,8 @@ def mm(a, b):
         else:
             return mm_fma(a, b)
     finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+        if need_sqmma:
+            if prev_sqmma is None:
+                os.environ.pop("MUSA_ENABLE_SQMMA", None)
+            else:
+                os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma

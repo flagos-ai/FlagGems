@@ -335,7 +335,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
             marks=pytest.mark.baddbmm,
         ),
         pytest.param(
-            "groupmm",
+            "grouped_mm",
             None if SkipVersion("torch", "<2.8") else torch._grouped_mm,  # torch 2.8.0
             group_mm_input_fn,
             GroupmmBenchmark,
@@ -344,7 +344,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
                     SkipVersion("torch", "<2.8"),
                     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
                 ),
-                pytest.mark.groupmm,
+                pytest.mark.grouped_mm,
             ],
         ),
     ],
@@ -352,14 +352,14 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
 def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     if flag_gems.vendor_name == "mthreads" and op_name not in ("mm", "baddbmm"):
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    if op_name == "groupmm":
+    if op_name == "grouped_mm":
         FLOAT_DTYPES = [torch.bfloat16]
 
     bench = bench_cls(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
 
-    if op_name == "groupmm":
+    if op_name == "grouped_mm":
         gems_op = flag_gems.group_mm
         bench.set_gems(gems_op)
 

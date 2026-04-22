@@ -10,10 +10,6 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
-
 
 @libentry()
 @triton.jit
@@ -142,16 +138,6 @@ def embedding_backward(
     sparse=False,
 ):
     logger.debug("GEMS EMBEDDING BACKWARD")
-    if torch.is_grad_enabled():
-        return torch.ops.aten.embedding_backward.default.redispatch(
-            _FALLBACK_KEYSET,
-            grad_outputs,
-            indices,
-            num_weights,
-            padding_idx,
-            scale_grad_by_freq,
-            sparse,
-        )
     assert not sparse, "Currently do not support sparse format"
 
     M = indices.numel()

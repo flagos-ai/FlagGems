@@ -19,12 +19,16 @@ from benchmark.performance_utils import (
 )
 from flag_gems.utils import shape_utils
 
+try:
+    from transformer_engine.pytorch import cpp_extensions as tex
+
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
+    pass
+
 
 class UnaryReductionBenchmark(Benchmark):
-    """
-    Base class for benchmarking reduction operations.
-    """
-
     def set_more_metrics(self):
         return ["gbps"]
 
@@ -94,6 +98,7 @@ forward_operations = [
     ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
     ("std", torch.std, FLOAT_DTYPES),
     ("sum", torch.sum, FLOAT_DTYPES),
+    ("var", torch.var, FLOAT_DTYPES),
     ("var_mean", torch.var_mean, FLOAT_DTYPES),
 ]
 
@@ -105,36 +110,25 @@ forward_operations = [
         for name, op, dtype in forward_operations
     ],
 )
-def test_general_reduction_perf(op_name, torch_op, dtypes):
+def test_general_reduction(op_name, torch_op, dtypes):
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
 
 @pytest.mark.is_all_true
-def test_is_all_true_perf():
+def test_is_all_true():
     bench = IsAllTrueBenchmark(
         op_name="is_all_true", torch_op=torch._is_all_true, dtypes=BOOL_DTYPES
     )
     bench.run()
 
 
-backward_operations = [
-    ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
-]
-
-
-@pytest.mark.parametrize(
-    "op_name, torch_op, dtypes",
-    [
-        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
-        for name, op, dtype in backward_operations
-    ],
-)
-def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
+@pytest.mark.softmax_backward
+def test_softmax_backward():
     bench = UnaryReductionBenchmark(
-        op_name=op_name,
-        torch_op=torch_op,
-        dtypes=dtypes,
+        op_name="softmax",
+        torch_op=torch.nn.functional.softmax,
+        dtypes=FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()
@@ -350,9 +344,8 @@ def test_nll_loss_nd_benchmark():
     bench.run()
 
 
-# @pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
-def test_perf_count_nonzero():
+def test_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
         dim = random.choice([None, 0, 1])
@@ -435,11 +428,11 @@ def test_perf_avg_pool2d():
     bench.run()
 
 
-@pytest.mark.avg_pool2d
+@pytest.mark.avg_pool2d_backward
 def test_perf_avg_pool2d_backward():
     bench = AvgPool2dBenchmark(
         input_fn=avg_pool2d_input_fn,
-        op_name="avg_pool2d",
+        op_name="avg_pool2d_backward",
         torch_op=torch.ops.aten.avg_pool2d,
         dtypes=[torch.float32] if vendor_name == "mthreads" else FLOAT_DTYPES,
         is_backward=True,
@@ -498,11 +491,11 @@ class MaxPool2dBenchmark(GenericBenchmark):
             yield from self.input_fn(shape, cur_dtype, self.device)
 
 
-@pytest.mark.max_pool2d
-def test_perf_max_pool2d():
+@pytest.mark.max_pool2d_with_indices
+def test_max_pool2d_with_indices():
     bench = MaxPool2dBenchmark(
+        op_name="max_pool2d_with_indices",
         input_fn=max_pool2d_input_fn,
-        op_name="max_pool2d",
         torch_op=torch.nn.functional.max_pool2d_with_indices,
         dtypes=FLOAT_DTYPES,
     )
@@ -510,8 +503,8 @@ def test_perf_max_pool2d():
     bench.run()
 
 
-@pytest.mark.max_pool2d
-def test_perf_max_pool2d_backward():
+@pytest.mark.max_pool2d_backward
+def test_max_pool2d_backward():
     def max_pool2d_backward_input_fn(shape, dtype, device):
         for forward_args in max_pool2d_input_fn(shape, dtype, device):
             inp, params = forward_args
@@ -543,7 +536,7 @@ def test_perf_max_pool2d_backward():
 
 
 @pytest.mark.dot
-def test_perf_dot():
+def test_dot():
     def dot_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype=dtype, device=device)
         if inp.dim() > 1:
@@ -561,7 +554,7 @@ def test_perf_dot():
 
 
 @pytest.mark.trace
-def test_perf_trace():
+def test_trace():
     def trace_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype=dtype, device=device)
         yield inp,
@@ -576,7 +569,7 @@ def test_perf_trace():
     bench.run()
 
 
-class quantileBenchmark(GenericBenchmark):
+class QuantileBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         more_shapes_1d = [(4,), (1024,), (65535)]
         more_shapes_2d = [(1024, 2**i) for i in range(0, 15, 3)]
@@ -591,21 +584,13 @@ def quantile_input_fn(shape, cur_dtype, device):
 
 
 # @pytest.mark.skipif(True, reason="Skipping Triton version due to poor performance")
-@pytest.mark.parametrize(
-    "op_name, torch_op, input_fn, dtypes",
-    [
-        pytest.param(
-            "quantile",
-            torch.quantile,
-            quantile_input_fn,
-            [torch.float32],
-            marks=pytest.mark.quantile,
-        )
-    ],
-)
-def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
-    bench = quantileBenchmark(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+@pytest.mark.quantile
+def test_quantile():
+    bench = QuantileBenchmark(
+        input_fn=quantile_input_fn,
+        op_name="quantile",
+        torch_op=torch.quantile,
+        dtypes=[torch.float32],
     )
     bench.run()
 
@@ -633,13 +618,9 @@ class ScaledSoftmaxBenchmark(GenericBenchmark):
             yield from self.input_fn(shape, cur_dtype, self.device)
 
 
-@pytest.mark.scaled_softmax
-def test_perf_scaled_softmax_forward():
-    try:
-        from transformer_engine.pytorch import cpp_extensions as tex
-    except ImportError:
-        pytest.skip("TransformerEngine is not available, skipping performance test")
-
+@pytest.mark.skipif(TE_AVAILABLE is False, reason="TransformerEngine is not available")
+@pytest.mark.scaled_softmax_forward
+def test_scaled_softmax_forward():
     def scaled_softmax_forward_input_fn(shape, dtype, device):
         S = generate_tensor_input(shape, dtype, device)
         scale_factor = 1 / S.shape[-1] ** 0.5
@@ -655,13 +636,9 @@ def test_perf_scaled_softmax_forward():
     bench.run()
 
 
-@pytest.mark.scaled_softmax
+@pytest.mark.skipif(TE_AVAILABLE is False, reason="TransformerEngine is not available")
+@pytest.mark.scaled_softmax_backward
 def test_perf_scaled_softmax_backward():
-    try:
-        from transformer_engine.pytorch import cpp_extensions as tex
-    except ImportError:
-        pytest.skip("TransformerEngine is not available, skipping performance test")
-
     def scaled_softmax_backward_input_fn(shape, dtype, device):
         S = generate_tensor_input(shape, dtype, device)
         scale_factor = 1 / S.shape[-1] ** 0.5

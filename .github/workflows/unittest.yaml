@@ -164,7 +164,8 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
-      runner_label: metax_CI
+      runner_label: metax
+      gpu_check_script: tools/gpu_check_metax.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
