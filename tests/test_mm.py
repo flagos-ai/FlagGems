@@ -22,7 +22,19 @@ else:
     ]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
-MK_SHAPES = [(1, 32)] if QUICK_MODE else [(1, 32), (160, 1024), (5333, 71)]
+MK_SHAPES = (
+    [(1, 32)]
+    if QUICK_MODE
+    else [
+        (1, 32),
+        (7, 33),
+        (31, 65),
+        (160, 1024),
+        (257, 96),
+        (1023, 255),
+        (5333, 71),
+    ]
+)
 
 
 # TODO: failed at (1, 1, 2)
