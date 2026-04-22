@@ -7,7 +7,6 @@ on:
 
   push:
     branches: [ "master" ]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
 
   pull_request:
     branches: [ "master" ]
@@ -19,6 +18,8 @@ jobs:
     outputs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
       pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
+      pr_title: ${{ steps.get-pr-metadata.outputs.PR_TITLE }}
+      pr_url: ${{ steps.get-pr-metadata.outputs.PR_URL }}
       labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
     steps:
       - id: changed-files
@@ -40,6 +41,17 @@ jobs:
           # NOTE: Preserve these line for debugging's purpose
           echo "PR_ID: ${PR_ID}"
 
+      - id: get-pr-metadata
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "PR_TITLE=${{ github.event.pull_request.title }}" >> "$GITHUB_OUTPUT"
+            echo "PR_URL=${{ github.event.pull_request.html_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "PR_TITLE=" >> "$GITHUB_OUTPUT"
+            echo "PR_URL=" >> "$GITHUB_OUTPUT"
+          fi
+
       - id: get-labels
         uses: actions/github-script@v9
         with:
@@ -47,7 +59,7 @@ jobs:
             // Determine if the event is a pull request
             const isPullRequest = context.eventName === 'pull_request';
             if (!isPullRequest) {
-              return "";
+              return "[]";
             }
 
             const prNumber = context.payload.pull_request.number;
@@ -86,6 +98,41 @@ jobs:
           CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
         run: |
           bash tools/test-op.sh ${{ needs.preprocess.outputs.pr_id }}
+
+  competition:
+    needs: preprocess
+    if: github.event_name == 'pull_request' && contains(needs.preprocess.outputs.labels, 'competition')
+    concurrency:
+      group: competition-${{ needs.preprocess.outputs.pr_id }}
+      cancel-in-progress: true
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: authoritative
+      - shell: bash
+        run: tools/gpu_check.sh
+      - shell: bash
+        run: |
+          test -f "${{ github.workspace }}/authoritative/tools/competition/tasks.yaml"
+          test -f "${{ github.workspace }}/authoritative/tools/competition/test_competition_ops.py"
+          test -f "${{ github.workspace }}/authoritative/tools/competition/test_competition_perf.py"
+      - shell: bash
+        env:
+          PR_TITLE: ${{ needs.preprocess.outputs.pr_title }}
+          CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+          GITHUB_PR_URL: ${{ needs.preprocess.outputs.pr_url }}
+          GITHUB_ID: ${{ github.actor }}
+          COMMIT_SHA: ${{ github.sha }}
+          EVAL_API_BASE_URL: ${{ secrets.EVAL_API_BASE_URL }}
+          EVAL_API_KEY: ${{ secrets.EVAL_API_KEY }}
+          EVAL_API_SECRET: ${{ secrets.EVAL_API_SECRET }}
+          UPLOAD_SCORE: ${{ (github.event.pull_request.head.repo.full_name == github.repository && secrets.EVAL_API_BASE_URL != '' && secrets.EVAL_API_KEY != '' && secrets.EVAL_API_SECRET != '') && '1' || '0' }}
+          COMPETITION_ROOT: ${{ github.workspace }}/authoritative/tools/competition
+        run: |
+          bash tools/competition/test-competition-benchmark.sh ${{ needs.preprocess.outputs.pr_id }}
 
   examples:
     needs: preprocess

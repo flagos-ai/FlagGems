@@ -1,0 +1,189 @@
+version: 1
+
+tasks:
+  - id: log10
+    name: log10
+    aliases:
+      - log10
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_log10
+      - tools/competition/test_competition_ops.py::test_accuracy_log10_out
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_log10
+
+  - id: logaddexp
+    name: logaddexp
+    aliases:
+      - logaddexp
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_logaddexp
+      - tools/competition/test_competition_ops.py::test_accuracy_logaddexp_out
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_logaddexp
+
+  - id: cosh
+    name: cosh
+    aliases:
+      - cosh
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_cosh
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_cosh
+
+  - id: gcd
+    name: gcd
+    aliases:
+      - gcd
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_gcd
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_gcd
+
+  - id: tril
+    name: tril
+    aliases:
+      - tril
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_tril
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_tril
+
+  - id: roll
+    name: roll
+    aliases:
+      - roll
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_roll
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_roll
+
+  - id: leaky_relu
+    name: leaky ReLU
+    aliases:
+      - leaky_relu
+      - leaky relu
+      - leakyReLU
+      - LeakyReLU
+      - leaky ReLU
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_leaky_relu
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_leaky_relu
+
+  - id: asinh
+    name: asinh
+    aliases:
+      - asinh
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_asinh
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_asinh
+
+  - id: upsample_nearest2d
+    name: upsample_nearest2d
+    aliases:
+      - upsample_nearest2d
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_upsample_nearest2d
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_upsample_nearest2d
+
+  - id: scatter_reduce
+    name: scatter_reduce
+    aliases:
+      - scatter_reduce
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_scatter_reduce
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_scatter_reduce
+
+  - id: median
+    name: median
+    aliases:
+      - median
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_median
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_median
+
+  - id: smooth_l1_loss
+    name: smooth_l1_loss
+    aliases:
+      - smooth_l1_loss
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_smooth_l1_loss
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_smooth_l1_loss
+
+  - id: pixel_shuffle
+    name: pixel_shuffle
+    aliases:
+      - pixel_shuffle
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_pixel_shuffle
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_pixel_shuffle
+
+  - id: conv_transpose2d
+    name: conv_transpose2d
+    aliases:
+      - conv_transpose2d
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_conv_transpose2d
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_conv_transpose2d
+
+  - id: avg_pool3d
+    name: avg_pool3d
+    aliases:
+      - avg_pool3d
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_avg_pool3d
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_avg_pool3d
+
+  - id: max_pool3d
+    name: max_pool3d
+    aliases:
+      - max_pool3d
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_max_pool3d
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_max_pool3d
+
+  - id: chunk_gated_delta_rule
+    name: chunk_gated_delta_rule
+    aliases:
+      - chunk_gated_delta_rule
+      - gated_delta_rule
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_chunk_gated_delta_rule
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_chunk_gated_delta_rule
+
+  - id: svd
+    name: svd
+    aliases:
+      - svd
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_svd
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_svd
+
+  - id: ctc_loss
+    name: ctc_loss
+    aliases:
+      - ctc_loss
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_ctc_loss
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_ctc_loss
+
+  - id: grid_sample
+    name: grid_sample
+    aliases:
+      - grid_sample
+    correctness_tests:
+      - tools/competition/test_competition_ops.py::test_accuracy_grid_sample
+    benchmark_tests:
+      - tools/competition/test_competition_perf.py::test_perf_grid_sample
