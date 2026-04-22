@@ -12,7 +12,6 @@ mm_general_tma:
       - 32
       - 64
       - 128
-      - 256
     block_n:
       - 16
       - 32
