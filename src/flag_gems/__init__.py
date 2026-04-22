@@ -213,6 +213,7 @@ _FULL_CONFIG = (
     ("floor_divide_.Tensor", floor_divide_),
     ("fmin", fmin),
     ("fmin.out", fmin_out),
+    ("fp8_paged_mqa_logits", fp8_paged_mqa_logits),
     ("full", full),
     ("full_like", full_like),
     ("gather", gather),
