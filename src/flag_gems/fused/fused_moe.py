@@ -26,6 +26,9 @@ import yaml
 
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
+from flag_gems.ops.dynamic_scaled_fp8_quant import dynamic_scaled_fp8_quant
+from flag_gems.ops.per_token_group_quant_int8 import per_token_group_quant_int8
+from flag_gems.ops.per_token_quant_int8 import per_token_quant_int8
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend import vendor_module
 from flag_gems.utils import pointwise_dynamic
@@ -35,6 +38,10 @@ logger = logging.getLogger(__name__)
 # OCP MX quantization helpers (requires amd-quark)
 
 OCP_MX_BLOCK_SIZE = 32
+_FP8_DTYPE = torch.float8_e4m3fn
+_FP8_MAX = float(torch.finfo(_FP8_DTYPE).max)
+_FP8_MIN = float(torch.finfo(_FP8_DTYPE).min)
+_FP8_MIN_SCALE = 1.0 / (_FP8_MAX * 512.0)
 
 
 @functools.lru_cache(maxsize=1)
@@ -355,6 +362,47 @@ def get_default_config(
             "num_warps": 4,
             "num_stages": 3,
         }
+    elif dtype == "int8_w8a8" or dtype == "fp8_w8a8":
+        if M <= 32:
+            block_m = 16
+        elif M <= 96:
+            block_m = 32
+        elif M <= 512:
+            block_m = 64
+        else:
+            block_m = 128
+
+        block_n = 64 if M <= 64 else 128
+
+        # Small batches benefit from longer reduction (larger K tile),
+        # while large batches prefer more output parallelism.
+        # FP8 elements are half-width so larger K tiles are always cheap.
+        block_k = 128 if dtype == "fp8_w8a8" or M <= 64 else 64
+
+        # Grouping adjacent M-blocks lets them share weight tiles in L2.
+        # Only helps when there are enough M-blocks per expert to group;
+        # with many experts each one sees few tokens so grouping is useless.
+        tokens_per_expert = M // max(E, 1)
+        group_m = 16 if tokens_per_expert > 128 else 1
+
+        # Large batches have enough blocks to saturate the GPU, so we
+        # use more warps per block to increase arithmetic intensity.
+        num_warps = 4 if M <= 128 else 8
+
+        if M <= 32:
+            num_stages = 4
+        else:
+            num_stages = 3
+
+        config = {
+            "BLOCK_SIZE_M": block_m,
+            "BLOCK_SIZE_N": block_n,
+            "BLOCK_SIZE_K": block_k,
+            "GROUP_SIZE_M": group_m,
+            "SPLIT_K": 1,
+            "num_warps": num_warps,
+            "num_stages": num_stages,
+        }
     else:
         # tokens_per_expert drives block_m: use M//E (not M*topk//E) to
         # estimate the actual per-expert token count after routing.
@@ -414,6 +462,7 @@ def _get_config_dtype_str(
     dtype: Optional[torch.dtype] = None,
     use_fp8_w8a8: bool = False,
     use_fp8_w8a16: bool = False,
+    use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
@@ -423,6 +472,8 @@ def _get_config_dtype_str(
         return "fp8_w8a8"
     elif use_fp8_w8a16:
         return "fp8_w8a16"
+    elif use_int8_w8a8:
+        return "int8_w8a8"
     elif use_int8_w8a16:
         return "int8_w8a16"
     elif use_int4_w4a16:
@@ -497,11 +548,13 @@ def apply_moe_activation(
             f"{activation.value} expects equal sizes: "
             f"{output.size(-1)} vs {input.size(-1)}"
         )
-
     if activation in (MoEActivation.SILU, MoEActivation.SWIGLUOAI):
         N = output.size(-1)
-        x, y = input[:, :N], input[:, N:]
-        _silu_and_mul_kernel(x, y, out0=output)
+        if input.is_contiguous() and output.is_contiguous() and input.size(0) <= 32:
+            small_m_silu_and_mul_packed(output, input)
+        else:
+            x, y = input[:, :N], input[:, N:]
+            silu_and_mul_kernel(x, y, out0=output)
     elif activation == MoEActivation.GELU:
         N = output.size(-1)
         gate, up = input[:, :N], input[:, N:]
@@ -535,10 +588,6 @@ def _fp8_quantize(
     block_shape: Optional[list[int]] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """FP8 E4M3 quantization: per-tensor, per-token, or block-wise."""
-    fp8_dtype = torch.float8_e4m3fn
-    finfo = torch.finfo(fp8_dtype)
-    fp8_max = finfo.max
-    fp8_min = finfo.min
     eps = 1e-10
 
     if block_shape is not None:
@@ -555,7 +604,7 @@ def _fp8_quantize(
                 A,
                 group_size=block_k,
                 eps=eps,
-                dtype=fp8_dtype,
+                dtype=_FP8_DTYPE,
                 column_major_scales=False,
                 scale_ue8m0=False,
             )
@@ -566,38 +615,37 @@ def _fp8_quantize(
         amax = (
             A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
         )
-        scale = amax / fp8_max
-        A_q = (A_groups.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+        scale = amax / _FP8_MAX
+        A_q = (A_groups.float() / scale).clamp(_FP8_MIN, _FP8_MAX).to(_FP8_DTYPE)
         A_q = A_q.reshape(orig_shape)
         scale = scale.reshape(M, K // block_k)
         return A_q, scale
 
     elif per_act_token:
         A_flat = A.reshape(-1, A.size(-1))
-        amax = A_flat.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
-        scale = amax / fp8_max
-        min_scale = torch.tensor(
-            1.0 / (fp8_max * 512.0), dtype=torch.float32, device=A.device
+        amax = (
+            A_flat.abs().amax(dim=-1, keepdim=True).clamp(min=1e-10).to(torch.float32)
         )
+        scale = amax / _FP8_MAX
+        min_scale = torch.tensor(_FP8_MIN_SCALE, dtype=torch.float32, device=A.device)
         scale = scale.clamp(min=min_scale)
-        A_q = (A_flat.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+        A_q = (A_flat.float() / scale).clamp(_FP8_MIN, _FP8_MAX).to(_FP8_DTYPE)
         A_q = A_q.reshape(A.shape)
         scale = scale.reshape(A.shape[:-1] + (1,))
         return A_q, scale
-
     else:
         if A_scale is not None:
             scale = (
-                A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
+                A_scale.float().reshape(1) if A_scale.numel() == 1 else A_scale.float()
             )
-            A_q = (A.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
-            return A_q, A_scale
+            A_q = (A.float() / scale).clamp(_FP8_MIN, _FP8_MAX).to(_FP8_DTYPE)
+            return A_q, scale
         else:
-            amax = A.abs().amax().clamp(min=eps).to(torch.float32)
-            scale = amax / fp8_max
-            iscale = 1.0 / scale
-            A_q = (A.float() * iscale).clamp(fp8_min, fp8_max).to(fp8_dtype)
-            return A_q, scale.view(1)
+            assert A.stride(-1) == 1, "last dimension must be contiguous"
+            orig_shape = A.shape
+            A_2d = A.reshape(-1, orig_shape[-1])
+            A_q_2d, scale = dynamic_scaled_fp8_quant(A_2d)
+            return A_q_2d.reshape(orig_shape), scale
 
 
 def _int8_quantize(
@@ -607,41 +655,20 @@ def _int8_quantize(
     block_shape: Optional[list[int]] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """INT8 quantization: per-tensor, per-token, or block-wise."""
-    iinfo = torch.iinfo(torch.int8)
-    int8_max = iinfo.max
-    int8_min = iinfo.min
-    eps = 1e-10
-
     if block_shape is not None:
         assert not per_act_token
         assert len(block_shape) == 2
-        block_k = block_shape[1]
-        assert A.size(-1) % block_k == 0
-        orig_shape = A.shape
-        A_flat = A.reshape(-1, A.size(-1))
-        M, K = A_flat.shape
-        A_groups = A_flat.reshape(M * (K // block_k), block_k)
-        amax = (
-            A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
-        )
-        scale = amax / int8_max
-        A_q = (
-            (A_groups.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
-        )
-        A_q = A_q.reshape(orig_shape)
-        scale = scale.reshape(M, K // block_k)
-        return A_q, scale
+        _, block_k = block_shape[0], block_shape[1]
+        A_q, A_scale_out = per_token_group_quant_int8(A.contiguous(), block_k)
+        return A_q, A_scale_out
 
     elif per_act_token:
-        A_flat = A.reshape(-1, A.size(-1))
-        amax = A_flat.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
-        scale = amax / int8_max
-        A_q = (A_flat.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
-        A_q = A_q.reshape(A.shape)
-        scale = scale.reshape(A.shape[:-1] + (1,))
-        return A_q, scale
+        return per_token_quant_int8(A)
 
     else:
+        iinfo = torch.iinfo(torch.int8)
+        int8_max = iinfo.max
+        int8_min = iinfo.min
         assert A_scale is not None, "int8 per-tensor requires A_scale"
         scale = A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
         A_q = (A.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
@@ -696,10 +723,79 @@ def _ensure_block_size_k_divisible(
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
-def _silu_and_mul_kernel(x, y):
+def silu_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)
     x_silu = tl.fdiv(x_fp32, (1.0 + tl.exp(-x_fp32)))
     return x_silu * y
+
+
+@triton.jit
+def small_m_silu_and_mul_kernel(
+    out_ptr,
+    inp_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    stride_om,
+    stride_on,
+    stride_im,
+    stride_in,
+    BLOCK_N: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_pid_n = tl.cdiv(N, BLOCK_N)
+    pid_m = pid // num_pid_n
+    pid_n = pid % num_pid_n
+
+    if pid_m >= M:
+        return
+
+    row_out_base = pid_m * stride_om
+    row_in_base = pid_m * stride_im
+
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offs_n < N
+    x = tl.load(
+        inp_ptr + row_in_base + offs_n * stride_in,
+        mask=mask,
+        other=0.0,
+    ).to(tl.float32)
+    y = tl.load(
+        inp_ptr + row_in_base + (offs_n + N) * stride_in,
+        mask=mask,
+        other=0.0,
+    )
+    x_silu = tl.fdiv(x, 1.0 + tl.exp(-x))
+    tl.store(
+        out_ptr + row_out_base + offs_n * stride_on,
+        (x_silu * y).to(out_ptr.type.element_ty),
+        mask=mask,
+    )
+
+
+def small_m_silu_and_mul_packed(
+    output: torch.Tensor,
+    input: torch.Tensor,
+) -> None:
+    assert input.ndim == 2 and output.ndim == 2
+    assert input.size(0) == output.size(0)
+    assert input.size(1) == output.size(1) * 2
+    assert input.stride(-1) == 1 and output.stride(-1) == 1
+
+    M, N = output.shape
+    grid = lambda META: (M * triton.cdiv(N, META["BLOCK_N"]),)
+    small_m_silu_and_mul_kernel[grid](
+        output,
+        input,
+        M,
+        N,
+        output.stride(0),
+        output.stride(1),
+        input.stride(0),
+        input.stride(1),
+        BLOCK_N=2048,
+        num_warps=8,
+        num_stages=1,
+    )
 
 
 @triton.jit
@@ -1478,6 +1574,7 @@ def fused_experts_impl(
 
     config_dtype = _get_config_dtype_str(
         use_fp8_w8a8=use_fp8_w8a8,
+        use_int8_w8a8=use_int8_w8a8,
         use_int8_w8a16=use_int8_w8a16,
         use_int4_w4a16=use_int4_w4a16,
         ocp_mx_scheme=ocp_mx_scheme,

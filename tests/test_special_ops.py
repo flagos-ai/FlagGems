@@ -1813,6 +1813,74 @@ def native_per_token_group_quant_fp8(
     return x_q, x_s
 
 
+def native_dynamic_scaled_fp8_quant(x, dtype=None):
+    if dtype is None:
+        dtype = flag_gems.SUPPORTED_FP8_DTYPE
+
+    assert x.ndim == 2 and x.stride(-1) == 1
+    fp8_max = float(torch.finfo(torch.float8_e4m3fn).max)
+    fp8_min = float(torch.finfo(torch.float8_e4m3fn).min)
+    min_scale = 1.0 / (fp8_max * 512.0)
+
+    scale = (x.abs().max().clamp(min=1e-10).to(torch.float32) / fp8_max).clamp(
+        min=min_scale
+    )
+    x_q = (x.float() / scale).clamp(min=fp8_min, max=fp8_max).to(dtype)
+    return x_q, scale.reshape(1)
+
+
+def native_per_token_group_quant_int8(x, group_size, eps=1e-10):
+    assert (
+        x.shape[-1] % group_size == 0
+    ), "the last dimension of `x` cannot be divisible by `group_size`"
+    assert x.is_contiguous(), "`x` is not contiguous"
+
+    int8_min = torch.iinfo(torch.int8).min
+    int8_max = torch.iinfo(torch.int8).max
+    x_ = x.float().reshape(x.numel() // group_size, group_size)
+    scale = x_.abs().max(dim=-1, keepdim=True)[0].clamp(min=1e-10)
+    scale = scale / int8_max
+    x_q = (x_ / scale).clamp(min=int8_min, max=int8_max).to(torch.int8)
+    x_q = x_q.reshape(x.shape)
+    scale = scale.reshape(x.shape[:-1] + (x.shape[-1] // group_size,))
+    return x_q, scale
+
+
+def native_per_token_quant_int8(x, eps=1e-10):
+    x_2d = x.float().reshape(-1, x.shape[-1]).contiguous()
+    int8_min = torch.iinfo(torch.int8).min
+    int8_max = torch.iinfo(torch.int8).max
+    scale = x_2d.abs().max(dim=-1, keepdim=True)[0].clamp(min=1e-10)
+    scale = scale / int8_max
+    x_q = torch.round(x_2d / scale).clamp(min=int8_min, max=int8_max).to(torch.int8)
+    x_q = x_q.reshape(x.shape)
+    scale = scale.reshape(*x.shape[:-1], 1)
+    return x_q, scale
+
+
+@pytest.mark.dynamic_scaled_fp8_quant
+@pytest.mark.parametrize("seed", FP8_QUANT_SHAPES["SEEDS"])
+@pytest.mark.parametrize("dtype", FP8_QUANT_SHAPES["DTYPES"])
+@pytest.mark.parametrize("d", FP8_QUANT_SHAPES["D"])
+@pytest.mark.parametrize("num_tokens", FP8_QUANT_SHAPES["NUM_TOKENS"])
+def test_accuracy_dynamic_scaled_fp8_quant(num_tokens, d, dtype, seed):
+    torch.manual_seed(seed)
+    x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+
+    ref_out, ref_scale = native_dynamic_scaled_fp8_quant(
+        ref_x, dtype=flag_gems.SUPPORTED_FP8_DTYPE
+    )
+    with flag_gems.use_gems():
+        out, scale = flag_gems.dynamic_scaled_fp8_quant(x)
+
+    gems_assert_close(scale, ref_scale, dtype=torch.float32)
+
+    out_fp32 = to_cpu(out, ref_out).to(torch.float32)
+    ref_out_fp32 = ref_out.to(torch.float32)
+    assert torch.allclose(out_fp32, ref_out_fp32, rtol=0.15)
+
+
 @pytest.mark.per_token_group_quant_fp8
 @pytest.mark.parametrize("seed", FP8_QUANT_SHAPES["SEEDS"])
 @pytest.mark.parametrize("group_size", FP8_QUANT_SHAPES["GROUP_SIZE"])
@@ -1840,6 +1908,43 @@ def test_accuracy_per_token_group_quant_fp8(
     out_fp32 = to_cpu(out, ref_out).to(torch.float32)
     ref_out_fp32 = ref_out.to(torch.float32)
     assert torch.allclose(out_fp32, ref_out_fp32, rtol=0.15)
+
+
+@pytest.mark.per_token_group_quant_int8
+@pytest.mark.parametrize("seed", FP8_QUANT_SHAPES["SEEDS"])
+@pytest.mark.parametrize("group_size", FP8_QUANT_SHAPES["GROUP_SIZE"])
+@pytest.mark.parametrize("dtype", FP8_QUANT_SHAPES["DTYPES"])
+@pytest.mark.parametrize("d", FP8_QUANT_SHAPES["D"])
+@pytest.mark.parametrize("num_tokens", FP8_QUANT_SHAPES["NUM_TOKENS"])
+def test_accuracy_per_token_group_quant_int8(num_tokens, d, dtype, group_size, seed):
+    torch.manual_seed(seed)
+    x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device).contiguous()
+    ref_x = to_reference(x)
+
+    ref_out, ref_scale = native_per_token_group_quant_int8(ref_x, group_size)
+    with flag_gems.use_gems():
+        out, scale = flag_gems.per_token_group_quant_int8(x, group_size)
+
+    gems_assert_close(scale, ref_scale, dtype=torch.float32)
+    gems_assert_close(out, ref_out, dtype=torch.int8, atol=1)
+
+
+@pytest.mark.per_token_quant_int8
+@pytest.mark.parametrize("seed", FP8_QUANT_SHAPES["SEEDS"])
+@pytest.mark.parametrize("dtype", FP8_QUANT_SHAPES["DTYPES"])
+@pytest.mark.parametrize("d", FP8_QUANT_SHAPES["D"])
+@pytest.mark.parametrize("num_tokens", FP8_QUANT_SHAPES["NUM_TOKENS"])
+def test_accuracy_per_token_quant_int8(num_tokens, d, dtype, seed):
+    torch.manual_seed(seed)
+    x = torch.rand(num_tokens, d, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+
+    ref_out, ref_scale = native_per_token_quant_int8(ref_x)
+    with flag_gems.use_gems():
+        out, scale = flag_gems.per_token_quant_int8(x)
+
+    gems_assert_close(scale, ref_scale, dtype=torch.float32)
+    gems_assert_close(out, ref_out, dtype=torch.int8, atol=1)
 
 
 @pytest.mark.rwkv_ka_fusion
