@@ -2851,6 +2851,40 @@ def test_upsample_bicubic2d_aa_backward(
 
     gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.grid_sample
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("shape", [(1, 3, 8, 8), (2, 4, 16, 16)])
+@pytest.mark.parametrize("out_hw", [(4, 4), (8, 8), (12, 12)])
+@pytest.mark.parametrize("align_corners", [False, True])
+def test_accuracy_grid_sample_bilinear_zeros(shape, out_hw, dtype, align_corners):
+    N, C, IH, IW = shape
+    OH, OW = out_hw
+
+    torch.manual_seed(2026)
+    inp = torch.randn((N, C, IH, IW), device=flag_gems.device, dtype=dtype)
+    grid = torch.empty((N, OH, OW, 2), device=flag_gems.device, dtype=torch.float32).uniform_(-1.2, 1.2)
+
+    ref = torch.nn.functional.grid_sample(
+        inp,
+        grid,
+        mode="bilinear",
+        padding_mode="zeros",
+        align_corners=align_corners,
+    )
+    ref = to_reference(ref)
+
+    with flag_gems.use_gems():
+        out = torch.nn.functional.grid_sample(
+            inp,
+            grid,
+            mode="bilinear",
+            padding_mode="zeros",
+            align_corners=align_corners,
+        )
+
+    out = to_reference(out)
+    torch.testing.assert_close(out, ref, atol=1e-3 if dtype == torch.float16 else 1e-5, rtol=1e-3 if dtype == torch.float16 else 1e-5)
 
 @pytest.mark.unique_consecutive
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
