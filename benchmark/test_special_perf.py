@@ -1235,6 +1235,47 @@ def test_pixel_unshuffle():
     bench.run()
 
 
+class PixelShuffleBenchmark(Benchmark):
+    DEFAULT_SHAPES = [
+        (1, 16, 64, 64),
+        (1, 16, 128, 128),
+        (1, 16, 256, 256),
+        (4, 64, 64, 64),
+        (4, 64, 128, 128),
+        (1, 36, 64, 64),
+        (1, 36, 128, 128),
+        (2, 36, 256, 256),
+    ]
+
+    def __init__(self, upscale_factor, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.upscale_factor = upscale_factor
+        self.shapes = self.DEFAULT_SHAPES
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = self.DEFAULT_SHAPES
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            N, C, H, W = shape
+            r2 = self.upscale_factor * self.upscale_factor
+            C_in = C * r2
+            inp = torch.randn(N, C_in, H, W, dtype=cur_dtype, device=self.device)
+            yield {"input": inp, "upscale_factor": self.upscale_factor},
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("upscale_factor", [2, 3, 4], ids=["r2", "r3", "r4"])
+def test_perf_pixel_shuffle(upscale_factor):
+    bench = PixelShuffleBenchmark(
+        upscale_factor=upscale_factor,
+        op_name=f"pixel_shuffle_r{upscale_factor}",
+        torch_op=torch.pixel_shuffle,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.replication_pad1d
 def test_replication_pad1d():
     def replication_pad1d_input_fn(config, dtype, device):

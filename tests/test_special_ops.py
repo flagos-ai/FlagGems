@@ -2369,6 +2369,136 @@ def test_pixel_unshuffle_out(shape_factor, dtype):
     gems_assert_close(act_out, ref_out, dtype=dtype)
 
 
+PIXEL_SHUFFLE_SHAPES_R2 = [
+    (1, 4, 2, 3),
+    (2, 8, 4, 4),
+    (4, 64, 32, 32),
+    (2, 128, 64, 64),
+    (1, 4, 1, 1),
+    (1, 4, 7, 13),
+    (1, 4, 127, 131),
+    (3, 16, 33, 57),
+]
+
+PIXEL_SHUFFLE_SHAPES_R3 = [
+    (1, 9, 4, 4),
+    (2, 18, 8, 8),
+    (1, 9, 1, 1),
+    (1, 9, 7, 13),
+    (2, 27, 17, 31),
+]
+
+PIXEL_SHUFFLE_SHAPES_R4 = [
+    (1, 16, 4, 4),
+    (1, 64, 16, 16),
+    (2, 32, 8, 8),
+]
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("shape", PIXEL_SHUFFLE_SHAPES_R2)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_pixel_shuffle_r2(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 2)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 2)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("shape", PIXEL_SHUFFLE_SHAPES_R3)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_pixel_shuffle_r3(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 3)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 3)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("shape", PIXEL_SHUFFLE_SHAPES_R4)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_pixel_shuffle_r4(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 4)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 4)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_pixel_shuffle_3d(dtype):
+    inp = torch.randn(18, 4, 4, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 3)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 3)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_pixel_shuffle_5d(dtype):
+    inp = torch.randn(2, 3, 18, 4, 4, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 3)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 3)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_pixel_shuffle_non_contiguous(dtype):
+    inp = torch.randn(2, 4, 4, 4, dtype=dtype, device=device).permute(0, 1, 3, 2)
+    assert not inp.is_contiguous()
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 2)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 2)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pixel_shuffle
+@pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
+def test_accuracy_pixel_shuffle_int_bool(dtype):
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, (1, 4, 4, 4), dtype=dtype, device=device)
+    else:
+        inp = torch.randint(-100, 100, (1, 4, 4, 4), dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 2)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 2)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pixel_shuffle
+def test_accuracy_pixel_shuffle_upscale_factor_1():
+    inp = torch.randn(2, 3, 8, 8, dtype=torch.float32, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 1)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 1)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pixel_shuffle
+def test_accuracy_pixel_shuffle_large(dtype=torch.float32):
+    inp = torch.randn(4, 64, 128, 128, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.pixel_shuffle(ref_inp, 4)
+    with flag_gems.use_gems():
+        res_out = torch.pixel_shuffle(inp, 4)
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.replication_pad1d
 @pytest.mark.parametrize("shape", [(2, 3, 7), (4, 16, 64), (8, 32, 256), (32, 256)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
