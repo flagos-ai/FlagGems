@@ -54,19 +54,19 @@ dependencies = [
 ascend = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
-    "flagtree==0.5.0+ascend3.2",
+    "flagtree==0.5.1+xpu3.0",
 ]
 
 hygon = [
     "torch==2.9.0+das.opt1.dtk2604",
-    "flagtree==0.5.0+hcu3.0",
+    "flagtree==0.5.1+xpu3.0",
 ]
 
 iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
-    "flagtree==0.5.0+iluvatar3.1"
+    "flagtree==0.5.1+xpu3.0"
 ]
 
 kunlunxin = [
@@ -87,14 +87,14 @@ metax = [
     "torch==2.8.0+metax3.5.3.9",
     "torchaudio==2.4.1+metax3.5.3.9",
     "torchvision==0.15.1+metax3.5.3.9",
-    "flagtree==3.1.0+metax3.5.3.9",
+    "flagtree==0.5.1+xpu3.0",
     # "triton==3.0.0+metax3.5.3.9",
 ]
 
 mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
-    "flagtree==0.5.0+mthreads3.1",
+    "flagtree==0.5.1+xpu3.0",
     # "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
     "mkl==2024.0.0",
@@ -104,7 +104,7 @@ nvidia = [
     "torch==2.9.0+cu128",
     "torchvision==0.24.0+cu128",
     "torchaudio==2.9.0+cu128",
-    "flagtree==0.5.0+3.5",
+    "flagtree==0.5.1+xpu3.0",
     # "triton==3.5",
 ]
 
@@ -114,7 +114,7 @@ tsingmicro = [
     "torchaudio==2.7.0",
     "torch_txda==0.1.0+20260310.294fc4a6",
     "txops==0.1.0+20260225.5cc33e4e",
-    "flagtree==0.5.0+tsingmicro3.3",
+    "flagtree==0.5.1+xpu3.0",
     # "triton==3.3.0++gitfe2a28fa",
 ]
 

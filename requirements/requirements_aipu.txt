@@ -1,7 +1,7 @@
 --index-url https://resource.flagos.net/repository/flagos-pypi-hosted/simple
 --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
 --trusted-host resource.flagos.net pypi.tuna.tsinghua.edu.cn
-flagtree==0.5.0+aipu3.3
+flagtree==0.5.1+xpu3.0
 scikit-build-core>=0.11
 pybind11
 ninja
