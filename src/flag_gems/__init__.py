@@ -235,6 +235,8 @@ _FULL_CONFIG = (
     ("hardsigmoid", hardsigmoid),
     ("hardsigmoid.out", hardsigmoid_out),
     ("hardswish_", hardswish_),
+    ("greater.Scalar", greater_scalar),
+    ("greater.Tensor", greater),
     ("hstack", hstack),
     ("hypot", hypot),
     ("i0", i0),
