@@ -243,6 +243,30 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
     },
+    "mha_block_128": {
+        "BLOCK_M": lambda args: 64,
+        "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 1,
+    },
+    "mha_block_64": {
+        "BLOCK_M": lambda args: 32,
+        "BLOCK_N": lambda args: 64,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 1,
+    },
+    "mha_block_32": {
+        "BLOCK_M": lambda args: 32,
+        "BLOCK_N": lambda args: 64,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 1,
+    },
+    "mha_block_16": {
+        "BLOCK_M": lambda args: 16,
+        "BLOCK_N": lambda args: 64,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 1,
+    },
     "mm": {
         "EVEN_K": mm_heur_even_k,
     },
