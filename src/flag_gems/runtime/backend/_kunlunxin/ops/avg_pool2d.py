@@ -102,6 +102,7 @@ def avg_pool2d_forward_kernel(
     count_divisor = count_acc.to(tl.float32)
 
     # Compile-time branch for COUNT_INCLUDE_PAD (constexpr, OK to use if-else)
+
     if COUNT_INCLUDE_PAD:
         default_divisor = tl.where(
             count_divisor >= 0, float(kernel_h * kernel_w), count_divisor

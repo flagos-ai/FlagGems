@@ -1,0 +1,58 @@
+---
+name: Backend Test
+
+on:
+  workflow_call:
+    inputs:
+      vendor:
+        description: 'GEMS_VENDOR value (e.g. iluvatar, ascend, moore)'
+        required: true
+        type: string
+      runner_label:
+        description: 'GitHub Actions runner label'
+        required: true
+        type: string
+      gpu_check_script:
+        description: 'Path to GPU check script (leave empty to skip)'
+        required: false
+        type: string
+        default: ''
+      test_script:
+        description: 'Path to test script under tools/'
+        required: true
+        type: string
+      changed_files:
+        description: 'List of changed files in a PR'
+        required: false
+        type: string
+        default: ''
+
+# NOTE: The following environment variables are for CI runners to
+# mitigate the network connection problems. However, this may not work
+# if the PR is triggered from a forked repository because in that case
+# GitHub doesn't allow the workflow to access any secrets.
+env:
+  http_proxy: ${{ secrets.HTTP_PROXY }}
+  https_proxy: ${{ secrets.HTTPS_PROXY }}
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner_label }}
+    concurrency:
+      group: >-
+        op-test-${{ inputs.vendor }}-
+        ${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash
+        run: |
+          bash ${{ inputs.gpu_check_script }}
+      - name: Run backend tests
+        env:
+          CHANGED_FILES: ${{ inputs.changed_files }}
+        shell: bash
+        run: |
+          bash ${{ inputs.test_script }} ${{ inputs.vendor }}

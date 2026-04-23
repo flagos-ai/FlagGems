@@ -1,6 +1,7 @@
 # C++ Tests in FlagGems
 
-If you build FlagGems with C extensions with `FLAGGEMS_BUILD_CTESTS` cmake option `ON`, you can run the ctest in the dir `FlagGems/build/cpython-3xx` with command:
+If you build FlagGems with C++ extensions with cmake option `FLAGGEMS_BUILD_CTESTS` set to `ON`,
+you can run the ctest in the dir `FlagGems/build/cpython-3xx` with command:
 
 ```bash
 ctest .
@@ -19,4 +20,5 @@ For example:
 TORCH_CPP_LOG_LEVEL=INFO ctest -V -R test_triton_reduction
 ```
 
-we use pytorch aten log as well, so you need set the env `TORCH_CPP_LOG_LEVEL=INFO` for more logs in `libtorch_example`.
+We use PyTorch Aten log as well, so you need set the env `TORCH_CPP_LOG_LEVEL=INFO`
+for more logs in `libtorch_example`.

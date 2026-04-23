@@ -12,6 +12,9 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
+logger = logging.getLogger(__name__)
+CACHE_USAGE_THRESHOLD = 0.8
+
 
 def is_tma_compatible(a, b, N, K):
     """
@@ -41,11 +44,6 @@ def is_tma_compatible(a, b, N, K):
         and N % 4 == 0
         and K % 4 == 0
     )
-
-
-CACHE_USAGE_THRESHOLD = 0.8
-
-logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -289,10 +287,9 @@ def mm_kernel_general_host_tma(
     c_desc.store([offset_am, offset_bn], c)
 
 
-_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
-
-
 def get_higher_dtype(a, b):
+    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
+
     if a is b:
         return a
 
@@ -307,6 +304,7 @@ def get_higher_dtype(a, b):
 
 
 def general_mm(a, b, c, M, N, K):
+    # TODO: Remove this debug message
     logger.debug(
         "GEMS MM-hopper, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",

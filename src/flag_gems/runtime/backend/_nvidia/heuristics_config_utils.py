@@ -338,6 +338,7 @@ def vdot_heur_block_size(args):
 
 def mean_heur_tile_k(args):
     MAX_TILE_K = 512
+    MAX_GRID_Y = 65535
     NUM_SMS = torch.cuda.get_device_properties(
         torch.cuda.current_device()
     ).multi_processor_count
@@ -352,6 +353,10 @@ def mean_heur_tile_k(args):
             tile_k *= 2
         else:
             break
+    # Ensure grid Y dimension does not exceed CUDA limit
+    min_tile_k = triton.cdiv(args["K"], MAX_GRID_Y)
+    if min_tile_k > tile_k:
+        tile_k = triton.next_power_of_2(min_tile_k)
     return tile_k
 
 

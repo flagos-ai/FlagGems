@@ -1,0 +1,24 @@
+name: op-test
+
+on:
+  workflow_call:
+    inputs:
+      pr_id:
+        description: 'The PR ID for generating coverage data'
+        type: string
+        required: true
+      script_path:
+        description: 'The path to the operator test script.'
+        type: string
+        required: true
+
+jobs:
+  test:
+    runs-on: jiuding
+    steps:
+      - uses: actions/checkout@v6
+      - shell: bash
+        run: tools/gpu_check.sh
+      - shell: bash
+        run: |
+          bash tools/${{ inputs.script_path }} ${{ inputs.pr_id }}

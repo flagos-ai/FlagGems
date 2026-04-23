@@ -1,5 +1,7 @@
 from backend_utils import VendorInfoBase  # noqa: E402
 
+from .utils import CORE_NUM  # noqa: F401
+
 
 def get_triton_extra_name():
     try:
@@ -26,7 +28,8 @@ CUSTOMIZED_UNUSED_OPS = (
     "contiguous",
     "sort",
     "sort_stable",
-    "topk",
+    "copy_",
+    "_to_copy",
 )
 
 

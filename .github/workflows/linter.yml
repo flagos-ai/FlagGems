@@ -1,4 +1,4 @@
-name: code-format-check
+name: linter
 
 on:
   push:
@@ -7,13 +7,13 @@ on:
     branches: [ "master" ]
 
 jobs:
-  pre-commit:
+  code-style:
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: actions/setup-python@v5
       with:
         python-version: '3.11'

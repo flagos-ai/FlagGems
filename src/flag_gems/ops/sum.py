@@ -60,6 +60,7 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 def sum(inp, *, dtype=None):
     logger.debug("GEMS SUM")
+    inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
