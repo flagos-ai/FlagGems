@@ -3,6 +3,9 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 )
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._scaled_dot_product_attention_math import (
+    _scaled_dot_product_attention_math,
+)
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
@@ -335,6 +338,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_safe_softmax",
+    "_scaled_dot_product_attention_math",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
