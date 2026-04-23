@@ -98,7 +98,6 @@ def generate_scatter_kernel(
 
     # the autotune function
 
-<<<<<<< Updated upstream
     code.writeline("def heur_block(args):")
     with code.indent():
         code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
@@ -114,8 +113,6 @@ def generate_scatter_kernel(
     code.newline()
     code.newline()
 
-=======
->>>>>>> Stashed changes
     # the decorators
     code.writeline("@libentry()")
     inp_stride_vars = ",".join(f"'inp_stride_{i}'" for i in range(rank))
@@ -399,7 +396,6 @@ def _reduce_name_to_scatter_reduce(reduce):
 
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
-<<<<<<< Updated upstream
 
     orig_dtype = inp.dtype
     needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
@@ -407,13 +403,11 @@ def scatter(inp, dim, index, src, reduce=None):
         inp = inp.to(torch.float32)
         src = src.to(torch.float32)
 
-    out = inp.clone()
-=======
->>>>>>> Stashed changes
-
     if reduce is not None:
         out = inp.clone()
         scatter_(out, dim, index, src, reduce=reduce)
+        if needs_upcast:
+            out = out.to(orig_dtype)
         return out
 
     out = inp.clone()
@@ -518,7 +512,6 @@ def scatter_src_row_kernel(
 
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER_")
-<<<<<<< Updated upstream
 
     orig_dtype = inp.dtype
     needs_upcast = reduce == "multiply" and orig_dtype == torch.float16
@@ -532,7 +525,6 @@ def scatter_(inp, dim, index, src, reduce=None):
         assert orig_dtype not in (
             torch.bfloat16,
         ), "Unsupported operation: reduce scatter bfloat tensors."
-=======
 
     if reduce is None and inp.ndim == 2:
         dim_actual = dim % inp.ndim
@@ -639,9 +631,6 @@ def scatter_(inp, dim, index, src, reduce=None):
             num_warps=num_warps,
         )
         return inp
-
-    out = inp
->>>>>>> Stashed changes
 
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes

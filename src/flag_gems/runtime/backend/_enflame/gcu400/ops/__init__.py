@@ -2,12 +2,6 @@ __all__ = ["any", "any_dim", "any_dims"]
 from .all import all, all_dim, all_dims
 from .abs import abs, abs_
 from .add import add, add_
-from .attention import (
-    ScaleDotProductAttention,
-    scaled_dot_product_attention,
-    scaled_dot_product_attention_backward,
-    scaled_dot_product_attention_forward,
-)
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .atan import atan, atan_
@@ -17,8 +11,7 @@ from .argmax import argmax
 from .argmin import argmin
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .attention import (
-    flash_attention_forward,
-    flash_attn_varlen_func,
+    ScaleDotProductAttention,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
