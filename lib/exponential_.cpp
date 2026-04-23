@@ -53,6 +53,8 @@ std::string get_vendor_name_simulated() {
   return "musa";
 #elif defined(FLAGGEMS_USE_NPU)
   return "npu";
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+  return "kunlunxin";
 #else
   return "unknown";
 #endif
