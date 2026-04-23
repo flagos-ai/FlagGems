@@ -33,6 +33,16 @@ namespace backend {
   using RawStreamType = musaStream_t;
 }  // namespace backend
 }  // namespace flag_gems
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+#include <xpu/runtime.h>
+namespace flag_gems {
+namespace backend {
+  // Kunlunxin XRE3 native path: the "stream" is a raw XPUStream (void*) which
+  // doubles as the raw launch handle for triton_jit's Kunlunxin backend.
+  using StreamType = XPUStream;
+  using RawStreamType = XPUStream;
+}  // namespace backend
+}  // namespace flag_gems
 #endif
 
 namespace flag_gems {
@@ -46,9 +56,13 @@ namespace backend {
     return c10_npu::getCurrentNPUStream(device.index());
 #elif defined(FLAGGEMS_USE_MUSA)
     return c10::musa::getCurrentMUSAStream(device.index());
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+    (void)device;
+    // TODO: XRE3 has no thread-local "current stream" API; nullptr = default stream.
+    return nullptr;
 #else
 #error \
-    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA"
+    "No backend defined. Define one of: FLAGGEMS_USE_CUDA, FLAGGEMS_USE_IX, FLAGGEMS_USE_NPU, FLAGGEMS_USE_MUSA, FLAGGEMS_USE_KUNLUNXIN"
 #endif
   }
 
@@ -60,6 +74,9 @@ namespace backend {
     return c10_npu::getCurrentNPUStream();
 #elif defined(FLAGGEMS_USE_MUSA)
     return c10::musa::getCurrentMUSAStream();
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+    // TODO: XRE3 has no thread-local "current stream" API; nullptr = default stream.
+    return nullptr;
 #else
 #error "No backend defined"
 #endif
@@ -67,7 +84,11 @@ namespace backend {
 
   // Get the raw stream from a typed stream (for passing to triton_jit)
   inline RawStreamType getRawStream(const StreamType& stream) {
+#if defined(FLAGGEMS_USE_KUNLUNXIN)
+    return stream;  // already raw XPUStream (void*)
+#else
     return stream.stream();
+#endif
   }
 
   // Check if tensor is on the correct device type for this backend
@@ -78,6 +99,11 @@ namespace backend {
     TORCH_CHECK(tensor.is_privateuseone(), tensor_name, " must be on NPU device, but got ", tensor.device());
 #elif defined(FLAGGEMS_USE_MUSA)
     TORCH_CHECK(tensor.is_privateuseone(), tensor_name, " must be on MUSA device, but got ", tensor.device());
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+    TORCH_CHECK(tensor.is_privateuseone(),
+                tensor_name,
+                " must be on Kunlunxin (XPU) device, but got ",
+                tensor.device());
 #else
 #error "No backend defined"
 #endif
@@ -90,6 +116,8 @@ namespace backend {
 #elif defined(FLAGGEMS_USE_NPU)
     return tensor.is_privateuseone();
 #elif defined(FLAGGEMS_USE_MUSA)
+    return tensor.is_privateuseone();
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
     return tensor.is_privateuseone();
 #else
 #error "No backend defined"
@@ -106,6 +134,8 @@ namespace backend {
     return "NPU";
 #elif defined(FLAGGEMS_USE_MUSA)
     return "MUSA";
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+    return "Kunlunxin";
 #else
 #error "No backend defined"
 #endif
@@ -115,7 +145,7 @@ namespace backend {
   inline at::DeviceType getBackendDeviceType() {
 #if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
     return at::kCUDA;
-#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA)
+#elif defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_KUNLUNXIN)
     return at::kPrivateUse1;
 #else
 #error "No backend defined"
@@ -130,6 +160,10 @@ namespace backend {
     return c10::musa::current_device();
 #elif defined(FLAGGEMS_USE_NPU)
     return 0;  // TODO: NPU current device query
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+    int dev = 0;
+    xpu_current_device(&dev);
+    return static_cast<c10::DeviceIndex>(dev);
 #else
     return 0;
 #endif
@@ -153,6 +187,8 @@ namespace backend {
     return torch::custom_class_available("npu");
 #elif defined(FLAGGEMS_USE_MUSA)
     return true;
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+    return true;
 #else
     return false;
 #endif
@@ -166,6 +202,8 @@ namespace backend {
     // NPU sync if needed
 #elif defined(FLAGGEMS_USE_MUSA)
     // MUSA sync if needed
+#elif defined(FLAGGEMS_USE_KUNLUNXIN)
+    xpu_wait(NULL);  // XRE3 native: wait all pending ops on default stream
 #endif
   }
 
