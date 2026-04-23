@@ -71,6 +71,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
@@ -150,7 +151,7 @@ from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
-from flag_gems.ops.index_put import index_put, index_put_
+from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.isclose import allclose, isclose
 from flag_gems.ops.isfinite import isfinite
@@ -255,6 +256,7 @@ from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from flag_gems.ops.roll import roll
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
 from flag_gems.ops.rsqrt import rsqrt, rsqrt_
@@ -307,6 +309,7 @@ from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
+from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
@@ -330,6 +333,7 @@ __all__ = [
     "_assert_async",
     "_conv_depthwise2d",
     "_functional_sym_constrain_range_for_size",
+    "_index_put_impl_",
     "_is_all_true",
     "_safe_softmax",
     "_unique2",
@@ -408,6 +412,8 @@ __all__ = [
     "clamp_min_",
     "clamp_tensor",
     "clamp_tensor_",
+    "clip",
+    "clip_",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
@@ -640,6 +646,7 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "roll",
     "round",
     "round_",
     "round_out",
@@ -729,6 +736,9 @@ __all__ = [
     "upsample_nearest2d",
     "upsample_nearest3d",
     "var_mean",
+    "var",
+    "var_correction",
+    "var_dim",
     "vdot",
     "vector_norm",
     "vstack",

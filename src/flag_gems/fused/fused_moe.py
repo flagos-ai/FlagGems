@@ -26,6 +26,8 @@ import yaml
 
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
+from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend import vendor_module
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -123,12 +125,15 @@ def dequant_mxfp6(
 
 @functools.lru_cache(maxsize=1)
 def _get_device_name() -> str:
-    """Return the normalised CUDA device name (spaces replaced by underscores).
+    """Return the normalised device name (spaces replaced by underscores).
 
     Matches the naming convention used by vLLM for its per-device config files.
     H800 falls back to H100_80GB_HBM3 (same SM 9.0 architecture).
     """
-    name = torch.cuda.get_device_name().replace(" ", "_")
+    try:
+        name = torch_device_fn.get_device_name().replace(" ", "_")
+    except AttributeError:
+        name = vendor_module.vendor_info.device_name
     # Normalise the H200 product family to a single key, following vLLM.
     if "H200" in name.split("_"):
         name = "NVIDIA_H200"

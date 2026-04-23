@@ -11,10 +11,6 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeImplicitAutograd
-)
-
 
 def conv3d_output_size(
     in_size: int,
@@ -226,28 +222,6 @@ def conv3d_forward_kernel(
 
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     logger.debug("GEMS CONV3D")
-    if torch.is_grad_enabled():
-        if isinstance(padding, str):
-            return torch.ops.aten.conv3d.padding.redispatch(
-                _FALLBACK_KEYSET,
-                input,
-                weight,
-                bias,
-                stride,
-                padding,
-                dilation,
-                groups,
-            )
-        return torch.ops.aten.conv3d.default.redispatch(
-            _FALLBACK_KEYSET,
-            input,
-            weight,
-            bias,
-            stride,
-            padding,
-            dilation,
-            groups,
-        )
     assert weight.ndim == 5, "Weights must be 5D, received shape {weight.shape}"
     assert (
         bias is None or bias.ndim == 1
