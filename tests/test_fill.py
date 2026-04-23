@@ -81,3 +81,42 @@ def test_fill_scalar_out(value, shape, dtype):
 
     utils.gems_assert_equal(res_result, ref_result)
     assert res_result is out, "fill.Scalar_out should return the out tensor"
+
+
+# fill_.Scalar
+@pytest.mark.fill_scalar_
+@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_fill_scalar_(value, shape, dtype):
+    # Test fill_.Scalar
+    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = utils.to_reference(x.clone(), False)
+
+    ref_x.fill_(value)
+    with flag_gems.use_gems():
+        x.fill_(value)
+
+    utils.gems_assert_equal(x, ref_x)
+
+
+# fill_.Tensor
+@pytest.mark.fill_tensor_
+@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_fill_(value, shape, dtype):
+    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = utils.to_reference(x.clone(), False)
+    value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
+
+    if flag_gems.vendor_name == "mthreads":
+        ref_x.fill_(value_tensor.cpu())
+    else:
+        ref_value_tensor = utils.to_reference(value_tensor)
+        ref_x.fill_(ref_value_tensor)
+
+    with flag_gems.use_gems():
+        x.fill_(value_tensor)
+
+    utils.gems_assert_equal(x, ref_x)
