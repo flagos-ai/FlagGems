@@ -199,6 +199,7 @@ _FULL_CONFIG = (
     ("exponential_", exponential_),
     ("eye", eye),
     ("eye.m", eye_m),
+    ("fp8_mqa_logits", fp8_mqa_logits),
     ("fill.Scalar", fill_scalar),
     ("fill.Scalar_out", fill_scalar_out),
     ("fill.Tensor", fill_tensor),
