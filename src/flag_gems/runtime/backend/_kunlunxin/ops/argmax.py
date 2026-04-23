@@ -67,6 +67,25 @@ def heur_n_block_size(args):
 
     return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
+@libentry()
+@triton.jit
+def argmax_kernel_dim_none(
+    inp,                     # index 0 (kernelParams)
+    out,                     # index 1 (kernelParams)
+    M,                       # index 2 (kernelParams)
+    BLOCK_SIZE: tl.constexpr # index 3 (kernelConsts)
+):
+    # 占位函数体，让 Triton 编译器能通过编译即可
+    # 实际执行被 C++ handler 拦截，以下代码永远不会在 XPU 上运行
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    inp_ptrs = inp + offset
+    mask = offset < M
+    min_value = get_dtype_min(inp.type.element_ty)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
+    max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
+    tl.store(out, max_index)
+
 
 @libentry()
 # @triton.heuristics(runtime.get_heuristic_config("argmax"))
@@ -174,14 +193,12 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
         with torch_device_fn.device(inp.device):
-            argmax_kernel_1[(mid_size, 1, 1)](
+            argmax_kernel_dim_none[(1, 1, 1)](
                 inp,
-                mid_value,
-                mid_index,
+                out,       # ← 直接传 out，不经过 mid_index
                 M,
                 block_size,
             )
-            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
