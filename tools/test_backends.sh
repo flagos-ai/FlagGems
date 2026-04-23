@@ -49,6 +49,8 @@ uv pip install \
   "cmake>=3.20,<4" \
   "ninja==1.13.0"
 
+export USE_FLAGTREE=1
+
 ## Vendor-specific installation steps
 source tools/setup_${VENDOR}.sh
 [ "$?" == 0 ] || { echo "Failed to setup FlagGems" ; exit 1; }
