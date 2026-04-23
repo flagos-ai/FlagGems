@@ -245,13 +245,6 @@ def is_syrk_transpose_pair(a, b):
 
 
 def syrk_mm(a, c, M, K):
-    logger.debug(
-        "GEMS MM, [mm scenario]: syrk, [shape info]: [-, %s, %s](batch, M, K), "
-        "[A column-major]: %s",
-        M,
-        K,
-        a.stride(0) == 1,
-    )
     grid = lambda META: (
         # Number of tile rows is tiles = ceil(M / BLOCK_M).
         # Packed lower triangle contains:
