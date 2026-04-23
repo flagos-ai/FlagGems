@@ -6,8 +6,8 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
-from .accuracy_utils import utils
 from .conftest import QUICK_MODE
 
 if QUICK_MODE:
