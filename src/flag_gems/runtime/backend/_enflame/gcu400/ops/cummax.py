@@ -54,14 +54,12 @@ def add_base_max_kernel(
 
     if pid > 0:
         partial_max_ptrs = partial_max + pid - 1
-        last_part_max_via_max = tl.load(partial_max_ptrs)
+        prev_val = tl.load(partial_max_ptrs)
         partial_max_indices_ptrs = partial_max_indices + pid - 1
-        last_part_max_index_via_max = tl.load(partial_max_indices_ptrs)
+        prev_idx = tl.load(partial_max_indices_ptrs)
 
-        final_vals = tl.maximum(out_vals, last_part_max_via_max)
-        final_indices = tl.where(
-            out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max
-        )
+        final_vals = tl.maximum(out_vals, prev_val)
+        final_indices = tl.where(out_vals >= prev_val, out_indices, prev_idx)
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -270,14 +268,12 @@ def add_base_max_abc_kernel(
 
     if pid_b > 0:
         partial_max_ptrs = partial_max + last_part_offset
-        last_part_max_via_max = tl.load(partial_max_ptrs)
+        prev_val = tl.load(partial_max_ptrs)
         partial_max_index_ptrs = partial_max_indices + last_part_offset
-        last_part_max_index_via_max = tl.load(partial_max_index_ptrs)
+        prev_idx = tl.load(partial_max_index_ptrs)
 
-        final_vals = tl.maximum(out_vals, last_part_max_via_max)
-        final_indices = tl.where(
-            out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max
-        )
+        final_vals = tl.maximum(out_vals, prev_val)
+        final_indices = tl.where(out_vals >= prev_val, out_indices, prev_idx)
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -358,11 +354,15 @@ def scan_part_max_abc_loop_kernel(
     t_idx = tl.arange(0, BLOCK_SIZE)
     ac_offset = a_idx * B * C + c_idx
 
-    # init
     min_value = get_dtype_min(inp.type.element_ty)
     prev_max_val = tl.full([], min_value, dtype=tl.float32)
-    prev_max_val_idx = tl.full([], 0, dtype=tl.int32)
+    prev_max_idx = tl.full([], 0, dtype=tl.int32)
     last_mask = t_idx == (BLOCK_SIZE - 1)
+
+    scan_nan = tl.full([], 0, dtype=tl.int32)
+    if tl.constexpr(inp.type.element_ty.is_floating()):
+        first_val = tl.load(inp + ac_offset)
+        scan_nan = (first_val != first_val).to(tl.int32)
 
     for l_idx in tl.range(loop_num):
         b_idx = l_idx * BLOCK_SIZE + t_idx
@@ -381,32 +381,34 @@ def scan_part_max_abc_loop_kernel(
             vals = inp_vals.to(tl.float32)
         idxs = b_idx
 
-        # cummax
-        result, cummax_indices = tl_cummax(vals, idxs, axis=0)
+        if tl.constexpr(vals.dtype.is_floating()):
+            clean_vals = tl.where(vals != vals, min_value, vals)
+            result, cummax_indices = tl_cummax(clean_vals, idxs, axis=0)
+        else:
+            result, cummax_indices = tl_cummax(vals, idxs, axis=0)
 
-        # broadcast
         prev_max_val_b = tl.broadcast_to(prev_max_val, (BLOCK_SIZE,))
-        prev_max_val_idx_b = tl.broadcast_to(prev_max_val_idx, (BLOCK_SIZE,))
+        prev_max_idx_b = tl.broadcast_to(prev_max_idx, (BLOCK_SIZE,))
 
-        # update result from prev val and idx
-        cummax_indices = tl.where(
-            result >= prev_max_val_b, cummax_indices, prev_max_val_idx_b
+        final_vals = tl.maximum(result, prev_max_val_b)
+        final_idx = tl.where(
+            result >= prev_max_val_b, cummax_indices, prev_max_idx_b
         )
-        result = tl.maximum(result, prev_max_val_b)
+        prev_max_val = tl.sum(tl.where(last_mask, final_vals, 0.0), axis=0)
+        prev_max_idx = tl.sum(tl.where(last_mask, final_idx, 0), axis=0)
 
-        # update global max val and idx
-        prev_max_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
-        prev_max_val_idx = tl.sum(tl.where(last_mask, cummax_indices, 0), axis=0)
+        if tl.constexpr(inp.type.element_ty.is_floating()):
+            nan_override = scan_nan > 0
+            final_vals = tl.where(nan_override, float("nan"), final_vals)
+            final_idx = tl.where(nan_override, 0, final_idx)
 
-        # store result
-        tl.store(out + offset, result, mask=mask)
-        tl.store(out_indices + offset, cummax_indices, mask=mask)
+        tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
+        tl.store(out_indices + offset, final_idx, mask=mask)
 
 
 def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
-    # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
-    if B < 1024 * 4:
+    BLOCK_SIZE = 4096
+    if B <= 4096:
         BLOCK_SIZE = triton.next_power_of_2(B)
     loop_num = math.ceil(B / BLOCK_SIZE)
 
@@ -420,6 +422,7 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
             C,
             loop_num,
             BLOCK_SIZE,
+            num_warps=1,
         )
 
 

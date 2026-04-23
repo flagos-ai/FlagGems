@@ -65,3 +65,24 @@ def fill_scalar_(self, value=0):
     with torch_device_fn.device(self.device):
         fill_scalar_func(self, value, out0=self)
     return self
+
+
+def fill_scalar_out(input, value, *, out=None):
+    logger.debug("GEMS FILL_SCALAR_OUT")
+    if out is None:
+        return fill_scalar(input, value)
+    with torch_device_fn.device(input.device):
+        fill_scalar_func(input, value, out0=out)
+    return out
+
+
+def fill_tensor_out(input, value, *, out=None):
+    if out is None:
+        out = torch.empty_like(input)
+    if out.ndim <= 3:
+        out.copy_(value)
+    elif out.is_contiguous():
+        out.view(-1).copy_(value.expand(out.numel()))
+    else:
+        out.copy_(value.expand_as(out))
+    return out

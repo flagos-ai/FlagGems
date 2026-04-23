@@ -4,90 +4,72 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import libentry, libtuner
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+NUM_SIPS = 24
+
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("replication_pad3d"),
-    key=["H_out", "W_out"],
-)
-@triton.jit
+@triton.jit(do_not_specialize=["D_in", "H_in", "W_in",
+                                "pad_l", "pad_t", "pad_f",
+                                "stride_nc", "stride_xd", "stride_xh",
+                                "NCD_total"])
 def replicationpad3d_kernel(
     x_ptr,
     out_ptr,
     D_in,
     H_in,
     W_in,
-    D_out,
-    H_out,
-    W_out,
     pad_l,
     pad_t,
     pad_f,
-    stride_xn,
-    stride_xc,
+    stride_nc,
     stride_xd,
     stride_xh,
-    stride_xw,
-    stride_on,
-    stride_oc,
-    stride_od,
-    stride_oh,
-    stride_ow,
-    C,
-    NCD_TOTAL,
-    SPLIT_Z: tl.constexpr,
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+    NCD_total,
+    NUM_HW_BLOCKS: tl.constexpr,
+    D_out: tl.constexpr,
+    H_out: tl.constexpr,
+    W_out: tl.constexpr,
+    HW_OUT: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    # GCU: grid_z must be < 256. When N*C*D_out > 255, fold the extra range into grid_x.
-    if SPLIT_Z:
-        tile_w = tl.cdiv(W_out, BLOCK_W)
-        pid_w_raw = tl.program_id(0)
-        pid_w = pid_w_raw % tile_w
-        pid_h = tl.program_id(1)
-        pid_ncd = (pid_w_raw // tile_w) * 255 + tl.program_id(2)
-        if pid_ncd >= NCD_TOTAL:
-            return
-    else:
-        pid_w = tl.program_id(0)
-        pid_h = tl.program_id(1)
-        pid_ncd = tl.program_id(2)
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
 
-    d_idx = pid_ncd % D_out
-    nc_idx = pid_ncd // D_out
-    c_idx = nc_idx % C
-    n_idx = nc_idx // C
+    for ncd in tl.range(pid, NCD_total, num_pids):
+        d_out = ncd % D_out
+        nc_idx = ncd // D_out
 
-    iz = d_idx - pad_f
-    iz = tl.where(iz < 0, 0, iz)
-    iz = tl.where(iz > D_in - 1, D_in - 1, iz)
+        iz = d_out - pad_f
+        iz = tl.where(iz < 0, 0, iz)
+        iz = tl.where(iz > D_in - 1, D_in - 1, iz)
 
-    x_base_ptr = x_ptr + n_idx * stride_xn + c_idx * stride_xc + iz * stride_xd
-    out_base_ptr = out_ptr + n_idx * stride_on + c_idx * stride_oc + d_idx * stride_od
+        x_base = x_ptr + nc_idx * stride_nc + iz * stride_xd
+        out_base = ncd * HW_OUT
 
-    offs_h = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
-    offs_w = pid_w * BLOCK_W + tl.arange(0, BLOCK_W)
+        for hw_block in tl.range(0, NUM_HW_BLOCKS):
+            hw_off = hw_block * BLOCK + arange
+            mask = hw_off < HW_OUT
 
-    iy = offs_h - pad_t
-    iy = tl.where(iy < 0, 0, iy)
-    iy = tl.where(iy > H_in - 1, H_in - 1, iy)
+            h_out = hw_off // W_out
+            w_out = hw_off % W_out
 
-    ix = offs_w - pad_l
-    ix = tl.where(ix < 0, 0, ix)
-    ix = tl.where(ix > W_in - 1, W_in - 1, ix)
+            iy = h_out - pad_t
+            iy = tl.where(iy < 0, 0, iy)
+            iy = tl.where(iy > H_in - 1, H_in - 1, iy)
 
-    x_offset = iy[:, None] * stride_xh + ix[None, :] * stride_xw
-    out_offset = offs_h[:, None] * stride_oh + offs_w[None, :] * stride_ow
+            ix = w_out - pad_l
+            ix = tl.where(ix < 0, 0, ix)
+            ix = tl.where(ix > W_in - 1, W_in - 1, ix)
 
-    mask = (offs_h[:, None] < H_out) & (offs_w[None, :] < W_out)
-
-    vals = tl.load(x_base_ptr + x_offset, mask=mask)
-    tl.store(out_base_ptr + out_offset, vals, mask=mask)
+            x_offset = iy * stride_xh + ix
+            vals = tl.load(x_base + x_offset, mask=mask)
+            tl.store(out_ptr + out_base + hw_off, vals, mask=mask)
 
 
 def replication_pad3d(x, padding):
@@ -101,51 +83,42 @@ def replication_pad3d(x, padding):
     if is_4d:
         x = x.unsqueeze(0)
 
+    x = x.contiguous()
     N, C, D_in, H_in, W_in = x.shape
-    D_out, H_out, W_out = (
-        D_in + pad_f + pad_ba,
-        H_in + pad_t + pad_b,
-        W_in + pad_l + pad_r,
-    )
+    D_out = D_in + pad_f + pad_ba
+    H_out = H_in + pad_t + pad_b
+    W_out = W_in + pad_l + pad_r
 
     out = torch.empty((N, C, D_out, H_out, W_out), device=x.device, dtype=x.dtype)
 
-    ncd = N * C * D_out
-    # grid_z must be < 256 on this backend
-    zmax = 255
-    if ncd <= zmax:
-        grid = lambda META: (
-            triton.cdiv(W_out, META["BLOCK_W"]),
-            triton.cdiv(H_out, META["BLOCK_H"]),
-            ncd,
-        )
-        split_z = False
-    else:
-        outer = triton.cdiv(ncd, zmax)
-        grid = lambda META: (
-            triton.cdiv(W_out, META["BLOCK_W"]) * outer,
-            triton.cdiv(H_out, META["BLOCK_H"]),
-            zmax,
-        )
-        split_z = True
+    HW_out = H_out * W_out
+    NCD_total = N * C * D_out
 
-    replicationpad3d_kernel[grid](
-        x,
-        out,
-        D_in,
-        H_in,
-        W_in,
-        D_out,
-        H_out,
-        W_out,
-        pad_l,
-        pad_t,
-        pad_f,
-        *x.stride(),
-        *out.stride(),
-        C,
-        ncd,
-        split_z,
-    )
+    BLOCK = triton.next_power_of_2(HW_out)
+    if NCD_total <= NUM_SIPS * 2:
+        BLOCK = min(BLOCK, 1024)
+    elif HW_out > 8192:
+        BLOCK = min(BLOCK, 4096)
+    else:
+        BLOCK = min(BLOCK, 2048)
+    if BLOCK < 512:
+        BLOCK = 512
+    NUM_HW_BLOCKS = triton.cdiv(HW_out, BLOCK)
+
+    stride_nc = x.stride(1)
+
+    grid_size = min(NCD_total, NUM_SIPS * 2)
+
+    with torch_device_fn.device(x.device):
+        replicationpad3d_kernel[(grid_size,)](
+            x, out,
+            D_in, H_in, W_in,
+            pad_l, pad_t, pad_f,
+            stride_nc, x.stride(2), x.stride(3),
+            NCD_total,
+            NUM_HW_BLOCKS=NUM_HW_BLOCKS, D_out=D_out, H_out=H_out,
+            W_out=W_out, HW_OUT=HW_out, BLOCK=BLOCK,
+            num_warps=4,
+        )
 
     return out.squeeze(0) if is_4d else out

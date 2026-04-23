@@ -10,11 +10,13 @@ from flag_gems.utils import libentry, tl_extra_shim
 rsqrt = tl_extra_shim.rsqrt
 logger = logging.getLogger(__name__)
 
-MAX_BLOCK_HW = 1024
+MAX_BLOCK_HW = 2048
+MAX_BLOCK_HW_BACKWARD = 512
+GRID_DIM_X = 24
 
 
 @libentry()
-@triton.jit(do_not_specialize=["eps"])
+@triton.jit(do_not_specialize=["eps", "group_size", "C", "HW", "num_groups"])
 def group_norm_kernel(
     X,
     Y,
@@ -33,37 +35,36 @@ def group_norm_kernel(
     pid = tl.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
-    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
 
+    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
     wb_offset = group * group_size + group_offset
     wb_mask = wb_offset < C
 
     Mean_ptr = Mean + pid
     Rstd_ptr = Rstd + pid
 
-    # Pass 1: compute sum to get mean
+    # Welford pass: compute mean and variance in a single pass
     _sum = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
-    for off in range(0, HW, BLOCK_HW_SIZE):
-        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
-        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-        xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
+    _sq = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
+    for off in tl.range(0, HW, BLOCK_HW_SIZE):
+        x_block = tl.make_block_ptr(
+            base=X + pid * num_elements,
+            shape=(group_size, HW),
+            strides=(HW, 1),
+            offsets=(0, off),
+            block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
+            order=(1, 0),
+        )
+        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
         _sum += X_val
-    mean = tl.sum(_sum) / num_elements
+        _sq += X_val * X_val
 
-    # Pass 2: compute variance
-    _var = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
-    for off in range(0, HW, BLOCK_HW_SIZE):
-        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
-        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-        xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-        x = tl.where(xy_mask, X_val - mean, 0.0)
-        _var += x * x
-    var = tl.sum(_var) / num_elements
+    total_sum = tl.sum(_sum)
+    total_sq = tl.sum(_sq)
+    mean = total_sum / num_elements
+    var = total_sq / num_elements - mean * mean
     rstd = rsqrt(var + eps)
 
-    # Load weight and bias (shape: [BLOCK_GROUP_SIZE])
     if W is None:
         weight = 1
     else:
@@ -73,23 +74,35 @@ def group_norm_kernel(
     else:
         bias = tl.load(B + wb_offset, mask=wb_mask, other=0.0)[:, None]
 
-    # Pass 3: normalize and store output
-    for off in range(0, HW, BLOCK_HW_SIZE):
-        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
-        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-        xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-        x = tl.where(xy_mask, X_val - mean, 0.0)
-        x_hat = x * rstd
+    # Normalize pass
+    for off in tl.range(0, HW, BLOCK_HW_SIZE):
+        x_block = tl.make_block_ptr(
+            base=X + pid * num_elements,
+            shape=(group_size, HW),
+            strides=(HW, 1),
+            offsets=(0, off),
+            block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
+            order=(1, 0),
+        )
+        y_block = tl.make_block_ptr(
+            base=Y + pid * num_elements,
+            shape=(group_size, HW),
+            strides=(HW, 1),
+            offsets=(0, off),
+            block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE),
+            order=(1, 0),
+        )
+        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
+        x_hat = (X_val - mean) * rstd
         Y_val = x_hat * weight + bias
-        tl.store(Y + xy_offset, Y_val, mask=xy_mask)
+        tl.store(y_block, Y_val.to(Y.dtype.element_ty), boundary_check=(0, 1))
 
     tl.store(Mean_ptr, mean)
     tl.store(Rstd_ptr, rstd)
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["group_size", "C", "HW"])
 def group_norm_backward_kernel(
     grad_y,
     X,
@@ -102,7 +115,7 @@ def group_norm_backward_kernel(
     C,
     HW,
     BLOCK_GROUP_SIZE: tl.constexpr,
-    BLOCK_HW_SIZE: tl.constexpr = 128,
+    BLOCK_HW_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     group = pid % num_groups
@@ -110,7 +123,6 @@ def group_norm_backward_kernel(
 
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
     wb_offset = group * group_size + group_offset
-
     wb_mask = wb_offset < C
 
     rstd = tl.load(Rstd + pid).to(tl.float32)
@@ -122,16 +134,21 @@ def group_norm_backward_kernel(
 
     dx_part2 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
     dx_part3 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
-    for off in range(0, HW, BLOCK_HW_SIZE):
-        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
-        hw_mask = hw_offset < HW
-        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-        xy_mask = wb_mask[:, None] & hw_mask[None, :]
+    for off in tl.range(0, HW, BLOCK_HW_SIZE):
+        dy_block = tl.make_block_ptr(
+            base=grad_y + pid * num_elements,
+            shape=(group_size, HW), strides=(HW, 1),
+            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+        )
+        x_block = tl.make_block_ptr(
+            base=X + pid * num_elements,
+            shape=(group_size, HW), strides=(HW, 1),
+            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+        )
+        dY_val = tl.load(dy_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
+        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
 
-        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-
-        x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
+        x_hat = rstd * (X_val - mean)
         dx_hat = weight * dY_val
         dx_part2 += dx_hat
         dx_part3 += dx_hat * x_hat
@@ -139,24 +156,34 @@ def group_norm_backward_kernel(
     dx_2 = tl.sum(dx_part2)
     dx_3 = tl.sum(dx_part3)
 
-    for off in range(0, HW, BLOCK_HW_SIZE):
-        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
-        hw_mask = hw_offset < HW
-        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-        xy_mask = wb_mask[:, None] & hw_mask[None, :]
+    for off in tl.range(0, HW, BLOCK_HW_SIZE):
+        dy_block = tl.make_block_ptr(
+            base=grad_y + pid * num_elements,
+            shape=(group_size, HW), strides=(HW, 1),
+            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+        )
+        x_block = tl.make_block_ptr(
+            base=X + pid * num_elements,
+            shape=(group_size, HW), strides=(HW, 1),
+            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+        )
+        dx_block = tl.make_block_ptr(
+            base=grad_x + pid * num_elements,
+            shape=(group_size, HW), strides=(HW, 1),
+            offsets=(0, off), block_shape=(BLOCK_GROUP_SIZE, BLOCK_HW_SIZE), order=(1, 0),
+        )
+        dY_val = tl.load(dy_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
+        X_val = tl.load(x_block, boundary_check=(0, 1), padding_option="zero").to(tl.float32)
 
-        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-
-        x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
+        x_hat = rstd * (X_val - mean)
         dx_hat = weight * dY_val
         dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / num_elements)
 
-        tl.store(grad_x + xy_offset, dx, xy_mask)
+        tl.store(dx_block, dx.to(grad_x.dtype.element_ty), boundary_check=(0, 1))
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["N", "C", "HW", "group_size"])
 def weight_bias_backward_kernel(
     dY,
     X,
@@ -183,9 +210,9 @@ def weight_bias_backward_kernel(
     dw_acc = tl.zeros([BLOCK_N, BLOCK_HW], dtype=tl.float32)
     db_acc = tl.zeros([BLOCK_N, BLOCK_HW], dtype=tl.float32)
 
-    for off in range(0, HW, BLOCK_HW):
+    for off in tl.range(0, HW, BLOCK_HW):
         hw_offset = off + tl.arange(0, BLOCK_HW)
-        xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+        xy_mask = (n_offset[:, None] < N) & (hw_offset[None, :] < HW)
 
         dY_ptr = dY + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
         x_ptr = X + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
@@ -205,7 +232,7 @@ def weight_bias_backward_kernel(
 
 
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
-    logger.debug("GEMS GROUPNORM FORWARD")
+    logger.debug("GEMS GROUPNORM FORWARD (GCU400)")
 
     group_size = triton.cdiv(C, group)
     input = input.contiguous()
@@ -234,6 +261,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
             eps,
             BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
             BLOCK_HW_SIZE=BLOCK_HW_SIZE,
+            num_warps=1,
         )
     return y, mean, rstd
 
@@ -241,7 +269,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
 def group_norm_backward(
     grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
 ):
-    logger.debug("GEMS GROUPNORM BACKWARD")
+    logger.debug("GEMS GROUPNORM BACKWARD (GCU400)")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()
@@ -249,6 +277,12 @@ def group_norm_backward(
     rstd = rstd.contiguous()
     weight = None if weight is None else weight.contiguous()
     group_size = triton.cdiv(C, group)
+
+    BLOCK_GROUP_SIZE = triton.next_power_of_2(group_size)
+    BLOCK_HW = min(triton.next_power_of_2(HxW), MAX_BLOCK_HW_BACKWARD)
+    # DSM constraint: reduce BLOCK_HW if tile is too large for make_block_ptr overhead
+    while BLOCK_GROUP_SIZE * BLOCK_HW > 2048 and BLOCK_HW > 128:
+        BLOCK_HW //= 2
 
     if output_mask[0]:
         grad_inp = torch.empty_like(input)
@@ -265,7 +299,9 @@ def group_norm_backward(
                 grad_inp,
                 C,
                 HxW,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
+                BLOCK_GROUP_SIZE=BLOCK_GROUP_SIZE,
+                BLOCK_HW_SIZE=BLOCK_HW,
+                num_warps=1,
             )
     else:
         grad_inp = None
@@ -273,10 +309,12 @@ def group_norm_backward(
     if output_mask[1] is False and output_mask[2] is False:
         return grad_inp, None, None
 
-    BLOCK_HW = min(triton.next_power_of_2(HxW), MAX_BLOCK_HW)
-
     weight_grad = torch.empty_like(weight) if output_mask[1] else None
     bias_grad = torch.empty_like(weight) if output_mask[2] else None
+    BLOCK_HW_WB = min(triton.next_power_of_2(HxW), MAX_BLOCK_HW_BACKWARD)
+    BLOCK_N_WB = triton.next_power_of_2(N)
+    while BLOCK_N_WB * BLOCK_HW_WB > 2048 and BLOCK_HW_WB > 128:
+        BLOCK_HW_WB //= 2
     with torch_device_fn.device(input.device):
         weight_bias_backward_kernel[(C, 1, 1)](
             grad_out,
@@ -290,7 +328,8 @@ def group_norm_backward(
             N,
             C,
             HxW,
-            BLOCK_N=triton.next_power_of_2(N),
-            BLOCK_HW=BLOCK_HW,
+            BLOCK_N=BLOCK_N_WB,
+            BLOCK_HW=BLOCK_HW_WB,
+            num_warps=1,
         )
     return grad_inp, weight_grad, bias_grad

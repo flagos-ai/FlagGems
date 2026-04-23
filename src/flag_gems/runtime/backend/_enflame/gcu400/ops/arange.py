@@ -35,11 +35,14 @@ def arange_start(
     else:
         size = math.ceil((end - start) / step)
 
-    BLOCK_SIZE = 128
-    if size // BLOCK_SIZE > 65535:
-        BLOCK_SIZE = 16384
-    if size // BLOCK_SIZE > 65535:
-        BLOCK_SIZE = 32768
+    if size <= 65536:
+        BLOCK_SIZE = min(triton.next_power_of_2(size), 8192)
+        nw = 4
+    else:
+        BLOCK_SIZE = 65536
+        nw = 1
+    while triton.cdiv(size, BLOCK_SIZE) > 65535:
+        BLOCK_SIZE *= 2
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     if dtype is None:
@@ -49,12 +52,13 @@ def arange_start(
         pin_memory = False
 
     if device is None:
-        device = (
-            runtime.device.name
-        )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
+        device = runtime.device.name
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
-    arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
+    if size > 65536:
+        arange_func[grid,](result, start, end, step, size, BLOCK_SIZE, num_warps=nw)
+    else:
+        arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
     return result
 
 
