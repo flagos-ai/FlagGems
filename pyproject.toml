@@ -129,7 +129,7 @@ test = [
 
 # Package for running example tests
 example = [
-    "transformers>=4.40.2",
+    "transformers>=4.44.0",
 ]
 
 [project.urls]
