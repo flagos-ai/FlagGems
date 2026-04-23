@@ -400,7 +400,7 @@ def test_accuracy_arange(end, dtype):
 
 
 @pytest.mark.zero
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", [(512, 512), (128, 256), (2, 3)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_zero(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
