@@ -344,6 +344,25 @@ def test_perf_sort():
     bench.run()
 
 
+@pytest.mark.argsort
+def test_perf_argsort():
+    class ArgsortBenchmark(GenericBenchmark2DOnly):
+        def set_more_shapes(self):
+            return [(1024, 1), (1024, 512), (16, 128 * 1024), (8, 256 * 1024)]
+
+    def argsort_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp, {"dim": -1, "descending": False},
+
+    bench = ArgsortBenchmark(
+        input_fn=argsort_input_fn,
+        op_name="argsort",
+        torch_op=torch.argsort,
+        dtypes=INT_DTYPES + FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
