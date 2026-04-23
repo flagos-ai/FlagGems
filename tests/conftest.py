@@ -51,20 +51,30 @@ def pytest_addoption(parser):
         help="run tests on quick mode",
     )
 
-    parser.addoption(
-        "--record",
-        action="store",
-        default="none",
-        required=False,
-        choices=["none", "log"],
-        help="tests function param recorded in log files or not",
-    )
+    try:
+        parser.addoption(
+            "--record",
+            action="store",
+            default="none",
+            required=False,
+            choices=["none", "log"],
+            help="tests function param recorded in log files or not",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register --record in
+        # benchmark/conftest.py. Reuse the existing option in that case.
+        pass
 
-    parser.addoption(
-        "--collect-marks",
-        action="store_true",
-        help="Collect the tests with marker information without executing them",
-    )
+    try:
+        parser.addoption(
+            "--collect-marks",
+            action="store_true",
+            help="Collect the tests with marker information without executing them",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # benchmark/conftest.py. Reuse the existing option in that case.
+        pass
 
 
 def pytest_configure(config):

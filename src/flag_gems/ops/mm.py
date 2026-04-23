@@ -156,6 +156,117 @@ def general_mm(a, b, c, M, N, K):
     return c
 
 
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("mm_self_transpose"),
+    key=["M", "K", "stride_am", "stride_ak"],
+    strategy=["align32", "align32", "align32", "align32"],
+    warmup=2,
+    rep=4,
+)
+@triton.jit
+def mm_kernel_syrk(
+    A,
+    C,
+    M,
+    K,
+    stride_am,
+    stride_ak,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+
+    # Packed lower-triangular launch domain:
+    #   pid = row * (row + 1) / 2 + col, where 0 <= col <= row.
+    #
+    # Invert the triangular-number indexing by solving:
+    #   row^2 + row - 2 * pid = 0
+    # => row = (-1 + sqrt(1 + 8 * pid)) / 2
+    #
+    # We take floor(...) as the candidate row, then apply an integer +/-1 correction
+    # because fp32 sqrt can be off near triangular-number boundaries.
+    pid_f = pid.to(tl.float32)
+    pid_m = tl.floor((tl.sqrt(8.0 * pid_f + 1.0) - 1.0) / 2.0).to(tl.int32)
+    tri_start = pid_m * (pid_m + 1) // 2
+    pid_m = tl.where(tri_start > pid, pid_m - 1, pid_m)
+    next_tri_start = (pid_m + 1) * (pid_m + 2) // 2
+    pid_m = tl.where(next_tri_start <= pid, pid_m + 1, pid_m)
+    tri_start = pid_m * (pid_m + 1) // 2
+    pid_n = pid - tri_start
+
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_M + tl.arange(0, BLOCK_M)
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
+    ran = tl.max_contiguous(tl.multiple_of(rn % M, BLOCK_M), BLOCK_M).to(tl.int64)
+    rm = rm.to(tl.int64)
+    rn = rn.to(tl.int64)
+    acc = tl.zeros((BLOCK_M, BLOCK_M), dtype=tl.float32)
+
+    for start_k in range(0, K, BLOCK_K):
+        rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
+        mask_k = rk < K
+        a = tl.load(
+            A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
+            mask=mask_k[None, :],
+            other=0.0,
+        )
+        b = tl.load(
+            A + (rk[:, None] * stride_ak + ran[None, :] * stride_am),
+            mask=mask_k[:, None],
+            other=0.0,
+        )
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    out = acc.to(C.dtype.element_ty)
+    c_ptr = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+    mask = (rm < M)[:, None] & (rn < M)[None, :]
+    tl.store(c_ptr, out, mask=mask)
+
+    if pid_m > pid_n:
+        c_t_ptr = C + (rn[:, None] * stride_cm + rm[None, :] * stride_cn)
+        mask_t = (rn < M)[:, None] & (rm < M)[None, :]
+        tl.store(c_t_ptr, tl.trans(out), mask=mask_t)
+
+
+def is_syrk_transpose_pair(a, b):
+    return (
+        a.ndim == 2
+        and b.ndim == 2
+        and a.shape[0] == b.shape[1]
+        and a.shape[1] == b.shape[0]
+        and a.stride(0) == b.stride(1)
+        and a.stride(1) == b.stride(0)
+        and a.storage_offset() == b.storage_offset()
+        and a.data_ptr() == b.data_ptr()
+    )
+
+
+def syrk_mm(a, c, M, K):
+    grid = lambda META: (
+        # Number of tile rows is tiles = ceil(M / BLOCK_M).
+        # Packed lower triangle contains:
+        #   1 + 2 + ... + tiles = tiles * (tiles + 1) / 2
+        triton.cdiv(M, META["BLOCK_M"])
+        * (triton.cdiv(M, META["BLOCK_M"]) + 1)
+        // 2,
+    )
+    with torch_device_fn.device(a.device):
+        mm_kernel_syrk[grid](
+            a,
+            c,
+            M,
+            K,
+            a.stride(0),
+            a.stride(1),
+            c.stride(0),
+            c.stride(1),
+        )
+    return c
+
+
 def streamk_scenario(a, b, M, N, K):
     # TODO: this my change sometime according to the realbenchmark result
     # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
@@ -174,6 +285,10 @@ def streamk_scenario(a, b, M, N, K):
 
 def mm(a, b):
     device = a.device
+    if is_syrk_transpose_pair(a, b):
+        M, K = a.shape
+        c = torch.empty((M, M), device=device, dtype=a.dtype)
+        return syrk_mm(a, c, M, K)
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
@@ -195,6 +310,9 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
+    if is_syrk_transpose_pair(a, b):
+        M, K = a.shape
+        return syrk_mm(a, out, M, K)
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
