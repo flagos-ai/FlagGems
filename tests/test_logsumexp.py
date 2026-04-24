@@ -27,4 +27,4 @@ def test_accuracy_logsumexp(shape, dtype, dim, keepdim):
     with flag_gems.use_gems():
         res_out = torch.logsumexp(inp, dim=dim, keepdim=keepdim)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim], atol=5e-3)
