@@ -77,6 +77,8 @@ forward_operations = [
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("hardsigmoid", torch.nn.functional.hardsigmoid, FLOAT_DTYPES),
+    ("leaky_relu", lambda x: torch.nn.functional.leaky_relu(x), FLOAT_DTYPES),
+    ("leaky_relu_", lambda x: torch.nn.functional.leaky_relu_(x), FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("relu6", torch.nn.functional.relu6, FLOAT_DTYPES),
     ("selu", torch.nn.functional.selu, FLOAT_DTYPES),
