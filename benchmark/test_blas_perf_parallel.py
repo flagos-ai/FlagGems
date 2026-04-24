@@ -838,7 +838,6 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, blas_perf.Benchma
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
-
     bench = bench_cls(
         input_fn=input_fn,
         op_name=op_name,

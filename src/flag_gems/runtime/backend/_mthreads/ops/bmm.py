@@ -4,16 +4,13 @@ import os
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-from .utils import (
-    create_tma_device_descriptor,
-    get_cached_tma_device_descriptor,
-    should_enable_sqmma,
-)
+from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
@@ -23,7 +20,6 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "bmm_mthreads_expand.yaml")
 )
 
-SQMMA_ON = True
 
 def is_supported_sqmma_layout(tensor):
     return tensor.is_contiguous() or (
@@ -33,8 +29,7 @@ def is_supported_sqmma_layout(tensor):
 
 def is_sqmma_compatible(a, b, N, K):
     return (
-        SQMMA_ON
-        and a.dtype == b.dtype
+        a.dtype == b.dtype
         and a.dtype in (torch.float16, torch.bfloat16)
         and is_supported_sqmma_layout(a)
         and is_supported_sqmma_layout(b)
@@ -191,9 +186,7 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
         )
     )
     nargs["c_desc_ptr"].copy_(
-        create_tma_device_descriptor(
-            c.reshape(batch * M, N), block_m, block_n, device
-        )
+        create_tma_device_descriptor(c.reshape(batch * M, N), block_m, block_n, device)
     )
 
 
@@ -214,9 +207,9 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
         )
     ],
     key=["M", "N", "K"],
-    strategy=runtime.get_expand_config(
-        "bmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"][:3]
+    strategy=runtime.get_expand_config("bmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ][:3]
     if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32"],
     warmup=5,
@@ -317,15 +310,7 @@ def bmm(a, b):
         os.environ.pop("MUSA_ENABLE_SQMMA", None)
     try:
         if is_sqmma_compatible(a, b, N, K):
-            return bmm_sqmma(
-                a, 
-                b, 
-                a_dtype, 
-                batch, 
-                M, 
-                N, 
-                K
-            )
+            return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
         else:
             return bmm_fma(a, b)
     finally:

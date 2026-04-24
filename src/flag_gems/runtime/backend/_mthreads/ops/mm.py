@@ -4,6 +4,7 @@ import os
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -51,15 +52,13 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm", yaml_path=EXPAND_CONFIG_FILENAME
-    )
+    configs=runtime.ops_get_configs("mm", yaml_path=EXPAND_CONFIG_FILENAME)
     if os.environ.get("USE_FLAGTUNE") == "1"
     else runtime.get_tuned_config("mm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "mm", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
+    strategy=runtime.get_expand_config("mm", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
     if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
@@ -140,15 +139,13 @@ def mm_kernel(
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "gemv", yaml_path=EXPAND_CONFIG_FILENAME
-    )
+    configs=runtime.ops_get_configs("gemv", yaml_path=EXPAND_CONFIG_FILENAME)
     if os.environ.get("USE_FLAGTUNE") == "1"
     else [triton.Config({"BLOCK_M": 64, "BLOCK_K": 64})],
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "gemv", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
+    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
     if os.environ.get("USE_FLAGTUNE") == "1"
     else ["align32", "align32", "align32", "default"],
     warmup=5,

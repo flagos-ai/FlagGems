@@ -10,21 +10,17 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-from .utils import (
-    create_tma_device_descriptor,
-    get_cached_tma_device_descriptor,
-    should_enable_sqmma,
-)
+from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
 )
 
-SQMMA_ON = True
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "addmm_mthreads_expand.yaml")
 )
+
 
 def is_supported_sqmma_layout(tensor):
     return tensor.is_contiguous() or (
@@ -34,9 +30,7 @@ def is_supported_sqmma_layout(tensor):
 
 def is_sqmma_compatible(a, b, N, K):
     return (
-        os.getenv("MUSA_ENABLE_SQMMA", "0") == "1"
-        and SQMMA_ON
-        and a.dim() == 2
+        a.dim() == 2
         and b.dim() == 2
         and a.dtype == b.dtype
         and a.dtype in (torch.float16, torch.bfloat16)
@@ -45,6 +39,7 @@ def is_sqmma_compatible(a, b, N, K):
         and N % 8 == 0
         and K % 8 == 0
     )
+
 
 @libentry()
 @libtuner(
@@ -171,9 +166,7 @@ def addmm_sqmma_descriptor_pre_hook(nargs):
     nargs["bias_desc_ptr"].copy_(
         get_cached_tma_device_descriptor(bias, block_m, block_n, device)
     )
-    nargs["c_desc_ptr"].copy_(
-        create_tma_device_descriptor(c, block_m, block_n, device)
-    )
+    nargs["c_desc_ptr"].copy_(create_tma_device_descriptor(c, block_m, block_n, device))
 
 
 @libentry()
@@ -193,9 +186,9 @@ def addmm_sqmma_descriptor_pre_hook(nargs):
         )
     ],
     key=["M", "N", "K"],
-    strategy=runtime.get_expand_config(
-        "addmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
+    strategy=runtime.get_expand_config("addmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
     if os.environ.get("USE_FLAGTUNE") == "1"
     else ["default", "default", "default"],
     warmup=5,
@@ -269,17 +262,7 @@ def get_triton_type(elem_type):
     return type_map.get(elem_type, None)
 
 
-def addmm_sqmma(
-        mat1, 
-        mat2, 
-        bias, 
-        elem_type, 
-        alpha, 
-        beta, 
-        M, 
-        N, 
-        K
-    ):
+def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
     device = mat1.device
     assert broadcastable_to(
