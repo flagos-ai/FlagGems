@@ -15,6 +15,8 @@ from .index import index
 from .isin import isin
 from .kron import kron
 from .masked_select import masked_select
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
 from .normal import (
     normal_,
@@ -46,6 +48,10 @@ __all__ = [
     "cat",
     "count_nonzero",
     "hstack",
+    "isin",
+    "kron",
+    "matmul_bf16",
+    "matmul_int8",
     "masked_select",
     "mm",
     "mm_out",

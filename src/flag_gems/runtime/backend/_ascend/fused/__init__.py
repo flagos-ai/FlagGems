@@ -11,12 +11,14 @@ from .moe_align_block_size import moe_align_block_size, moe_align_block_size_tri
 from .moe_sum import moe_sum
 from .rotary_embedding import apply_rotary_pos_emb
 from .skip_layernorm import skip_layer_norm
+from .sparse_attention import sparse_attn_triton
 
 __all__ = [
     "cross_entropy_loss",
     "apply_rotary_pos_emb",
     "fused_add_rms_norm",
     "skip_layer_norm",
+    "sparse_attn_triton",
     "moe_align_block_size",
     "moe_align_block_size_triton",
     "moe_sum",
