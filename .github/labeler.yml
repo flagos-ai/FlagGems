@@ -146,5 +146,6 @@ tests:
           - 'pytest.ini'
           # NOTE: This directory also contains DSA, FLA operator tests
           - 'tests/**'
+          - 'benchmark/**'
           # TODO: Move test scripts to tests/scripts
           - 'tools/**'
