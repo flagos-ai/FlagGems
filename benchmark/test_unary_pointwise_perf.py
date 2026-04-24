@@ -94,6 +94,7 @@ forward_operations = [
     ("tanh", torch.tanh, FLOAT_DTYPES),
     ("atan", torch.atan, FLOAT_DTYPES),
     ("arcsinh", torch.arcsinh, FLOAT_DTYPES),
+    ("asinh", torch.asinh, FLOAT_DTYPES),
     ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
