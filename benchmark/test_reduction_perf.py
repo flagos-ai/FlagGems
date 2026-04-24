@@ -705,4 +705,3 @@ def test_perf_bincount_weighted(dtype):
         dtypes=[dtype],
     )
     bench.set_gems(flag_gems.bincount)
-    bench.run()
