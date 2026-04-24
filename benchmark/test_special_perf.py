@@ -262,6 +262,7 @@ def test_isin_perf():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="i64 dtype is not supported")
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.unique
 def test_perf_unique():
@@ -278,6 +279,7 @@ def test_perf_unique():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="i64 dtype is not supported")
 # @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.sort
 def test_perf_sort():
