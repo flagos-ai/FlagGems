@@ -175,13 +175,16 @@ def mm_kernel_general(
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = a_desc.load([offset_am.to(tl.int32), offset_k.to(tl.int32)])
             b = b_desc.load([offset_k.to(tl.int32), offset_bn.to(tl.int32)])
+            if a.dtype != b.dtype:
+                a = a.to(tl.float32)
+                b = b.to(tl.float32)
             if IS_FP64:
                 acc += tl.dot(a, b, allow_tf32=False)
             else:
                 acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
             offset_k += BLOCK_K
 
-        acc = acc.to(a_desc.dtype)
+        acc = acc.to(C.dtype.element_ty)
         c_desc.store([offset_am.to(tl.int32), offset_bn.to(tl.int32)], acc)
 
     else:

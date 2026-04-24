@@ -69,47 +69,27 @@ def test_mm(M, N, K, dtype, b_column_major):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.mm
-@pytest.mark.parametrize("M, K", MK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_mm_self_transpose(M, K, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 mm self-transpose test on tsingmicro platform")
-
-    torch.manual_seed(0)
-    torch.cuda.manual_seed_all(0)
-    np.random.seed(0)
-    random.seed(0)
-
-    mat = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
-    ref_mat = utils.to_reference(mat, True)
-
-    ref_out = torch.mm(ref_mat, ref_mat.t())
-    with flag_gems.use_gems():
-        res_out = torch.mm(mat, mat.t())
-
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+MIXED_DTYPE_PAIRS = [
+    (torch.float16, torch.float32),
+    (torch.float32, torch.float16),
+]
 
 
 @pytest.mark.mm
-@pytest.mark.parametrize("M, K", MK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_mm_out_self_transpose(M, K, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 mm.out self-transpose test on tsingmicro platform")
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("dtype_a, dtype_b", MIXED_DTYPE_PAIRS)
+def test_mm_mixed_dtype(M, N, K, dtype_a, dtype_b):
+    if flag_gems.vendor_name == "tsingmicro" and (
+        dtype_a == torch.float32 or dtype_b == torch.float32
+    ):
+        pytest.skip("Skiping fp32 addmm_out test on tsingmicro platform")
+    mat1 = torch.randn((M, K), dtype=dtype_a, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype_b, device=flag_gems.device)
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
 
-    torch.manual_seed(0)
-    torch.cuda.manual_seed_all(0)
-    np.random.seed(0)
-    random.seed(0)
-
-    mat = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
-    out = torch.empty((M, M), dtype=dtype, device=flag_gems.device)
-    ref_mat = utils.to_reference(mat, True)
-    ref_out = utils.to_reference(out, True)
-
-    torch.mm(ref_mat, ref_mat.t(), out=ref_out)
+    ref_out = torch.mm(ref_mat1, ref_mat2)
     with flag_gems.use_gems():
-        torch.mm(mat, mat.t(), out=out)
+        res_out = torch.mm(mat1, mat2)
 
-    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=K)

@@ -12,6 +12,21 @@ from ..utils import triton_lang_extension as tle
 from .bmm import bmm
 from .mul import mul
 
+_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+
+
+def get_higher_dtype(a, b):
+    if a is b:
+        return a
+    assert a in _ordered_datatypes
+    assert b in _ordered_datatypes
+    for d in _ordered_datatypes:
+        if a is d:
+            return b
+        if b is d:
+            return a
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -116,6 +131,9 @@ def baddbmm_kernel(
                 mask_b = mask_k[:, None] & mask_n[None, :]
         a = tl.load(a_ptrs, mask=mask_a)
         b = tl.load(b_ptrs, mask=mask_b)
+        if a.dtype != b.dtype:
+            a = a.to(tl.float32)
+            b = b.to(tl.float32)
         accumulator += tl.dot(a, b, allow_tf32=False)
         offs_k += TILE_K
         a_ptrs += TILE_K
@@ -134,7 +152,7 @@ def baddbmm_kernel(
 
     bi = tl.load(bias_ptrs, mask=mask_c)
     out = accumulator * alpha + bi * beta
-    o = out.to(bi.dtype)
+    o = out.to(o_ptrs.dtype.element_ty)
     tl.store(o_ptrs, o, mask=mask_c)
 
 
@@ -151,7 +169,8 @@ class BaddbmmFunction(torch.autograd.Function):
         _, _, N = B.shape
         A = A.contiguous()
         B = B.contiguous()
-        out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+        c_dtype = get_higher_dtype(A.dtype, B.dtype)
+        out = torch.empty((batch, M, N), dtype=c_dtype, device=A.device)
 
         bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
         bias_batch_stride = bbias.stride(0)

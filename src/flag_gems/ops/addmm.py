@@ -10,6 +10,21 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
+_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+
+
+def get_higher_dtype(a, b):
+    if a is b:
+        return a
+    assert a in _ordered_datatypes
+    assert b in _ordered_datatypes
+    for d in _ordered_datatypes:
+        if a is d:
+            return b
+        if b is d:
+            return a
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,6 +91,9 @@ def addmm_kernel(
         if IS_FP64:
             a = a.to(tl.float32)
             b = b.to(tl.float32)
+        if a.dtype != b.dtype:
+            a = a.to(tl.float32)
+            b = b.to(tl.float32)
         accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
@@ -88,7 +106,7 @@ def addmm_kernel(
     bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
 
     accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(bias.dtype)
+    c = accumulator.to(c_ptr.dtype.element_ty)
     tl.store(c_ptrs, c, mask=c_mask)
 
 
@@ -112,7 +130,8 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     )
     mat1 = mat1.contiguous()
     # mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    c_dtype = get_higher_dtype(mat1.dtype, mat2.dtype)
+    out = torch.empty((M, N), device=mat1.device, dtype=c_dtype)
     bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
@@ -151,7 +170,8 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     M, K = mat1.shape
     _, N = mat2.shape
     if out is None:
-        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+        c_dtype = get_higher_dtype(mat1.dtype, mat2.dtype)
+        out = torch.empty((M, N), device=mat1.device, dtype=c_dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
     logger.debug(
