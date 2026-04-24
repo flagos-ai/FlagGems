@@ -150,9 +150,11 @@ MK_SHAPES = (
 
 
 # TODO: failed at (1, 1, 2)
-@pytest.mark.mm
+@pytest.mark.mm1
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+#@pytest.mark.parametrize("b_column_major", [True])
+#@pytest.mark.parametrize("b_column_major", [False])
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_mm(M, N, K, dtype, b_column_major):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
