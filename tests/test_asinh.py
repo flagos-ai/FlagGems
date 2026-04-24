@@ -43,6 +43,8 @@ def test_accuracy_asinh_edge_cases(dtype):
         -1.0,
         10.0,
         -10.0,
+        float("inf"),
+        float("-inf"),
         float("nan"),
     ]
     inp = torch.tensor(vals, dtype=dtype, device=flag_gems.device)
