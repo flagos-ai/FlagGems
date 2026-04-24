@@ -10,15 +10,25 @@ import triton.language as tl
 # ---------------------------------------------------------------------------
 @triton.jit
 def sparse_attn_triton_kernel(
-    Q,          # (b, m, h, d)  bf16
-    KV,         # (b, n, d)     bf16
-    O,          # (b, m, h, d)  bf16
+    Q,  # (b, m, h, d)  bf16
+    KV,  # (b, n, d)     bf16
+    O,  # (b, m, h, d)  bf16
     attn_sink,  # (h,)          fp32
     topk_idxs,  # (b, m, topk)  int32
-    stride_qb, stride_qm, stride_qh, stride_qd,
-    stride_kvb, stride_kvn, stride_kvd,
-    stride_ob, stride_om, stride_oh, stride_od,
-    stride_idxb, stride_idxm, stride_idxk,
+    stride_qb,
+    stride_qm,
+    stride_qh,
+    stride_qd,
+    stride_kvb,
+    stride_kvn,
+    stride_kvd,
+    stride_ob,
+    stride_om,
+    stride_oh,
+    stride_od,
+    stride_idxb,
+    stride_idxm,
+    stride_idxk,
     scale,
     topk,
     D: tl.constexpr,
@@ -44,7 +54,7 @@ def sparse_attn_triton_kernel(
     # Process each topk element one by one
     for k in range(topk):
         # -- gather KV vector --
-        idx = tl.load(idx_base + k * stride_idxk)     # scalar
+        idx = tl.load(idx_base + k * stride_idxk)  # scalar
         # Handle negative indices (padding values like -1): clamp to 0
         idx = tl.where(idx < 0, 0, idx)
 
@@ -71,7 +81,7 @@ def sparse_attn_triton_kernel(
         sum_exp = sum_exp * correction + p
 
     # ---- incorporate attn_sink ----
-    sink_val = tl.load(attn_sink + pid_h)              # scalar
+    sink_val = tl.load(attn_sink + pid_h)  # scalar
     sum_exp = sum_exp + tl.exp(sink_val - score_max)
 
     # ---- normalize ----
@@ -99,11 +109,25 @@ def sparse_attn_triton(
 
     grid = (m, b, h)  # each program handles one (seq_pos, batch, head)
     sparse_attn_triton_kernel[grid](
-        q, kv, o, attn_sink, topk_idxs,
-        q.stride(0), q.stride(1), q.stride(2), q.stride(3),
-        kv.stride(0), kv.stride(1), kv.stride(2),
-        o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-        topk_idxs.stride(0), topk_idxs.stride(1), topk_idxs.stride(2),
+        q,
+        kv,
+        o,
+        attn_sink,
+        topk_idxs,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        q.stride(3),
+        kv.stride(0),
+        kv.stride(1),
+        kv.stride(2),
+        o.stride(0),
+        o.stride(1),
+        o.stride(2),
+        o.stride(3),
+        topk_idxs.stride(0),
+        topk_idxs.stride(1),
+        topk_idxs.stride(2),
         softmax_scale,
         topk,
         D=d,

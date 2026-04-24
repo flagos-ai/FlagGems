@@ -23,12 +23,13 @@ Matrix Multiplication
 ===============
 """
 
-import triton
-import triton.language as tl
 import torch
 import torch_npu
+import triton
+import triton.language as tl
 
 DEV = "npu"
+
 
 def get_output_dtype(a_dtype, b_dtype):
     return torch.bfloat16
@@ -135,7 +136,9 @@ def torch_matmul(a, b):
     print(f"{a.dtype=} {b.dtype=}")
     # b is (N, K), npu_quant_matmul expects (K, N), so transpose
     scale = torch.ones(1, dtype=torch.float32, device=a.device)
-    result = torch_npu.npu_quant_matmul(a, b.t().contiguous(), scale, output_dtype=torch.float16)
+    result = torch_npu.npu_quant_matmul(
+        a, b.t().contiguous(), scale, output_dtype=torch.float16
+    )
     return result.to(torch.bfloat16)
 
 
@@ -190,13 +193,13 @@ def matmul_int8(a, b):
 # ---------
 #
 # We can test our custom matrix multiplication operation against a native torch implementation (i.e., cuBLAS).
-if __name__ == "__main__":
-    torch.npu.set_device(1)
-    torch.manual_seed(0)
+# if __name__ == "__main__":
+#     torch.npu.set_device(1)
+#     torch.manual_seed(0)
 
-    a = torch.randint(-5, 5, (1024, 10240), device=DEV, dtype=torch.int8)
-    b = torch.randint(-5, 5, (2048, 10240), device=DEV, dtype=torch.int8)  # (N, K)
-    torch_output = torch_matmul(a, b)
-    print(f"torch_output_with_int8_inputs={torch_output}")
-    triton_output = matmul(a, b)
-    print(f"triton_output_with_int8_inputs={triton_output}")
+#     a = torch.randint(-5, 5, (1024, 10240), device=DEV, dtype=torch.int8)
+#     b = torch.randint(-5, 5, (2048, 10240), device=DEV, dtype=torch.int8)  # (N, K)
+#     torch_output = torch_matmul(a, b)
+#     print(f"torch_output_with_int8_inputs={torch_output}")
+#     triton_output = matmul(a, b)
+#     print(f"triton_output_with_int8_inputs={triton_output}")

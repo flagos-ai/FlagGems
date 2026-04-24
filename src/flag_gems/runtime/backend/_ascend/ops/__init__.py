@@ -30,10 +30,10 @@ from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward
-from .matmul_bf16 import matmul_bf16
-from .matmul_int8 import matmul_int8
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim

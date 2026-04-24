@@ -126,6 +126,7 @@ from flag_gems.ops.fill import (
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmin import fmin, fmin_out
+from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -315,7 +316,6 @@ from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.vstack import vstack
-from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from flag_gems.ops.weightnorm import (
     weight_norm_interface,

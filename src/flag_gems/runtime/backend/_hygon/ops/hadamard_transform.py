@@ -1,4 +1,3 @@
-      
 """Fast Hadamard Transform in Triton.
 
 Drop-in replacement for Dao-AILab/fast-hadamard-transform with identical interface:
@@ -12,12 +11,11 @@ Drop-in replacement for Dao-AILab/fast-hadamard-transform with identical interfa
 Reference: https://github.com/Dao-AILab/fast-hadamard-transform
 """
 
-import torch
-import torch.nn.functional as F
-import triton
-import triton.language as tl
 import math
 
+import torch
+import triton
+import triton.language as tl
 
 # ============================================================
 # Triton kernel — v1: remove scratch buffer, batch rows per block
@@ -32,6 +30,7 @@ import math
 #   2. Process multiple rows per block for better GPU utilization
 #   3. Track dtype as constexpr to avoid extra load
 #   4. Tuned num_warps per dim size
+
 
 @triton.jit
 def _fht_kernel(
@@ -71,7 +70,9 @@ def _fht_kernel(
                 tl.store(base_scratch + offsets, x, mask=mask)
                 tl.debug_barrier()
                 partner = offsets ^ stride
-                x_partner = tl.load(base_scratch + partner, mask=partner < DIM, other=0.0)
+                x_partner = tl.load(
+                    base_scratch + partner, mask=partner < DIM, other=0.0
+                )
                 is_upper = (offsets & stride) == 0
                 x = tl.where(is_upper, x + x_partner, x_partner - x)
 
@@ -89,10 +90,14 @@ def _fht_kernel(
 # Core forward
 # ============================================================
 
+
 def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     """Core forward: handles reshape, padding, kernel launch."""
-    assert x.dtype in (torch.float32, torch.float16, torch.bfloat16), \
-        f"hadamard_transform not implemented for input type '{x.dtype}'"
+    assert x.dtype in (
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+    ), f"hadamard_transform not implemented for input type '{x.dtype}'"
     assert x.is_cuda, "hadamard_transform requires CUDA tensor"
 
     shapes_og = x.shape
@@ -108,10 +113,12 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
         x = torch.nn.functional.pad(x, (0, 8 - dim_og % 8))
     dim = x.shape[1]
 
-    assert dim % 8 == 0, \
-        "fast_hadamard_transform only supports hidden dimension divisible by 8 for now"
-    assert dim <= 65536, \
-        "fast_hadamard_transform only supports hidden dimension at most 65536 for now"
+    assert (
+        dim % 8 == 0
+    ), "fast_hadamard_transform only supports hidden dimension divisible by 8 for now"
+    assert (
+        dim <= 65536
+    ), "fast_hadamard_transform only supports hidden dimension at most 65536 for now"
 
     # For butterfly we need next power of 2
     log_n = math.ceil(math.log2(dim)) if dim > 1 else 1
@@ -151,12 +158,17 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     BLOCK_SIZE = triton.next_power_of_2(n)
 
     _fht_kernel[(n_programs,)](
-        x, out, scratch, scale,
+        x,
+        out,
+        scratch,
+        scale,
         stride_x_row=x.stride(0),
         stride_out_row=out.stride(0),
         stride_scratch_row=scratch.stride(0),
         N_ROWS=batch_size,
-        DIM=n, LOG_N=log_n, BLOCK_SIZE=BLOCK_SIZE,
+        DIM=n,
+        LOG_N=log_n,
+        BLOCK_SIZE=BLOCK_SIZE,
         ROWS_PER_PROGRAM=rows_per_program,
         INPUT_IS_FP16=(input_dtype == torch.float16),
         INPUT_IS_BF16=(input_dtype == torch.bfloat16),
@@ -173,8 +185,8 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
 # Autograd Function
 # ============================================================
 
-class HadamardTransformFn(torch.autograd.Function):
 
+class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale=1.0):
         ctx._hadamard_transform_scale = scale
@@ -189,6 +201,7 @@ class HadamardTransformFn(torch.autograd.Function):
 # ============================================================
 # Public API
 # ============================================================
+
 
 def hadamard_transform(x, scale=1.0):
     """
@@ -216,6 +229,7 @@ def hadamard_transform(x, scale=1.0):
 # TODO: implement proper M×N decomposition for better efficiency.
 # ============================================================
 
+
 def hadamard_transform_12N(x, scale=1.0):
     """Hadamard transform for dim = 12 * 2^k (e.g. 12*512 = 6144)."""
     return HadamardTransformFn.apply(x, scale)
@@ -234,5 +248,3 @@ def hadamard_transform_28N(x, scale=1.0):
 def hadamard_transform_40N(x, scale=1.0):
     """Hadamard transform for dim = 40 * 2^k (e.g. 40*1024 = 40960)."""
     return HadamardTransformFn.apply(x, scale)
-
-    
