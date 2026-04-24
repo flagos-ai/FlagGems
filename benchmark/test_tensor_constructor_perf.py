@@ -40,6 +40,11 @@ def full_like_input_fn(shape, dtype, device):
     yield {"input": inp, "fill_value": 3.1415926},
 
 
+def new_full_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    yield inp, shape, 3.1415926  # self, size, fill_value
+
+
 def fill_input_fn(shape, dtype, device):
     input = torch.empty(shape, dtype=dtype, device=device)
     yield input, 3.14159,
@@ -137,32 +142,26 @@ def _2D_input_fn(shape, dtype, device):
 
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
-    # generic tensor constructor
-    ("rand", torch.rand, generic_constructor_input_fn),
-    ("randn", torch.randn, generic_constructor_input_fn),
-    ("ones", torch.ones, generic_constructor_input_fn),
-    ("zeros", torch.zeros, generic_constructor_input_fn),
-    ("zero_", torch.zero_, zero__input_fn),
-    # generic tensor-like constructor
-    ("rand_like", torch.rand_like, unary_input_fn),
-    ("randn_like", torch.randn_like, unary_input_fn),
-    ("ones_like", torch.ones_like, unary_input_fn),
-    ("zeros_like", torch.zeros_like, unary_input_fn),
-    # tensor constructor with given value
+    ("arange", torch.arange, arange_input_fn),
+    ("eye", torch.eye, _2D_input_fn),
     ("fill", torch.fill, fill_input_fn),
     ("fill_scalar_out", torch.ops.aten.fill.Scalar_out, fill_scalar_out_input_fn),
     ("fill_tensor_out", torch.ops.aten.fill.Tensor_out, fill_tensor_out_input_fn),
-    ("masked_fill", torch.masked_fill, masked_fill_input_fn),
     ("full", torch.full, full_input_fn),
     ("full_like", torch.full_like, full_like_input_fn),
-    # arange
-    ("arange", torch.arange, arange_input_fn),
-    # linspace
     ("linspace", torch.linspace, linspace_input_fn),
-    # eye
-    ("eye", torch.eye, _2D_input_fn),
-    # logspace
     ("logspace", torch.logspace, logspace_input_fn),
+    ("masked_fill", torch.masked_fill, masked_fill_input_fn),
+    ("new_full", torch.Tensor.new_full, new_full_input_fn),
+    ("ones", torch.ones, generic_constructor_input_fn),
+    ("ones_like", torch.ones_like, unary_input_fn),
+    ("rand", torch.rand, generic_constructor_input_fn),
+    ("rand_like", torch.rand_like, unary_input_fn),
+    ("randn", torch.randn, generic_constructor_input_fn),
+    ("randn_like", torch.randn_like, unary_input_fn),
+    ("zero_", torch.zero_, zero__input_fn),
+    ("zeros", torch.zeros, generic_constructor_input_fn),
+    ("zeros_like", torch.zeros_like, unary_input_fn),
 ]
 
 
@@ -190,6 +189,7 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
 tensor_constructor_inplace_operations = [
     # tensor constructor with given value
     ("fill_", torch.fill_, fill_input_fn),
+    ("fill_scalar_", torch.ops.aten.fill_.Scalar, fill_input_fn),
     ("masked_fill_", lambda a, b, c: a.masked_fill_(b, c), masked_fill_input_fn),
 ]
 
@@ -269,7 +269,7 @@ class ZeroBenchmark(Benchmark):
 
 
 @pytest.mark.zero
-def test_perf_zero():
+def test_zero():
     bench = ZeroBenchmark(
         op_name="zero",
         torch_op=torch.ops.aten.zero,

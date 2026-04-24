@@ -64,6 +64,11 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("fill_.Scalar", &flag_gems::fill_scalar_);
   m.def("fill_.Tensor", &flag_gems::fill_tensor_);
 #endif
+  m.def("act_quant",
+        &flag_gems::act_quant_triton,
+        py::arg("x"),
+        py::arg("block_size") = 128,
+        py::arg("scale_fmt") = py::none());
   m.def("exponential_", &flag_gems::exponential_);
   m.def("addmm", &flag_gems::addmm);
   m.def("mm", &flag_gems::mm_tensor);
@@ -119,6 +124,20 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
+  m.def("fp8_matmul",
+        &flag_gems::fp8_matmul,
+        py::arg("a"),
+        py::arg("a_s"),
+        py::arg("b"),
+        py::arg("b_s"),
+        py::arg("scale_dtype") = at::kFloat);
+  m.def("fp8_matmul_direct",
+        &flag_gems::fp8_matmul_direct,
+        py::arg("a"),
+        py::arg("a_s"),
+        py::arg("b"),
+        py::arg("b_s"),
+        py::arg("scale_dtype") = at::kFloat);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {

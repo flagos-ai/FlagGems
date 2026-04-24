@@ -1,5 +1,7 @@
 import concurrent.futures
+import fcntl
 import gc
+import math
 import os
 import pickle
 import subprocess
@@ -15,9 +17,34 @@ import flag_gems
 from benchmark.attri_util import BenchmarkMetrics, BenchmarkResult, OperationAttribute
 from benchmark.conftest import Config, emit_record_logger
 
+try:
+    from flag_gems.runtime.backend._mthreads.sparse_attention import (
+        sparse_attn_triton as sparse_attention_mthreads_baseline,
+    )
+
+    SPARSE_ATTENTION_MTHREADS_BASELINE_AVAILABLE = True
+except Exception:
+    sparse_attention_mthreads_baseline = None
+    SPARSE_ATTENTION_MTHREADS_BASELINE_AVAILABLE = False
+
+try:
+    from vllm.utils.deep_gemm import (
+        fp8_gemm_nt,
+        is_deep_gemm_supported,
+        transform_sf_into_required_layout,
+    )
+
+    DEEPGEMM_AVAILABLE = is_deep_gemm_supported()
+except Exception:
+    fp8_gemm_nt = None
+    transform_sf_into_required_layout = None
+    DEEPGEMM_AVAILABLE = False
+
 PARALLEL_WORKER_ENV = "FLAGGEMS_BENCH_PARALLEL_WORKER"
 PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
 torch_device_object = flag_gems.runtime.backend.gen_torch_device_object()
+DEEPGEMM_N_MULTIPLE = 64
+DEEPGEMM_K_MULTIPLE = 128
 
 
 def _parallel_device_is_available():
@@ -58,6 +85,64 @@ class ParallelBenchmarkMixin:
     def should_forward_parallel_dtype(self, dtype_name):
         return True
 
+    def _iter_expected_shapes(self):
+        for shape in self.shapes:
+            group_size = max(1, int(self.get_parallel_metric_group_size(shape)))
+            for _ in range(group_size):
+                yield tuple(shape) if isinstance(shape, (list, tuple)) else shape
+
+    def _get_error_shape_output_path(self):
+        return os.path.abspath("FlagTune/error_shape.yaml")
+
+    def _record_failed_shape(self, shape):
+        if shape is None:
+            return
+
+        normalized_shape = list(shape) if isinstance(shape, (list, tuple)) else [shape]
+        error_shape_path = self._get_error_shape_output_path()
+        output_dir = os.path.dirname(error_shape_path) or "."
+        os.makedirs(output_dir, exist_ok=True)
+        lock_path = os.path.join(output_dir, ".error_output.lock")
+
+        with open(lock_path, "a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                error_config = {
+                    self.op_name: {
+                        "shapes": [normalized_shape],
+                        "shape_desc": self.shape_desc,
+                    }
+                }
+
+                tmp_error_file = tempfile.NamedTemporaryFile(
+                    mode="w",
+                    suffix=".yaml",
+                    dir=output_dir,
+                    delete=False,
+                    encoding="utf-8",
+                )
+                try:
+                    yaml.safe_dump(
+                        error_config,
+                        tmp_error_file,
+                        sort_keys=False,
+                    )
+                    tmp_error_file.flush()
+                    os.replace(tmp_error_file.name, error_shape_path)
+                finally:
+                    tmp_error_file.close()
+                    if os.path.exists(tmp_error_file.name):
+                        os.remove(tmp_error_file.name)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+        sys.stderr.write(
+            "[error_shape] "
+            f"op={self.op_name} failed_shape={normalized_shape} "
+            f"saved_to={error_shape_path}\n"
+        )
+        sys.stderr.flush()
+
     def _build_metric_from_input(self, input_item):
         metric = BenchmarkMetrics()
         args, kwargs = self.unpack_to_args_kwargs(input_item)
@@ -94,12 +179,15 @@ class ParallelBenchmarkMixin:
 
     def _run_inputs(self, input_items):
         metrics = []
+        expected_shapes = self._iter_expected_shapes()
         for input_item in input_items:
+            current_shape = next(expected_shapes, None)
             metric = BenchmarkMetrics()
             try:
                 metric = self._build_metric_from_input(input_item)
             except Exception as e:
                 metric.error_msg = str(e)
+                self._record_failed_shape(current_shape)
                 pytest.fail(str(e))
             finally:
                 metrics.append(metric)
@@ -129,12 +217,31 @@ class ParallelBenchmarkMixin:
             return []
 
         def estimate_shape_cost(shape):
+            if self.op_name == "sparse_attention":
+                if len(shape) != 6:
+                    return 1
+                batch, seq_len, _, topk, heads, dim = shape
+                block = 64
+                topk_aligned = ((max(1, int(topk)) + block - 1) // block) * block
+                heads_padded = max(16, 1 << (max(1, int(heads)) - 1).bit_length())
+                # The sparse attention kernel processes top-k indices in BLOCK=64
+                # chunks and pads H to at least 16 / next power of two.
+                return (
+                    max(1, int(batch))
+                    * max(1, int(seq_len))
+                    * topk_aligned
+                    * heads_padded
+                    * max(1, int(dim))
+                    * 4
+                )
+
             if self.op_name in {
                 "mm",
                 "addmm",
                 "bmm",
                 "baddbmm",
                 "w8a8_block_fp8_matmul",
+                "w8a8_block_fp8_matmul_deepgemm",
             }:
                 normalized_shape = shape
                 if len(shape) == 3:
@@ -147,7 +254,11 @@ class ParallelBenchmarkMixin:
                 if normalized_shape is None:
                     return 1
 
-                if self.op_name in {"mm", "bmm", "w8a8_block_fp8_matmul"}:
+                if self.op_name in {
+                    "mm",
+                    "bmm",
+                    "w8a8_block_fp8_matmul",
+                }:
                     return m * n * k * 2
                 return m * n * (2 * k + 1)
 
@@ -420,7 +531,7 @@ class ParallelAddrBenchmark(ParallelBenchmarkMixin, blas_perf.AddrBenchmark):
 class ParallelW8A8BlockFP8MatmulBenchmark(
     ParallelBenchmarkMixin, blas_perf.W8A8BlockFP8MatmulBenchmark
 ):
-    SHAPE_CONFIG_KEYS = ("mm", "BlasBenchmark")
+    SHAPE_CONFIG_KEYS = ("w8a8_block_fp8_matmul", "BlasBenchmark")
 
     def set_more_shapes(self):
         if os.environ.get(PARALLEL_WORKER_ENV):
@@ -475,6 +586,224 @@ class ParallelW8A8BlockFP8MatmulBenchmark(
         self.shape_desc = "M, N, K"
 
 
+def _deepgemm_block_scaled_mm(A, B, As_dg, Bs_dg, output):
+    fp8_gemm_nt((A, As_dg), (B, Bs_dg), output)
+    return output
+
+
+class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark):
+    def __init__(self, *args, output_dtype=torch.bfloat16, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.output_dtype = output_dtype
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        self.shapes = [
+            (m, n, k)
+            for m, n, k in self.shapes
+            if n % DEEPGEMM_N_MULTIPLE == 0 and k % DEEPGEMM_K_MULTIPLE == 0
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        fp8_dtype = blas_perf.get_w8a8_block_fp8_dtype()
+        if fp8_dtype is None:
+            raise RuntimeError(
+                "DeepGEMM benchmark requires CUDA device with FP8 support"
+            )
+
+        block_n, block_k = self.block_size
+        recipe = (1, 128, 128)
+
+        for m, n, k in self.shapes:
+            num_k_groups = (k + block_k - 1) // block_k
+            num_n_groups = (n + block_n - 1) // block_n
+
+            A = blas_perf.rand_fp8_tensor((m, k), self.device, fp8_dtype).contiguous()
+            B = blas_perf.rand_fp8_tensor((n, k), self.device, fp8_dtype).contiguous()
+            As = (
+                0.01
+                * torch.rand((m, num_k_groups), dtype=torch.float32, device=self.device)
+                + 0.005
+            ).contiguous()
+            Bs = (
+                0.01
+                * torch.rand(
+                    (num_n_groups, num_k_groups),
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+                + 0.005
+            ).contiguous()
+
+            As_dg = transform_sf_into_required_layout(
+                sf=As.unsqueeze(0),
+                mn=m,
+                k=k,
+                recipe=recipe,
+                num_groups=1,
+                is_sfa=True,
+            ).squeeze(0)
+            Bs_dg = transform_sf_into_required_layout(
+                sf=Bs.unsqueeze(0),
+                mn=n,
+                k=k,
+                recipe=recipe,
+                num_groups=1,
+                is_sfa=False,
+            ).squeeze(0)
+            output = torch.empty((m, n), dtype=self.output_dtype, device=self.device)
+
+            yield (
+                A,
+                B,
+                As_dg,
+                Bs_dg,
+                output,
+            ), (
+                A,
+                B,
+                As,
+                Bs,
+                self.block_size[:],
+                self.output_dtype,
+            )
+
+    def _build_metric_from_input(self, input_item):
+        dg_input, gems_input = input_item
+        metric = BenchmarkMetrics()
+
+        dg_args, dg_kwargs = self.unpack_to_args_kwargs(dg_input)
+        gems_args, gems_kwargs = self.unpack_to_args_kwargs(gems_input)
+        metric.shape_detail = self.record_shapes(*gems_args, **gems_kwargs)
+
+        if "latency_base" in self.to_bench_metrics:
+            metric.latency_base = self.get_latency(self.torch_op, *dg_args, **dg_kwargs)
+        if "latency" in self.to_bench_metrics:
+            metric.latency = self.get_latency(self.gems_op, *gems_args, **gems_kwargs)
+        if "speedup" in self.to_bench_metrics:
+            metric.speedup = metric.latency_base / metric.latency
+        if "tflops" in self.to_bench_metrics:
+            metric.tflops = (
+                self.get_tflops(self.torch_op, *dg_args, **dg_kwargs)
+                / metric.latency
+                / 1e12
+                * 1e3
+            )
+        return metric
+
+    def get_tflops(self, op, *args, **kwargs):
+        A, B = args[0], args[1]
+        m, k = A.shape
+        n = B.shape[0]
+        return 2 * m * n * k
+
+
+#
+# sparse_attention shape layout:
+# (batch, seq_len, kv_len, topk, heads, dim)
+#
+SPARSE_ATTENTION_SHAPES = [
+    (16, 1, 136, 136, 8, 512),
+    (16, 1, 392, 385, 8, 512),
+    (16, 1, 392, 386, 8, 512),
+    (16, 1, 392, 387, 8, 512),
+    (32, 1, 392, 388, 8, 512),
+    (32, 1, 392, 389, 8, 512),
+    (32, 1, 392, 390, 8, 512),
+    (32, 1, 392, 391, 8, 512),
+    (64, 1, 136, 136, 8, 512),
+    (64, 1, 392, 385, 8, 512),
+    (64, 1, 392, 388, 8, 512),
+    (64, 1, 392, 389, 8, 512),
+]
+
+
+def torch_sparse_attention(q, kv, attn_sink, topk_idxs, softmax_scale):
+    batch, seq_len, heads, dim = q.shape
+    topk = topk_idxs.shape[-1]
+
+    kv_expanded = kv[:, None, :, :].expand(batch, seq_len, -1, dim)
+    idx_expanded = topk_idxs[:, :, :, None].expand(batch, seq_len, topk, dim).long()
+    gathered_kv = torch.gather(kv_expanded, 2, idx_expanded)
+
+    scores = (
+        torch.einsum("bmhd,bmtd->bmht", q.float(), gathered_kv.float()) * softmax_scale
+    )
+    sink = attn_sink[None, None, :, None].expand(batch, seq_len, heads, 1)
+    attn = torch.softmax(torch.cat([scores, sink], dim=-1), dim=-1)
+
+    out = torch.einsum("bmht,bmtd->bmhd", attn[:, :, :, :-1], gathered_kv.float())
+    return out.to(q.dtype)
+
+
+class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, blas_perf.Benchmark):
+    SHAPE_CONFIG_KEYS = ("sparse_attention",)
+    DEFAULT_METRICS = blas_perf.BlasBenchmark.DEFAULT_METRICS[:]
+    DEFAULT_DTYPES = [torch.bfloat16]
+    DEFAULT_SHAPES = SPARSE_ATTENTION_SHAPES[:]
+    DEFAULT_SHAPE_DESC = "B, M, KV_LEN, TOPK, H, D"
+    DEFAULT_SHAPE_FILES = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+
+    def set_more_shapes(self):
+        return []
+
+    def set_shapes(self, shape_file_path=None):
+        shape_file_path = shape_file_path or self.DEFAULT_SHAPE_FILES
+        self.shapes = self.DEFAULT_SHAPES[:]
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+        if not os.path.isfile(shape_file_path):
+            raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
+
+        with open(shape_file_path, "r") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+
+        for shape_key in self.SHAPE_CONFIG_KEYS + (self.op_name,):
+            if shape_key in yaml_config:
+                self.shapes = yaml_config[shape_key].get("shapes", self.DEFAULT_SHAPES)
+                self.shape_desc = yaml_config[shape_key].get(
+                    "shape_desc", self.DEFAULT_SHAPE_DESC
+                )
+                break
+
+        self.shapes = [tuple(shape) for shape in self.shapes]
+        for shape in self.shapes:
+            if len(shape) != 6:
+                raise ValueError(
+                    "sparse_attention benchmark expects shapes in "
+                    "(batch, seq_len, kv_len, topk, heads, dim) format."
+                )
+
+    def get_input_iter(self, cur_dtype):
+        for seed, (batch, seq_len, kv_len, topk, heads, dim) in enumerate(self.shapes):
+            torch.manual_seed(2026 + seed)
+            q = torch.randn(
+                (batch, seq_len, heads, dim),
+                dtype=cur_dtype,
+                device=self.device,
+            )
+            kv = torch.randn(
+                (batch, kv_len, dim),
+                dtype=cur_dtype,
+                device=self.device,
+            )
+            attn_sink = torch.zeros((heads,), dtype=torch.float32, device=self.device)
+            topk_idxs = torch.randint(
+                0,
+                kv_len,
+                (batch, seq_len, topk),
+                dtype=torch.int32,
+                device=self.device,
+            )
+            yield q, kv, attn_sink, topk_idxs, 1.0 / math.sqrt(dim)
+
+    def get_tflops(self, op, *args, **kwargs):
+        q, _, _, topk_idxs = args[:4]
+        batch, seq_len, heads, dim = q.shape
+        topk = topk_idxs.shape[-1]
+        return batch * seq_len * topk * 4 * heads * dim
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, bench_cls",
     [
@@ -509,7 +838,7 @@ class ParallelW8A8BlockFP8MatmulBenchmark(
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
-    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
+    if flag_gems.vendor_name == "mthreads" and op_name not in ("mm", "baddbmm"):
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
     bench = bench_cls(
@@ -520,7 +849,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     )
     bench.run()
 
-    if flag_gems.vendor_name == "mthreads" and op_name != "baddbmm":
+    if flag_gems.vendor_name == "mthreads" and op_name not in ("mm", "baddbmm"):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
@@ -539,6 +868,40 @@ def test_perf_w8a8_block_fp8_matmul():
         dtypes=["fp8"],
     )
     bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
+    bench.run()
+
+
+@pytest.mark.w8a8_block_fp8_matmul_deepgemm
+def test_perf_w8a8_block_fp8_matmul_deepgemm():
+    if not DEEPGEMM_AVAILABLE:
+        pytest.skip("DeepGEMM is not available on this platform")
+    if blas_perf.get_w8a8_block_fp8_dtype() is None:
+        pytest.skip(
+            "w8a8_block_fp8_matmul benchmark requires CUDA device with FP8 support"
+        )
+
+    bench = ParallelW8A8BlockFP8DeepGemmBenchmark(
+        op_name="w8a8_block_fp8_matmul_deepgemm",
+        torch_op=_deepgemm_block_scaled_mm,
+        dtypes=["fp8"],
+        output_dtype=torch.bfloat16,
+    )
+    bench.set_gems(flag_gems.w8a8_block_fp8_matmul)
+    bench.run()
+
+
+@pytest.mark.sparse_attention
+def test_perf_sparse_attention():
+    if not SPARSE_ATTENTION_MTHREADS_BASELINE_AVAILABLE:
+        pytest.skip(
+            "sparse_attention benchmark requires mthreads sparse_attention baseline"
+        )
+
+    bench = ParallelSparseAttentionBenchmark(
+        op_name="sparse_attention",
+        torch_op=sparse_attention_mthreads_baseline,
+    )
+    bench.set_gems(flag_gems.sparse_attn_triton)
     bench.run()
 
 

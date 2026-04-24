@@ -1,0 +1,22 @@
+sparse_attention:
+  - config:
+    param_map:
+      META:
+        BLOCK: block
+      num_stages: stages
+      num_warps: warps
+    block:
+      - 32
+      - 64
+    stages:
+      - 2
+      - 4
+      - 5
+      - 6
+    warps:
+      - 8
+      - 16
+  - strategy:
+     topk: default
+     H_ACTUAL: default
+     D: default
