@@ -48,6 +48,20 @@ if [ "$?" != 0 ]; then
     exit 1
 fi
 
+printf "Detecting pyenv ... "
+pyenv_version=$(pyenv --version 2>/dev/null | awk '{print $NF}')
+if [ "$?" != 0 ]; then
+  # pyenv not installed
+  printf "NOT FOUND $GREEN[OK]$NC\n"
+else
+  printf "${pyenv_version} $GREEN[OK]$NC\n"
+
+  # Initialize pyenv virtual environment
+  export PYENV_ROOT="$HOME/.pyenv"
+  export PATH="$PYENV_ROOT/bin:$PATH"
+  eval "$(pyenv init - bash)"
+fi
+
 # Validate Python version
 printf "Checking Python version ... "
 python_version=$(python --version 2>/dev/null | awk '{print $NF}')
@@ -69,20 +83,6 @@ else
   # Install uv and upgrade pip if necessary
   printf "Installing/upgrading pip and uv ... "
   pip install -U pip uv || exit 1;
-fi
-
-printf "Detecting pyenv ... "
-pyenv_version=$(pyenv --version 2>/dev/null | awk '{print $NF}')
-if [ "$?" != 0 ]; then
-  # pyenv not installed
-  printf "NOT FOUND $GREEN[OK]$NC\n"
-else
-  printf "${pyenv_version} $GREEN[OK]$NC\n"
-
-  # Initialize pyenv virtual environment
-  export PYENV_ROOT="$HOME/.pyenv"
-  export PATH="$PYENV_ROOT/bin:$PATH"
-  eval "$(pyenv init - bash)"
 fi
 
 # Start installation
