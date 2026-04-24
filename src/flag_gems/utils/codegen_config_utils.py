@@ -93,6 +93,13 @@ CODEGEN_COFIGS = {
         False,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
+    vendors.SOPHGO: CodeGenConfig(
+        4096,
+        (512, 1, 1),
+        32,
+        False,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
 }
 
 HEURISTICS_CONFIG = {
