@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 import torch
 
@@ -763,6 +765,49 @@ def test_accuracy_relu_(shape, dtype):
     ref_out = torch.relu_(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.relu_(res_inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu_out
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_leaky_relu_out_resizes_output(dtype):
+    inp = torch.randn((8, 16), dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+    out = torch.empty((32,), dtype=dtype, device=flag_gems.device)
+    ref_out = torch.empty((32,), dtype=ref_inp.dtype, device=ref_inp.device)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        torch.ops.aten.leaky_relu.out(ref_inp, 0.01, out=ref_out)
+        with flag_gems.use_gems():
+            torch.ops.aten.leaky_relu.out(inp, 0.01, out=out)
+
+    assert out.shape == ref_out.shape
+    gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.leaky_relu_out
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_leaky_relu_out_dtype_mismatch(dtype):
+    inp = torch.randn((8, 16), dtype=dtype, device=flag_gems.device)
+    out_dtype = torch.float16 if dtype != torch.float16 else torch.float32
+    out = torch.empty_like(inp, dtype=out_dtype)
+
+    with flag_gems.use_gems(), pytest.raises(RuntimeError):
+        torch.ops.aten.leaky_relu.out(inp, 0.01, out=out)
+
+
+@pytest.mark.relu6
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_relu6(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+
+    ref_out = torch.nn.functional.relu6(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.relu6(res_inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
