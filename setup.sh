@@ -101,7 +101,7 @@ fi
 # Install
 export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
 printf "Install build tools ... "
-uv pip install -q
+uv pip install -q \
   "setuptools>=64.0" \
   "scikit-build-core==0.12.2" \
   "pybind11==3.0.3" \
