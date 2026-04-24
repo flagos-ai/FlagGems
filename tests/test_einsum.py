@@ -6,16 +6,6 @@ import flag_gems
 from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
-EINSUM_SHAPES = {
-    "matmul": [(32, 64, 128), (16, 256, 32)],
-    "bmm": [(4, 32, 64, 128), (8, 16, 256, 32)],
-    "dot": [64, 256, 1024],
-    "outer": [(32, 64), (128, 256)],
-    "trace": [32, 64, 128],
-    "transpose": [(32, 64), (64, 128, 256)],
-    "sum": [(32, 64, 128)],
-}
-
 if QUICK_MODE:
     EINSUM_SHAPES = {
         "matmul": [(16, 32, 64)],
@@ -25,6 +15,16 @@ if QUICK_MODE:
         "trace": [32],
         "transpose": [(16, 32)],
         "sum": [(16, 32, 64)],
+    }
+else:
+    EINSUM_SHAPES = {
+        "matmul": [(32, 64, 128), (16, 256, 32)],
+        "bmm": [(4, 32, 64, 128), (8, 16, 256, 32)],
+        "dot": [64, 256, 1024],
+        "outer": [(32, 64), (128, 256)],
+        "trace": [32, 64, 128],
+        "transpose": [(32, 64), (64, 128, 256)],
+        "sum": [(32, 64, 128)],
     }
 
 

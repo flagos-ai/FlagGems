@@ -26,21 +26,6 @@ class EinsumMatmulBenchmark(BlasBenchmark):
         return A.shape[0] * B.shape[1] * A.shape[1] * 2
 
 
-def einsum_matmul_op(A, B):
-    return torch.einsum("ij,jk->ik", A, B)
-
-
-@pytest.mark.einsum
-def test_einsum_matmul_benchmark():
-    bench = EinsumMatmulBenchmark(
-        input_fn=None,
-        op_name="einsum_matmul",
-        torch_op=einsum_matmul_op,
-        dtypes=FLOAT_DTYPES,
-    )
-    bench.run()
-
-
 class EinsumBmmBenchmark(BlasBenchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for b, m, n, k in self.shapes:
@@ -53,16 +38,23 @@ class EinsumBmmBenchmark(BlasBenchmark):
         return A.shape[0] * A.shape[1] * B.shape[2] * A.shape[2] * 2
 
 
-def einsum_bmm_op(A, B):
-    return torch.einsum("bij,bjk->bik", A, B)
+@pytest.mark.einsum
+def test_einsum_matmul():
+    bench = EinsumMatmulBenchmark(
+        input_fn=None,
+        op_name="einsum_matmul",
+        torch_op=lambda A, B: torch.einsum("ij,jk->ik", A, B),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.einsum
-def test_einsum_bmm_benchmark():
+def test_einsum_bmm():
     bench = EinsumBmmBenchmark(
         input_fn=None,
         op_name="einsum_bmm",
-        torch_op=einsum_bmm_op,
+        torch_op=lambda A, B: torch.einsum("bij,bjk->bik", A, B),
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
