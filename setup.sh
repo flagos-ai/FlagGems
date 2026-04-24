@@ -95,11 +95,11 @@ if [ "$?" != 0 ]; then
   printf "$RED{FAILED]$NC\n"
   exit 1
 else
-  printf "$RED{OK]$NC\n"
+  printf "$RED[OK]$NC\n"
   source .venv/bin/activate
 fi
 
-printf "HTTPS_PROXY=${https_proxy}\"
+printf "HTTPS_PROXY=${https_proxy}\n"
 printf "HTTP_PROXY=${http_proxy}\n"
 
 # Install FlagGems
@@ -116,7 +116,7 @@ if [ "$?" != 0 ]; then
   printf "$RED[FAILED]$NC\n"
   exit 1
 else
-  printf "$GREE[OK]$NC\n"
+  printf "$GREEN[OK]$NC\n"
 fi
 
 # export USE_TRITON=0
