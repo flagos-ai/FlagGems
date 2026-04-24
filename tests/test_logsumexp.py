@@ -4,12 +4,14 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
-    DIM_LIST,
     FLOAT_DTYPES,
     REDUCTION_SHAPES,
     gems_assert_close,
     to_reference,
 )
+from .conftest import QUICK_MODE
+
+DIM_LIST = [0] if QUICK_MODE else [0, 1]
 
 
 @pytest.mark.logsumexp
