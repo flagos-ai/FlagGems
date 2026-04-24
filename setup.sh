@@ -47,6 +47,7 @@ if [ "$?" != 0 ]; then
     echo "Please specify one of: ${SUPPORTED_VENDORS[@]}"
     exit 1
 fi
+printf "Checking vendor ... ${VENDOR} $GREEN[OK]$NC\n"
 
 printf "Detecting pyenv ... "
 pyenv_version=$(pyenv --version 2>/dev/null | awk '{print $NF}')
@@ -98,7 +99,10 @@ else
   source .venv/bin/activate
 fi
 
-# Install
+printf "HTTPS_PROXY=${https_proxy}\"
+printf "HTTP_PROXY=${http_proxy}\n"
+
+# Install FlagGems
 export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
 printf "Install build tools ... "
 uv pip install -q \
@@ -107,6 +111,13 @@ uv pip install -q \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \
   "ninja==1.13.0"
+
+if [ "$?" != 0 ]; then
+  printf "$RED[FAILED]$NC\n"
+  exit 1
+else
+  printf "$GREE[OK]$NC\n"
+fi
 
 # export USE_TRITON=0
 
