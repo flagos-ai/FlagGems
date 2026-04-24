@@ -59,6 +59,14 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+      - name: Setup FlagGems
+        shell: bash
+        run: |
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            export HTTP_PROXY="http://10.1.12.38:38002"
+            export HTTPS_PROXY="http://10.1.12.38:38002"
+          fi
+          setup.sh ${{ inputs.vendor }}
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
         shell: bash
@@ -78,9 +86,4 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
           RUNNER_LABEL: ${{ inputs.runner_label }}
         run: |
-          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
-            export HTTP_PROXY="http://10.1.12.38:38002"
-            export HTTPS_PROXY="http://10.1.12.38:38002"
-          fi
-
-          tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
+          tools/test-op.sh ${{ inputs.pr_id }}
