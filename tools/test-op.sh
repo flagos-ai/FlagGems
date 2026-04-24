@@ -62,7 +62,9 @@ for item in $CHANGED_FILES; do
     fi
   done
   if (( $found == 0 )); then
-    TEST_CASES_CPU+=($item)
+    case $item in
+      tests/*) TEST_CASES_CPU+=($item) ;;
+    esac
   fi
 done
 
@@ -81,7 +83,7 @@ coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES[@]}
 # Run quick-cpu test if necessary
 if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
   echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --fg-test-quick
+  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --quick
 fi
 
 # Process coverage data only when full-range testing

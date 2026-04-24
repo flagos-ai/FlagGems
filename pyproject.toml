@@ -1,7 +1,7 @@
 [build-system]
 # cmake locks to '>=3.20,<4.0' to sync with FlagTree
 
-requires = ["setuptools==79.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+requires = ["setuptools>=64.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
 
 build-backend = "scikit_build_core.build"
 
@@ -9,7 +9,7 @@ build-backend = "scikit_build_core.build"
 
 name = "flag_gems"
 
-version = "5.0.1.rc.0"
+version = "5.0.2"
 
 description = "FlagGems is a function library written in Triton language."
 
@@ -123,7 +123,7 @@ test = [
     "distro==1.9.0",
     "coverage==7.13.5",
     "openpyxl==3.1.5",
-    "pytest==9.0.2",
+    "pytest==9.0.3",
     "scipy>=1.15.3",
 ]
 

@@ -63,6 +63,14 @@ log10_out:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+gcd:
+  shapes:
+    - [65536]
+    - [1024, 1024]
+    - [256, 4096]
+    - [64, 256, 256]
+  shape_desc: "(B), M, N"
+
 roll:
   shapes:
     - [1024]
@@ -119,6 +127,19 @@ MvAndOuterBenchmark:
     - [4096, 4096]
     - [8192, 8192]
     - [10240, 10240]  #from perf
+
+mm_self_transpose:
+  shapes:
+    - [257, 96]
+    - [384, 384]
+    - [1536, 320]
+    - [3072, 768]
+    - [1024, 1024]
+    - [4096, 1024]
+    - [5333, 71]
+    - [8192, 2048]
+    - [10240, 4096]
+  shape_desc: "M, K"
 
 # NORM shapes can be either 3D or 4D:
 # - 3D shapes are represented as [batch_size, channels, hidden_size]

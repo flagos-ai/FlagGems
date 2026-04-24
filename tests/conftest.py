@@ -4,7 +4,9 @@ import os
 from datetime import datetime
 
 import pytest
-import torch
+
+# TODO(Qiming): Try remove this line
+import torch  # noqa: F401
 import yaml
 
 import flag_gems
@@ -31,9 +33,6 @@ device = flag_gems.device
 
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 REPORT_FILE = f"report_{TIMESTAMP}.json"
-TEST_QUICK_OPTION = "--fg-test-quick"
-TEST_RECORD_OPTION = "--fg-test-record"
-TEST_COLLECT_MARKS_OPTION = "--fg-test-collect-marks"
 
 
 def pytest_addoption(parser):
@@ -47,25 +46,35 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
-        TEST_QUICK_OPTION,
+        "--quick",
         action="store_true",
         help="run tests on quick mode",
     )
 
-    parser.addoption(
-        TEST_RECORD_OPTION,
-        action="store",
-        default="none",
-        required=False,
-        choices=["none", "log"],
-        help="tests function param recorded in log files or not",
-    )
+    try:
+        parser.addoption(
+            "--record",
+            action="store",
+            default="none",
+            required=False,
+            choices=["none", "log"],
+            help="tests function param recorded in log files or not",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register --record in
+        # benchmark/conftest.py. Reuse the existing option in that case.
+        pass
 
-    parser.addoption(
-        TEST_COLLECT_MARKS_OPTION,
-        action="store_true",
-        help="Collect the tests with marker information without executing them",
-    )
+    try:
+        parser.addoption(
+            "--collect-marks",
+            action="store_true",
+            help="Collect the tests with marker information without executing them",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # benchmark/conftest.py. Reuse the existing option in that case.
+        pass
 
 
 def pytest_configure(config):
@@ -79,9 +88,9 @@ def pytest_configure(config):
         marker.split(":")[0].strip() for marker in config.getini("markers")
     }
 
-    RECORD_LOG = config.getoption(TEST_RECORD_OPTION) == "log"
+    RECORD_LOG = config.getoption("--record") == "log"
     TO_CPU = config.getoption("--ref") == "cpu"
-    QUICK_MODE = config.getoption(TEST_QUICK_OPTION) is True
+    QUICK_MODE = config.getoption("--quick") is True
 
     if RECORD_LOG:
         RUNTEST_INFO = {}
@@ -136,7 +145,7 @@ def pytest_runtest_protocol(item, nextitem):
     TEST_RESULTS[item.nodeid]["params"] = param_values
     # get all mark
     all_marks = [mark.name for mark in item.iter_markers()]
-    # exclude marks锛宻uch as parametrize銆乻kipif and so on
+    # exclude marks，such as parametrize、skipif and so on
     operator_marks = [mark for mark in all_marks if mark not in BUILTIN_MARKS]
     TEST_RESULTS[item.nodeid]["opname"] = operator_marks
 
@@ -179,7 +188,7 @@ def pytest_terminal_summary(terminalreporter):
 
 
 def pytest_collection_modifyitems(session, config, items):
-    if config.getoption(TEST_COLLECT_MARKS_OPTION):
+    if config.getoption("--collect-marks"):
         report = []
         for item in items:
             data = {}

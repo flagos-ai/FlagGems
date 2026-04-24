@@ -77,6 +77,7 @@ forward_operations = [
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("hardsigmoid", torch.nn.functional.hardsigmoid, FLOAT_DTYPES),
+    ("leaky_relu", torch.nn.functional.leaky_relu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("relu6", torch.nn.functional.relu6, FLOAT_DTYPES),
     ("selu", torch.nn.functional.selu, FLOAT_DTYPES),
@@ -94,6 +95,7 @@ forward_operations = [
     ("tanh", torch.tanh, FLOAT_DTYPES),
     ("atan", torch.atan, FLOAT_DTYPES),
     ("arcsinh", torch.arcsinh, FLOAT_DTYPES),
+    ("asinh", torch.asinh, FLOAT_DTYPES),
     ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
@@ -142,6 +144,7 @@ forward_inplace_operations = [
     ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("hardswish_", torch.ops.aten.hardswish_, FLOAT_DTYPES),
+    ("leaky_relu_", torch.nn.functional.leaky_relu_, FLOAT_DTYPES),
     ("log10_", torch.log10_, FLOAT_DTYPES),
     ("neg_", torch.neg_, FLOAT_DTYPES),
     ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),

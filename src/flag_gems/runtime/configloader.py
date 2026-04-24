@@ -47,6 +47,7 @@ DEFAULT_STRATEGIES = {
         "default",
     ],
     "gemv": ["align32", "align32", "align32", "default"],
+    "sparse_attention": ["align32", "align32", "align32"],
 }
 
 OP_KEY_ORDERS = {
@@ -58,6 +59,7 @@ OP_KEY_ORDERS = {
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
+    "sparse_attention": ["topk", "H_ACTUAL", "D"],
 }
 
 
@@ -226,6 +228,19 @@ class ConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "sparse_attention":
+            return [
+                triton.Config(
+                    {"BLOCK": block},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block in ranges["BLOCK"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "w8a8_block_fp8_general":
             return [
                 triton.Config(
@@ -308,6 +323,7 @@ class ConfigLoader(object):
             ),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "gemv": self._build_single_expand_spec("gemv"),
+            "sparse_attention": self._build_single_expand_spec("sparse_attention"),
         }
 
     def load_all(self):
