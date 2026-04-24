@@ -10,21 +10,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
-
-
-def get_higher_dtype(a, b):
-    if a is b:
-        return a
-    assert a in _ordered_datatypes
-    assert b in _ordered_datatypes
-    for d in _ordered_datatypes:
-        if a is d:
-            return b
-        if b is d:
-            return a
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -144,9 +129,6 @@ def bmm_kernel(
         a_ptrs += TILE_K * stride_ak
         b_ptrs += TILE_K * stride_bk
 
-        if a.dtype != b.dtype:
-            a = a.to(tl.float32)
-            b = b.to(tl.float32)
         o += tl.dot(a, b, allow_tf32=False)
 
     if DIVISIBLE_M and DIVISIBLE_N:
@@ -166,8 +148,7 @@ def bmm(A, B):
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape
     _, _, N = B.shape
-    c_dtype = get_higher_dtype(A.dtype, B.dtype)
-    out = torch.empty((batch, M, N), dtype=c_dtype, device=A.device)
+    out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),

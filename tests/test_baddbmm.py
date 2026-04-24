@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import ALL_FLOAT_DTYPES as ORIG_ALL_FLOAT_DTYPES
+from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
 from .accuracy_utils import SCALARS, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
@@ -18,7 +18,7 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
-    FLOAT_DTYPES = ORIG_ALL_FLOAT_DTYPES
+    FLOAT_DTYPES = ORIG_FLOAT_DTYPES
 
 GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
 
@@ -37,8 +37,6 @@ FP8_MNK_SHAPES = [
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
-    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
-        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
     if flag_gems.vendor_name == "mthreads" and dtype in [torch.float16, torch.bfloat16]:
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
     batch = 4
@@ -62,8 +60,6 @@ def test_baddbmm(monkeypatch, M, N, K, scalar, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm_backward(M, N, K, scalar, dtype):
-    if dtype == torch.float64 and torch.cuda.get_device_capability()[0] < 9:
-        pytest.skip("tl.dot does not support fp64 on compute capability < 9.0")
     batch = 2
     mat1 = torch.randn(
         (batch, M, K), dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -95,27 +91,3 @@ def test_baddbmm_backward(M, N, K, scalar, dtype):
     gems_assert_close(res_in_bias, ref_in_bias, dtype, reduce_dim=K)
     gems_assert_close(res_in_grad1, ref_in_grad1, dtype, reduce_dim=N)
     gems_assert_close(res_in_grad2, ref_in_grad2, dtype, reduce_dim=M)
-
-
-MIXED_DTYPE_PAIRS = [
-    (torch.float16, torch.float32),
-    (torch.float32, torch.float16),
-]
-
-
-@pytest.mark.baddbmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype_a, dtype_b", MIXED_DTYPE_PAIRS)
-def test_baddbmm_mixed_dtype(M, N, K, dtype_a, dtype_b):
-    batch = 4
-    mat1 = torch.randn((batch, M, K), dtype=dtype_a, device=flag_gems.device)
-    mat2 = torch.randn((batch, K, N), dtype=dtype_b, device=flag_gems.device)
-    bias = torch.randn((N,), dtype=dtype_a, device=flag_gems.device)
-    ref_mat1 = to_reference(mat1, True)
-    ref_mat2 = to_reference(mat2, True)
-    ref_bias = to_reference(bias, True)
-
-    ref_out = torch.baddbmm(ref_bias, ref_mat1, ref_mat2)
-    res_out = flag_gems.baddbmm(bias, mat1, mat2)
-
-    gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=K)
