@@ -99,8 +99,8 @@ else
   source .venv/bin/activate
 fi
 
-printf "HTTPS_PROXY=${https_proxy}\n"
-printf "HTTP_PROXY=${http_proxy}\n"
+printf "HTTPS_PROXY=${HTTPS_PROXY}\n"
+printf "HTTP_PROXY=${HTTP_PROXY}\n"
 
 # Install FlagGems
 export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
