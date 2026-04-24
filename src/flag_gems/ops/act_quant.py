@@ -233,10 +233,13 @@ if __name__ == "__main__":
                 )
                 su.append(ref_time / triton_time)
                 print(
-                    f"Shape {str(shape):20s}, Scale format: {scale_fmt}, block_size: {block_size} | TileLang: {ref_time:.3f} ms | Triton: {triton_time:.3f} ms | Speedup: {ref_time / triton_time:.2f}x"
+                    f"Shape {str(shape):20s}, Scale format: {scale_fmt}, "
+                    f"block_size: {block_size} | "
+                    f"TileLang: {ref_time:.3f} ms | Triton: {triton_time:.3f} ms | "
+                    f"Speedup: {ref_time / triton_time:.2f}x"
                 )
     print(
-        f"Average speedup: {sum(su)/len(su):.2f}x, max speedup: {max(su):.2f}x, min speedup: {min(su):.2f}x"
+        f"Average speedup: {sum(su) / len(su):.2f}x, max speedup: {max(su):.2f}x, min speedup: {min(su):.2f}x"
     )
 
     # x = torch.randn(4096*4, 40960, dtype=torch.bfloat16, device="cuda")

@@ -1,4 +1,3 @@
-      
 """Fast Hadamard Transform in Triton (Ascend NPU).
 
 v1: Single-kernel fused butterfly with chained buffers + fused scale/cast.
@@ -7,12 +6,12 @@ Uses unique buffer for each stage to avoid NPU stale-read issues.
 Eliminates 7 kernel launch overheads and the separate scale/cast kernel from v0.
 """
 
+import math
+
 import torch
-import torch_npu  # Enable NPU support
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-import math
 
 MAX_GRID = 65535
 
@@ -22,6 +21,7 @@ MAX_GRID = 65535
 # Uses 6 scratch buffer segments (B0..B5) in a contiguous allocation.
 # Chain: IN -> B0 -> B1 -> B2 -> B3 -> B4 -> B5 -> OUT
 # ============================================================
+
 
 @triton.jit
 def _fht_fused_7stage(
@@ -114,6 +114,7 @@ def _fht_fused_7stage(
 # Generic fused butterfly kernel (any power-of-2 dim)
 # ============================================================
 
+
 @triton.jit
 def _fht_fused_generic(
     IN_ptr,
@@ -177,10 +178,14 @@ def _fht_fused_generic(
 # Core forward
 # ============================================================
 
+
 def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     """Core forward: handles reshape, padding, kernel launch."""
-    assert x.dtype in (torch.float32, torch.float16, torch.bfloat16), \
-        f"Unsupported dtype {x.dtype}"
+    assert x.dtype in (
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+    ), f"Unsupported dtype {x.dtype}"
 
     orig_shape = x.shape
     dim = orig_shape[-1]
@@ -200,7 +205,9 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     # Scratch buffer: (log_n - 1) segments of (batch, dim_padded) in fp32
     # Stage s writes to segment s (0..log_n-2), last stage writes to output
     n_scratch = max(log_n - 1, 1)
-    scratch = torch.empty(n_scratch, batch, dim_padded, dtype=torch.float32, device=x.device)
+    scratch = torch.empty(
+        n_scratch, batch, dim_padded, dtype=torch.float32, device=x.device
+    )
     seg_stride = batch * dim_padded
 
     # Grid calculation
@@ -218,8 +225,13 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
     # Use specialized 7-stage kernel for dim=128, generic for others
     if log_n == 7:
         _fht_fused_7stage[(grid_size,)](
-            inp_fp32, scratch, out,
-            stride_row, dim_padded, seg_stride, scale,
+            inp_fp32,
+            scratch,
+            out,
+            stride_row,
+            dim_padded,
+            seg_stride,
+            scale,
             N_ROWS=batch,
             ROWS_PER_PROGRAM=rows_per_program,
             DIM=dim_padded,
@@ -228,8 +240,13 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
         )
     else:
         _fht_fused_generic[(grid_size,)](
-            inp_fp32, scratch, out,
-            stride_row, dim_padded, seg_stride, scale,
+            inp_fp32,
+            scratch,
+            out,
+            stride_row,
+            dim_padded,
+            seg_stride,
+            scale,
             N_ROWS=batch,
             ROWS_PER_PROGRAM=rows_per_program,
             DIM=dim_padded,
@@ -248,6 +265,7 @@ def _hadamard_transform_fwd(x: torch.Tensor, scale: float) -> torch.Tensor:
 # Autograd wrapper
 # ============================================================
 
+
 class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale):
@@ -265,6 +283,7 @@ class HadamardTransformFn(torch.autograd.Function):
 # Public API
 # ============================================================
 
+
 def hadamard_transform(x, scale=1.0):
     """Fast Hadamard Transform.
 
@@ -276,5 +295,3 @@ def hadamard_transform(x, scale=1.0):
     the next power of 2.
     """
     return HadamardTransformFn.apply(x, scale)
-
-    

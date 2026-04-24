@@ -1,11 +1,11 @@
 import os
-# Enable all blocks parallel to avoid coreDim > 65535 issue on NPU
-os.environ['TRITON_ALL_BLOCKS_PARALLEL'] = '1'
 
 import torch
-import torch_npu
 import triton
 import triton.language as tl
+
+# Enable all blocks parallel to avoid coreDim > 65535 issue on NPU
+os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
 
 
 # ---------------------------------------------------------------------------
@@ -14,15 +14,25 @@ import triton.language as tl
 # ---------------------------------------------------------------------------
 @triton.jit
 def sparse_attn_triton_kernel(
-    Q,          # (b, m, h, d)  bf16
-    KV,         # (b, n, d)     bf16
-    O,          # (b, m, h, d)  bf16
+    Q,  # (b, m, h, d)  bf16
+    KV,  # (b, n, d)     bf16
+    O,  # (b, m, h, d)  bf16
     attn_sink,  # (h,)          fp32
     topk_idxs,  # (b, m, topk)  int32
-    stride_qb, stride_qm, stride_qh, stride_qd,
-    stride_kvb, stride_kvn, stride_kvd,
-    stride_ob, stride_om, stride_oh, stride_od,
-    stride_idxb, stride_idxm, stride_idxk,
+    stride_qb,
+    stride_qm,
+    stride_qh,
+    stride_qd,
+    stride_kvb,
+    stride_kvn,
+    stride_kvd,
+    stride_ob,
+    stride_om,
+    stride_oh,
+    stride_od,
+    stride_idxb,
+    stride_idxm,
+    stride_idxk,
     scale,
     topk,
     kv_len,
@@ -65,9 +75,11 @@ def sparse_attn_triton_kernel(
         # Process BLOCK elements in sub-tiles
         for s in range(num_sub_iter):
             sub_start = block_start + s * BLOCK_SUB
-            raw_offs = sub_start + offs_blk               # (BLOCK_SUB,)
+            raw_offs = sub_start + offs_blk  # (BLOCK_SUB,)
             idx_mask = raw_offs < topk
-            idxs = tl.load(idx_base + raw_offs * stride_idxk, mask=idx_mask, other=0)  # (BLOCK_SUB,)
+            idxs = tl.load(
+                idx_base + raw_offs * stride_idxk, mask=idx_mask, other=0
+            )  # (BLOCK_SUB,)
 
             # Clamp negative indices to 0 (matching PyTorch behavior on NPU)
             idxs = tl.where(idxs < 0, 0, idxs)
@@ -75,32 +87,40 @@ def sparse_attn_triton_kernel(
             # Check index validity: idxs must be >= 0 and < kv_len
             # Create valid mask based on both position and index value
             index_valid = (idxs >= 0) & (idxs < kv_len)
-            valid_mask = idx_mask & index_valid            # (BLOCK_SUB,)
+            valid_mask = idx_mask & index_valid  # (BLOCK_SUB,)
 
             # -- gather KV block: (BLOCK_SUB, D) --
-            kv_ptrs = kv_base + idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
-            kv_block = tl.load(kv_ptrs, mask=valid_mask[:, None], other=0.0)  # (BLOCK_SUB, D) bf16
+            kv_ptrs = (
+                kv_base + idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
+            )
+            kv_block = tl.load(
+                kv_ptrs, mask=valid_mask[:, None], other=0.0
+            )  # (BLOCK_SUB, D) bf16
 
             # -- scores: Q @ KV^T -> (H, BLOCK_SUB) via GEMM --
-            acc_s = tl.dot(q_block, tl.trans(kv_block))   # (H, D) @ (D, BLOCK_SUB) = (H, BLOCK_SUB)
+            acc_s = tl.dot(
+                q_block, tl.trans(kv_block)
+            )  # (H, D) @ (D, BLOCK_SUB) = (H, BLOCK_SUB)
             acc_s = acc_s * scale
             # mask invalid positions to -inf
             mask_bias = tl.where(valid_mask, 0.0, float("-inf"))  # (BLOCK_SUB,)
-            acc_s = acc_s + mask_bias[None, :]             # broadcast: (H, BLOCK_SUB)
+            acc_s = acc_s + mask_bias[None, :]  # broadcast: (H, BLOCK_SUB)
 
             # -- online softmax update --
             scores_max_prev = scores_max
-            block_max = tl.max(acc_s, axis=1)              # (H,)
+            block_max = tl.max(acc_s, axis=1)  # (H,)
             scores_max = tl.maximum(scores_max, block_max)
 
             correction = tl.exp(scores_max_prev - scores_max)  # (H,)
-            p = tl.exp(acc_s - scores_max[:, None])        # (H, BLOCK_SUB)
+            p = tl.exp(acc_s - scores_max[:, None])  # (H, BLOCK_SUB)
 
             # -- accumulate output: acc_o = acc_o * correction + P @ KV --
             acc_o = acc_o * correction[:, None]
-            acc_o += tl.dot(p.to(tl.bfloat16), kv_block)  # (H, BLOCK_SUB) @ (BLOCK_SUB, D) = (H, D)
+            acc_o += tl.dot(
+                p.to(tl.bfloat16), kv_block
+            )  # (H, BLOCK_SUB) @ (BLOCK_SUB, D) = (H, D)
 
-            scores_sum = tl.sum(p, axis=1)                 # (H,)
+            scores_sum = tl.sum(p, axis=1)  # (H,)
             sum_exp = sum_exp * correction + scores_sum
 
     # ---- incorporate attn_sink ----
@@ -146,11 +166,25 @@ def sparse_attn_triton(
     grid = (b * m,)
 
     sparse_attn_triton_kernel[grid](
-        q, kv, o, attn_sink, topk_idxs,
-        q.stride(0), q.stride(1), q.stride(2), q.stride(3),
-        kv.stride(0), kv.stride(1), kv.stride(2),
-        o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-        topk_idxs.stride(0), topk_idxs.stride(1), topk_idxs.stride(2),
+        q,
+        kv,
+        o,
+        attn_sink,
+        topk_idxs,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        q.stride(3),
+        kv.stride(0),
+        kv.stride(1),
+        kv.stride(2),
+        o.stride(0),
+        o.stride(1),
+        o.stride(2),
+        o.stride(3),
+        topk_idxs.stride(0),
+        topk_idxs.stride(1),
+        topk_idxs.stride(2),
         softmax_scale,
         topk,
         kv_len,

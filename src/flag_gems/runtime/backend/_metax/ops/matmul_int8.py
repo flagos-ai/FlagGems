@@ -23,11 +23,12 @@ Matrix Multiplication
 ===============
 """
 
+import torch
 import triton
 import triton.language as tl
-import torch
 
 DEV = "cuda"
+
 
 def get_output_dtype(a_dtype, b_dtype):
     return torch.bfloat16

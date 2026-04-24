@@ -1,6 +1,6 @@
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
-#include "flag_gems/backend_utils.h"
 #include "triton_jit/triton_jit_function.h"
 
 #include <string>
@@ -14,10 +14,8 @@ at::Tensor fp8_matmul_direct(const at::Tensor& a,
                              const at::Tensor& b_s,
                              const at::ScalarType scale_dtype) {
   TORCH_CHECK(b.dim() == 2, "b must be 2D");
-  TORCH_CHECK(a.is_contiguous() && b.is_contiguous(),
-              "a and b must be contiguous");
-  TORCH_CHECK(a_s.is_contiguous() && b_s.is_contiguous(),
-              "a_s and b_s must be contiguous");
+  TORCH_CHECK(a.is_contiguous() && b.is_contiguous(), "a and b must be contiguous");
+  TORCH_CHECK(a_s.is_contiguous() && b_s.is_contiguous(), "a_s and b_s must be contiguous");
 
   int64_t K = a.size(-1);
   int64_t M = a.numel() / K;
@@ -26,7 +24,7 @@ at::Tensor fp8_matmul_direct(const at::Tensor& a,
 
   auto a_s_new = a_s;
   auto b_s_new = b_s;
-  
+
   if (scale_dtype == at::kFloat8_e8m0fnu) {
     a_s_new = a_s.to(at::kFloat);
     b_s_new = b_s.to(at::kFloat);
@@ -45,8 +43,7 @@ at::Tensor fp8_matmul_direct(const at::Tensor& a,
   // Get JIT function instance (cached singleton)
   static const std::string kernel_path =
       std::string(utils::get_flag_gems_src_path() / "ops" / "fp8_matmul.py");
-  const TritonJITFunction& jit =
-      TritonJITFunction::get_instance(kernel_path, "_fp8_matmul_kernel");
+  const TritonJITFunction& jit = TritonJITFunction::get_instance(kernel_path, "_fp8_matmul_kernel");
 
   // Build signature and args manually, matching ArgHandle behavior
   // but without variadic template overhead.
@@ -58,8 +55,8 @@ at::Tensor fp8_matmul_direct(const at::Tensor& a,
   //   GROUP_K(constexpr), BLOCK_M(ce), BLOCK_N(ce), BLOCK_K(ce), GROUP_SIZE_M(ce)
 
   // Storage (stack-allocated, must outlive cuLaunchKernel)
-  void* tp[5];  // tensor data pointers
-  int32_t iv[16]; // int values (scalars + strides that aren't :1)
+  void* tp[5];     // tensor data pointers
+  int32_t iv[16];  // int values (scalars + strides that aren't :1)
   void* scratch[2] = {nullptr, nullptr};
 
   void* arg_ptrs[25];
@@ -71,7 +68,10 @@ at::Tensor fp8_matmul_direct(const at::Tensor& a,
   bool first = true;
 
   // Append separator
-  auto sep = [&]() { if (!first) sig += ','; first = false; };
+  auto sep = [&]() {
+    if (!first) sig += ',';
+    first = false;
+  };
 
   // Add tensor (always SPECIALIZED for this kernel)
   auto add_t = [&](const at::Tensor& t, int ti) {
@@ -124,16 +124,16 @@ at::Tensor fp8_matmul_direct(const at::Tensor& a,
   add_i(static_cast<int32_t>(K));
 
   // 10 strides
-  add_i(static_cast<int32_t>(a_2d.stride(0)));   // stride_am
-  add_i(static_cast<int32_t>(a_2d.stride(1)));   // stride_ak (1 for contiguous)
-  add_i(static_cast<int32_t>(b.stride(0)));       // stride_bn
-  add_i(static_cast<int32_t>(b.stride(1)));       // stride_bk (1 for contiguous)
-  add_i(static_cast<int32_t>(C.stride(0)));       // stride_cm
-  add_i(static_cast<int32_t>(C.stride(1)));       // stride_cn (1 for contiguous)
-  add_i(static_cast<int32_t>(a_s_2d.stride(0))); // stride_as_m
-  add_i(static_cast<int32_t>(a_s_2d.stride(1))); // stride_as_k (1 when K/128==1)
-  add_i(static_cast<int32_t>(b_s_new.stride(0)));     // stride_bs_n
-  add_i(static_cast<int32_t>(b_s_new.stride(1)));     // stride_bs_k
+  add_i(static_cast<int32_t>(a_2d.stride(0)));     // stride_am
+  add_i(static_cast<int32_t>(a_2d.stride(1)));     // stride_ak (1 for contiguous)
+  add_i(static_cast<int32_t>(b.stride(0)));        // stride_bn
+  add_i(static_cast<int32_t>(b.stride(1)));        // stride_bk (1 for contiguous)
+  add_i(static_cast<int32_t>(C.stride(0)));        // stride_cm
+  add_i(static_cast<int32_t>(C.stride(1)));        // stride_cn (1 for contiguous)
+  add_i(static_cast<int32_t>(a_s_2d.stride(0)));   // stride_as_m
+  add_i(static_cast<int32_t>(a_s_2d.stride(1)));   // stride_as_k (1 when K/128==1)
+  add_i(static_cast<int32_t>(b_s_new.stride(0)));  // stride_bs_n
+  add_i(static_cast<int32_t>(b_s_new.stride(1)));  // stride_bs_k
 
   // 5 constexprs
   add_ce(128);  // GROUP_K
@@ -147,20 +147,20 @@ at::Tensor fp8_matmul_direct(const at::Tensor& a,
   arg_ptrs[na++] = &scratch[1];
 
   // Launch
-  unsigned int grid_x = utils::cdiv(static_cast<int>(M), BLOCK_M) *
-                        utils::cdiv(static_cast<int>(N), BLOCK_N);
+  unsigned int grid_x = utils::cdiv(static_cast<int>(M), BLOCK_M) * utils::cdiv(static_cast<int>(N), BLOCK_N);
 
   c10::DeviceGuard guard(C.device());
   backend::StreamType stream = backend::getCurrentStream();
 
-  jit.launch_with_raw_args(
-      stream,
-      grid_x, 1, 1,  // grid
-      4,              // num_warps
-      3,              // num_stages
-      std::move(sig),
-      arg_ptrs,
-      na);
+  jit.launch_with_raw_args(stream,
+                           grid_x,
+                           1,
+                           1,  // grid
+                           4,  // num_warps
+                           3,  // num_stages
+                           std::move(sig),
+                           arg_ptrs,
+                           na);
 
   return C.view(out_shape);
 }

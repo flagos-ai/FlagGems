@@ -102,6 +102,7 @@ def gems_flash_fwd(
 
     return out, lse, seed, offset, debug_softmax
 
+
 def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
     batch, seq_len, heads, dim = q.shape
     topk = topk_idxs.shape[-1]
@@ -163,6 +164,7 @@ def test_sparse_attention(batch, seq_len, kv_len, topk, heads, dim, seed):
     gems_result = flag_gems.sparse_attn_triton(q, kv, attn_sink, topk_idxs, scale)
 
     utils.gems_assert_close(gems_result, torch_result, torch.bfloat16, atol=1e-3)
+
 
 def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
     # batch, nheads = slopes.shape

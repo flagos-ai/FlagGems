@@ -10,15 +10,25 @@ import triton.language as tl
 # ---------------------------------------------------------------------------
 @triton.jit
 def sparse_attn_triton_kernel(
-    Q,          # (b, m, h, d)  bf16
-    KV,         # (b, n, d)     bf16
-    O,          # (b, m, h, d)  bf16
+    Q,  # (b, m, h, d)  bf16
+    KV,  # (b, n, d)     bf16
+    O,  # (b, m, h, d)  bf16
     attn_sink,  # (h,)          fp32
     topk_idxs,  # (b, m, topk)  int32
-    stride_qb, stride_qm, stride_qh, stride_qd,
-    stride_kvb, stride_kvn, stride_kvd,
-    stride_ob, stride_om, stride_oh, stride_od,
-    stride_idxb, stride_idxm, stride_idxk,
+    stride_qb,
+    stride_qm,
+    stride_qh,
+    stride_qd,
+    stride_kvb,
+    stride_kvn,
+    stride_kvd,
+    stride_ob,
+    stride_om,
+    stride_oh,
+    stride_od,
+    stride_idxb,
+    stride_idxm,
+    stride_idxk,
     scale,
     topk,
     H_ACTUAL,
@@ -51,35 +61,39 @@ def sparse_attn_triton_kernel(
 
     for t in range(num_blocks):
         # -- gather indices --
-        raw_offs = t * BLOCK + offs_blk               # (BLOCK,)
+        raw_offs = t * BLOCK + offs_blk  # (BLOCK,)
         idx_mask = raw_offs < topk
-        idxs = tl.load(idx_base + raw_offs * stride_idxk, mask=idx_mask, other=-1)  # (BLOCK,)
-        valid_mask = idxs != -1                        # (BLOCK,)
+        idxs = tl.load(
+            idx_base + raw_offs * stride_idxk, mask=idx_mask, other=-1
+        )  # (BLOCK,)
+        valid_mask = idxs != -1  # (BLOCK,)
 
         # -- gather KV block: (BLOCK, D) --
         kv_ptrs = kv_base + idxs[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
-        kv_block = tl.load(kv_ptrs, mask=valid_mask[:, None], other=0.0)  # (BLOCK, D) bf16
+        kv_block = tl.load(
+            kv_ptrs, mask=valid_mask[:, None], other=0.0
+        )  # (BLOCK, D) bf16
 
         # -- scores: Q @ KV^T -> (H, BLOCK) via GEMM --
-        acc_s = tl.dot(q_block, tl.trans(kv_block))   # (H, D) @ (D, BLOCK) = (H, BLOCK)
+        acc_s = tl.dot(q_block, tl.trans(kv_block))  # (H, D) @ (D, BLOCK) = (H, BLOCK)
         acc_s = acc_s * scale
         # mask invalid positions to -inf
         mask_bias = tl.where(valid_mask, 0.0, float("-inf"))  # (BLOCK,)
-        acc_s = acc_s + mask_bias[None, :]             # broadcast: (H, BLOCK)
+        acc_s = acc_s + mask_bias[None, :]  # broadcast: (H, BLOCK)
 
         # -- online softmax update --
         scores_max_prev = scores_max
-        block_max = tl.max(acc_s, axis=1)              # (H,)
+        block_max = tl.max(acc_s, axis=1)  # (H,)
         scores_max = tl.maximum(scores_max, block_max)
 
         correction = tl.exp(scores_max_prev - scores_max)  # (H,)
-        p = tl.exp(acc_s - scores_max[:, None])        # (H, BLOCK)
+        p = tl.exp(acc_s - scores_max[:, None])  # (H, BLOCK)
 
         # -- accumulate output: acc_o = acc_o * correction + P @ KV --
         acc_o = acc_o * correction[:, None]
         acc_o += tl.dot(p.to(tl.bfloat16), kv_block)  # (H, BLOCK) @ (BLOCK, D) = (H, D)
 
-        scores_sum = tl.sum(p, axis=1)                 # (H,)
+        scores_sum = tl.sum(p, axis=1)  # (H,)
         sum_exp = sum_exp * correction + scores_sum
 
     # ---- incorporate attn_sink ----
@@ -115,11 +129,25 @@ def sparse_attn_triton(
 
     grid = (m, b)  # each program handles ALL h heads
     sparse_attn_triton_kernel[grid](
-        q, kv, o, attn_sink, topk_idxs,
-        q.stride(0), q.stride(1), q.stride(2), q.stride(3),
-        kv.stride(0), kv.stride(1), kv.stride(2),
-        o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-        topk_idxs.stride(0), topk_idxs.stride(1), topk_idxs.stride(2),
+        q,
+        kv,
+        o,
+        attn_sink,
+        topk_idxs,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        q.stride(3),
+        kv.stride(0),
+        kv.stride(1),
+        kv.stride(2),
+        o.stride(0),
+        o.stride(1),
+        o.stride(2),
+        o.stride(3),
+        topk_idxs.stride(0),
+        topk_idxs.stride(1),
+        topk_idxs.stride(2),
         softmax_scale,
         topk,
         h,
