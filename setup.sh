@@ -47,6 +47,21 @@ if [ "$?" != 0 ]; then
     echo "Please specify one of: ${SUPPORTED_VENDORS[@]}"
     exit 1
 fi
+printf "Checking vendor ... ${VENDOR} $GREEN[OK]$NC\n"
+
+printf "Detecting pyenv ... "
+pyenv_version=$(pyenv --version 2>/dev/null | awk '{print $NF}')
+if [ "$?" != 0 ]; then
+  # pyenv not installed
+  printf "NOT FOUND $GREEN[OK]$NC\n"
+else
+  printf "${pyenv_version} $GREEN[OK]$NC\n"
+
+  # Initialize pyenv virtual environment
+  export PYENV_ROOT="$HOME/.pyenv"
+  export PATH="$PYENV_ROOT/bin:$PATH"
+  eval "$(pyenv init - bash)"
+fi
 
 # Validate Python version
 printf "Checking Python version ... "
@@ -71,20 +86,6 @@ else
   pip install -U pip uv || exit 1;
 fi
 
-printf "Detecting pyenv ... "
-pyenv_version=$(pyenv --version 2>/dev/null | awk '{print $NF}')
-if [ "$?" != 0 ]; then
-  # pyenv not installed
-  printf "NOT FOUND $GREEN[OK]$NC\n"
-else
-  printf "${pyenv_version} $GREEN[OK]$NC\n"
-
-  # Initialize pyenv virtual environment
-  export PYENV_ROOT="$HOME/.pyenv"
-  export PATH="$PYENV_ROOT/bin:$PATH"
-  eval "$(pyenv init - bash)"
-fi
-
 # Start installation
 printf "Installing FlagGems for ${VENDOR}\n"
 
@@ -94,19 +95,29 @@ if [ "$?" != 0 ]; then
   printf "$RED{FAILED]$NC\n"
   exit 1
 else
-  printf "$RED{OK]$NC\n"
+  printf "$RED[OK]$NC\n"
   source .venv/bin/activate
 fi
 
-# Install
+printf "HTTPS_PROXY=${HTTPS_PROXY}\n"
+printf "HTTP_PROXY=${HTTP_PROXY}\n"
+
+# Install FlagGems
 export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
 printf "Install build tools ... "
-uv pip install -q
+uv pip install \
   "setuptools>=64.0" \
   "scikit-build-core==0.12.2" \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \
   "ninja==1.13.0"
+
+if [ "$?" != 0 ]; then
+  printf "$RED[FAILED]$NC\n"
+  exit 1
+else
+  printf "$GREEN[OK]$NC\n"
+fi
 
 # export USE_TRITON=0
 

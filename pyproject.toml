@@ -201,6 +201,7 @@ explicit = true
 [[tool.uv.index]]
 name = "metax-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-metax/simple"
+explicit = true
 
 # Source for Mthreads packages
 [[tool.uv.index]]
