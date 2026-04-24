@@ -13,6 +13,16 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 
+
+## if (f16, N%8, K%8) or (f32, N%4, K%4): tma host
+## elif (M % BM, N % BN, K % BK):  tma device
+## else: tl.load
+ForceTmaHost = False
+ForceTmaDevice = (not ForceTmaHost) and False
+ForceLoad = False
+ForceTmaDevice = ForceTmaDevice or ForceLoad
+
+
 logger = logging.getLogger("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
 CACHE_USAGE_THRESHOLD = 0.8
 EXPAND_CONFIG_FILENAME = os.path.normpath(
@@ -79,6 +89,7 @@ def matmul_tma_set_block_size_hook(nargs):
     BLOCK_M = nargs["BLOCK_M"]
     BLOCK_N = nargs["BLOCK_N"]
     BLOCK_K = nargs["BLOCK_K"]
+    #print(f"#### mm tma: BLOCK_M={BLOCK_M}, BLOCK_N={BLOCK_N}, BLOCK_K={BLOCK_K}")
     if nargs["A_ROW_MAJOR"]:
         nargs["a_desc"].block_shape = [BLOCK_M, BLOCK_K]
     else:
@@ -119,6 +130,7 @@ def mm_kernel_general(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    ForceLoad: tl.constexpr,
 ):
     # matrix multiplication
     pid = tle.program_id(0)
@@ -131,7 +143,7 @@ def mm_kernel_general(
     pid_m = group_id * GROUP_M + (pid % group_size)
     pid_n = (pid % width) // (group_size)
 
-    if M % BLOCK_M == 0 and N % BLOCK_N == 0 and K % BLOCK_K == 0:
+    if not ForceLoad and M % BLOCK_M == 0 and N % BLOCK_N == 0 and K % BLOCK_K == 0:
         # offset
         offset_am = pid_m * BLOCK_M
         offset_bn = pid_n * BLOCK_N
@@ -372,9 +384,9 @@ def general_mm(a, b, c, M, N, K):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    if hasattr(
+    if ForceTmaHost or (not ForceTmaDevice and hasattr(
         triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
+    ) and is_tma_compatible(a, b, N, K)):
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -394,6 +406,7 @@ def general_mm(a, b, c, M, N, K):
         input_dtype = a.dtype
         dtype_str = str(input_dtype).split(".")[-1]
 
+        #print("#### mm_kernel_general_host_tma")
         with torch_device_fn.device(a.device):
             mm_kernel_general_host_tma[grid](
                 a_desc,
@@ -420,6 +433,7 @@ def general_mm(a, b, c, M, N, K):
 
         triton.set_allocator(alloc_fn)
 
+        #print("#### mm_kernel_general")
         with torch_device_fn.device(a.device):
             mm_kernel_general[grid](
                 a,
@@ -435,6 +449,7 @@ def general_mm(a, b, c, M, N, K):
                 c.stride(0),
                 c.stride(1),
                 GROUP_M=8,
+                ForceLoad=ForceLoad,
             )
     return c
 
