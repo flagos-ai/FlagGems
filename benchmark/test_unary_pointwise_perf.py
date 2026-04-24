@@ -47,6 +47,16 @@ class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
             yield inp, {"out": out}
 
 
+class RollBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            if len(shape) > 1:
+                yield inp, {"shifts": (1, -2), "dims": (0, len(shape) - 1)}
+            else:
+                yield inp, {"shifts": 1, "dims": 0}
+
+
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
     ("absolute", torch.absolute, FLOAT_DTYPES),
@@ -248,6 +258,12 @@ def test_exp_out():
         torch_op=torch.exp,
         dtypes=FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.roll
+def test_roll_perf():
+    bench = RollBenchmark(op_name="roll", torch_op=torch.roll, dtypes=FLOAT_DTYPES)
     bench.run()
 
 
