@@ -62,7 +62,9 @@ for item in $CHANGED_FILES; do
     fi
   done
   if (( $found == 0 )); then
-    TEST_CASES_CPU+=($item)
+    case $item in
+      tests/*) TEST_CASES_CPU+=($item) ;;
+    esac
   fi
 done
 
