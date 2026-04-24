@@ -1,5 +1,6 @@
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 
@@ -30,16 +31,14 @@ def test_accuracy_cudnn_convolution_2d(
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
     ref_weight = to_reference(weight)
 
-    ref_out = torch.cudnn_convolution(
+    ref_out = F.conv2d(
         ref_inp,
         ref_weight,
-        padding=[padding, padding],
+        bias=None,
         stride=[stride, stride],
+        padding=[padding, padding],
         dilation=[dilation, dilation],
         groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
     )
 
     with flag_gems.use_gems():
@@ -81,16 +80,14 @@ def test_accuracy_cudnn_convolution_1d(
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
     ref_weight = to_reference(weight)
 
-    ref_out = torch.cudnn_convolution(
+    ref_out = F.conv1d(
         ref_inp,
         ref_weight,
-        padding=[padding],
+        bias=None,
         stride=[stride],
+        padding=[padding],
         dilation=[1],
         groups=1,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
     )
 
     with flag_gems.use_gems():
@@ -133,16 +130,14 @@ def test_accuracy_cudnn_convolution_3d(
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
     ref_weight = to_reference(weight)
 
-    ref_out = torch.cudnn_convolution(
+    ref_out = F.conv3d(
         ref_inp,
         ref_weight,
-        padding=[padding, padding, padding],
+        bias=None,
         stride=[stride, stride, stride],
+        padding=[padding, padding, padding],
         dilation=[dilation, dilation, dilation],
         groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
     )
 
     with flag_gems.use_gems():
