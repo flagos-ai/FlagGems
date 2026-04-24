@@ -34,6 +34,7 @@ case $VENDOR in
       SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     fi
+    ;;
   tsingmicro)
     export TX8_DEPS_ROOT=/opt/tsingmicro/tx8_deps
     export LLVM_SYSPATH=/opt/tsingmicro/llvm21
@@ -44,4 +45,5 @@ case $VENDOR in
       SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
       export PYTHONPATH=$SITE_PACKAGES/triton/backends/tsingmicro/llvm/python_packages/mlir_core
     fi
+    ;;
 esac
