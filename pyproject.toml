@@ -9,7 +9,7 @@ build-backend = "scikit_build_core.build"
 
 name = "flag_gems"
 
-version = "5.0.1.rc.0"
+version = "5.0.2"
 
 description = "FlagGems is a function library written in Triton language."
 
