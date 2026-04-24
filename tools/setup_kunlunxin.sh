@@ -29,11 +29,9 @@ uv pip install --index ${FLAGOS_PYPI} \
     "regex==2026.4.4" \
     "xmlir==1.0.0.1"
 
-# Install flagtree
-if [ -n ${USE_FLAGTREE} ]; then
-  uv pip install --index ${FLAGOS_PYPI} \
-    "flagtree=0.5.1+xpu3.0"
-else
+# Install Triton if requested
+if [ -n ${USE_TRITON} ]; then
+  uv pip uninstall flagtree
   uv pip install --index ${FLAGOS_PYPI} \
     "triton=3.0.0+0762702f"
 fi
