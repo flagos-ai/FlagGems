@@ -7,6 +7,7 @@ from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
+from flag_gems.ops.act_quant import act_quant_triton
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
@@ -125,6 +126,7 @@ from flag_gems.ops.fill import (
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmin import fmin, fmin_out
+from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -143,6 +145,7 @@ from flag_gems.ops.greater import (
 from flag_gems.ops.group_gemm import group_mm
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
+from flag_gems.ops.hadamard_transform import hadamard_transform
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.hstack import hstack
@@ -343,6 +346,7 @@ __all__ = [
     "abs",
     "abs_",
     "absolute",
+    "act_quant_triton",
     "acos",
     "add",
     "add_",
@@ -504,6 +508,7 @@ __all__ = [
     "group_norm_backward",
     "gt",
     "gt_scalar",
+    "hadamard_transform",
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",
@@ -742,6 +747,7 @@ __all__ = [
     "vdot",
     "vector_norm",
     "vstack",
+    "fp8_matmul",
     "w8a8_block_fp8_matmul",
     "weight_norm_interface",
     "weight_norm_interface_backward",
