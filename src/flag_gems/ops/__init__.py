@@ -26,6 +26,7 @@ from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.asinh import asinh, asinh_out
 from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.assert_async import _assert_async
 from flag_gems.ops.atan import atan, atan_
@@ -165,6 +166,7 @@ from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.kron import kron
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
+from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linspace import linspace
@@ -377,7 +379,9 @@ __all__ = [
     "arcsinh_",
     "argmax",
     "argmin",
+    "asinh",
     "asinh_",
+    "asinh_out",
     "atan",
     "atan_",
     "atan2",
@@ -533,6 +537,9 @@ __all__ = [
     "kron",
     "layer_norm",
     "layer_norm_backward",
+    "leaky_relu",
+    "leaky_relu_",
+    "leaky_relu_out",
     "le",
     "le_scalar",
     "lerp_scalar",

@@ -75,6 +75,7 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             ("div", torch.div, FLOAT_DTYPES + COMPLEX_DTYPES),
+            ("gcd", torch.gcd, INT_DTYPES),
             ("dunder_or", lambda a, b: a | b, INT_DTYPES + BOOL_DTYPES),
             ("eq", torch.eq, FLOAT_DTYPES),
             ("equal", torch.equal, FLOAT_DTYPES),
