@@ -63,6 +63,14 @@ log10_out:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+gcd:
+  shapes:
+    - [65536]
+    - [1024, 1024]
+    - [256, 4096]
+    - [64, 256, 256]
+  shape_desc: "(B), M, N"
+
 softmax_backward:
   shapes:
     - [1048576] # 1024 * 1024
