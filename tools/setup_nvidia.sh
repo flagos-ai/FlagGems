@@ -7,11 +7,7 @@ uv pip install --index ${FLAGOS_PYPI} \
     "torchvision==0.24.0+cu128" \
     "torchaudio==2.9.0+cu128"
 
-if [ -n "${USE_FLAGTREE}" ]; then
-  uv pip uninstall triton
-  uv pip install --index ${FLAGOS_PYPI} \
-    "flagtree==0.5.0+3.5"
-else
+if [ -n "${USE_TRITON}" ]; then
   uv pip uninstall flagtree
   uv pip install --index ${FLAGOS_PYPI} \
     "triton==3.5"
