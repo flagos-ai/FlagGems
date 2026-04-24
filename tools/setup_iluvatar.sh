@@ -13,5 +13,5 @@ uv pip install --index ${FLAGOS_PYPI} \
 if [ -n "${USE_TRITON}" ]; then
   uv pip uninstall flagtree
   uv pip install --index $FLAGOS_PYPI \
-    "flagtree==0.5.0+iluvatar3.1"
+    "triton==3.1.0+corex.4.4.0"
 fi
