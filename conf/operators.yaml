@@ -124,6 +124,16 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - name: unique_consecutive
+    description: Eliminates all but the first element from every consecutive group of equivalent elements.
+    for:
+      - unique_consecutive
+    labels:
+      - aten
+    kind:
+      - Distribution
+    stages:
+      - beta: '5.1'
   - name: _unsafe_view
     description: |
       Creates a new view of an existing tensor with a different shape without
