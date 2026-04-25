@@ -49,7 +49,7 @@ def test_instance_norm(monkeypatch):
 
     if flag_gems.vendor_name == "mthreads":
         # Compatible with older versions of LLVM
-        monkeypatch.env("DISABLE_LLVM_OPT", "1")
+        monkeypatch.setenv("DISABLE_LLVM_OPT", "1")
 
     bench = NormBenchmark(
         op_name="instance_norm",
