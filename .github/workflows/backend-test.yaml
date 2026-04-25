@@ -61,6 +61,8 @@ jobs:
           ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
       - name: Setup FlagGems
         shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
         run: |
           if [[ "${RUNNER_LABEL}" != "h20" ]]; then
             export HTTP_PROXY="http://10.1.12.38:38002"
@@ -84,6 +86,7 @@ jobs:
         shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
-          RUNNER_LABEL: ${{ inputs.runner_label }}
         run: |
+          source .venv/bin/activate
+          source tools/set-env.sh ${{ inputs.vendor }}
           tools/test-op.sh ${{ inputs.pr_id }}

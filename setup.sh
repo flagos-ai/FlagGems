@@ -95,17 +95,17 @@ if [ "$?" != 0 ]; then
   printf "$RED{FAILED]$NC\n"
   exit 1
 else
-  printf "$RED{OK]$NC\n"
+  printf "$RED[OK]$NC\n"
   source .venv/bin/activate
 fi
 
-printf "HTTPS_PROXY=${https_proxy}\"
-printf "HTTP_PROXY=${http_proxy}\n"
+printf "HTTPS_PROXY=${HTTPS_PROXY}\n"
+printf "HTTP_PROXY=${HTTP_PROXY}\n"
 
 # Install FlagGems
 export FLAGOS_PYPI="https://resource.flagos.net/repository/flagos-pypi-${VENDOR}/simple"
 printf "Install build tools ... "
-uv pip install -q \
+uv pip install \
   "setuptools>=64.0" \
   "scikit-build-core==0.12.2" \
   "pybind11==3.0.3" \
@@ -116,7 +116,7 @@ if [ "$?" != 0 ]; then
   printf "$RED[FAILED]$NC\n"
   exit 1
 else
-  printf "$GREE[OK]$NC\n"
+  printf "$GREEN[OK]$NC\n"
 fi
 
 # export USE_TRITON=0

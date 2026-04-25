@@ -19,7 +19,8 @@ uv pip install --index ${FLAGOS_PYPI} \
     "txops==0.1.0+20260225.5cc33e4e"
 
 # Replace flagtree with Triton if requested
-if [ -n "${USE_FLAGTREE}" ]; then
+if [ -n "${USE_TRITON}" ]; then
+  uv pip uninstall flagtree
   uv pip install --index ${FLAGOS_PYPI} \
     "triton==3.3.0++gitfe2a28fa"
   # The following is needed when using `triton==3.3.0+gitfe2a28fa` rather than `flagtree`
