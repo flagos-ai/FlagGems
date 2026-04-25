@@ -10,6 +10,7 @@ import triton
 import yaml
 
 import flag_gems
+from flag_gems.utils import shape_utils
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -550,6 +551,33 @@ class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):
     def set_more_shapes(self):
         shapes = super().set_more_shapes()
         return [shape for shape in shapes if len(shape) == 2]
+
+
+class UnaryReductionBenchmark(Benchmark):
+    def set_more_metrics(self):
+        return ["gbps"]
+
+    def get_gbps(self, args, latency):
+        inp = args[0]
+        io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, inp]])
+        return io_amount * 1e-9 / (latency * 1e-3)
+
+    def set_more_shapes(self):
+        more_shapes_1d = [
+            (1025 * 1024,),
+            (1024 * 1024 * 1024,),
+        ]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 21, 4)]
+        more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            if inp.ndim > 1:
+                yield inp, 1
+            else:
+                yield inp,
 
 
 def generate_tensor_input(shape, dtype, device):
