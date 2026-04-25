@@ -124,7 +124,7 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
-  - id: unique_consecutive
+  - name: unique_consecutive
     description: Eliminates all but the first element from every consecutive group of equivalent elements.
     for:
       - unique_consecutive
@@ -134,7 +134,7 @@ ops:
       - Distribution
     stages:
       - beta: '5.1'
-  - id: _unsafe_view
+  - name: _unsafe_view
     description: |
       Creates a new view of an existing tensor with a different shape without
       performing safety checks, such as verifying if the tensor is contiguous or
