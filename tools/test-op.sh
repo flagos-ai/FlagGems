@@ -75,9 +75,9 @@ fi
 # Clear existing coverage data if any
 coverage erase
 
-echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
 for item in "${TEST_CASES[@]}"; do
+  echo "Running unit tests for ${item}"
   coverage run -m pytest -s ${EXTRA_OPTS} ${item}
 done
 
