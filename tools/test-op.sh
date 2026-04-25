@@ -27,30 +27,29 @@ fi
 # Test cases that needs to run quick cpu tests
 NO_QUICK_CPU_TESTS=(
   "tests/ks_tests.py"
-  "tests/test_conv3d.py"
-  "tests/test_convolution_ops.py"
-  "tests/test_distribution_ops.py"
   "tests/test_enable_api.py"
   "tests/test_libentry.py"
   "tests/test_pointwise_type_promotion.py"
   "tests/test_quant.py"
   "tests/test_shape_utils.py"
   "tests/test_tensor_wrapper.py"
-  "tests/test_vllm_ops.py"
 )
 
 # Extract test cases from CHANGED_FILES
 TEST_CASES=()
+PERF_TEST_CASES=()
 TEST_CASES_CPU=()
 for item in $CHANGED_FILES; do
   case $item in
-    # tests/test_DSA/*)
-    # skip DSA test for now
-    # ;;
     tests/test_quant.py)
       # skip because it always fail
       ;;
-    tests/*) TEST_CASES+=($item)
+    tests/*)
+      TEST_CASES+=($item)
+      ;;
+    benchmark/*)
+      PERF_TEST_CASES+=($item)
+      ;;
   esac
 
   # filter out tests that do not need quick CPU mode tests
@@ -69,7 +68,7 @@ for item in $CHANGED_FILES; do
 done
 
 # Skip tests if no tests file is found
-if [ ${#TEST_CASES[@]} -eq 0 ]; then
+if [[ ${#TEST_CASES[@]} -eq 0  && ${#PERF_TEST_CASES[@]} -eq 0 ]]; then
   exit 0
 fi
 
@@ -78,13 +77,22 @@ coverage erase
 
 echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
-coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES[@]}
+for item in "${TEST_CASES[@]}"; do
+  coverage run -m pytest -s ${EXTRA_OPTS} ${item}
+done
 
 # Run quick-cpu test if necessary
-if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
-  echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --quick
-fi
+for item in "${TEST_CASES_CPU[@]}"; do
+  echo "Running quick-cpu mode unit tests for ${item}"
+  coverage run -m pytest -s ${EXTRA_OPTS} ${item}  --ref=cpu --quick
+done
+
+# Run benchmark test if necessary
+for item in "${PERF_TEST_CASES[@]}"; do
+  echo "Running benchmark tests for ${item}"
+  echo "pytest -s ${item} --level core --record log"
+  pytest -s ${item} --level core --record log
+done
 
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default
