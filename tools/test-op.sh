@@ -90,7 +90,8 @@ done
 # Run benchmark test if necessary
 for item in "${PERF_TEST_CASES[@]}"; do
   echo "Running benchmark tests for ${item}"
-  pytest -s --level core --record log ${item}
+  echo "pytest -s ${item} --level core --record log"
+  pytest -s ${item} --level core --record log
 done
 
 # Process coverage data only when full-range testing
