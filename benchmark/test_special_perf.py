@@ -1467,3 +1467,74 @@ def test_perf_pdist_backward():
         dtypes=[torch.float32],
     )
     bench.run()
+
+
+# Benchmark for _dyn_quant_pack_4bit_weight
+DYN_QUANT_4BIT_SHAPES = [
+    (16, 128),
+    (32, 256),
+    (64, 512),
+    (128, 1024),
+    (1, 128),
+    (8, 256),
+]
+
+
+class DynQuantPack4BitWeightBenchmark(Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = DYN_QUANT_4BIT_SHAPES
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            n, m = shape
+            group_size = 64 if m <= 128 else 128
+            x = torch.randn(n, m, dtype=cur_dtype, device=self.device)
+            yield x, group_size
+
+
+def torch_dyn_quant_pack_4bit_weight_ref(x, group_size):
+    """Reference implementation for benchmarking."""
+    original_shape = x.shape
+    num_elements = x.shape[-1]
+    num_groups = x.numel() // group_size
+
+    x_flat = x.reshape(-1)
+    qweight_shape = list(original_shape)
+    qweight_shape[-1] = num_elements // 2
+    qweight = torch.empty(qweight_shape, dtype=torch.uint8, device=x.device)
+
+    scales_shape = list(original_shape[:-1])
+    scales_shape.append(num_elements // group_size)
+    scales = torch.empty(scales_shape, dtype=torch.float32, device=x.device)
+
+    zeros = torch.full(scales_shape, 8, dtype=torch.uint8, device=x.device)
+
+    for g in range(num_groups):
+        start = g * group_size
+        end = start + group_size
+        group = x_flat[start:end].float()
+
+        absmax = group.abs().max()
+        scale = absmax / 7.0
+        scales.reshape(-1)[g] = scale
+
+        group_quant = torch.round(group / scale).clamp(-7, 7).to(torch.int8)
+
+        for i in range(group_size // 2):
+            low = group_quant[i * 2].item()
+            high = group_quant[i * 2 + 1].item() if i * 2 + 1 < group_size else low
+            packed = (high << 4) | (low & 0x0F)
+            qweight.reshape(-1)[g * (group_size // 2) + i] = packed
+
+    return qweight, scales, zeros
+
+
+@pytest.mark.dyn_quant_pack_4bit_weight
+def test_perf_dyn_quant_pack_4bit_weight():
+    bench = DynQuantPack4BitWeightBenchmark(
+        op_name="_dyn_quant_pack_4bit_weight",
+        torch_op=torch_dyn_quant_pack_4bit_weight_ref,
+        dtypes=[torch.float16, torch.bfloat16, torch.float32],
+    )
+    bench.set_gems(flag_gems._dyn_quant_pack_4bit_weight)
+    bench.run()
