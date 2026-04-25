@@ -3,7 +3,6 @@ from typing import Generator
 
 import pytest
 import torch
-import triton
 
 import flag_gems
 from benchmark.attri_util import (
@@ -25,6 +24,17 @@ from benchmark.performance_utils import (
     generate_tensor_input,
     vendor_name,
 )
+
+try:
+    import os
+
+    os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
+    import vllm._custom_ops as vllm_ops
+
+    HAS_VLLM = True
+    WARP_SIZE = 32
+except ImportError:
+    HAS_VLLM = False
 
 
 class GroupedTopKBenchmark(Benchmark):
@@ -183,14 +193,43 @@ def test_perf_grouped_topk_sigmoid():
 
 
 def topk_input_fn(shape, dtype, device):
-    x = torch.randn(shape, device=device, dtype=dtype)
-    k = 5 if shape[-1] > 5 else shape[-1]
-    yield {"x": x, "k": k, "dim": -1},
+    if len(shape) == 2 and isinstance(shape[0], (tuple, list)):
+        x_shape, k = shape
+        x = torch.randn(x_shape, device=device, dtype=dtype)
+        yield {"x": x, "k": k, "dim": -1},
+    elif len(shape) == 3:
+        m, n, k = shape
+        x = torch.randn((m, n), device=device, dtype=dtype)
+        yield {"x": x, "k": k, "dim": -1},
+    else:
+        x = torch.randn(shape, device=device, dtype=dtype)
+        k = 5 if shape[-1] > 5 else shape[-1]
+        yield {"x": x, "k": k, "dim": -1},
     # TODO:  Currently only support sorted == True and only support topk in last dimension
     # if Config.bench_level == BenchLevel.COMPREHENSIVE:
     #     k = 5 if shape[0] > 5 else shape[0]
     #     yield {"x": x, "k": k, "dim": 0},
     #     yield {"x": x, "k": k, "dim": -1, "sorted": False},
+
+
+class TopKBenchmark(GenericBenchmark2DOnly):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (64, 64),
+            (4096, 4096),
+            (10000, 256),
+            (10000, 65536),
+            (4, 128),
+            (8, 256),
+            (64, 128, 8),
+            (64, 1024, 32),
+            (64, 8192, 128),
+            (128, 32768, 256),
+            ((4, 128, 64), 5),
+            ((4, 128, 64), 64),
+            ((8, 512, 32), 32),
+            ((16, 1024, 256), 256),
+        ]
 
 
 def resolve_neg_input_fn(shape, dtype, device):
@@ -206,9 +245,18 @@ def resolve_conj_input_fn(shape, dtype, device):
     yield x.conj(),
 
 
+@pytest.mark.topk
+def test_perf_topk():
+    bench = TopKBenchmark(
+        input_fn=topk_input_fn,
+        op_name="topk",
+        dtypes=FLOAT_DTYPES,
+        torch_op=torch.topk,
+    )
+    bench.run()
+
+
 special_operations = [
-    # Sorting Operations
-    ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
     # Complex Operations
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
@@ -229,7 +277,8 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
-    bench = GenericBenchmarkExcluse1D(
+    bench_cls = TopKBenchmark if op_name == "topk" else GenericBenchmarkExcluse1D
+    bench = bench_cls(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
@@ -381,11 +430,11 @@ def test_perf_embedding():
     bench.run()
 
 
-@pytest.mark.embedding
+@pytest.mark.embedding_backward
 def test_perf_embedding_backward():
     bench = EmbeddingBenchmark(
         input_fn=embedding_backward_input_fn,
-        op_name="embedding",
+        op_name="embedding_backward",
         torch_op=torch.nn.functional.embedding,
         dtypes=[
             torch.float32,
@@ -405,21 +454,6 @@ class EmbeddingDenseBackwardBenchmark(GenericBenchmark):
         ]
 
 
-@pytest.mark.skipif(
-    (not torch.cuda.is_available()) or (flag_gems.device != "cuda"),
-    reason="CUDA backend is not available for this benchmark.",
-)
-@pytest.mark.embedding_dense_backward
-def test_perf_embedding_dense_backward():
-    bench = EmbeddingDenseBackwardBenchmark(
-        input_fn=embedding_dense_backward_input_fn,
-        op_name="embedding_dense_backward",
-        torch_op=torch.ops.aten.embedding_dense_backward,
-        dtypes=FLOAT_DTYPES,
-    )
-    bench.run()
-
-
 def embedding_dense_backward_input_fn(shape, dtype, device):
     B, M, D, num_weights = shape
 
@@ -436,6 +470,21 @@ def embedding_dense_backward_input_fn(shape, dtype, device):
     for padding_idx, scale_grad_by_freq in test_cases:
         cur_indices = inject_padding_idx(indices, padding_idx)
         yield grad_output, cur_indices, num_weights, padding_idx, scale_grad_by_freq
+
+
+@pytest.mark.skipif(
+    (not torch.cuda.is_available()) or (flag_gems.device != "cuda"),
+    reason="CUDA backend is not available for this benchmark.",
+)
+@pytest.mark.embedding_dense_backward
+def test_embedding_dense_backward():
+    bench = EmbeddingDenseBackwardBenchmark(
+        input_fn=embedding_dense_backward_input_fn,
+        op_name="embedding_dense_backward",
+        torch_op=torch.ops.aten.embedding_dense_backward,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 def lerp_input_fn(shape, dtype, device):
@@ -457,7 +506,7 @@ class LerpBenchmark(GenericBenchmark):
     vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
     reason="The half dtype is only supported on torch >= 2.5.",
 )
-def test_perf_lerp():
+def test_lerp():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
         op_name="lerp",
@@ -472,7 +521,7 @@ def test_perf_lerp():
     vendor_name == "kunlunxin" and SkipVersion("torch", "<2.5"),
     reason="The half dtype is only supported on torch >= 2.5.",
 )
-def test_perf_lerp_inplace():
+def test_lerp_inplace():
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
         op_name="lerp_",
@@ -491,7 +540,7 @@ class UpsampleBenchmark(GenericBenchmark):
 
 
 @pytest.mark.upsample_bicubic2d_aa
-def test_perf_upsample_bicubic2d_aa():
+def test_upsample_bicubic2d_aa():
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
         input = torch.randn(size=shape, device=device, dtype=dtype)
@@ -514,6 +563,7 @@ def test_perf_upsample_bicubic2d_aa():
         dtypes = [torch.float32, torch.float16]
     else:
         dtypes = FLOAT_DTYPES
+
     bench = UpsampleBenchmark(
         input_fn=upsample_bicubic2d_aa_input_fn,
         op_name="upsample_bicubic2d_aa",
@@ -525,7 +575,7 @@ def test_perf_upsample_bicubic2d_aa():
 
 @pytest.mark.upsample_linear1d
 @pytest.mark.parametrize("align_corners", [False, True])
-def test_perf_upsample_linear1d(align_corners):
+def test_upsample_linear1d(align_corners):
     def upsample_linear1d_input_fn(shape, dtype, device):
         batch, channel, height, width = shape
         length = height * width
@@ -548,7 +598,7 @@ def test_perf_upsample_linear1d(align_corners):
 
 
 @pytest.mark.upsample_nearest1d
-def test_perf_upsample_nearest1d():
+def test_upsample_nearest1d():
     def upsample_nearest1d_input_fn(shape, dtype, device):
         batch, channel, height, width = shape
         length = height * width  # flatten spatial dims to 1D length
@@ -571,7 +621,7 @@ def test_perf_upsample_nearest1d():
 
 
 @pytest.mark.upsample_nearest2d
-def test_perf_upsample_nearest2d():
+def test_upsample_nearest2d():
     def upsample_nearest2d_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
         input = torch.randn(size=shape, device=device, dtype=dtype)
@@ -597,7 +647,7 @@ def test_perf_upsample_nearest2d():
 
 
 @pytest.mark.upsample_nearest3d
-def test_perf_upsample_nearest3d():
+def test_upsample_nearest3d():
     def upsample_nearest3d_input_fn(shape, dtype, device):
         batch, channel, height, width = shape
         depth = 4
@@ -631,7 +681,7 @@ def test_perf_upsample_nearest3d():
 
 
 @pytest.mark.diag
-def test_perf_diag():
+def test_diag():
     def diag_input_fn(shape, dtype, device):
         input = generate_tensor_input(shape, dtype, device)
         diagonal = random.randint(-4, 4)
@@ -649,7 +699,7 @@ def test_perf_diag():
 
 
 @pytest.mark.diag_embed
-def test_perf_diag_embed():
+def test_diag_embed():
     def diag_embed_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
         yield {"input": inp},
@@ -667,8 +717,8 @@ def test_perf_diag_embed():
     bench.run()
 
 
-@pytest.mark.diagonal
-def test_perf_diagonal_backward():
+@pytest.mark.diagonal_backward
+def test_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
         yield inp,
@@ -678,7 +728,7 @@ def test_perf_diagonal_backward():
 
     bench = GenericBenchmarkExcluse1D(
         input_fn=diagonal_backward_input_fn,
-        op_name="diagonal",
+        op_name="diagonal_backward",
         torch_op=torch.diagonal,
         dtypes=FLOAT_DTYPES,
         is_backward=True,
@@ -692,7 +742,7 @@ def test_perf_diagonal_backward():
     reason="only support torch >= 2.5.",
 )
 @pytest.mark.kron
-def test_perf_kron():
+def test_kron():
     class KronBenchmark(GenericBenchmark2DOnly):
         def set_more_shapes(self):
             return None
@@ -713,7 +763,7 @@ def test_perf_kron():
 
 
 @pytest.mark.contiguous
-def test_perf_contiguous():
+def test_contiguous():
     def contiguous_input_fn(shape, dtype, device):
         if dtype in FLOAT_DTYPES:
             inp = torch.randn(shape, dtype=dtype, device=device)
@@ -740,7 +790,7 @@ class RWKVSparsityBenchmark(GenericBenchmark):
 
 
 @pytest.mark.rwkv_mm_sparsity
-def test_perf_rwkv_mm_sparsity():
+def test_rwkv_mm_sparsity():
     def rwkv_mm_sparsity_input_fn(shape, dtype, device):
         n = 16384
         embedding_dim = 4096
@@ -777,7 +827,7 @@ class RWKVBenchmark(GenericBenchmark):
 
 
 @pytest.mark.rwkv_ka_fusion
-def test_perf_rwkv_ka_fusion():
+def test_rwkv_ka_fusion():
     def rwkv_ka_fusion_input_fn(shape, dtype, device):
         T = shape[0]
         H = 8
@@ -818,7 +868,7 @@ def test_perf_rwkv_ka_fusion():
 
 
 @pytest.mark.moe_sum
-def test_perf_moe_sum():
+def test_moe_sum():
     def moe_sum_input_fn(shape, dtype, device):
         shape = (shape[0], 1, shape[1]) if len(shape) == 2 else shape
         num_tokens, topk, hidden_size = shape
@@ -851,21 +901,9 @@ def test_perf_moe_sum():
     bench.run()
 
 
-try:
-    import os
-
-    os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
-    import vllm._custom_ops as vllm_ops
-
-    HAS_VLLM = True
-    WARP_SIZE = 32
-except ImportError:
-    HAS_VLLM = False
-
-
-@pytest.mark.moe_align_block_size
+@pytest.mark.moe_align_block_size_triton
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
-def test_perf_moe_align_block_size():
+def test_moe_align_block_size_triton():
     def moe_align_block_size_input_fn(shape, dtype, device):
         num_experts = shape[0]
         block_size = shape[1]
@@ -1006,7 +1044,7 @@ class PerTokenGroupQuantFp8Benchmark(GenericBenchmark):
 
 
 @pytest.mark.per_token_group_quant_fp8
-def test_perf_per_token_group_quant_fp8():
+def test_per_token_group_quant_fp8():
     def input_kwargs(shape, dtype, device):
         (
             num_tokens,
@@ -1033,7 +1071,7 @@ def test_perf_per_token_group_quant_fp8():
 
 
 @pytest.mark.conj_physical
-def test_perf_conj_physical():
+def test_conj_physical():
     def conj_physical_input_fn(shape, dtype, device):
         if dtype.is_complex:
             float_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
@@ -1082,56 +1120,40 @@ def test_perf_conj_physical():
 
 
 @pytest.mark.reflection_pad2d
-@pytest.mark.parametrize(
-    "shape",
-    [
-        (3, 33, 33),
-        (2, 4, 32, 64),
-        (8, 16, 64, 64),
-        (32, 64, 128, 256),
-        (16, 32, 64, 128),
-    ],
-)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize(
-    "padding",
-    [
-        (1, 1, 1, 1),
-        (2, 3, 2, 3),
-        (3, 5, 3, 5),
-        (0, 4, 0, 4),
-    ],
-)
-def test_reflection_pad2d_benchmark_tensor(shape, dtype, padding):
-    quantiles = [0.5, 0.2, 0.8]
+def test_reflection_pad2d():
+    def reflection_pad2d_input_fn(config, dtype, device):
+        shape, padding = config
+        x = torch.randn(shape, dtype=dtype, device=device)
+        yield x, list(padding)
 
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = x.clone()
+    class ReflectionPad2dBenchmark(Benchmark):
+        def set_shapes(self, shape_file_path=None):
+            self.shapes = [
+                ((3, 33, 33), (1, 1, 1, 1)),
+                ((2, 4, 32, 64), (2, 3, 2, 3)),
+                ((8, 16, 64, 64), (3, 5, 3, 5)),
+                ((32, 64, 128, 256), (0, 4, 0, 4)),
+                ((16, 32, 64, 128), (1, 1, 1, 1)),
+            ]
 
-    # PyTorch reference implementation
-    ms_torch, _, _ = triton.testing.do_bench(
-        lambda: torch.ops.aten.reflection_pad2d(ref_x, padding),
-        rep=100,
-        quantiles=quantiles,
+        def set_more_shapes(self):
+            return None
+
+        def get_input_iter(self, cur_dtype):
+            for config in self.shapes:
+                yield from reflection_pad2d_input_fn(config, cur_dtype, self.device)
+
+    bench = ReflectionPad2dBenchmark(
+        op_name="reflection_pad2d",
+        torch_op=torch.ops.aten.reflection_pad2d,
+        dtypes=FLOAT_DTYPES,
     )
-
-    # Triton implementation
-    with flag_gems.use_gems():
-        ms_triton, _, _ = triton.testing.do_bench(
-            lambda: flag_gems.reflection_pad2d(x, padding), rep=100, quantiles=quantiles
-        )
-
-    # Calculate speedup and return result
-    speedup = ms_torch / ms_triton
-
-    print(f"reflection_pad2d {shape} {dtype}:")
-    print(f"  FlagGems: {ms_triton:.3f}ms")
-    print(f"  Speedup: {speedup:.2f}x")
+    bench.run()
 
 
 @pytest.mark.upsample_bicubic2d
 @pytest.mark.parametrize("align_corners", [False, True])
-def test_perf_upsample_bicubic2d(align_corners):
+def test_upsample_bicubic2d(align_corners):
     def upsample_bicubic2d_input_fn(shape, dtype, device):
         input = torch.randn(shape, device=device, dtype=dtype)
         scale_factors = [2.0, 2.0]
@@ -1153,7 +1175,7 @@ def test_perf_upsample_bicubic2d(align_corners):
 
 
 @pytest.mark.reflection_pad1d
-def test_perf_reflection_pad1d():
+def test_reflection_pad1d():
     def reflection_pad1d_input_fn(config, dtype, device):
         shape, padding = config
         x = torch.randn(shape, dtype=dtype, device=device)
@@ -1184,7 +1206,7 @@ def test_perf_reflection_pad1d():
 
 
 @pytest.mark.pixel_unshuffle
-def test_perf_pixel_unshuffle():
+def test_pixel_unshuffle():
     def pixel_unshuffle_input_fn(config, dtype, device):
         shape, downscale_factor = config
         x = torch.randn(shape, dtype=dtype, device=device)
@@ -1214,7 +1236,7 @@ def test_perf_pixel_unshuffle():
 
 
 @pytest.mark.replication_pad1d
-def test_perf_replication_pad1d():
+def test_replication_pad1d():
     def replication_pad1d_input_fn(config, dtype, device):
         shape, padding = config
         x = torch.randn(shape, dtype=dtype, device=device)
@@ -1244,8 +1266,8 @@ def test_perf_replication_pad1d():
     bench.run()
 
 
-@pytest.mark.unfold
-def test_perf_unfold_backward():
+@pytest.mark.unfold_backward
+def test_unfold_backward():
     def unfold_backward_input_fn(config, dtype, device):
         input_sizes, dim, size, step = config
         d = dim % len(input_sizes)
@@ -1284,8 +1306,57 @@ def test_perf_unfold_backward():
     bench.run()
 
 
+@pytest.mark.assert_async
+def test_assert_async():
+    def assert_async_input_fn(shape, dtype, device):
+        if dtype == torch.bool:
+            tensor = torch.ones(shape, dtype=dtype, device=device)
+        else:
+            tensor = torch.ones(shape, dtype=dtype, device=device)
+
+        msg = "Benchmark assert_async"
+
+        yield (
+            tensor,
+            msg,
+        )
+
+    class AssertAsyncBenchmark(GenericBenchmark):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def set_shapes(self, shape_file_path=None):
+            self.shapes = [
+                (),
+                (1,),
+                (1, 1),
+                (1, 1, 1),
+            ]
+
+        def set_more_shapes(self):
+            return None
+
+    gems_op = flag_gems._assert_async
+
+    bench = AssertAsyncBenchmark(
+        op_name="assert_async",
+        input_fn=assert_async_input_fn,
+        torch_op=torch._assert_async,
+        dtypes=[
+            torch.bool,
+            torch.int32,
+            torch.float32,
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+
+    bench.set_gems(gems_op)
+    bench.run()
+
+
 @pytest.mark.lift_fresh_copy
-def test_perf_lift_fresh_copy():
+def test_lift_fresh_copy():
     bench = GenericBenchmark(
         input_fn=lambda shape, dtype, device: (
             iter([(torch.randn(shape, dtype=dtype, device=device),)])
@@ -1298,7 +1369,7 @@ def test_perf_lift_fresh_copy():
 
 
 @pytest.mark.upsample_nearest_exact1d
-def test_perf__upsample_nearest_exact1d():
+def test_upsample_nearest_exact1d():
     class UpsampleNearestExact1dBenchmark(Benchmark):
         def set_shapes(self, shape_file_path=None):
             self.shapes = [(2, 3, 16), (4, 8, 64), (8, 16, 256), (16, 32, 512)]
@@ -1321,7 +1392,7 @@ def test_perf__upsample_nearest_exact1d():
 
 
 @pytest.mark.margin_ranking_loss
-def test_perf_margin_ranking_loss():
+def test_margin_ranking_loss():
     def margin_ranking_loss_input_fn(shape, dtype, device):
         inp1 = torch.randn(shape, dtype=dtype, device=device)
         inp2 = torch.randn(shape, dtype=dtype, device=device)
@@ -1340,7 +1411,7 @@ def test_perf_margin_ranking_loss():
 
 
 @pytest.mark.soft_margin_loss
-def test_perf_soft_margin_loss():
+def test_soft_margin_loss():
     def soft_margin_loss_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
         target = (torch.randint(0, 2, shape, device=device).to(dtype) * 2) - 1
@@ -1363,7 +1434,7 @@ class SafeSoftmaxBenchmark(Benchmark):
 
 
 @pytest.mark.safe_softmax
-def test_perf__safe_softmax():
+def test_safe_softmax():
     bench = SafeSoftmaxBenchmark(
         op_name="_safe_softmax",
         torch_op=torch.ops.aten._safe_softmax,
@@ -1381,7 +1452,7 @@ class TCopyBenchmark(Benchmark):
 
 
 @pytest.mark.t_copy
-def test_perf_t_copy():
+def test_t_copy():
     bench = TCopyBenchmark(
         op_name="t_copy",
         torch_op=torch.ops.aten.t_copy,
@@ -1390,46 +1461,77 @@ def test_perf_t_copy():
     bench.run()
 
 
-class SelectBackwardBenchmark(Benchmark):
-    """
-    Benchmark for select_backward operator.
-    """
-
-    def set_more_shapes(self):
-        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-        return special_shapes_2d + sp_shapes_3d
+class UpsampleBicubic2dAaBackwardBenchmark(Benchmark):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cfgs = [
+            # Small / medium — fused path targets
+            (4, 16, 4, 4, 1, 1, False, "tiny 4x down"),
+            (4, 16, 4, 4, 16, 16, False, "small 4x up"),
+            (4, 16, 16, 16, 4, 4, False, "small 4x down"),
+            (4, 16, 16, 32, 64, 128, False, "small->med 4x up"),
+            (1, 1, 64, 64, 16, 16, False, "C=1 4x down"),
+            (1, 1, 64, 64, 32, 32, False, "C=1 2x down"),
+            (1, 1, 64, 64, 128, 128, False, "C=1 2x up"),
+            (4, 3, 256, 256, 128, 128, False, "C=3 2x down"),
+            (4, 3, 128, 128, 256, 256, False, "C=3 2x up"),
+            (4, 64, 64, 64, 32, 32, False, "C=64 2x down"),
+            # Large — 2-pass path targets
+            (1, 64, 512, 512, 128, 128, False, "C=64 4x down"),
+            (1, 64, 512, 512, 1024, 1024, False, "C=64 2x up"),
+            (512, 1024, 32, 32, 8, 8, False, "NC=524K 4x down"),
+            (256, 512, 64, 64, 16, 16, False, "NC=131K 4x down"),
+            (256, 512, 64, 64, 32, 32, False, "NC=131K 2x down"),
+            (256, 512, 64, 64, 128, 128, False, "NC=131K 2x up"),
+        ]
 
     def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            x = generate_tensor_input(shape, cur_dtype, self.device)
-            ndim = len(shape)
-
-            dim = 1 if ndim > 1 else 0
-            actual_dim = dim if dim >= 0 else dim + ndim
-
-            index = shape[actual_dim] // 2
-
-            y = torch.select(x, actual_dim, index)
-            grad = torch.randn_like(y)
-
-            yield grad, shape, actual_dim, index
+        for N, C, Hi, Wi, Ho, Wo, ac, label in self._cfgs:
+            grad = torch.randn([N, C, Ho, Wo], device=self.device, dtype=cur_dtype)
+            yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None, label
 
     def get_tflops(self, op, *args, **kwargs):
-        grad, shape, _, _ = args
-        return grad.numel()
+        grad = args[0]
+        return grad.numel() * 2
 
 
-@pytest.mark.select_backward
-@pytest.mark.parametrize(
-    "dtype",
-    FLOAT_DTYPES,
-)
-def test_select_backward_perf(dtype):
-    bench = SelectBackwardBenchmark(
-        op_name="select_backward",
-        torch_op=torch.ops.aten.select_backward,
-        dtypes=[dtype],
+@pytest.mark.upsample_bicubic2d_aa_backward
+def test_upsample_bicubic2d_aa_backward():
+    bench = UpsampleBicubic2dAaBackwardBenchmark(
+        op_name="upsample_bicubic2d_aa_backward",
+        torch_op=torch.ops.aten._upsample_bicubic2d_aa_backward,
+        dtypes=FLOAT_DTYPES,
     )
 
+    bench.run()
+
+
+def _functional_sym_constrain_range_for_size_input_fn(shape, cur_dtype, device):
+    dep_token = generate_tensor_input(shape, cur_dtype, device)
+    yield 5, 1, 10, dep_token
+
+
+@pytest.mark.functional_sym_constrain_range_for_size
+def test_functional_sym_constrain_range_for_size():
+    bench = GenericBenchmark(
+        op_name="functional_sym_constrain_range_for_size",
+        torch_op=torch.ops.aten._functional_sym_constrain_range_for_size,
+        dtypes=FLOAT_DTYPES,
+        input_fn=_functional_sym_constrain_range_for_size_input_fn,
+    )
+    bench.run()
+
+
+@pytest.mark.unique_consecutive
+def test_unique_consecutive():
+    def unique_consecutive_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp, {"return_inverse": True, "return_counts": False},
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=unique_consecutive_input_fn,
+        op_name="unique_consecutive",
+        torch_op=torch.unique_consecutive,
+        dtypes=INT_DTYPES,
+    )
     bench.run()

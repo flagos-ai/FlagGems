@@ -24,6 +24,76 @@ class AttentionBenchmark(GenericBenchmark):
         return None
 
 
+#
+# sparse_attention shape layout:
+# (batch, seq_len, kv_len, topk, heads, dim)
+#
+SPARSE_ATTENTION_SHAPES = [
+    (16, 1, 136, 136, 8, 512),
+    (16, 1, 392, 385, 8, 512),
+    (16, 1, 392, 386, 8, 512),
+    (16, 1, 392, 387, 8, 512),
+    (32, 1, 392, 388, 8, 512),
+    (32, 1, 392, 389, 8, 512),
+    (32, 1, 392, 390, 8, 512),
+    (32, 1, 392, 391, 8, 512),
+    (64, 1, 136, 136, 8, 512),
+    (64, 1, 392, 385, 8, 512),
+    (64, 1, 392, 388, 8, 512),
+    (64, 1, 392, 389, 8, 512),
+]
+
+
+def torch_sparse_attention(q, kv, attn_sink, topk_idxs, softmax_scale):
+    batch, seq_len, heads, dim = q.shape
+    topk = topk_idxs.shape[-1]
+
+    kv_expanded = kv[:, None, :, :].expand(batch, seq_len, -1, dim)
+    idx_expanded = topk_idxs[:, :, :, None].expand(batch, seq_len, topk, dim).long()
+    gathered_kv = torch.gather(kv_expanded, 2, idx_expanded)
+
+    scores = (
+        torch.einsum("bmhd,bmtd->bmht", q.float(), gathered_kv.float()) * softmax_scale
+    )
+    sink = attn_sink[None, None, :, None].expand(batch, seq_len, heads, 1)
+    attn = torch.softmax(torch.cat([scores, sink], dim=-1), dim=-1)
+
+    out = torch.einsum("bmht,bmtd->bmhd", attn[:, :, :, :-1], gathered_kv.float())
+    return out.to(q.dtype)
+
+
+class SparseAttentionBenchmark(Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = SPARSE_ATTENTION_SHAPES[:]
+        self.shape_desc = "B, M, KV_LEN, TOPK, H, D"
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype):
+        for seed, (batch, seq_len, kv_len, topk, heads, dim) in enumerate(self.shapes):
+            torch.manual_seed(2026 + seed)
+            q = torch.randn(
+                (batch, seq_len, heads, dim),
+                dtype=cur_dtype,
+                device=self.device,
+            )
+            kv = torch.randn(
+                (batch, kv_len, dim),
+                dtype=cur_dtype,
+                device=self.device,
+            )
+            attn_sink = torch.zeros((heads,), dtype=torch.float32, device=self.device)
+            topk_idxs = torch.randint(
+                0,
+                kv_len,
+                (batch, seq_len, topk),
+                dtype=torch.int32,
+                device=self.device,
+            )
+            yield q, kv, attn_sink, topk_idxs, 1.0 / math.sqrt(dim)
+
+
 def torch_flash_attention_forward(
     q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
 ):
@@ -313,6 +383,18 @@ def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
     bench.run()
     if flag_gems.vendor_name == "hygon":
         del os.environ["TRITON_HIP_USE_NEW_STREAM_PIPELINE"]
+
+
+@pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
+@pytest.mark.sparse_attention
+def test_perf_sparse_attention():
+    bench = SparseAttentionBenchmark(
+        op_name="sparse_attention",
+        torch_op=torch_sparse_attention,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.sparse_attn_triton)
+    bench.run()
 
 
 class FlashMLABenchmark(GenericBenchmark):
@@ -1118,4 +1200,309 @@ def test_perf_reshape_and_cache():
         dtypes=FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.reshape_and_cache)
+    bench.run()
+
+
+class FlashAttnVarlenOptInitBenchmark(Benchmark):
+    """
+    benchmark for flash_attn_varlen_lse_func
+    """
+
+    def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
+        # Collecting from qwen/Qwen3-1.7B --random-input 512 --random-output 2048 --num-prompts 200 --request-rate inf
+        # Format: (cu_seq_lens_q, seqused_k, num_heads, head_size, block_size, num_blocks, alibi, soft_cap)
+
+        all_cu_seq_lens_q = [
+            tuple(range(0, 45))
+            + (
+                105,
+                121,
+                137,
+                153,
+                169,
+                185,
+                201,
+                217,
+                233,
+                249,
+                265,
+            ),
+            tuple(range(0, 196))
+            + (
+                211,
+                226,
+                240,
+                253,
+                265,
+            ),
+            (
+                0,
+                1,
+                2,
+                72,
+            ),
+            (
+                0,
+                512,
+            ),
+        ]
+        all_seqused_k = [
+            (515,) + (514,) * 20 + (513,) * 20 + (512,) * 14,
+            (2333,)
+            + (2331,) * 20
+            + (2330,) * 20
+            + (2329,) * 14
+            + (2328,) * 18
+            + (2327,) * 15
+            + (2326,) * 17
+            + (2325,) * 18
+            + (2324,) * 21
+            + (2323,) * 22
+            + (2322,) * 24
+            + (2321,) * 5
+            + (
+                2320,
+                2319,
+                2318,
+                2317,
+                2316,
+            ),
+            (
+                1,
+                1,
+                70,
+            ),
+            (512,),
+        ]
+
+        num_heads = 16
+        num_heads_k = 8
+        head_dim = 128
+        block_size = 16
+        num_blocks = 2000
+        alibi = False
+        soft_cap = None
+
+        # cu_seq_lens_q = all_cu_seq_lens_q[1]
+        # seqused_k = all_seqused_k[1]
+        all_configs = [
+            (
+                cu_seq_lens_q,
+                seqused_k,
+                num_heads,
+                num_heads_k,
+                head_dim,
+                block_size,
+                num_blocks,
+                alibi,
+                soft_cap,
+            )
+            for cu_seq_lens_q, seqused_k in zip(all_cu_seq_lens_q, all_seqused_k)
+        ]
+
+        self.shapes = all_configs
+
+    def get_input_iter(self, cur_dtype):
+        for config in self.shapes:
+            yield self.flash_attn_varlen_input_fn(config, cur_dtype, self.device)
+
+    def flash_attn_varlen_input_fn(self, config, dtype, device):
+        """Input function for flash attention varlen benchmark"""
+        (
+            cu_query_lens,
+            seqused_k,
+            num_query_heads,
+            num_kv_heads,
+            head_size,
+            block_size,
+            num_blocks,
+            alibi,
+            soft_cap,
+        ) = config
+
+        if alibi is True and soft_cap is not None:
+            return
+
+        num_seqs = len(cu_query_lens) - 1
+        max_query_len = max(
+            map(lambda x, y: x - y, cu_query_lens[1:], cu_query_lens[:-1])
+        )
+        max_kv_len = max(seqused_k)
+        window_size = (-1, -1)
+        scale = head_size**-0.5
+
+        assert num_seqs == len(seqused_k)
+
+        with torch.device(device):
+            query = torch.randn(
+                cu_query_lens[-1],
+                num_query_heads,
+                head_size,
+                dtype=dtype,
+                device=device,
+            )
+            out = torch.empty_like(query)
+            lse = torch.empty(
+                (num_query_heads, cu_query_lens[-1]), dtype=torch.float, device=device
+            )
+            # lse = None
+            key_cache = torch.randn(
+                num_blocks,
+                block_size,
+                num_kv_heads,
+                head_size,
+                dtype=dtype,
+                device=device,
+            )
+            value_cache = torch.randn_like(key_cache)
+            cu_query_lens = torch.tensor(
+                cu_query_lens, dtype=torch.int32, device=device
+            )
+            seqused_k = torch.tensor(seqused_k, dtype=torch.int32, device=device)
+
+            max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
+            block_tables = torch.randint(
+                0,
+                num_blocks,
+                (num_seqs, max_num_blocks_per_seq),
+                dtype=torch.int32,
+                device=device,
+            )
+
+            causal = True
+
+            if alibi:
+                alibi_slopes = (
+                    torch.ones(
+                        num_seqs, num_query_heads, device=device, dtype=torch.float32
+                    )
+                    * 0.3
+                )
+            else:
+                alibi_slopes = None
+
+        return (
+            query,
+            key_cache,
+            value_cache,
+            max_query_len,
+            cu_query_lens,
+            max_kv_len,
+            None,
+            seqused_k,
+            None,
+            0.0,
+            scale,
+            causal,
+            window_size,
+            soft_cap if soft_cap is not None else 0,
+            alibi_slopes,
+            False,
+            False,
+            block_tables,
+            False,
+            out,
+            lse,
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+            1,
+            0,
+            None,
+            2,
+        )
+
+
+def flash_attn_varlen_func_ref(*args, **kwargs):
+    (
+        q,
+        k,
+        v,
+        max_seqlen_q,
+        cu_seqlens_q,
+        max_seqlen_k,
+        cu_seqlens_k,  # only used for non-paged prefill
+        seqused_k,
+        q_v,
+        dropout_p,
+        softmax_scale,
+        causal,
+        window_size,
+        softcap,  # 0.0 means deactivated
+        alibi_slopes,
+        deterministic,
+        return_attn_probs,
+        block_table,
+        return_softmax_lse,
+        out,
+        lse,
+        # Dummy FA3 arguments
+        scheduler_metadata,
+        q_descale,
+        k_descale,
+        v_descale,
+        s_aux,
+        num_splits,
+        cp_world_size,
+        cp_rank,
+        cp_tot_seqused_k,
+        fa_version,
+    ) = args
+    from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
+
+    result = flash_attn_varlen_func(
+        q,
+        k,
+        v,
+        max_seqlen_q,
+        cu_seqlens_q,
+        max_seqlen_k,
+        cu_seqlens_k,  # only used for non-paged prefill
+        seqused_k,
+        q_v,
+        dropout_p,
+        softmax_scale,
+        causal,
+        window_size,
+        softcap,  # 0.0 means deactivated
+        alibi_slopes,
+        deterministic,
+        return_attn_probs,
+        block_table,
+        return_softmax_lse,
+        out,
+        # Dummy FA3 arguments
+        scheduler_metadata,
+        q_descale,
+        k_descale,
+        v_descale,
+        fa_version,
+    )
+    return result
+
+
+@pytest.mark.skipif(
+    SkipVersion("vllm", "<0.9"),
+    reason="The version prior to 0.9 does not include the flash_attn_varlen_func API in vllm.",
+)
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.7"),
+    reason="The version prior to 2.7 is not compatible with VLLM.",
+)
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Torch < 2.7")
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
+@pytest.mark.flash_attn_varlen_opt_init_func
+def test_perf_flash_attn_varlen_opt_init_func():
+    os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
+    bench = FlashAttnVarlenOptInitBenchmark(
+        op_name="flash_attn_varlen_func",
+        torch_op=flash_attn_varlen_func_ref,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.ops.flash_attn_varlen_opt_func)
     bench.run()

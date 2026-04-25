@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,7 +69,7 @@ def margin_ranking_loss(*args, **kwargs):
 
     # Device check and fallback
     device = x1.device
-    if not (isinstance(device, torch.device) and device.type == "cuda"):
+    if not (isinstance(device, torch.device) and device.type == flag_gems.device):
         # Fallback to PyTorch implementation for non-CUDA tensors
         return torch.ops.aten.margin_ranking_loss(
             x1, x2, target, float(margin), {"none": 0, "mean": 1, "sum": 2}[reduction]

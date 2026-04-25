@@ -1,5 +1,4 @@
 import logging
-from typing import List, Optional, Union
 
 import torch
 import triton
@@ -13,151 +12,94 @@ logger = logging.getLogger(__name__)
 @libentry()
 @triton.jit
 def roll_kernel(
-    X,
-    Y,
-    total_n,
-    roll_size,
+    inp_ptr,
+    out_ptr,
+    N,
+    dim_size,
     shift,
-    BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    pid_batch = tl.program_id(1)
-
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < total_n
-
-    # Decompose linear index into (outer_idx, roll_idx, inner_idx)
-    # But for simplicity, we compute flat source index
-    # The rolled dimension has size roll_size
-    # inner_size is folded into total_n as:
-    # total_n = outer_size * roll_size * inner_size
-    # We use the flat approach: each block handles a contiguous chunk of the output
-
-    batch_offset = pid_batch * total_n
-    out_idx = offsets
-
-    # src_idx = (out_idx - shift) % total_n  -- only works for flat roll (no dims)
-    # For dim-specific roll, we need to decompose
-    # This kernel is for the flat (no dims) case
-    src_idx = (out_idx + total_n - shift % total_n) % total_n
-
-    x = tl.load(X + batch_offset + src_idx, mask=mask)
-    tl.store(Y + batch_offset + out_idx, x, mask=mask)
-
-
-@libentry()
-@triton.jit
-def roll_dim_kernel(
-    X,
-    Y,
     inner_size,
-    roll_size,
-    shift,
-    n_blocks_per_outer,
-    BLOCK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    mask = offset < N
 
-    # Decompose linear pid into (pid_outer, pid_inner)
-    pid_outer = pid // n_blocks_per_outer
-    pid_inner = pid % n_blocks_per_outer
+    # Decompose flat index into (outer, dim_idx, inner)
+    outer_stride = dim_size * inner_size
+    outer_idx = offset // outer_stride
+    remainder = offset % outer_stride
+    dim_idx = remainder // inner_size
+    inner_idx = remainder % inner_size
 
-    offsets = pid_inner * BLOCK + tl.arange(0, BLOCK)
-    n_inner_roll = roll_size * inner_size
-    mask = offsets < n_inner_roll
+    # Apply roll: source_dim_idx = (dim_idx - shift) % dim_size
+    source_dim_idx = (dim_idx - shift + dim_size) % dim_size
 
-    # Decompose into (roll_idx, inner_idx)
-    roll_idx = offsets // inner_size
-    inner_idx = offsets % inner_size
+    # Reconstruct source flat index
+    source_offset = outer_idx * outer_stride + source_dim_idx * inner_size + inner_idx
 
-    # Source roll index with circular shift
-    src_roll_idx = (roll_idx + roll_size - shift % roll_size) % roll_size
-
-    out_offset = pid_outer * n_inner_roll + roll_idx * inner_size + inner_idx
-    src_offset = pid_outer * n_inner_roll + src_roll_idx * inner_size + inner_idx
-
-    x = tl.load(X + src_offset, mask=mask)
-    tl.store(Y + out_offset, x, mask=mask)
+    val = tl.load(inp_ptr + source_offset, mask=mask, other=0.0)
+    tl.store(out_ptr + offset, val, mask=mask)
 
 
-def roll(
-    A: torch.Tensor,
-    shifts: Union[int, List[int]],
-    dims: Optional[Union[int, List[int]]] = None,
-) -> torch.Tensor:
+def _roll_single_dim(inp: torch.Tensor, shift: int, dim: int) -> torch.Tensor:
+    size = inp.size(dim)
+    if size == 0:
+        return inp.clone()
+
+    shift = shift % size
+    if shift == 0:
+        return inp.clone()
+
+    inp_contig = inp.contiguous()
+    out = torch.empty_like(inp_contig)
+
+    inner_size = 1
+    for i in range(dim + 1, inp.ndim):
+        inner_size *= inp.size(i)
+
+    N = inp.numel()
+    BLOCK_SIZE = 512
+    grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
+
+    roll_kernel[grid](
+        inp_contig,
+        out,
+        N,
+        size,
+        shift,
+        inner_size,
+        BLOCK_SIZE=BLOCK_SIZE,
+    )
+    return out
+
+
+def roll(inp: torch.Tensor, shifts, dims=None) -> torch.Tensor:
     logger.debug("GEMS ROLL")
 
-    if A.numel() == 0:
-        return A.clone()
+    if inp.numel() == 0:
+        return inp.clone()
 
+    if dims is None:
+        if isinstance(shifts, (list, tuple)):
+            shift = shifts[0] if len(shifts) == 1 else sum(shifts)
+        else:
+            shift = shifts
+        original_shape = inp.shape
+        flat = inp.contiguous().reshape(-1)
+        out_flat = _roll_single_dim(flat, shift, 0)
+        return out_flat.reshape(original_shape)
+
+    if isinstance(dims, int):
+        dims = [dims]
     if isinstance(shifts, int):
         shifts = [shifts]
-    if dims is None:
-        dims = []
-    elif isinstance(dims, int):
-        dims = [dims]
 
-    assert (
-        len(shifts) == len(dims) or len(dims) == 0
-    ), "shifts and dims must have the same length, or dims must be empty"
+    assert len(shifts) == len(dims), "shifts and dims must have the same length"
 
-    # Make input contiguous
-    A = A.contiguous()
+    ndim = inp.ndim
+    dims = [d % ndim for d in dims]
 
-    if len(dims) == 0:
-        # Flat roll: treat tensor as 1D
-        total_n = A.numel()
-        shift = shifts[0] % total_n
-        if shift == 0:
-            return A.clone()
-
-        out = torch.empty_like(A)
-        flat_A = A.view(-1)
-        flat_out = out.view(-1)
-
-        BLOCK = 1024
-        grid = (triton.cdiv(total_n, BLOCK), 1)
-        roll_kernel[grid](flat_A, flat_out, total_n, total_n, shift, BLOCK=BLOCK)
-        return out
-
-    # Dim-specific roll: apply shifts one by one
-    result = A
+    result = inp
     for shift, dim in zip(shifts, dims):
-        dim = dim % A.ndim
-        roll_size = result.shape[dim]
-        shift = shift % roll_size
-        if shift == 0:
-            continue
-
-        result = result.contiguous()
-        out = torch.empty_like(result)
-
-        # outer_size = product of dims before `dim`
-        # inner_size = product of dims after `dim`
-        outer_size = 1
-        for i in range(dim):
-            outer_size *= result.shape[i]
-        inner_size = 1
-        for i in range(dim + 1, result.ndim):
-            inner_size *= result.shape[i]
-
-        n_inner_roll = roll_size * inner_size
-        BLOCK = 1024
-        n_blocks_per_outer = triton.cdiv(n_inner_roll, BLOCK)
-        # Use 1D grid to avoid exceeding CUDA grid dimension limits
-        grid = (n_blocks_per_outer * outer_size,)
-
-        roll_dim_kernel[grid](
-            result,
-            out,
-            inner_size,
-            roll_size,
-            shift,
-            n_blocks_per_outer,
-            BLOCK=BLOCK,
-        )
-        result = out
-
-    if result is A:
-        return A.clone()
+        result = _roll_single_dim(result, shift, dim)
     return result

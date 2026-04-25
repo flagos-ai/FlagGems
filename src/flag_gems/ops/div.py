@@ -5,9 +5,42 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.pointwise_dynamic import ComplexMode
 from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
 
 logger = logging.getLogger(__name__)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, True, True],
+    num_outputs=2,
+    promotion_methods=[
+        (0, 1, 2, 3, "INT_TO_FLOAT"),
+        (0, 1, 2, 3, "INT_TO_FLOAT"),
+    ],
+)
+@triton.jit
+def div_complex_kernel(ar, ai, br, bi):
+    # Smith's method: avoid overflow by dividing by the larger component
+    abs_br = tl.abs(br)
+    abs_bi = tl.abs(bi)
+    use_br = abs_br >= abs_bi
+
+    # When |br| >= |bi|: ratio = bi/br, denom = br + bi*ratio
+    ratio1 = tl.where(br == 0, 0.0, bi / br)
+    denom1 = br + bi * ratio1
+    real1 = (ar + ai * ratio1) / denom1
+    imag1 = (ai - ar * ratio1) / denom1
+
+    # When |bi| > |br|: ratio = br/bi, denom = bi + br*ratio
+    ratio2 = tl.where(bi == 0, 0.0, br / bi)
+    denom2 = bi + br * ratio2
+    real2 = (ar * ratio2 + ai) / denom2
+    imag2 = (ai * ratio2 - ar) / denom2
+
+    real = tl.where(use_br, real1, real2)
+    imag = tl.where(use_br, imag1, imag2)
+    return real, imag
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -26,6 +59,16 @@ def true_div_func_tensor_scalar(x, y):
 @triton.jit
 def true_div_func_scalar_tensor(x, y):
     return x / y
+
+
+# Register complex support
+true_div_func.register_complex(mode=ComplexMode.CROSS, cross_kernel=div_complex_kernel)
+true_div_func_tensor_scalar.register_complex(
+    mode=ComplexMode.CROSS, tensorize_scalars=True, fallback_target=true_div_func
+)
+true_div_func_scalar_tensor.register_complex(
+    mode=ComplexMode.CROSS, tensorize_scalars=True, fallback_target=true_div_func
+)
 
 
 def true_divide(A, B):
@@ -71,17 +114,44 @@ def trunc_div_func(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, y))
+    return trunc(div_rz(x, tl.cast(y, x.dtype)))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(x, y))
+    return trunc(div_rz(tl.cast(x, y.dtype), y))
+
+
+# Integer truncation division: Triton's // on integers is C-style (truncates toward zero)
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func(x, y):
+    return x // y
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func_tensor_scalar(x, y):
+    return x // y
+
+
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func_scalar_tensor(x, y):
+    return x // y
 
 
 def trunc_divide(A, B):
     logger.debug("GEMS TRUNC_DIVIDE")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if isinstance(A, torch.Tensor) and not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B)
+    if isinstance(B, torch.Tensor) and not B.is_floating_point():
+        return trunc_div_int_func_scalar_tensor(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -95,6 +165,12 @@ def trunc_divide(A, B):
 
 def trunc_divide_(A, B):
     logger.debug("GEMS TRUNC_DIVIDE_")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B, out0=A)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B, out0=A)
     if isinstance(B, torch.Tensor):
         return trunc_div_func(A, B, out0=A)
     else:

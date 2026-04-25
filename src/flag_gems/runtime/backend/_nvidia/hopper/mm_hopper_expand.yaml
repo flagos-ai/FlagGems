@@ -1,4 +1,4 @@
-matmul:
+mm_general_tma:
   - config:
     param_map:
       META:
@@ -37,7 +37,6 @@ matmul:
      stride_am: default
      stride_bk: default
      dtype: default
-
 gemv:
   - config:
     param_map:
@@ -50,14 +49,7 @@ gemv:
       - 8
       - 16
       - 32
-      - 64
-      - 128
-      - 256
     block_k:
-      - 8
-      - 16
-      - 32
-      - 64
       - 128
       - 256
     stages:

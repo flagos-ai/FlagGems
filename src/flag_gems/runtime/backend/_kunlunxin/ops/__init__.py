@@ -10,6 +10,7 @@ from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
 from .any import any, any_dim, any_dims
+from .apply_repetition_penalties import apply_repetition_penalties
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
@@ -60,6 +61,7 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .digamma_ import digamma_
 from .div import (
     div_mode,
     div_mode_,
@@ -93,6 +95,7 @@ from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
@@ -120,6 +123,8 @@ from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
 from .maximum import maximum
@@ -167,6 +172,8 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
+from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from .relu import relu, relu_
 from .repeat import repeat
 from .repeat_interleave import (
@@ -187,8 +194,10 @@ from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
+from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .softmax import softmax, softmax_backward
 from .softplus import softplus
+from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sqrt import sqrt, sqrt_
 from .stack import stack
@@ -206,6 +215,7 @@ from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
@@ -214,13 +224,20 @@ from .vector_norm import vector_norm
 from .vstack import vstack
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .zero import zero, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
     "_conv_depthwise2d",
+    "digamma_",
+    "soft_margin_loss",
+    "soft_margin_loss_out",
+    "softshrink",
+    "softshrink_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "apply_repetition_penalties",
     "abs",
     "abs_",
     "acos",
@@ -343,6 +360,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hstack",
+    "hadamard_transform",
     "index",
     "index_add",
     "index_add_",
@@ -375,6 +393,8 @@ __all__ = [
     "logspace",
     "lt",
     "lt_scalar",
+    "matmul_bf16",
+    "matmul_int8",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -433,6 +453,10 @@ __all__ = [
     "randperm",
     "reciprocal",
     "reciprocal_",
+    "reflection_pad1d",
+    "reflection_pad1d_out",
+    "reflection_pad2d",
+    "reflection_pad2d_out",
     "relu",
     "relu_",
     "remainder",
@@ -500,6 +524,7 @@ __all__ = [
     "true_divide_out",
     "true_divide_",
     "uniform_",
+    "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "var_mean",
@@ -512,6 +537,8 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "zero",
+    "zero_out",
     "zeros",
     "zeros_like",
 ]
