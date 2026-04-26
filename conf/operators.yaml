@@ -708,6 +708,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.1'
+  - name: avg_pool3d
+    description: |
+      Applies 3D average-pooling operation in `kD \mul kH \mul kW` regions by step size `sD \mul sH \mul sW` steps.
+      The number of output features is equal to the number of input planes.
+      This is for the forward case.
+    for:
+      - avg_pool3d
+    labels:
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - name: baddbmm
     description: |
       Performs a batch matrix-matrix product of matrices in `batch1` and `batch2`.
