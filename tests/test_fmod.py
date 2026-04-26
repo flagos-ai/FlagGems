@@ -63,7 +63,7 @@ def test_accuracy_fmod_(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_fmod_tensor_scalar_(shape, scalar, dtype):
+def test_fmod_scalar_inplace(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar if scalar != 0 else 1.0
     ref_inp1 = to_reference(inp1.clone(), True)

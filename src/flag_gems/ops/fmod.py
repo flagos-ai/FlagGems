@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -32,20 +31,21 @@ def fmod_func_tensor_scalar(x, y):
     return result.to(dtype)
 
 
-def fmod(A, B):
-    logger.debug("GEMS FMOD")
-    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return fmod_func(A, B)
-    elif isinstance(A, torch.Tensor):
-        return fmod_func_tensor_scalar(A, B)
-    else:
-        # Both scalar - fallback to PyTorch
-        return torch.fmod(torch.tensor(A), B)
+def fmod_tensor(A, B):
+    logger.debug("GEMS FMOD TENSOR")
+    return fmod_func(A, B)
 
 
-def fmod_(A, B):
-    logger.debug("GEMS FMOD_")
-    if isinstance(B, torch.Tensor):
-        return fmod_func(A, B, out0=A)
-    else:
-        return fmod_func_tensor_scalar(A, B, out0=A)
+def fmod_scalar(A, B):
+    logger.debug("GEMS FMOD SCALAR")
+    return fmod_func_tensor_scalar(A, B)
+
+
+def fmod_tensor_(A, B):
+    logger.debug("GEMS FMOD_ TENSOR")
+    return fmod_func(A, B, out0=A)
+
+
+def fmod_scalar_(A, B):
+    logger.debug("GEMS FMOD_ SCALAR")
+    return fmod_func_tensor_scalar(A, B, out0=A)
