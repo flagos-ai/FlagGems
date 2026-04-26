@@ -13,7 +13,7 @@ DIM_LIST = [1] if QUICK_MODE else [0, 1]
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_index_copy(shape, dim, dtype):
+def test_index_copy(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     src_shape = list(inp.shape)
     index_len = src_shape[dim]
@@ -33,7 +33,7 @@ def test_accuracy_index_copy(shape, dim, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_index_copy_(shape, dim, dtype):
+def test_index_copy_(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     src_shape = list(inp.shape)
     index_len = src_shape[dim]
