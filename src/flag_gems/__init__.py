@@ -133,6 +133,7 @@ _FULL_CONFIG = (
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
+    ("concatenate", concatenate),
     ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
