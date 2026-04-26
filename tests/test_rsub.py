@@ -14,7 +14,7 @@ from .accuracy_utils import (
 @pytest.mark.rsub
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rsub_tensor(shape, dtype):
+def test_rsub_tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
@@ -30,7 +30,7 @@ def test_accuracy_rsub_tensor(shape, dtype):
 @pytest.mark.rsub
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rsub_scalar(shape, dtype):
+def test_rsub_scalar(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     inp2 = 0.5
