@@ -22,10 +22,10 @@ def rsub_func_tensor_scalar(x, y, alpha):
 
 
 def rsub_tensor(A, B, *, alpha=1):
-    logger.debug("GEMS RSUB TENSOR")
+    logger.debug("GEMS RSUB_TENSOR")
     return rsub_func(A, B, alpha)
 
 
 def rsub_scalar(A, B, alpha=1):
-    logger.debug("GEMS RSUB SCALAR")
+    logger.debug("GEMS RSUB_SCALAR")
     return rsub_func_tensor_scalar(A, B, alpha)
