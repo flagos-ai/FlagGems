@@ -581,7 +581,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
     effective_stages = []
     for s in stages.split(","):
         stage = s.strip()
-        if stage not in ["alpha", "beta", "stable", "all"]:
+        if stage not in ["alpha", "beta", "stable", "all", "removed"]:
             pwarn(f"ignoring unsupported stage name '{s}'...")
             continue
         # Stop checking if 'all' specified
@@ -607,7 +607,7 @@ def get_ops_to_test(ops_file, ops_list, stages):
         # Always skip operators not exposed.
         if "exposed" in op and op["exposed"] is False:
             continue
-        ops.append(op["name"].lstrip("_"))
+        ops.append(op["id"].lstrip("_"))
 
     return ops
 
