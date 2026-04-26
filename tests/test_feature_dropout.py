@@ -17,7 +17,7 @@ FEATURE_DROPOUT_SHAPES = (
 @pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.5, 0.7])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_feature_dropout(shape, p, dtype):
+def test_feature_dropout(shape, p, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, p, True)
@@ -49,7 +49,7 @@ def test_accuracy_feature_dropout(shape, p, dtype):
 @pytest.mark.feature_dropout
 @pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_feature_dropout_no_train(shape, dtype):
+def test_feature_dropout_no_train(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, 0.5, False)
@@ -59,7 +59,7 @@ def test_accuracy_feature_dropout_no_train(shape, dtype):
 @pytest.mark.feature_dropout
 @pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_feature_dropout_p_zero(shape, dtype):
+def test_feature_dropout_p_zero(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, 0.0, True)
@@ -69,7 +69,7 @@ def test_accuracy_feature_dropout_p_zero(shape, dtype):
 @pytest.mark.feature_dropout
 @pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_feature_dropout_p_one(shape, dtype):
+def test_feature_dropout_p_one(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, 1.0, True)
@@ -80,7 +80,7 @@ def test_accuracy_feature_dropout_p_one(shape, dtype):
 @pytest.mark.parametrize("shape", FEATURE_DROPOUT_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.5])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_feature_dropout_inplace(shape, p, dtype):
+def test_feature_dropout_inplace(shape, p, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp_clone = inp.clone()
     with flag_gems.use_gems():
