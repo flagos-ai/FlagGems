@@ -215,7 +215,7 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 
 
 def index_copy(inp, dim, index, src):
-    logger.debug("GEMS INDEX COPY")
+    logger.debug("GEMS INDEX_COPY")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"
@@ -256,7 +256,7 @@ def index_copy(inp, dim, index, src):
 
 
 def index_copy_(inp, dim, index, src):
-    logger.debug("GEMS INDEX COPY_")
+    logger.debug("GEMS INDEX_COPY_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"
