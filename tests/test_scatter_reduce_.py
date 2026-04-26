@@ -6,8 +6,7 @@ import torch
 import flag_gems
 
 from .accuracy_utils import gems_assert_close, to_reference
-
-QUICK_MODE = False
+from .conftest import QUICK_MODE
 
 
 @pytest.mark.scatter_reduce_
@@ -20,7 +19,7 @@ QUICK_MODE = False
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("reduce", ["sum", "prod", "amax", "amin", "mean"])
-def test_accuracy_scatter_reduce_(src_shape, inp_shape, dim, dtype, reduce):
+def test_scatter_reduce_(src_shape, inp_shape, dim, dtype, reduce):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
