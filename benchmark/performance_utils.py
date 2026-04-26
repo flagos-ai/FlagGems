@@ -25,6 +25,7 @@ from .attri_util import (
     BenchMode,
     OperationAttribute,
     check_metric_dependencies,
+    model_shapes,
 )
 from .conftest import Config, emit_record_logger
 
@@ -492,9 +493,9 @@ class GenericBenchmark(Benchmark):
         more_shapes_3d = [(100, 2**i, 100) for i in (0, 8, 16)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
-    def get_input_iter(self, cur_dtype) -> Generator:
+    def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
-            yield from self.input_fn(shape, cur_dtype, self.device)
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 class GenericBenchmarkFilterShapes(GenericBenchmark):
@@ -639,6 +640,61 @@ class TexGluBackwardBenchmark(TexGluBenchmark):
         inp_shape = list(args[1].shape)
         # Proxy FLOPs estimate: forward + backward cost roughly approximated
         return torch.tensor(inp_shape).prod().item() * 2
+
+
+class BlasBenchmark(Benchmark):
+    """
+    benchmark for blas
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def __init__(self, *args, input_fn, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_fn = input_fn
+
+    def get_input_iter(self, dtype) -> Generator:
+        for b, m, n, k in self.shapes:
+            yield from self.input_fn(b, m, n, k, dtype, self.device, False)
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            for b, m, n, k in self.shapes:
+                yield from self.input_fn(b, m, n, k, dtype, self.device, True)
+
+    def set_more_shapes(self):
+        large_k_shapes = [
+            [8, 1848, 1536, 151936],
+            [8, 1848, 1536, 128256],
+            [8, 1848, 1536, 152064],
+            [8, 4096, 1, 152064],
+        ]
+
+        model_shaps = model_shapes()
+        return large_k_shapes + model_shaps
+
+    def get_tflops(self, op, *args, **kwargs):
+        total_flops = 0
+        # shape(m,k)(k,n)
+        # total_flops mxnx2k
+        if self.op_name == "mm":
+            total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
+
+        # shape(m,n)(n,p)
+        # total_flops mxpx(2n+1)
+        elif self.op_name == "addmm":
+            total_flops = (
+                args[0].shape[0] * args[1].shape[1] * (args[1].shape[0] * 2 + 1)
+            )
+        # total_flops bxnxpx2m
+        elif self.op_name == "bmm":
+            total_flops = (
+                args[0].shape[0]
+                * args[0].shape[1]
+                * args[1].shape[2]
+                * 2
+                * args[0].shape[2]
+            )
+        return total_flops
 
 
 def generate_tensor_input(shape, dtype, device):
