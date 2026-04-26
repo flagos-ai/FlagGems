@@ -580,6 +580,67 @@ class UnaryReductionBenchmark(Benchmark):
                 yield inp,
 
 
+class TexGluBenchmark(Benchmark):
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    # Triton grid_y is capped at 65535, BLOCK_SIZE_H=64 -> last dim <= 8388480.
+    MAX_LAST_DIM = 2 * 64 * 65535
+
+    def set_more_shapes(self):
+        # Last dim must be even for GLU operations to split
+        special_shapes_2d = [[1024, 2**i] for i in range(1, 20, 4)]
+        sp_shapes_3d = [[64, 64, 2**i] for i in range(1, 15, 4)]
+
+        return special_shapes_2d + sp_shapes_3d
+
+    def init_user_config(self):
+        super().init_user_config()
+        supported = []
+        for shape in self.shapes:
+            last_dim = shape[-1]
+            if last_dim % 2 != 0:
+                continue
+            if last_dim > self.MAX_LAST_DIM:
+                continue
+            supported.append(shape)
+        if not supported:
+            pytest.skip(
+                "No geglu shapes satisfy the constraints of FlagGems implementation."
+            )
+        self.shapes = supported
+
+
+class TexGluForwardBenchmark(TexGluBenchmark):
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            x = generate_tensor_input(shape, dtype, self.device)
+            # TE GLU APIs typically accept (input, quantizer).
+            yield (x, None)
+
+    def get_tflops(self, op, *args, **kwargs):
+        # args[0] is the input tensor x
+        shape = list(args[0].shape)
+        return torch.tensor(shape).prod().item()
+
+
+class TexGluBackwardBenchmark(TexGluBenchmark):
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, dtype, self.device)
+
+            out_shape = list(shape)
+            out_shape[-1] = out_shape[-1] // 2
+
+            grad_out = torch.randn(out_shape, dtype=dtype, device=self.device)
+
+            yield grad_out, inp, None
+
+    def get_tflops(self, op, *args, **kwargs):
+        # args[1] is the original input tensor 'inp'
+        inp_shape = list(args[1].shape)
+        # Proxy FLOPs estimate: forward + backward cost roughly approximated
+        return torch.tensor(inp_shape).prod().item() * 2
+
+
 def generate_tensor_input(shape, dtype, device):
     if dtype in FLOAT_DTYPES:
         return torch.randn(shape, dtype=dtype, device=device)
