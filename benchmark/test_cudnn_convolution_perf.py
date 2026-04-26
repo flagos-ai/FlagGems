@@ -7,11 +7,15 @@ from benchmark.performance_utils import GenericBenchmark
 
 
 class CudnnConv2DBenchmark(GenericBenchmark):
+    # (batch, input_c, input_h, input_w, out_c, kernel_h, kernel_w, stride, padding, groups)
+    DEFAULT_SHAPES = [
+        (32, 64, 128, 128, 32, 3, 3, 1, 2, 1),
+        (32, 64, 210, 210, 16, 5, 5, 2, 1, 1),
+        (16, 32, 12, 12, 24, 3, 3, 2, 1, 1),
+    ]
+
     def set_more_shapes(self):
         return [
-            (32, 64, 128, 128, 32, 3, 3, 1, 2, 1),
-            (32, 64, 210, 210, 16, 5, 5, 2, 1, 1),
-            (16, 32, 12, 12, 24, 3, 3, 2, 1, 1),
             (16, 32, 24, 24, 24, 3, 3, 2, 2, 2),
             (16, 32, 24, 24, 24, 3, 3, 1, 2, 2),
         ]
