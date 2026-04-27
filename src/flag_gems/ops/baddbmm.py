@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -16,9 +17,13 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("baddbmm"),
+    configs=runtime.ops_get_configs("baddbmm", pre_hook=None)
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else runtime.get_tuned_config("baddbmm"),
     key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    strategy=runtime.get_expand_config("baddbmm")["strategy"]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["align32", "align32", "align32"],
     warmup=5,
     rep=10,
 )
@@ -44,6 +49,7 @@ def baddbmm_kernel(
     bias_batch_stride: tl.constexpr,
     bias_M_stride: tl.constexpr,
     bias_N_stride: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     # batch offsets
     pid_b = tle.program_id(2)
@@ -84,7 +90,10 @@ def baddbmm_kernel(
     o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
 
     num_iters = tl.cdiv(K, TILE_K)
-    accumulator = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
+    if IS_FP64:
+        accumulator = tl.zeros((TILE_M, TILE_N), dtype=tl.float64)
+    else:
+        accumulator = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for _ in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
@@ -168,6 +177,7 @@ class BaddbmmFunction(torch.autograd.Function):
                 bias_batch_stride=bias_batch_stride,
                 bias_M_stride=bias_M_stride,
                 bias_N_stride=bias_N_stride,
+                IS_FP64=A.dtype == torch.float64,
             )
         return out
 
