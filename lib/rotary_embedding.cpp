@@ -1,9 +1,9 @@
+#include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
 #include <iostream>
 #include <optional>
-#include "c10/cuda/CUDAStream.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -127,10 +127,10 @@ void rotary_embedding_inplace(
       std::string(utils::get_flag_gems_src_path() / "fused" / "rotary_embedding.py"),
       "apply_rotary_pos_emb_inplace_kernel");
 
-  // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
+  // Ensure the default stream for the active backend is initialized.
   c10::DeviceGuard guard(q.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   /* signature info
 def apply_rotary_pos_emb_inplace_kernel(
@@ -230,10 +230,10 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
   const TritonJITFunction& f = TritonJITFunction::get_instance(
       std::string(utils::get_flag_gems_src_path() / "fused" / "rotary_embedding.py"),
       "apply_rotary_pos_emb_kernel");
-  // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
+  // Ensure the default stream for the active backend is initialized.
   c10::DeviceGuard guard(q.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   f(raw_stream,
     n_tokens,

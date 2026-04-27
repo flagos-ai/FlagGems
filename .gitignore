@@ -8,6 +8,7 @@ bin-release/
 .settings/
 __pycache__/
 .vscode/
+.DS_Store
 
 # Python venv directory
 .venv
@@ -23,7 +24,7 @@ dist/
 CMakeInit.txt
 
 # An auxiliary product of unittests
-*.json
+/*.json
 tests/*.json
 
 
@@ -33,6 +34,8 @@ tests/*.json
 *.ipa
 *.apk
 
+docs/
+scripts/
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.

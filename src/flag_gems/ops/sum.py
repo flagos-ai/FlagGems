@@ -7,6 +7,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
@@ -266,7 +267,16 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         inp = inp.contiguous()
         K = inp.numel() // M // N
         shape[dim] = 1
-        if out is None:
+        _out_provided = out is not None
+        if _out_provided:
+            # Resize out to the expected output shape, matching native PyTorch
+            # sum.out behavior. The caller (e.g. logsumexp) may pass a
+            # zero-size placeholder that needs to be resized before use.
+            if keepdim:
+                out.resize_(shape)
+            else:
+                out.resize_(shape[:dim] + shape[dim + 1 :])
+        else:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         with torch_device_fn.device(inp.device):
@@ -287,7 +297,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
                     M,
                     N,
                 )
-        if not keepdim:
+        if not keepdim and not _out_provided:
             out = out.squeeze(dim=dim)
         return out
     else:
@@ -297,19 +307,60 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             N *= shape[i]
             shape[i] = 1
         M = inp.numel() // N
-        if out is None:
+        _out_provided = out is not None
+        if _out_provided:
+            dim_set = set(dim)
+            if keepdim:
+                out.resize_(shape)
+            else:
+                out.resize_([s for i, s in enumerate(shape) if i not in dim_set])
+        else:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
             sum_dim_kernel[grid](inp, out, M, N)
-        if not keepdim:
-            out = out.squeeze(dim=dim)
+        if not keepdim and not _out_provided:
+            for d in sorted(dim, reverse=True):
+                out = out.squeeze(dim=d)
         return out
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS SUM_DIM")
+    # support dim = 0, which are consistent with PyTorch
+    if inp.numel() == 0:
+        if dtype is None:
+            dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
+
+        out_shape = list(inp.shape)
+        if dim is None:
+            if keepdim:
+                out_shape = [1] * len(out_shape)
+            else:
+                out_shape = []
+        elif isinstance(dim, (list, tuple)) and len(dim) == 0:
+            if keepdim:
+                out_shape = [1] * len(out_shape)
+            else:
+                out_shape = []
+        else:
+            dims_to_reduce = dim if isinstance(dim, (list, tuple)) else [dim]
+            if keepdim:
+                for d in dims_to_reduce:
+                    out_shape[d % inp.ndim] = 1
+            else:
+                sorted_dims_to_remove = sorted(
+                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
+                )
+                for d in sorted_dims_to_remove:
+                    index_to_remove = d % inp.ndim
+                    out_shape.pop(index_to_remove)
+        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+        zero_(out)
+        return out
     return sum_dim_comm(inp, dim, keepdim, dtype=dtype)
 
 

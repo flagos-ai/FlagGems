@@ -3,6 +3,9 @@
 # the following copyright notice:
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # ruff: noqa: E501
+
+import logging
+
 import torch
 
 from flag_gems.fused.FLA.chunk_delta_h import chunk_gated_delta_rule_fwd_h
@@ -12,6 +15,8 @@ from flag_gems.fused.FLA.fused_cumsum_kkt_solve_tril import (
 )
 from flag_gems.fused.FLA.utils import SUPPRESS_LEVEL
 from flag_gems.fused.FLA.wy_fast import recompute_w_u_fwd
+
+logger = logging.getLogger(__name__)
 
 
 def chunk_gated_delta_rule_fwd(
@@ -25,6 +30,7 @@ def chunk_gated_delta_rule_fwd(
     output_final_state: bool,
     cu_seqlens: torch.LongTensor | None = None,
 ):
+    logger.debug("GEMS CHUNK GATED DELTA RULE FWD")
     g, A = chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril(
         g=g, k=k, beta=beta, cu_seqlens=cu_seqlens, chunk_size=64, output_dtype=k.dtype
     )
