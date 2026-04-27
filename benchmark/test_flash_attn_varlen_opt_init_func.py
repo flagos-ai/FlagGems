@@ -5,10 +5,13 @@ import torch
 
 import flag_gems
 
-from .performance_utils import Benchmark, SkipVersion, vendor_name
+from . import performance_utils as base
+from . import utils
+
+vendor_name = flag_gems.vendor_name
 
 
-class FlashAttnVarlenOptInitBenchmark(Benchmark):
+class FlashAttnVarlenOptInitBenchmark(base.Benchmark):
     """
     benchmark for flash_attn_varlen_lse_func
     """
@@ -107,9 +110,9 @@ class FlashAttnVarlenOptInitBenchmark(Benchmark):
 
         self.shapes = all_configs
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for config in self.shapes:
-            yield self.flash_attn_varlen_input_fn(config, cur_dtype, self.device)
+            yield self.flash_attn_varlen_input_fn(config, dtype, self.device)
 
     def flash_attn_varlen_input_fn(self, config, dtype, device):
         """Input function for flash attention varlen benchmark"""
@@ -256,6 +259,8 @@ def flash_attn_varlen_func_ref(*args, **kwargs):
         cp_tot_seqused_k,
         fa_version,
     ) = args
+
+    # TODO(Qiming): don't import things in the middle
     from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
 
     result = flash_attn_varlen_func(
@@ -291,11 +296,11 @@ def flash_attn_varlen_func_ref(*args, **kwargs):
 
 @pytest.mark.flash_attn_varlen_opt_func
 @pytest.mark.skipif(
-    SkipVersion("vllm", "<0.9"),
+    utils.SkipVersion("vllm", "<0.9"),
     reason="vLLM version prior to 0.9 does not include the flash_attn_varlen_func API.",
 )
 @pytest.mark.skipif(
-    SkipVersion("torch", "<2.7"),
+    utils.SkipVersion("torch", "<2.7"),
     reason="Torch version prior to 2.7 is not compatible with VLLM.",
 )
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")

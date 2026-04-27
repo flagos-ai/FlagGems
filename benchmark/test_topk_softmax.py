@@ -3,7 +3,8 @@ import torch
 
 import flag_gems.fused as fused
 
-from .performance_utils import Benchmark, SkipVersion, vendor_name
+from . import utils
+from .performance_utils import Benchmark, vendor_name
 
 
 class TopKSoftmaxBenchmark(Benchmark):
@@ -54,11 +55,11 @@ class TopKSoftmaxBenchmark(Benchmark):
 
 @pytest.mark.topk_softmax
 @pytest.mark.skipif(
-    SkipVersion("vllm", "<0.9"),
+    utils.SkipVersion("vllm", "<0.9"),
     reason="The version prior to 0.9 does not include the topk_softmax kernel in vllm._custom_ops.",
 )
 @pytest.mark.skipif(
-    SkipVersion("torch", "<2.7"),
+    utils.SkipVersion("torch", "<2.7"),
     reason="The version prior to 2.7 is not compatible with VLLM.",
 )
 @pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")

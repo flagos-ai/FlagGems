@@ -3,7 +3,8 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import performance_utils as base
+from . import utils
 
 try:
     from vllm._custom_ops import grouped_topk as vllm_grouped_topk
@@ -15,7 +16,7 @@ except (ImportError, AttributeError):
 vendor_name = flag_gems.vendor_name
 
 
-class GroupedTopKBenchmark(utils.Benchmark):
+class GroupedTopKBenchmark(base.Benchmark):
     def __init__(
         self,
         op_name,
@@ -49,9 +50,9 @@ class GroupedTopKBenchmark(utils.Benchmark):
         ]
         self.shapes = grouped_topk_configs
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for config in self.shapes:
-            yield from self.grouped_topk_input_fn(config, cur_dtype, self.device)
+            yield from self.grouped_topk_input_fn(config, dtype, self.device)
 
     def grouped_topk_input_fn(self, config, dtype, device):
         num_tokens, num_experts, n_group, topk_group, topk = config
