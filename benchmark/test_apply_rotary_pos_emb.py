@@ -4,11 +4,11 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmark
+
+from . import base, consts
 
 
-class RopeBenchmark(GenericBenchmark):
+class RopeBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (batch, num_heads, seq_len, head_size).
@@ -78,6 +78,6 @@ def test_apply_rotary_pos_emb():
         op_name="apply_rotary_pos_emb",
         torch_op=torch_apply_rotary_pos_emb,
         gems_op=flag_gems.apply_rotary_pos_emb,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -1,13 +1,12 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 @pytest.mark.all
 def test_all():
-    bench = utils.UnaryReductionBenchmark(
-        op_name="all", torch_op=torch.all, dtypes=attr_utils.FLOAT_DTYPES
+    bench = base.UnaryReductionBenchmark(
+        op_name="all", torch_op=torch.all, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()

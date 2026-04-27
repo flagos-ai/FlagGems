@@ -3,9 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attrs
-from . import performance_utils as base
-from . import utils
+from . import base, consts, utils
 
 vendor_name = flag_gems.vendor_name
 
@@ -63,7 +61,7 @@ def test_apply_repetition_penalties():
     bench = RepetitionPenaltyBenchmark(
         op_name="apply_repetition_penalties",
         torch_op=vllm_ops.apply_repetition_penalties,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.apply_repetition_penalties)
     bench.run()
