@@ -19,7 +19,7 @@ DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
 
 
 DEFAULT_STRATEGIES = {
-    "bmm": ["log", "log", "log", "align32", "align32"],
+    "bmm": ["align32", "align32", "align32", "align32", "align32"],
     "addmm": ["align32", "align32", "align32"],
     "baddbmm": ["align32", "align32", "align32"],
     "mv": ["align32", "align32"],
@@ -48,6 +48,9 @@ DEFAULT_STRATEGIES = {
     ],
     "gemv": ["align32", "align32", "align32", "default"],
     "sparse_attention": ["align32", "align32", "align32"],
+    "mm": ["align32", "align32", "align32", "align32", "align32"],
+    "bmm_sqmma": ["align32", "align32", "align32"],
+    "addmm_sqmma": ["align32", "align32", "align32"],
 }
 
 OP_KEY_ORDERS = {
@@ -60,6 +63,9 @@ OP_KEY_ORDERS = {
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
     "sparse_attention": ["topk", "H_ACTUAL", "D"],
+    "mm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "bmm_sqmma": ["M", "N", "K"],
+    "addmm_sqmma": ["M", "N", "K"],
 }
 
 
@@ -214,6 +220,44 @@ class ConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name in ("mm", "mm_sqmma"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in ("bmm_sqmma", "addmm_sqmma"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_SIZE_M": block_m,
+                        "BLOCK_SIZE_N": block_n,
+                        "BLOCK_SIZE_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "gemv":
             return [
                 triton.Config(
@@ -324,6 +368,9 @@ class ConfigLoader(object):
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "gemv": self._build_single_expand_spec("gemv"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
+            "mm": self._build_single_expand_spec("mm"),
+            "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
+            "addmm_sqmma": self._build_single_expand_spec("addmm_sqmma"),
         }
 
     def load_all(self):
