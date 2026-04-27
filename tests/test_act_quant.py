@@ -89,9 +89,6 @@ def torch_act_quant(
     ],
 )
 def test_act_quant_accuracy(shape, block_size, scale_fmt, dtype):
-    if shape[-1] % block_size != 0:
-        pytest.skip(f"Shape {shape} not divisible by block_size {block_size}")
-
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=dtype, device=device)
 
