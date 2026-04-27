@@ -30,6 +30,13 @@ DEFAULT_STRATEGIES = {
         "align32",
         "align32",
     ],
+    "w8a8_block_fp8_general_splitk": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
     "w8a8_block_fp8_general_tma": [
         "align32",
         "align32",
@@ -56,6 +63,7 @@ OP_KEY_ORDERS = {
     "baddbmm": ["M", "N", "K"],
     "mv": ["M", "N"],
     "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
+    "w8a8_block_fp8_general_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
@@ -286,6 +294,27 @@ class ConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name == "w8a8_block_fp8_general_splitk":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "SPLIT_K": split_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for split_k in ranges["SPLIT_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         return []
 
     def _build_single_expand_spec(
@@ -317,6 +346,9 @@ class ConfigLoader(object):
             ),
             "w8a8_block_fp8_general": self._build_single_expand_spec(
                 "w8a8_block_fp8_general"
+            ),
+            "w8a8_block_fp8_general_splitk": self._build_single_expand_spec(
+                "w8a8_block_fp8_general_splitk"
             ),
             "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
                 "w8a8_block_fp8_general_tma"
