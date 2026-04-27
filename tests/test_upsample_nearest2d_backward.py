@@ -26,8 +26,9 @@ def test_accuracy_upsample_nearest2d_backward(params, dtype):
     OH, OW = output_size
 
     grad_output = torch.randn((N, C, OH, OW), dtype=dtype, device=flag_gems.device)
+    ref_grad = utils.to_reference(grad_output, True)
     ref_out = torch.ops.aten.upsample_nearest2d_backward(
-        grad_output, output_size, input_shape, None, None
+        ref_grad, output_size, input_shape, None, None
     )
     with flag_gems.use_gems():
         res_out = torch.ops.aten.upsample_nearest2d_backward(
@@ -46,8 +47,9 @@ def test_accuracy_upsample_nearest2d_backward_with_scales(dtype):
     OH, OW = int(IH * scales_h), int(IW * scales_w)
 
     grad_output = torch.randn((N, C, OH, OW), dtype=dtype, device=flag_gems.device)
+    ref_grad = utils.to_reference(grad_output, True)
     ref_out = torch.ops.aten.upsample_nearest2d_backward(
-        grad_output, (OH, OW), input_shape, scales_h, scales_w
+        ref_grad, (OH, OW), input_shape, scales_h, scales_w
     )
     with flag_gems.use_gems():
         res_out = torch.ops.aten.upsample_nearest2d_backward(
