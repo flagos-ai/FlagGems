@@ -1,3 +1,5 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -6,6 +8,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.libentry import libentry
 
 from ..utils import TOTAL_CORE_NUM
+
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()
@@ -205,6 +209,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS_CAMBRICON _UNIQUE2")
     sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
     data_out, inverse_indices, counts = sorted_unique_flat(
         sorted_data, sorted_indices, return_inverse, return_counts
