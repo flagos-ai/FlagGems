@@ -1,15 +1,17 @@
 import importlib
 import os
+from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 import triton
 from triton.runtime.jit import JITFunction
 
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+from flag_gems.utils.device_info import get_device_capability
 from flag_gems.utils.shape_utils import (
     MemOverlap,
     all_c_contiguous,
@@ -239,9 +241,8 @@ class KernelGenerator:
         self.fn_module = scalar_fn.__module__
 
     def gen_import_function(self, code: IndentedBuffer):
-        code.writeline(f'"""Quoted source of {self.fn_name}:')
+        code.writeline("@triton.jit")
         code.writemultiline(self.fn.src)
-        code.writeline('"""')
         code.newline()
 
     def gen_decorators(self, code):
@@ -823,10 +824,22 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-            capability = torch_device_fn.get_device_capability(
-                torch_device_fn.current_device()
-            )
-            if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
+            # Check if all input and output dtypes are complex
+            all_complex = True
+            for i in range(self.fx.num_inputs()):
+                if self.fx.is_tensor(i):
+                    input_dtype = self.fx.input_type(i)
+                    if input_dtype is not None and not (
+                        input_dtype == torch.complex64
+                        or input_dtype == torch.complex128
+                    ):
+                        all_complex = False
+                        break
+            if all_complex:
+                # If all inputs are complex, set max_tile_size to half
+                max_tile_size = max_tile_size // 2
+            major, _ = get_device_capability()
+            if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("tile_sizes = tuple([64])")
             else:
                 code.writeline(
@@ -837,7 +850,7 @@ class WrapperGenerator:
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
             )
 
-            if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
+            if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("num_ctas = num_tiles")
             else:
                 max_grid_size0 = self.config.max_grid_size[0]
@@ -861,12 +874,22 @@ class WrapperGenerator:
             with code.indent():
                 self.gen_return(code)
             max_tile_size = self.config.max_tile_size
-
-            capability = torch_device_fn.get_device_capability(
-                torch_device_fn.current_device()
-            )
-            if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
-                code.writeline("tile_sizes = tuple([64])")
+            # Check if all input and output dtypes are complex
+            all_complex = True
+            for i in range(self.fx.num_inputs()):
+                if self.fx.is_tensor(i):
+                    input_dtype = self.fx.input_type(i)
+                    if input_dtype is not None and not (
+                        input_dtype == torch.complex64
+                        or input_dtype == torch.complex128
+                    ):
+                        all_complex = False
+                        break
+            if all_complex:
+                max_tile_size = max_tile_size // 2
+            major, _ = get_device_capability()
+            if self.name.find("fill_scalar") != -1 and major >= 9:
+                code.writeline("tile_sizes = tuple([1024])")
             else:
                 code.writeline(
                     f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
@@ -875,7 +898,7 @@ class WrapperGenerator:
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
 
-            if self.name.find("fill_scalar") != -1 and capability[0] >= 9:
+            if self.name.find("fill_scalar") != -1 and major >= 9:
                 code.writeline("num_ctas = num_tiles")
             else:
                 max_grid_size0 = self.config.max_grid_size[0]
@@ -1046,6 +1069,7 @@ class ModuleGenerator:
         config: CodeGenConfig,
     ):
         self.config = config
+        self.scalar_fn = scalar_fn
         self.wrapper_gen = WrapperGenerator(
             function_schema, jit_fn_name, ndim, wrapper_name, config
         )
@@ -1054,7 +1078,87 @@ class ModuleGenerator:
         )
 
     @staticmethod
-    def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    def _collect_jit_deps(scalar_fn):
+        """Collect extra imports and local @triton.jit helper sources.
+
+        Parses the source module where scalar_fn is defined using AST.
+        Returns a tuple of:
+          - extra_imports: dict of module_path -> set of names
+          - local_sources: list of source strings for local @triton.jit
+            functions (those NOT decorated with @pointwise_dynamic)
+        """
+        import ast
+        import inspect
+
+        py_fn = getattr(scalar_fn, "fn", scalar_fn)
+        module_name = getattr(py_fn, "__module__", None)
+        if not module_name:
+            return {}, []
+        try:
+            mod = importlib.import_module(module_name)
+            source_file = inspect.getfile(mod)
+        except (ImportError, TypeError, OSError):
+            return {}, []
+        try:
+            with open(source_file) as f:
+                module_source = f.read()
+            source_lines = module_source.splitlines(keepends=True)
+            tree = ast.parse(module_source)
+        except (OSError, SyntaxError):
+            return {}, []
+
+        # Collect non-standard import-from lines
+        ALREADY_IMPORTED = {
+            "math",
+            "typing",
+            "torch",
+            "triton",
+            "triton.language",
+            "flag_gems.utils.shape_utils",
+            "flag_gems.utils.tensor_wrapper",
+            "flag_gems.utils.libentry",
+            "flag_gems.utils",
+            "flag_gems.runtime",
+            "flag_gems.utils.pointwise_dynamic",
+        }
+        extra_imports = {}
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module in ALREADY_IMPORTED:
+                    continue
+                names = {alias.name for alias in node.names}
+                extra_imports.setdefault(node.module, set()).update(names)
+
+        # Collect local @triton.jit functions (without @pointwise_dynamic)
+        def _has_decorator(func_node, name):
+            for dec in func_node.decorator_list:
+                src = "".join(source_lines[dec.lineno - 1 : dec.end_lineno])
+                if name in src:
+                    return True
+            return False
+
+        def _extract_source(func_node):
+            start = func_node.lineno - 1
+            if func_node.decorator_list:
+                start = func_node.decorator_list[0].lineno - 1
+            end = func_node.end_lineno
+            return "".join(source_lines[start:end])
+
+        local_sources = []
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if not _has_decorator(node, "triton.jit") and not _has_decorator(
+                node, "jit"
+            ):
+                continue
+            if _has_decorator(node, "pointwise_dynamic"):
+                continue
+            local_sources.append(_extract_source(node))
+
+        return extra_imports, local_sources
+
+    def generate_imports(self, code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("import math")
         code.writeline("from typing import Union")
         code.writeline("import torch")
@@ -1070,12 +1174,25 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
+
+        # Generate extra imports and local JIT deps of the scalar function
+        jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
+        for module_path, names in sorted(jit_dep_imports.items()):
+            sorted_names = ", ".join(sorted(names))
+            code.writeline(f"from {module_path} import {sorted_names}")
+
         code.newline()
         code.newline()
+
+        # Emit local @triton.jit helper functions
+        for source in local_jit_sources:
+            for line in source.splitlines():
+                code.writeline(line)
+            code.newline()
+
         return code
 
     def codegen(self, code: IndentedBuffer):
-        # the only runtime determined factor is the rank of the task space
         code = self.generate_imports(code)
         if self.config.prefer_1d_tile:
             code = self.wrapper_gen.codegen_1d_tile(code)
@@ -1084,6 +1201,38 @@ class ModuleGenerator:
             code = self.wrapper_gen.codegen_nd_tile(code)
             code = self.kernel_gen.codegen_nd_tile(code)
         return code
+
+
+@dataclass
+class KernelInfo:
+    """Information about a generated kernel for C++ integration."""
+
+    file_path: str
+    kernel_name: str
+    wrapper_name: str
+    ndim: int
+
+
+class ComplexMode(Enum):
+    NONE = auto()
+    ELEMENTWISE = auto()  # add/sub: view_as_real → same kernel → view_as_complex
+    CROSS = auto()  # mul/div: split ar/ai/br/bi → cross_kernel
+
+
+@dataclass
+class ComplexStrategy:
+    mode: ComplexMode = ComplexMode.NONE
+    cross_kernel: object = None
+    tensorize_scalars: bool = False
+    fallback_target: object = None
+
+
+_REAL_TO_COMPLEX = {
+    torch.float16: torch.complex32,
+    torch.bfloat16: torch.complex32,
+    torch.float32: torch.complex64,
+    torch.float64: torch.complex128,
+}
 
 
 class PointwiseDynamicFunction:
@@ -1103,20 +1252,221 @@ class PointwiseDynamicFunction:
         self.config: CodeGenConfig = config or get_codegen_config()
 
         # instantiated & cached overloads
-        self.overloads: Mapping[int, Callable] = {}
+        self.overloads: Mapping[str, Callable] = {}
+        # cached kernel info for C++ integration
+        self._kernel_info_cache: Mapping[str, KernelInfo] = {}
+
+        # complex dispatch support
+        self.complex_strategy = ComplexStrategy()
+        self._operand_indices = self._infer_operand_indices()
+
+    # -------------------- operand index inference --------------------
+
+    def _infer_operand_indices(self):
+        """Infer operand indices from schema._promotion_methods, done once at init."""
+        indices = set()
+        for pm in self.fx._promotion_methods:
+            for idx in pm[:-1]:
+                indices.add(idx)
+        return frozenset(indices)
+
+    # -------------------- register_complex --------------------
+
+    def register_complex(
+        self, mode, cross_kernel=None, tensorize_scalars=False, fallback_target=None
+    ):
+        """Register complex number support for this kernel.
+
+        Args:
+            mode: ComplexMode.ELEMENTWISE (add/sub) or ComplexMode.CROSS (mul/div).
+            cross_kernel: A PointwiseDynamicFunction for cross-term ops (mul/div).
+            tensorize_scalars: If True, scalar operands are converted to tensors
+                before delegating to fallback_target.
+            fallback_target: A PointwiseDynamicFunction (tensor-tensor version)
+                to delegate to after tensorizing scalar operands.
+        """
+        self.complex_strategy = ComplexStrategy(
+            mode=mode,
+            cross_kernel=cross_kernel,
+            tensorize_scalars=tensorize_scalars,
+            fallback_target=fallback_target,
+        )
+        return self
+
+    # -------------------- call entry --------------------
 
     def __call__(self, *args, **kwargs):
-        # inputs must be passed by position, outputs must be passed by keyword
+        if self._should_use_complex_path(args):
+            return self._call_complex_dispatch(*args, **kwargs)
+        return self._call_real_impl(*args, **kwargs)
+
+    def _call_real_impl(self, *args, **kwargs):
+        """Single entry point for real kernel invocation."""
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
         overload = self.instantiate(ndim)
         out = overload(*args, **kwargs)
-        # NOTE: overload keeps the type of outputs:
-        # if a pre-defiend output is a Tensor or StridedBuffer, the corresponding
-        # output is also a Tensor StridedBuffer, respectively
-        # since prepare_args Wraps all the arguments, the outputs are all StridedBuffer
-        # but if manually instantiated overload is directly called, take care of
-        # that manually
         return self._unwrap(out)
+
+    # -------------------- complex helpers --------------------
+
+    @staticmethod
+    def _is_complex_arg(a):
+        return (isinstance(a, torch.Tensor) and a.is_complex()) or isinstance(
+            a, complex
+        )
+
+    def _should_use_complex_path(self, args):
+        if self.complex_strategy.mode == ComplexMode.NONE:
+            return False
+        return any(
+            self._is_complex_arg(args[i])
+            for i in self._operand_indices
+            if i < len(args)
+        )
+
+    def _split_args(self, args):
+        """Split args into operands and others by original position index."""
+        operands = {}
+        others = {}
+        for i, a in enumerate(args):
+            if i in self._operand_indices:
+                operands[i] = a
+            else:
+                others[i] = a
+        return operands, others
+
+    def _merge_args(self, operands, others):
+        """Rebuild args tuple from operands and others by original position index."""
+        total = len(operands) + len(others)
+        merged = [None] * total
+        for i, v in operands.items():
+            merged[i] = v
+        for i, v in others.items():
+            merged[i] = v
+        return tuple(merged)
+
+    def _classify_complex_inputs(self, operands):
+        """Classify operands as 'all_complex', 'mixed', or 'real'."""
+        complex_count = sum(1 for v in operands.values() if self._is_complex_arg(v))
+        if complex_count == len(operands):
+            return "all_complex"
+        elif complex_count > 0:
+            return "mixed"
+        return "real"
+
+    def _infer_device(self, operands):
+        for v in operands.values():
+            if isinstance(v, torch.Tensor):
+                return v.device
+        return None
+
+    def _infer_complex_dtype(self, operands):
+        return torch.result_type(*operands.values())
+
+    def _tensorize_scalar_operands(self, operands, dtype, device):
+        """Convert scalar operands to tensors."""
+        result = {}
+        for i, v in operands.items():
+            if not isinstance(v, torch.Tensor):
+                if isinstance(v, complex):
+                    result[i] = torch.tensor(v, dtype=dtype, device=device)
+                elif isinstance(v, float):
+                    result[i] = torch.tensor(v, dtype=torch.float32, device=device)
+                elif isinstance(v, (int, bool)):
+                    result[i] = torch.tensor(v, dtype=torch.int64, device=device)
+                else:
+                    result[i] = v
+            else:
+                result[i] = v
+        return result
+
+    def _to_complex_tensor(self, a, target_dtype, device):
+        """Convert a scalar or real tensor to a complex tensor."""
+        if isinstance(a, torch.Tensor):
+            if a.is_complex():
+                return a
+            if a.is_floating_point():
+                cdtype = _REAL_TO_COMPLEX.get(a.dtype, torch.complex64)
+            else:
+                a = a.to(torch.float32)
+                cdtype = torch.complex64
+            return torch.complex(a, torch.zeros_like(a)).to(cdtype)
+        elif isinstance(a, complex):
+            return torch.tensor(a, dtype=target_dtype, device=device)
+        elif isinstance(a, (int, float)):
+            return torch.tensor(complex(a, 0), dtype=target_dtype, device=device)
+        return a
+
+    # -------------------- complex dispatch --------------------
+
+    def _call_complex_dispatch(self, *args, **kwargs):
+        """Unified complex dispatch entry point."""
+        strategy = self.complex_strategy
+        operands, others = self._split_args(args)
+
+        device = self._infer_device(operands)
+        result_dtype = self._infer_complex_dtype(operands)
+
+        # tensorize scalar operands and delegate to fallback_target
+        if strategy.tensorize_scalars and strategy.fallback_target is not None:
+            operands = self._tensorize_scalar_operands(operands, result_dtype, device)
+            new_args = self._merge_args(operands, others)
+            return strategy.fallback_target(*new_args, **kwargs)
+
+        # convert all operands to complex tensors
+        for i in list(operands.keys()):
+            operands[i] = self._to_complex_tensor(operands[i], result_dtype, device)
+
+        # broadcast complex tensor operands
+        complex_tensors = [operands[i] for i in sorted(operands.keys())]
+        complex_tensors = torch.broadcast_tensors(*complex_tensors)
+        for idx, key in enumerate(sorted(operands.keys())):
+            operands[key] = complex_tensors[idx]
+
+        classification = self._classify_complex_inputs(operands)
+
+        if strategy.mode == ComplexMode.CROSS and classification == "all_complex":
+            return self._call_complex_cross(operands, result_dtype)
+        elif classification in ("all_complex", "mixed"):
+            return self._call_complex_elementwise(
+                operands, others, result_dtype, kwargs
+            )
+        else:
+            new_args = self._merge_args(operands, others)
+            return self._call_real_impl(*new_args, **kwargs)
+
+    def _call_complex_elementwise(self, operands, others, result_dtype, kwargs):
+        """Elementwise: view_as_real -> call real kernel -> view_as_complex."""
+        real_tensors = {i: torch.view_as_real(t) for i, t in operands.items()}
+
+        # promote to common real dtype
+        dtypes = [t.dtype for t in real_tensors.values()]
+        common_dtype = dtypes[0]
+        for d in dtypes[1:]:
+            common_dtype = torch.promote_types(common_dtype, d)
+        real_tensors = {i: t.to(common_dtype) for i, t in real_tensors.items()}
+
+        new_args = self._merge_args(real_tensors, others)
+        out_real = self._call_real_impl(*new_args, **kwargs)
+        return torch.view_as_complex(out_real.contiguous()).to(result_dtype)
+
+    def _call_complex_cross(self, operands, result_dtype):
+        """Cross-term: split ar/ai/br/bi -> call cross_kernel -> stack -> view_as_complex."""
+        sorted_keys = sorted(operands.keys())
+        A, B = operands[sorted_keys[0]], operands[sorted_keys[1]]
+        Ar = torch.view_as_real(A)
+        Br = torch.view_as_real(B)
+        ar, ai = Ar[..., 0], Ar[..., 1]
+        br, bi = Br[..., 0], Br[..., 1]
+
+        common_dtype = torch.promote_types(ar.dtype, br.dtype)
+        ar, ai = ar.to(common_dtype), ai.to(common_dtype)
+        br, bi = br.to(common_dtype), bi.to(common_dtype)
+
+        real, imag = self.complex_strategy.cross_kernel(ar, ai, br, bi)
+
+        out = torch.stack((real, imag), dim=-1)
+        return torch.view_as_complex(out.contiguous()).to(result_dtype)
 
     @staticmethod
     def use_fast_path(tensors):
@@ -1128,7 +1478,7 @@ class PointwiseDynamicFunction:
             )
         )
 
-    def prepare_args(self, *args, **kwargs):
+    def prepare_args(self, *args, _skip_tensor_check=False, **kwargs):
         # output allocation(when needed)
         # task simplification & task-rank infernece & input-output reinterpretation
         schema = self.fx
@@ -1141,7 +1491,7 @@ class PointwiseDynamicFunction:
             else:
                 outputs_that_need_allocation.append(i)
         # input arguments must be passed by position
-        if schema._is_tensor is not None:
+        if not _skip_tensor_check and schema._is_tensor is not None:
             if not check_tensor_attributes(args, (schema._is_tensor)):
                 raise ValueError(
                     "Input arguments must be passed by position, and the corresponding dtype must be specified."
@@ -1254,18 +1604,42 @@ class PointwiseDynamicFunction:
             return item.unwrap()
         return tuple(item.unwrap() for item in tensors)
 
+    def _compute_kernel_names(self, ndim: int) -> Tuple[str, str, str]:
+        """Compute kernel name, wrapper name, and file path for a given ndim.
+
+        This is the single source of truth for naming, used by both instantiate()
+        and get_kernel_info() to ensure consistency.
+
+        Returns:
+            Tuple of (kernel_name, wrapper_name, file_path)
+        """
+        scalar_fn_name = self._scalar_fn.__name__
+        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}"
+        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}"
+
+        file_name = (
+            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
+            f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
+            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
+            ".py"
+        )
+        file_path = str(code_cache_dir() / file_name)
+
+        return kernel_name, wrapper_name, file_path
+
     def instantiate(self, ndim):
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
         # the inputs & ouputs actually fits the manually instantiated overload
-        if ndim in self.overloads:
-            return self.overloads[ndim]
+        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        if key in self.overloads:
+            return self.overloads[key]
 
         code = IndentedBuffer()
 
-        scalar_fn_name = self._scalar_fn.__name__
-        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}"
-        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}"
+        # Use helper to compute names (single source of truth)
+        kernel_name, wrapper_name, file_path = self._compute_kernel_names(ndim)
+
         module_gen = ModuleGenerator(
             self.fx,
             self._scalar_fn,
@@ -1283,14 +1657,6 @@ class PointwiseDynamicFunction:
         # created via exec string. We can help inspect to find the source by hacking linecache
         # library, but we find generating a module simpler, since we can generating 2 functions
         # the kernel and the wrapper, and the wrapper calls the kernel.
-        file_name = (
-            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
-            f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
-            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
-            ".py"
-        )
-
-        file_path = code_cache_dir() / file_name
         write_atomic(file_path, code.getvalue())
 
         # load
@@ -1314,8 +1680,39 @@ class PointwiseDynamicFunction:
         m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
 
         overload = getattr(m, wrapper_name)
-        self.overloads[ndim] = overload
+        self.overloads[key] = overload
+
+        # Cache kernel info for C++ integration
+        self._kernel_info_cache[key] = KernelInfo(
+            file_path=file_path,
+            kernel_name=kernel_name,
+            wrapper_name=wrapper_name,
+            ndim=ndim,
+        )
+
         return overload
+
+    def get_kernel_info(self, ndim: int) -> KernelInfo:
+        """Get kernel information for a given ndim.
+
+        This method is useful for C++ integration to get the file path and
+        kernel name without duplicating the naming logic.
+
+        If the kernel hasn't been instantiated yet, this will instantiate it first.
+
+        Args:
+            ndim: The rank of the task space
+
+        Returns:
+            KernelInfo with file_path, kernel_name, wrapper_name, and ndim
+        """
+        key = f"{ndim}_{self.config.prefer_block_pointer}"
+
+        # Ensure the kernel is instantiated
+        if key not in self._kernel_info_cache:
+            self.instantiate(ndim)
+
+        return self._kernel_info_cache[key]
 
 
 def pointwise_dynamic(

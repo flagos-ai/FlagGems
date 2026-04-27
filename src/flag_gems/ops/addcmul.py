@@ -18,7 +18,13 @@ def addcmul_forward(x, t1, t2, value):
 
 def addcmul(inp, tensor1, tensor2, *, value=1.0, out=None):
     logger.debug("GEMS ADDCMUL FORWARD")
-    if out is None:
-        out = torch.empty_like(inp)
-    addcmul_forward(inp, tensor1, tensor2, value, out0=out)
-    return out
+    if out is not None:
+        broadcast_shape = torch.broadcast_shapes(
+            inp.shape, tensor1.shape, tensor2.shape
+        )
+        if list(out.shape) != list(broadcast_shape):
+            out.resize_(broadcast_shape)
+        addcmul_forward(inp, tensor1, tensor2, value, out0=out)
+        return out
+    else:
+        return addcmul_forward(inp, tensor1, tensor2, value)

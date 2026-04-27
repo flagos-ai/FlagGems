@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -15,7 +19,7 @@ def topk_gating_softmax_kernel(
     num_experts,
     start_expert,
     end_expert,
-    renormalize,
+    renormalize: tl.constexpr,
     INDEX_TY: tl.constexpr,
     BLOCK_SIZE_ROWS: tl.constexpr,
     BLOCK_SIZE_EXPERTS: tl.constexpr,
@@ -39,8 +43,7 @@ def topk_gating_softmax_kernel(
 
     selected_sum = tl.zeros([BLOCK_SIZE_ROWS], dtype=tl.float32)
     for ki in range(k):
-        curr_max = tl.max(probs, axis=1)
-        curr_arg = tl.argmax(probs, axis=1) + start_expert
+        curr_max, curr_arg = tl.max(probs, axis=1, return_indices=True)
 
         tl.store(output_ptr + rows * k + ki, curr_max, mask=valid_rows)
         tl.store(indices_ptr + rows * k + ki, curr_arg.to(INDEX_TY), mask=valid_rows)
@@ -49,7 +52,8 @@ def topk_gating_softmax_kernel(
             (ki * num_rows + rows).to(tl.int32),
             mask=valid_rows,
         )
-        selected_sum += curr_max
+        if renormalize:
+            selected_sum += curr_max
 
         probs = tl.where(
             cols[None, :] == (curr_arg[:, None] - start_expert), -float("inf"), probs
@@ -60,8 +64,7 @@ def topk_gating_softmax_kernel(
         for ki in range(k):
             idx = rows * k + ki
             val = tl.load(output_ptr + idx, mask=valid_rows)
-            val = val / norm
-            tl.store(output_ptr + idx, val, mask=valid_rows)
+            tl.store(output_ptr + idx, val / norm, mask=valid_rows)
 
 
 def topk_softmax(
@@ -71,6 +74,7 @@ def topk_softmax(
     gating_output: torch.Tensor,
     renormalize: bool = False,
 ) -> None:
+    logger.debug("GEMS TOPK SOFTMAX")
     num_tokens, num_experts = gating_output.shape
     topk = topk_weights.size(-1)
     assert topk <= 32
@@ -90,8 +94,16 @@ def topk_softmax(
     BLOCK_SIZE_ROWS = max_total_threads // BLOCK_SIZE_EXPERTS
     BLOCK_SIZE_ROWS = max(BLOCK_SIZE_ROWS, 1)
 
-    grid = (triton.cdiv(num_tokens, BLOCK_SIZE_ROWS),)
+    # If num_experts > 128, intra-warp shuffling is forced for reduction,
+    # which requires the warp layout to be confined to a single row.
+    # Consequently, in the TTGIR, the second dimension of warpsPerCTA is fixed to 1.
+    if num_experts > 128:
+        BLOCK_SIZE_ROWS = 1
+        num_warps = 1
+    else:
+        num_warps = 4
 
+    grid = (triton.cdiv(num_tokens, BLOCK_SIZE_ROWS),)
     topk_gating_softmax_kernel[grid](
         input_ptr=gating_output,
         finished_ptr=None,
@@ -107,4 +119,5 @@ def topk_softmax(
         INDEX_TY=index_ty,
         BLOCK_SIZE_ROWS=BLOCK_SIZE_ROWS,
         BLOCK_SIZE_EXPERTS=BLOCK_SIZE_EXPERTS,
+        num_warps=num_warps,
     )

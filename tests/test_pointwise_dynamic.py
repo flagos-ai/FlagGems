@@ -9,6 +9,7 @@ import flag_gems
 from flag_gems.utils import get_device_properties
 from flag_gems.utils.pointwise_dynamic import (
     CodeGenConfig,
+    ComplexMode,
     FunctionSchema,
     pointwise_dynamic,
 )
@@ -942,3 +943,212 @@ def test_dynamic_function_with_multiprocess(use_block_pointer):
 
         for out, expected_out in zip(outs, expected_outs):
             torch.testing.assert_close(out, expected_out)
+
+
+# Complex number tests
+
+COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+
+
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_complex_elementwise_tensor_tensor(dtype):
+    @pointwise_dynamic(
+        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+    )
+    @triton.jit
+    def add_func(x, y, alpha):
+        return x + y * alpha
+
+    add_func.register_complex(mode=ComplexMode.ELEMENTWISE)
+
+    SIZE = 2
+    for ndim in range(1, 5):
+        shape = [SIZE] * ndim
+        a = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        b = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        alpha = 2.0
+        out = add_func(a, b, alpha)
+        torch.testing.assert_close(out, a + b * alpha)
+
+
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_complex_elementwise_tensor_scalar(dtype):
+    @pointwise_dynamic(
+        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+    )
+    @triton.jit
+    def add_tt(x, y, alpha):
+        return x + y * alpha
+
+    @pointwise_dynamic(
+        is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+    )
+    @triton.jit
+    def add_ts(x, y, alpha):
+        return x + y * alpha
+
+    add_tt.register_complex(mode=ComplexMode.ELEMENTWISE)
+    add_ts.register_complex(
+        mode=ComplexMode.ELEMENTWISE,
+        tensorize_scalars=True,
+        fallback_target=add_tt,
+    )
+
+    shape = [64]
+    a = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    b = 1.5 + 2.0j
+    alpha = 1.0
+    out = add_ts(a, b, alpha)
+    torch.testing.assert_close(out, a + b * alpha)
+
+
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_complex_elementwise_broadcast(dtype):
+    @pointwise_dynamic(
+        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+    )
+    @triton.jit
+    def add_func(x, y, alpha):
+        return x + y * alpha
+
+    add_func.register_complex(mode=ComplexMode.ELEMENTWISE)
+
+    a = torch.randn([4, 16], dtype=dtype, device=flag_gems.device)
+    b = torch.randn([16], dtype=dtype, device=flag_gems.device)
+    alpha = 1.0
+    out = add_func(a, b, alpha)
+    torch.testing.assert_close(out, a + b * alpha)
+
+
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_complex_elementwise_mixed_real_complex(dtype):
+    @pointwise_dynamic(
+        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+    )
+    @triton.jit
+    def add_func(x, y, alpha):
+        return x + y * alpha
+
+    add_func.register_complex(mode=ComplexMode.ELEMENTWISE)
+
+    shape = [128]
+    a = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    real_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
+    b = torch.randn(shape, dtype=real_dtype, device=flag_gems.device)
+    alpha = 1.0
+    out = add_func(a, b, alpha)
+    torch.testing.assert_close(out, a + b * alpha)
+
+
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_complex_cross_tensor_tensor(dtype):
+    @pointwise_dynamic(
+        is_tensor=[True, True, True, True],
+        num_outputs=2,
+        promotion_methods=[(0, 1, 2, 3, "DEFAULT"), (0, 1, 2, 3, "DEFAULT")],
+    )
+    @triton.jit
+    def mul_cross(ar, ai, br, bi):
+        real = ar * br - ai * bi
+        imag = ar * bi + ai * br
+        return real, imag
+
+    @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+    @triton.jit
+    def mul_func(x, y):
+        return x * y
+
+    mul_func.register_complex(mode=ComplexMode.CROSS, cross_kernel=mul_cross)
+
+    SIZE = 2
+    for ndim in range(1, 5):
+        shape = [SIZE] * ndim
+        a = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        b = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        out = mul_func(a, b)
+        torch.testing.assert_close(out, a * b)
+
+
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_complex_cross_tensor_scalar(dtype):
+    @pointwise_dynamic(
+        is_tensor=[True, True, True, True],
+        num_outputs=2,
+        promotion_methods=[(0, 1, 2, 3, "DEFAULT"), (0, 1, 2, 3, "DEFAULT")],
+    )
+    @triton.jit
+    def mul_cross(ar, ai, br, bi):
+        real = ar * br - ai * bi
+        imag = ar * bi + ai * br
+        return real, imag
+
+    @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+    @triton.jit
+    def mul_tt(x, y):
+        return x * y
+
+    @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+    @triton.jit
+    def mul_ts(x, y):
+        return x * y
+
+    mul_tt.register_complex(mode=ComplexMode.CROSS, cross_kernel=mul_cross)
+    mul_ts.register_complex(
+        mode=ComplexMode.CROSS,
+        tensorize_scalars=True,
+        fallback_target=mul_tt,
+    )
+
+    shape = [64]
+    a = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    b = 2.0 + 3.0j
+    out = mul_ts(a, b)
+    torch.testing.assert_close(out, a * b)
+
+
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_complex_cross_broadcast(dtype):
+    @pointwise_dynamic(
+        is_tensor=[True, True, True, True],
+        num_outputs=2,
+        promotion_methods=[(0, 1, 2, 3, "DEFAULT"), (0, 1, 2, 3, "DEFAULT")],
+    )
+    @triton.jit
+    def mul_cross(ar, ai, br, bi):
+        real = ar * br - ai * bi
+        imag = ar * bi + ai * br
+        return real, imag
+
+    @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+    @triton.jit
+    def mul_func(x, y):
+        return x * y
+
+    mul_func.register_complex(mode=ComplexMode.CROSS, cross_kernel=mul_cross)
+
+    a = torch.randn([4, 16], dtype=dtype, device=flag_gems.device)
+    b = torch.randn([16], dtype=dtype, device=flag_gems.device)
+    out = mul_func(a, b)
+    torch.testing.assert_close(out, a * b)
+
+
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test_complex_real_inputs_bypass(dtype):
+    """When all inputs are real, complex-registered kernel should still work."""
+
+    @pointwise_dynamic(
+        is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+    )
+    @triton.jit
+    def add_func(x, y, alpha):
+        return x + y * alpha
+
+    add_func.register_complex(mode=ComplexMode.ELEMENTWISE)
+
+    shape = [128]
+    real_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
+    a = torch.randn(shape, dtype=real_dtype, device=flag_gems.device)
+    b = torch.randn(shape, dtype=real_dtype, device=flag_gems.device)
+    alpha = 1.0
+    out = add_func(a, b, alpha)
+    torch.testing.assert_close(out, a + b * alpha)

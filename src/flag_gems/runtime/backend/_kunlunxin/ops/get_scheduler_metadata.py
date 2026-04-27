@@ -6,6 +6,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils.device_info import get_device_capability, get_device_info
+
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
@@ -107,8 +109,8 @@ def get_optimal_block_mn(
     varlen_and_split=False,
     append_kv=False,
 ):
-    arch_cap = torch.cuda.get_device_capability(device)
-    arch = arch_cap[0] * 10 + arch_cap[1]
+    major, minor = get_device_capability()
+    arch = major * 10 + minor
     sm86_or_89 = arch == 86 or arch == 89
 
     kBlockM, kBlockN, kNWarps, kStages, Q_in_regs = tile_size_fwd_sm8x(
@@ -482,9 +484,9 @@ def get_scheduler_metadata(
         effective_window_left >= 0 or effective_window_right >= 0
     ) and not final_is_causal
 
-    arch_cap = torch.cuda.get_device_capability(device)
-    arch = arch_cap[0] * 10 + arch_cap[1]
-    num_sm = torch.cuda.get_device_properties(device).multi_processor_count - sm_margin
+    major, minor = get_device_capability()
+    arch = major * 10 + minor
+    num_sm = get_device_info().sm_count - sm_margin
 
     softcap = 1.0 if has_softcap else 0.0
 

@@ -163,6 +163,11 @@ def generate_destination_passing_padding_wrapper(
 
         code.newline()
 
+        code.writeline("# Check which dimensions have padding")
+        for i in range(rank):
+            code.writeline(
+                f"dim{i}_has_pad = pad_before[{i}] > 0 or pad_after[{i}] > 0"
+            )
         code.writeline("IS_CONSTANT = mode == 'constant'")
         code.writeline("IS_REFLECT = mode == 'reflect'")
         code.writeline("IS_REPLICATE = mode == 'replicate'")
@@ -197,6 +202,9 @@ def generate_destination_passing_padding_wrapper(
 
                     s = ", ".join(f"valid_dim{j}_end" for j in range(rank))
                     code.writeline(f"{s}, # valid dim end")
+
+                    s = ", ".join(f"bool(dim{i}_has_pad)" for i in range(rank))
+                    code.writeline(f"{s}, # dim has padding flags")
 
                     code.writeline("in0.numel(), ")
                     code.writeline("out0.numel(), ")
@@ -255,6 +263,9 @@ def generate_pad_kernel(
             stride_args = ", ".join(f"valid_dim{j}_end: int" for j in range(rank))
             code.writeline(f"{stride_args}, # valid dim end")
 
+            for i in range(rank):
+                code.writeline(f"dim{i}_has_pad: tl.constexpr, ")
+
             code.writeline("in_elem_cnt: tl.constexpr, ")
             code.writeline("out_elem_cnt: tl.constexpr, ")
             code.writeline("value, # padding value")
@@ -308,12 +319,12 @@ def generate_pad_kernel(
         with code.indent():
             for i in range(rank):
                 code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start,
+                    f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start),
                         valid_dim{i}_start - dst_index_{i}, src_index_{i})"""
                 )
             for i in range(rank):
                 code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
+                    f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} >= valid_dim{i}_end),
                     (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"""
                 )
 
@@ -322,11 +333,13 @@ def generate_pad_kernel(
         with code.indent():
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, 0, src_index_{i})"
+                    f"src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start), 0, src_index_{i})"
                 )
             for i in range(rank):
+                end_cond = f"dst_index_{i} >= valid_dim{i}_end"
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, x_shape{i} - 1, src_index_{i})"
+                    f"src_index_{i} = tl.where(dim{i}_has_pad & ({end_cond}), "
+                    f"x_shape{i} - 1, src_index_{i})"
                 )
 
         code.newline()
@@ -334,12 +347,12 @@ def generate_pad_kernel(
         with code.indent():
             for i in range(rank):
                 code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start,
+                    f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} < valid_dim{i}_start),
                         dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"""
                 )
             for i in range(rank):
                 code.writeline(
-                    f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
+                    f"""src_index_{i} = tl.where(dim{i}_has_pad & (dst_index_{i} >= valid_dim{i}_end),
                         dst_index_{i} - valid_dim{i}_end, src_index_{i})"""
                 )
 
@@ -349,7 +362,7 @@ def generate_pad_kernel(
         for i in range(1, rank):
             code.writeline(f"src_offset += src_index_{i} * in_strides{i}")
 
-        code.writeline(f"load_cond = src_index_{i} < x_shape{i}")
+        code.writeline("load_cond = src_index_0 < x_shape0")
         for i in range(1, rank):
             code.writeline(f"load_cond &= src_index_{i} < x_shape{i}")
 
@@ -410,9 +423,9 @@ class PadFunction:
             code = IndentedBuffer()
             code = generate_code(
                 args,
-                "_wrapper",
-                "_wrapper_out",
-                "_jit_function",
+                "_pad_wrapper",
+                "_pad_wrapper_out",
+                "_pad_jit_function",
                 code,
             )
 
@@ -431,7 +444,7 @@ class PadFunction:
             # do not expose it to sys.modules
             # sys.modules["_add_module"] = m
             spec.loader.exec_module(m)
-            overload = getattr(m, "_wrapper")
+            overload = getattr(m, "_pad_wrapper")
             self.overloads[key] = overload
         return overload(*args, **kwargs)
 
@@ -607,31 +620,21 @@ def pad(self, pad, mode="constant", value=None):
                 )
             return out
 
-    if mode == "reflect":
-        ndim //= 2
-        assert (
-            len(pad) == 2 * ndim
-        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
+    pad_pairs = len(pad) // 2
 
-        for i in range(ndim):
+    if mode == "reflect":
+        for i in range(pad_pairs):
             pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
-            input_l, input_r = (
-                self.shape[ndim - (2 * i + 1) - 1],
-                self.shape[ndim - (2 * i + 1)],
-            )
+            input_size = self.shape[ndim - 1 - i]
             assert (
-                pad_l < input_l and pad_r < input_r
+                pad_l < input_size and pad_r < input_size
             ), f"padding size should be less than the corresponding input dimension, \
                  but got padding size: {pad_l}, {pad_r}, input size: {self.shape}"
 
     if mode == "circular":
-        ndim //= 2
-        assert (
-            len(pad) == 2 * ndim
-        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
-        for i in range(ndim):
+        for i in range(pad_pairs):
             pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
-            input_size = self.shape[ndim - i - 1]
+            input_size = self.shape[ndim - 1 - i]
             assert (
                 pad_l <= input_size and pad_r <= input_size
             ), "Padding value causes wrapping around more than once."
@@ -640,5 +643,5 @@ def pad(self, pad, mode="constant", value=None):
     return out
 
 
-def constant_pad_nd(self, pad, value=0):
-    return pad(self, pad, mode="constant", value=value)
+def constant_pad_nd(self, pad_list, value=0):
+    return pad(self, pad_list, mode="constant", value=value)

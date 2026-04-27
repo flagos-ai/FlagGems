@@ -259,6 +259,21 @@ def cat(
         raise RuntimeError(
             "Expected a non-empty list or tuple/list of non-empty torch.Tensor"
         )
+    if len(tensors) == 1:
+        return tensors[0]
+
+    # remove torch.Size([0]) tensors
+    device = tensors[0].device
+    dtype = tensors[0].dtype
+    tensors = list(tensors)
+
+    for i in range(len(tensors) - 1, -1, -1):
+        if tensors[i].shape == torch.Size([0]):
+            tensors.pop(i)
+    if len(tensors) == 0:
+        return torch.tensor([], dtype=dtype, device=device)
+    elif len(tensors) == 1:
+        return tensors[0]
 
     # Check dimensions.
     ndim = tensors[0].ndim

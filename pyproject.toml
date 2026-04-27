@@ -1,59 +1,289 @@
 [build-system]
-requires = ["setuptools>=64.0", "scikit-build-core>=0.11", "pybind11"]
+# cmake locks to '>=3.20,<4.0' to sync with FlagTree
+
+requires = ["setuptools>=64.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+
 build-backend = "scikit_build_core.build"
 
-
 [project]
+
 name = "flag_gems"
-version = "4.2.0"
-description = "FlagGems is a function library written in Triton."
+
+version = "5.0.2"
+
+description = "FlagGems is a function library written in Triton language."
+
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.8.0"
+
+requires-python = ">=3.10.0"
+
 license = { text = "Apache Software License" }
+
 authors = [
     { name = "Zhixin Li", email = "strongspoon@outlook.com" },
     { name = "Tongxin Bai", email = "waffle.bai@gmail.com" },
     { name = "Yuming Huang", email = "jokmingwong@gmail.com" },
     { name = "Feiyu Chen", email = "iclementine@outlook.com" },
+    { name = "Ruilin Yang", email = "rlyanger01@gmail.com"},
+    { name = "Zhen Wang", email = "516310189@qq.com"},
+    { name = "Hui Guo", email = "sunnycase@live.cn"},
+    { name = "Xiaoyan Liu", email = "18811205590@163.com"},
+    { name = "Chunlie Men", email = "menchunlei@163.com"},
+    { name = "Hang Xiao", email = "vincent.xiao.me@gmail.com"},
+    { name = "Yiqun Huang", email = "huangyiqun@mail.bnu.edu.cn"},
+    { name = "Jinjin Tian", email = "kiddyjinjin@gmail.com"},
+    { name = "Yang Zheng", email = "zhengyang_pku@163.com"},
+    { name = "Jinjie Liu", email = "sgjzfzzf@gmail.com"},
 ]
+
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
 ]
+
 dependencies = [
-    "torch>=2.2.0",
-    "packaging",
-    "pybind11",
-    "PyYAML",
-    "packaging",
-    "sqlalchemy",
+    "packaging==26.0",
+    "PyYAML==6.0.3",
+    "sqlalchemy==2.0.48",
+    "numpy==1.26.4",
 ]
 
 [project.optional-dependencies]
-test = [
-    "pytest>=7.1.0",
-    "numpy>=1.26",
-    "scipy>=1.14",
+
+ascend = [
+    "torch==2.9.0+cpu",
+    "torch-npu==2.9.0",
+    "flagtree==0.5.0+ascend3.2",
 ]
+
+hygon = [
+    "torch==2.9.0+das.opt1.dtk2604",
+    "flagtree==0.5.0+hcu3.0",
+]
+
+iluvatar = [
+    "torch==2.7.1+corex.4.4.0",
+    "torchaudio==2.7.1+corex.4.4.0",
+    "torchvision==0.22.1+corex.4.4.0",
+    "flagtree==0.5.0+iluvatar3.1"
+]
+
+kunlunxin = [
+    "benchflow==1.0.0",
+    "hyperparameter==0.5.6",
+    "torch==2.5.1+cu118",
+    "torchaudio==2.5.1+cu118",
+    "torchvision==0.20.1+cu118",
+    "torch_klx==0.1.0",
+    "torch_xray==0.2.1",
+    "psutil==6.1.0",
+    "regex==2026.4.4",
+    "flagtree==0.5.1+xpu3.0",
+    "xmlir==1.0.0.1"
+]
+
+metax = [
+    "torch==2.8.0+metax3.5.3.9",
+    "torchaudio==2.4.1+metax3.5.3.9",
+    "torchvision==0.15.1+metax3.5.3.9",
+    "flagtree==3.1.0+metax3.5.3.9",
+    # "triton==3.0.0+metax3.5.3.9",
+]
+
+mthreads = [
+    "torch==2.7.1+musa.4.0.0",
+    "torch_musa==2.7.1",
+    "flagtree==0.5.0+mthreads3.1",
+    # "triton==3.1.0+musa1.4.6",
+    "numpy==1.26.4",
+    "mkl==2024.0.0",
+]
+
+nvidia = [
+    "torch==2.9.0+cu128",
+    "torchvision==0.24.0+cu128",
+    "torchaudio==2.9.0+cu128",
+    "flagtree==0.5.0+3.5",
+    # "triton==3.5",
+]
+
+tsingmicro = [
+    "torch==2.7.0+cpu",
+    "torchvision==0.22.0",
+    "torchaudio==2.7.0",
+    "torch_txda==0.1.0+20260310.294fc4a6",
+    "txops==0.1.0+20260225.5cc33e4e",
+    "flagtree==0.5.0+tsingmicro3.3",
+    # "triton==3.3.0++gitfe2a28fa",
+]
+
+# Test packages
+test = [
+    "distro==1.9.0",
+    "coverage==7.13.5",
+    "openpyxl==3.1.5",
+    "pytest==9.0.3",
+    "scipy>=1.15.3",
+]
+
+# Package for running example tests
 example = [
     "transformers>=4.40.2",
 ]
 
 [project.urls]
-Homepage = "https://github.com/FlagOpen/FlagGems"
 
-[tool.setuptools]
-package-dir = { "" = "src" }
+Repository = "https://github.com/flagos-ai/FlagGems"
+Documentation = "https://flagos-ai.github.io/FlagGems"
+"Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
 [tool.setuptools.packages.find]
+
 where = ["src"]
 
 [tool.setuptools.package-data]
+
 "flag_gems.runtime" = ["*/**/*.yaml"]
 
 [tool.scikit-build]
+
 build.verbose = true
 logging.level = "INFO"
 wheel.install-dir = "flag_gems"
 build-dir = "build/{cache_tag}"
+
+[tool.uv]
+
+# Tell 'uv' that each index has an equal importance for each package,
+# in other words, don't treat the first index with a matching package
+# as the best one.
+index-strategy = "unsafe-best-match"
+
+conflicts = [
+    [
+        { extra = "ascend" },
+        { extra = "hygon" },
+        { extra = "iluvatar" },
+        { extra = "kunlunxin" },
+        { extra = "metax" },
+        { extra = "mthreads" },
+        { extra = "nvidia" },
+        { extra = "tsingmicro" },
+    ],
+]
+
+# Source for Ascend packages
+[[tool.uv.index]]
+name = "ascend-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-ascend/simple"
+explicit = true
+
+# Source for Hygon packages
+[[tool.uv.index]]
+name = "hygon-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-hygon/simple"
+explicit = true
+
+# Source for Iluvatar packages
+[[tool.uv.index]]
+name = "iluvatar-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-iluvatar/simple"
+explicit = true
+
+# Source for Kunlunxin packages
+[[tool.uv.index]]
+name = "kunlunxin-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-kunlunxin/simple"
+explicit = true
+
+# Source for MetaX packages
+[[tool.uv.index]]
+name = "metax-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-metax/simple"
+explicit = true
+
+# Source for Mthreads packages
+[[tool.uv.index]]
+name = "mthreads-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-mthreads/simple"
+explicit = true
+
+# Source for NVIDIA packages
+# Mainly for flagtree installation
+[[tool.uv.index]]
+name = "nvidia-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-nvidia/simple"
+explicit = true
+
+# Source for TsingMicro packages
+[[tool.uv.index]]
+name = "tsingmicro-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple"
+explicit = true
+
+# TODO(Qiming): double check the following two index URLs
+# Source for Pytorch CU12.8
+[[tool.uv.index]]
+name = "torch-pypi-128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# Source for Pytorch CU11.8
+[[tool.uv.index]]
+name = "torch-pypi-118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+# Source for common packages
+[[tool.uv.index]]
+name = "default"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+
+[tool.uv.sources]
+# Mapping from optional groups to index servers
+flagtree = [
+  { index = "ascend-pypi",     marker = "extra=='ascend'" },
+  { index = "hygon-pypi",      marker = "extra!='ascend' and extra=='hygon'" },
+  { index = "mthreads-pypi",   marker = "extra!='ascend' and extra!='hygon' and extra=='mthreads'" },
+  { index = "nvidia-pypi",     marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra!='nvidia' and extra=='tsingmicro'" },
+]
+torch = [
+  { index = "ascend-pypi",     marker = "extra=='ascend'"},
+  { index = "hygon-pypi",      marker = "extra!='ascend' and extra=='hygon'" },
+  { index = "iluvatar-pypi",   marker = "extra!='ascend' and extra!='hygon' and extra=='iluvatar'" },
+  { index = "kunlunxin-pypi",  marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra=='kunlunxin'" },
+  { index = "metax-pypi",      marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra=='metax'" },
+  { index = "mthreads-pypi",   marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra=='mthreads'" },
+  { index = "nvidia-pypi",     marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra!='mthreads' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra!='mthreads' and extra!='nvidia' and extra=='tsingmicro'" },
+]
+torchaudio = [
+  { index = "iluvatar-pypi",   marker = "extra=='iluvatar'" },
+  { index = "kunlunxin-pypi",  marker = "extra!='iluvatar' and extra=='kunlunxin'" },
+  { index = "metax-pypi",      marker = "extra!='iluvatar' and extra!='kunlunxin' and extra=='metax'" },
+  { index = "nvidia-pypi",     marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra!='nvidia' and extra=='tsingmicro'" },
+]
+torchvision = [
+  { index = "iluvatar-pypi",   marker = "extra=='iluvatar'" },
+  { index = "kunlunxin-pypi",  marker = "extra!='iluvatar' and extra=='kunlunxin'" },
+  { index = "metax-pypi",      marker = "extra!='iluvatar' and extra!='kunlunxin' and extra=='metax'" },
+  { index = "nvidia-pypi",     marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra!='nvidia' and extra=='tsingmicro'" },
+]
+torch_txda = [
+  { index = "tsingmicro-pypi", marker = "extra=='tsingmicro'" }
+]
+txops = [
+  { index = "tsingmicro-pypi", marker = "extra=='tsingmicro'" }
+]
+torch_musa = [
+  { index = "mthreads-pypi",   marker = "extra=='mthreads'" }
+]
+triton = [
+  { index = "iluvatar-pypi",  marker = "extra=='iluvatar'" },
+  { index = "metax-pypi",     marker = "extra!='iluvatar' and extra=='metax'" },
+  { index = "mthreads-pypi",  marker = "extra!='iluvatar' and extra!='metax' and extra=='mthreads'" },
+]

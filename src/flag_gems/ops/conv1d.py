@@ -13,6 +13,11 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         stride_width = stride
 
+    if isinstance(dilation, (list, tuple)):
+        dilation_width = dilation[0]
+    else:
+        dilation_width = dilation
+
     if isinstance(padding, str):
         if padding == "same":
             assert (
@@ -22,10 +27,13 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             il = input.shape[-1]
             kernel_size = weight.shape[-1]
             padding_width = math.ceil(
-                (stride * (il - 1) + 1 + dilation * (kernel_size - 1) - il) / 2
+                (stride_width * (il - 1) + 1 + dilation_width * (kernel_size - 1) - il)
+                / 2
             )
             ol = int(
-                (il + 2 * padding_width - dilation * (kernel_size - 1) - 1) / stride + 1
+                (il + 2 * padding_width - dilation_width * (kernel_size - 1) - 1)
+                / stride_width
+                + 1
             )
             return conv2d(
                 input.unsqueeze(-1),
@@ -33,14 +41,14 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
                 bias,
                 (stride_width, 1),
                 (padding_width, 0),
-                dilation,
+                (dilation_width, 1),
                 groups,
             ).squeeze(-1)[..., (ol - il) :]
         elif padding == "valid":
             padding_width = 0
         else:
             raise ValueError(
-                f"Unsupported padding string: {padding}, only'valild'/'same' are allowed."
+                f"Unsupported padding mode: {padding}, only 'valid' or 'same' are allowed."
             )
     elif isinstance(padding, (list, tuple)):
         padding_width = padding[0]
@@ -52,6 +60,6 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         bias,
         (stride_width, 1),
         (padding_width, 0),
-        dilation,
+        (dilation_width, 1),
         groups,
     ).squeeze(-1)

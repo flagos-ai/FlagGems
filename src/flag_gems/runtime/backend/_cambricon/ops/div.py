@@ -54,6 +54,19 @@ def true_divide(A, B):
         return torch.tensor(A / B)
 
 
+def true_divide_out(A, B, out):
+    logger.debug("GEMS_CAMBRICON TRUE_DIVIDE OUT")
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return true_div_func(A, B, False, out0=out)
+    elif isinstance(A, torch.Tensor):
+        return true_div_func_tensor_scalar(A, B, False, out0=out)
+    elif isinstance(B, torch.Tensor):
+        return true_div_func_scalar_tensor(A, B, False, out0=out)
+    else:
+        # Both scalar
+        return torch.tensor(A / B) if out is None else out.fill_(A / B)
+
+
 def true_divide_(A, B):
     logger.debug("GEMS_CAMBRICON TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):
@@ -73,7 +86,7 @@ def trunc_div_func(x, y, inplace):
 )
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y, inplace):
-    return trunc(div_rn(x, y))
+    return trunc(div_rn(x, tl.cast(y, x.dtype)))
 
 
 @pointwise_dynamic(
@@ -81,11 +94,42 @@ def trunc_div_func_tensor_scalar(x, y, inplace):
 )
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y, inplace):
-    return trunc(div_rn(x, y))
+    return trunc(div_rn(tl.cast(x, y.dtype), y))
+
+
+# Integer truncation division: Triton's // on integers is C-style (truncates toward zero)
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def trunc_div_int_func(x, y, inplace):
+    return x // y
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
+@triton.jit
+def trunc_div_int_func_tensor_scalar(x, y, inplace):
+    return x // y
+
+
+@pointwise_dynamic(
+    is_tensor=[False, True, False], promotion_methods=[(0, 1, "DEFAULT")]
+)
+@triton.jit
+def trunc_div_int_func_scalar_tensor(x, y, inplace):
+    return x // y
 
 
 def trunc_divide(A, B):
     logger.debug("GEMS_CAMBRICON TRUNC_DIVIDE")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if isinstance(A, torch.Tensor) and not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B, False)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B, False)
+    if isinstance(B, torch.Tensor) and not B.is_floating_point():
+        return trunc_div_int_func_scalar_tensor(A, B, False)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return trunc_div_func(A, B, False)
     elif isinstance(A, torch.Tensor):
@@ -99,6 +143,12 @@ def trunc_divide(A, B):
 
 def trunc_divide_(A, B):
     logger.debug("GEMS_CAMBRICON TRUNC_DIVIDE_")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B, True, out0=A)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B, True, out0=A)
     if isinstance(B, torch.Tensor):
         return trunc_div_func(A, B, True, out0=A)
     else:
@@ -215,6 +265,7 @@ def floor_divide_(A, B):
 
 
 def div_mode(A, B, rounding_mode=None):
+    logger.debug("GEMS_CAMBRICON DIV_MODE")
     if rounding_mode is None:
         return true_divide(A, B)
     elif rounding_mode == "trunc":
@@ -227,6 +278,7 @@ def div_mode(A, B, rounding_mode=None):
 
 
 def div_mode_(A, B, rounding_mode=None):
+    logger.debug("GEMS_CAMBRICON DIV_MODE_")
     if rounding_mode is None:
         return true_divide_(A, B)
     elif rounding_mode == "trunc":

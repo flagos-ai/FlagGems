@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -27,12 +28,26 @@ def heur_group_m(args):
         return (args["M"] + args["BLOCK_M"] - 1) // args["BLOCK_M"]
 
 
-@libentry()
-@triton.autotune(
+autotune_decorator = triton.autotune(
     configs=[],
     generate_configs="mm",
     key=["M", "N", "K"],
 )
+
+
+KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "1") == "1"
+
+if not KLX_USE_AUTOTUNE:
+    autotune_decorator = triton.autotune(
+        configs=[
+            triton.Config({"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 256}),
+        ],
+        key=["M", "N", "K"],
+    )
+
+
+@libentry()
+@autotune_decorator
 @triton.heuristics(
     {
         "SPLIT_K": heur_split_k,
