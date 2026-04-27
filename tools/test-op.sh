@@ -44,10 +44,10 @@ for item in $CHANGED_FILES; do
     tests/test_quant.py)
       # skip because it always fail
       ;;
-    tests/*)
+    tests/test*)
       TEST_CASES+=($item)
       ;;
-    benchmark/*)
+    benchmark/test*)
       PERF_TEST_CASES+=($item)
       ;;
   esac
