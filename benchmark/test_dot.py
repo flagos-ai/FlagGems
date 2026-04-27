@@ -1,8 +1,9 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
 def dot_input_fn(shape, dtype, device):
@@ -15,11 +16,11 @@ def dot_input_fn(shape, dtype, device):
 
 @pytest.mark.dot
 def test_dot():
-    bench = utils.GenericBenchmark(
+    bench = base.GenericBenchmark(
         input_fn=dot_input_fn,
         op_name="dot",
         torch_op=torch.dot,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

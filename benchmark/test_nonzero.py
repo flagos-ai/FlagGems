@@ -14,7 +14,7 @@ from . import utils
 )
 def test_nonzero():
     bench = base.GenericBenchmark2DOnly(
-        input_fn=base.unary_input_fn,
+        input_fn=utils.unary_input_fn,
         op_name="nonzero",
         torch_op=torch.nonzero,
         dtypes=attrs.FLOAT_DTYPES + attrs.INT_DTYPES + attrs.BOOL_DTYPES,
