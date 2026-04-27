@@ -3,7 +3,7 @@ import triton
 if triton.__version__ >= "3.4":
     from .fill import (  # noqa: F401
         fill_scalar,
-        fill_scalar_,
+        #fill_scalar_,
         fill_scalar_out,
         fill_tensor,
         fill_tensor_,

@@ -375,6 +375,7 @@ class W8A8BlockFP8MatmulBenchmark(Benchmark):
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
+    global FLOAT_DTYPES
     if flag_gems.vendor_name == "mthreads" and op_name not in ("mm", "baddbmm"):
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
     if op_name == "grouped_mm":
@@ -464,7 +465,7 @@ def test_mv_and_outer_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
-@pytest.mark.mm
+@pytest.mark.mm2
 def test_mm_self_transpose_benchmark():
     bench = MmSelfTransposeBenchmark(
         input_fn=mm_self_transpose_input_fn,
