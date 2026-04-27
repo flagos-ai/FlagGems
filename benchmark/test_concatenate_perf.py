@@ -4,7 +4,13 @@ import pytest
 import torch
 
 from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from benchmark.performance_utils import Benchmark, Config, generate_tensor_input
+from benchmark.performance_utils import Benchmark, Config
+
+
+def _generate_input(shape, dtype, device):
+    if dtype in FLOAT_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=device)
+    return torch.randint(0, 10, shape, dtype=dtype, device=device)
 
 
 class ConcatenateBenchmark(Benchmark):
@@ -23,9 +29,9 @@ class ConcatenateBenchmark(Benchmark):
 
 
 def concatenate_input_fn(shape, dtype, device):
-    inp1 = generate_tensor_input(shape, dtype, device)
-    inp2 = generate_tensor_input(shape, dtype, device)
-    inp3 = generate_tensor_input(shape, dtype, device)
+    inp1 = _generate_input(shape, dtype, device)
+    inp2 = _generate_input(shape, dtype, device)
+    inp3 = _generate_input(shape, dtype, device)
     yield [inp1, inp2, inp3], {"dim": 0},
     if Config.bench_level == BenchLevel.COMPREHENSIVE:
         yield [inp1, inp2, inp3], {"dim": -1},
