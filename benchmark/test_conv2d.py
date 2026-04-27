@@ -2,11 +2,11 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmark
+
+from . import base, consts
 
 
-class Conv2DBenchmark(GenericBenchmark):
+class Conv2DBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         return [
             (32, 64, 128, 128, 32, 3, 3, 1, 2, 1),
@@ -59,7 +59,7 @@ def test_conv2d(monkeypatch):
         input_fn=_input_fn,
         op_name="conv2d",
         torch_op=torch.nn.functional.conv2d,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.conv2d)
 

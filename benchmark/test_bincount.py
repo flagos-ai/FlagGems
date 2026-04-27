@@ -3,8 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def bincount_input_fn(shape, dtype, device):
@@ -22,7 +21,7 @@ def bincount_input_fn(shape, dtype, device):
 
 @pytest.mark.bincount
 def test_bincount():
-    bench = utils.GenericBenchmark(
+    bench = base.GenericBenchmark(
         input_fn=bincount_input_fn,
         op_name="bincount",
         torch_op=torch.bincount,
@@ -47,13 +46,12 @@ def bincount_weighted_input_fn(shape, dtype, device):
 
 
 @pytest.mark.bincount
-@pytest.mark.parametrize("dtype", attr_utils.FLOAT_DTYPES)
-def test_bincount_weighted(dtype):
-    bench = utils.GenericBenchmark(
+def test_bincount_weighted():
+    bench = base.GenericBenchmark(
         input_fn=bincount_weighted_input_fn,
-        op_name=f"bincount_weighted_{str(dtype).split('.')[-1]}",
+        op_name="bincount_weighted",
         torch_op=torch.bincount,
-        dtypes=[dtype],
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.bincount)
     bench.run()

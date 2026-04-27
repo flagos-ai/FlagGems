@@ -3,9 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as consts
-from . import performance_utils as base
-from . import utils
+from . import base, consts, utils
 
 
 def cross_entropy_loss_input_fn(shape, cur_dtype, device):

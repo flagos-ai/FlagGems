@@ -2,13 +2,13 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmark
+
+from . import base, consts
 
 
-class Conv3DBenchmark(GenericBenchmark):
+class Conv3DBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
-        return None
+        return []
 
 
 @pytest.mark.conv3d
@@ -47,7 +47,7 @@ def test_conv3d():
         op_name="conv3d",
         input_fn=conv3d_input_fn,
         torch_op=torch.nn.functional.conv3d,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.conv3d)
     bench.run()
