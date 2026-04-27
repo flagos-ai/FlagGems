@@ -63,13 +63,14 @@ class BenchmarkMetrics:
     # Detailed size info
     shape_detail: Optional[Tuple[int, ...]] = None
     # Latency base in ms
-    latency_base: Optional[float] = None
+    # kernel, operator, wrapper order for BenchMode.ALL
+    latency_base: Optional[Tuple[float, ...]] = None
     # Latency in ms
-    latency: Optional[float] = None
+    latency: Optional[Tuple[float, ...]] = None
     gbps_base: Optional[float] = None
     gbps: Optional[float] = None
     # Speedup over baseline
-    speedup: Optional[float] = None
+    speedup: Optional[Tuple[float, ...]] = None
     # Accuracy over baseline (not implemented yet)
     accuracy: Optional[float] = None
     # TFLOPS (not implemented yet)
@@ -142,6 +143,7 @@ class BenchMode(Enum):
     KERNEL = "kernel"
     OPERATOR = "operator"
     WRAPPER = "wrapper"
+    ALL = "all"
 
 
 class BenchLevel(Enum):
@@ -189,12 +191,21 @@ class BenchmarkResult:
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
-        col_names = [
-            f"{'Status':<10}",
-            f"{'Torch Latency (ms)':>20}",
-            f"{'Gems Latency (ms)':>20}",
-            f"{'Gems Speedup':>20}",
-        ]
+        if BenchMode.ALL.value == self.mode:
+            col_names = [
+                f"{'Status':<10}",
+                f"{'Torch Latency (ms)':^45}",
+                f"{'Gems Latency (ms)':^45}",
+                f"{'Gems Speedup':^30}",
+            ]
+        else:
+            col_names = [
+                f"{'Status':<10}",
+                f"{'Torch Latency (ms)':>20}",
+                f"{'Gems Latency (ms)':>20}",
+                f"{'Gems Speedup':>20}",
+            ]
+
         if self.result[0].tflops and self.result[0].tflops != 0.0:
             col_names.append(f"{'TFLOPS':>20}")
         if self.result[0].gbps is not None:
@@ -205,6 +216,22 @@ class BenchmarkResult:
         header_break = "-" * len(header_col_names) + "\n"
         header = header_title + header_col_names + header_break
 
+        # Add BenchMode.ALL mode, which outputs all time statistics (kernel, operator, wrapper)
+        if BenchMode.ALL.value == self.mode:
+            sub_names = "".join(
+                f"{name:^13}" for name in ["kernel", "operator", "wrapper"]
+            )
+            speedup_name = "".join(
+                f"{name:^10}" for name in ["kernel", "operator", "wrapper"]
+            )
+            sub_col_names = [
+                f"{'':<10}",
+                f"{sub_names:^45}",
+                f"{sub_names:^45}",
+                f"{speedup_name:^30}",
+            ]
+            header += " ".join(sub_col_names) + "\n" + header_break
+
         metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
         return header + metrics_lines
 
@@ -213,11 +240,38 @@ class BenchmarkResult:
         # legacy_shape_str = (
         #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
         # )
-        latency_base_str = (
-            f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
-        )
-        latency_str = f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
-        speedup_str = f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
+
+        # modify for BenchMode.ALL
+        if metrics.latency_base is not None and isinstance(metrics.latency_base, tuple):
+            latency_base_str = " ".join(f"{x:>13.6f}" for x in metrics.latency_base)
+        else:
+            if BenchMode.ALL.value == self.mode:
+                latency_base_str = " ".join(
+                    f"{'N/A':>13}" for _ in range(len(BenchMode) - 1)
+                )
+            else:
+                latency_base_str = "N/A"
+
+        if metrics.latency is not None and isinstance(metrics.latency, tuple):
+            latency_str = " ".join(f"{x:>13.6f}" for x in metrics.latency)
+        else:
+            if BenchMode.ALL.value == self.mode:
+                latency_str = " ".join(
+                    f"{'N/A':>13}" for _ in range(len(BenchMode) - 1)
+                )
+            else:
+                latency_str = "N/A"
+
+        if metrics.speedup is not None and isinstance(metrics.speedup, tuple):
+            speedup_str = " ".join(f"{x:>10.3f}" for x in metrics.speedup)
+        else:
+            if BenchMode.ALL.value == self.mode:
+                speedup_str = " ".join(
+                    f"{'N/A':>10}" for _ in range(len(BenchMode) - 1)
+                )
+            else:
+                speedup_str = "N/A"
+
         torch_gbps_str = (
             f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
         )
@@ -229,12 +283,15 @@ class BenchmarkResult:
         shape_detail_str = (
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         )
+
+        latency_width = 45 if BenchMode.ALL.value == self.mode else 20
+        speedup_width = 30 if BenchMode.ALL.value == self.mode else 20
         status = "SUCCESS" if metrics.error_msg is None else "FAILED"
         data_line = (
             f"{status:<10}"
-            f"{latency_base_str:>20}"
-            f"{latency_str:>20}"
-            f"{speedup_str:>20}"
+            f"{latency_base_str:>{latency_width}}"
+            f"{latency_str:>{latency_width}}"
+            f"{speedup_str:>{speedup_width}}"
         )
         if metrics.tflops and metrics.tflops != 0.0:
             data_line += f"{tflops_str:>20}"
@@ -268,6 +325,22 @@ class BenchmarkResult:
 
         # Convert to dict and handle tuple serialization for shape_detail
         result_dict = asdict(self)
+
+        # specialize for BenchMode.ALL
+        if BenchMode.ALL.value == self.mode:
+            tuple_fields = ["latency_base", "latency", "speedup"]
+            labels = ["kernel", "operator", "wrapper"]
+
+            if "result" in result_dict and isinstance(result_dict["result"], list):
+                for item in result_dict["result"]:
+                    for field in tuple_fields:
+                        if field in item and isinstance(item[field], tuple):
+                            tagged_tuple = tuple(
+                                (labels[i], value)
+                                for i, value in enumerate(item[field])
+                            )
+                            item[field] = tagged_tuple
+
         return json.dumps(result_dict, default=custom_json_encoder)
 
     def to_dict(self) -> dict:
