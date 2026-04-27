@@ -1,13 +1,12 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 class BaddbmmBenchmark(base.BlasBenchmark):
     def set_more_shapes(self):
-        model_shapes_list = attrs.model_shapes()
+        model_shapes_list = consts.model_shapes()
 
         skip_shapes = [
             (4, 8192, 128256, 4096),
@@ -53,7 +52,7 @@ def test_baddbmm():
         op_name="baddbmm",
         input_fn=_input_fn,
         torch_op=torch.baddbmm,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

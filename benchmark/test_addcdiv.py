@@ -5,7 +5,6 @@ from . import base, consts, utils
 
 
 def _input_fn(shape, dtype, device):
-
     inp1 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = utils.generate_tensor_input(shape, dtype, device)
     inp3 = utils.generate_tensor_input(shape, dtype, device)

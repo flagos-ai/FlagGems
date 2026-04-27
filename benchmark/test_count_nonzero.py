@@ -3,8 +3,7 @@ import random
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 @pytest.mark.count_nonzero
@@ -15,10 +14,10 @@ def test_count_nonzero():
 
         yield inp, dim
 
-    bench = utils.GenericBenchmark2DOnly(
+    bench = base.GenericBenchmark2DOnly(
         input_fn=count_nonzero_input_fn,
         op_name="count_nonzero",
         torch_op=torch.count_nonzero,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

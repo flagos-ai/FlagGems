@@ -3,9 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attrs
-from . import performance_utils as base
-from . import utils
+from . import base, consts, utils
 
 vendor_name = flag_gems.vendor_name
 
@@ -17,7 +15,7 @@ vendor_name = flag_gems.vendor_name
 )
 def test_celu():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="celu", torch_op=torch.nn.functional.celu, dtypes=attrs.FLOAT_DTYPES
+        op_name="celu", torch_op=torch.nn.functional.celu, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
 
@@ -31,7 +29,7 @@ def test_celu_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="celu_",
         torch_op=torch.nn.functional.celu_,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()
