@@ -95,6 +95,7 @@ from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
@@ -122,6 +123,8 @@ from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_select import masked_select
+from .matmul_bf16 import matmul_bf16
+from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
 from .maximum import maximum
@@ -221,6 +224,7 @@ from .vector_norm import vector_norm
 from .vstack import vstack
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .zero import zero, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
 
@@ -356,6 +360,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hstack",
+    "hadamard_transform",
     "index",
     "index_add",
     "index_add_",
@@ -388,6 +393,8 @@ __all__ = [
     "logspace",
     "lt",
     "lt_scalar",
+    "matmul_bf16",
+    "matmul_int8",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -530,6 +537,8 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "zero",
+    "zero_out",
     "zeros",
     "zeros_like",
 ]

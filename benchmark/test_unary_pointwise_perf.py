@@ -77,6 +77,7 @@ forward_operations = [
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("hardsigmoid", torch.nn.functional.hardsigmoid, FLOAT_DTYPES),
+    ("leaky_relu", torch.nn.functional.leaky_relu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("relu6", torch.nn.functional.relu6, FLOAT_DTYPES),
     ("selu", torch.nn.functional.selu, FLOAT_DTYPES),
@@ -94,6 +95,7 @@ forward_operations = [
     ("tanh", torch.tanh, FLOAT_DTYPES),
     ("atan", torch.atan, FLOAT_DTYPES),
     ("arcsinh", torch.arcsinh, FLOAT_DTYPES),
+    ("asinh", torch.asinh, FLOAT_DTYPES),
     ("acos", torch.acos, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
@@ -119,7 +121,7 @@ forward_operations = [
         for name, op, dtype in forward_operations
     ],
 )
-def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+def test_general_unary_pointwise(op_name, torch_op, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["celu"] and SkipVersion("torch", "<2.5"):
             pytest.skip(
@@ -132,30 +134,29 @@ def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
 forward_inplace_operations = [
     ("abs_", torch.abs_, FLOAT_DTYPES),
     ("ceil_", torch.ceil_, FLOAT_DTYPES),
+    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     # ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
-    ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
-    ("round_", torch.round_, FLOAT_DTYPES),
+    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("erf_", torch.erf_, FLOAT_DTYPES),
     ("exp_", torch.exp_, FLOAT_DTYPES),
     ("exp2_", torch.exp2_, FLOAT_DTYPES),
     ("expm1_", torch.expm1_, FLOAT_DTYPES),
-    ("neg_", torch.neg_, FLOAT_DTYPES),
-    ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
-    ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
-    ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
-    ("square_", torch.square_, FLOAT_DTYPES),
-    ("log10_", torch.log10_, FLOAT_DTYPES),
-    # Activation operations
-    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
-    ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
+    ("floor_", torch.Tensor.floor_, FLOAT_DTYPES),
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("hardswish_", torch.ops.aten.hardswish_, FLOAT_DTYPES),
+    ("leaky_relu_", torch.nn.functional.leaky_relu_, FLOAT_DTYPES),
+    ("log10_", torch.log10_, FLOAT_DTYPES),
+    ("neg_", torch.neg_, FLOAT_DTYPES),
+    ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
+    ("round_", torch.round_, FLOAT_DTYPES),
+    ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
+    ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
     ("selu_", torch.ops.aten.selu_, FLOAT_DTYPES),
-    ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("sgn_", lambda a: a.sgn_(), FLOAT_DTYPES),
+    ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
-    # Trigonometric operations
+    ("square_", torch.square_, FLOAT_DTYPES),
     ("cos_", torch.cos_, FLOAT_DTYPES),
     ("cosh_", torch.cosh_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
@@ -203,7 +204,37 @@ def test_general_inplace_unary_pointwise_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
-@pytest.mark.cosh
+@pytest.mark.alias_copy_out
+def test_alias_copy_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="alias_copy_out",
+        torch_op=torch.ops.aten.alias_copy,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.arcsinh_out
+def test_arcsinh_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="arcsinh_out",
+        torch_op=torch.arcsinh,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.ceil_out
+def test_ceil_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="ceil_out",
+        torch_op=torch.ceil,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.cosh_out
 def test_cosh_out_perf():
     bench = UnaryPointwiseOutBenchmark(
         op_name="cosh_out",
@@ -213,8 +244,68 @@ def test_cosh_out_perf():
     bench.run()
 
 
-@pytest.mark.log10
-def test_log10_out_perf():
+@pytest.mark.exp_out
+def test_exp_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="exp_out",
+        torch_op=torch.exp,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.expm1_out
+def test_expm1_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="expm1_out",
+        torch_op=torch.expm1,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.hardsigmoid_out
+def test_hardsigmoid_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="hardsigmoid_out",
+        torch_op=torch.nn.functional.hardsigmoid,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.i0_out
+def test_i0_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="i0_out",
+        torch_op=torch.i0,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.isneginf_out
+def test_isneginf_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="isneginf_out",
+        torch_op=torch.isneginf,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.logit_out
+def test_logit_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="logit_out",
+        torch_op=lambda a: torch.logit(a, eps=1e-6),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.log10_out
+def test_log10_out():
     bench = UnaryPointwiseOutBenchmark(
         op_name="log10_out",
         torch_op=torch.log10,
@@ -223,28 +314,62 @@ def test_log10_out_perf():
     bench.run()
 
 
-backward_operations = [
-    ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
-]
+@pytest.mark.round_out
+def test_round_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="round_out",
+        torch_op=torch.round,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
 
 
-@pytest.mark.parametrize(
-    "op_name, torch_op, dtypes",
-    [
-        pytest.param(
-            name,
-            op,
-            dtype,
-            marks=getattr(pytest.mark, name, None),
-        )
-        for name, op, dtype in backward_operations
-    ],
-)
-def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
+@pytest.mark.signbit_out
+def test_signbit_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="signbit_out",
+        torch_op=torch.signbit,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.softshrink_out
+def test_softshrink_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="softshrink_out",
+        torch_op=torch.nn.functional.softshrink,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.special_i1_out
+def test_special_i1_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="special_i1_out",
+        torch_op=torch.special.i1,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.square_out
+def test_square_out():
+    bench = UnaryPointwiseOutBenchmark(
+        op_name="square_out",
+        torch_op=torch.square,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.gelu_backward
+def test_gelu_backward():
     bench = UnaryPointwiseBenchmark(
-        op_name=op_name,
-        torch_op=torch_op,
-        dtypes=dtypes,
+        op_name="gelu_backward",
+        torch_op=torch.nn.functional.gelu,
+        dtypes=FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()
@@ -258,7 +383,7 @@ class ToCopyBenchmark(UnaryPointwiseBenchmark):
 
 
 @pytest.mark.to_copy
-def test_to_copy_perf():
+def test_to_copy():
     bench = ToCopyBenchmark(
         op_name="to_copy",
         torch_op=torch.ops.aten._to_copy,
@@ -281,7 +406,7 @@ class CopyInplaceBenchmark(Benchmark):
     SkipVersion("torch", "<2.4"),
     reason="The copy operator implement required for torch >= 2.4",
 )
-def test_copy_inplace_perf():
+def test_copy_inplace():
     bench = CopyInplaceBenchmark(
         op_name="copy_",
         torch_op=torch.ops.aten.copy_,
@@ -304,8 +429,8 @@ class EluBackwardBenchmark(UnaryPointwiseBenchmark):
             yield grad_out, alpha, scale, input_scale, is_result, inp
 
 
-@pytest.mark.elu
-def test_elu_backward_perf():
+@pytest.mark.elu_backward
+def test_elu_backward():
     bench = EluBackwardBenchmark(
         op_name="elu_backward",
         torch_op=torch.ops.aten.elu_backward,
@@ -355,10 +480,10 @@ def test_glu_perf():
     bench.run()
 
 
-@pytest.mark.glu
+@pytest.mark.glu_backward
 def test_glu_backward_perf():
     bench = GluBenchmark(
-        op_name="glu",
+        op_name="glu_backward",
         torch_op=torch.nn.functional.glu,
         dtypes=FLOAT_DTYPES,
         is_backward=True,
@@ -382,7 +507,7 @@ class BinaryPointwiseBenchmark(Benchmark):
 
 
 @pytest.mark.bitwise_left_shift
-def test_bitwise_left_shift_perf():
+def test_bitwise_left_shift():
     bench = BinaryPointwiseBenchmark(
         op_name="bitwise_left_shift",
         torch_op=torch.bitwise_left_shift,
@@ -392,7 +517,7 @@ def test_bitwise_left_shift_perf():
 
 
 @pytest.mark.bitwise_right_shift
-def test_bitwise_right_shift_perf():
+def test_bitwise_right_shift():
     bench = BinaryPointwiseBenchmark(
         op_name="bitwise_right_shift",
         torch_op=torch.bitwise_right_shift,
@@ -474,7 +599,7 @@ class PreluBenchmark(Benchmark):
 
 
 @pytest.mark.prelu
-def test_perf_prelu():
+def test_prelu():
     bench = PreluBenchmark(
         op_name="prelu",
         torch_op=torch.ops.aten.prelu,

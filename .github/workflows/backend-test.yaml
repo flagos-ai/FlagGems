@@ -49,12 +49,26 @@ jobs:
     steps:
       - name: Set global proxy
         shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
         run: |
-          echo "HTTP_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
-          echo "HTTPS_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            echo "HTTP_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
+            echo "HTTPS_PROXY=http://10.1.7.116:7890" >> $GITHUB_ENV
+          fi
       - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+      - name: Setup FlagGems
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+        run: |
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            export HTTP_PROXY="http://10.1.12.38:38002"
+            export HTTPS_PROXY="http://10.1.12.38:38002"
+          fi
+          ./setup.sh ${{ inputs.vendor }}
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
         shell: bash
@@ -67,15 +81,12 @@ jobs:
         shell: bash
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
-      - name: Set china proxy
-        shell: bash
-        run: |
-          echo "HTTP_PROXY=http://10.1.12.38:38002" >> $GITHUB_ENV
-          echo "HTTPS_PROXY=http://10.1.12.38:38002" >> $GITHUB_ENV
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
+        shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
-        shell: bash
         run: |
-          bash tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
+          source .venv/bin/activate
+          source tools/set-env.sh ${{ inputs.vendor }}
+          tools/test-op.sh ${{ inputs.pr_id }}

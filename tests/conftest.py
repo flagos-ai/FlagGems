@@ -4,7 +4,9 @@ import os
 from datetime import datetime
 
 import pytest
-import torch
+
+# TODO(Qiming): Try remove this line
+import torch  # noqa: F401
 import yaml
 
 import flag_gems
@@ -44,32 +46,35 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
-        (
-            "--mode"
-            if not (flag_gems.vendor_name == "kunlunxin" and torch.__version__ < "2.5")
-            else "--fg_mode"
-        ),  # TODO: fix pytest-* common --mode args,
-        action="store",
-        default="normal",
-        required=False,
-        choices=["normal", "quick"],
-        help="run tests on normal or quick mode",
-    )
-
-    parser.addoption(
-        "--record",
-        action="store",
-        default="none",
-        required=False,
-        choices=["none", "log"],
-        help="tests function param recorded in log files or not",
-    )
-
-    parser.addoption(
-        "--collect-marks",
+        "--quick",
         action="store_true",
-        help="Collect the tests with marker information without executing them",
+        help="run tests on quick mode",
     )
+
+    try:
+        parser.addoption(
+            "--record",
+            action="store",
+            default="none",
+            required=False,
+            choices=["none", "log"],
+            help="tests function param recorded in log files or not",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register --record in
+        # benchmark/conftest.py. Reuse the existing option in that case.
+        pass
+
+    try:
+        parser.addoption(
+            "--collect-marks",
+            action="store_true",
+            help="Collect the tests with marker information without executing them",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # benchmark/conftest.py. Reuse the existing option in that case.
+        pass
 
 
 def pytest_configure(config):
@@ -85,7 +90,7 @@ def pytest_configure(config):
 
     RECORD_LOG = config.getoption("--record") == "log"
     TO_CPU = config.getoption("--ref") == "cpu"
-    QUICK_MODE = config.getoption("--mode") == "quick"
+    QUICK_MODE = config.getoption("--quick") is True
 
     if RECORD_LOG:
         RUNTEST_INFO = {}

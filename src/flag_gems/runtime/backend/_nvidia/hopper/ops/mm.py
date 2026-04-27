@@ -369,6 +369,11 @@ def general_mm(a, b, c, M, N, K):
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
+    # Broadcast tensors from expand() have stride=0, incompatible with TMA
+    if 0 in a.stride():
+        a = a.contiguous()
+    if 0 in b.stride():
+        b = b.contiguous()
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
