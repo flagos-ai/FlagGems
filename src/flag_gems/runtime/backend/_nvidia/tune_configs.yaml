@@ -1197,6 +1197,19 @@ triu_batch:
       - 8
       - 16
       - 32
+tril:
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 32
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+    num_warps: 8
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 128
+    num_warps: 8
 weight_norm_kernel_last:
   - gen: true
     param_map:
