@@ -2,7 +2,8 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.performance_utils import Benchmark
+
+from . import base
 
 
 def is_cuda_available():
@@ -25,7 +26,7 @@ except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
 
-class FusedMoEMXQW8A16Benchmark(Benchmark):
+class FusedMoEMXQW8A16Benchmark(base.Benchmark):
     """
     Benchmark for flag_gems.fused_moe_mxq.fused_moe with W8A16 mixed precision.
 

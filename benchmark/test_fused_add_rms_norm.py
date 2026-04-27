@@ -2,8 +2,8 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmarkExcluse1D
+
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
@@ -23,12 +23,12 @@ def torch_op(x, residual, layer_shape, weight, eps):
 
 @pytest.mark.fused_add_rms_norm
 def test_fused_add_rms_norm():
-    bench = GenericBenchmarkExcluse1D(
+    bench = base.GenericBenchmarkExcluse1D(
         input_fn=_input_fn,
         op_name="fused_add_rms_norm",
         torch_op=torch_op,
         gems_op=flag_gems.fused_add_rms_norm,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

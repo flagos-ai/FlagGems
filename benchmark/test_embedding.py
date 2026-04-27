@@ -1,13 +1,13 @@
 import pytest
 import torch
 
-from . import performance_utils as utils
+from . import base, consts
 
 
-class EmbeddingBenchmark(utils.GenericBenchmark2DOnly):
+class EmbeddingBenchmark(base.GenericBenchmark2DOnly):
     def set_more_shapes(self):
         # TODO: add more shapes
-        return None
+        return []
 
 
 def embedding_input_fn(shape, dtype, device):
@@ -16,7 +16,7 @@ def embedding_input_fn(shape, dtype, device):
     weight = torch.randn((num_embeddings, embedding_dim), device=device, dtype=dtype)
     yield {"input": indices, "weight": weight},
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         indices_2d = torch.randint(
             0,
             num_embeddings,

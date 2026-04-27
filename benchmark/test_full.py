@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import performance_utils as base
+from . import base
 
 
 def _input_fn(shape, dtype, device):

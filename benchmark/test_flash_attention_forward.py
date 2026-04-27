@@ -5,7 +5,7 @@ import torch
 
 import flag_gems
 
-from .performance_utils import GenericBenchmark, SkipVersion
+from . import base, utils
 
 
 def torch_flash_attention_forward(
@@ -77,7 +77,7 @@ def torch_flash_attention_supports_alibi(device: str) -> bool:
         raise
 
 
-class FlashAttentionForwardBenchmark(GenericBenchmark):
+class FlashAttentionForwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
         for head_size in (64, 128, 192, 256):
@@ -191,7 +191,7 @@ class FlashAttentionForwardBenchmark(GenericBenchmark):
             )
 
     def set_more_shapes(self):
-        return None
+        return []
 
 
 def flash_attention_forward_input_fn(config, dtype, device):
@@ -237,7 +237,7 @@ def flash_attention_forward_input_fn(config, dtype, device):
     yield q, k, v, scale, is_causal, dropout_p, return_debug_mask, extra_kwargs
 
 
-@pytest.mark.skipif(SkipVersion("torch", "<2.4"), reason="Low Pytorch Version.")
+@pytest.mark.skipif(utils.SkipVersion("torch", "<2.4"), reason="Low Pytorch Version.")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
 @pytest.mark.flash_attention_forward

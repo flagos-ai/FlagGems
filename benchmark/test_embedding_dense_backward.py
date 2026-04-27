@@ -3,11 +3,10 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class EmbeddingDenseBackwardBenchmark(utils.GenericBenchmark):
+class EmbeddingDenseBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             (32, 2048, 128, 8192),
@@ -44,6 +43,6 @@ def test_embedding_dense_backward():
         input_fn=_input_fn,
         op_name="embedding_dense_backward",
         torch_op=torch.ops.aten.embedding_dense_backward,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
