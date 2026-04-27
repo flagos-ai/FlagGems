@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as base
+from . import base
 
 try:
     from vllm.model_executor.layers.fused_moe.fused_moe import (

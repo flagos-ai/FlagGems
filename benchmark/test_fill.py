@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import performance_utils as base
+from . import base
 
 
 def fill_tensor_input_fn(shape, dtype, device):
