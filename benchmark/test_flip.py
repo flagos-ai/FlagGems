@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 def _input_fn(shape, cur_dtype, device):
@@ -19,6 +18,6 @@ def test_flip():
         op_name="flip",
         input_fn=_input_fn,
         torch_op=torch.flip,
-        dtypes=attrs.FLOAT_DTYPES + attrs.INT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )
     bench.run()

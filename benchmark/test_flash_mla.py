@@ -6,14 +6,16 @@ import triton
 
 import flag_gems
 
-from .performance_utils import GenericBenchmark, vendor_name
+from . import base
+
+vendor_name = flag_gems.vendor_name
 
 
-class FlashMLABenchmark(GenericBenchmark):
+class FlashMLABenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (batch, num_heads, seq_len, head_size).
-        return None
+        return []
 
 
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")

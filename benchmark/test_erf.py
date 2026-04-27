@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 @pytest.mark.erf
 def test_erf():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="erf", torch_op=torch.erf, dtypes=attrs.FLOAT_DTYPES
+        op_name="erf", torch_op=torch.erf, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
 
@@ -16,6 +15,6 @@ def test_erf():
 @pytest.mark.erf_
 def test_erf_inplace():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="erf_", torch_op=torch.erf_, dtypes=attrs.FLOAT_DTYPES, is_inplace=True
+        op_name="erf_", torch_op=torch.erf_, dtypes=consts.FLOAT_DTYPES, is_inplace=True
     )
     bench.run()
