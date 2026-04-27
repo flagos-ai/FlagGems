@@ -187,55 +187,11 @@ def feature_dropout_(input, p, train=True):
     In-place version of feature_dropout.
     """
     logger.debug("GEMS FEATURE_DROPOUT_")
-
     if not train or p == 0:
         return input
-
     if p == 1:
         input.zero_()
         return input
-
-    if input.ndim < 2:
-        raise RuntimeError(
-            "Feature dropout requires at least 2 dimensions in the input"
-        )
-
-    assert 0.0 < p < 1.0, "p must be in (0, 1)"
-
-    device = input.device
-    if not input.is_contiguous():
-        raise RuntimeError("In-place feature dropout requires contiguous input")
-
-    batch_size = input.shape[0]
-    num_channels = input.shape[1]
-    spatial_size = 1
-    for i in range(2, input.ndim):
-        spatial_size *= input.shape[i]
-
-    N = batch_size
-    C = num_channels
-    numel = input.numel()
-    scale = 1.0 / (1.0 - p)
-
-    mask = torch.empty(N, C, device=device, dtype=torch.float32)
-
-    BLOCK_N = min(triton.next_power_of_2(N), 64)
-    BLOCK_C = min(triton.next_power_of_2(C), 64)
-    grid_mask = (triton.cdiv(N, BLOCK_N), triton.cdiv(C, BLOCK_C))
-
-    increment = triton.cdiv(N * C, 4) * 4
-    with torch_device_fn.device(device):
-        philox_seed, philox_offset = philox_backend_seed_offset(increment)
-        generate_feature_mask_kernel[grid_mask](
-            mask, N, C, p, scale, philox_seed, philox_offset, BLOCK_N, BLOCK_C
-        )
-
-    BLOCK = 1024
-    grid_apply = (triton.cdiv(numel, BLOCK),)
-
-    with torch_device_fn.device(device):
-        apply_feature_mask_kernel[grid_apply](
-            input, input, mask, numel, N, C, spatial_size, BLOCK
-        )
-
+    out = feature_dropout(input, p, train)
+    input.copy_(out)
     return input

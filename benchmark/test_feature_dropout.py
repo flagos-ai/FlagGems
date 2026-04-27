@@ -28,11 +28,22 @@ class FeatureDropoutBenchmark(GenericBenchmarkExcluse1D):
 
 
 @pytest.mark.feature_dropout
-def test_perf_feature_dropout():
+def test_feature_dropout():
     bench = FeatureDropoutBenchmark(
         input_fn=feature_dropout_input_fn,
         op_name="feature_dropout",
         torch_op=torch.feature_dropout,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.feature_dropout_
+def test_feature_dropout_():
+    bench = FeatureDropoutBenchmark(
+        input_fn=feature_dropout_input_fn,
+        op_name="feature_dropout_",
+        torch_op=torch.feature_dropout_,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
