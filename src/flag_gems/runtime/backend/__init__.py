@@ -9,6 +9,7 @@ from pathlib import Path
 from ..common import vendors
 from . import backend_utils
 
+
 class BackendState:
     """Singleton class to manage backend state variables."""
 
@@ -37,7 +38,7 @@ class BackendState:
         self.customized_ops = None
 
 
-# Global singleton instance 
+# Global singleton instance
 _state = BackendState()
 
 
@@ -149,12 +150,11 @@ def _import_module_safe(module_name, vendor_name, module_type):
         return importlib.import_module(module_name)
     except ModuleNotFoundError:
         print(
-           f"[Note] No specialized {module_type} operators were found for "
-           f"the {vendor_name}, generic {module_type} operators will be used by default."
+            f"[Note] No specialized {module_type} operators were found for "
+            f"the {vendor_name}, generic {module_type} operators will be used by default."
         )
     except Exception as e:
         raise RuntimeError(f"Failed to import vendor extra lib: {e}")
-
 
 
 def import_vendor_extra_lib(vendor_name=None):
@@ -239,7 +239,7 @@ def get_vendor_module(vendor_name, query=False):
         return get_module(vendor_name)
 
     if _state.vendor_module is None:
-        _state.vendor_module = get_module("_" + vendor_name) 
+        _state.vendor_module = get_module("_" + vendor_name)
     return _state.vendor_module
 
 
@@ -290,7 +290,7 @@ def get_heuristic_config(vendor_name=None):
         try:
             _state.heuristic_config_module = importlib.import_module(mod_name)
         except Exception:
-            continue 
+            continue
     return getattr(_state.heuristic_config_module, "HEURISTICS_CONFIGS", None)
 
 
@@ -303,8 +303,10 @@ def get_tune_config(vendor_name=None):
 def get_expand_config(op_name=None, file_path=None):
     return backend_utils.get_expand_config(op_name=op_name, file_path=file_path)
 
+
 def get_backend_state() -> BackendState:
     """Get the global BackendState singleton instance."""
     return _state
+
 
 __all__ = ["*"]

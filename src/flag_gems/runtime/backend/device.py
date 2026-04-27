@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch  # noqa: F401
 
 from .. import backend, error
-
 from ..common import (
     _VENDOR_TORCH_ATTR,
     UNSUPPORT_BF16,
@@ -19,6 +18,7 @@ from ..common import (
 # A singleton class to manage device context.
 class DeviceDetector:
     """Singleton class to manage device context."""
+
     _instance = None
 
     def __new__(cls, *args, **kargs):
@@ -57,7 +57,7 @@ class DeviceDetector:
             return backend.get_vendor_info(vendor_from_env)
 
         vendor_name = self._get_vendor_from_quick_cmd()
-        if vendor_name :
+        if vendor_name:
             return backend.get_vendor_info(vendor_name)
         try:
             # Obtaining a vendor_info from the methods provided by torch or triton, but is not currently implemented.
@@ -75,7 +75,7 @@ class DeviceDetector:
             for vendor_name, attr in _VENDOR_TORCH_ATTR.items():
                 if hasattr(torch_npu, attr):
                     return vendor_name
-        except ImportError: 
+        except ImportError:
             pass
         return None
 
@@ -85,7 +85,7 @@ class DeviceDetector:
 
     def _get_vendor_from_sys(self):
         vendor_infos = backend.get_vendor_infos()
-       
+
         def check_vendor(info):
             try:
                 cmd_args = shlex.split(info.device_query_cmd)
@@ -93,8 +93,8 @@ class DeviceDetector:
                 return info if result.returncode == 0 else None
             except Exception:
                 return None
-        
-        with ThreadPoolExecutor() as executor:  
+
+        with ThreadPoolExecutor() as executor:
             futures = {
                 executor.submit(check_vendor, info): info for info in vendor_infos
             }
@@ -102,7 +102,7 @@ class DeviceDetector:
                 result = future.result()
                 if result:
                     return result
-                
+
         error.device_not_found()
 
     def get_vendor_name(self):
