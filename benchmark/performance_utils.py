@@ -744,6 +744,36 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
         return torch.tensor(shape).prod().item()
 
 
+class UnaryPointwiseBenchmark(Benchmark):
+    """
+    Base class for benchmarking unary pointwise operations.
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return special_shapes_2d + sp_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
+
+    def get_tflops(self, op, *args, **kwargs):
+        shape = list(args[0].shape)
+        return torch.tensor(shape).prod().item()
+
+
+class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty_like(inp)
+            yield inp, {"out": out}
+
+
 def generate_tensor_input(shape, dtype, device):
     if dtype in FLOAT_DTYPES:
         return torch.randn(shape, dtype=dtype, device=device)
