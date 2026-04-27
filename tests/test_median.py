@@ -7,9 +7,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.median
-@pytest.mark.parametrize(
-    "shape", [(64, 64), (256, 256), (1024, 1024), (20, 320, 15)]
-)
+@pytest.mark.parametrize("shape", [(64, 64), (256, 256), (1024, 1024), (20, 320, 15)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, -1])
 @pytest.mark.parametrize("keepdim", [True, False])
