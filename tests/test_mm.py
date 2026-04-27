@@ -22,6 +22,7 @@ else:
     ]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
+
 MK_SHAPES = (
     [(1, 32)]
     if QUICK_MODE
