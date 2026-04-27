@@ -12,11 +12,13 @@ import yaml
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from . import utils
 from .attri_util import (
+    BOOL_DTYPES,
+    COMPLEX_DTYPES,
     DEFAULT_METRICS,
     DEFAULT_SHAPES,
     FLOAT_DTYPES,
+    INT_DTYPES,
     BenchLevel,
     BenchmarkMetrics,
     BenchmarkResult,
@@ -31,7 +33,6 @@ torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
-
 if device == "musa":
     torch.backends.mudnn.allow_tf32 = False
 elif device == "npu":
@@ -46,16 +47,15 @@ else:
 
 
 class Benchmark:
-    """
-    the base class for the operations benchmark
-    """
-
     device: str = device
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+    """
+    the base class for the operations benchmark
+    """
 
     def __init__(
         self,
@@ -121,8 +121,7 @@ class Benchmark:
                     self.to_bench_metrics.append(metric)
 
     def set_more_metrics(self):
-        """Base method (optional to override in subclasses).
-        Returns additional shapes if applicable."""
+        """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
         return []
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
@@ -554,7 +553,7 @@ class UnaryReductionBenchmark(Benchmark):
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
             if inp.ndim > 1:
                 yield inp, 1
             else:
@@ -593,7 +592,7 @@ class TexGluBenchmark(Benchmark):
 class TexGluForwardBenchmark(TexGluBenchmark):
     def get_input_iter(self, dtype):
         for shape in self.shapes:
-            x = utils.generate_tensor_input(shape, dtype, self.device)
+            x = generate_tensor_input(shape, dtype, self.device)
             # TE GLU APIs typically accept (input, quantizer).
             yield (x, None)
 
@@ -606,7 +605,7 @@ class TexGluForwardBenchmark(TexGluBenchmark):
 class TexGluBackwardBenchmark(TexGluBenchmark):
     def get_input_iter(self, dtype):
         for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, dtype, self.device)
+            inp = generate_tensor_input(shape, dtype, self.device)
 
             out_shape = list(shape)
             out_shape[-1] = out_shape[-1] // 2
@@ -691,14 +690,13 @@ class BinaryPointwiseBenchmark(Benchmark):
 
     def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
-            inp1 = utils.generate_tensor_input(shape, dtype, self.device)
-            inp2 = utils.generate_tensor_input(shape, dtype, self.device)
+            inp1 = generate_tensor_input(shape, dtype, self.device)
+            inp2 = generate_tensor_input(shape, dtype, self.device)
             yield inp1, inp2
 
     def get_tflops(self, op, *args, **kwargs):
         shape1 = list(args[0].shape)
         shape2 = list(args[0].shape)
-
         return torch.tensor(shape1).prod().item() + torch.tensor(shape2).prod().item()
 
 
@@ -714,10 +712,10 @@ class ScalarBinaryPointwiseBenchmark(Benchmark):
         shapes_3d = [[64, 64, 2**i] for i in range(0, 20, 4)]
         return special_shapes_2d + shapes_3d
 
-    def get_input_iter(self, dtype) -> Generator:
+    def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp1 = 0.001  # Scalar input
-            inp2 = utils.generate_tensor_input(shape, dtype, self.device)
+            inp2 = generate_tensor_input(shape, cur_dtype, self.device)
             yield inp1, inp2
 
     def get_tflops(self, op, *args, **kwargs):
@@ -737,9 +735,9 @@ class UnaryPointwiseBenchmark(Benchmark):
         sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
         return special_shapes_2d + sp_shapes_3d
 
-    def get_input_iter(self, dtype) -> Generator:
+    def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, dtype, self.device)
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
             yield inp,
 
     def get_tflops(self, op, *args, **kwargs):
@@ -748,9 +746,35 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 
 class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
+    def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, dtype, self.device)
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
             out = torch.empty_like(inp)
-
             yield inp, {"out": out}
+
+
+def generate_tensor_input(shape, dtype, device):
+    if dtype in FLOAT_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=device)
+    elif dtype in INT_DTYPES:
+        return torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device="cpu",
+        ).to(device)
+    elif dtype in BOOL_DTYPES:
+        return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
+    elif dtype in COMPLEX_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=device)
+
+
+def binary_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = generate_tensor_input(shape, cur_dtype, device)
+    yield inp1, inp2
+
+
+def unary_input_fn(shape, cur_dtype, device):
+    yield generate_tensor_input(shape, cur_dtype, device),

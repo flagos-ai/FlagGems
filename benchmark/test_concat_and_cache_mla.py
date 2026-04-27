@@ -4,12 +4,11 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES
 
-from .performance_utils import GenericBenchmark
+from . import base, consts
 
 
-class ConcatAndCacheMLABenchmark(GenericBenchmark):
+class ConcatAndCacheMLABenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         return None
 
@@ -84,6 +83,6 @@ def test_concat_and_cache_mla():
         input_fn=input_kwargs,
         torch_op=torch_concat_and_cache_mla_ref,
         gems_ops=flag_gems.concat_and_cache_mla,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

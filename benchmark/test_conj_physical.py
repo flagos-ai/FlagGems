@@ -3,8 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
@@ -20,7 +19,8 @@ def _input_fn(shape, dtype, device):
     yield (input_tensor,)
 
 
-class Conj_physicalBenchmark(utils.GenericBenchmarkExcluse3D):
+class Conj_physicalBenchmark(base.GenericBenchmarkExcluse3D):
+    # TODO(Qiming): Check if this is necessary
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -41,7 +41,7 @@ class Conj_physicalBenchmark(utils.GenericBenchmarkExcluse3D):
 
 @pytest.mark.conj_physical
 def test_conj_physical():
-    dtypes = attr_utils.FLOAT_DTYPES + attr_utils.INT_DTYPES + attr_utils.COMPLEX_DTYPES
+    dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.COMPLEX_DTYPES
 
     bench = Conj_physicalBenchmark(
         input_fn=_input_fn,
