@@ -17,9 +17,12 @@ except ImportError:
     import triton
 
     try:
-        tl_extra_shim = triton.language.math
-    except ImportError:
-        tl_extra_shim = triton.language.libdevice
+        tl_extra_shim = triton.language.extra.libdevice
+    except AttributeError:
+        try:
+            tl_extra_shim = triton.language.math
+        except ImportError:
+            tl_extra_shim = triton.language.libdevice
 
 
 def use_backend(module):

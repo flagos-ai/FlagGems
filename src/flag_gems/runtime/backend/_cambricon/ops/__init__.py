@@ -166,6 +166,7 @@ from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
+from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_copy
 from .topk import topk
@@ -440,6 +441,8 @@ __all__ = [
     "where_self_out",
     "where_scalar_other",
     "where_scalar_self",
+    "threshold",
+    "threshold_backward",
     "zero_",
     "zeros",
     "zeros_like",

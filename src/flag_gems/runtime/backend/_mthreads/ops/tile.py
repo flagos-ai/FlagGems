@@ -10,6 +10,10 @@ from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
+)
+
 
 @libentry()
 @triton.autotune(
@@ -347,6 +351,8 @@ def tile_kernel_nd_flat(
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
     logger.debug("GEMS TILE")
+    if torch.is_grad_enabled():
+        return torch.ops.aten.tile.default.redispatch(_FALLBACK_KEYSET, inp, dims)
 
     in0_rank = inp.dim()
     dims_rank = len(dims)
