@@ -25,7 +25,7 @@ from benchmark.attri_util import (
     model_shapes,
 )
 from benchmark.conftest import Config, emit_record_logger
-from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly, SkipVersion
+from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
@@ -900,9 +900,7 @@ class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, BaddbmmBenchmark):
         return 1
 
 
-class ParallelMvAndOuterBenchmark(
-    ParallelBenchmarkMixin, MvAndOuterBenchmark
-):
+class ParallelMvAndOuterBenchmark(ParallelBenchmarkMixin, MvAndOuterBenchmark):
     pass
 
 
