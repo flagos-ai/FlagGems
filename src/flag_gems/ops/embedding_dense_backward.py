@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,9 +98,14 @@ def embedding_dense_backward(
         torch.int32,
         torch.int64,
     ), "Indices must be int32 or int64."
-    assert (
-        grad_output.is_cuda and indices.is_cuda and grad_output.device == indices.device
-    ), "Inputs must be CUDA tensors on the same device."
+    if (
+        grad_output.device.type != flag_gems.device
+        or indices.device.type != flag_gems.device
+        or grad_output.device != indices.device
+    ):
+        raise ValueError(
+            f"Inputs must be {flag_gems.device} tensors on the same device."
+        )
 
     device = grad_output.device
     assert (
