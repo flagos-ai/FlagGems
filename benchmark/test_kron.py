@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
+from . import attri_util as consts
 from . import performance_utils as base
 from . import utils
 
@@ -14,8 +14,8 @@ class KronBenchmark(base.GenericBenchmark2DOnly):
 
 
 def _input_fn(shape, dtype, device):
-    inp1 = base.generate_tensor_input(shape, dtype, device)
-    inp2 = base.generate_tensor_input(shape, dtype, device)
+    inp1 = utils.generate_tensor_input(shape, dtype, device)
+    inp2 = utils.generate_tensor_input(shape, dtype, device)
     yield inp1, inp2
 
 
@@ -29,7 +29,7 @@ def test_kron():
         op_name="kron",
         input_fn=_input_fn,
         torch_op=torch.kron,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()
