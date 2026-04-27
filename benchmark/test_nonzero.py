@@ -3,8 +3,9 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import attri_util as attrs
+from . import performance_utils as base
+from . import utils
 
 
 @pytest.mark.skipif(
@@ -12,10 +13,10 @@ from . import performance_utils as utils
     reason="Not supported in XPytorch 2.0. Please upgrade your PyTorch version >= 2.5",
 )
 def test_nonzero():
-    bench = utils.GenericBenchmark2DOnly(
-        input_fn=utils.unary_input_fn,
+    bench = base.GenericBenchmark2DOnly(
+        input_fn=base.unary_input_fn,
         op_name="nonzero",
         torch_op=torch.nonzero,
-        dtypes=attr_utils.FLOAT_DTYPES + attr_utils.INT_DTYPES + attr_utils.BOOL_DTYPES,
+        dtypes=attrs.FLOAT_DTYPES + attrs.INT_DTYPES + attrs.BOOL_DTYPES,
     )
     bench.run()

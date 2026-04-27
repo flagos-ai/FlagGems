@@ -5,6 +5,7 @@ import torch
 
 from . import attri_util as attrs
 from . import performance_utils as base
+from . import utils
 
 
 class CopyInplaceBenchmark(base.Benchmark):
@@ -17,7 +18,7 @@ class CopyInplaceBenchmark(base.Benchmark):
 
 @pytest.mark.copy_
 @pytest.mark.skipif(
-    base.SkipVersion("torch", "<2.4"),
+    utils.SkipVersion("torch", "<2.4"),
     reason="The copy operator requires torch >= 2.4",
 )
 def test_copy_inplace():

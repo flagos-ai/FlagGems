@@ -3,13 +3,13 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
-class NormBenchmark(utils.GenericBenchmark):
+class NormBenchmark(base.GenericBenchmark):
     # TODO: add new metric
-
     def set_more_shapes(self):
         return [
             # 3D shapes represented as [batch_size, channels, hidden_size]
@@ -34,7 +34,7 @@ def input_fn(shape, dtype, device):
     eps = 1e-5
     cudnn_enabled = True
     yield inp, weight, bias, running_mean, running_var, use_input_stats, momentum, eps, cudnn_enabled
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         running_mean = torch.randn((C,), dtype=dtype, device=device)
         running_var = torch.randn((C,), dtype=dtype, device=device)
         yield inp, weight, bias, running_mean, running_var, use_input_stats, momentum, eps, cudnn_enabled
@@ -55,7 +55,7 @@ def test_instance_norm(monkeypatch):
         op_name="instance_norm",
         input_fn=input_fn,
         torch_op=torch.instance_norm,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.instance_norm)
     bench.run()
