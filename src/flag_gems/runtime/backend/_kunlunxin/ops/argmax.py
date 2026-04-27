@@ -67,16 +67,15 @@ def heur_n_block_size(args):
 
     return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
+
 @libentry()
 @triton.jit
 def argmax_kernel_dim_none(
     inp,                     # index 0 (kernelParams)
     out,                     # index 1 (kernelParams)
     M,                       # index 2 (kernelParams)
-    BLOCK_SIZE: tl.constexpr # index 3 (kernelConsts)
+    BLOCK_SIZE: tl.constexpr  # index 3 (kernelConsts)
 ):
-    # 占位函数体，让 Triton 编译器能通过编译即可
-    # 实际执行被 C++ handler 拦截，以下代码永远不会在 XPU 上运行
     pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
@@ -180,10 +179,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             dtype = inp.dtype
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
 
-        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):

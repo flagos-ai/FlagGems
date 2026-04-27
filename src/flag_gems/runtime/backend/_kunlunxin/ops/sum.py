@@ -127,9 +127,6 @@ def sum(inp, *, dtype=None):
     with torch_device_fn.device(inp.device):
         sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
         return mid[0]
-        if mid_size == 1:
-            return mid.reshape([])
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
     return out
 
 
@@ -178,7 +175,6 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     M = inp.numel() // N
 
     out = torch.empty(shape, dtype=dtype, device=inp.device)
-#    print("M=",M,"N=",N,"dim=",dim)
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         sum_kernel[grid](inp, out, M, N, buffer_size_limit=2048)

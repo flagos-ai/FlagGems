@@ -274,7 +274,10 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
     grad_output = grad_output.contiguous()
     output = output.contiguous()
-    in_grad = torch.empty_like(output, dtype=torch.float64)
+    if N == 1:
+        return torch.zeros_like(output)
+    in_grad = torch.empty_like(output)
+    
     K = output.numel() // M // N
 
     with torch_device_fn.device(in_grad.device):
@@ -327,4 +330,4 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 buffer_size_limit=2048,
                 isCloseUnrollControl=True,
             )
-    return in_grad.to(input_dtype)
+    return in_grad
