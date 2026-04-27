@@ -1,0 +1,15 @@
+{
+  "name": "FlagGems Documentation",
+  "short_name": "FlagGems Documentation",
+  "start_url": "/FlagGems/",
+  "scope": "/FlagGems/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/FlagGems/favicon.svg",
+      "sizes": "512x512"
+    }
+  ]
+}

@@ -473,6 +473,30 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
+@pytest.mark.upsample_linear1d
+@pytest.mark.parametrize("align_corners", [False, True])
+def test_perf_upsample_linear1d(align_corners):
+    def upsample_linear1d_input_fn(shape, dtype, device):
+        batch, channel, height, width = shape
+        length = height * width
+        input = torch.randn((batch, channel, length), device=device, dtype=dtype)
+        scale_factors = 2
+        output_size = int(length * scale_factors)
+        yield {
+            "input": input,
+            "output_size": (output_size,),
+            "align_corners": align_corners,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_linear1d_input_fn,
+        op_name=f"upsample_linear1d_align_{align_corners}",
+        torch_op=torch._C._nn.upsample_linear1d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.upsample_nearest1d
 def test_perf_upsample_nearest1d():
     def upsample_nearest1d_input_fn(shape, dtype, device):
@@ -517,6 +541,40 @@ def test_perf_upsample_nearest2d():
         input_fn=upsample_nearest2d_input_fn,
         op_name="upsample_nearest2d",
         torch_op=torch._C._nn.upsample_nearest2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.upsample_nearest3d
+def test_perf_upsample_nearest3d():
+    def upsample_nearest3d_input_fn(shape, dtype, device):
+        batch, channel, height, width = shape
+        depth = 4
+        width = width // 4
+        new_height = height // depth
+        real_shape = (batch, channel, depth, new_height, width)
+
+        input = torch.randn(size=real_shape, device=device, dtype=dtype)
+        scale_factors = (2.0, 2.0, 2.0)
+        output_size = (
+            int(depth * scale_factors[0]),
+            int(new_height * scale_factors[1]),
+            int(width * scale_factors[2]),
+        )
+
+        yield {
+            "input": input,
+            "output_size": output_size,
+            "scales_d": None,
+            "scales_h": None,
+            "scales_w": None,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_nearest3d_input_fn,
+        op_name="upsample_nearest3d",
+        torch_op=torch._C._nn.upsample_nearest3d,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
@@ -823,6 +881,47 @@ def test_perf_moe_align_block_size():
     bench.run()
 
 
+@pytest.mark.replication_pad3d
+def test_perf_replication_pad3d():
+    def replication_pad3d_input_fn(shape, dtype, device):
+        input_tensor = torch.randn(shape, dtype=dtype, device=device)
+        p = random.randint(1, 3)
+        padding = (p, p, p, p, p, p)
+        yield input_tensor, {"padding": padding}
+
+    def torch_replication_pad3d(input, padding):
+        return torch.nn.functional.pad(input, padding, mode="replicate")
+
+    def gems_wrapper(input, padding):
+        return flag_gems.replication_pad3d(input, padding)
+
+    class ReplicationPad3dBenchmark(GenericBenchmarkExcluse3D):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def set_shapes(self, shape_file_path=None):
+            replication_pad3d_shapes = [
+                (1, 3, 16, 256, 256),
+                (4, 16, 32, 64, 64),
+                (8, 64, 8, 32, 32),
+                (2, 32, 16, 128, 128),
+                (1, 1, 64, 128, 128),
+            ]
+            self.shapes = replication_pad3d_shapes
+
+        def set_more_shapes(self):
+            return None
+
+    bench = ReplicationPad3dBenchmark(
+        input_fn=replication_pad3d_input_fn,
+        op_name="replication_pad3d",
+        torch_op=torch_replication_pad3d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(gems_wrapper)
+    bench.run()
+
+
 def torch_per_token_group_quant_fp8_ref(x, group_size, scale_ue8m0):
     dtype = flag_gems.SUPPORTED_FP8_DTYPE
     eps = 1e-10
@@ -880,4 +979,44 @@ def test_perf_per_token_group_quant_fp8():
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(flag_gems.per_token_group_quant_fp8)
+    bench.run()
+
+
+@pytest.mark.unfold
+def test_perf_unfold_backward():
+    def unfold_backward_input_fn(config, dtype, device):
+        input_sizes, dim, size, step = config
+        d = dim % len(input_sizes)
+        num_windows = (input_sizes[d] - size) // step + 1
+        grad_shape = (
+            list(input_sizes[:d]) + [num_windows] + list(input_sizes[d + 1 :]) + [size]
+        )
+        grad_in = torch.randn(grad_shape, dtype=dtype, device=device)
+        yield grad_in, list(input_sizes), dim, size, step
+
+    class UnfoldBackwardBenchmark(Benchmark):
+        def set_shapes(self, shape_file_path=None):
+            self.shapes = [
+                ((32, 64), 1, 16, 16),
+                ((16, 33), 0, 5, 2),
+                ((4, 8, 12), -1, 6, 4),
+                ((7, 13), 1, 13, 3),
+                ((6, 20), 1, 7, 4),
+                ((2, 3, 17), -1, 9, 1),
+                ((2, 17), 1, 4, 6),
+            ]
+
+        def set_more_shapes(self):
+            return None
+
+        def get_input_iter(self, cur_dtype):
+            for config in self.shapes:
+                yield from unfold_backward_input_fn(config, cur_dtype, self.device)
+
+    bench = UnfoldBackwardBenchmark(
+        op_name="unfold_backward",
+        torch_op=torch.ops.aten.unfold_backward,
+        dtypes=[torch.float16, torch.float32, torch.bfloat16],
+    )
+    bench.set_gems(flag_gems.unfold_backward)
     bench.run()

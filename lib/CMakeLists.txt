@@ -3,7 +3,6 @@ add_library(operators
             device_info.cpp
             zeros.cpp
             utils.cpp
-            add.cpp
             sum.cpp
             max.cpp
             mm.cpp
@@ -19,11 +18,9 @@ add_library(operators
             bmm.cpp
             embedding.cpp
             argmax.cpp
-            div.cpp
             softmax.cpp
             sort.cpp
 	          exponential_.cpp
-            fill.cpp
             reshape_and_cache_flash.cpp
             flash_attn_varlen_func.cpp
             rwkv_mm_sparsity.cpp
@@ -45,6 +42,17 @@ target_link_libraries(operators
   PRIVATE TritonJIT::triton_jit)
 add_library(FlagGems::operators ALIAS operators)
 
+
+# ==============================================================================
+# Pointwise dynamic C++ support (experimental feature, disabled by default)
+# ==============================================================================
+option(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP "Build pointwise_dynamic C++ support" OFF)
+if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
+  add_subdirectory(pointwise_dynamic_cpp)
+  target_sources(operators PRIVATE add.cpp div.cpp fill.cpp)
+  target_link_libraries(operators PRIVATE pointwise_dynamic)
+  target_compile_definitions(operators PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
+endif()
 
 if (FLAGGEMS_INSTALL)
   include(GNUInstallDirs)

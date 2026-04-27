@@ -10,15 +10,12 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("sum", &flag_gems::sum);
   m.def("max_dim", &flag_gems::max_dim);
   m.def("max", &flag_gems::max);
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
+  // add
   m.def("add_tensor", &flag_gems::add_tensor);
-  m.def("max_dim_max", &flag_gems::max_dim_max);
-  m.def("rms_norm", &flag_gems::rms_norm);
-  m.def("fused_add_rms_norm", &flag_gems::fused_add_rms_norm);
-  m.def("nonzero", &flag_gems::nonzero);
-  // Rotary embedding
-  m.def("rotary_embedding", &flag_gems::rotary_embedding);
-  m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
-  m.def("bmm", &flag_gems::bmm);
+  m.def("add_scalar", &flag_gems::add_scalar);
+  m.def("add_tensor_inplace", &flag_gems::add_tensor_inplace);
+  m.def("add_scalar_inplace", &flag_gems::add_scalar_inplace);
   // div
   m.def("div.Tensor", &flag_gems::true_div);
   m.def("div_.Tensor", &flag_gems::true_div_);
@@ -34,6 +31,21 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("true_divide_.Tensor", &flag_gems::true_div_);
   m.def("remainder.Tensor", &flag_gems::remainder);
   m.def("remainder_.Tensor", &flag_gems::remainder_);
+  // fill
+  m.def("fill.Scalar", &flag_gems::fill_scalar);
+  m.def("fill.Tensor", &flag_gems::fill_tensor);
+  m.def("fill_.Scalar", &flag_gems::fill_scalar_);
+  m.def("fill_.Tensor", &flag_gems::fill_tensor_);
+#endif
+  m.def("max_dim_max", &flag_gems::max_dim_max);
+  m.def("rms_norm", &flag_gems::rms_norm);
+  m.def("fused_add_rms_norm", &flag_gems::fused_add_rms_norm);
+  m.def("nonzero", &flag_gems::nonzero);
+  // Rotary embedding
+  m.def("rotary_embedding", &flag_gems::rotary_embedding);
+  m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
+  m.def("bmm", &flag_gems::bmm);
+  // rwkv
   m.def("rwkv_mm_sparsity", &flag_gems::rwkv_mm_sparsity);
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
@@ -56,7 +68,35 @@ TORCH_LIBRARY(flag_gems, m) {
       "(Tensor(a!) values, Tensor(b!) indices)");
   m.def("max.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)");
   m.def("max(Tensor self) -> Tensor");
-  m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
+  // add
+  m.def("add_tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor", {at::Tag::pt2_compliant_tag});
+  m.def("add_scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor", {at::Tag::pt2_compliant_tag});
+  m.def("add_tensor_inplace(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)",
+        {at::Tag::pt2_compliant_tag});
+  m.def("add_scalar_inplace(Tensor(a!) self, Scalar other, Scalar alpha=1) -> Tensor(a!)",
+        {at::Tag::pt2_compliant_tag});
+  // div
+  m.def("div.Tensor(Tensor self, Tensor other) -> Tensor");
+  m.def("div_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  m.def("div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor");
+  m.def("div_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)");
+  m.def("floor_divide(Tensor self, Tensor other) -> Tensor");
+  m.def("floor_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  m.def("divide.Tensor(Tensor self, Tensor other) -> Tensor");
+  m.def("divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  m.def("divide.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor");
+  m.def("divide_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)");
+  m.def("true_divide.Tensor(Tensor self, Tensor other) -> Tensor");
+  m.def("true_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  m.def("remainder.Tensor(Tensor self, Tensor other) -> Tensor");
+  m.def("remainder_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
+  // fill
+  m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
+  m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
+  m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
+  m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
+#endif
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
   m.def("fused_add_rms_norm(Tensor! input, Tensor! residual, Tensor weight, float epsilon) -> ()");
@@ -79,31 +119,12 @@ TORCH_LIBRARY(flag_gems, m) {
       "embedding_backward(Tensor grad_outputs, Tensor indices, SymInt num_weights, SymInt padding_idx, bool "
       "scale_grad_by_freq, bool sparse) -> Tensor");
   m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
-  // div
-  m.def("div.Tensor(Tensor self, Tensor other) -> Tensor");
-  m.def("div_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  m.def("div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor");
-  m.def("div_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)");
-  m.def("floor_divide(Tensor self, Tensor other) -> Tensor");
-  m.def("floor_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  m.def("divide.Tensor(Tensor self, Tensor other) -> Tensor");
-  m.def("divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  m.def("divide.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor");
-  m.def("divide_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)");
-  m.def("true_divide.Tensor(Tensor self, Tensor other) -> Tensor");
-  m.def("true_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
-  m.def("remainder.Tensor(Tensor self, Tensor other) -> Tensor");
-  m.def("remainder_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)");
   // sort
   m.def("sort(Tensor self, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)");
   m.def(
       "sort.stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False) -> (Tensor values, "
       "Tensor indices)");
 
-  m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
-  m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
-  m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
-  m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
   m.def("softmax(Tensor input, int dim, bool half_to_float=False) -> Tensor");
   m.def("softmax_backward(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor");
   m.def(
@@ -144,21 +165,12 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("max.dim_max", TORCH_FN(max_dim_max));
   m.impl("max.dim", TORCH_FN(max_dim));
   m.impl("max", TORCH_FN(max));
+#ifdef FLAGGEMS_POINTWISE_DYNAMIC
+  // add
   m.impl("add_tensor", TORCH_FN(add_tensor));
-  // Norm
-  m.impl("rms_norm", TORCH_FN(rms_norm));
-  m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
-  m.impl("nonzero", TORCH_FN(nonzero));
-  // Rotary embedding
-  m.impl("rotary_embedding", TORCH_FN(rotary_embedding));
-  m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
-  m.impl("topk", TORCH_FN(topk));
-  m.impl("contiguous", TORCH_FN(contiguous));
-  m.impl("cat", TORCH_FN(cat));
-
-  m.impl("embedding", TORCH_FN(embedding));
-  m.impl("embedding_backward", TORCH_FN(embedding_backward));
-  m.impl("argmax", TORCH_FN(argmax));
+  m.impl("add_scalar", TORCH_FN(add_scalar));
+  m.impl("add_tensor_inplace", TORCH_FN(add_tensor_inplace));
+  m.impl("add_scalar_inplace", TORCH_FN(add_scalar_inplace));
   // div
   m.impl("div.Tensor", TORCH_FN(true_div));
   m.impl("div_.Tensor", TORCH_FN(true_div_));
@@ -187,14 +199,30 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("remainder.Tensor", TORCH_FN(remainder));
   m.impl("remainder_.Tensor", TORCH_FN(remainder_));
   m.impl("remainder.Scalar_Tensor", TORCH_FN(remainder));
-  // sort
-  m.impl("sort", TORCH_FN(sort));
-  m.impl("sort.stable", TORCH_FN(sort_stable));
-
+  // fill
   m.impl("fill.Scalar", TORCH_FN(fill_scalar));
   m.impl("fill.Tensor", TORCH_FN(fill_tensor));
   m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
   m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
+#endif
+  // Norm
+  m.impl("rms_norm", TORCH_FN(rms_norm));
+  m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
+  m.impl("nonzero", TORCH_FN(nonzero));
+  // Rotary embedding
+  m.impl("rotary_embedding", TORCH_FN(rotary_embedding));
+  m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
+  m.impl("topk", TORCH_FN(topk));
+  m.impl("contiguous", TORCH_FN(contiguous));
+  m.impl("cat", TORCH_FN(cat));
+
+  m.impl("embedding", TORCH_FN(embedding));
+  m.impl("embedding_backward", TORCH_FN(embedding_backward));
+  m.impl("argmax", TORCH_FN(argmax));
+  // sort
+  m.impl("sort", TORCH_FN(sort));
+  m.impl("sort.stable", TORCH_FN(sort_stable));
+
   m.impl("softmax", TORCH_FN(softmax));
   m.impl("softmax_backward", TORCH_FN(softmax_backward));
   m.impl("reshape_and_cache_flash", TORCH_FN(reshape_and_cache_flash));

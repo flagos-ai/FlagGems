@@ -357,7 +357,7 @@ def test_accuracy_cumsum(shape, dtype):
     # we should use ref's output type, since cumsum of int dtype results in int64
     check_dtype = (
         dtype
-        if flag_gems.vendor_name == "cambricon"
+        if flag_gems.vendor_name == "cambricon" or flag_gems.vendor_name == "enflame"
         else (ref_out.dtype if dtype in INT_DTYPES else dtype)
     )
     gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])

@@ -118,7 +118,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
-      runner_label: ascend
+      runner_label: ascend_CI
       gpu_check_script: tools/gpu_check_ascend.sh
       test_script: tools/run_backend_tests.sh
 
@@ -128,7 +128,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: iluvatar
-      runner_label: iluvatar
+      runner_label: iluvatar_CI
       gpu_check_script: tools/gpu_check_iluvatar.sh
       test_script: tools/run_backend_tests.sh
 
@@ -138,7 +138,7 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
-      runner_label: metax
+      runner_label: metax_CI
       test_script: tools/run_backend_tests_metax.sh
 
   backend-moore:
@@ -147,10 +147,12 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: moore
-      runner_label: mthreadsCI
+      runner_label: moore_CI
       gpu_check_script: tools/gpu_check_moore.sh
       test_script: tools/run_backend_tests.sh
 
+  # TODO(Qiming): This job doesn't require an nvidia backend, the generic
+  # test-op workflow should be fine.
   alpha-ops:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'ops/alpha')
@@ -161,45 +163,3 @@ jobs:
       gpu_check_script: tools/gpu_check.sh
       test_script: tools/test-op-experimental.sh
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
-
-#   coverage:
-#     needs:
-#       - preprocess
-#       - blas-op-test
-#       - examples-test
-#       - quick-cpu-op-test
-#       - utils-test
-#       - pointwise-op-test
-#       - reduction-op-test
-#       - special-op-test
-#     if: contains(github.event.pull_request.labels.*.name, 'tests')
-#     concurrency:
-#       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
-#       cancel-in-progress: true
-#     runs-on: cpu
-#     continue-on-error: true
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v6
-#       - name: Get python coverage
-#         shell: bash
-#         run: |
-#           git config --global --add safe.directory ../FlagGems
-#           if [ "${{ github.event_name }}" == "pull_request" ]; then
-#             PR_ID=${{ github.event.pull_request.number }}
-#           elif [ "${{ github.event_name }}" == "push" ]; then
-#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-#             PR_ID=${PR_NUMBER}
-#           fi
-#           bash tools/code_coverage/coverage.sh ${PR_ID}
-#       - name: Report python coverage
-#         shell: bash
-#         run: |
-#           git config --global --add safe.directory ../FlagGems
-#           if [ "${{ github.event_name }}" == "pull_request" ]; then
-#             PR_ID=${{ github.event.pull_request.number }}
-#           elif [ "${{ github.event_name }}" == "push" ]; then
-#             PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
-#             PR_ID=${PR_NUMBER}
-#           fi
-#           bash tools/code_coverage/report_coverage.sh ${PR_ID}

@@ -1,7 +1,22 @@
-add_executable(test_triton_pointwise test_triton_pointwise.cpp)
-target_link_libraries(test_triton_pointwise
-  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
-add_test(NAME test_triton_pointwise COMMAND test_triton_pointwise)
+if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
+  add_executable(test_triton_add test_triton_add.cpp)
+  target_link_libraries(test_triton_add
+    PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+  target_compile_definitions(test_triton_add PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
+  add_test(NAME test_triton_add COMMAND test_triton_add)
+
+  add_executable(test_triton_div test_triton_div.cpp)
+  target_link_libraries(test_triton_div
+    PRIVATE Torch::Torch operators gtest gtest_main)
+  target_compile_definitions(test_triton_div PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
+  add_test(NAME test_triton_div COMMAND test_triton_div)
+
+  add_executable(test_triton_fill test_triton_fill.cpp)
+  target_link_libraries(test_triton_fill
+    PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+  target_compile_definitions(test_triton_fill PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
+  add_test(NAME test_triton_fill COMMAND test_triton_fill)
+endif()
 
 add_executable(test_triton_reduction test_triton_reduction.cpp)
 target_link_libraries(test_triton_reduction
@@ -57,10 +72,6 @@ target_link_libraries(test_triton_argmax
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_argmax COMMAND test_triton_argmax)
 
-add_executable(test_triton_div test_triton_div.cpp)
-target_link_libraries(test_triton_div PRIVATE Torch::Torch operators gtest gtest_main)
-add_test(NAME test_triton_div COMMAND test_triton_div)
-
 add_executable(test_triton_sort test_triton_sort.cpp)
 target_link_libraries(test_triton_sort
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
@@ -70,11 +81,6 @@ add_executable(test_triton_exponential_ test_triton_exponential_.cpp)
 target_link_libraries(test_triton_exponential_
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_exponential_ COMMAND test_triton_exponential_)
-
-add_executable(test_triton_fill  test_triton_fill.cpp)
-target_link_libraries(test_triton_fill
-  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
-add_test(NAME test_triton_fill COMMAND test_triton_fill)
 
 add_executable(test_triton_softmax test_triton_softmax.cpp)
 target_link_libraries(test_triton_softmax
