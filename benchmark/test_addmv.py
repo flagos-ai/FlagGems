@@ -3,8 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from . import performance_utils as base
-from .attri_util import FLOAT_DTYPES
+from . import base, consts
 
 
 class AddmvBenchmark(base.GenericBenchmark2DOnly):
@@ -31,6 +30,6 @@ def test_addmv():
         op_name="addmv",
         input_fn=_input_fn,
         torch_op=torch.addmv,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
