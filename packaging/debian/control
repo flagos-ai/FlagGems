@@ -1,0 +1,67 @@
+Source: flag-gems
+Section: science
+Priority: optional
+Maintainer: FlagOS Contributors <contact@flagos.io>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.20),
+               ninja-build,
+               python3-all,
+               python3-pip,
+               python3-setuptools,
+               python3-wheel,
+               python3-pybind11,
+               libtriton-jit-dev,
+               dh-python
+Standards-Version: 4.6.0
+Homepage: https://github.com/flagos-ai/FlagGems
+Vcs-Browser: https://github.com/flagos-ai/FlagGems
+Vcs-Git: https://github.com/flagos-ai/FlagGems.git
+Rules-Requires-Root: no
+X-Build-Environment: This package is built in a container that provides
+ libtriton-jit-dev (from the FlagOS apt repo) and a CUDA-aware PyTorch.
+ The build is done once via scikit-build-core; the resulting wheel is
+ split into the binary packages below.
+
+# ---- Phase 1 binary package ----------------------------------------
+# python3-flag-gems carries everything (Python + bundled liboperators.so)
+# until the cmake-only split (Phase 2) lands.
+
+Package: python3-flag-gems
+Architecture: amd64
+Depends: ${python3:Depends},
+         ${shlibs:Depends},
+         ${misc:Depends},
+         python3-numpy,
+         python3-yaml,
+         python3-sqlalchemy,
+         python3-packaging
+Recommends: python3-torch, python3-flagtree-nvidia
+Description: FlagGems GPU operator library (Python module)
+ FlagGems is a GPU operator library written in Triton, providing a
+ drop-in replacement for many torch.* operations with custom-tuned
+ kernels.
+ .
+ This package contains the Python bindings, the Triton kernel sources,
+ and (for Phase 1 of packaging) the bundled liboperators.so. A future
+ release will split the C++ runtime into libflaggems and the headers
+ into libflaggems-dev so that downstream C++ consumers can link
+ against the operators library without installing the Python module.
+
+# ---- Phase 2 binary packages (DECLARED, not yet built) -------------
+# These stanzas ship the C++ side as standalone packages once the
+# split lands. Until then, debian/rules does NOT produce them — the
+# control file has the names reserved so future PRs are additive.
+#
+# Package: libflaggems
+# Architecture: amd64
+# Depends: ${shlibs:Depends}, ${misc:Depends}, libtriton-jit (>= 0.1.0)
+# Description: FlagGems GPU operator library (runtime)
+#  Standalone C++ runtime (liboperators.so) for hosts that want to use
+#  FlagGems kernels via cmake/C++ rather than Python.
+#
+# Package: libflaggems-dev
+# Architecture: amd64
+# Depends: libflaggems (= ${binary:Version}), libtriton-jit-dev
+# Description: FlagGems GPU operator library (development files)
+#  Headers and cmake config for downstream C++ projects linking
+#  against libflaggems.
