@@ -7,6 +7,71 @@ import triton
 from . import backend, common
 from .backend.device import DeviceDetector
 
+<<<<<<< HEAD
+=======
+DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "utils",
+        "configs",
+        "general_ops_expand_configs.yaml",
+    )
+)
+
+
+DEFAULT_STRATEGIES = {
+    "bmm": ["align32", "align32", "align32", "align32", "align32"],
+    "addmm": ["align32", "align32", "align32"],
+    "baddbmm": ["align32", "align32", "align32"],
+    "mv": ["align32", "align32"],
+    "w8a8_block_fp8_general": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
+    "w8a8_block_fp8_general_tma": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
+    "mm_general_tma": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
+    "gemv": ["align32", "align32", "align32", "default"],
+    "sparse_attention": ["align32", "align32", "align32"],
+    "mm": ["align32", "align32", "align32", "align32", "align32"],
+    "bmm_sqmma": ["align32", "align32", "align32"],
+    "addmm_sqmma": ["align32", "align32", "align32"],
+}
+
+OP_KEY_ORDERS = {
+    "bmm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "addmm": ["M", "N", "K"],
+    "baddbmm": ["M", "N", "K"],
+    "mv": ["M", "N"],
+    "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
+    "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    "gemv": ["M", "K", "stride_am", "stride_bk"],
+    "sparse_attention": ["topk", "H_ACTUAL", "D"],
+    "mm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "bmm_sqmma": ["M", "N", "K"],
+    "addmm_sqmma": ["M", "N", "K"],
+}
+
+
+>>>>>>> 6fed5de86157e8148a36e3febb97f266ba5f8a36
 class ConfigLoader(object):
     _instance = None
 
@@ -175,6 +240,44 @@ class ConfigLoader(object):
                 for w in ranges["w"]
             ]
 
+        if op_name in ("mm", "mm_sqmma"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in ("bmm_sqmma", "addmm_sqmma"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_SIZE_M": block_m,
+                        "BLOCK_SIZE_N": block_n,
+                        "BLOCK_SIZE_K": block_k,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
         if op_name == "gemv":
             return [
                 triton.Config(
@@ -286,6 +389,9 @@ class ConfigLoader(object):
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
             "gemv": self._build_single_expand_spec("gemv"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
+            "mm": self._build_single_expand_spec("mm"),
+            "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
+            "addmm_sqmma": self._build_single_expand_spec("addmm_sqmma"),
         }
 
     def load_all(self):

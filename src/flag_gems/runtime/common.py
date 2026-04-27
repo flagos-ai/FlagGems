@@ -65,8 +65,9 @@ DEFAULT_EXPAND_CONFIG_PATH = os.path.normpath(
     )
 )
 
+
 DEFAULT_STRATEGIES = {
-    "bmm": ["log", "log", "log", "align32", "align32"],
+    "bmm": ["align32", "align32", "align32", "align32", "align32"],
     "addmm": ["align32", "align32", "align32"],
     "baddbmm": ["align32", "align32", "align32"],
     "mv": ["align32", "align32"],
@@ -95,6 +96,9 @@ DEFAULT_STRATEGIES = {
     ],
     "gemv": ["align32", "align32", "align32", "default"],
     "sparse_attention": ["align32", "align32", "align32"],
+    "mm": ["align32", "align32", "align32", "align32", "align32"],
+    "bmm_sqmma": ["align32", "align32", "align32"],
+    "addmm_sqmma": ["align32", "align32", "align32"],
 }
 
 OP_KEY_ORDERS = {
@@ -107,6 +111,9 @@ OP_KEY_ORDERS = {
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
     "sparse_attention": ["topk", "H_ACTUAL", "D"],
+    "mm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "bmm_sqmma": ["M", "N", "K"],
+    "addmm_sqmma": ["M", "N", "K"],
 }
 
 # Mapping from vendor name to torch attribute for quick detection
