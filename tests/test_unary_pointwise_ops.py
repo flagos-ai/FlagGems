@@ -1723,7 +1723,7 @@ def test_repetition_penalty(shape, penalty, dtype, mask_mode):
     if should_modify:
         assert not torch.equal(
             to_reference(logits, True), to_reference(logits_ori, True)
-        ), "In-place未生效"
+        ), "In-place???"
     elif mask_mode == "empty":
         gems_assert_close(res, to_reference(logits_ori, True).to(dtype), dtype)
 
@@ -1819,3 +1819,253 @@ def test_accuracy_leaky_relu_out(shape, dtype, negative_slope):
         torch.ops.aten.leaky_relu.out(inp, negative_slope, out=out)
 
     gems_assert_close(out, ref_out, dtype)
+
+
+ROLL_SHIFTS_DIMS = [
+    (1, 0),
+    (-1, 0),
+    (2, -1),
+    (3, 1),
+]
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("shifts_dims", ROLL_SHIFTS_DIMS)
+def test_roll_single_dim(shape, dtype, shifts_dims):
+    shifts, dims = shifts_dims
+    ndim = len(shape)
+    # Adjust dims if it's out of range for this shape
+    if dims >= ndim or dims < -ndim:
+        pytest.skip(f"dims {dims} out of range for shape {shape}")
+
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.roll(ref_inp, shifts, dims)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts, dims)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.special_i0e
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_special_i0e(shape, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+    if dtype in (torch.float16, torch.bfloat16):
+        ref_out = torch.ops.aten.special_i0e(ref_x.float()).to(dtype)
+    else:
+        ref_out = torch.ops.aten.special_i0e(ref_x)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.special_i0e(x)
+    gems_assert_close(act_out, ref_out, dtype)
+
+
+@pytest.mark.special_i0e_out
+@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_special_i0e_out(shape, dtype):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_x = to_reference(x)
+    if dtype in (torch.float16, torch.bfloat16):
+        out_ref = torch.empty_like(ref_x, dtype=torch.float32)
+        ref_out = torch.ops.aten.special_i0e.out(ref_x.float(), out=out_ref)
+        out_ref = out_ref.to(dtype)
+        ref_out = out_ref
+    else:
+        out_ref = torch.empty_like(ref_x)
+        ref_out = torch.ops.aten.special_i0e.out(ref_x, out=out_ref)
+    out_act = torch.empty_like(x)
+    with flag_gems.use_gems():
+        act_out = torch.ops.aten.special_i0e.out(x, out=out_act)
+    gems_assert_close(act_out, ref_out, dtype)
+    gems_assert_close(out_act, out_ref, dtype)
+
+
+ROLL_MULTI_DIMS = [
+    ((1, 2), (0, 1)),
+    ((-1, 1), (0, -1)),
+    ((2, -2), (-2, -1)),
+]
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shifts_dims", ROLL_MULTI_DIMS)
+def test_roll_multi_dims(shape, dtype, shifts_dims):
+    shifts, dims = shifts_dims
+    ndim = len(shape)
+    # Check all dims are valid for this shape
+    for d in dims:
+        if d >= ndim or d < -ndim:
+            pytest.skip(f"dims {d} out of range for shape {shape}")
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.roll(ref_inp, shifts, dims)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts, dims)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+ROLL_FLATTEN_SHIFTS = [1, -1, 5, -3]
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shifts", ROLL_FLATTEN_SHIFTS)
+def test_roll_flatten(shape, dtype, shifts):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+
+    # Roll without specifying dims (flatten case)
+    ref_out = torch.roll(ref_inp, shifts)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_roll_with_non_dense_input(shape, dtype):
+    if len(shape) < 2:
+        pytest.skip("Need at least 2D for non-dense test")
+
+    shape_dilated = tuple(item * 2 for item in shape)
+    inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+    ref_inp = to_reference(inp, False)
+
+    shifts = 2
+    dims = 0
+
+    ref_out = torch.roll(ref_inp, shifts, dims)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts, dims)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", [(0,), (2, 0, 3)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bool])
+def test_roll_empty_input(shape, dtype):
+    if dtype is torch.bool:
+        inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.roll(ref_inp, 3, None)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, 3, None)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize(
+    "shape, shifts, dims",
+    [
+        ((0,), 1, 5),
+        ((0,), 1, -5),
+        ((2, 0, 3), 1, 5),
+        ((2, 0, 3), (1, 2), (5, 9)),
+    ],
+)
+def test_roll_empty_input_with_out_of_range_dims(shape, shifts, dims):
+    inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.roll(ref_inp, shifts, dims)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts, dims)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+def test_roll_scalar_flatten():
+    inp = torch.tensor(7.0, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.roll(ref_inp, 5)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, 5)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize("shape", [(17, 33), (2, 3, 4)])
+def test_roll_bool_input(shape):
+    inp = torch.randint(0, 2, shape, dtype=torch.bool, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.roll(ref_inp, 2, -1)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, 2, -1)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize(
+    "shape, shifts, dims",
+    [
+        ((32, 64, 64), 257, None),
+        ((64, 128, 128), 7, 0),
+        ((64, 128, 128), 13, 2),
+        ((64, 128, 128), (7, -13), (0, 2)),
+    ],
+)
+def test_roll_large_hot_cases(shape, shifts, dims):
+    inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.roll(ref_inp, shifts, dims)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, shifts, dims)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+def test_roll_float64_fallback_matches_torch():
+    inp = torch.randn((2, 3, 4), dtype=torch.float64, device=flag_gems.device)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.roll(ref_inp, 2, 1)
+    with flag_gems.use_gems():
+        res_out = torch.roll(inp, 2, 1)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.roll
+@pytest.mark.parametrize(
+    "shifts, dims, expected_error",
+    [
+        (1.5, 0, TypeError),
+        (1, 0.5, TypeError),
+        ((1, 2), (0,), RuntimeError),
+        (1, 5, IndexError),
+    ],
+)
+def test_roll_invalid_inputs(shifts, dims, expected_error):
+    inp = torch.arange(8, device=flag_gems.device)
+    with pytest.raises(expected_error):
+        with flag_gems.use_gems():
+            torch.roll(inp, shifts, dims)
