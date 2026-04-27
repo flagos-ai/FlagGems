@@ -113,6 +113,19 @@ def to_copy(
     target_device = _resolve_device(x, device)
     target_memory_format = _normalize_memory_format(memory_format)
 
+    # Triton on kunlunxin does not support complex dtypes; fall back to PyTorch.
+    if x.dtype.is_complex or target_dtype.is_complex:
+        return torch.ops.aten._to_copy.default.redispatch(
+            _FALLBACK_KEYSET,
+            x,
+            dtype=target_dtype,
+            layout=layout,
+            device=target_device,
+            pin_memory=pin_memory,
+            non_blocking=non_blocking,
+            memory_format=target_memory_format,
+        )
+
     if target_device != x.device or (
         x.device.type == "cpu" and target_device.type == "cpu"
     ):

@@ -163,7 +163,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
     if inp.numel() == 0:
         out_shape = list(inp.shape)
-        if dim is None:
+        if dim is None or dim == []:
             out_shape = [1] * len(out_shape) if keepdim else []
         else:
             dims = dim if isinstance(dim, (list, tuple)) else [dim]
@@ -238,9 +238,12 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
         shape[i] = 1
     M = inp.numel() // N
 
+    out.resize_(shape)
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         sum_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
     if not keepdim:
-        out.squeeze_(dim=dim)
+        # Compute squeezed shape and resize in-place
+        out_shape = [s for i, s in enumerate(shape) if i not in dim]
+        out.resize_(out_shape)
     return out
