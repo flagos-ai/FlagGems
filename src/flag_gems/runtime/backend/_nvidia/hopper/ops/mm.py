@@ -523,7 +523,10 @@ def gemv_kernel(
         b = tl.load(b_ptrs, mask=k_mask, other=0.0)
 
         # Accumulate: sum over K dimension
-        acc += tl.sum(a * b[None, :], axis=1)
+        if IS_FP64:
+            acc += tl.sum(a * b[None, :], axis=1)
+        else:
+            acc += tl.sum(a.to(tl.float32) * b.to(tl.float32)[None, :], axis=1)
 
     # Store result
     c_ptrs = C + row_offset
