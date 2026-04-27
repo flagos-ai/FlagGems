@@ -76,7 +76,7 @@ def upsample_nearest2d_backward(
 
     grad_output = grad_output.contiguous()
     grad_input = torch.zeros(
-        (N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype
+        (N, C, IH, IW), device=grad_output.device, dtype=torch.float32
     )
 
     n_elements = grad_output.numel()
