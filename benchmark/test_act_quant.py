@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.utils.device_info import get_device_capability
 
 from .performance_utils import GenericBenchmark
 
@@ -13,6 +14,11 @@ N = [128, 896, 2048, 8192]
 SHAPES = [(m, n) for m in M for n in N]
 BLOCK_SIZES = [64, 128]
 SCALE_FMTS = [None, "ue8m0"]
+
+
+def is_support_fp8e4nv():
+    major, minor = get_device_capability()
+    return major * 10 + minor >= 89
 
 
 def torch_act_quant(
@@ -76,6 +82,8 @@ class ActQuantBenchmark(GenericBenchmark):
 
 
 @pytest.mark.act_quant
+# https://github.com/triton-lang/triton/blob/v3.6.0/third_party/nvidia/backend/compiler.py#L188
+@pytest.skip("Do not support fp8e4nv when capability < 89", not is_support_fp8e4nv())
 @pytest.mark.parametrize("block_size", BLOCK_SIZES)
 @pytest.mark.parametrize("scale_fmt", SCALE_FMTS)
 def test_act_quant_perf(block_size, scale_fmt):

@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.utils.device_info import get_device_capability
 
 device = flag_gems.device
 
@@ -13,6 +14,11 @@ N = [128, 896, 2048, 8192]
 SHAPES = [(m, n) for m in M for n in N]
 BLOCK_SIZES = [64, 128]
 SCALE_FMTS = [None, "ue8m0"]
+
+
+def is_support_fp8e4nv():
+    major, minor = get_device_capability()
+    return major * 10 + minor >= 89
 
 
 def torch_act_quant(
@@ -69,6 +75,8 @@ def torch_act_quant(
 
 
 @pytest.mark.act_quant
+# https://github.com/triton-lang/triton/blob/v3.6.0/third_party/nvidia/backend/compiler.py#L188
+@pytest.skip("Do not support fp8e4nv when capability < 89", not is_support_fp8e4nv())
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("block_size", BLOCK_SIZES)
 @pytest.mark.parametrize("scale_fmt", SCALE_FMTS)
@@ -95,12 +103,3 @@ def test_act_quant_accuracy(shape, block_size, scale_fmt, dtype):
 
     torch.testing.assert_close(ref_y.float(), res_y.float(), rtol=1e-2, atol=1e-2)
     torch.testing.assert_close(ref_s, res_s, rtol=1e-5, atol=1e-5)
-
-    # if scale_fmt is not None:
-    #     # Allow larger tolerance for fast approximation
-    #     torch.testing.assert_close(res_s, ref_s, rtol=1.0, atol=0.02)
-    #     # Quantized values may differ due to different scales, use larger tolerance
-    #     torch.testing.assert_close(res_y.float(), ref_y.float(), rtol=0.5, atol=256.0)
-    # else:
-    #     torch.testing.assert_close(res_s, ref_s, rtol=1e-3, atol=1e-4)
-    #     torch.testing.assert_close(res_y.float(), ref_y.float(), rtol=0.1, atol=32.0)
