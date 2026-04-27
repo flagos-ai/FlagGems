@@ -1,11 +1,12 @@
 import pytest
 import torch
 
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmark, generate_tensor_input
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
-class RepeatBenchmark(GenericBenchmark):
+class RepeatBenchmark(base.GenericBenchmark):
     """
     RepeatBenchmark designed to evaluate tensor repeat operations along specified dimensions.
     This includes operations like tile, repeat, and repeat_interval.
@@ -21,8 +22,8 @@ class RepeatBenchmark(GenericBenchmark):
         return [(16, 256, 256), (512, 512, 512), (64, 64, 64, 64)]
 
 
-def _input_fn(shape, cur_dtype, device):
-    inp1 = generate_tensor_input(shape, cur_dtype, device)
+def _input_fn(shape, dtype, device):
+    inp1 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = [1] * len(shape)
     inp2[0] = 2
 
@@ -35,6 +36,6 @@ def test_repeat():
         op_name="repeat",
         input_fn=_input_fn,
         torch_op=torch.Tensor.repeat,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

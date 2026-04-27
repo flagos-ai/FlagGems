@@ -3,8 +3,9 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
 def _input_fn(shape, dtype, device):
@@ -16,11 +17,11 @@ def _input_fn(shape, dtype, device):
 @pytest.mark.trace
 def test_trace():
     if flag_gems.vendor_name == "mthreads":
-        dtypes = attr_utils.FLOAT_DTYPES
+        dtypes = consts.FLOAT_DTYPES
     else:
-        dtypes = attr_utils.FLOAT_DTYPES + attr_utils.INT_DTYPES
+        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES
 
-    bench = utils.GenericBenchmark2DOnly(
+    bench = base.GenericBenchmark2DOnly(
         op_name="trace",
         input_fn=_input_fn,
         torch_op=torch.trace,

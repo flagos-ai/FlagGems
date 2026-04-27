@@ -1,11 +1,12 @@
 import pytest
 import torch
 
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import GenericBenchmark, generate_tensor_input
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
-class RepeatInterleaveBenchmark(GenericBenchmark):
+class RepeatInterleaveBenchmark(base.GenericBenchmark):
     """
     Due to potential memory limitations, benchmark sizes need to be carefully controlled.
 
@@ -23,9 +24,10 @@ class RepeatInterleaveBenchmark(GenericBenchmark):
         ]
 
 
-# repeat_interleave.self_int(Tensor self, SymInt repeats, int? dim=None, *, SymInt? output_size=None) -> Tensor
+# repeat_interleave.self_int(Tensor self, SymInt repeats,
+# int? dim=None, *, SymInt? output_size=None) -> Tensor
 def repeat_interleave_self_int_input_fn(shape, dtype, device):
-    inp = generate_tensor_input(shape, dtype, device)
+    inp = utils.generate_tensor_input(shape, dtype, device)
     repeats = 3
     yield inp, repeats,
 
@@ -36,14 +38,14 @@ def test_repeat_interleave_self_int():
         input_fn=repeat_interleave_self_int_input_fn,
         op_name="repeat_interleave.self_int",
         torch_op=torch.repeat_interleave,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
 # repeat_interleave.self_Tensor(Tensor self, Tensor repeats, int? dim=None, *, SymInt? output_size=None) -> Tensor
 def repeat_interleave_self_tensor_input_fn(shape, dtype, device):
-    inp = generate_tensor_input(shape, dtype, device)
+    inp = utils.generate_tensor_input(shape, dtype, device)
     repeats = torch.randint(
         low=0,
         high=0x1F,  # control the repeats number here
