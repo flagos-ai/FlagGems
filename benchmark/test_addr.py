@@ -3,9 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from benchmark.attri_util import FLOAT_DTYPES
-
-from . import performance_utils as base
+from . import base, consts
 
 
 class AddrBenchmark(base.BlasBenchmark):
@@ -31,6 +29,6 @@ def test_addr():
         op_name="addr",
         input_fn=_input_fn,
         torch_op=torch.Tensor.addr,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

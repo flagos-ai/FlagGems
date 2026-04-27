@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base
 
 
 def _input_fn(shape, dtype, device):
@@ -20,7 +20,8 @@ def _input_fn(shape, dtype, device):
     )
 
 
-class AssertAsyncBenchmark(utils.GenericBenchmark):
+class AssertAsyncBenchmark(base.GenericBenchmark):
+    # TODO(Qiming): Is this necessary?
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

@@ -3,8 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
@@ -27,7 +26,7 @@ def test_addmm(monkeypatch):
         op_name="addmm",
         input_fn=_input_fn,
         torch_op=torch.addmm,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()
