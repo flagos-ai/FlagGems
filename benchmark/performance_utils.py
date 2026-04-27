@@ -1,5 +1,5 @@
 import gc
-import importlib
+import math
 import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
@@ -10,20 +10,20 @@ import triton
 import yaml
 
 import flag_gems
+from flag_gems.utils import shape_utils
 
+from . import utils
 from .attri_util import (
-    BOOL_DTYPES,
-    COMPLEX_DTYPES,
     DEFAULT_METRICS,
     DEFAULT_SHAPES,
     FLOAT_DTYPES,
-    INT_DTYPES,
     BenchLevel,
     BenchmarkMetrics,
     BenchmarkResult,
     BenchMode,
     OperationAttribute,
     check_metric_dependencies,
+    model_shapes,
 )
 from .conftest import Config, emit_record_logger
 
@@ -31,50 +31,31 @@ torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
 if device == "musa":
     torch.backends.mudnn.allow_tf32 = False
 elif device == "npu":
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
 else:
-    torch_backend_device.matmul.allow_tf32 = False
-
-
-def SkipVersion(module_name, skip_pattern):
-    if importlib.util.find_spec(module_name) is None:
-        return True
-    cmp = skip_pattern[0]
-    assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"
+    # Attempt to disallow tf32
     try:
-        M, N = skip_pattern[1:].split(".")
-        M, N = int(M), int(N)
+        torch_backend_device.matmul.allow_tf32 = False
     except Exception:
-        raise ValueError("Cannot parse version number from skip_pattern.")
-
-    try:
-        version = importlib.metadata.version(module_name)
-        major, minor = map(int, version.split(".")[:2])
-    except Exception:
-        raise ImportError(f"Cannot determine version of module: {module_name}")
-
-    if cmp == "=":
-        return major == M and minor == N
-    elif cmp == "<":
-        return (major, minor) < (M, N)
-    else:
-        return (major, minor) > (M, N)
+        pass
 
 
 class Benchmark:
+    """
+    the base class for the operations benchmark
+    """
+
     device: str = device
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
-    """
-    the base class for the operations benchmark
-    """
 
     def __init__(
         self,
@@ -89,7 +70,7 @@ class Benchmark:
         if is_backward and self.op_name.find("_backward") == -1:
             self.op_name += "_backward"
         self.torch_op = torch_op
-        self.gems_op = None
+        self.gems_op = kwargs.get("gems_op", None)
         self.is_backward = is_backward
         self.is_inplace = is_inplace
         self._input_iter = None
@@ -140,7 +121,8 @@ class Benchmark:
                     self.to_bench_metrics.append(metric)
 
     def set_more_metrics(self):
-        """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
+        """Base method (optional to override in subclasses).
+        Returns additional shapes if applicable."""
         return []
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
@@ -161,10 +143,10 @@ class Benchmark:
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Validate user-spicified shapes files
-        import os
 
         if not os.path.isfile(shape_file_path):
             raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
+
         try:
             with open(shape_file_path, "r") as file:
                 yaml_config = yaml.safe_load(file)
@@ -193,13 +175,12 @@ class Benchmark:
             if vendor_name == "kunlunxin":
                 if self.op_name in ["isin", "nonzero"]:
                     # isin oom  # nonzero oot
-                    import math
-
                     self.shapes = [
                         shape for shape in self.shapes if math.prod(shape) < 1024 * 1024
                     ]
 
-            # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
+            # merge shapes from subclass If subclass has `set_more_shapes`,
+            # call it to merge shapes
             if (
                 hasattr(self, "set_more_shapes")
                 and callable(getattr(self, "set_more_shapes"))
@@ -215,14 +196,21 @@ class Benchmark:
                 # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
+
+                if vendor_name == "enflame":
+                    if self.op_name in ["isin"]:
+                        self.shapes = [
+                            shape for shape in self.shapes if math.prod(shape) < 2**28
+                        ]
         except yaml.YAMLError as e:
             raise ValueError(
                 f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
             )
 
-    def set_more_shapes(self) -> Optional[List[List[int]]]:
-        """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
-        return None
+    def set_more_shapes(self) -> Optional[list[list[Any] | tuple[Any]]]:
+        """Base method (optional to override in subclasses).
+        Returns additional shapes if applicable."""
+        return []
 
     def record_shapes(self, *args, **kwargs):
         def deep_parse(item):
@@ -255,6 +243,11 @@ class Benchmark:
                 os.path.dirname(__file__),
                 "../src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml",
             )  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+        elif vendor_name == "enflame":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_enflame/core_shapes.yaml",
+            )
         self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):
@@ -324,7 +317,7 @@ class Benchmark:
         return flop_counter.get_total_flops()
 
     def get_input_iter(self, dtype) -> Generator:
-        # """Return the dynamic input iterator for each Operator."""
+        """Return the dynamic input iterator for each Operator."""
         raise NotImplementedError(
             "Each Benchmark must implement its own input iterator."
         )
@@ -332,6 +325,7 @@ class Benchmark:
     def get_inputs(self, dtype):
         if self._input_iter is None:
             self._input_iter = self.get_input_iter(dtype)
+
         try:
             return next(self._input_iter)
         except StopIteration:
@@ -373,10 +367,26 @@ class Benchmark:
             print(attri)
             emit_record_logger(attri.to_dict())
             return
+
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
             metrics = []
-            for input in self.get_input_iter(dtype):
+            input_iter = self.get_input_iter(dtype)
+
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+
                 metric = BenchmarkMetrics()
                 try:
                     args, kwargs = self.unpack_to_args_kwargs(input)
@@ -391,17 +401,27 @@ class Benchmark:
                                 self.gems_op, *args, **kwargs
                             )
                         else:
-                            with flag_gems.use_gems():
-                                metric.latency = self.get_latency(
-                                    self.torch_op, *args, **kwargs
-                                )
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
                     if "speedup" in self.to_bench_metrics:
                         metric.speedup = metric.latency_base / metric.latency
+
                     if "gbps" in self.to_bench_metrics:
                         metric.gbps_base = self.get_gbps(
                             args, latency=metric.latency_base
                         )
                         metric.gbps = self.get_gbps(args, latency=metric.latency)
+
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = (
                             self.get_tflops(self.torch_op, *args, **kwargs)
@@ -410,12 +430,13 @@ class Benchmark:
                             * 1e3
                         )
                         # utilization = metric.tflops / metric.latency / 1e12 * 1e3
-                except Exception as e:
+                except (RuntimeError, Exception) as e:
                     metric.error_msg = str(e)
                     pytest.fail(str(e))  # raise exception again
                 finally:
                     metrics.append(metric)
                     gc.collect()
+
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
@@ -452,9 +473,9 @@ class GenericBenchmark(Benchmark):
         more_shapes_3d = [(100, 2**i, 100) for i in (0, 8, 16)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
-    def get_input_iter(self, cur_dtype) -> Generator:
+    def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
-            yield from self.input_fn(shape, cur_dtype, self.device)
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 class GenericBenchmarkFilterShapes(GenericBenchmark):
@@ -513,28 +534,223 @@ class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):
         return [shape for shape in shapes if len(shape) == 2]
 
 
-def generate_tensor_input(shape, dtype, device):
-    if dtype in FLOAT_DTYPES:
-        return torch.randn(shape, dtype=dtype, device=device)
-    elif dtype in INT_DTYPES:
-        return torch.randint(
-            torch.iinfo(dtype).min,
-            torch.iinfo(dtype).max,
-            shape,
-            dtype=dtype,
-            device="cpu",
-        ).to(device)
-    elif dtype in BOOL_DTYPES:
-        return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
-    elif dtype in COMPLEX_DTYPES:
-        return torch.randn(shape, dtype=dtype, device=device)
+class UnaryReductionBenchmark(Benchmark):
+    def set_more_metrics(self):
+        return ["gbps"]
+
+    def get_gbps(self, args, latency):
+        inp = args[0]
+        io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, inp]])
+        return io_amount * 1e-9 / (latency * 1e-3)
+
+    def set_more_shapes(self):
+        more_shapes_1d = [
+            (1025 * 1024,),
+            (1024 * 1024 * 1024,),
+        ]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 21, 4)]
+        more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
+            if inp.ndim > 1:
+                yield inp, 1
+            else:
+                yield inp,
 
 
-def binary_input_fn(shape, cur_dtype, device):
-    inp1 = generate_tensor_input(shape, cur_dtype, device)
-    inp2 = generate_tensor_input(shape, cur_dtype, device)
-    yield inp1, inp2
+class TexGluBenchmark(Benchmark):
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    # Triton grid_y is capped at 65535, BLOCK_SIZE_H=64 -> last dim <= 8388480.
+    MAX_LAST_DIM = 2 * 64 * 65535
+
+    def set_more_shapes(self):
+        # Last dim must be even for GLU operations to split
+        special_shapes_2d = [[1024, 2**i] for i in range(1, 20, 4)]
+        sp_shapes_3d = [[64, 64, 2**i] for i in range(1, 15, 4)]
+
+        return special_shapes_2d + sp_shapes_3d
+
+    def init_user_config(self):
+        super().init_user_config()
+        supported = []
+        for shape in self.shapes:
+            last_dim = shape[-1]
+            if last_dim % 2 != 0:
+                continue
+            if last_dim > self.MAX_LAST_DIM:
+                continue
+            supported.append(shape)
+        if not supported:
+            pytest.skip(
+                "No geglu shapes satisfy the constraints of FlagGems implementation."
+            )
+        self.shapes = supported
 
 
-def unary_input_fn(shape, cur_dtype, device):
-    yield generate_tensor_input(shape, cur_dtype, device),
+class TexGluForwardBenchmark(TexGluBenchmark):
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            x = utils.generate_tensor_input(shape, dtype, self.device)
+            # TE GLU APIs typically accept (input, quantizer).
+            yield (x, None)
+
+    def get_tflops(self, op, *args, **kwargs):
+        # args[0] is the input tensor x
+        shape = list(args[0].shape)
+        return torch.tensor(shape).prod().item()
+
+
+class TexGluBackwardBenchmark(TexGluBenchmark):
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            inp = utils.generate_tensor_input(shape, dtype, self.device)
+
+            out_shape = list(shape)
+            out_shape[-1] = out_shape[-1] // 2
+
+            grad_out = torch.randn(out_shape, dtype=dtype, device=self.device)
+
+            yield grad_out, inp, None
+
+    def get_tflops(self, op, *args, **kwargs):
+        # args[1] is the original input tensor 'inp'
+        inp_shape = list(args[1].shape)
+        # Proxy FLOPs estimate: forward + backward cost roughly approximated
+        return torch.tensor(inp_shape).prod().item() * 2
+
+
+class BlasBenchmark(Benchmark):
+    """
+    benchmark for blas
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def __init__(self, *args, input_fn, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_fn = input_fn
+
+    def get_input_iter(self, dtype) -> Generator:
+        for b, m, n, k in self.shapes:
+            yield from self.input_fn(b, m, n, k, dtype, self.device, False)
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            for b, m, n, k in self.shapes:
+                yield from self.input_fn(b, m, n, k, dtype, self.device, True)
+
+    def set_more_shapes(self):
+        large_k_shapes = [
+            [8, 1848, 1536, 151936],
+            [8, 1848, 1536, 128256],
+            [8, 1848, 1536, 152064],
+            [8, 4096, 1, 152064],
+        ]
+
+        model_shaps = model_shapes()
+        return large_k_shapes + model_shaps
+
+    def get_tflops(self, op, *args, **kwargs):
+        total_flops = 0
+        # shape(m,k)(k,n)
+        # total_flops mxnx2k
+        if self.op_name == "mm":
+            total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
+
+        # shape(m,n)(n,p)
+        # total_flops mxpx(2n+1)
+        elif self.op_name == "addmm":
+            total_flops = (
+                args[0].shape[0] * args[1].shape[1] * (args[1].shape[0] * 2 + 1)
+            )
+        # total_flops bxnxpx2m
+        elif self.op_name == "bmm":
+            total_flops = (
+                args[0].shape[0]
+                * args[0].shape[1]
+                * args[1].shape[2]
+                * 2
+                * args[0].shape[2]
+            )
+        return total_flops
+
+
+class BinaryPointwiseBenchmark(Benchmark):
+    """
+    Base class for benchmarking binary pointwise operations.
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        special_shapes_2d = [[1024, 2**i] for i in range(0, 20, 4)]
+        shapes_3d = [[64, 64, 2**i] for i in range(0, 20, 4)]
+        return special_shapes_2d + shapes_3d
+
+    def get_input_iter(self, dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = utils.generate_tensor_input(shape, dtype, self.device)
+            inp2 = utils.generate_tensor_input(shape, dtype, self.device)
+            yield inp1, inp2
+
+    def get_tflops(self, op, *args, **kwargs):
+        shape1 = list(args[0].shape)
+        shape2 = list(args[0].shape)
+
+        return torch.tensor(shape1).prod().item() + torch.tensor(shape2).prod().item()
+
+
+class ScalarBinaryPointwiseBenchmark(Benchmark):
+    """
+    Base class for benchmarking binary pointwise operations with scalar input.
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        special_shapes_2d = [[1024, 2**i] for i in range(0, 20, 4)]
+        shapes_3d = [[64, 64, 2**i] for i in range(0, 20, 4)]
+        return special_shapes_2d + shapes_3d
+
+    def get_input_iter(self, dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = 0.001  # Scalar input
+            inp2 = utils.generate_tensor_input(shape, dtype, self.device)
+            yield inp1, inp2
+
+    def get_tflops(self, op, *args, **kwargs):
+        shape = list(args[1].shape)  # Second argument is the tensor
+        return torch.tensor(shape).prod().item()
+
+
+class UnaryPointwiseBenchmark(Benchmark):
+    """
+    Base class for benchmarking unary pointwise operations.
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return special_shapes_2d + sp_shapes_3d
+
+    def get_input_iter(self, dtype) -> Generator:
+        for shape in self.shapes:
+            inp = utils.generate_tensor_input(shape, dtype, self.device)
+            yield inp,
+
+    def get_tflops(self, op, *args, **kwargs):
+        shape = list(args[0].shape)
+        return torch.tensor(shape).prod().item()
+
+
+class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
+        for shape in self.shapes:
+            inp = utils.generate_tensor_input(shape, dtype, self.device)
+            out = torch.empty_like(inp)
+
+            yield inp, {"out": out}

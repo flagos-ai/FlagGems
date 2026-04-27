@@ -198,7 +198,7 @@ def set_torch_backend_device_fn(vendor_name=None):
     global device_name, torch_device_fn_device
     device_name = device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{device_name}"
-    if device_name in ("musa", "aipu", "npu", "txda", "ptpu"):
+    if device_name in ("musa", "aipu", "npu", "txda", "ptpu", "gcu"):
         torch_device_fn_device = None
     else:
         torch_device_fn_device = importlib.import_module(module_str)
@@ -260,7 +260,7 @@ def get_vendor_infos():
     return infos
 
 
-def get_current_device_extend_op(vendor_name=None):
+def get_customized_ops(vendor_name=None):
     import_vendor_extra_lib(vendor_name)
     global customized_ops
     if customized_ops is not None:
@@ -275,7 +275,7 @@ def get_current_device_extend_op(vendor_name=None):
     return customized_ops
 
 
-def get_curent_device_unused_op(vendor_name=None):
+def get_unused_ops(vendor_name=None):
     global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
     return list(vendor_module.CUSTOMIZED_UNUSED_OPS)
@@ -300,6 +300,10 @@ def get_tune_config(vendor_name=None):
     global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
     return backend_utils.get_tune_config(vendor_name)
+
+
+def get_expand_config(op_name=None, file_path=None):
+    return backend_utils.get_expand_config(op_name=op_name, file_path=file_path)
 
 
 __all__ = ["*"]
