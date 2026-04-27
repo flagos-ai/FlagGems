@@ -5,12 +5,13 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
-class MaxPool2dBenchmark(utils.GenericBenchmark):
-    def get_input_iter(self, cur_dtype) -> Generator:
+class MaxPool2dBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
         shapes_4d = [
             (4, 3, 224, 224),  # Typical input image size
             (16, 64, 56, 56),  # Early ResNet layer output
@@ -20,7 +21,7 @@ class MaxPool2dBenchmark(utils.GenericBenchmark):
         ]
 
         for shape in shapes_4d:
-            yield from self.input_fn(shape, cur_dtype, self.device)
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 def max_pool2d_input_fn(shape, dtype, device):
@@ -34,7 +35,7 @@ def max_pool2d_input_fn(shape, dtype, device):
         "ceil_mode": False,
     }
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         # Non-square kernel/stride/padding
         if shape[-2] > 5 and shape[-1] > 5:
             yield inp, {
@@ -70,7 +71,7 @@ def test_max_pool2d_with_indices():
         op_name="max_pool2d_with_indices",
         input_fn=max_pool2d_input_fn,
         torch_op=torch.nn.functional.max_pool2d_with_indices,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.max_pool2d_with_indices)
 
@@ -104,7 +105,7 @@ def test_max_pool2d_backward():
         input_fn=max_pool2d_backward_input_fn,
         op_name="max_pool2d_backward",
         torch_op=torch_max_pool2d_backward_wrapper,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         # TODO(Qiming): Double check this !!!
         is_backward=False,
     )

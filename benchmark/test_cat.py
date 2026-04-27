@@ -3,21 +3,22 @@ from typing import Generator
 import pytest
 import torch
 
-from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from benchmark.performance_utils import Benchmark, Config, generate_tensor_input
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
 def _input_fn(shape, dtype, device):
-    inp1 = generate_tensor_input(shape, dtype, device)
-    inp2 = generate_tensor_input(shape, dtype, device)
-    inp3 = generate_tensor_input(shape, dtype, device)
+    inp1 = utils.generate_tensor_input(shape, dtype, device)
+    inp2 = utils.generate_tensor_input(shape, dtype, device)
+    inp3 = utils.generate_tensor_input(shape, dtype, device)
     yield [inp1, inp2, inp3], {"dim": 0},
 
-    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         yield [inp1, inp2, inp3], {"dim": -1},
 
 
-class CatBenchmark(Benchmark):
+class CatBenchmark(base.Benchmark):
     def __init__(self, *args, **kwargs):
         self.input_fn = kwargs.pop("input_fn", _input_fn)
         super().__init__(*args, **kwargs)
@@ -40,6 +41,6 @@ def test_cat():
         op_name="cat",
         input_fn=_input_fn,
         torch_op=torch.cat,
-        dtypes=FLOAT_DTYPES + INT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )
     bench.run()
