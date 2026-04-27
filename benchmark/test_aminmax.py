@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
 def aminmax_input_fn(shape, cur_dtype, device):
@@ -16,10 +15,10 @@ def aminmax_input_fn(shape, cur_dtype, device):
         yield inp, {"dim": 0}
 
 
-class AminmaxBenchmark(utils.UnaryReductionBenchmark):
-    def get_input_iter(self, cur_dtype):
+class AminmaxBenchmark(base.UnaryReductionBenchmark):
+    def get_input_iter(self, dtype):
         for shape in self.shapes:
-            yield from aminmax_input_fn(shape, cur_dtype, self.device)
+            yield from aminmax_input_fn(shape, dtype, self.device)
 
 
 @pytest.mark.aminmax
@@ -27,7 +26,7 @@ def test_aminmax():
     bench = AminmaxBenchmark(
         op_name="aminmax",
         torch_op=torch.aminmax,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

@@ -3,8 +3,9 @@ import random
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
 def _input_fn(shape, dtype, device):
@@ -17,11 +18,11 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.diag
 def test_diag():
-    bench = utils.GenericBenchmarkExcluse3D(
+    bench = base.GenericBenchmarkExcluse3D(
         op_name="diag",
         input_fn=_input_fn,
         torch_op=torch.diag,
-        dtypes=attr_utils.FLOAT_DTYPES + attr_utils.INT_DTYPES + attr_utils.BOOL_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
 
     bench.run()

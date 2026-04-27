@@ -90,14 +90,11 @@ _FULL_CONFIG = (
     ("arcsinh_", arcsinh_),
     ("argmax", argmax),
     ("argmin", argmin),
-<<<<<<< feature/FlagGemsOperatorDevelopmentCompetition
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("asinh", asinh),
-=======
     ("asinh", asinh),
     ("asinh.out", asinh_out),
->>>>>>> master
     ("asinh_", asinh_),
     ("atan", atan),
     ("atan_", atan_),
@@ -228,10 +225,7 @@ _FULL_CONFIG = (
     ("gather", gather),
     ("gather_backward", gather_backward),
     ("gcd", gcd),
-<<<<<<< feature/FlagGemsOperatorDevelopmentCompetition
-=======
     ("gcd.out", gcd_out),
->>>>>>> master
     ("ge.Scalar", ge_scalar),
     ("ge.Tensor", ge),
     ("gelu", gelu),
@@ -273,10 +267,7 @@ _FULL_CONFIG = (
     ("le.Tensor", le),
     ("leaky_relu", leaky_relu),
     ("leaky_relu_", leaky_relu_),
-<<<<<<< feature/FlagGemsOperatorDevelopmentCompetition
-=======
     ("leaky_relu.out", leaky_relu_out),
->>>>>>> master
     ("lerp.Scalar", lerp_scalar),
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),

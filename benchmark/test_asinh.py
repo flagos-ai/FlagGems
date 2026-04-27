@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 @pytest.mark.asinh
 def test_asinh():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="asinh", torch_op=torch.asinh, dtypes=attrs.FLOAT_DTYPES
+        op_name="asinh", torch_op=torch.asinh, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
 
@@ -18,7 +17,7 @@ def test_asinh_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="asinh_",
         torch_op=lambda a: a.asinh_(),
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()
