@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts, utils
 
 
 def _input_fn(shape, cur_dtype, device):
-    inp1 = base.generate_tensor_input(shape, cur_dtype, device)
-    inp2 = base.generate_tensor_input(shape, cur_dtype, device)
-    inp3 = base.generate_tensor_input(shape, cur_dtype, device)
+    inp1 = utils.generate_tensor_input(shape, cur_dtype, device)
+    inp2 = utils.generate_tensor_input(shape, cur_dtype, device)
+    inp3 = utils.generate_tensor_input(shape, cur_dtype, device)
 
     yield inp1, inp2, inp3
 
@@ -24,7 +23,7 @@ def test_clamp():
         op_name="clamp",
         input_fn=_input_fn,
         torch_op=torch.clamp,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
@@ -35,7 +34,7 @@ def test_clamp_inplace():
         input_fn=_input_fn,
         op_name="clamp_",
         torch_op=torch.clamp_,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()
