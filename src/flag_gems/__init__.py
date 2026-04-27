@@ -14,7 +14,7 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
-__version__ = "5.0.1.rc.0"
+__version__ = "5.0.2"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -90,6 +90,8 @@ _FULL_CONFIG = (
     ("arcsinh_", arcsinh_),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("asinh", asinh),
+    ("asinh.out", asinh_out),
     ("asinh_", asinh_),
     ("atan", atan),
     ("atan_", atan_),
@@ -129,6 +131,8 @@ _FULL_CONFIG = (
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
     ("clamp_min_", clamp_min_),
+    ("clip", clip),
+    ("clip_", clip_),
     ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
@@ -217,6 +221,8 @@ _FULL_CONFIG = (
     ("full_like", full_like),
     ("gather", gather),
     ("gather_backward", gather_backward),
+    ("gcd", gcd),
+    ("gcd.out", gcd_out),
     ("ge.Scalar", ge_scalar),
     ("ge.Tensor", ge),
     ("gelu", gelu),
@@ -256,6 +262,9 @@ _FULL_CONFIG = (
     ("kron", kron),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
+    ("leaky_relu", leaky_relu),
+    ("leaky_relu_", leaky_relu_),
+    ("leaky_relu.out", leaky_relu_out),
     ("lerp.Scalar", lerp_scalar),
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
@@ -336,6 +345,7 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("pad", pad),
+    ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("polar", polar),

@@ -6,6 +6,7 @@ from flag_gems.fused.ChunkGatedDeltaRule import (
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
+from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
     fused_recurrent_gated_delta_rule_fwd,
@@ -24,6 +25,13 @@ from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.instance_norm import instance_norm
+from flag_gems.fused.mhc import (
+    mhc_bwd,
+    mhc_bwd_ref,
+    mhc_post,
+    mhc_pre,
+    sinkhorn_forward,
+)
 from flag_gems.fused.moe_align_block_size import (
     moe_align_block_size,
     moe_align_block_size_triton,
@@ -38,6 +46,7 @@ from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
 from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
 from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out
 from flag_gems.fused.skip_layernorm import skip_layer_norm
+from flag_gems.fused.sparse_attention import sparse_attn_triton
 from flag_gems.fused.swiglu import dswiglu, swiglu
 from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.weight_norm import weight_norm
@@ -47,6 +56,7 @@ __all__ = [
     "apply_rotary_pos_emb",
     "chunk_gated_delta_rule",
     "bincount",
+    "bucket_sort_topk",
     "chunk_gated_delta_rule_fwd",
     "concat_and_cache_mla",
     "cutlass_scaled_mm",
@@ -66,6 +76,10 @@ __all__ = [
     "inplace_fused_experts",
     "instance_norm",
     "invoke_fused_moe_triton_kernel",
+    "mhc_bwd",
+    "mhc_bwd_ref",
+    "mhc_post",
+    "mhc_pre",
     "moe_sum",
     "moe_align_block_size",
     "moe_align_block_size_triton",
@@ -78,8 +92,10 @@ __all__ = [
     "rwkv_mm_sparsity",
     "silu_and_mul",
     "silu_and_mul_out",
+    "sinkhorn_forward",
     "skip_layer_norm",
     "swiglu",
     "topk_softmax",
     "weight_norm",
+    "sparse_attn_triton",
 ]
