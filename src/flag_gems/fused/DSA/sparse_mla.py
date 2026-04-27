@@ -1,10 +1,14 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
+logger = logging.getLogger(__name__)
+
 spar_mla_fwd_configs = [
-    triton.Config({"num_stages": 4, "num_warps": 8}),
-    triton.Config({"num_stages": 2, "num_warps": 4}),
+    triton.Config({"num_stages": 4}, num_warps=8),
+    triton.Config({"num_stages": 2}, num_warps=4),
 ]
 
 
@@ -51,7 +55,8 @@ def triton_sparse_mla_fwd(
     is_causal: tl.constexpr,
 ):
     i_b, i_sq, i_gbh = tl.program_id(0), tl.program_id(1), tl.program_id(2)
-    i_g, i_bh = i_gbh // G, i_gbh % G
+    NH = tl.cdiv(G, BH)
+    i_g, i_bh = i_gbh // NH, i_gbh % NH
     q_base = q + i_b * stride_qb + i_sq * stride_qm + i_gbh * (BH * stride_qh)
     tq_base = q_base + D * stride_qd
     kv_base = kv + i_b * stride_kvb + i_g * stride_kvg
@@ -96,8 +101,7 @@ def triton_sparse_mla_fwd(
         kv_ids = tl.load(t_ptr, t_msk, other=-1)
         mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)
 
-        # if mask_ids.max(0) > 0:
-        if ck * BK <= max_col:
+        if tl.max(mask_ids, axis=0) > 0:
             kv_ptr = (
                 kv_base + offs_d[:, None] * stride_kvd + kv_ids[None, :] * stride_kvn
             )
@@ -148,6 +152,7 @@ def triton_sparse_mla_fwd(
 def triton_sparse_mla_fwd_interface(
     q, kv, indices, sm_scale=None, return_p_sum: bool = False, d_v=512
 ):
+    logger.debug("GEMS SPARSE_MLA_FWD_INTERFACE")
     is_causal = True
     assert return_p_sum is False, "This kernel file is for fwd only"
     assert q.is_contiguous() and kv.is_contiguous() and indices.is_contiguous()

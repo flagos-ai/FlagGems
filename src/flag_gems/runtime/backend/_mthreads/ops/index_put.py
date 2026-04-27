@@ -9,7 +9,7 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
 )
 
 
@@ -296,6 +296,9 @@ def index_put(inp, indices, values, accumulate=False):
         elif values.numel() == K:
             values = values.reshape((K,)).expand(target_shape)
 
+    if not indices:
+        raise ValueError("At least one index tensor is required")
+
     indices = [
         index.to(inp.device)
         if index is not None and index.device != inp.device
@@ -303,21 +306,75 @@ def index_put(inp, indices, values, accumulate=False):
         for index in indices
     ]
 
-    target_shape = get_max_rank_shape(indices)
-    broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
-    # Filter out None values for kernel call (only tensor indices)
-    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if not tensor_indices:
+    processed_indices = []
+    for idx in indices:
+        if idx is None:
+            processed_indices.append(None)
+        elif idx.dtype in (torch.bool, torch.int8):
+            processed_indices.extend(idx.nonzero(as_tuple=True))
+        elif torch.is_tensor(idx):
+            processed_indices.append(idx)
+        else:
+            raise TypeError(
+                "tensors used as indices must be long, int, byte or bool tensors"
+            )
+
+    indices = processed_indices
+
+    if len(indices) < inp.ndim:
+        indices.extend([None] * (inp.ndim - len(indices)))
+
+    if len(indices) > inp.ndim:
+        raise IndexError("too many indices for tensor of dimension {}".format(inp.ndim))
+
+    tensor_pos = [i for i, x in enumerate(indices) if x is not None]
+    if not tensor_pos:
         raise ValueError("At least one non-None index tensor is required")
 
-    if values.device != inp.device:
-        values = values.to(inp.device)
-    values = torch.broadcast_to(values, target_shape)
+    tensor_indices = [indices[i] for i in tensor_pos]
+    if len(tensor_indices) > 1:
+        broadcasted = torch.broadcast_tensors(*tensor_indices)
+        for i, pos in enumerate(tensor_pos):
+            indices[pos] = broadcasted[i]
+
+    is_contiguous = (tensor_pos[-1] - tensor_pos[0] + 1) == len(tensor_pos)
+    starts_with_none = indices[0] is None
+    need_transpose = not is_contiguous or starts_with_none
 
     out = inp.clone()
-    _index_put_func(out, tensor_indices, values, accumulate)
+    if need_transpose:
+        perm_order = tensor_pos + [i for i, x in enumerate(indices) if x is None]
+        inp_view = out.permute(perm_order)
+        final_indices = [indices[i] for i in tensor_pos] + [None] * (
+            len(indices) - len(tensor_pos)
+        )
+    else:
+        inp_view = out
+        final_indices = indices
+
+    tensors = [x for x in final_indices if x is not None]
+    broadcast_shape = list(tensors[0].shape)
+    slice_shape = [inp_view.shape[i] for i, x in enumerate(final_indices) if x is None]
+
+    target_shape = broadcast_shape + slice_shape
+    values = values.to(inp.device)
+    if need_transpose and is_contiguous:
+        num_before = tensor_pos[0]
+
+        before_dims = slice_shape[:num_before]
+        after_dims = slice_shape[num_before:]
+        natural_shape = before_dims + broadcast_shape + after_dims
+        values = values.broadcast_to(natural_shape)
+
+        B, T = len(before_dims), len(broadcast_shape)
+        val_perm = (
+            list(range(B, B + T)) + list(range(0, B)) + list(range(B + T, values.ndim))
+        )
+        values = values.permute(val_perm)
+    else:
+        values = values.broadcast_to(target_shape)
+
+    _index_put_func(inp_view, tensors, values, accumulate)
     return out
 
 
@@ -343,6 +400,9 @@ def index_put_(inp, indices, values, accumulate=False):
         elif values.numel() == K:
             values = values.reshape((K,)).expand(target_shape)
 
+    if not indices:
+        raise ValueError("At least one index tensor is required")
+
     indices = [
         index.to(inp.device)
         if index is not None and index.device != inp.device
@@ -350,27 +410,72 @@ def index_put_(inp, indices, values, accumulate=False):
         for index in indices
     ]
 
-    target_shape = get_max_rank_shape(indices)
-    broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
-    # Filter out None values for kernel call (only tensor indices)
-    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if not tensor_indices:
+    processed_indices = []
+    for idx in indices:
+        if idx is None:
+            processed_indices.append(None)
+        elif idx.dtype in (torch.bool, torch.int8):
+            processed_indices.extend(idx.nonzero(as_tuple=True))
+        elif torch.is_tensor(idx):
+            processed_indices.append(idx)
+        else:
+            raise TypeError(
+                "tensors used as indices must be long, int, byte or bool tensors"
+            )
+
+    indices = processed_indices
+
+    if len(indices) < inp.ndim:
+        indices.extend([None] * (inp.ndim - len(indices)))
+
+    if len(indices) > inp.ndim:
+        raise IndexError("too many indices for tensor of dimension {}".format(inp.ndim))
+
+    tensor_pos = [i for i, x in enumerate(indices) if x is not None]
+    if not tensor_pos:
         raise ValueError("At least one non-None index tensor is required")
 
-    if values.device != inp.device:
-        values = values.to(inp.device)
-    try:
-        values = torch.broadcast_to(values, target_shape)
-    except Exception:
-        return torch.ops.aten.index_put_.default.redispatch(
-            torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeExplicitAutograd),
-            inp,
-            tensor_indices,
-            values,
-            accumulate,
-        )
+    tensor_indices = [indices[i] for i in tensor_pos]
+    if len(tensor_indices) > 1:
+        broadcasted = torch.broadcast_tensors(*tensor_indices)
+        for i, pos in enumerate(tensor_pos):
+            indices[pos] = broadcasted[i]
 
-    _index_put_func(inp, tensor_indices, values, accumulate)
+    is_contiguous = (tensor_pos[-1] - tensor_pos[0] + 1) == len(tensor_pos)
+    starts_with_none = indices[0] is None
+    need_transpose = not is_contiguous or starts_with_none
+
+    if need_transpose:
+        perm_order = tensor_pos + [i for i, x in enumerate(indices) if x is None]
+        inp_view = inp.permute(perm_order)
+        final_indices = [indices[i] for i in tensor_pos] + [None] * (
+            len(indices) - len(tensor_pos)
+        )
+    else:
+        inp_view = inp
+        final_indices = indices
+
+    tensors = [x for x in final_indices if x is not None]
+    broadcast_shape = list(tensors[0].shape)
+    slice_shape = [inp_view.shape[i] for i, x in enumerate(final_indices) if x is None]
+
+    target_shape = broadcast_shape + slice_shape
+    values = values.to(inp.device)
+    if need_transpose and is_contiguous:
+        num_before = tensor_pos[0]
+
+        before_dims = slice_shape[:num_before]
+        after_dims = slice_shape[num_before:]
+        natural_shape = before_dims + broadcast_shape + after_dims
+        values = values.broadcast_to(natural_shape)
+
+        B, T = len(before_dims), len(broadcast_shape)
+        val_perm = (
+            list(range(B, B + T)) + list(range(0, B)) + list(range(B + T, values.ndim))
+        )
+        values = values.permute(val_perm)
+    else:
+        values = values.broadcast_to(target_shape)
+
+    _index_put_func(inp_view, tensors, values, accumulate)
     return inp

@@ -6,6 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
+# TODO: Check if this logger instantiation is good
 logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
 div_rz = tl_extra_shim.div_rz

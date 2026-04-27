@@ -25,60 +25,74 @@ else
 fi
 
 # Test cases that needs to run quick cpu tests
-QUICK_CPU_TESTS=(
-  "tests/test_attention_ops.py"
-  "tests/test_binary_pointwise_ops.py"
-  "tests/test_blas_ops.py"
-  "tests/test_general_reduction_ops.py"
-  "tests/test_norm_ops.py"
+NO_QUICK_CPU_TESTS=(
+  "tests/ks_tests.py"
+  "tests/test_enable_api.py"
+  "tests/test_libentry.py"
   "tests/test_pointwise_type_promotion.py"
-  "tests/test_reduction_ops.py"
-  "tests/test_special_ops.py"
-  "tests/test_tensor_constructor_ops.py"
-  "tests/test_unary_pointwise_ops.py"
+  "tests/test_quant.py"
+  "tests/test_shape_utils.py"
+  "tests/test_tensor_wrapper.py"
 )
 
 # Extract test cases from CHANGED_FILES
 TEST_CASES=()
+PERF_TEST_CASES=()
 TEST_CASES_CPU=()
 for item in $CHANGED_FILES; do
   case $item in
-    tests/test_DSA/*)
-      # skip DSA test for now
-      ;;
     tests/test_quant.py)
       # skip because it always fail
       ;;
-    tests/*) TEST_CASES+=($item)
+    tests/test*)
+      TEST_CASES+=($item)
+      ;;
+    benchmark/test*)
+      PERF_TEST_CASES+=($item)
+      ;;
   esac
 
   # filter out tests that do not need quick CPU mode tests
-  for item_cpu in "${QUICK_CPU_TESTS[@]}"; do
+  found=0
+  for item_cpu in "${NO_QUICK_CPU_TESTS[@]}"; do
     if [[ "$item" == "$item_cpu" ]]; then
-      TEST_CASES_CPU+=($item)
+      found=1
       break
     fi
   done
-
+  if (( $found == 0 )); then
+    case $item in
+      tests/*) TEST_CASES_CPU+=($item) ;;
+    esac
+  fi
 done
 
 # Skip tests if no tests file is found
-if [ ${#TEST_CASES[@]} -eq 0 ]; then
+if [[ ${#TEST_CASES[@]} -eq 0  && ${#PERF_TEST_CASES[@]} -eq 0 ]]; then
   exit 0
 fi
 
 # Clear existing coverage data if any
 coverage erase
 
-echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
-coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES[@]}
+for item in "${TEST_CASES[@]}"; do
+  echo "Running unit tests for ${item}"
+  coverage run -m pytest -s ${EXTRA_OPTS} ${item}
+done
 
 # Run quick-cpu test if necessary
-if [[ ${#TEST_CASES_CPU[@]} -ne 0 ]]; then
-  echo "Running quick-cpu mode unit tests for ${TEST_CASES_CPU[@]}"
-  coverage run -m pytest -s ${EXTRA_OPTS} ${TEST_CASES_CPU[@]} --ref=cpu --mode=quick
-fi
+for item in "${TEST_CASES_CPU[@]}"; do
+  echo "Running quick-cpu mode unit tests for ${item}"
+  coverage run -m pytest -s ${EXTRA_OPTS} ${item}  --ref=cpu --quick
+done
+
+# Run benchmark test if necessary
+for item in "${PERF_TEST_CASES[@]}"; do
+  echo "Running benchmark tests for ${item}"
+  echo "pytest -s ${item} --level core --record log"
+  pytest -s ${item} --level core --record log
+done
 
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default

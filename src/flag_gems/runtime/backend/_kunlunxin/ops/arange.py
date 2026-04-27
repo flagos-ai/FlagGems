@@ -38,10 +38,24 @@ def arange_start(
 ):
     logger.debug("GEMS ARANGE")
     if dtype is torch.int64:
+        start = int(start)
+        end = int(end)
+        step = int(step)
+        if step == 0:
+            raise RuntimeError("step must be nonzero")
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
     else:
+        if dtype is torch.int64 and (
+            isinstance(step, float)
+            or isinstance(start, float)
+            or isinstance(end, float)
+        ):
+            int_step = int(step)
+            if int_step == 0:
+                raise RuntimeError("step must be nonzero")
         size = math.ceil((end - start) / step)
+    size = int(size)
 
     cluster_num = 12
     tmp = torch.tensor([], dtype=dtype)
