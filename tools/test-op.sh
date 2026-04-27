@@ -75,9 +75,9 @@ fi
 # Clear existing coverage data if any
 coverage erase
 
-echo "Running unit tests for ${TEST_CASES[@]}"
 # TODO(Qiming): Check if utils test should use a different data file
 for item in "${TEST_CASES[@]}"; do
+  echo "Running unit tests for ${item}"
   coverage run -m pytest -s ${EXTRA_OPTS} ${item}
 done
 
@@ -90,7 +90,8 @@ done
 # Run benchmark test if necessary
 for item in "${PERF_TEST_CASES[@]}"; do
   echo "Running benchmark tests for ${item}"
-  pytest -s --level core --record log ${item}
+  echo "pytest -s ${item} --level core --record log"
+  pytest -s ${item} --level core --record log
 done
 
 # Process coverage data only when full-range testing

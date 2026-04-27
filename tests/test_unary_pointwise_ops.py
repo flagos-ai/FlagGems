@@ -1723,7 +1723,7 @@ def test_repetition_penalty(shape, penalty, dtype, mask_mode):
     if should_modify:
         assert not torch.equal(
             to_reference(logits, True), to_reference(logits_ori, True)
-        ), "In-place鏈敓鏁?
+        ), "In-place???"
     elif mask_mode == "empty":
         gems_assert_close(res, to_reference(logits_ori, True).to(dtype), dtype)
 

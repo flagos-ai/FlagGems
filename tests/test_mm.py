@@ -67,6 +67,28 @@ def test_mm(M, N, K, dtype, b_column_major):
 
 
 @pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mm_broadcast_stride_zero(dtype):
+    """Regression test: broadcast tensors (stride=0) must not crash TMA path."""
+    torch.manual_seed(0)
+    M, K, N = 128, 256, 256
+
+    # Simulate the stride=(0,0) tensor that autograd produces from sum().backward():
+    # scalar expand -> all strides are 0
+    a = torch.randn((), dtype=dtype, device=flag_gems.device).expand(M, K)
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    assert a.stride() == (0, 0)
+
+    ref_a = utils.to_reference(a.contiguous(), True)
+    ref_b = utils.to_reference(b, True)
+
+    ref_out = torch.mm(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.mm(a, b)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
 @pytest.mark.parametrize("M, K", MK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mm_self_transpose(M, K, dtype):
