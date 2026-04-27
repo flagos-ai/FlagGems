@@ -1,0 +1,50 @@
+#!/usr/bin/make -f
+# Phase 1 rules: build the FlagGems wheel (with C++ extensions enabled
+# and external libtriton-jit), unpack it into python3-flag-gems.
+#
+# Phase 2 (libflaggems + libflaggems-dev split) will require a separate
+# cmake configure/install step before the wheel build, plus
+# python3-flag-gems.install / libflaggems.install / libflaggems-dev.install
+# files to slice the staging directory.
+
+export DH_VERBOSE = 1
+
+WHEEL_DIR ?= $(CURDIR)/dist
+PKG = python3-flag-gems
+PYDIR = debian/$(PKG)/usr/lib/python3/dist-packages
+
+%:
+	dh $@ --with python3
+
+# Wheel is built outside dpkg-buildpackage by helpers/build-flaggems.sh
+# (in a CUDA-aware container that provides PyTorch + libtriton-jit-dev).
+override_dh_auto_configure:
+override_dh_auto_build:
+override_dh_auto_test:
+
+override_dh_auto_install:
+	@if [ -z "$$(ls $(WHEEL_DIR)/flag_gems-*.whl 2>/dev/null)" ]; then \
+		echo "ERROR: no flag_gems-*.whl found under $(WHEEL_DIR)"; \
+		echo "Run packaging/debian/helpers/build-flaggems.sh first."; \
+		exit 1; \
+	fi
+	mkdir -p $(PYDIR)
+	python3 -m pip install --no-deps --no-compile --no-index \
+		--target=$(PYDIR) \
+		$(WHEEL_DIR)/flag_gems-*.whl
+	# Move console scripts to /usr/bin
+	if [ -d $(PYDIR)/bin ]; then \
+		mkdir -p debian/$(PKG)/usr/bin; \
+		mv $(PYDIR)/bin/* debian/$(PKG)/usr/bin/; \
+		rmdir $(PYDIR)/bin; \
+	fi
+	rm -f $(PYDIR)/flag_gems-*.dist-info/RECORD
+
+override_dh_shlibdeps:
+	# The bundled liboperators.so links against libtorch, libcuda, etc.
+	# which aren't in the build env. Skip auto-detection.
+	dh_shlibdeps -- --ignore-missing-info || true
+
+override_dh_strip:
+	# Don't strip pybind11 / cmake-built .so files — JIT lookups use symbols.
+	dh_strip --no-automatic-dbgsym -X .so
