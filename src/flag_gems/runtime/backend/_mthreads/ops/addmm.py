@@ -10,11 +10,35 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
-from .utils import create_tma_device_descriptor, should_enable_sqmma
+from .utils import create_tma_device_descriptor, get_cached_tma_device_descriptor
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
 )
+
+
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "addmm_mthreads_expand.yaml")
+)
+
+
+def is_supported_sqmma_layout(tensor):
+    return tensor.is_contiguous() or (
+        tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0]
+    )
+
+
+def is_sqmma_compatible(a, b, N, K):
+    return (
+        a.dim() == 2
+        and b.dim() == 2
+        and a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
+        and is_supported_sqmma_layout(a)
+        and is_supported_sqmma_layout(b)
+        and N % 8 == 0
+        and K % 8 == 0
+    )
 
 
 @libentry()
@@ -123,8 +147,59 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
     return out
 
 
-@triton.jit
+def addmm_sqmma_descriptor_pre_hook(nargs):
+    a = nargs["A"]
+    b = nargs["B"]
+    bias = nargs["Bias"]
+    c = nargs["C"]
+    block_m = nargs["BLOCK_SIZE_M"]
+    block_n = nargs["BLOCK_SIZE_N"]
+    block_k = nargs["BLOCK_SIZE_K"]
+    device = c.device
+
+    nargs["a_desc_ptr"].copy_(
+        get_cached_tma_device_descriptor(a, block_m, block_k, device)
+    )
+    nargs["b_desc_ptr"].copy_(
+        get_cached_tma_device_descriptor(b, block_k, block_n, device)
+    )
+    nargs["bias_desc_ptr"].copy_(
+        get_cached_tma_device_descriptor(bias, block_m, block_n, device)
+    )
+    nargs["c_desc_ptr"].copy_(create_tma_device_descriptor(c, block_m, block_n, device))
+
+
+@libentry()
+@libtuner(
+    configs=runtime.ops_get_configs(
+        "addmm_sqmma",
+        pre_hook=addmm_sqmma_descriptor_pre_hook,
+        yaml_path=EXPAND_CONFIG_FILENAME,
+    )
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else [
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=addmm_sqmma_descriptor_pre_hook,
+        )
+    ],
+    key=["M", "N", "K"],
+    strategy=runtime.get_expand_config("addmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
+        "strategy"
+    ]
+    if os.environ.get("USE_FLAGTUNE") == "1"
+    else ["default", "default", "default"],
+    warmup=5,
+    rep=5,
+)
+@triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_sqmma_kernel(
+    A,
+    B,
+    Bias,
+    C,
     a_desc_ptr,
     b_desc_ptr,
     bias_desc_ptr,
@@ -132,11 +207,11 @@ def addmm_sqmma_kernel(
     M,
     N,
     K,
+    alpha,
+    beta,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
-    alpha: tl.constexpr,
-    beta: tl.constexpr,
     ab_type: tl.constexpr,
     c_type: tl.constexpr,
     is_transpose_a: tl.constexpr = False,
@@ -187,52 +262,46 @@ def get_triton_type(elem_type):
     return type_map.get(elem_type, None)
 
 
-def addmm_sqmma(
-    A,
-    B,
-    Bias,
-    elem_type,
-    alpha,
-    beta,
-    M,
-    N,
-    K,
-    BLOCK_M,
-    BLOCK_N,
-    BLOCK_K,
-    num_warps,
-    num_stages,
-):
+def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     logger.debug("GEMS_MTHREADS ADDMM(SQMMA)")
-    device = "musa"
+    device = mat1.device
     assert broadcastable_to(
-        Bias.shape, (A.shape[0], B.shape[1])
+        bias.shape, (mat1.shape[0], mat2.shape[1])
     ), "Incompatible input shape"
     # handle non-contiguous inputs if necessary
     is_transpose_a = False
     is_transpose_b = False
-    if not A.is_contiguous():
-        if A.stride(0) == 1 and A.stride(1) == A.shape[0]:
+    if not mat1.is_contiguous():
+        if mat1.stride(0) == 1 and mat1.stride(1) == mat1.shape[0]:
             is_transpose_a = True
         else:
-            A = A.contiguous()
-    if not B.is_contiguous():
-        if B.stride(0) == 1 and B.stride(1) == B.shape[0]:
+            mat1 = mat1.contiguous()
+    if not mat2.is_contiguous():
+        if mat2.stride(0) == 1 and mat2.stride(1) == mat2.shape[0]:
             is_transpose_b = True
         else:
-            B = B.contiguous()
+            mat2 = mat2.contiguous()
     ab_type = elem_type
-    a_type = A.dtype
-    b_type = B.dtype
+    a_type = mat1.dtype
+    b_type = mat2.dtype
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
     c_type = a_type
     C = torch.empty((M, N), dtype=c_type, device=device)
-    Bias = Bias.broadcast_to(C.shape).contiguous()
-    desc_a = create_tma_device_descriptor(A, BLOCK_M, BLOCK_K, device)
-    desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
-    desc_bias = create_tma_device_descriptor(Bias, BLOCK_M, BLOCK_N, device)
-    desc_c = create_tma_device_descriptor(C, BLOCK_M, BLOCK_N, device)
-    addmm_sqmma_kernel[(triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), 1, 1)](
+    bias = bias.broadcast_to(C.shape).contiguous()
+    desc_a = torch.empty((64,), dtype=torch.int8, device=device)
+    desc_b = torch.empty((64,), dtype=torch.int8, device=device)
+    desc_bias = torch.empty((64,), dtype=torch.int8, device=device)
+    desc_c = torch.empty((64,), dtype=torch.int8, device=device)
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        1,
+        1,
+    )
+    addmm_sqmma_kernel[grid](
+        mat1,
+        mat2,
+        bias,
+        C,
         desc_a,
         desc_b,
         desc_bias,
@@ -240,17 +309,12 @@ def addmm_sqmma(
         M,
         N,
         K,
-        BLOCK_M,
-        BLOCK_N,
-        BLOCK_K,
         alpha,
         beta,
-        get_triton_type(ab_type),
-        get_triton_type(c_type),
-        is_transpose_a,
-        is_transpose_b,
-        num_warps=num_warps,
-        num_stages=num_stages,
+        ab_type=get_triton_type(ab_type),
+        c_type=get_triton_type(c_type),
+        is_transpose_a=is_transpose_a,
+        is_transpose_b=is_transpose_b,
     )
     return C
 
@@ -260,33 +324,30 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     b_dtype = mat2.dtype
     M, K = mat1.shape
     _, N = mat2.shape
-    use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
 
-    if use_sqmma:
-        BLOCK_M = 256 if M % 256 == 0 else 128
-        BLOCK_N = BLOCK_M
-        BLOCK_K = 64
-        num_warps = 16 if BLOCK_M == 256 else 4
-        num_stages = 1
-        return addmm_sqmma(
-            mat1,
-            mat2,
-            bias,
-            a_dtype,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            BLOCK_M,
-            BLOCK_N,
-            BLOCK_K,
-            num_warps,
-            num_stages,
-        )
+    need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
+    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
+    if need_sqmma:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
     else:
-        enable_sqmma = os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        result = addmm_fma(bias, mat1, mat2, alpha=alpha, beta=beta)
-        if enable_sqmma:
-            os.environ["MUSA_ENABLE_SQMMA"] = enable_sqmma
-        return result
+        os.environ.pop("MUSA_ENABLE_SQMMA", None)
+    try:
+        if is_sqmma_compatible(mat1, mat2, N, K):
+            return addmm_sqmma(
+                mat1,
+                mat2,
+                bias,
+                a_dtype,
+                alpha,
+                beta,
+                M,
+                N,
+                K,
+            )
+        else:
+            return addmm_fma(bias, mat1, mat2, alpha=alpha, beta=beta)
+    finally:
+        if prev_sqmma is None:
+            os.environ.pop("MUSA_ENABLE_SQMMA", None)
+        else:
+            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
