@@ -594,7 +594,9 @@ class Conv2d(torch.autograd.Function):
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if isinstance(padding, str):
         if padding == "same":
-            assert stride == 1, "Doesn't support any stride values other than 1 \
+            assert (
+                stride == 1
+            ), "Doesn't support any stride values other than 1 \
                 in padding = 'same' mode, received stride value {stride}"
             ih = input.shape[-2]
             iw = input.shape[-1]
