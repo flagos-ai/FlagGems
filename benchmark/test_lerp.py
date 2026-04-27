@@ -3,17 +3,18 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import attri_util as attrs
+from . import performance_utils as base
+from . import utils
 
 vendor_name = flag_gems.vendor_name
 
 
-class LerpBenchmark(utils.GenericBenchmark):
+class LerpBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (N, C, H, W).
-        return None
+        return []
 
 
 def lerp_input_fn(shape, dtype, device):
@@ -33,8 +34,9 @@ def test_lerp():
         input_fn=lerp_input_fn,
         op_name="lerp",
         torch_op=torch.lerp,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=attrs.FLOAT_DTYPES,
     )
+
     bench.run()
 
 
@@ -48,7 +50,7 @@ def test_lerp_inplace():
         input_fn=lerp_input_fn,
         op_name="lerp_",
         torch_op=lambda input, end, weight: input.lerp_(end, weight),
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=attrs.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()

@@ -5,11 +5,14 @@ import flag_gems
 
 from . import attri_util as attrs
 from . import performance_utils as base
+from . import utils
+
+vendor_name = flag_gems.vendor_name
 
 
 @pytest.mark.celu
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin" and base.SkipVersion("torch", "<2.5"),
+    vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
     reason="There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead",
 )
 def test_celu():
@@ -21,7 +24,7 @@ def test_celu():
 
 @pytest.mark.celu_
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin" and base.SkipVersion("torch", "<2.5"),
+    vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
     reason="There is an error in kunlunxin torch 2.0 aten, please use torch 2.5 instead",
 )
 def test_celu_inplace():

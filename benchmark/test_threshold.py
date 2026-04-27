@@ -5,6 +5,7 @@ import flag_gems
 
 from . import attri_util as attrs
 from . import performance_utils as base
+from . import utils
 
 
 def _input_fn(shape, cur_dtype, device):
@@ -14,7 +15,7 @@ def _input_fn(shape, cur_dtype, device):
 
 @pytest.mark.threshold
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin" and base.SkipVersion("torch", "<2.5"),
+    flag_gems.vendor_name == "kunlunxin" and utils.SkipVersion("torch", "<2.5"),
     reason="kunlunxin torch aten 2.0 supports threshold but not for float16",
 )
 def test_threshold():
