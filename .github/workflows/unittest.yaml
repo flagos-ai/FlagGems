@@ -41,7 +41,7 @@ jobs:
           echo "PR_ID: ${PR_ID}"
 
       - id: get-labels
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             // Determine if the event is a pull request
@@ -110,11 +110,29 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: ascend
-      runner_label: ascend_CI
+      runner_label: ascend
       gpu_check_script: tools/gpu_check_ascend.sh
-      test_script: tools/run_backend_tests_ascend.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
+
+  backend-hygon:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Hygon')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: hygon
+      runner_label: hygon
+      gpu_check_script: tools/gpu_check_hygon.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-iluvatar:
     needs: preprocess
@@ -124,9 +142,29 @@ jobs:
       vendor: iluvatar
       runner_label: iluvatar
       gpu_check_script: tools/gpu_check_iluvatar.sh
-      test_script: tools/run_backend_tests_iluvatar.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
+
+  backend-kunlunxin:
+    needs: preprocess
+    # Skipping backend-kunlunxin because we don't have a backend runner
+    if: false
+    # if: contains(needs.preprocess.outputs.labels, 'vendor/Kunlunxin')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: kunlunxin
+      runner_label: kunlunxin
+      gpu_check_script: tools/gpu_check_kunlunxin.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-metax:
     needs: preprocess
@@ -134,22 +172,29 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
-      runner_label: metax_CI
-      test_script: tools/run_backend_tests_metax.sh
+      runner_label: metax
+      gpu_check_script: tools/gpu_check_metax.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-mthreads:
     needs: preprocess
     if: contains(needs.preprocess.outputs.labels, 'vendor/MooreThreads')
     uses: ./.github/workflows/backend-test.yaml
     with:
-      vendor: moore
+      vendor: mthreads
       runner_label: moore
       gpu_check_script: tools/gpu_check_mthreads.sh
-      test_script: tools/run_backend_tests_mthreads.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-nvidia:
     needs: preprocess
@@ -159,9 +204,12 @@ jobs:
       vendor: nvidia
       runner_label: h20
       gpu_check_script: tools/gpu_check.sh
-      test_script: tools/run_backend_tests_nvidia.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-tsingmicro:
     needs: preprocess
@@ -171,9 +219,27 @@ jobs:
       vendor: tsingmicro
       runner_label: tsingmicro
       gpu_check_script: tools/gpu_check_tsingmicro.sh
-      test_script: tools/run_backend_tests_tsingmicro.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
+
+  backend-thead:
+    needs: preprocess
+    if: contains(needs.preprocess.outputs.labels, 'vendor/Thead')
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      vendor: thead
+      runner_label: thead
+      gpu_check_script: tools/gpu_check_thead.sh
+      changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
+      pr_id: ${{ needs.preprocess.outputs.pr_id }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   # TODO(Qiming): This job doesn't require an nvidia backend, the generic
   # test-op workflow should be fine.
@@ -189,3 +255,5 @@ jobs:
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
