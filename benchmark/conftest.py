@@ -4,6 +4,7 @@ import os
 
 import pytest
 import torch
+import yaml
 
 import flag_gems
 from benchmark.attri_util import (
@@ -58,6 +59,7 @@ class BenchConfig:
 
 
 Config = BenchConfig()
+REGISTERED_MARKS = []
 
 
 def pytest_addoption(parser):
@@ -135,14 +137,19 @@ def pytest_addoption(parser):
         help="Specify the shape file name for benchmarks. If not specified, a default shape list will be used.",
     )
 
-    parser.addoption(
-        "--record",
-        action="store",
-        default="none",
-        required=False,
-        choices=["none", "log"],
-        help="Benchmark info recorded in log files or not",
-    )
+    try:
+        parser.addoption(
+            "--record",
+            action="store",
+            default="none",
+            required=False,
+            choices=["none", "log"],
+            help="Benchmark info recorded in log files or not",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register --record in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
 
     parser.addoption(
         "--parallel",
@@ -156,9 +163,26 @@ def pytest_addoption(parser):
         ),
     )
 
+    try:
+        parser.addoption(
+            "--collect-marks",
+            action="store_true",
+            help="Collect the tests with marker information without executing them",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
+
 
 def pytest_configure(config):
     global Config  # noqa: F824
+    global REGISTERED_MARKS
+
+    REGISTERED_MARKS = {
+        marker.split(":")[0].strip() for marker in config.getini("markers")
+    }
+
     mode_value = config.getoption(
         "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
     )
@@ -278,3 +302,33 @@ def extract_and_log_op_attributes(request):
     yield
     if Config.record_log and op_attributes:
         emit_record_logger(json.dumps(op_attributes, indent=2))
+
+
+def pytest_collection_modifyitems(session, config, items):
+    if config.getoption("--collect-marks"):
+        report = []
+        for item in items:
+            data = {}
+
+            # Collect some general information
+            if item.cls:
+                data["class"] = item.cls.__name__
+            data["test_case"] = item.name
+            if item.originalname:
+                data["function"] = item.originalname
+            data["file"] = item.location[0]
+
+            all_marks = list(item.iter_markers())
+            op_marks = [
+                mark.name
+                for mark in all_marks
+                if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
+            ]
+
+            data["marks"] = op_marks
+            report.append(data)
+
+        print(yaml.dump(report, indent=2))
+
+        # Skip all tests
+        items.clear()

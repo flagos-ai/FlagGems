@@ -167,6 +167,26 @@ with flag_gems.use_gems():
     C = torch.mm(A, B)
 ```
 
+也可以绕过 PyTorch，直接调用 `flag_gems.ops` & `flag_gems.fused` 中的算子。
+
+```python
+import flag_gems
+
+a = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
+b = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
+c = flag_gems.ops.mm(a, b)
+
+num_tokens = 4096; block_size = 64; topk = 2; num_experts = 128;
+topk_ids = torch.randint(
+    low=0,
+    high=num_experts,
+    size=(num_tokens, topk),
+    device=flag_gems.device,
+    dtype=torch.int32,
+)
+sorted_ids, expert_ids, num_tokens_post_pad = flag_gems.fused.moe_align_block_size.moe_align_block_size(topk_ids, block_size, num_experts)
+```
+
 <!--
 Check the [](/FlagGems/usage/) section for more detailed
 documentation on the various usage patterns about *FlagGems*.

@@ -131,3 +131,16 @@ mm:
       BLOCK_K: 32
     num_stages: 4
     num_warps: 8
+sqrt:
+  - META:
+      BLOCK_SIZE: 512
+    num_stages: 4
+    num_warps: 1
+  - META:
+      BLOCK_SIZE: 1024
+    num_stages: 4
+    num_warps: 1
+  - META:
+      BLOCK_SIZE: 2048
+    num_stages: 4
+    num_warps: 1
