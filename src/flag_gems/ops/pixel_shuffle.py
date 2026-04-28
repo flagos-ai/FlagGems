@@ -100,3 +100,10 @@ def pixel_shuffle(input, upscale_factor):
             W_out,
         )
     return output
+
+
+def pixel_shuffle_out(input, upscale_factor, *, out):
+    logger.debug("GEMS PIXEL_SHUFFLE OUT")
+    result = pixel_shuffle(input, upscale_factor)
+    out.copy_(result)
+    return out
