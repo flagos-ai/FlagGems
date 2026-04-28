@@ -22,6 +22,7 @@ def tril_kernel(
     N,
     B,
     diag,
+    IS_INPLACE: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -33,12 +34,26 @@ def tril_kernel(
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
     mask = (offs_m < M) & (offs_n < N)
 
-    keep = offs_n <= (offs_m + diag)
-    load_mask = mask & keep
-
     base = pid_b * M * N
     idxs = base + offs_m * N + offs_n
 
+    if IS_INPLACE:
+        block_min_row = pid_m * BLOCK_M
+        block_max_row = block_min_row + BLOCK_M - 1
+        block_min_col = pid_n * BLOCK_N
+        block_max_col = block_min_col + BLOCK_N - 1
+
+        all_above = block_min_col > block_max_row + diag
+        all_below = block_max_col <= block_min_row + diag
+
+        if all_below:
+            return
+        elif all_above:
+            tl.store(Y + idxs, 0.0, mask=mask)
+            return
+
+    keep = offs_n <= (offs_m + diag)
+    load_mask = mask & keep
     x = tl.load(X + idxs, mask=load_mask, other=0.0)
     tl.store(Y + idxs, x, mask=mask)
 
@@ -96,7 +111,7 @@ def tril(A, diagonal=0):
             triton.cdiv(N, meta["BLOCK_N"]),
             B,
         )
-        tril_kernel[grid](A_input, out, M, N, B, diagonal)
+        tril_kernel[grid](A_input, out, M, N, B, diagonal, False)
 
     return out
 
@@ -125,7 +140,7 @@ def tril_(A, diagonal=0):
                 triton.cdiv(N, meta["BLOCK_N"]),
                 B,
             )
-            tril_kernel[grid](A_to_use, result_temp, M, N, B, diagonal)
+            tril_kernel[grid](A_to_use, result_temp, M, N, B, diagonal, False)
 
         A.copy_(result_temp)
     else:
@@ -135,7 +150,7 @@ def tril_(A, diagonal=0):
                 triton.cdiv(N, meta["BLOCK_N"]),
                 B,
             )
-            tril_kernel[grid](A, A, M, N, B, diagonal)
+            tril_kernel[grid](A, A, M, N, B, diagonal, True)
 
     return A
 

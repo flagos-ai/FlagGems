@@ -1210,6 +1210,18 @@ tril:
       BLOCK_M: 32
       BLOCK_N: 128
     num_warps: 8
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 256
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 32
+    num_warps: 8
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+    num_warps: 8
 weight_norm_kernel_last:
   - gen: true
     param_map:
