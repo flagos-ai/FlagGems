@@ -246,9 +246,8 @@ def get_vendor_module(vendor_name, query=False):
 def get_vendor_info(vendor_name=None, query=False):
     if query:
         return get_vendor_module(vendor_name, query).vendor_info
-    global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
-    return vendor_module.vendor_info
+    return _state.vendor_module.vendor_info
 
 
 def get_vendor_infos():

@@ -1,5 +1,5 @@
-import os
 from enum import Enum
+import os
 
 
 class vendors(Enum):
@@ -125,12 +125,14 @@ OP_KEY_ORDERS = {
 }
 
 
-__all__ = [
-    "vendors",
-    "UNSUPPORT_FP64",
-    "UNSUPPORT_BF16",
-    "UNSUPPORT_INT64",
-    "DEFAULT_STRATEGIES",
-    "OP_KEY_ORDERS",
-    "_VENDOR_TORCH_ATTR",
-]
+# Mapping from vendor name to torch attribute for quick detection
+_VENDOR_TORCH_ATTR = {
+    "cambricon": "mlu",
+    "mthreads": "musa",
+    "iluvatar": "corex",
+    "ascend": "npu",
+    "sunrise": "ptpu",
+    "enflame": "gcu",
+}
+
+__all__ = ["vendors", "UNSUPPORT_FP64", "UNSUPPORT_BF16", "UNSUPPORT_INT64", "DEFAULT_STRATEGIES", "OP_KEY_ORDERS", "_VENDOR_TORCH_ATTR"]
