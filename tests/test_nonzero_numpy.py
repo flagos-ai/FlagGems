@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
     NONZERO_SHAPES,
@@ -14,7 +15,7 @@ from .accuracy_utils import (
 
 @pytest.mark.nonzero_numpy
 @pytest.mark.parametrize("shape", NONZERO_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
 def test_nonzero_numpy(shape, dtype):
     if dtype == torch.bool:
         inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
