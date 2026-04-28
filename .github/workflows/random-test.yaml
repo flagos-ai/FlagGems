@@ -63,6 +63,7 @@ jobs:
                 VENDOR="nvidia"
               else
                 VENDOR="${RUNNER_LABEL}"
+              fi
               ;;
             *)
               export HTTP_PROXY="${PROXY}"
@@ -80,7 +81,6 @@ jobs:
 
           ./setup.sh ${VENDOR}
       - name: Check GPU availability
-        if: ${{ inputs.gpu_check_script != '' }}
         shell: bash
         run: |
           bash tools/gpu_check_${ VENDOR}.sh
