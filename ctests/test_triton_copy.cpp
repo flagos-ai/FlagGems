@@ -4,7 +4,24 @@
 #include "gtest/gtest.h"
 #include "torch/torch.h"
 
-TEST(CopyTest, ContiguousTensorCopy) {
+// Declared in xpu_registration.cpp (compiled into libflag_gems.so).
+// After any late-loaded library (e.g. torch_xmlir) overrides our PrivateUse1
+// kernels, this function re-registers the native XRE3 implementations so they
+// win again.
+extern "C" void xpu_reregister_kernels();
+
+class CopyTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    // torch_xmlir is imported by the Triton JIT Python environment and its
+    // static constructors override our aten::empty / _copy_from / etc.
+    // Re-register our native XRE3 kernels before each test so they are
+    // always the active dispatch targets.
+    xpu_reregister_kernels();
+  }
+};
+
+TEST_F(CopyTest, ContiguousTensorCopy) {
   const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::randn({4, 5}, torch::TensorOptions().device(device).dtype(torch::kFloat32));
 
@@ -16,7 +33,7 @@ TEST(CopyTest, ContiguousTensorCopy) {
   EXPECT_EQ(out_gems.dtype(), t.dtype());
 }
 
-TEST(CopyTest, ContiguousTensorCopyWithDtype) {
+TEST_F(CopyTest, ContiguousTensorCopyWithDtype) {
   const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::randn({3, 3}, torch::TensorOptions().device(device).dtype(torch::kFloat16));
 
@@ -28,7 +45,7 @@ TEST(CopyTest, ContiguousTensorCopyWithDtype) {
   EXPECT_EQ(out_gems.dtype(), torch::kFloat32);
 }
 
-TEST(CopyTest, NonContiguousTensorCopy) {
+TEST_F(CopyTest, NonContiguousTensorCopy) {
   const torch::Device device = flag_gems::test::default_device();
   torch::Tensor t = torch::randn({2, 3, 4}, torch::TensorOptions().device(device));
   torch::Tensor t_transposed = t.transpose(0, 1);
@@ -40,7 +57,7 @@ TEST(CopyTest, NonContiguousTensorCopy) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(CopyTest, CopyInplaceContiguous) {
+TEST_F(CopyTest, CopyInplaceContiguous) {
   const torch::Device device = flag_gems::test::default_device();
   torch::Tensor src = torch::randn({5, 5}, torch::TensorOptions().device(device));
   torch::Tensor dst = torch::empty_like(src);
@@ -51,7 +68,7 @@ TEST(CopyTest, CopyInplaceContiguous) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(CopyTest, CopyInplaceNonContiguous) {
+TEST_F(CopyTest, CopyInplaceNonContiguous) {
   const torch::Device device = flag_gems::test::default_device();
   torch::Tensor src = torch::randn({3, 4, 5}, torch::TensorOptions().device(device));
   torch::Tensor dst = torch::empty({5, 4, 3}, torch::TensorOptions().device(device));
@@ -63,7 +80,7 @@ TEST(CopyTest, CopyInplaceNonContiguous) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(CopyTest, CopyBroadcasting) {
+TEST_F(CopyTest, CopyBroadcasting) {
   const torch::Device device = flag_gems::test::default_device();
   torch::Tensor src = torch::randn({1, 5}, torch::TensorOptions().device(device));
   torch::Tensor dst = torch::empty({3, 5}, torch::TensorOptions().device(device));
@@ -75,7 +92,7 @@ TEST(CopyTest, CopyBroadcasting) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST(CopyTest, EmptyTensor) {
+TEST_F(CopyTest, EmptyTensor) {
   const torch::Device device = flag_gems::test::default_device();
   torch::Tensor src = torch::empty({0}, torch::TensorOptions().device(device));
   torch::Tensor dst = torch::empty_like(src);

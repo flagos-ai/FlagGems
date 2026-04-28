@@ -3,6 +3,9 @@
 #include "flag_gems/backend_utils.h"
 #include "flag_gems/utils.h"
 #include "torch/torch.h"
+#ifdef FLAGGEMS_USE_KUNLUNXIN
+#include <xpu/runtime.h>
+#endif
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
@@ -114,15 +117,25 @@ at::Tensor to_copy(const at::Tensor& x,
   const int64_t numel = x.numel();
   if (numel == 0) return out;
 
-  constexpr int BLOCK_SIZE = 1024;
-  const unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
   c10::DeviceGuard guard(target_device);
-  backend::StreamType stream = backend::getCurrentStream();
-  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   const at::Tensor& x_linear = x;
   if (x_linear.is_contiguous() && out.is_contiguous() && numel <= std::numeric_limits<int32_t>::max()) {
+#ifdef FLAGGEMS_USE_KUNLUNXIN
+    // On XPU, use blocking D2D DMA instead of a Triton kernel.
+    // Triton's gm2lm_v3 reads from L3/GSM (on-chip), but H2D DMA (xpu_memcpy
+    // HOST_TO_DEVICE) writes only to HBM, leaving stale data in L3/GSM.
+    // xpu_memcpy DEVICE_TO_DEVICE is a synchronous DMA that copies HBM->HBM
+    // directly and is cache-coherent, so both src and dst are consistent.
+    const uint64_t nbytes = static_cast<uint64_t>(out.nbytes());
+    int ret = xpu_memcpy(out.data_ptr(), x_linear.data_ptr(), nbytes, XPU_DEVICE_TO_DEVICE);
+    TORCH_CHECK(ret == XPU_SUCCESS, "xpu_memcpy D2D (to_copy) failed: ", ret);
+    return out;
+#endif
+    constexpr int BLOCK_SIZE = 1024;
+    const unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
     static const TritonJITFunction& kernel_linear =
         TritonJITFunction::get_instance((utils::get_triton_src_path() / "copy.py").string(),
                                         "copy_kernel_linear");
@@ -159,17 +172,24 @@ at::Tensor& copy_(at::Tensor& dst, const at::Tensor& src, bool non_blocking = fa
 
   const int64_t numel = dst.numel();
 
-  constexpr int BLOCK_SIZE = 1024;
-  const unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
   c10::DeviceGuard guard(dst.device());
-  backend::StreamType stream = backend::getCurrentStream();
-  backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
   bool no_broadcast = src.sizes().equals(dst.sizes());
 
   if (dst.is_contiguous() && src.is_contiguous() && no_broadcast &&
       numel <= std::numeric_limits<int32_t>::max()) {
+#ifdef FLAGGEMS_USE_KUNLUNXIN
+    // On XPU, use blocking D2D DMA instead of a Triton kernel.
+    // See comment in to_copy above for rationale.
+    const uint64_t nbytes = static_cast<uint64_t>(dst.nbytes());
+    int ret = xpu_memcpy(dst.data_ptr(), src.data_ptr(), nbytes, XPU_DEVICE_TO_DEVICE);
+    TORCH_CHECK(ret == XPU_SUCCESS, "xpu_memcpy D2D (copy_) failed: ", ret);
+    return dst;
+#endif
+    constexpr int BLOCK_SIZE = 1024;
+    const unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    backend::StreamType stream = backend::getCurrentStream();
+    backend::RawStreamType raw_stream = backend::getRawStream(stream);
     static const TritonJITFunction& kernel_linear =
         TritonJITFunction::get_instance((utils::get_triton_src_path() / "copy.py").string(),
                                         "copy_kernel_linear");

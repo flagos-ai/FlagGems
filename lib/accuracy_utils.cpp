@@ -9,7 +9,7 @@
 
 namespace flag_gems::accuracy_utils {
 
-#if defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_NPU)
+#if defined(FLAGGEMS_USE_MUSA) || defined(FLAGGEMS_USE_NPU) || defined(FLAGGEMS_USE_KUNLUNXIN)
 bool TO_CPU = true;
 #else
 bool TO_CPU = false;
