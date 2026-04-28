@@ -11,20 +11,20 @@ class EinsumBenchmark(Benchmark):
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
 
     def __init__(self, *args, batched=False, **kwargs):
-        super().__init__(*args, **kwargs)
         self.batched = batched
+        super().__init__(*args, **kwargs)
 
     def set_more_shapes(self):
-        return None
+        return []
 
-    def get_input_iter(self, cur_dtype) -> Generator:
+    def get_input_iter(self, dtype) -> Generator:
         for b, m, n, k in self.shapes:
             if self.batched:
-                inp1 = torch.randn([b, m, k], dtype=cur_dtype, device=self.device)
-                inp2 = torch.randn([b, k, n], dtype=cur_dtype, device=self.device)
+                inp1 = torch.randn([b, m, k], dtype=dtype, device=self.device)
+                inp2 = torch.randn([b, k, n], dtype=dtype, device=self.device)
             else:
-                inp1 = torch.randn([m, k], dtype=cur_dtype, device=self.device)
-                inp2 = torch.randn([k, n], dtype=cur_dtype, device=self.device)
+                inp1 = torch.randn([m, k], dtype=dtype, device=self.device)
+                inp2 = torch.randn([k, n], dtype=dtype, device=self.device)
             yield inp1, inp2
 
     def get_tflops(self, op, *args, **kwargs):
