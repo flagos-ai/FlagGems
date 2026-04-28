@@ -89,6 +89,7 @@ def test_perf_grid_sampler_2d(interp_name, interp_mode, pad_name, pad_mode):
     )
     bench.run()
 
+
 @pytest.mark.grid_sampler_3d
 @pytest.mark.parametrize(
     "interp_name,interp_mode",

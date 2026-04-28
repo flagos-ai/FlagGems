@@ -448,6 +448,8 @@ def test_grid_sample_functional_2d_backward(align_corners, interp_name, pad_name
     torch.testing.assert_close(
         res_grad_grid, ref_grad_grid, rtol=1e-4, atol=1e-4, equal_nan=True
     )
+
+
 _GRID_SAMPLE_3D_MODES = [
     ("bilinear", 0),
     ("nearest", 1),

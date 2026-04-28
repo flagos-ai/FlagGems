@@ -9,6 +9,9 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 
 # --------------------------- padding wrapper genration -----------------------------------
