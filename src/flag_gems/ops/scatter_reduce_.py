@@ -162,7 +162,9 @@ def generate_scatter_reduce_kernel(
             # Sum reduction using atomic_add
             code.writeline("if IS_SUM or IS_MEAN:")
             with code.indent():
-                code.writeline("tl.atomic_add(out + inp_offsets, cur_src, mask=mask)")
+                code.writeline(
+                    "tl.atomic_add(out + inp_offsets, cur_src.to(tl.float32), mask=mask)"
+                )
 
             # Product reduction using CAS loop
             code.writeline("elif IS_PROD:")
