@@ -11,7 +11,7 @@ from .accuracy_utils import (
 )
 
 
-@pytest.mark.rsub
+@pytest.mark.rsub_tensor
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_rsub_tensor(shape, dtype):
@@ -27,7 +27,7 @@ def test_rsub_tensor(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.rsub
+@pytest.mark.rsub_scalar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_rsub_scalar(shape, dtype):
