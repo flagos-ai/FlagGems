@@ -26,8 +26,7 @@ import yaml
 
 from flag_gems.fused.moe_align_block_size import moe_align_block_size
 from flag_gems.fused.moe_sum import moe_sum
-from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime import device
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)

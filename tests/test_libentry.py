@@ -12,8 +12,7 @@ import triton
 from triton import language as tl
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime import device
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.code_cache import config_cache_dir
 from flag_gems.utils.libentry import libcache, major_version, minor_version
