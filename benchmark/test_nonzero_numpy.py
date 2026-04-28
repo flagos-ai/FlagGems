@@ -6,7 +6,7 @@ from . import base, consts
 
 @pytest.mark.nonzero_numpy
 def test_nonzero_numpy():
-    bench = base.GenericBenchmark(
+    bench = base.GenericBenchmark2DOnly(
         input_fn=base.unary_input_fn,
         op_name="nonzero_numpy",
         torch_op=torch.ops.aten.nonzero_numpy,
