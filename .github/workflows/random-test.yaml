@@ -80,10 +80,12 @@ jobs:
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
 
           ./setup.sh ${VENDOR}
+
       - name: Check GPU availability
         shell: bash
         run: |
           bash "tools/gpu_check_${VENDOR}.sh"
+
       - name: Run tests
         shell: bash
         run: |
