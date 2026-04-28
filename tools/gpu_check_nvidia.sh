@@ -11,10 +11,10 @@ if ! command -v nvidia-smi &> /dev/null; then
 fi
 
 # Get the number of GPUs
-gpu_count=$(ppu-smi -L 2>/dev/null | grep -c "NVIDIA ")
+gpu_count=$(nvidia-smi -L 2>/dev/null | grep -c "NVIDIA ")
 
 if [ "$gpu_count" -eq 0 ]; then
-    echo "No T-Head PPU cards detected."
+    echo "No NVIDIA GPU cards detected."
     exit 1
 fi
 
