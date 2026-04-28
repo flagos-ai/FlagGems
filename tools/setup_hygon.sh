@@ -9,7 +9,7 @@ uv pip install ".[test]"
 
 uv pip install --index ${FLAGOS_PYPI} \
     "torch==2.9.0+das.opt1.dtk2604" \
-    "flagtree==0.5.0+hcu3.0",
+    "flagtree==0.5.0+hcu3.0"
 
 # Replace flagtree with Triton if requested
 if [ -n "${USE_TRITON}" ]; then
