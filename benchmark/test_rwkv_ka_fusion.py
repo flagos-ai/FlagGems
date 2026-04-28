@@ -3,13 +3,12 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class RWKVBenchmark(utils.GenericBenchmark):
+class RWKVBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
-        return None
+        return []
 
 
 def rwkv_ka_fusion_input_fn(shape, dtype, device):
@@ -44,7 +43,7 @@ def test_rwkv_ka_fusion():
         input_fn=rwkv_ka_fusion_input_fn,
         op_name="rwkv_ka_fusion",
         torch_op=torch_rwkv_ka,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.rwkv_ka_fusion)
 

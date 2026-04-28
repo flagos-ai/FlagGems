@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as base
+from . import base
 
 
 def _input_fn(shape, dtype, device):

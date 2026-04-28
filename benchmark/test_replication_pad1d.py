@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def _input_fn(config, dtype, device):
@@ -11,7 +10,7 @@ def _input_fn(config, dtype, device):
     yield x, list(padding)
 
 
-class ReplicationPad1dBenchmark(utils.Benchmark):
+class ReplicationPad1dBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             ((2, 3, 7), (1, 2)),
@@ -21,11 +20,11 @@ class ReplicationPad1dBenchmark(utils.Benchmark):
         ]
 
     def set_more_shapes(self):
-        return None
+        return []
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for config in self.shapes:
-            yield from _input_fn(config, cur_dtype, self.device)
+            yield from _input_fn(config, dtype, self.device)
 
 
 @pytest.mark.replication_pad1d
@@ -33,7 +32,7 @@ def test_replication_pad1d():
     bench = ReplicationPad1dBenchmark(
         op_name="replication_pad1d",
         torch_op=torch.ops.aten.replication_pad1d,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()
