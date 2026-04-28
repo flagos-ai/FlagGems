@@ -36,6 +36,14 @@ tests/*.json
 
 docs/
 scripts/
+!docs/
+docs/*
+!docs/upsample_nearest2d_dev/
+!docs/upsample_nearest2d_dev/**
+!scripts/
+scripts/*
+!scripts/upsample_nearest2d/
+!scripts/upsample_nearest2d/**
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.
