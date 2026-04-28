@@ -2,10 +2,11 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.performance_utils import GenericBenchmark
+
+from . import base
 
 
-class Conv1DBenchmark(GenericBenchmark):
+class Conv1DBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         return [
             (32, 64, 512, 64, 3, 1, 0, 1),

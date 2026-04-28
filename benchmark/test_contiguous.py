@@ -1,12 +1,11 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
-    if dtype in attr_utils.FLOAT_DTYPES:
+    if dtype in consts.FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=device)
     else:
         inp = torch.randint(
@@ -19,11 +18,11 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.contiguous
 def test_contiguous():
-    bench = utils.GenericBenchmark(
+    bench = base.GenericBenchmark(
         op_name="contiguous",
         input_fn=_input_fn,
         torch_op=torch.Tensor.contiguous,
-        dtypes=attr_utils.FLOAT_DTYPES + attr_utils.INT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )
 
     bench.run()
