@@ -1,12 +1,11 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 # TODO(Qiming): Extract this to a base class
-class NormBenchmark(utils.GenericBenchmark):
+class NormBenchmark(base.GenericBenchmark):
     # TODO: add new metric
 
     def set_more_shapes(self):
@@ -40,7 +39,7 @@ def group_norm_input_fn(shape, dtype, device):
     )
     yield inp, channel // 2, weight, bias
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         yield inp, channel, weight, bias
 
 
@@ -50,6 +49,6 @@ def test_group_norm():
         input_fn=group_norm_input_fn,
         op_name="group_norm",
         torch_op=torch.nn.functional.group_norm,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

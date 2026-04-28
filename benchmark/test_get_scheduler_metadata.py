@@ -3,10 +3,10 @@ import torch
 
 import flag_gems
 
-from .performance_utils import GenericBenchmark
+from . import base
 
 
-class GetSchedulerMetadataBenchmark(GenericBenchmark):
+class GetSchedulerMetadataBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             (8, 8, 1024, 16, 4, 128, 128),
@@ -17,7 +17,7 @@ class GetSchedulerMetadataBenchmark(GenericBenchmark):
         ]
 
     def set_more_shapes(self):
-        return None
+        return []
 
 
 @pytest.mark.get_scheduler_metadata

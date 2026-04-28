@@ -5,11 +5,10 @@ import torch
 
 from flag_gems.utils import shape_utils
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class IsAllTrueBenchmark(utils.Benchmark):
+class IsAllTrueBenchmark(base.Benchmark):
     """
     Benchmark class for _is_all_true operation.
     _is_all_true only accepts bool tensors and reduces over all elements.
@@ -32,7 +31,7 @@ class IsAllTrueBenchmark(utils.Benchmark):
         more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
-    def get_input_iter(self, cur_dtype) -> Generator:
+    def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
             # _is_all_true only accepts bool tensors, generate random bool tensor
             inp = torch.randint(0, 2, shape, dtype=torch.bool, device=self.device)
@@ -44,6 +43,6 @@ def test_is_all_true():
     bench = IsAllTrueBenchmark(
         op_name="is_all_true",
         torch_op=torch._is_all_true,
-        dtypes=attr_utils.BOOL_DTYPES,
+        dtypes=consts.BOOL_DTYPES,
     )
     bench.run()

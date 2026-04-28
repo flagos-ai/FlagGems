@@ -4,10 +4,10 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base, consts
 
 
-class IndexAccBenchmark(utils.GenericBenchmark):
+class IndexAccBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         INDEX_SHAPE = (
             ((2**28,), ((2**16,),)),
@@ -58,7 +58,7 @@ def test_index_acc_perf():
         op_name="index",
         torch_op=torch.ops.aten.index,
         input_fn=_input_fn,
-        dtypes=[torch.float16, torch.float32, torch.bfloat16],
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.index)
 

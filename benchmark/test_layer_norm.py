@@ -1,12 +1,11 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 # TODO(Qiming): Extract this to a base class
-class NormBenchmark(utils.GenericBenchmark):
+class NormBenchmark(base.GenericBenchmark):
     # TODO: add new metric
 
     def set_more_shapes(self):
@@ -35,6 +34,6 @@ def test_layer_norm():
         op_name="layer_norm",
         input_fn=input_fn,
         torch_op=torch.layer_norm,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
