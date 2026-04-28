@@ -289,7 +289,8 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
         "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
     )["strategy"]
     if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
+    else ["default", "default", "default", "align32", "align32", "default"],
+    #else ["align32", "align32", "align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
 )
@@ -470,7 +471,8 @@ def general_mm(a, b, c, M, N, K):
         "strategy"
     ]
     if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "default"],
+    else ["default", "default", "align32", "default"],
+    #else ["align32", "align32", "align32", "default"],
     warmup=5,
     rep=10,
 )
