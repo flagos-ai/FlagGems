@@ -47,8 +47,8 @@ jobs:
           esac
 
       - uses: actions/checkout@v6
-        with:
-          ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+        # with:
+        #  ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
 
       - name: Setup FlagGems
         shell: bash
