@@ -35,6 +35,10 @@ on:
     secrets:
       RUNNER_SSH_KEY:
         required: true
+      PROXYC:
+        required: true
+      PROXYG:
+        required: true
 
 permissions:
   contents: read
@@ -47,9 +51,30 @@ jobs:
         op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
+      - name: Set global proxy
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+          PROXY: ${{ secrets.PROXYG }}
+        run: |
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
+            echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
+          fi
       - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+      - name: Setup FlagGems
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+          PROXY: ${{ secrets.PROXYC }}
+        run: |
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            export HTTP_PROXY="${PROXY}"
+            export HTTPS_PROXY="${PROXY}"
+          fi
+          ./setup.sh ${{ inputs.vendor }}
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
         shell: bash
@@ -64,8 +89,10 @@ jobs:
           bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
+        shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
-        shell: bash
         run: |
-          bash tools/test_backends.sh ${{ inputs.vendor }} ${{ inputs.pr_id }}
+          source .venv/bin/activate
+          source tools/set-env.sh ${{ inputs.vendor }}
+          tools/test-op.sh ${{ inputs.pr_id }}

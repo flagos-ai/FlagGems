@@ -7,7 +7,7 @@ import torch
 import yaml
 
 import flag_gems
-from benchmark.attri_util import (
+from benchmark.consts import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
     DEFAULT_ITER_COUNT,
@@ -137,14 +137,19 @@ def pytest_addoption(parser):
         help="Specify the shape file name for benchmarks. If not specified, a default shape list will be used.",
     )
 
-    parser.addoption(
-        "--record",
-        action="store",
-        default="none",
-        required=False,
-        choices=["none", "log"],
-        help="Benchmark info recorded in log files or not",
-    )
+    try:
+        parser.addoption(
+            "--record",
+            action="store",
+            default="none",
+            required=False,
+            choices=["none", "log"],
+            help="Benchmark info recorded in log files or not",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register --record in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
 
     parser.addoption(
         "--parallel",
@@ -158,11 +163,16 @@ def pytest_addoption(parser):
         ),
     )
 
-    parser.addoption(
-        "--collect-marks",
-        action="store_true",
-        help="Collect the tests with marker information without executing them",
-    )
+    try:
+        parser.addoption(
+            "--collect-marks",
+            action="store_true",
+            help="Collect the tests with marker information without executing them",
+        )
+    except ValueError:
+        # Mixed test+benchmark pytest runs may already register this option in
+        # tests/conftest.py. Reuse the existing option in that case.
+        pass
 
 
 def pytest_configure(config):

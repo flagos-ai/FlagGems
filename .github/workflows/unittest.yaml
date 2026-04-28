@@ -116,6 +116,8 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-hygon:
     needs: preprocess
@@ -129,6 +131,8 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-iluvatar:
     needs: preprocess
@@ -142,6 +146,8 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-kunlunxin:
     needs: preprocess
@@ -157,6 +163,8 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-metax:
     needs: preprocess
@@ -164,11 +172,14 @@ jobs:
     uses: ./.github/workflows/backend-test.yaml
     with:
       vendor: metax
-      runner_label: metax_CI
+      runner_label: metax
+      gpu_check_script: tools/gpu_check_metax.sh
       changed_files: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-mthreads:
     needs: preprocess
@@ -182,6 +193,8 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-nvidia:
     needs: preprocess
@@ -195,6 +208,8 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-tsingmicro:
     needs: preprocess
@@ -208,6 +223,8 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   backend-thead:
     needs: preprocess
@@ -221,6 +238,8 @@ jobs:
       pr_id: ${{ needs.preprocess.outputs.pr_id }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}
 
   # TODO(Qiming): This job doesn't require an nvidia backend, the generic
   # test-op workflow should be fine.
@@ -236,3 +255,5 @@ jobs:
       changed_files: ${{ needs.preprocess.outputs.changed_files }}
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
+      PROXYC: ${{ secrets.PROXYC }}
+      PROXYG: ${{ secrets.PROXYG }}

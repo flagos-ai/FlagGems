@@ -1,7 +1,7 @@
 [build-system]
 # cmake locks to '>=3.20,<4.0' to sync with FlagTree
 
-requires = ["setuptools==79.0.1", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
+requires = ["setuptools>=64.0", "scikit-build-core==0.12.2", "pybind11==3.0.3", "cmake>=3.20,<4.0", "ninja==1.13.0"]
 
 build-backend = "scikit_build_core.build"
 
@@ -9,7 +9,7 @@ build-backend = "scikit_build_core.build"
 
 name = "flag_gems"
 
-version = "5.0.1.rc.0"
+version = "5.0.2"
 
 description = "FlagGems is a function library written in Triton language."
 
@@ -52,62 +52,78 @@ dependencies = [
 [project.optional-dependencies]
 
 ascend = [
-    "flagtree==0.5.0+ascend3.2",
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
+    "flagtree==0.5.0+ascend3.2",
 ]
 
 hygon = [
-    "flagtree==0.5.0+hcu3.0",
     "torch==2.9.0+das.opt1.dtk2604",
+    "flagtree==0.5.0+hcu3.0",
 ]
 
 iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
-    "triton==3.1.0+corex.4.4.0",
+    "flagtree==0.5.0+iluvatar3.1"
 ]
 
 kunlunxin = [
-    "torch==2.5.1",
-    "torchvision==0.20.1",
-    "torchaudio==2.5.1",
-    "regex==2026.4.4",
+    "benchflow==1.0.0",
     "hyperparameter==0.5.6",
-    "colorama==0.4.6",
+    "torch==2.5.1+cu118",
+    "torchaudio==2.5.1+cu118",
+    "torchvision==0.20.1+cu118",
+    "torch_klx==0.1.0",
+    "torch_xray==0.2.1",
     "psutil==6.1.0",
+    "regex==2026.4.4",
+    "flagtree==0.5.1+xpu3.0",
+    "xmlir==1.0.0.1"
+]
+
+metax = [
+    "torch==2.8.0+metax3.5.3.9",
+    "torchaudio==2.4.1+metax3.5.3.9",
+    "torchvision==0.15.1+metax3.5.3.9",
+    "flagtree==3.1.0+metax3.5.3.9",
+    # "triton==3.0.0+metax3.5.3.9",
 ]
 
 mthreads = [
     "torch==2.7.1+musa.4.0.0",
     "torch_musa==2.7.1",
+    "flagtree==0.5.0+mthreads3.1",
     # "triton==3.1.0+musa1.4.6",
     "numpy==1.26.4",
     "mkl==2024.0.0",
 ]
 
 nvidia = [
-    "torch==2.9.0",
-    "torchvision==0.24.0",
-    "torchaudio==2.9.0",
+    "torch==2.9.0+cu128",
+    "torchvision==0.24.0+cu128",
+    "torchaudio==2.9.0+cu128",
     "flagtree==0.5.0+3.5",
+    # "triton==3.5",
 ]
 
 tsingmicro = [
-    "torch==2.7.0",
+    "torch==2.7.0+cpu",
     "torchvision==0.22.0",
     "torchaudio==2.7.0",
-    "flagtree==0.5.0+tsingmicro3.3",
     "torch_txda==0.1.0+20260310.294fc4a6",
     "txops==0.1.0+20260225.5cc33e4e",
+    "flagtree==0.5.0+tsingmicro3.3",
+    # "triton==3.3.0++gitfe2a28fa",
 ]
 
 # Test packages
 test = [
     "distro==1.9.0",
+    "coverage==7.13.5",
     "openpyxl==3.1.5",
-    "pytest==9.0.2",
+    "pytest==9.0.3",
     "scipy>=1.15.3",
 ]
 
@@ -150,6 +166,7 @@ conflicts = [
         { extra = "hygon" },
         { extra = "iluvatar" },
         { extra = "kunlunxin" },
+        { extra = "metax" },
         { extra = "mthreads" },
         { extra = "nvidia" },
         { extra = "tsingmicro" },
@@ -180,6 +197,12 @@ name = "kunlunxin-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-kunlunxin/simple"
 explicit = true
 
+# Source for MetaX packages
+[[tool.uv.index]]
+name = "metax-pypi"
+url = "https://resource.flagos.net/repository/flagos-pypi-metax/simple"
+explicit = true
+
 # Source for Mthreads packages
 [[tool.uv.index]]
 name = "mthreads-pypi"
@@ -190,7 +213,7 @@ explicit = true
 # Mainly for flagtree installation
 [[tool.uv.index]]
 name = "nvidia-pypi"
-url = "https://resource.flagos.net/repository/flagos-pypi-hosted/simple"
+url = "https://resource.flagos.net/repository/flagos-pypi-nvidia/simple"
 explicit = true
 
 # Source for TsingMicro packages
@@ -199,6 +222,7 @@ name = "tsingmicro-pypi"
 url = "https://resource.flagos.net/repository/flagos-pypi-tsingmicro/simple"
 explicit = true
 
+# TODO(Qiming): double check the following two index URLs
 # Source for Pytorch CU12.8
 [[tool.uv.index]]
 name = "torch-pypi-128"
@@ -219,35 +243,47 @@ url = "https://mirrors.aliyun.com/pypi/simple/"
 [tool.uv.sources]
 # Mapping from optional groups to index servers
 flagtree = [
-  { index = "ascend-pypi", marker = "extra=='ascend'" },
-  { index = "hygon-pypi", marker = "extra != 'ascend' and extra=='hygon'" },
-  { index = "mthreads-pypi", marker = "extra!='ascned' and extra!='hygon' and extra=='mthreads'" },
-  { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra=='tsingmicro'" },
+  { index = "ascend-pypi",     marker = "extra=='ascend'" },
+  { index = "hygon-pypi",      marker = "extra!='ascend' and extra=='hygon'" },
+  { index = "mthreads-pypi",   marker = "extra!='ascend' and extra!='hygon' and extra=='mthreads'" },
+  { index = "nvidia-pypi",     marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='mthreads' and extra!='nvidia' and extra=='tsingmicro'" },
 ]
 torch = [
-  { index = "ascend-pypi", marker = "extra=='ascend'"},
-  { index = "hygon-pypi", marker = "extra!='ascend' and extra=='hygon'" },
-  { index = "iluvatar-pypi", marker = "extra!='ascend' and extra!='hygon' and extra=='iluvatar'" },
-  { index = "kunlunxin-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra=='kunlunxin'" },
-  { index = "mthreads-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra=='mthreads'" },
-  { index = "nvidia-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra!='mthreads' and extra=='nvidia'" },
-  { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra!='mthreads' and extra!='nvidia' and extra=='tsingmicro'" },
+  { index = "ascend-pypi",     marker = "extra=='ascend'"},
+  { index = "hygon-pypi",      marker = "extra!='ascend' and extra=='hygon'" },
+  { index = "iluvatar-pypi",   marker = "extra!='ascend' and extra!='hygon' and extra=='iluvatar'" },
+  { index = "kunlunxin-pypi",  marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra=='kunlunxin'" },
+  { index = "metax-pypi",      marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra=='metax'" },
+  { index = "mthreads-pypi",   marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra=='mthreads'" },
+  { index = "nvidia-pypi",     marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra!='mthreads' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='ascend' and extra!='hygon' and extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra!='mthreads' and extra!='nvidia' and extra=='tsingmicro'" },
 ]
 torchaudio = [
-  { index = "iluvatar-pypi", marker = "extra=='iluvatar'" },
-  { index = "kunlunxin-pypi", marker = "extra!='iluvatar' and extra=='kunlunxin'" },
-  { index = "nvidia-pypi", marker = "extra!='iluvatar' and extra!='kunlunxin' and extra=='nvidia'" },
-  { index = "tsingmicro-pypi", marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='nvidia' and extra=='tsingmicro'" },
+  { index = "iluvatar-pypi",   marker = "extra=='iluvatar'" },
+  { index = "kunlunxin-pypi",  marker = "extra!='iluvatar' and extra=='kunlunxin'" },
+  { index = "metax-pypi",      marker = "extra!='iluvatar' and extra!='kunlunxin' and extra=='metax'" },
+  { index = "nvidia-pypi",     marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra!='nvidia' and extra=='tsingmicro'" },
 ]
 torchvision = [
-  { index = "iluvatar-pypi", marker = "extra=='iluvatar'" },
-  { index = "kunlunxin-pypi", marker = "extra!='iluvatar' and extra=='kunlunxin'" },
-  { index = "nvidia-pypi", marker = "extra!='iluvatar' and extra!='kunlunxin' and extra=='nvidia'" },
-  { index = "tsingmicro-pypi", marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='nvidia' and extra=='tsingmicro'" },
+  { index = "iluvatar-pypi",   marker = "extra=='iluvatar'" },
+  { index = "kunlunxin-pypi",  marker = "extra!='iluvatar' and extra=='kunlunxin'" },
+  { index = "metax-pypi",      marker = "extra!='iluvatar' and extra!='kunlunxin' and extra=='metax'" },
+  { index = "nvidia-pypi",     marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra=='nvidia'" },
+  { index = "tsingmicro-pypi", marker = "extra!='iluvatar' and extra!='kunlunxin' and extra!='metax' and extra!='nvidia' and extra=='tsingmicro'" },
 ]
-torch_txda = { index = "tsingmicro-pypi" }
-txops = { index = "tsingmicro-pypi" }
-torch_musa = { index = "mthreads-pypi" }
+torch_txda = [
+  { index = "tsingmicro-pypi", marker = "extra=='tsingmicro'" }
+]
+txops = [
+  { index = "tsingmicro-pypi", marker = "extra=='tsingmicro'" }
+]
+torch_musa = [
+  { index = "mthreads-pypi",   marker = "extra=='mthreads'" }
+]
 triton = [
-  { index = "iluvatar-pypi", marker = "extra=='iluvatar'" }
+  { index = "iluvatar-pypi",  marker = "extra=='iluvatar'" },
+  { index = "metax-pypi",     marker = "extra!='iluvatar' and extra=='metax'" },
+  { index = "mthreads-pypi",  marker = "extra!='iluvatar' and extra!='metax' and extra=='mthreads'" },
 ]

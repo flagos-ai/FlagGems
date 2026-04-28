@@ -14,7 +14,7 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
-__version__ = "5.0.1.rc.0"
+__version__ = "5.0.2"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -28,6 +28,10 @@ def torch_ge(v):
 
 
 _FULL_CONFIG = (
+    ("__ior__.Scalar", bitwise_or_scalar_),
+    ("__ior__.Tensor", bitwise_or_tensor_),
+    ("__or__.Scalar", bitwise_or_scalar),
+    ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_flash_attention_forward", flash_attention_forward),
@@ -36,6 +40,7 @@ _FULL_CONFIG = (
         _functional_sym_constrain_range_for_size,
     ),
     ("_grouped_mm", group_mm),
+    ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
     ("_log_softmax", log_softmax),
     ("_log_softmax_backward_data", log_softmax_backward),
@@ -85,6 +90,8 @@ _FULL_CONFIG = (
     ("arcsinh_", arcsinh_),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("asinh", asinh),
+    ("asinh.out", asinh_out),
     ("asinh_", asinh_),
     ("atan", atan),
     ("atan_", atan_),
@@ -94,6 +101,7 @@ _FULL_CONFIG = (
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("baddbmm", baddbmm),
+    ("bernoulli_.float", bernoulli_),
     ("bincount", bincount),
     ("bitwise_and.Scalar", bitwise_and_scalar),
     ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
@@ -123,6 +131,8 @@ _FULL_CONFIG = (
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
     ("clamp_min_", clamp_min_),
+    ("clip", clip),
+    ("clip_", clip_),
     ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
@@ -211,6 +221,8 @@ _FULL_CONFIG = (
     ("full_like", full_like),
     ("gather", gather),
     ("gather_backward", gather_backward),
+    ("gcd", gcd),
+    ("gcd.out", gcd_out),
     ("ge.Scalar", ge_scalar),
     ("ge.Tensor", ge),
     ("gelu", gelu),
@@ -250,6 +262,9 @@ _FULL_CONFIG = (
     ("kron", kron),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
+    ("leaky_relu", leaky_relu),
+    ("leaky_relu_", leaky_relu_),
+    ("leaky_relu.out", leaky_relu_out),
     ("lerp.Scalar", lerp_scalar),
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
@@ -288,6 +303,8 @@ _FULL_CONFIG = (
     ("max.dim", max_dim),
     ("max_pool2d_with_indices", max_pool2d_with_indices),
     ("max_pool2d_backward", max_pool2d_backward),
+    ("max_pool3d_with_indices", max_pool3d_with_indices),
+    ("max_pool3d_backward", max_pool3d_backward),
     ("maximum", maximum),
     ("mean", mean),
     ("mean.dim", mean_dim),
@@ -330,6 +347,7 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("pad", pad),
+    ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("polar", polar),
@@ -371,6 +389,7 @@ _FULL_CONFIG = (
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
+    ("roll", roll),
     ("round", round),
     ("round.out", round_out),
     ("round_", round_),
@@ -446,12 +465,16 @@ _FULL_CONFIG = (
     ("true_divide_.Tensor", true_divide_),
     ("unfold_backward", unfold_backward),
     ("uniform_", uniform_),
+    ("unique_consecutive", unique_consecutive),
     ("upsample_bicubic2d", upsample_bicubic2d),
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_nearest1d", upsample_nearest1d),
     ("upsample_nearest2d", upsample_nearest2d),
     ("upsample_nearest3d", upsample_nearest3d),
     ("var_mean.correction", var_mean),
+    ("var", var),
+    ("var.correction", var_correction),
+    ("var.dim", var_dim),
     ("vdot", vdot),
     ("vstack", vstack),
     ("where.self", where_self),
