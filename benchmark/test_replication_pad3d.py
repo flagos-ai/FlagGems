@@ -5,8 +5,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def replication_pad3d_input_fn(shape, dtype, device):
@@ -17,7 +16,7 @@ def replication_pad3d_input_fn(shape, dtype, device):
     yield input_tensor, {"padding": padding}
 
 
-class ReplicationPad3dBenchmark(utils.GenericBenchmarkExcluse3D):
+class ReplicationPad3dBenchmark(base.GenericBenchmarkExcluse3D):
     def set_shapes(self, shape_file_path=None):
         replication_pad3d_shapes = [
             (1, 3, 16, 256, 256),
@@ -29,7 +28,7 @@ class ReplicationPad3dBenchmark(utils.GenericBenchmarkExcluse3D):
         self.shapes = replication_pad3d_shapes
 
     def set_more_shapes(self):
-        return None
+        return []
 
 
 @pytest.mark.replication_pad3d
@@ -44,7 +43,7 @@ def test_replication_pad3d():
         input_fn=replication_pad3d_input_fn,
         op_name="replication_pad3d",
         torch_op=torch_replication_pad3d,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(gems_wrapper)
     bench.run()
