@@ -14,7 +14,9 @@ import torch
 import yaml
 
 import flag_gems
-from benchmark.attri_util import (
+from benchmark.base import Benchmark, GenericBenchmark2DOnly
+from benchmark.conftest import Config, emit_record_logger
+from benchmark.consts import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
     FLOAT_DTYPES,
@@ -24,8 +26,6 @@ from benchmark.attri_util import (
     OperationAttribute,
     model_shapes,
 )
-from benchmark.conftest import Config, emit_record_logger
-from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
