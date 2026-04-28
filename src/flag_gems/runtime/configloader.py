@@ -1,5 +1,4 @@
 import copy
-import os
 import warnings
 
 import triton
@@ -48,7 +47,7 @@ class ConfigLoader(object):
                 self.triton_config_default["num_ldmatrixes"] = 0
             self.expand_config_registry = self._build_expand_registry()
             self.load_all()
-    
+
     def update_config_from_arch(self):
         try:
             archEvent = backend.BackendArchEvent()
@@ -77,9 +76,9 @@ class ConfigLoader(object):
             "num_ctas": current_config["num_ctas"],
         }
         if self.device.vendor_name == "hygon":
-            kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"] 
+            kwargs["num_ldmatrixes"] = current_config["num_ldmatrixes"]
         return triton.Config(single_config["META"], **kwargs)
-    
+
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
         if op_name == "bmm":
             return [

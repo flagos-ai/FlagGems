@@ -1,5 +1,5 @@
-from enum import Enum
 import os
+from enum import Enum
 
 
 class vendors(Enum):
@@ -125,4 +125,12 @@ OP_KEY_ORDERS = {
 }
 
 
-__all__ = ["vendors", "UNSUPPORT_FP64", "UNSUPPORT_BF16", "UNSUPPORT_INT64", "DEFAULT_STRATEGIES", "OP_KEY_ORDERS", "_VENDOR_TORCH_ATTR"]
+__all__ = [
+    "vendors",
+    "UNSUPPORT_FP64",
+    "UNSUPPORT_BF16",
+    "UNSUPPORT_INT64",
+    "DEFAULT_STRATEGIES",
+    "OP_KEY_ORDERS",
+    "_VENDOR_TORCH_ATTR",
+]
