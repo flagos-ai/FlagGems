@@ -3,17 +3,17 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 vendor_name = flag_gems.vendor_name
 
 
-class UpsampleBenchmark(utils.GenericBenchmark):
+# TODO(Qiming): Kill this class
+class UpsampleBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (N, C, H, W).
-        return None
+        return []
 
 
 def _input_fn(shape, dtype, device):
@@ -40,7 +40,7 @@ def test_upsample_bicubic2d_aa():
     elif vendor_name == "kunlunxin":
         dtypes = [torch.float32, torch.float16]
     else:
-        dtypes = attr_utils.FLOAT_DTYPES
+        dtypes = consts.FLOAT_DTYPES
 
     bench = UpsampleBenchmark(
         input_fn=_input_fn,
@@ -51,7 +51,7 @@ def test_upsample_bicubic2d_aa():
     bench.run()
 
 
-class UpsampleBicubic2dAaBackwardBenchmark(utils.Benchmark):
+class UpsampleBicubic2dAaBackwardBenchmark(base.Benchmark):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -76,9 +76,9 @@ class UpsampleBicubic2dAaBackwardBenchmark(utils.Benchmark):
             (256, 512, 64, 64, 128, 128, False, "NC=131K 2x up"),
         ]
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for N, C, Hi, Wi, Ho, Wo, ac, label in self._cfgs:
-            grad = torch.randn([N, C, Ho, Wo], device=self.device, dtype=cur_dtype)
+            grad = torch.randn([N, C, Ho, Wo], device=self.device, dtype=dtype)
             yield grad, [Ho, Wo], [N, C, Hi, Wi], ac, None, None, label
 
     def get_tflops(self, op, *args, **kwargs):
@@ -91,7 +91,7 @@ def test_upsample_bicubic2d_aa_backward():
     bench = UpsampleBicubic2dAaBackwardBenchmark(
         op_name="upsample_bicubic2d_aa_backward",
         torch_op=torch.ops.aten._upsample_bicubic2d_aa_backward,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

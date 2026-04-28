@@ -3,7 +3,9 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base
+
+vendor_name = flag_gems.vendor_name
 
 # NOTE: This is a dead function identified during refactoring
 # def weight_norm_interface_input_fn(shape, dtype, device):
@@ -15,7 +17,7 @@ from . import performance_utils as utils
 
 def weight_norm_input_fn(shape, dtype, device):
     v = torch.randn(shape, dtype=dtype, device=device)
-    if utils.vendor_name in ["cambricon", "enflame"]:
+    if vendor_name in ["cambricon", "enflame"]:
         # Cambricon and Enflame fix input shape limit.
         g = torch.randn(shape[:1] + (1,) * (len(shape) - 1), dtype=dtype, device=device)
     else:
@@ -25,7 +27,7 @@ def weight_norm_input_fn(shape, dtype, device):
 
 @pytest.mark.weight_norm_interface
 def test_weight_vector_norm_benchmark():
-    bench = utils.GenericBenchmarkExcluse1D(
+    bench = base.GenericBenchmarkExcluse1D(
         op_name="weight_norm_interface",
         input_fn=weight_norm_input_fn,
         torch_op=torch._weight_norm,
