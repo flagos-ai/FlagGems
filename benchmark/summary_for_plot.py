@@ -34,7 +34,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from attri_util import BenchmarkMetrics, BenchmarkResult
+from .consts import BenchmarkMetrics, BenchmarkResult
 
 # to enable log files crossing speedup calculation
 ENABLE_COMPARE = False
