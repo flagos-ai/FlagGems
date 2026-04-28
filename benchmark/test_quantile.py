@@ -1,10 +1,11 @@
 import pytest
 import torch
 
-from . import performance_utils as utils
+from . import performance_utils as base
+from . import utils
 
 
-class QuantileBenchmark(utils.GenericBenchmark):
+class QuantileBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         more_shapes_1d = [(4,), (1024,), (65535)]
         more_shapes_2d = [(1024, 2**i) for i in range(0, 15, 3)]

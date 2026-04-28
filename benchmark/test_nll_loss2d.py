@@ -1,8 +1,9 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import attri_util as consts
+from . import performance_utils as base
+from . import utils
 
 
 def nll_loss_input_fn(shape, cur_dtype, device):
@@ -12,17 +13,17 @@ def nll_loss_input_fn(shape, cur_dtype, device):
     target = torch.randint(0, shape[-1], target_shape, device=device)
     yield inp, target
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         weight = torch.randn(shape[1], dtype=cur_dtype, device=device)
         yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
 
 
 @pytest.mark.nll_loss2d
 def test_nll_loss2d():
-    bench = utils.GenericBenchmark4DOnly(
+    bench = base.GenericBenchmark4DOnly(
         input_fn=nll_loss_input_fn,
         op_name="nll_loss2d",
         torch_op=torch.nn.functional.nll_loss,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

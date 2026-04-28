@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
@@ -25,7 +24,7 @@ def _input_fn(shape, dtype, device):
         n, m = shape[:2]
         yield {"n": n, "m": m, "dtype": dtype, "device": device},
 
-    if base.Config.bench_level == attrs.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         for i in range(8, 13):
             n = 2**i
             m = 2**i

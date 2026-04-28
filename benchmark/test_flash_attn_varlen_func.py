@@ -5,10 +5,12 @@ import torch
 
 import flag_gems
 
-from .performance_utils import Benchmark, SkipVersion, vendor_name
+from . import base, utils
+
+vendor_name = flag_gems.vendor_name
 
 
-class FlashAttnVarlenBenchmark(Benchmark):
+class FlashAttnVarlenBenchmark(base.Benchmark):
     """
     benchmark for flash_attn_varlen_func
     """
@@ -107,9 +109,9 @@ class FlashAttnVarlenBenchmark(Benchmark):
 
         self.shapes = all_configs
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for config in self.shapes:
-            yield self.flash_attn_varlen_input_fn(config, cur_dtype, self.device)
+            yield self.flash_attn_varlen_input_fn(config, dtype, self.device)
 
     def flash_attn_varlen_input_fn(self, config, dtype, device):
         """Input function for flash attention varlen benchmark"""
@@ -284,17 +286,16 @@ def flash_attn_varlen_legacy(*args, **kwargs):
 
 
 @pytest.mark.skipif(
-    SkipVersion("vllm", "<0.9"),
+    utils.SkipVersion("vllm", "<0.9"),
     reason="vLLM version prior to 0.9 does not include the flash_attn_varlen_func API.",
 )
 @pytest.mark.skipif(
-    SkipVersion("torch", "<2.7"),
+    utils.SkipVersion("torch", "<2.7"),
     reason="Torch version prior to 2.7 is not compatible with VLLM.",
 )
-# @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Torch < 2.7")
-@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
+@pytest.mark.skipif(vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_attn_varlen_func
 def test_flash_attn_varlen_func(monkeypatch):
     monkeypatch.setenv("VLLM_CONFIGURE_LOGGING", "0")

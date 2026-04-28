@@ -78,6 +78,13 @@ DEFAULT_STRATEGIES = {
         "align32",
         "align32",
     ],
+    "w8a8_block_fp8_general_splitk": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
     "w8a8_block_fp8_general_tma": [
         "align32",
         "align32",
@@ -107,6 +114,7 @@ OP_KEY_ORDERS = {
     "baddbmm": ["M", "N", "K"],
     "mv": ["M", "N"],
     "w8a8_block_fp8_general": ["M", "N", "K", "stride_am", "stride_bk"],
+    "w8a8_block_fp8_general_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
     "w8a8_block_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
@@ -116,14 +124,5 @@ OP_KEY_ORDERS = {
     "addmm_sqmma": ["M", "N", "K"],
 }
 
-# Mapping from vendor name to torch attribute for quick detection
-_VENDOR_TORCH_ATTR = {
-    "cambricon": "mlu",
-    "mthreads": "musa",
-    "iluvatar": "corex",
-    "ascend": "npu",
-    "sunrise": "ptpu",
-    "enflame": "gcu",
-}
 
 __all__ = ["vendors", "UNSUPPORT_FP64", "UNSUPPORT_BF16", "UNSUPPORT_INT64", "DEFAULT_STRATEGIES", "OP_KEY_ORDERS", "_VENDOR_TORCH_ATTR"]
