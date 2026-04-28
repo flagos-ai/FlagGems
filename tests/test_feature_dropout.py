@@ -51,7 +51,7 @@ def test_feature_dropout(shape, p, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_feature_dropout_no_train(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref = inp.clone()
+    ref = inp.clone().cpu()
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, 0.5, False)
     gems_assert_close(res_out, ref, dtype)
@@ -62,7 +62,7 @@ def test_feature_dropout_no_train(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_feature_dropout_p_zero(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref = inp.clone()
+    ref = inp.clone().cpu()
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, 0.0, True)
     gems_assert_close(res_out, ref, dtype)
