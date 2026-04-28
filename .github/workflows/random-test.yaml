@@ -9,11 +9,11 @@ on:
         required: true
         type: string
       operators:
-        description: "The operators to test (comma separated names)"
+        description: "Operators (comma separated names)"
         required: true
         type: string
       gpus:
-        description: "The GPUs to use (comma separated number)"
+        description: "GPUs (comma separated numbers)"
         required: true
         type: string
     secrets:
@@ -83,7 +83,7 @@ jobs:
       - name: Check GPU availability
         shell: bash
         run: |
-          bash tools/gpu_check_${ VENDOR}.sh
+          bash "tools/gpu_check_${VENDOR}.sh"
       - name: Run tests
         shell: bash
         run: |
