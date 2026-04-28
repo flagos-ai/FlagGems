@@ -13,14 +13,17 @@ from . import conftest as cfg
 def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
-@pytest.mark.floor_divide_mixed_types
-@pytest.mark.parametrize("dtype1,dtype2", [
-    (torch.float32, torch.int32),
-    (torch.float32, torch.float32),
-    (torch.int32, torch.int32),
-])
-def test_floor_divide_mixed(dtype1, dtype2):
 
+@pytest.mark.floor_divide
+@pytest.mark.parametrize(
+    "dtype1,dtype2",
+    [
+        (torch.float32, torch.int32),
+        (torch.float32, torch.float32),
+        (torch.int32, torch.int32),
+    ],
+)
+def test_floor_divide_mixed(dtype1, dtype2):
     if dtype1.is_floating_point:
         x = torch.randn(128, device="cuda", dtype=dtype1)
     else:
@@ -37,25 +40,25 @@ def test_floor_divide_mixed(dtype1, dtype2):
     out = flag_gems.ops.floor_divide(x, y)
 
     torch.testing.assert_close(out, ref)
-# 测试 floor_div_func_scalar_tensor(x, y) - scalar // tensor 场景
-# 对应 div.py:253-257 的实现
-@pytest.mark.floor_divide_scalar_tensor
-@pytest.mark.parametrize("x_dtype,y_dtype", [
-    (torch.int32, torch.int32),
-    (torch.int32, torch.float32),
-    (torch.float32, torch.int32),
-    (torch.float32, torch.float32),
-])
-def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
-    """测试 scalar // tensor 场景"""
 
+
+@pytest.mark.floor_divide
+@pytest.mark.parametrize(
+    "x_dtype,y_dtype",
+    [
+        (torch.int32, torch.int32),
+        (torch.int32, torch.float32),
+        (torch.float32, torch.int32),
+        (torch.float32, torch.float32),
+    ],
+)
+def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
     def make_tensor(shape, dtype):
         if dtype.is_floating_point:
             return torch.randn(shape, device="cuda", dtype=dtype)
         else:
             return torch.randint(1, 10, (shape,), device="cuda", dtype=dtype)
 
-    # tensor y
     y = make_tensor(128, y_dtype)
 
     if x_dtype.is_floating_point:
@@ -69,6 +72,7 @@ def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
     out = flag_gems.ops.floor_divide(x, y)
 
     torch.testing.assert_close(out, ref)
+
 
 # TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.floor_divide
