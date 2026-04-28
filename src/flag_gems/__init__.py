@@ -34,6 +34,7 @@ _FULL_CONFIG = (
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
