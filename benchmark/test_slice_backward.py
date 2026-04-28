@@ -1,11 +1,10 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class SliceBackwardBenchmark(utils.GenericBenchmark):
+class SliceBackwardBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         SLICE_BACKWARD_SHAPES = (
             (128, 256),
@@ -72,7 +71,7 @@ def test_slice_backward():
         op_name="slice_backward",
         torch_op=torch.ops.aten.slice_backward,
         input_fn=_input_fn,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )
 

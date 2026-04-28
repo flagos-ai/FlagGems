@@ -1,13 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
 import flag_gems.fused as fused
 
-from . import utils
-from .performance_utils import Benchmark, vendor_name
+from . import base, utils
+
+vendor_name = flag_gems.vendor_name
 
 
-class TopKSoftmaxBenchmark(Benchmark):
+class TopKSoftmaxBenchmark(base.Benchmark):
     """
     Benchmark for comparing topk_softmax between vLLM (CUDA kernel) and FlagGems (Triton kernel).
     """
