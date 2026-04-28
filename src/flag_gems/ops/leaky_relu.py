@@ -1,107 +1,39 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
 
-def _leaky_relu_autotune_configs():
-    return [
-        # Tiny tensors (n <= 32K): small blocks
-        triton.Config({"BLOCK_SIZE": 256}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 256}, num_warps=8, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 512}, num_warps=8, num_stages=2),
-        # Small-medium tensors (n ~ 64K-4M): 1024-element blocks
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=8, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=8, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=4),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=16, num_stages=4),
-        # Medium-large tensors (n ~ 4M-16M): 2048-element blocks
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=16, num_stages=4),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=4, num_stages=5),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=16, num_stages=5),
-        # Large tensors (n >= 16M): 4096-element blocks for max bandwidth
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=8, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=16, num_stages=4),
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=4, num_stages=5),
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_SIZE": 4096}, num_warps=16, num_stages=5),
-    ]
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], is_tensor=[True, False])
+@triton.jit
+def leaky_relu_func(x, negative_slope):
+    x_f = x.to(tl.float32)
+    return tl.where(x_f >= 0, x_f, x_f * negative_slope)
 
 
-@libentry()
-@triton.autotune(configs=_leaky_relu_autotune_configs(), key=["n_elements"])
-@triton.jit(do_not_specialize=["negative_slope"])
-def _leaky_relu_kernel(
-    input_ptr,
-    output_ptr,
-    n_elements,
-    negative_slope,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    x = tl.load(input_ptr + offsets, mask=mask)
-    output = tl.where(x >= 0, x, x * negative_slope)
-    tl.store(output_ptr + offsets, output, mask=mask)
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], is_tensor=[True, False])
+@triton.jit
+def leaky_relu_backward_func(grad_output, x, negative_slope):
+    x_f = x.to(tl.float32)
+    grad_f = grad_output.to(tl.float32)
+    return tl.where(x_f >= 0, grad_f, grad_f * negative_slope)
 
 
-def leaky_relu(A, negative_slope=0.01):
+def leaky_relu(A, negative_slope: float = 0.01):
     logger.debug("GEMS LEAKY_RELU")
-    if not A.is_contiguous():
-        A = A.contiguous()
-    output = torch.empty_like(A)
-    n_elements = A.numel()
-    if n_elements == 0:
-        return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, output, n_elements, negative_slope)
-    return output
+    return leaky_relu_func(A, negative_slope)
 
 
-def leaky_relu_(A, negative_slope=0.01):
+def leaky_relu_(A, negative_slope: float = 0.01):
     logger.debug("GEMS LEAKY_RELU_")
-    if not A.is_contiguous():
-        raise RuntimeError(
-            "leaky_relu_ requires a contiguous tensor for in-place operation"
-        )
-    n_elements = A.numel()
-    if n_elements == 0:
-        return A
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, A, n_elements, negative_slope)
+    leaky_relu_func(A, negative_slope, out0=A)
     return A
 
 
-def leaky_relu_out(A, negative_slope=0.01, *, out=None):
-    logger.debug("GEMS LEAKY_RELU_OUT")
-    if out is None:
-        return leaky_relu(A, negative_slope)
-    if not A.is_contiguous():
-        A = A.contiguous()
-    n_elements = A.numel()
-    if n_elements == 0:
-        return out
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, out, n_elements, negative_slope)
-    return out
+def leaky_relu_backward(grad_output, A, negative_slope: float = 0.01):
+    logger.debug("GEMS LEAKY_RELU BACKWARD")
+    return leaky_relu_backward_func(grad_output, A, negative_slope)
