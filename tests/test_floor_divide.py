@@ -14,6 +14,66 @@ def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
 
+@pytest.mark.floor_divide
+@pytest.mark.parametrize(
+    "dtype1,dtype2",
+    [
+        (torch.float32, torch.int32),
+        (torch.float32, torch.float32),
+        (torch.int32, torch.int32),
+    ],
+)
+def test_floor_divide_mixed(dtype1, dtype2):
+    if dtype1.is_floating_point:
+        x = torch.randn(128, device="cuda", dtype=dtype1)
+    else:
+        x = torch.randint(-10, 10, (128,), device="cuda", dtype=dtype1)
+
+    if dtype2.is_floating_point:
+        y = torch.randn(128, device="cuda", dtype=dtype2) + 0.1
+    else:
+        y = torch.randint(1, 10, (128,), device="cuda", dtype=dtype2)
+
+    # reference
+    ref = torch.div(x, y, rounding_mode="floor")
+
+    out = flag_gems.ops.floor_divide(x, y)
+
+    torch.testing.assert_close(out, ref)
+
+
+@pytest.mark.floor_divide
+@pytest.mark.parametrize(
+    "x_dtype,y_dtype",
+    [
+        (torch.int32, torch.int32),
+        (torch.int32, torch.float32),
+        (torch.float32, torch.int32),
+        (torch.float32, torch.float32),
+    ],
+)
+def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
+    def make_tensor(shape, dtype):
+        if dtype.is_floating_point:
+            return torch.randn(shape, device="cuda", dtype=dtype)
+        else:
+            return torch.randint(1, 10, (shape,), device="cuda", dtype=dtype)
+
+    y = make_tensor(128, y_dtype)
+
+    if x_dtype.is_floating_point:
+        x = torch.randn(1, device="cuda", dtype=x_dtype).squeeze(0)
+    else:
+        x = torch.randint(1, 10, (), device="cuda", dtype=x_dtype).item()
+
+    ref = torch.div(x, y, rounding_mode="floor")
+
+    # flaggems
+    out = flag_gems.ops.floor_divide(x, y)
+
+    torch.testing.assert_close(out, ref)
+
+
 # TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
