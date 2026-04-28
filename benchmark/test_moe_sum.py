@@ -3,8 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
@@ -30,11 +29,11 @@ def test_moe_sum():
     def torch_op(input_tensor, output_tensor):
         output_tensor.copy_(input_tensor.sum(dim=1))
 
-    bench = utils.GenericBenchmarkExcluse1D(
+    bench = base.GenericBenchmarkExcluse1D(
         input_fn=_input_fn,
         op_name="moe_sum",
         torch_op=torch_op,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.moe_sum)
     bench.run()

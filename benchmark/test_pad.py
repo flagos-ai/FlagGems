@@ -3,8 +3,7 @@ import random
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
@@ -21,11 +20,11 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.pad
 def test_pad():
-    bench = utils.GenericBenchmark(
+    bench = base.GenericBenchmark(
         input_fn=_input_fn,
         op_name="pad",
         torch_op=torch.nn.functional.pad,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()
