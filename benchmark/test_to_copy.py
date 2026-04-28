@@ -5,7 +5,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as base
+from . import base
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 

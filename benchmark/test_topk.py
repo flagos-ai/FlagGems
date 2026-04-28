@@ -1,11 +1,10 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class TopKBenchmark(utils.GenericBenchmark2DOnly):
+class TopKBenchmark(base.GenericBenchmark2DOnly):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             (64, 64),
@@ -51,7 +50,7 @@ def test_topk():
         op_name="topk",
         input_fn=_input_fn,
         torch_op=torch.topk,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

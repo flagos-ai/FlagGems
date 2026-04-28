@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 @pytest.mark.selu
 def test_selu():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="selu", torch_op=torch.nn.functional.selu, dtypes=attrs.FLOAT_DTYPES
+        op_name="selu", torch_op=torch.nn.functional.selu, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
 
@@ -18,7 +17,7 @@ def test_selu_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="selu_",
         torch_op=torch.ops.aten.selu_,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()

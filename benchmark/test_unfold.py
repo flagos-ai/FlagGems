@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base
 
 
 def _input_fn(config, dtype, device):
@@ -17,7 +17,7 @@ def _input_fn(config, dtype, device):
     yield grad_in, list(input_sizes), dim, size, step
 
 
-class UnfoldBackwardBenchmark(utils.Benchmark):
+class UnfoldBackwardBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             ((32, 64), 1, 16, 16),

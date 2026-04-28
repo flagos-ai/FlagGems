@@ -5,7 +5,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base
 
 # sparse_attention shape layout:
 # (batch, seq_len, kv_len, topk, heads, dim)
@@ -43,7 +43,7 @@ def torch_sparse_attention(q, kv, attn_sink, topk_idxs, softmax_scale):
     return out.to(q.dtype)
 
 
-class SparseAttentionBenchmark(utils.Benchmark):
+class SparseAttentionBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = SPARSE_ATTENTION_SHAPES[:]
         self.shape_desc = "B, M, KV_LEN, TOPK, H, D"
@@ -51,19 +51,13 @@ class SparseAttentionBenchmark(utils.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for seed, (batch, seq_len, kv_len, topk, heads, dim) in enumerate(self.shapes):
             torch.manual_seed(2026 + seed)
             q = torch.randn(
-                (batch, seq_len, heads, dim),
-                dtype=cur_dtype,
-                device=self.device,
+                (batch, seq_len, heads, dim), dtype=dtype, device=self.device
             )
-            kv = torch.randn(
-                (batch, kv_len, dim),
-                dtype=cur_dtype,
-                device=self.device,
-            )
+            kv = torch.randn((batch, kv_len, dim), dtype=dtype, device=self.device)
             attn_sink = torch.zeros((heads,), dtype=torch.float32, device=self.device)
             topk_idxs = torch.randint(
                 0,
