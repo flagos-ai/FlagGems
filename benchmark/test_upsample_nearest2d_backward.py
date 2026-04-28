@@ -5,7 +5,7 @@ from . import attri_util as attr_utils
 from . import performance_utils as utils
 
 
-class UpsampleBenchmark(utils.GenericBenchmark):
+class UpsampleBackwardBenchmark(utils.GenericBenchmark):
     DEFAULT_SHAPES = [
         (1, 64, 56, 56, 1.0, 1.0, 0, 0),
         (1, 3, 224, 224, 2.0, 2.0, 0, 0),
@@ -28,21 +28,23 @@ class UpsampleBenchmark(utils.GenericBenchmark):
         return []
 
     def record_shapes(self, *args, **kwargs):
-        input = kwargs["input"]
+        grad_output = kwargs["grad_output"]
         output_size = kwargs["output_size"]
+        input_size = kwargs["input_size"]
         scales_h = kwargs["scales_h"]
         scales_w = kwargs["scales_w"]
         layout = (
             "channels_last"
-            if input.is_contiguous(memory_format=torch.channels_last)
-            and input.stride(1) == 1
+            if grad_output.is_contiguous(memory_format=torch.channels_last)
+            and grad_output.stride(1) == 1
             else "contiguous"
         )
         return {
-            "case": _case_name(input.shape[-2:], output_size, scales_h, scales_w),
+            "case": _case_name(input_size[-2:], output_size, scales_h, scales_w),
             "layout": layout,
-            "input": input.size(),
+            "grad_output": grad_output.size(),
             "output_size": output_size,
+            "input_size": input_size,
             "scales_h": scales_h,
             "scales_w": scales_w,
         }
@@ -50,16 +52,19 @@ class UpsampleBenchmark(utils.GenericBenchmark):
 
 def _input_fn(shape, dtype, device):
     batch, channel, height, weight, scale_h, scale_w, use_scales, channels_last = shape
-    input = torch.randn(size=(batch, channel, height, weight), device=device, dtype=dtype)
-    if channels_last:
-        input = input.contiguous(memory_format=torch.channels_last)
     output_size = (
         int(height * scale_h),
         int(weight * scale_w),
     )
+    grad_output = torch.randn(
+        size=(batch, channel, *output_size), device=device, dtype=dtype
+    )
+    if channels_last:
+        grad_output = grad_output.contiguous(memory_format=torch.channels_last)
     yield {
-        "input": input,
+        "grad_output": grad_output,
         "output_size": output_size,
+        "input_size": (batch, channel, height, weight),
         "scales_h": scale_h if use_scales else None,
         "scales_w": scale_w if use_scales else None,
     },
@@ -80,11 +85,11 @@ def _case_name(input_hw, output_size, scales_h, scales_w):
 
 
 @pytest.mark.upsample_nearest2d
-def test_upsample_nearest2d():
-    bench = UpsampleBenchmark(
-        op_name="upsample_nearest2d",
+def test_upsample_nearest2d_backward():
+    bench = UpsampleBackwardBenchmark(
+        op_name="upsample_nearest2d_backward",
         input_fn=_input_fn,
-        torch_op=torch._C._nn.upsample_nearest2d,
+        torch_op=torch.ops.aten.upsample_nearest2d_backward,
         dtypes=attr_utils.FLOAT_DTYPES,
     )
 
