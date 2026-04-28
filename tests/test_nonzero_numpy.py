@@ -7,10 +7,12 @@ from .accuracy_utils import (
     BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
-    NONZERO_SHAPES,
+    REDUCTION_SHAPES,
     gems_assert_equal,
     to_reference,
 )
+
+NONZERO_SHAPES = REDUCTION_SHAPES
 
 
 @pytest.mark.nonzero_numpy
