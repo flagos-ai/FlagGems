@@ -3,7 +3,12 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, gems_assert_equal
+from .accuracy_utils import (
+    FLOAT_DTYPES,
+    gems_assert_close,
+    gems_assert_equal,
+    to_reference,
+)
 from .conftest import QUICK_MODE
 
 FEATURE_DROPOUT_SHAPES = (
@@ -51,7 +56,7 @@ def test_feature_dropout(shape, p, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_feature_dropout_no_train(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.to("cpu")
+    ref_inp = to_reference(inp)
     ref = torch.feature_dropout(ref_inp, 0.5, False)
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, 0.5, False)
@@ -63,7 +68,7 @@ def test_feature_dropout_no_train(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_feature_dropout_p_zero(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.to("cpu")
+    ref_inp = to_reference(inp)
     ref = torch.feature_dropout(ref_inp, 0.0, True)
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, 0.0, True)
