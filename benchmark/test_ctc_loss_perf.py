@@ -104,6 +104,7 @@ def _reference_ctc_loss(
 class CTCLossBenchmark(base.Benchmark):
     DEFAULT_DTYPES = [torch.float32]
     DEFAULT_SHAPE_DESC = "T, N, C, S"
+    DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
 
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
