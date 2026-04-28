@@ -84,6 +84,7 @@ jobs:
         shell: bash
         run: |
           bash "tools/gpu_check_${VENDOR}.sh"
+
       - name: Run tests
         shell: bash
         run: |
