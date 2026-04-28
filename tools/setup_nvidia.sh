@@ -1,6 +1,7 @@
 #!/bin/bash
 
-uv pip install -e . .[nvidia,test]
+uv pip install -e .
+uv pip install ".[nvidia,test]"
 
 uv pip install --index ${FLAGOS_PYPI} \
     "torch==2.9.0+cu128" \
