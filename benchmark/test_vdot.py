@@ -3,8 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from . import performance_utils as base
-from .attri_util import COMPLEX_DTYPES, FLOAT_DTYPES
+from . import base, consts
 
 
 class VdotBenchmark(base.BlasBenchmark):
@@ -28,6 +27,6 @@ def test_vdot():
         input_fn=vdot_input_fn,
         op_name="vdot",
         torch_op=torch.Tensor.vdot,
-        dtypes=COMPLEX_DTYPES + FLOAT_DTYPES,
+        dtypes=consts.COMPLEX_DTYPES + consts.FLOAT_DTYPES,
     )
     bench.run()

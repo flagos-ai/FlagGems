@@ -1,15 +1,15 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class UpsampleBenchmark(utils.GenericBenchmark):
+# TODO(Qiming): Kill this class
+class UpsampleBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (N, C, H, W).
-        return None
+        return []
 
 
 @pytest.mark.skip(reason="Benchmark fails: issue #2666")
@@ -32,7 +32,7 @@ def test_upsample_bicubic2d(align_corners):
         input_fn=_input_fn,
         op_name="upsample_bicubic2d",
         torch_op=torch._C._nn.upsample_bicubic2d,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()
