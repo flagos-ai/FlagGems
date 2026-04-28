@@ -3,7 +3,7 @@ from importlib import metadata
 
 import torch
 
-from . import attri_util as consts
+from . import consts
 
 
 def SkipVersion(module_name, pattern):
