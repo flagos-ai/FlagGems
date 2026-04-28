@@ -4,11 +4,10 @@ import torch
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
-class TensorSelectBenchmark(utils.GenericBenchmark2DOnly):
+class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
     def set_more_metrics(self):
         return ["gbps"]
 
@@ -62,6 +61,6 @@ def test_scatter_add_inplace():
         torch_op=torch.Tensor.scatter_add_,
         input_fn=scatter_input_fn,
         get_gbps=_get_gbps,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

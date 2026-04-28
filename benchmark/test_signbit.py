@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 @pytest.mark.signbit
 def test_signbit():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="signbit", torch_op=torch.signbit, dtypes=attrs.FLOAT_DTYPES
+        op_name="signbit", torch_op=torch.signbit, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
 
@@ -19,7 +18,7 @@ def test_signbit_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="signbit_out",
         torch_op=torch.signbit,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

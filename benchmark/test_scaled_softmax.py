@@ -5,8 +5,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as base
-from . import utils
+from . import base, utils
 
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
