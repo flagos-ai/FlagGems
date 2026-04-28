@@ -69,7 +69,7 @@ jobs:
             *)
               # export HTTP_PROXY="${PROXY}"
               # export HTTPS_PROXY="${PROXY}"
-              if [[ "{RUNNER_LABEL}" == "moore" ]]; then
+              if [[ "${RUNNER_LABEL}" == "moore" ]]; then
                 VENDOR="mthreads"
               else
                 VENDOR="${RUNNER_LABEL}"
