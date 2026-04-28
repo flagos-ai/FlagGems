@@ -4,12 +4,12 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES, BenchLevel
-from benchmark.performance_utils import Config, GenericBenchmark, generate_tensor_input
+
+from . import base, consts, utils
 
 
 def max_pool3d_input_fn(shape, dtype, device):
-    inp = generate_tensor_input(shape, dtype, device)
+    inp = utils.generate_tensor_input(shape, dtype, device)
     yield inp, {
         "kernel_size": 3,
         "stride": 2,
@@ -17,7 +17,7 @@ def max_pool3d_input_fn(shape, dtype, device):
         "dilation": 1,
         "ceil_mode": False,
     }
-    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         # Non-cubic kernel/stride/padding
         if shape[-3] > 5 and shape[-2] > 5 and shape[-1] > 5:
             yield inp, {
@@ -46,8 +46,8 @@ def max_pool3d_input_fn(shape, dtype, device):
         }
 
 
-class MaxPool3dBenchmark(GenericBenchmark):
-    def get_input_iter(self, cur_dtype) -> Generator:
+class MaxPool3dBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
         shapes_5d = [
             (4, 3, 16, 56, 56),
             (8, 64, 8, 28, 28),
@@ -56,7 +56,7 @@ class MaxPool3dBenchmark(GenericBenchmark):
         ]
 
         for shape in shapes_5d:
-            yield from self.input_fn(shape, cur_dtype, self.device)
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 @pytest.mark.max_pool3d
@@ -67,9 +67,9 @@ def test_perf_max_pool3d():
         torch_op=lambda inp, **kwargs: torch.nn.functional.max_pool3d(
             inp, return_indices=True, **kwargs
         ),
-        dtypes=FLOAT_DTYPES,
+        gems_op=flag_gems.max_pool3d_with_indices,
+        dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.max_pool3d_with_indices)
     bench.run()
 
 
@@ -94,9 +94,9 @@ def test_perf_max_pool3d_backward():
         input_fn=max_pool3d_backward_input_fn,
         op_name="max_pool3d_backward",
         torch_op=torch_max_pool3d_backward_wrapper,
-        dtypes=FLOAT_DTYPES,
+        gems_op=flag_gems.max_pool3d_backward,
+        dtypes=consts.FLOAT_DTYPES,
         is_backward=False,
     )
 
-    bench.set_gems(flag_gems.max_pool3d_backward)
     bench.run()

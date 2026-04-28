@@ -12,7 +12,8 @@ import yaml
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from .attri_util import (
+from .conftest import Config, emit_record_logger
+from .consts import (
     BOOL_DTYPES,
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -27,7 +28,6 @@ from .attri_util import (
     check_metric_dependencies,
     model_shapes,
 )
-from .conftest import Config, emit_record_logger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn

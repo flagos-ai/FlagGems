@@ -3,8 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
@@ -23,7 +22,10 @@ def test_bmm(monkeypatch):
         monkeypatch.setenv("MUSA_ENABLE_SQMMA", "1")
 
     bench = base.BlasBenchmark(
-        op_name="bmm", input_fn=_input_fn, torch_op=torch.bmm, dtypes=attrs.FLOAT_DTYPES
+        op_name="bmm",
+        input_fn=_input_fn,
+        torch_op=torch.bmm,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()
