@@ -6,7 +6,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.functional_sym_constrain_range_for_size
+@pytest.mark._functional_sym_constrain_range_for_size
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_functional_sym_constrain_range_for_size(shape, dtype):
