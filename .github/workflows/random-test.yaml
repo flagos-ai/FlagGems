@@ -1,0 +1,76 @@
+---
+name: Random Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Label for selecting runners"
+        required: true
+        type: string
+      operators:
+        description: "The operators to test (comma separated names)"
+        required: true
+        type: string
+      gpus:
+        description: "The GPUs to use (comma separated number)"
+        required: true
+        type: string
+    secrets:
+      RUNNER_SSH_KEY:
+        required: true
+      PROXYC:
+        required: true
+      PROXYG:
+        required: true
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Set global proxy
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner }}
+          PROXY: ${{ secrets.PROXYG }}
+        run: |
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
+            echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
+          fi
+      - uses: actions/checkout@v6
+        with:
+          ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+      - name: Setup FlagGems
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner }}
+          PROXY: ${{ secrets.PROXYC }}
+        run: |
+          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
+            export HTTP_PROXY="${PROXY}"
+            export HTTPS_PROXY="${PROXY}"
+            if [[ "{RUNNER_LABEL}" == "moore" ]]; then
+              VENDOR="mthreads"
+            else
+              VENDOR="${RUNNER_LABEL}"
+            fi
+          else
+            VENDOR="nvidia"
+          fi
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+
+          ./setup.sh ${VENDOR}
+      - name: Check GPU availability
+        if: ${{ inputs.gpu_check_script != '' }}
+        shell: bash
+        run: |
+          bash tools/gpu_check_${ VENDOR}.sh
+      - name: Run tests
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          source tools/set-env.sh ${VENDOR}
+          tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
