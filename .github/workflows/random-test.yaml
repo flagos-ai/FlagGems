@@ -63,6 +63,7 @@ jobs:
                 VENDOR="nvidia"
               else
                 VENDOR="${RUNNER_LABEL}"
+              fi
               ;;
             *)
               export HTTP_PROXY="${PROXY}"
