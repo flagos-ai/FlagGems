@@ -4,7 +4,8 @@ export MUSA_HOME=/usr/local/musa
 export PATH=$MUSA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH
 
-uv pip install -e . .[mthreads,test]
+uv pip install -e .
+uv pip install ".[mthreads,test]"
 
 uv pip install --index ${FLAGOS_PYPI} \
     "torch==2.7.1+musa.4.0.0" \
