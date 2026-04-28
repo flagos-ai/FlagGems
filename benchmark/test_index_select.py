@@ -6,9 +6,7 @@ import torch
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from . import attri_util as consts
-from . import performance_utils as base
-from . import utils
+from . import base, consts, utils
 
 
 class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
