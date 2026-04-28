@@ -1,12 +1,12 @@
 import pytest
 import torch
 
-from . import performance_utils as base
+from . import base, utils
 
 
 def _input_fn(shape, dtype, device):
-    inp = base.generate_tensor_input(shape, dtype, device)
-    mask = base.generate_tensor_input(shape, dtype, device) < 0.3
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    mask = utils.generate_tensor_input(shape, dtype, device) < 0.3
     value = 1024
 
     yield inp, mask, value

@@ -65,7 +65,7 @@ class MoeAlignBlockSizeBenchmark(utils.GenericBenchmark4DOnly):
         self.shapes = moe_align_block_size_shape
 
     def set_more_shapes(self):
-        return None
+        return []
 
 
 @pytest.mark.moe_align_block_size_triton
