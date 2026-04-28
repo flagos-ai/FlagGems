@@ -3,149 +3,166 @@ Performance benchmarks for Medium-difficulty operators.
 Compares FlagGems implementations vs PyTorch native.
 
 Usage:
-    python benchmark/bench_medium_ops.py
+    pytest benchmark/bench_medium_ops.py
+    # or run directly:
+    python -m pytest benchmark/bench_medium_ops.py -v
 """
 
-import time
-from typing import Callable
-
+import pytest
 import torch
 import torch.nn.functional as F
 
 import flag_gems
 
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from ops.upsample_nearest2d import upsample_nearest2d
-from ops.median import median
-from ops.smooth_l1_loss import smooth_l1_loss, _MEAN
-from ops.pixel_shuffle import pixel_shuffle
-from ops.avg_pool3d import avg_pool3d
-from ops.max_pool3d import max_pool3d
-
 DEVICE = flag_gems.device
-WARMUP = 10
-REPEATS = 100
-DTYPE = torch.float32
 
 
-def _bench(fn: Callable, *args, warmup=WARMUP, repeats=REPEATS) -> float:
-    for _ in range(warmup):
-        fn(*args)
-    if DEVICE.type == "cuda":
-        torch.cuda.synchronize()
-    times = []
-    for _ in range(repeats):
-        if DEVICE.type == "cuda":
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record(); fn(*args); e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        else:
-            t0 = time.perf_counter(); fn(*args)
-            times.append((time.perf_counter() - t0) * 1000)
-    times.sort()
-    return times[len(times) // 2]
+# ---------------------------------------------------------------------------
+# upsample_nearest2d
+# ---------------------------------------------------------------------------
+UPSAMPLE_CONFIGS = [
+    ((1, 3, 8, 8), [16, 16]),
+    ((1, 3, 32, 32), [64, 64]),
+    ((2, 16, 64, 64), [256, 256]),
+    ((4, 32, 128, 128), [512, 512]),
+]
 
 
-def _header(name):
-    print(f"\n{'='*60}\n  {name}\n{'='*60}")
-    print(f"{'Config':<30} {'PyTorch (ms)':>14} {'FlagGems (ms)':>14} {'Speedup':>10}")
-    print("-" * 60)
+@pytest.mark.parametrize("shape, out_size", UPSAMPLE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_perf_upsample_nearest2d(shape, out_size, dtype, benchmark):
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    with flag_gems.use_gems():
+        benchmark(F.interpolate, inp, size=out_size, mode="nearest")
 
 
-def bench_upsample():
-    _header("upsample_nearest2d")
-    configs = [
-        ((1, 3, 8, 8), [16, 16]),
-        ((1, 3, 32, 32), [64, 64]),
-        ((2, 16, 64, 64), [256, 256]),
-        ((4, 32, 128, 128), [512, 512]),
-    ]
-    for (shape, out_size) in configs:
-        x = torch.randn(shape, dtype=DTYPE, device=DEVICE)
-        t_torch = _bench(lambda: F.interpolate(x, size=out_size, mode="nearest"))
-        t_gems = _bench(upsample_nearest2d, x, out_size)
-        sp = t_torch / t_gems if t_gems > 0 else float("inf")
-        print(f"{str(shape)+' -> '+str(out_size):<30} {t_torch:>14.4f} {t_gems:>14.4f} {sp:>10.3f}x")
+# ---------------------------------------------------------------------------
+# pixel_shuffle
+# ---------------------------------------------------------------------------
+PIXEL_SHUFFLE_CONFIGS = [
+    (1, 4, 32, 32, 2),
+    (2, 9, 64, 64, 3),
+    (4, 4, 128, 128, 2),
+    (1, 16, 64, 64, 4),
+]
 
 
-def bench_median():
-    _header("median")
-    configs = [
-        (64, 64, 0),
-        (256, 256, 1),
-        (1024, 1024, 0),
-        (4096, 4096, 1),
-    ]
-    for (r, c, dim) in configs:
-        x = torch.randn(r, c, dtype=DTYPE, device=DEVICE)
-        t_torch = _bench(lambda: torch.median(x, dim=dim))
-        t_gems = _bench(median, x, dim)
-        sp = t_torch / t_gems if t_gems > 0 else float("inf")
-        print(f"{f'({r},{c}) dim={dim}':<30} {t_torch:>14.4f} {t_gems:>14.4f} {sp:>10.3f}x")
+@pytest.mark.parametrize("n, c, h, w, r", PIXEL_SHUFFLE_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_perf_pixel_shuffle(n, c, h, w, r, dtype, benchmark):
+    inp = torch.randn(n, c * r * r, h, w, dtype=dtype, device=DEVICE)
+    with flag_gems.use_gems():
+        benchmark(torch.pixel_shuffle, inp, r)
 
 
-def bench_smooth_l1():
-    _header("smooth_l1_loss")
-    shapes = [(64,), (256, 256), (1024, 1024)]
-    for shape in shapes:
-        x = torch.randn(shape, dtype=DTYPE, device=DEVICE)
-        y = torch.randn(shape, dtype=DTYPE, device=DEVICE)
-        t_torch = _bench(lambda: F.smooth_l1_loss(x, y))
-        t_gems = _bench(smooth_l1_loss, x, y, _MEAN, 1.0)
-        sp = t_torch / t_gems if t_gems > 0 else float("inf")
-        print(f"{str(shape):<30} {t_torch:>14.4f} {t_gems:>14.4f} {sp:>10.3f}x")
+# ---------------------------------------------------------------------------
+# scatter_reduce
+# ---------------------------------------------------------------------------
+SCATTER_REDUCE_CONFIGS = [
+    (64, 64),
+    (256, 256),
+    (1024, 1024),
+]
 
 
-def bench_pixel_shuffle():
-    _header("pixel_shuffle")
-    configs = [(1, 4, 32, 32, 2), (2, 9, 64, 64, 3), (4, 4, 128, 128, 2)]
-    for (n, c, h, w, r) in configs:
-        x = torch.randn(n, c * r * r, h, w, dtype=DTYPE, device=DEVICE)
-        t_torch = _bench(lambda: F.pixel_shuffle(x, r))
-        t_gems = _bench(pixel_shuffle, x, r)
-        sp = t_torch / t_gems if t_gems > 0 else float("inf")
-        label = f"({n},{c*r*r},{h},{w}) r={r}"
-        print(f"{label:<30} {t_torch:>14.4f} {t_gems:>14.4f} {sp:>10.3f}x")
+@pytest.mark.parametrize("rows, cols", SCATTER_REDUCE_CONFIGS)
+@pytest.mark.parametrize("reduce", ["sum", "amax"])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_perf_scatter_reduce(rows, cols, reduce, dtype, benchmark):
+    src = torch.randn(rows, cols, dtype=dtype, device=DEVICE)
+    idx = torch.randint(0, rows, (rows, cols), device=DEVICE)
+    base = torch.zeros(rows, cols, dtype=dtype, device=DEVICE)
+    with flag_gems.use_gems():
+        benchmark(torch.scatter_reduce, base, 0, idx, src, reduce=reduce)
 
 
-def bench_avg_pool3d():
-    _header("avg_pool3d")
-    configs = [
-        ((1, 4, 8, 8, 8), 2, 2),
-        ((2, 8, 16, 16, 16), 3, 1),
-        ((2, 16, 32, 32, 32), 2, 2),
-    ]
-    for (shape, k, s) in configs:
-        x = torch.randn(shape, dtype=DTYPE, device=DEVICE)
-        t_torch = _bench(lambda: F.avg_pool3d(x, k, stride=s))
-        t_gems = _bench(avg_pool3d, x, k, s)
-        sp = t_torch / t_gems if t_gems > 0 else float("inf")
-        print(f"{str(shape):<30} {t_torch:>14.4f} {t_gems:>14.4f} {sp:>10.3f}x")
+# ---------------------------------------------------------------------------
+# median
+# ---------------------------------------------------------------------------
+MEDIAN_CONFIGS = [
+    (64, 64, 0),
+    (256, 256, 1),
+    (1024, 1024, 0),
+]
 
 
-def bench_max_pool3d():
-    _header("max_pool3d")
-    configs = [
-        ((1, 4, 8, 8, 8), 2, 2),
-        ((2, 8, 16, 16, 16), 3, 1),
-        ((2, 16, 32, 32, 32), 2, 2),
-    ]
-    for (shape, k, s) in configs:
-        x = torch.randn(shape, dtype=DTYPE, device=DEVICE)
-        t_torch = _bench(lambda: F.max_pool3d(x, k, stride=s))
-        t_gems = _bench(max_pool3d, x, k, s)
-        sp = t_torch / t_gems if t_gems > 0 else float("inf")
-        print(f"{str(shape):<30} {t_torch:>14.4f} {t_gems:>14.4f} {sp:>10.3f}x")
+@pytest.mark.parametrize("rows, cols, dim", MEDIAN_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_perf_median(rows, cols, dim, dtype, benchmark):
+    inp = torch.randn(rows, cols, dtype=dtype, device=DEVICE)
+    with flag_gems.use_gems():
+        benchmark(torch.median, inp, dim=dim)
 
 
-if __name__ == "__main__":
-    print(f"Device: {DEVICE}  |  dtype: {DTYPE}")
-    bench_upsample()
-    bench_median()
-    bench_smooth_l1()
-    bench_pixel_shuffle()
-    bench_avg_pool3d()
-    bench_max_pool3d()
+# ---------------------------------------------------------------------------
+# smooth_l1_loss
+# ---------------------------------------------------------------------------
+SMOOTH_L1_SHAPES = [
+    (64,),
+    (256, 256),
+    (1024, 1024),
+]
+
+
+@pytest.mark.parametrize("shape", SMOOTH_L1_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_perf_smooth_l1_loss(shape, dtype, benchmark):
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    target = torch.randn(shape, dtype=dtype, device=DEVICE)
+    with flag_gems.use_gems():
+        benchmark(F.smooth_l1_loss, inp, target)
+
+
+# ---------------------------------------------------------------------------
+# avg_pool3d
+# ---------------------------------------------------------------------------
+AVGPOOL3D_CONFIGS = [
+    ((1, 4, 8, 8, 8), 2, 2),
+    ((2, 8, 16, 16, 16), 3, 1),
+    ((2, 16, 32, 32, 32), 2, 2),
+]
+
+
+@pytest.mark.parametrize("shape, k, s", AVGPOOL3D_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_perf_avg_pool3d(shape, k, s, dtype, benchmark):
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    with flag_gems.use_gems():
+        benchmark(F.avg_pool3d, inp, k, stride=s)
+
+
+# ---------------------------------------------------------------------------
+# max_pool3d
+# ---------------------------------------------------------------------------
+MAXPOOL3D_CONFIGS = [
+    ((1, 4, 8, 8, 8), 2, 2),
+    ((2, 8, 16, 16, 16), 3, 1),
+    ((2, 16, 32, 32, 32), 2, 2),
+]
+
+
+@pytest.mark.parametrize("shape, k, s", MAXPOOL3D_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_perf_max_pool3d(shape, k, s, dtype, benchmark):
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    with flag_gems.use_gems():
+        benchmark(F.max_pool3d, inp, k, stride=s)
+
+
+# ---------------------------------------------------------------------------
+# conv_transpose2d
+# ---------------------------------------------------------------------------
+CONV_T2D_CONFIGS = [
+    ((1, 4, 16, 16), (4, 2, 3, 3), 1),
+    ((2, 8, 32, 32), (8, 4, 3, 3), 2),
+    ((1, 16, 64, 64), (16, 8, 3, 3), 2),
+]
+
+
+@pytest.mark.parametrize("in_shape, w_shape, stride", CONV_T2D_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_perf_conv_transpose2d(in_shape, w_shape, stride, dtype, benchmark):
+    inp = torch.randn(in_shape, dtype=dtype, device=DEVICE)
+    weight = torch.randn(w_shape, dtype=dtype, device=DEVICE)
+    with flag_gems.use_gems():
+        benchmark(F.conv_transpose2d, inp, weight, stride=stride)

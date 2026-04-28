@@ -24,3 +24,8 @@ def logaddexp_func(x, y):
 def logaddexp(A, B):
     logger.debug("GEMS LOGADDEXP")
     return logaddexp_func(A, B)
+
+
+def logaddexp_out(A, B, *, out=None):
+    logger.debug("GEMS LOGADDEXP OUT")
+    return logaddexp_func(A, B, out0=out)
