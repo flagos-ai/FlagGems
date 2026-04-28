@@ -6,7 +6,7 @@ import flag_gems
 from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
 
-FLOAT_DTYPES = [torch.float32] if QUICK_MODE else [torch.float16, torch.float32, torch.bfloat16]
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 SHAPE_CONV_TRANSPOSE2D = [
     # (input_shape, weight_shape, groups)
@@ -163,4 +163,3 @@ def test_accuracy_conv_transpose2d_non_contiguous():
         )
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=4 * 3 * 3)
-
