@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def _input_fn(config, dtype, device):
@@ -11,7 +10,7 @@ def _input_fn(config, dtype, device):
     yield x, downscale_factor
 
 
-class PixelUnshuffleBenchmark(utils.Benchmark):
+class PixelUnshuffleBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             ((1, 3, 8, 8), 2),
@@ -20,7 +19,7 @@ class PixelUnshuffleBenchmark(utils.Benchmark):
         ]
 
     def set_more_shapes(self):
-        return None
+        return []
 
     def get_input_iter(self, cur_dtype):
         for config in self.shapes:
@@ -32,7 +31,7 @@ def test_pixel_unshuffle():
     bench = PixelUnshuffleBenchmark(
         op_name="pixel_unshuffle",
         torch_op=torch.ops.aten.pixel_unshuffle,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

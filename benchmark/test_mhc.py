@@ -1,10 +1,3 @@
-"""
-Performance benchmark for mHC operators: Triton (FlagGems) vs TileLang vs PyTorch reference.
-
-Usage:
-    pytest benchmark/test_mhc_perf.py -v -s
-"""
-
 import pytest
 import torch
 
@@ -16,10 +9,10 @@ from flag_gems.fused.mhc.mhc_bwd import mhc_bwd, mhc_bwd_ref, sinkhorn_forward
 from flag_gems.fused.mhc.mhc_post import mhc_post, mhc_post_ref
 from flag_gems.fused.mhc.mhc_pre import mhc_pre, mhc_pre_ref
 
-from .performance_utils import Benchmark
+from . import base
 
 
-class MHCPostBenchmark(Benchmark):
+class MHCPostBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "N, H"
 
     def set_shapes(self, shape_file_path=None):
@@ -29,7 +22,7 @@ class MHCPostBenchmark(Benchmark):
             (4096, 7168),
         ]
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for n, h in self.shapes:
             hc_mult = 4
             x = torch.randn((n, h), dtype=torch.bfloat16, device=self.device)
@@ -46,17 +39,17 @@ class MHCPostBenchmark(Benchmark):
 
 
 @pytest.mark.mhc_post
-def test_perf_mhc_post():
+def test_mhc_post():
     bench = MHCPostBenchmark(
         op_name="mhc_post",
         torch_op=mhc_post_ref,
+        gems_op=mhc_post,
         dtypes=[torch.bfloat16],
     )
-    bench.set_gems(mhc_post)
     bench.run()
 
 
-class MHCPreBenchmark(Benchmark):
+class MHCPreBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "N, hidden_size"
 
     def __init__(self, *args, hc_mult=4, sinkhorn_repeat=10, **kwargs):
@@ -80,7 +73,7 @@ class MHCPreBenchmark(Benchmark):
             (8192, 4096),
         ]
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for n, hidden_size in self.shapes:
             hc_mult = self.hc_mult
             hc_mult3 = hc_mult * 2 + hc_mult * hc_mult
@@ -116,17 +109,17 @@ class MHCPreBenchmark(Benchmark):
 
 
 @pytest.mark.mhc_pre
-def test_perf_mhc_pre():
+def test_mhc_pre():
     bench = MHCPreBenchmark(
         op_name="mhc_pre",
         torch_op=mhc_pre_ref,
+        gems_op=mhc_pre,
         dtypes=[torch.bfloat16],
     )
-    bench.set_gems(mhc_pre)
     bench.run()
 
 
-class MHCSplitSinkhornBenchmark(Benchmark):
+class MHCSplitSinkhornBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "batch, seqlen"
 
     def __init__(self, *args, hc_mult=4, sinkhorn_iters=20, eps=1e-6, **kwargs):
@@ -146,7 +139,7 @@ class MHCSplitSinkhornBenchmark(Benchmark):
             (256, 256, 2),
         ]
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for batch, seqlen, hc_mult in self.shapes:
             mix_hc = (2 + hc_mult) * hc_mult
             device = self.device
@@ -161,8 +154,9 @@ class MHCSplitSinkhornBenchmark(Benchmark):
             yield mixes, hc_scale, hc_base, hc_mult, self.sinkhorn_iters, self.eps
 
 
+# TODO(Qiming): Find out where this is implemented
 @pytest.mark.hc_split_sinkhorn
-def test_perf_mhc_split_sinkhorn():
+def test_hc_split_sinkhorn():
     bench = MHCSplitSinkhornBenchmark(
         op_name="hc_split_sinkhorn",
         torch_op=mhc_split_sinkhorn_torch_ref,
@@ -172,7 +166,7 @@ def test_perf_mhc_split_sinkhorn():
     bench.run()
 
 
-class MHCBwdBenchmark(Benchmark):
+class MHCBwdBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "seqlen, n_stream"
 
     def __init__(self, *args, n_stream=4, sinkhorn_iters=20, **kwargs):
@@ -190,7 +184,7 @@ class MHCBwdBenchmark(Benchmark):
             (65536, 4),
         ]
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for seqlen, n_stream in self.shapes:
             device = self.device
             torch.manual_seed(42)
@@ -204,11 +198,11 @@ class MHCBwdBenchmark(Benchmark):
 
 
 @pytest.mark.mhc_bwd
-def test_perf_mhc_bwd():
+def test_mhc_bwd():
     bench = MHCBwdBenchmark(
         op_name="mhc_bwd",
         torch_op=mhc_bwd_ref,
+        gems_op=mhc_bwd,
         dtypes=[torch.float32],
     )
-    bench.set_gems(mhc_bwd)
     bench.run()

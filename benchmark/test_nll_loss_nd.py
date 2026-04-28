@@ -3,12 +3,11 @@ from typing import Generator
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts, utils
 
 
-class NLLLossNDBenchmark(utils.GenericBenchmark):
-    def get_input_iter(self, cur_dtype) -> Generator:
+class NLLLossNDBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
         shapes = [
             (64, 64),
             (256, 256),
@@ -21,7 +20,7 @@ class NLLLossNDBenchmark(utils.GenericBenchmark):
         ]
 
         for shape in shapes:
-            yield from self.input_fn(shape, cur_dtype, self.device)
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 def nll_loss_nd_input_fn(shape, cur_dtype, device):
@@ -35,7 +34,7 @@ def nll_loss_nd_input_fn(shape, cur_dtype, device):
 
     yield inp, target
 
-    if utils.Config.bench_level == utils.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         weight_tensor = torch.rand(C, dtype=cur_dtype, device=device)
         for weight in [weight_tensor, None]:
             for reduction in ["none", "mean", "sum"]:
@@ -52,7 +51,7 @@ def test_nll_loss_nd():
         input_fn=nll_loss_nd_input_fn,
         op_name="nll_loss_nd",
         torch_op=torch.nn.functional.nll_loss,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

@@ -3,8 +3,7 @@ import math
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
@@ -15,7 +14,7 @@ def _input_fn(shape, dtype, device):
     if numel == 0:
         return
 
-    if base.Config.bench_level != attrs.BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level != consts.BenchLevel.COMPREHENSIVE:
         num_classes_list = [16, 64]
     else:
         num_classes_list = [16, 64, 256]

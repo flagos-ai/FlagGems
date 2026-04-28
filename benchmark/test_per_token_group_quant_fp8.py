@@ -5,12 +5,12 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base
 
 
-class PerTokenGroupQuantFp8Benchmark(utils.GenericBenchmark):
+class PerTokenGroupQuantFp8Benchmark(base.GenericBenchmark):
     def set_more_shapes(self):
-        return None
+        return []
 
 
 def _input_fn(shape, dtype, device):

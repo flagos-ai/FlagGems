@@ -3,9 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attrs
-from . import performance_utils as base
-from . import utils
+from . import base, consts, utils
 
 
 @pytest.mark.skipif(
@@ -17,6 +15,6 @@ def test_nonzero():
         input_fn=utils.unary_input_fn,
         op_name="nonzero",
         torch_op=torch.nonzero,
-        dtypes=attrs.FLOAT_DTYPES + attrs.INT_DTYPES + attrs.BOOL_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
