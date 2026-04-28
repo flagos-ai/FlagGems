@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 @pytest.mark.hardsigmoid
@@ -10,7 +9,7 @@ def test_hardsigmoid():
     bench = base.UnaryPointwiseBenchmark(
         op_name="hardsigmoid",
         torch_op=torch.nn.functional.hardsigmoid,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
@@ -21,6 +20,6 @@ def test_hardsigmoid_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="hardsigmoid_out",
         torch_op=torch.nn.functional.hardsigmoid,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

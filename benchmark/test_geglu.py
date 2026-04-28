@@ -1,8 +1,8 @@
 import pytest
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES
-from benchmark.performance_utils import TexGluForwardBenchmark
+
+from . import base, consts
 
 # Note: Importing transformer_engine (especially in some versions like py 3.10) may automatically
 # configure the Root Logger (adding handlers). This may cause subsequent `logging.basicConfig`
@@ -25,10 +25,10 @@ except ImportError:
 @pytest.mark.skipif(TE_OP is None, reason="'geglu' not found in TransformerEngine")
 @pytest.mark.skipif(GEMS_OP is None, reason="'geglu' not found in FlagGems")
 def test_geglu():
-    bench = TexGluForwardBenchmark(
+    bench = base.TexGluForwardBenchmark(
         op_name="geglu",
         torch_op=TE_OP,
         gems_op=GEMS_OP,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

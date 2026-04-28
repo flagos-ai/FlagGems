@@ -3,9 +3,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attrs
-from . import performance_utils as base
-from . import utils
+from . import base, consts, utils
 
 vendor_name = flag_gems.vendor_name
 
@@ -34,7 +32,7 @@ def test_lerp():
         input_fn=lerp_input_fn,
         op_name="lerp",
         torch_op=torch.lerp,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()
@@ -50,7 +48,7 @@ def test_lerp_inplace():
         input_fn=lerp_input_fn,
         op_name="lerp_",
         torch_op=lambda input, end, weight: input.lerp_(end, weight),
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()

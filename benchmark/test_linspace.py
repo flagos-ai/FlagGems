@@ -6,8 +6,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as base
-from . import utils
+from . import base, utils
 
 
 def _input_fn(shape, dtype, device):

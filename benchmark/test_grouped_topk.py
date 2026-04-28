@@ -3,8 +3,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as base
-from . import utils
+from . import base, utils
 
 try:
     from vllm._custom_ops import grouped_topk as vllm_grouped_topk

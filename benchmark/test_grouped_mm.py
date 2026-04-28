@@ -1,3 +1,4 @@
+import random
 from typing import Generator
 
 import pytest
@@ -5,7 +6,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as base
+from . import base, utils
 
 
 class GroupmmBenchmark(base.BlasBenchmark):
@@ -29,7 +30,6 @@ class GroupmmBenchmark(base.BlasBenchmark):
 
 def _input_fn(groups, N, K, cur_dtype, device):
     assert cur_dtype == torch.bfloat16
-    import random
 
     group_A_list = []
     group_B_list = []
@@ -59,7 +59,7 @@ def _input_fn(groups, N, K, cur_dtype, device):
 
 @pytest.mark.grouped_mm
 @pytest.mark.skipif(
-    base.SkipVersion("torch", "<2.8"),
+    utils.SkipVersion("torch", "<2.8"),
     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
 )
 def test_grouped_mm(monkeypatch):

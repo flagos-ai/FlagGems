@@ -4,8 +4,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def gen_indices_bool(input_shape, indices_shape, accumulate, is_bool):
@@ -51,7 +50,7 @@ def index_put_input_fn(accumulate):
     return inner
 
 
-class IndexPutAccFalseBenchmark(utils.GenericBenchmark):
+class IndexPutAccFalseBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         INDEX_PUT_SHAPE = (
             ((2**28,), ((2**16,),), (2**16,), False),
@@ -100,7 +99,7 @@ def test_index_put_acc_false():
         op_name="index_put",
         torch_op=torch.index_put,
         input_fn=index_put_input_fn(False),
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
@@ -111,12 +110,12 @@ def test_index_put__acc_false():
         op_name="index_put_",
         torch_op=torch.index_put_,
         input_fn=index_put_input_fn(False),
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-class IndexPutAccTrueBenchmark(utils.GenericBenchmark):
+class IndexPutAccTrueBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         INDEX_PUT_SHAPE = (
             ((2**28,), ((2**16,),), (2**16,), False),
