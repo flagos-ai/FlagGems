@@ -80,9 +80,10 @@ def test_feature_dropout_p_zero(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_feature_dropout_p_one(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref = to_reference(torch.zeros_like(inp))
     with flag_gems.use_gems():
         res_out = torch.feature_dropout(inp, 1.0, True)
-    gems_assert_equal(res_out, torch.zeros_like(inp))
+    gems_assert_equal(res_out, ref)
 
 
 @pytest.mark.feature_dropout_
