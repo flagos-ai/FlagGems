@@ -32,7 +32,7 @@ def _input_fn(shape, dtype, device):
         yield [inp1, inp2, inp3], {"dim": -1},
 
 
-@pytest.mark.skip(reason="CUDA error - illegal memory access: issue #2675")
+# @pytest.mark.skip(reason="CUDA error - illegal memory access: issue #2675")
 @pytest.mark.stack
 def test_stack():
     bench = StackBenchmark(
