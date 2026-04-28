@@ -140,4 +140,3 @@ def test_accuracy_smooth_l1_loss_zero_size():
             inp, target, reduction="mean", beta=1.0
         )
     gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
-

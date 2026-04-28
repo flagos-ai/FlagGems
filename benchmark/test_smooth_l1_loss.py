@@ -1,7 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
 from benchmark.attri_util import FLOAT_DTYPES, BenchLevel
 from benchmark.performance_utils import Config, GenericBenchmark, generate_tensor_input
 
