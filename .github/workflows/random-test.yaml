@@ -36,30 +36,46 @@ jobs:
           RUNNER_LABEL: ${{ inputs.runner }}
           PROXY: ${{ secrets.PROXYG }}
         run: |
-          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
-            echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
-            echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
-          fi
+          # Setup proxy for git checkout
+          case "${RUNNER_LABEL}" in
+            h20|metax|hygon)
+              ;;
+            *)
+              echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
+              echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
+              ;;
+          esac
+
       - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+
       - name: Setup FlagGems
         shell: bash
         env:
           RUNNER_LABEL: ${{ inputs.runner }}
           PROXY: ${{ secrets.PROXYC }}
         run: |
-          if [[ "${RUNNER_LABEL}" != "h20" ]]; then
-            export HTTP_PROXY="${PROXY}"
-            export HTTPS_PROXY="${PROXY}"
-            if [[ "{RUNNER_LABEL}" == "moore" ]]; then
-              VENDOR="mthreads"
-            else
-              VENDOR="${RUNNER_LABEL}"
-            fi
-          else
-            VENDOR="nvidia"
-          fi
+          # Setup proxy for install if needed
+          case "${RUNNER_LABEL}" in
+            h20|metax|hygon)
+              if [[ "${RUNNER_LABEL}" == "h20" ]]; then
+                VENDOR="nvidia"
+              else
+                VENDOR="${RUNNER_LABEL}"
+              ;;
+            *)
+              export HTTP_PROXY="${PROXY}"
+              export HTTPS_PROXY="${PROXY}"
+              if [[ "{RUNNER_LABEL}" == "moore" ]]; then
+                VENDOR="mthreads"
+              else
+                VENDOR="${RUNNER_LABEL}"
+              fi
+              ;;
+          esac
+
+          echo "VENDOR=${VENDOR}"
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
 
           ./setup.sh ${VENDOR}
