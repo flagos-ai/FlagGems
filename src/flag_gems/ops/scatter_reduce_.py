@@ -100,6 +100,7 @@ def generate_scatter_reduce_kernel(
             code.writeline("IS_AMAX: tl.constexpr,")
             code.writeline("IS_AMIN: tl.constexpr,")
             code.writeline("IS_MEAN: tl.constexpr,")
+            code.writeline("IS_FLOAT32: tl.constexpr,")
             code.writeline("BLOCK: tl.constexpr,")
             code.writeline("LOOP: tl.constexpr,")
             code.writeline("INT32_OFFSET: tl.constexpr")
@@ -159,12 +160,33 @@ def generate_scatter_reduce_kernel(
             code.writeline("inp_offsets += dim_offsets")
             code.newline()
 
-            # Sum reduction using atomic_add
+            # Sum reduction using atomic_add (float32) or CAS loop (bf16/fp16)
             code.writeline("if IS_SUM or IS_MEAN:")
             with code.indent():
-                code.writeline(
-                    "tl.atomic_add(out + inp_offsets, cur_src.to(tl.float32), mask=mask)"
-                )
+                code.writeline("if IS_FLOAT32:")
+                with code.indent():
+                    code.writeline(
+                        "tl.atomic_add(out + inp_offsets, cur_src, mask=mask)"
+                    )
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
+                    code.writeline("block_stop = False")
+                    code.writeline("while not block_stop:")
+                    with code.indent():
+                        code.writeline(
+                            "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
+                        )
+                        code.writeline(
+                            "res = tl.where(stop, cur_inp, cur_inp + cur_src)"
+                        )
+                        code.writeline(
+                            "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)"
+                        )
+                        code.writeline("stop |= cur_inp == cas_res")
+                        code.writeline(
+                            "block_stop = tl.sum(stop.to(tl.int32)) == BLOCK"
+                        )
 
             # Product reduction using CAS loop
             code.writeline("elif IS_PROD:")
@@ -375,6 +397,7 @@ def generate_destination_passing_wrapper(
         code.writeline('IS_AMAX = reduce == "amax"')
         code.writeline('IS_AMIN = reduce == "amin"')
         code.writeline('IS_MEAN = reduce == "mean"')
+        code.writeline("IS_FLOAT32 = out.dtype == torch.float32")
         code.writeline("int32_offset = int32_offset or True")
 
         # kernel launch
@@ -410,6 +433,7 @@ def generate_destination_passing_wrapper(
                 code.writeline("IS_AMAX,")
                 code.writeline("IS_AMIN,")
                 code.writeline("IS_MEAN,")
+                code.writeline("IS_FLOAT32,")
                 code.writeline("INT32_OFFSET=int32_offset,")
         code.writeline(")")
 
