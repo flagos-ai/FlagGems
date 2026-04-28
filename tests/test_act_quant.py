@@ -1,10 +1,12 @@
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import pytest
 import torch
 
 import flag_gems
 from flag_gems.utils.device_info import get_device_capability
+
+from . import accuracy_utils as utils
 
 device = flag_gems.device
 
@@ -88,7 +90,9 @@ def torch_act_quant(
         torch.bfloat16,
     ],
 )
-def test_act_quant_accuracy(shape, block_size, scale_fmt, dtype):
+def test_act_quant_accuracy(
+    shape: Tuple[int, int], block_size: int, scale_fmt: Any, dtype: torch.dtype
+):
     torch.manual_seed(0)
     x = torch.randn(shape, dtype=dtype, device=device)
 
@@ -100,5 +104,7 @@ def test_act_quant_accuracy(shape, block_size, scale_fmt, dtype):
         x, block_size=block_size, scale_fmt=scale_fmt
     )
 
-    torch.testing.assert_close(ref_y.float(), res_y.float(), rtol=1e-2, atol=1e-2)
-    torch.testing.assert_close(ref_s, res_s, rtol=1e-5, atol=1e-5)
+    utils.gems_assert_close(
+        ref_y.float(), res_y.float(), dtype=torch.float32, atol=1e-2
+    )
+    utils.gems_assert_close(ref_s, res_s, dtype=torch.float32)
