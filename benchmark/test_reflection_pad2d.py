@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def _input_fn(config, dtype, device):
@@ -11,7 +10,7 @@ def _input_fn(config, dtype, device):
     yield x, list(padding)
 
 
-class ReflectionPad2dBenchmark(utils.Benchmark):
+class ReflectionPad2dBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             ((3, 33, 33), (1, 1, 1, 1)),
@@ -24,9 +23,9 @@ class ReflectionPad2dBenchmark(utils.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, cur_dtype):
+    def get_input_iter(self, dtype):
         for config in self.shapes:
-            yield from _input_fn(config, cur_dtype, self.device)
+            yield from _input_fn(config, dtype, self.device)
 
 
 @pytest.mark.reflection_pad2d
@@ -34,7 +33,7 @@ def test_reflection_pad2d():
     bench = ReflectionPad2dBenchmark(
         op_name="reflection_pad2d",
         torch_op=torch.ops.aten.reflection_pad2d,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

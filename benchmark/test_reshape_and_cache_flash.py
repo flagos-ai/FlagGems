@@ -5,9 +5,8 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.attri_util import FLOAT_DTYPES
 
-from .performance_utils import GenericBenchmark
+from . import base, consts
 
 
 def torch_reshape_and_cache_flash_ref(
@@ -30,13 +29,9 @@ def torch_reshape_and_cache_flash_ref(
         value_cache[block_idx, block_offset] = value[i]
 
 
-class ReshapeAndCacheFlashBenchmark(GenericBenchmark):
-    """
-    benchmark for reshape_and_cache_flash
-    """
-
+class ReshapeAndCacheFlashBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
-        return None
+        return []
 
 
 @pytest.mark.reshape_and_cache_flash
@@ -95,6 +90,6 @@ def test_reshape_and_cache_flash():
         input_fn=input_kwargs,
         torch_op=torch_reshape_and_cache_flash_ref,
         gems_op=flag_gems.reshape_and_cache_flash,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

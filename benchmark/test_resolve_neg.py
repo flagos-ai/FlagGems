@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as utils
+from . import base
 
 
 def _input_fn(shape, dtype, device):
@@ -16,7 +16,7 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.resolve_neg
 def test_resolve_neg():
-    bench = utils.GenericBenchmarkExcluse1D(
+    bench = base.GenericBenchmarkExcluse1D(
         op_name="resolve_neg",
         input_fn=_input_fn,
         dtypes=[torch.cfloat],
