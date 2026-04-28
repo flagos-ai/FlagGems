@@ -26,6 +26,7 @@ from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.asinh import asinh, asinh_
 from flag_gems.ops.asinh import asinh, asinh_out
 from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.assert_async import _assert_async
@@ -83,6 +84,7 @@ from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
+from flag_gems.ops.cosh import cosh, cosh_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
@@ -131,6 +133,7 @@ from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
+from flag_gems.ops.gcd import gcd
 from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
@@ -166,12 +169,14 @@ from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.kron import kron
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.le import le, le_scalar
+from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
 from flag_gems.ops.log1p_ import log1p_
+from flag_gems.ops.log10 import log10, log10_
 from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_softmax import log_softmax, log_softmax_backward
@@ -384,6 +389,8 @@ __all__ = [
     "arcsinh_",
     "argmax",
     "argmin",
+    "avg_pool2d",
+    "avg_pool2d_backward",
     "asinh",
     "asinh_",
     "asinh_out",
@@ -548,6 +555,8 @@ __all__ = [
     "leaky_relu_out",
     "le",
     "le_scalar",
+    "leaky_relu",
+    "leaky_relu_",
     "lerp_scalar",
     "lerp_scalar_",
     "lerp_tensor",
@@ -665,6 +674,9 @@ __all__ = [
     "resolve_neg",
     "rms_norm",
     "rms_norm_backward",
+    "roll",
+    "sqrt",
+    "sqrt_",
     "rms_norm_forward",
     "roll",
     "round",
