@@ -98,6 +98,7 @@ add_test(NAME test_triton_exponential_ COMMAND test_triton_exponential_)
 add_executable(test_triton_softmax test_triton_softmax.cpp)
 target_link_libraries(test_triton_softmax
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main ${Python_LIBRARIES} pybind11::embed)
+target_include_directories(test_triton_softmax PRIVATE ${Python_INCLUDE_DIRS})
 add_test(NAME test_triton_softmax COMMAND test_triton_softmax)
 
 add_executable(test_triton_reshape_and_cache_flash test_triton_reshape_and_cache_flash.cpp)

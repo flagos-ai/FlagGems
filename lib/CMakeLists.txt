@@ -55,6 +55,11 @@ elseif(FLAGGEMS_BACKEND STREQUAL "MUSA")
     target_link_libraries(operators
       PUBLIC Torch::Torch
       PRIVATE TritonJIT::triton_jit)
+elseif(FLAGGEMS_BACKEND STREQUAL "KUNLUNXIN")
+    target_link_kunlunxin_libraries(operators)
+    target_link_libraries(operators
+      PUBLIC Torch::Torch
+      PRIVATE TritonJIT::triton_jit)
 endif()
 target_compile_definitions(operators PRIVATE BACKEND_${FLAGGEMS_BACKEND})
 
