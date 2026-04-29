@@ -26,12 +26,12 @@ def bitwise_or_func(x, y):
 
 
 def bitwise_or_tensor(A, B):
-    logger.debug("GEMS BITWISE OR")
+    logger.debug("GEMS_KUNLUNXIN BITWISE OR")
     return bitwise_or_func(A, B)
 
 
 def bitwise_or_tensor_(A, B):
-    logger.debug("GEMS BITWISE OR_")
+    logger.debug("GEMS_KUNLUNXIN BITWISE OR_")
     return bitwise_or_func(A, B, out0=A)
 
 
@@ -42,15 +42,15 @@ def bitwise_or_func_scalar(x, y):
 
 
 def bitwise_or_scalar(A, B):
-    logger.debug("GEMS BITWISE OR SCALAR")
+    logger.debug("GEMS_KUNLUNXIN BITWISE OR SCALAR")
     return bitwise_or_func_scalar(A, B)
 
 
 def bitwise_or_scalar_(A, B):
-    logger.debug("GEMS BITWISE OR_ SCALAR")
+    logger.debug("GEMS_KUNLUNXIN BITWISE OR_ SCALAR")
     return bitwise_or_func_scalar(A, B, out0=A)
 
 
 def bitwise_or_scalar_tensor(A, B):
-    logger.debug("GEMS BITWISE OR SCALAR TENSOR")
+    logger.debug("GEMS_KUNLUNXIN BITWISE OR SCALAR TENSOR")
     return bitwise_or_func_scalar(B, A)
