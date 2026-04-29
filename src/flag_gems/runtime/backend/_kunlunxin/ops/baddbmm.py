@@ -4,30 +4,71 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-if runtime.device.vendor_name == "iluvatar":
-    from flag_gems.runtime.backend._iluvatar.ops.bmm import bmm
-else:
-    from .bmm import bmm
-
+from .bmm import bmm
 from .mul import mul
 
 logger = logging.getLogger(__name__)
 
 
+def heur_tile_m(args):
+    M = args.get("M", 0)
+    if M <= 16:
+        return 16
+    elif M <= 32:
+        return 32
+    elif M <= 64:
+        return 64
+    else:
+        return 128
+
+
+def heur_tile_n(args):
+    N = args.get("N", 0)
+    if N <= 16:
+        return 16
+    elif N <= 32:
+        return 32
+    elif N <= 64:
+        return 64
+    else:
+        return 128
+
+
+def heur_tile_k(args):
+    return 64
+
+
+def heur_divisible_m(args):
+    return args.get("M", 0) % args.get("TILE_M", 1) == 0
+
+
+def heur_divisible_n(args):
+    return args.get("N", 0) % args.get("TILE_N", 1) == 0
+
+
+def heur_divisible_k(args):
+    return args.get("K", 0) % args.get("TILE_K", 1) == 0
+
+
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("baddbmm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
-    warmup=5,
-    rep=10,
+@triton.heuristics(
+    {
+        "TILE_M": heur_tile_m,
+        "TILE_N": heur_tile_n,
+        "TILE_K": heur_tile_k,
+    }
 )
-@triton.heuristics(runtime.get_heuristic_config("baddbmm"))
+@triton.heuristics(
+    {
+        "DIVISIBLE_M": heur_divisible_m,
+        "DIVISIBLE_N": heur_divisible_n,
+        "DIVISIBLE_K": heur_divisible_k,
+    }
+)
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def baddbmm_kernel(
     A,
@@ -39,41 +80,28 @@ def baddbmm_kernel(
     M,
     N,
     K,
+    stride_ab,
+    stride_am,
+    stride_ak,
+    stride_bb,
+    stride_bk,
+    stride_bn,
+    stride_ob,
+    stride_om,
+    stride_on,
+    bias_batch_stride,
+    bias_M_stride,
+    bias_N_stride,
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
     DIVISIBLE_M: tl.constexpr,
     DIVISIBLE_N: tl.constexpr,
     DIVISIBLE_K: tl.constexpr,
-    bias_batch_stride: tl.constexpr,
-    bias_M_stride: tl.constexpr,
-    bias_N_stride: tl.constexpr,
 ):
-    # batch offsets
     pid_b = tle.program_id(2)
-    A += pid_b * M * K
-    B += pid_b * K * N
-    O += pid_b * M * N
-    bias += pid_b * bias_batch_stride
-
-    pidx = tle.program_id(0)
-    pidy = tle.program_id(1)
-
-    if GROUP_M == 1:
-        pid_m, pid_n = pidx, pidy
-    else:
-        gridx = tle.num_programs(0)
-        gridy = tle.num_programs(1)
-        pid = pidx + pidy * gridx
-        num_CTA_per_group = gridy * GROUP_M
-        group_id = pid // num_CTA_per_group
-        inner_group_id = pid % num_CTA_per_group
-        GROUP_SIZE = tl.where(
-            (group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M
-        )
-        pid_m = group_id * GROUP_M + inner_group_id % GROUP_SIZE
-        pid_n = inner_group_id // GROUP_SIZE
+    pid_m = tle.program_id(0)
+    pid_n = tle.program_id(1)
 
     offs_m = pid_m * TILE_M + tl.arange(0, TILE_M)
     offs_n = pid_n * TILE_N + tl.arange(0, TILE_N)
@@ -84,20 +112,28 @@ def baddbmm_kernel(
     if not DIVISIBLE_N:
         mask_n = offs_n < N
 
-    a_ptrs = A + offs_m[:, None] * K + offs_k[None, :]
-    b_ptrs = B + offs_k[:, None] * N + offs_n[None, :]
-    o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
+    a_ptrs = (
+        A
+        + pid_b * stride_ab
+        + offs_m[:, None] * stride_am
+        + offs_k[None, :] * stride_ak
+    )
+    b_ptrs = (
+        B
+        + pid_b * stride_bb
+        + offs_k[:, None] * stride_bk
+        + offs_n[None, :] * stride_bn
+    )
 
-    num_iters = tl.cdiv(K, TILE_K)
     accumulator = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
-    for _ in range(num_iters):
+    for k in range(0, tl.cdiv(K, TILE_K)):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
-                mask_a = None
+                mask_a = tl.full([TILE_M, TILE_K], value=1, dtype=tl.int1)
             else:
                 mask_a = mask_m[:, None]
             if DIVISIBLE_N:
-                mask_b = None
+                mask_b = tl.full([TILE_K, TILE_N], value=1, dtype=tl.int1)
             else:
                 mask_b = mask_n[None, :]
         else:
@@ -110,25 +146,39 @@ def baddbmm_kernel(
                 mask_b = mask_k[:, None]
             else:
                 mask_b = mask_k[:, None] & mask_n[None, :]
-        a = tl.load(a_ptrs, mask=mask_a)
-        b = tl.load(b_ptrs, mask=mask_b)
-        accumulator += tl.dot(a, b, allow_tf32=False)
-        offs_k += TILE_K
-        a_ptrs += TILE_K
-        b_ptrs += TILE_K * N
 
-    bias_ptrs = bias + offs_m[:, None] * bias_M_stride + offs_n[None, :] * bias_N_stride
+        a = tl.load(a_ptrs, mask=mask_a, other=0.0)
+        b = tl.load(b_ptrs, mask=mask_b, other=0.0)
+        accumulator += tl.dot(a, b, allow_tf32=False)
+
+        a_ptrs += TILE_K * stride_ak
+        b_ptrs += TILE_K * stride_bk
+        offs_k += TILE_K
+
+    o_ptrs = (
+        O
+        + pid_b * stride_ob
+        + offs_m[:, None] * stride_om
+        + offs_n[None, :] * stride_on
+    )
 
     if DIVISIBLE_M and DIVISIBLE_N:
-        mask_c = None
+        mask_c = tl.full([TILE_M, TILE_N], value=1, dtype=tl.int1)
+    elif DIVISIBLE_M and not DIVISIBLE_N:
+        mask_c = mask_n[None, :]
+    elif not DIVISIBLE_M and DIVISIBLE_N:
+        mask_c = mask_m[:, None]
     else:
-        mask_c = True
-        if not DIVISIBLE_M:
-            mask_c &= offs_m[:, None] < M
-        if not DIVISIBLE_N:
-            mask_c &= offs_n[None, :] < N
+        mask_c = mask_m[:, None] & mask_n[None, :]
 
-    bi = tl.load(bias_ptrs, mask=mask_c)
+    bias_ptrs = (
+        bias
+        + pid_b * bias_batch_stride
+        + offs_m[:, None] * bias_M_stride
+        + offs_n[None, :] * bias_N_stride
+    )
+    bi = tl.load(bias_ptrs, mask=mask_c, other=0.0)
+
     out = accumulator * alpha + bi * beta
     o = out.to(bi.dtype)
     tl.store(o_ptrs, o, mask=mask_c)
@@ -137,7 +187,7 @@ def baddbmm_kernel(
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
-        logger.debug("GEMS BADDBMM FORWARD")
+        logger.debug("GEMS_KUNLUNXIN BADDBMM FORWARD")
 
         ctx.save_for_backward(A, B, bias)
         ctx.alpha = alpha
@@ -170,15 +220,24 @@ class BaddbmmFunction(torch.autograd.Function):
                 M,
                 N,
                 K,
-                bias_batch_stride=bias_batch_stride,
-                bias_M_stride=bias_M_stride,
-                bias_N_stride=bias_N_stride,
+                A.stride(0),
+                A.stride(1),
+                A.stride(2),
+                B.stride(0),
+                B.stride(1),
+                B.stride(2),
+                out.stride(0),
+                out.stride(1),
+                out.stride(2),
+                bias_batch_stride,
+                bias_M_stride,
+                bias_N_stride,
             )
         return out
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS BADDBMM BACKWARD")
+        logger.debug("GEMS_KUNLUNXIN BADDBMM BACKWARD")
         A, B, bias = ctx.saved_tensors
 
         grad_A = None
