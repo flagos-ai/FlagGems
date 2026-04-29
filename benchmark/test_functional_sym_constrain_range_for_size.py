@@ -9,7 +9,7 @@ def _input_fn(shape, cur_dtype, device):
     yield 5, 1, 10, dep_token
 
 
-@pytest.mark.functional_sym_constrain_range_for_size
+@pytest.mark._functional_sym_constrain_range_for_size
 def test_functional_sym_constrain_range_for_size():
     bench = base.GenericBenchmark(
         op_name="functional_sym_constrain_range_for_size",
