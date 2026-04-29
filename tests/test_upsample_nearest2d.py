@@ -88,9 +88,7 @@ def test_upsample_nearest2d_backward(dtype, shape, output_size, scales):
 def test_upsample_nearest2d_backward_invalid_args(
     grad_shape, output_size, input_size, error_msg
 ):
-    grad_output = torch.randn(
-        grad_shape, dtype=torch.float32, device=flag_gems.device
-    )
+    grad_output = torch.randn(grad_shape, dtype=torch.float32, device=flag_gems.device)
 
     with flag_gems.use_gems(), pytest.raises(AssertionError, match=error_msg):
         torch.ops.aten.upsample_nearest2d_backward(
