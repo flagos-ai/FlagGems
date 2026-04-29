@@ -165,7 +165,7 @@ def _assert_ctc_matches(
         ref_in_grad.sum(dim=-1),
         dtype,
         equal_nan=equal_nan,
-        reduce_dim=1,
+        reduce_dim=log_probs.shape[-1],
         atol=CTC_LOSS_ATOL.get(dtype, 1e-4),
     )
 
