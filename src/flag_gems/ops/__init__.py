@@ -66,6 +66,7 @@ from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -462,6 +463,7 @@ __all__ = [
     "cosh_",
     "cosh_out",
     "count_nonzero",
+    "chunk_gated_delta_rule",
     "cummax",
     "cummin",
     "cumsum",
