@@ -10,7 +10,8 @@ export LD_LIBRARY_PATH=$TX8_DEPS_ROOT/lib:/usr/local/kuiper/lib:$LD_LIBRARY_PATH
 # NOTE: The following setting may be needed if there are exceptions related to txops.
 # export LD_LIBRARY_PATH=$SITE_PACKAGES/txops/lib:$LD_LIBRARY_PATH
 uv pip install -e .
-uv pip install ".[tsingmicro,test]"
+uv pip install ".[tsingmicro]"
+uv pip install ".[test]"
 
 uv pip install --index ${FLAGOS_PYPI} \
     "torch==2.7.0+cpu" \
