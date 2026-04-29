@@ -40,6 +40,7 @@ class BackendState:
 
 # Global singleton instance
 _state = BackendState()
+vendor_module = _state.vendor_module
 
 
 class BackendArchEvent:
