@@ -451,6 +451,7 @@ _FULL_CONFIG = (
     ("std.correction", std),
     ("sub.Tensor", sub),
     ("sub_.Tensor", sub_),
+    ("svd", svd),
     ("sum", sum),
     ("sum.IntList_out", sum_dim_out),
     ("sum.dim_IntList", sum_dim),
