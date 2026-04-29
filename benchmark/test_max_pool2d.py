@@ -5,9 +5,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as consts
-from . import performance_utils as base
-from . import utils
+from . import base, consts, utils
 
 
 class MaxPool2dBenchmark(base.GenericBenchmark):

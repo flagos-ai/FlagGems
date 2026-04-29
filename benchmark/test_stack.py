@@ -3,9 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from . import attri_util as consts
-from . import performance_utils as base
-from . import utils
+from . import base, consts, utils
 
 
 class StackBenchmark(base.Benchmark):
@@ -33,7 +31,6 @@ def _input_fn(shape, dtype, device):
         yield [inp1, inp2, inp3], {"dim": -1},
 
 
-@pytest.mark.skip(reason="CUDA error - illegal memory access: issue #2675")
 @pytest.mark.stack
 def test_stack():
     bench = StackBenchmark(

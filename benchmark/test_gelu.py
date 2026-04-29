@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 
 @pytest.mark.gelu
 def test_gelu():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="gelu", torch_op=torch.nn.functional.gelu, dtypes=attrs.FLOAT_DTYPES
+        op_name="gelu", torch_op=torch.nn.functional.gelu, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
 
@@ -18,7 +17,7 @@ def test_gelu_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="gelu_",
         torch_op=torch.ops.aten.gelu_.default,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()
@@ -29,7 +28,7 @@ def test_gelu_backward():
     bench = base.UnaryPointwiseBenchmark(
         op_name="gelu_backward",
         torch_op=torch.nn.functional.gelu,
-        dtypes=attrs.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()

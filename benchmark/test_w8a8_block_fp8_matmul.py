@@ -5,8 +5,7 @@ import torch
 
 import flag_gems
 
-from . import attri_util as attrs
-from . import performance_utils as base
+from . import base, consts
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
@@ -57,7 +56,7 @@ def rand_fp8_tensor(shape, device, dtype):
 
 
 class W8A8BlockFP8MatmulBenchmark(base.Benchmark):
-    DEFAULT_METRICS = attrs.DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def __init__(self, *args, block_size=None, **kwargs):
         super().__init__(*args, **kwargs)

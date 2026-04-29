@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from . import attri_util as attr_utils
-from . import performance_utils as utils
+from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
@@ -13,11 +12,11 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.soft_margin_loss
 def test_soft_margin_loss():
-    bench = utils.GenericBenchmark(
+    bench = base.GenericBenchmark(
         input_fn=_input_fn,
         op_name="soft_margin_loss",
         torch_op=torch.ops.aten.soft_margin_loss,
-        dtypes=attr_utils.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
 
     bench.run()

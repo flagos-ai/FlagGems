@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from . import performance_utils as utils
+from . import base
 
 
 def _input_fn(shape, dtype, device):
@@ -11,7 +11,7 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.resolve_conj
 def test_resolve_conj():
-    bench = utils.GenericBenchmarkExcluse1D(
+    bench = base.GenericBenchmarkExcluse1D(
         op_name="resolve_conj",
         input_fn=_input_fn,
         torch_op=torch.resolve_conj,

@@ -7,7 +7,7 @@ import torch
 import yaml
 
 import flag_gems
-from benchmark.attri_util import (
+from benchmark.consts import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
     DEFAULT_ITER_COUNT,

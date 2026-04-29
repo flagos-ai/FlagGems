@@ -12,7 +12,8 @@ import yaml
 import flag_gems
 from flag_gems.utils import shape_utils
 
-from .attri_util import (
+from .conftest import Config, emit_record_logger
+from .consts import (
     BOOL_DTYPES,
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -27,7 +28,6 @@ from .attri_util import (
     check_metric_dependencies,
     model_shapes,
 )
-from .conftest import Config, emit_record_logger
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
@@ -642,10 +642,10 @@ class BlasBenchmark(Benchmark):
 
     def set_more_shapes(self):
         large_k_shapes = [
-            [8, 1848, 1536, 151936],
-            [8, 1848, 1536, 128256],
-            [8, 1848, 1536, 152064],
-            [8, 4096, 1, 152064],
+            (8, 1848, 1536, 151936),
+            (8, 1848, 1536, 128256),
+            (8, 1848, 1536, 152064),
+            (8, 4096, 1, 152064),
         ]
 
         model_shaps = model_shapes()

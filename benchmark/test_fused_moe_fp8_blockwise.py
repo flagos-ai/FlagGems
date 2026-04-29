@@ -5,7 +5,7 @@ import torch
 
 import flag_gems
 
-from . import performance_utils as base
+from . import base
 
 
 def is_cuda_available():
