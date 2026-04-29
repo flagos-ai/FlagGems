@@ -220,6 +220,7 @@ from flag_gems.ops.nllloss import (
     nll_loss_forward,
 )
 from flag_gems.ops.nonzero import nonzero
+from flag_gems.ops.nonzero_numpy import nonzero_numpy
 from flag_gems.ops.normal import (
     normal_,
     normal_float_tensor,
@@ -620,6 +621,7 @@ __all__ = [
     "nll_loss_nd_forward",
     "nll_loss_nd_backward",
     "nonzero",
+    "nonzero_numpy",
     "normal_float_tensor",
     "normal_tensor_float",
     "normal_tensor_tensor",
