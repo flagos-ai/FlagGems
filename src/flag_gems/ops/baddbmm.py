@@ -138,6 +138,38 @@ def baddbmm_kernel(
     tl.store(o_ptrs, o, mask=mask_c)
 
 
+def _baddbmm_launch(bias, A, B, beta, alpha, out):
+    batch, M, K = A.shape
+    _, _, N = B.shape
+    A = A.contiguous()
+    B = B.contiguous()
+    bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
+    bias_batch_stride = bbias.stride(0)
+    bias_M_stride = bbias.stride(1)
+    bias_N_stride = bbias.stride(-1)
+
+    grid = lambda meta: (
+        triton.cdiv(meta["M"], meta["TILE_M"]),
+        triton.cdiv(meta["N"], meta["TILE_N"]),
+        batch,
+    )
+    with torch_device_fn.device(A.device):
+        baddbmm_kernel[grid](
+            A,
+            B,
+            out,
+            bbias,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            bias_batch_stride=bias_batch_stride,
+            bias_M_stride=bias_M_stride,
+            bias_N_stride=bias_N_stride,
+        )
+
+
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
@@ -149,36 +181,8 @@ class BaddbmmFunction(torch.autograd.Function):
 
         batch, M, K = A.shape
         _, _, N = B.shape
-        A = A.contiguous()
-        B = B.contiguous()
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
-
-        bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
-        bias_batch_stride = bbias.stride(0)
-        bias_M_stride = bbias.stride(1)
-        bias_N_stride = bbias.stride(-1)
-
-        grid = lambda meta: (
-            triton.cdiv(meta["M"], meta["TILE_M"]),
-            triton.cdiv(meta["N"], meta["TILE_N"]),
-            batch,
-        )
-        with torch_device_fn.device(A.device):
-            baddbmm_kernel[grid](
-                A,
-                B,
-                out,
-                bbias,
-                alpha,
-                beta,
-                M,
-                N,
-                K,
-                bias_batch_stride=bias_batch_stride,
-                bias_M_stride=bias_M_stride,
-                bias_N_stride=bias_N_stride,
-                IS_FP64=A.dtype == torch.float64,
-            )
+        _baddbmm_launch(bias, A, B, beta, alpha, out)
         return out
 
     @staticmethod
@@ -237,6 +241,24 @@ def compute_B_grad(A, d_output, alpha):
         mul2 = bmm(A_T, d_output)
         grad_B = mul(mul2, alpha)
     return grad_B
+
+
+def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
+    logger.debug("GEMS BADDBMM_OUT")
+    batch, M, K = A.shape
+    _, _, N = B.shape
+    assert (
+        out.shape == (batch, M, N) and out.dtype == A.dtype
+    ), "Incompatible output shape or dtype for baddbmm.out"
+    _baddbmm_launch(
+        bias.contiguous(),
+        A.contiguous(),
+        B.contiguous(),
+        beta,
+        alpha,
+        out,
+    )
+    return out
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
