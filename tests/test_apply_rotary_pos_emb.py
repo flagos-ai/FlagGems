@@ -72,7 +72,7 @@ def _get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device=flag_gems.devi
     return cos, sin
 
 
-@pytest.mark.apply_rotary_pos_emb
+@pytest.mark.rotary_embedding
 @pytest.mark.parametrize("batch_size", [2] if cfg.TO_CPU else [4, 8])
 @pytest.mark.parametrize("max_seq_len", [16] if cfg.TO_CPU else [512, 2048])
 @pytest.mark.parametrize("q_heads,k_heads", [(8, 1), (6, 2), (1, 1), (8, 8)])
