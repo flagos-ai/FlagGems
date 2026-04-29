@@ -203,6 +203,8 @@ _FULL_CONFIG = (
     ("expm1_", expm1_),
     ("expm1.out", expm1_out),
     ("exponential_", exponential_),
+    ("feature_dropout", feature_dropout),
+    ("feature_dropout_", feature_dropout_),
     ("eye", eye),
     ("eye.m", eye_m),
     ("fill.Scalar", fill_scalar),
