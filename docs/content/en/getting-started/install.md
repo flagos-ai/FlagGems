@@ -98,9 +98,25 @@ The following command installs the `flag_gems` package in an editable mode,
 while enabling the C++ extensions using the `CMAKE_ARGS` environment variable:
 
 ```shell
-CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
-pip install --no-build-isolation -v -e .
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install -v -e .
 ```
+
+> [!TIP]
+> It is recommended to explicitly set `-DCMAKE_BUILD_TYPE=Release`.
+> Without an explicit build type, neither `libtriton_jit` nor FlagGems's
+> own C++ code will be built with compiler optimizations targeted at the
+> selected platform (`-O3 -DNDEBUG` etc.), which makes the C++ wrapper
+> execution noticeably slower and drags down the overall performance of
+> the C++ wrapped operators.
+
+> [!NOTE]
+> If the build fails (e.g. dependency conflicts or pip cannot locate an
+> already-installed PyTorch), add `--no-build-isolation` to the
+> `pip install` command so that pip reuses the PyTorch and the build
+> dependencies from `requirements_<backend>.txt` already installed in
+> your environment. See [§4.2 Build isolation](#build-isolation) for
+> more details.
 
 The above command builds for the default **CUDA** backend. To build for
 a different backend or to enable the pointwise dynamic C++ module,
@@ -110,34 +126,33 @@ supported platform:
 **NVIDIA CUDA (with pointwise dynamic C++ support)**
 
 ```shell
-CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON" \
-pip install --no-build-isolation -v -e .
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install -v -e .
 ```
 
 **Iluvatar CoreX (IX)**
 
 ```shell
 export LIBRARY_PATH=<corex-install-dir>/lib64:$LIBRARY_PATH
-
-CMAKE_ARGS="-DFLAGGEMS_BACKEND=IX -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BUILD_CTESTS=ON -DCMAKE_BUILD_TYPE=Release" \
-pip install --no-build-isolation -v -e .
+#export LIBRARY_PATH=/usr/local/corex/lib64:$LIBRARY_PATH
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=IX -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install -v -e .
 ```
 
 **Moore Threads (MUSA)**
 
 ```shell
 export MUSA_HOME=<musa-install-dir>
-
-LD_PRELOAD=$CONDA_PREFIX/lib/libittnotify.so \
-pip install --no-build-isolation -v -e . \
-  --config-settings=cmake.args="-DFLAGGEMS_BACKEND=MUSA;-DFLAGGEMS_BUILD_C_EXTENSIONS=ON;-DFLAGGEMS_BUILD_CTESTS=ON"
+#export MUSA_HOME=/usr/local/musa-xxx
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=MUSA -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install -e .
 ```
 
 **Huawei Ascend (NPU)**
 
 ```shell
-CMAKE_ARGS="-DFLAGGEMS_BACKEND=NPU -DFLAGGEMS_BUILD_C_EXTENSIONS=ON" \
-pip install --no-build-isolation -e .
+CMAKE_ARGS="-DFLAGGEMS_BACKEND=NPU -DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release" \
+pip install -e .
 ```
 
 Note that the above commands install the
@@ -306,5 +321,5 @@ with external *Triton JIT* installed  at `/usr/local/lib/libtriton_jit`:
 
 ```shell
 CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_USE_EXTERNAL_TRITON_JIT=ON -DTritonJIT_ROOT=/usr/local/lib/libtriton_jit" \
-pip install --no-build-isolation -v -e .
+pip install -v -e .
 ```

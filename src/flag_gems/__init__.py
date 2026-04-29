@@ -14,7 +14,7 @@ from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
 
-__version__ = "5.0.1.rc.0"
+__version__ = "5.0.2"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -43,10 +43,14 @@ _FULL_CONFIG = (
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
     ("_log_softmax", log_softmax),
+    ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
+    ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_safe_softmax", _safe_softmax),
     ("_softmax", softmax),
+    ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
+    ("_softmax_backward_data.out", softmax_backward_out),
     (
         "_to_copy",
         to_copy,
@@ -65,11 +69,15 @@ _FULL_CONFIG = (
     ("add.Tensor", add),
     ("add_.Tensor", add_),
     ("addcdiv", addcdiv),
+    ("addcdiv.out", addcdiv_out),
     ("addcmul", addcmul),
+    ("addcmul.out", addcmul_out),
     ("addmv", addmv),
     ("addmv.out", addmv_out),
     ("addmm", addmm),
     ("addmm.out", addmm_out),
+    ("addmm.dtype", addmm_dtype),
+    ("addmm.dtype_out", addmm_dtype_out),
     ("addr", addr),
     ("alias_copy", alias_copy),
     ("all", all),
@@ -90,6 +98,8 @@ _FULL_CONFIG = (
     ("arcsinh_", arcsinh_),
     ("argmax", argmax),
     ("argmin", argmin),
+    ("asinh", asinh),
+    ("asinh.out", asinh_out),
     ("asinh_", asinh_),
     ("atan", atan),
     ("atan_", atan_),
@@ -98,6 +108,8 @@ _FULL_CONFIG = (
     ("arctanh_", arctanh_),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
+    ("avg_pool3d", avg_pool3d),
+    ("avg_pool3d_backward", avg_pool3d_backward),
     ("baddbmm", baddbmm),
     ("bernoulli_.float", bernoulli_),
     ("bincount", bincount),
@@ -118,6 +130,7 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("cat", cat),
+    ("cat.out", cat_out),
     ("celu", celu),
     ("celu_", celu_),
     ("ceil", ceil),
@@ -129,6 +142,8 @@ _FULL_CONFIG = (
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
     ("clamp_min_", clamp_min_),
+    ("clip", clip),
+    ("clip_", clip_),
     ("conj_physical", conj_physical),
     ("constant_pad_nd", constant_pad_nd),
     # ("contiguous", contiguous),
@@ -217,6 +232,8 @@ _FULL_CONFIG = (
     ("full_like", full_like),
     ("gather", gather),
     ("gather_backward", gather_backward),
+    ("gcd", gcd),
+    ("gcd.out", gcd_out),
     ("ge.Scalar", ge_scalar),
     ("ge.Tensor", ge),
     ("gelu", gelu),
@@ -224,6 +241,7 @@ _FULL_CONFIG = (
     ("gelu_backward", gelu_backward),
     ("glu", glu),
     ("glu_backward", glu_backward),
+    ("grid_sample", grid_sample),
     ("greater.Scalar", greater_scalar),
     ("greater.Tensor", greater),
     ("greater.Scalar_out", greater_scalar_out),
@@ -256,6 +274,9 @@ _FULL_CONFIG = (
     ("kron", kron),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
+    ("leaky_relu", leaky_relu),
+    ("leaky_relu_", leaky_relu_),
+    ("leaky_relu.out", leaky_relu_out),
     ("lerp.Scalar", lerp_scalar),
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
@@ -294,6 +315,8 @@ _FULL_CONFIG = (
     ("max.dim", max_dim),
     ("max_pool2d_with_indices", max_pool2d_with_indices),
     ("max_pool2d_backward", max_pool2d_backward),
+    ("max_pool3d_with_indices", max_pool3d_with_indices),
+    ("max_pool3d_backward", max_pool3d_backward),
     ("maximum", maximum),
     ("mean", mean),
     ("mean.dim", mean_dim),
@@ -336,6 +359,7 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("pad", pad),
+    ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("polar", polar),
@@ -379,8 +403,8 @@ _FULL_CONFIG = (
     ("rms_norm", rms_norm),
     ("roll", roll),
     ("round", round),
-    ("round.out", round_out),
     ("round_", round_),
+    ("round.out", round_out),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
@@ -481,6 +505,16 @@ for _item in _FULL_CONFIG:
     fn = _item[1]
     func_name = fn.__name__ if hasattr(fn, "__name__") else str(fn)
     FULL_CONFIG_BY_FUNC.setdefault(func_name, []).append(_item)
+
+# Friendly names for only_enable(include=[...]) when the registered impl is *.out
+for _alias, _target in (
+    ("softmax", "softmax_out"),
+    ("softmax_backward", "softmax_backward_out"),
+    ("log_softmax", "log_softmax_out"),
+    ("log_softmax_backward", "log_softmax_backward_out"),
+):
+    if _target in FULL_CONFIG_BY_FUNC:
+        FULL_CONFIG_BY_FUNC.setdefault(_alias, []).extend(FULL_CONFIG_BY_FUNC[_target])
 
 
 def enable(

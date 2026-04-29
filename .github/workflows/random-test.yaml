@@ -1,0 +1,118 @@
+---
+name: Random Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Label for selecting runners"
+        required: true
+        type: string
+      operators:
+        description: "Operators (comma separated names)"
+        required: true
+        type: string
+      gpus:
+        description: "GPUs (comma separated numbers)"
+        required: true
+        type: string
+    secrets:
+      RUNNER_SSH_KEY:
+        required: true
+      PROXYC:
+        required: true
+      PROXYG:
+        required: true
+permissions:
+  contents: read
+
+jobs:
+  check-permission:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.makeDecision.outputs.continue }}
+    steps:
+      - id: checkUser
+        uses: tspascoal/get-user-teams-membership@v3
+        with:
+          username: ${{ github.actor }}
+          team: 'FlagGems'
+          GITHUB_TOKEN: ${{ secrets.TEAMMEMBER_TOKEN }}
+
+      - id: makeDecision
+        env:
+          IS_MEMBER: ${{ steps.checkUser.outputs.isTeamMember }}
+        run: |
+          if [[ "${IS_MEMBER}" == "false" ]]; then
+            echo "Unauthorized user: ${{ github.actor }}"
+            echo "continue=false" >> $GITHUB_OUTPUT
+          else
+            echo "continue=true" >> $GITHUB_OUTPUT
+          fi
+
+  test-operator:
+    needs: check-permission
+    if: needs.check-permission.outputs.authorized == 'true'
+    runs-on: ${{ inputs.runner }}
+    steps:
+      # - name: Set global proxy
+      #   if: False
+      #   shell: bash
+      #   env:
+      #     RUNNER_LABEL: ${{ inputs.runner }}
+      #     PROXY: ${{ secrets.PROXYG }}
+      #   run: |
+      #     # Setup proxy for git checkout
+      #     case "${RUNNER_LABEL}" in
+      #       h20|metax|hygon)
+      #         ;;
+      #       *)
+      #         echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
+      #         echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
+      #         ;;
+      #     esac
+
+      - uses: actions/checkout@v6
+        # with:
+        #  ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+
+      - name: Setup FlagGems
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner }}
+        run: |
+          # Validate vendor names
+          case "${RUNNER_LABEL}" in
+            h20)
+              VENDOR="nvidia"
+              ;;
+            moore)
+              VENDOR="mthreads"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              ;;
+          esac
+
+          echo "VENDOR=${VENDOR}"
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+
+          ./setup.sh ${VENDOR}
+
+      - name: Check GPU availability
+        shell: bash
+        run: |
+          bash "tools/gpu_check_${VENDOR}.sh"
+
+      - name: Run tests
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          source tools/set-env.sh ${VENDOR}
+          tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: random-test
+          path: results/

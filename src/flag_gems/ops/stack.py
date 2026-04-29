@@ -15,10 +15,6 @@ def stack_copy_func_kernel_4(
     in_ptr_b,
     in_ptr_c,
     in_ptr_d,
-    dim_size_in_a,
-    dim_size_in_b,
-    dim_size_in_c,
-    dim_size_in_d,
     dim_size_out,
     dim_prod_post,
     dim_offset_a,
@@ -36,34 +32,35 @@ def stack_copy_func_kernel_4(
 
     if pid_y == 0:
         in_ptr = in_ptr_a
-        dim_size_in = dim_size_in_a
         dim_offset = dim_offset_a
         total_elements = total_elements_a
     elif pid_y == 1:
         in_ptr = in_ptr_b
-        dim_size_in = dim_size_in_b
         dim_offset = dim_offset_b
         total_elements = total_elements_b
     elif pid_y == 2:
         in_ptr = in_ptr_c
-        dim_size_in = dim_size_in_c
         dim_offset = dim_offset_c
         total_elements = total_elements_c
     else:
         in_ptr = in_ptr_d
-        dim_size_in = dim_size_in_d
         dim_offset = dim_offset_d
         total_elements = total_elements_d
 
-    block_start = pid_x * BLOCK_X
-    offsets = tl.arange(0, BLOCK_X)
-    mask = block_start + offsets < total_elements
-
+    block_start = pid_x.to(tl.int64) * BLOCK_X
+    offsets = tl.arange(0, BLOCK_X).to(tl.int64)
     idx = block_start + offsets
+    scalar_zero = offsets * 0
 
-    pre_idx = idx // (dim_size_in * dim_prod_post)
-    post_idx = idx % dim_prod_post
+    dim_size_out = dim_size_out + scalar_zero
+    dim_prod_post = dim_prod_post + scalar_zero
+    dim_offset = dim_offset + scalar_zero
+    total_elements = total_elements + scalar_zero
+
+    mask = idx < total_elements
+
     pre_idx = idx // dim_prod_post
+    post_idx = idx % dim_prod_post
 
     out_idx = (
         pre_idx * dim_size_out * dim_prod_post + dim_offset * dim_prod_post + post_idx
@@ -126,10 +123,10 @@ def stack(
             if j < num_tensors_in_batch:
                 tensor = tensors_in_batch[j].contiguous()
                 total_elements = tensor.numel()
-                args.extend([tensor, 1, i + j, total_elements])
+                args.extend([tensor, i + j, total_elements])
                 total_elements_list.append(total_elements)
             else:
-                args.extend([tensors_in_batch[0], 0, 0, 0])
+                args.extend([tensors_in_batch[0], 0, 0])
                 total_elements_list.append(0)
 
         dim_size_out = len(tensors)
@@ -140,19 +137,15 @@ def stack(
 
         (
             tensor_a,
-            dim_size_in_a,
             dim_offset_a,
             total_elements_a,
             tensor_b,
-            dim_size_in_b,
             dim_offset_b,
             total_elements_b,
             tensor_c,
-            dim_size_in_c,
             dim_offset_c,
             total_elements_c,
             tensor_d,
-            dim_size_in_d,
             dim_offset_d,
             total_elements_d,
         ) = args
@@ -163,10 +156,6 @@ def stack(
             tensor_b,
             tensor_c,
             tensor_d,
-            dim_size_in_a,
-            dim_size_in_b,
-            dim_size_in_c,
-            dim_size_in_d,
             dim_size_out,
             dim_prod_post,
             dim_offset_a,
