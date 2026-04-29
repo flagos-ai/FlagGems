@@ -32,6 +32,8 @@ def upsample_nearest2d_kernel(
     SAME_H: tl.constexpr,
     SAME_W: tl.constexpr,
     USE_INT32_IDX: tl.constexpr,
+    INTEGER_SCALE: tl.constexpr,
+    SCALE_2X: tl.constexpr,
 ):
     if USE_INT32_IDX:
         pid = tl.program_id(axis=0)
@@ -40,30 +42,72 @@ def upsample_nearest2d_kernel(
     nc_stride = tl.num_programs(axis=1)
     NC = N * C
     nc_iter = tl.program_id(axis=1)
-    pid = tl.program_id(axis=0)
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    ow = idx % OW
-    oh = idx // OW % OH
-    if SAME_H:
-        ih = oh
-    else:
-        # tl.floor() cannot be found in 2.3.1, using int trunc
-        ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
-    if SAME_W:
-        iw = ow
-    else:
-        iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
 
-    offset_o = (nc_iter * OH + oh) * OW + ow
-    offset_i = (nc_iter * IH + ih) * IW + iw
-    src_index_stride = nc_stride * IH * IW
-    dst_index_stride = nc_stride * OH * OW
-    while nc_iter < NC:
-        data = tl.load(ptr_i + offset_i)
-        tl.store(ptr_o + offset_o, data)
-        ptr_i += src_index_stride
-        ptr_o += dst_index_stride
-        nc_iter += nc_stride
+    if INTEGER_SCALE:
+        sh = OH // IH
+        sw = OW // IW
+        total_input = IH * IW
+        idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = idx < total_input
+        iw = idx % IW
+        ih = idx // IW % IH
+
+        if SCALE_2X:
+            while nc_iter < NC:
+                i_offset = nc_iter * IH * IW + ih * IW + iw
+                data = tl.load(ptr_i + i_offset, mask=mask, cache_modifier=".cg")
+                oh0 = ih * 2
+                oh1 = oh0 + 1
+                ow0 = iw * 2
+                o_base = nc_iter * OH * OW + oh0 * OW + ow0
+                tl.store(
+                    ptr_o + o_base[:, None] + tl.arange(0, 2)[None, :],
+                    data[:, None], mask=mask[:, None],
+                )
+                o_base1 = o_base + OW
+                tl.store(
+                    ptr_o + o_base1[:, None] + tl.arange(0, 2)[None, :],
+                    data[:, None], mask=mask[:, None],
+                )
+                nc_iter += nc_stride
+        else:
+            while nc_iter < NC:
+                i_offset = nc_iter * IH * IW + ih * IW + iw
+                data = tl.load(ptr_i + i_offset, mask=mask, cache_modifier=".cg")
+                oh_base = ih * sh
+                ow_base = iw * sw
+                for hh in range(sh):
+                    oh = oh_base + hh
+                    o_row_offset = nc_iter * OH * OW + oh * OW + ow_base
+                    for ww in range(sw):
+                        tl.store(ptr_o + o_row_offset + ww, data, mask=mask)
+                nc_iter += nc_stride
+    else:
+        total_spatial = OH * OW
+        idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = idx < total_spatial
+        ow = idx % OW
+        oh = idx // OW % OH
+        if SAME_H:
+            ih = oh
+        else:
+            # tl.floor() cannot be found in 2.3.1, using int trunc
+            ih = tl.minimum((oh * reciprocal_scale_h).to(tl.int32), IH - 1)
+        if SAME_W:
+            iw = ow
+        else:
+            iw = tl.minimum((ow * reciprocal_scale_w).to(tl.int32), IW - 1)
+
+        offset_o = (nc_iter * OH + oh) * OW + ow
+        offset_i = (nc_iter * IH + ih) * IW + iw
+        src_index_stride = nc_stride * IH * IW
+        dst_index_stride = nc_stride * OH * OW
+        while nc_iter < NC:
+            data = tl.load(ptr_i + offset_i, mask=mask, cache_modifier=".ca")
+            tl.store(ptr_o + offset_o, data, mask=mask)
+            ptr_i += src_index_stride
+            ptr_o += dst_index_stride
+            nc_iter += nc_stride
 
 
 def upsample_nearest2d(
@@ -88,7 +132,10 @@ def upsample_nearest2d(
         reciprocal_scale_w = IW / OW
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    total_threads = OH * OW
+    is_integer_scale = (
+        OH % IH == 0 and OW % IW == 0 and (OH // IH > 1 or OW // IW > 1)
+    )
+    total_threads = (IH * IW) if is_integer_scale else (OH * OW)
     grid = lambda META: (
         triton.cdiv(total_threads, META["BLOCK_SIZE"]),
         triton.cdiv(N * C, 4),
