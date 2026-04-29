@@ -49,7 +49,7 @@ def logspace(
     device=None,
     pin_memory=None,
 ) -> torch.Tensor:
-    logger.debug("GEMS LOGSPACE")
+    logger.debug("GEMS_KUNLUNXIN LOGSPACE")
     assert steps >= 0, "number of steps must be non-negative"
     out_dtype = dtype if dtype is not None else torch.get_default_dtype()
     out = torch.empty(
@@ -71,7 +71,7 @@ def logspace(
         if isinstance(end, torch.Tensor):
             end = end.item()
         step_size = (float(end) - float(start)) / (steps - 1)
-        BLOCK_SIZE = 256  # according to benchmark, 256 is the best block size
+        BLOCK_SIZE = 1024  # larger block size for better throughput
         grid = (triton.cdiv(steps, BLOCK_SIZE),)
         logspace_kernel[grid](
             out,
