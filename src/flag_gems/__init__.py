@@ -43,10 +43,14 @@ _FULL_CONFIG = (
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
     ("_log_softmax", log_softmax),
+    ("_log_softmax.out", log_softmax_out),
     ("_log_softmax_backward_data", log_softmax_backward),
+    ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_safe_softmax", _safe_softmax),
     ("_softmax", softmax),
+    ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
+    ("_softmax_backward_data.out", softmax_backward_out),
     (
         "_to_copy",
         to_copy,
@@ -65,11 +69,15 @@ _FULL_CONFIG = (
     ("add.Tensor", add),
     ("add_.Tensor", add_),
     ("addcdiv", addcdiv),
+    ("addcdiv.out", addcdiv_out),
     ("addcmul", addcmul),
+    ("addcmul.out", addcmul_out),
     ("addmv", addmv),
     ("addmv.out", addmv_out),
     ("addmm", addmm),
     ("addmm.out", addmm_out),
+    ("addmm.dtype", addmm_dtype),
+    ("addmm.dtype_out", addmm_dtype_out),
     ("addr", addr),
     ("alias_copy", alias_copy),
     ("all", all),
@@ -122,6 +130,7 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("cat", cat),
+    ("cat.out", cat_out),
     ("celu", celu),
     ("celu_", celu_),
     ("ceil", ceil),
@@ -394,8 +403,8 @@ _FULL_CONFIG = (
     ("rms_norm", rms_norm),
     ("roll", roll),
     ("round", round),
-    ("round.out", round_out),
     ("round_", round_),
+    ("round.out", round_out),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rsqrt", rsqrt),
     ("rsqrt_", rsqrt_),
@@ -498,6 +507,16 @@ for _item in _FULL_CONFIG:
     fn = _item[1]
     func_name = fn.__name__ if hasattr(fn, "__name__") else str(fn)
     FULL_CONFIG_BY_FUNC.setdefault(func_name, []).append(_item)
+
+# Friendly names for only_enable(include=[...]) when the registered impl is *.out
+for _alias, _target in (
+    ("softmax", "softmax_out"),
+    ("softmax_backward", "softmax_backward_out"),
+    ("log_softmax", "log_softmax_out"),
+    ("log_softmax_backward", "log_softmax_backward_out"),
+):
+    if _target in FULL_CONFIG_BY_FUNC:
+        FULL_CONFIG_BY_FUNC.setdefault(_alias, []).extend(FULL_CONFIG_BY_FUNC[_target])
 
 
 def enable(
