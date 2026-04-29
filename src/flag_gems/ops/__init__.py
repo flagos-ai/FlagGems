@@ -86,6 +86,7 @@ from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
+from flag_gems.ops.ctc_loss import _ctc_loss_backward_impl, _ctc_loss_impl, ctc_loss
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
@@ -354,6 +355,8 @@ from flag_gems.ops.zeros_like import zeros_like
 __all__ = [
     "_assert_async",
     "_conv_depthwise2d",
+    "_ctc_loss_backward_impl",
+    "_ctc_loss_impl",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_is_all_true",
@@ -462,6 +465,7 @@ __all__ = [
     "cosh_",
     "cosh_out",
     "count_nonzero",
+    "ctc_loss",
     "cummax",
     "cummin",
     "cumsum",

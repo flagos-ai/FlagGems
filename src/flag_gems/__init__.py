@@ -34,6 +34,10 @@ _FULL_CONFIG = (
     ("__or__.Tensor", bitwise_or_tensor),
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_ctc_loss", _ctc_loss_impl),
+    ("_ctc_loss.Tensor", _ctc_loss_impl),
+    ("_ctc_loss_backward", _ctc_loss_backward_impl),
+    ("_ctc_loss_backward.Tensor", _ctc_loss_backward_impl),
     ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range_for_size",
