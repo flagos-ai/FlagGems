@@ -79,18 +79,17 @@ def test_avg_pool2d():
     bench.run()
 
 
-@pytest.mark.skip(reason="Test case fails due to missing parameter self.")
 @pytest.mark.avg_pool2d_backward
 def test_avg_pool2d_backward():
     if flag_gems.vendor_name == "mthreads":
         dtypes = [torch.float32]
     else:
-        dtypes = [consts.FLOAT_DTYPES]
+        dtypes = consts.FLOAT_DTYPES
 
     bench = AvgPool2dBenchmark(
         input_fn=avg_pool2d_input_fn,
         op_name="avg_pool2d_backward",
-        torch_op=torch.ops.aten.avg_pool2d_backward,
+        torch_op=torch.ops.aten.avg_pool2d,
         dtypes=dtypes,
         is_backward=True,
     )
