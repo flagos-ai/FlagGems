@@ -128,6 +128,7 @@ from flag_gems.ops.fill import (
 from flag_gems.ops.flip import flip
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmin import fmin, fmin_out
+from flag_gems.ops.fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
@@ -497,6 +498,10 @@ __all__ = [
     "floor_divide_",
     "fmin",
     "fmin_out",
+    "fmod_scalar",
+    "fmod_scalar_",
+    "fmod_tensor",
+    "fmod_tensor_",
     "full",
     "full_like",
     "gather",
