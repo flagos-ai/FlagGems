@@ -13,7 +13,7 @@ class SafeSoftmaxBenchmark(base.Benchmark):
             yield inp, -1, None
 
 
-@pytest.mark.safe_softmax
+@pytest.mark._safe_softmax
 def test_safe_softmax():
     bench = SafeSoftmaxBenchmark(
         op_name="_safe_softmax",
