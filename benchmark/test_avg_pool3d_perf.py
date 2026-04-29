@@ -3,12 +3,11 @@ from typing import Generator
 import pytest
 import torch
 
-from benchmark.attri_util import FLOAT_DTYPES, BenchLevel
-from benchmark.performance_utils import Config, GenericBenchmark, generate_tensor_input
+from . import base, consts, utils
 
 
 def avg_pool3d_input_fn(shape, dtype, device):
-    inp = generate_tensor_input(shape, dtype, device)
+    inp = utils.generate_tensor_input(shape, dtype, device)
     # Common case
     yield inp, {
         "kernel_size": 3,
@@ -18,7 +17,7 @@ def avg_pool3d_input_fn(shape, dtype, device):
         "count_include_pad": True,
         "divisor_override": None,
     }
-    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         # With count_include_pad=False
         yield inp, {
             "kernel_size": 3,
@@ -49,8 +48,8 @@ def avg_pool3d_input_fn(shape, dtype, device):
             }
 
 
-class AvgPool3dBenchmark(GenericBenchmark):
-    def get_input_iter(self, cur_dtype) -> Generator:
+class AvgPool3dBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype) -> Generator:
         shapes_5d = [
             (4, 3, 16, 56, 56),
             (8, 64, 8, 28, 28),
@@ -59,7 +58,7 @@ class AvgPool3dBenchmark(GenericBenchmark):
         ]
 
         for shape in shapes_5d:
-            yield from self.input_fn(shape, cur_dtype, self.device)
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 @pytest.mark.avg_pool3d
@@ -68,18 +67,18 @@ def test_perf_avg_pool3d():
         input_fn=avg_pool3d_input_fn,
         op_name="avg_pool3d",
         torch_op=torch.ops.aten.avg_pool3d,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.avg_pool3d
+@pytest.mark.avg_pool3d_backward
 def test_perf_avg_pool3d_backward():
     bench = AvgPool3dBenchmark(
         input_fn=avg_pool3d_input_fn,
         op_name="avg_pool3d",
         torch_op=torch.ops.aten.avg_pool3d,
-        dtypes=FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
     )
     bench.run()
