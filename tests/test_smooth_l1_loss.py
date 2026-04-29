@@ -90,9 +90,11 @@ def test_smooth_l1_loss_out():
     inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
     target = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
     out = torch.empty_like(inp)
-    ref_out = torch.empty_like(inp)
+    ref_inp = utils.to_reference(inp).to(torch.float32)
+    ref_target = utils.to_reference(target).to(torch.float32)
+    ref_out = torch.empty_like(ref_inp)
 
-    torch.ops.aten.smooth_l1_loss.out(inp, target, 0, 0.5, out=ref_out)
+    torch.ops.aten.smooth_l1_loss.out(ref_inp, ref_target, 0, 0.5, out=ref_out)
     with flag_gems.use_gems():
         res_out = torch.ops.aten.smooth_l1_loss.out(inp, target, 0, 0.5, out=out)
 
@@ -104,10 +106,12 @@ def test_smooth_l1_loss_out():
 def test_smooth_l1_loss_out_reduced():
     inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
     target = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
-    out = torch.empty((), dtype=torch.float32, device=flag_gems.device)
-    ref_out = torch.empty((), dtype=torch.float32, device=flag_gems.device)
+    out = torch.empty_like(inp)
+    ref_inp = utils.to_reference(inp).to(torch.float32)
+    ref_target = utils.to_reference(target).to(torch.float32)
+    ref_out = torch.empty_like(ref_inp)
 
-    torch.ops.aten.smooth_l1_loss.out(inp, target, 1, 1.0, out=ref_out)
+    torch.ops.aten.smooth_l1_loss.out(ref_inp, ref_target, 1, 1.0, out=ref_out)
     with flag_gems.use_gems():
         res_out = torch.ops.aten.smooth_l1_loss.out(inp, target, 1, 1.0, out=out)
 
@@ -119,9 +123,11 @@ def test_smooth_l1_loss_out_reduced():
 def test_smooth_l1_loss_functional():
     inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
     target = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp).to(torch.float32)
+    ref_target = utils.to_reference(target).to(torch.float32)
 
     ref_out = torch.nn.functional.smooth_l1_loss(
-        inp, target, reduction="mean", beta=0.5
+        ref_inp, ref_target, reduction="mean", beta=0.5
     )
     with flag_gems.use_gems():
         res_out = torch.nn.functional.smooth_l1_loss(
