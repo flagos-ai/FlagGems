@@ -1854,7 +1854,7 @@ def test_roll_single_dim(shape, dtype, shifts_dims):
 
 
 @pytest.mark.special_i0e
-@pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
+@pytest.mark.parametrize("shape", [(512, 512), (128, 256), (2, 3)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_i0e(shape, dtype):
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
