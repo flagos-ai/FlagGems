@@ -70,6 +70,43 @@ def _smooth_l1_loss_sum_kernel(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, acc)
 
 
+@triton.jit
+def _smooth_l1_loss_backward_kernel(
+    grad_output,
+    inp,
+    target,
+    out,
+    n_elements,
+    reduction_elements,
+    beta: tl.constexpr,
+    reduction: tl.constexpr,
+    GRAD_OUTPUT_SCALAR: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    inp_val = tl.load(inp + offsets, mask=mask, other=0.0).to(tl.float32)
+    target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
+    diff = inp_val - target_val
+
+    if beta == 0.0:
+        grad = tl.where(diff == 0.0, float("nan"), tl.where(diff > 0.0, 1.0, -1.0))
+    else:
+        grad = tl.where(diff < -beta, -1.0, tl.where(diff > beta, 1.0, diff / beta))
+
+    if GRAD_OUTPUT_SCALAR:
+        grad_out = tl.load(grad_output).to(tl.float32)
+        if reduction == 1:
+            grad_out = grad_out * (1.0 / reduction_elements)
+    else:
+        grad_out = tl.load(grad_output + offsets, mask=mask, other=0.0).to(tl.float32)
+        if reduction == 1:
+            grad_out = grad_out * (1.0 / reduction_elements)
+    tl.store(out + offsets, grad * grad_out, mask=mask)
+
+
 def _normalize_reduction(reduction):
     if isinstance(reduction, str):
         if reduction == "none":
@@ -94,6 +131,22 @@ def _check_input(input, target, beta):
         )
     input, target = torch.broadcast_tensors(input, target)
     return input.contiguous(), target.contiguous()
+
+
+def _check_backward_input(grad_output, input, target, beta):
+    reduction_elements = input.numel()
+    input, target = _check_input(input, target, beta)
+    if grad_output.device.type != device:
+        raise AssertionError(
+            "smooth_l1_loss_backward: grad_output must be a CUDA tensor."
+        )
+    if grad_output.device != input.device:
+        raise AssertionError(
+            "smooth_l1_loss_backward: grad_output must be on the same device."
+        )
+    if grad_output.numel() != 1:
+        grad_output = torch.broadcast_to(grad_output, input.shape)
+    return grad_output.contiguous(), input, target, reduction_elements
 
 
 def _empty_reduction(input, reduction):
@@ -200,3 +253,37 @@ def smooth_l1_loss_out(
     if reduction == 0:
         return _smooth_l1_loss_none(input, target, float(beta), out=out)
     return _smooth_l1_loss_reduce(input, target, float(beta), reduction, out=out)
+
+
+def smooth_l1_loss_backward(
+    grad_output: torch.Tensor,
+    input: torch.Tensor,
+    target: torch.Tensor,
+    reduction,
+    beta: float,
+) -> torch.Tensor:
+    logger.debug("GEMS SMOOTH_L1_LOSS BACKWARD")
+    reduction = _normalize_reduction(reduction)
+    grad_output, input, target, reduction_elements = _check_backward_input(
+        grad_output, input, target, float(beta)
+    )
+    out = torch.empty_like(input)
+    n_elements = input.numel()
+    if n_elements == 0:
+        return out
+
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(input.device):
+        _smooth_l1_loss_backward_kernel[grid](
+            grad_output,
+            input,
+            target,
+            out,
+            n_elements,
+            reduction_elements,
+            beta=float(beta),
+            reduction=reduction,
+            GRAD_OUTPUT_SCALAR=grad_output.numel() == 1,
+            BLOCK_SIZE=1024,
+        )
+    return out

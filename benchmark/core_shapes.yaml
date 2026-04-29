@@ -87,6 +87,14 @@ smooth_l1_loss:
     - [64, 512, 512]
   shape_desc: "(B), M, N"
 
+smooth_l1_loss_backward:
+  shapes:
+    - [262144]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
 diag:
   shapes:
     - [64]
