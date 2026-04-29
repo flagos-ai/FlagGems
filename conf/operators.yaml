@@ -3182,6 +3182,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: smooth_l1_loss
+    description: Compute the smooth L1 loss between input and target tensors.
+    for:
+      - smooth_l1_loss
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: mul
     description: Multiplies `input` by `other`.
     for:

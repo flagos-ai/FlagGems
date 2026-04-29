@@ -79,6 +79,14 @@ softmax_backward:
     - [64, 512, 512]
     - [256, 1024, 1024]
 
+smooth_l1_loss:
+  shapes:
+    - [262144]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [64, 512, 512]
+  shape_desc: "(B), M, N"
+
 diag:
   shapes:
     - [64]
