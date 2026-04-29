@@ -6,7 +6,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.safe_softmax
+@pytest.mark._safe_softmax
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [-1, 0])
