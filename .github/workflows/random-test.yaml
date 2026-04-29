@@ -27,7 +27,32 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  check-permission:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.makeDecision.outputs.continue }}
+    steps:
+      - id: checkUser
+        uses: tspascoal/get-user-teams-membership@v3
+        with:
+          username: ${{ github.actor }}
+          team: 'FlagGems'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: makeDecision
+        env:
+          IS_MEMBER: ${{ steps.checkUser.outputs.isTeamMember }}
+        run: |
+          if [[ "${IS_MEMBER}" == "false" ]]; then
+            echo "Unauthorized user: ${{ github.actor }}"
+            echo "continue=false" >> $GITHUB_OUTPUT
+          else
+            echo "continue=true" >> $GITHUB_OUTPUT
+          fi
+
+  test-operator:
+    needs: check-permission
+    if: needs.check-permission.outputs.authorized == 'true'
     runs-on: ${{ inputs.runner }}
     steps:
       # - name: Set global proxy
@@ -46,11 +71,6 @@ jobs:
       #         echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
       #         ;;
       #     esac
-
-      - name: Dump context
-        env:
-          GITHUB_CONTEXT: ${{ toJSON(github) }}
-        run: echo "$GITHUB_CONTEXT"
 
       - uses: actions/checkout@v6
         # with:
