@@ -74,3 +74,29 @@ def test_upsample_nearest2d_backward(dtype, shape, output_size, scales):
     else:
         atol = 2e-2
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
+
+
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.parametrize(
+    "grad_shape,output_size,input_size,error_msg",
+    [
+        ((1, 1, 4), [2, 2], [1, 1, 2, 2], "ndim of grad_output"),
+        ((1, 1, 4, 4), [4], [1, 1, 2, 2], "len of output_size"),
+        ((1, 1, 4, 4), [4, 4], [1, 1, 2], "len of input_size"),
+    ],
+)
+def test_upsample_nearest2d_backward_invalid_args(
+    grad_shape, output_size, input_size, error_msg
+):
+    grad_output = torch.randn(
+        grad_shape, dtype=torch.float32, device=flag_gems.device
+    )
+
+    with flag_gems.use_gems(), pytest.raises(AssertionError, match=error_msg):
+        torch.ops.aten.upsample_nearest2d_backward(
+            grad_output,
+            output_size,
+            input_size,
+            None,
+            None,
+        )
