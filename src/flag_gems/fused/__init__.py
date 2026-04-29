@@ -1,5 +1,6 @@
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.bincount import bincount
+from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm
@@ -53,6 +54,7 @@ __all__ = [
     "apply_rotary_pos_emb",
     "bincount",
     "bucket_sort_topk",
+    "chunk_gated_delta_rule",
     "chunk_gated_delta_rule_fwd",
     "concat_and_cache_mla",
     "cutlass_scaled_mm",
@@ -90,8 +92,8 @@ __all__ = [
     "silu_and_mul_out",
     "sinkhorn_forward",
     "skip_layer_norm",
+    "sparse_attn_triton",
     "swiglu",
     "topk_softmax",
     "weight_norm",
-    "sparse_attn_triton",
 ]

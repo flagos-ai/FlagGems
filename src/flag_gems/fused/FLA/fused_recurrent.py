@@ -434,7 +434,7 @@ def fused_recurrent_gated_delta_rule_large_t_fwd_kernel(
             p_h0 = h0 + state_idx * stride_init_state_token
         else:
             p_h0 = h0 + bos * HV * V * K
-        p_h0 = p_h0 + i_hv * V * K + o_v[:, None] * K + o_k[None, :]
+        p_h0 = p_h0 + i_hv * V * K + o_k[None, :] * V + o_v[:, None]
         b_h += tl.load(p_h0, mask=mask_h, other=0).to(tl.float32)
 
     for i_t in range(0, T):
@@ -475,11 +475,11 @@ def fused_recurrent_gated_delta_rule_large_t_fwd_kernel(
             # Only store if state index is valid (not PAD_SLOT_ID)
             if final_state_idx >= 0:
                 p_ht = ht + final_state_idx * stride_final_state_token
-                p_ht = p_ht + i_hv * V * K + o_v[:, None] * K + o_k[None, :]
+                p_ht = p_ht + i_hv * V * K + o_k[None, :] * V + o_v[:, None]
                 tl.store(p_ht, b_h.to(p_ht.dtype.element_ty), mask=mask_h)
         else:
             p_ht = ht + (bos + i_t) * stride_final_state_token
-            p_ht = p_ht + i_hv * V * K + o_v[:, None] * K + o_k[None, :]
+            p_ht = p_ht + i_hv * V * K + o_k[None, :] * V + o_v[:, None]
             tl.store(p_ht, b_h.to(p_ht.dtype.element_ty), mask=mask_h)
 
         p_q += H * K
@@ -523,6 +523,12 @@ def fused_recurrent_gated_delta_rule_fwd(
     )
 
     o = q.new_empty(NK, *v.shape)
+    # Keep the recurrent state layout aligned with chunk/Qwen3-Next: [HV, K, V].
+    if initial_state.ndim != 4 or initial_state.shape[-3:] != (HV, K, V):
+        raise ValueError(
+            "initial_state must have trailing shape "
+            f"{(HV, K, V)}, but got {tuple(initial_state.shape)}"
+        )
     if inplace_final_state:
         final_state = initial_state
     else:

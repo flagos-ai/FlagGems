@@ -367,7 +367,7 @@ def chunk_gated_delta_rule_fused_cumsum_kkt_solve_tril(
     )
     NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
 
-    g_out = torch.empty_like(g)
+    g_out = torch.empty_like(g, dtype=torch.float32)
     A = torch.empty(B, T, H, BT, device=g.device, dtype=torch.float32)
     A_inv = torch.zeros(B, T, H, BT, device=g.device, dtype=output_dtype)
 
