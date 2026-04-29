@@ -30,22 +30,22 @@ jobs:
   test:
     runs-on: ${{ inputs.runner }}
     steps:
-      - name: Set global proxy
-        if: False
-        shell: bash
-        env:
-          RUNNER_LABEL: ${{ inputs.runner }}
-          PROXY: ${{ secrets.PROXYG }}
-        run: |
-          # Setup proxy for git checkout
-          case "${RUNNER_LABEL}" in
-            h20|metax|hygon)
-              ;;
-            *)
-              echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
-              echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
-              ;;
-          esac
+      # - name: Set global proxy
+      #   if: False
+      #   shell: bash
+      #   env:
+      #     RUNNER_LABEL: ${{ inputs.runner }}
+      #     PROXY: ${{ secrets.PROXYG }}
+      #   run: |
+      #     # Setup proxy for git checkout
+      #     case "${RUNNER_LABEL}" in
+      #       h20|metax|hygon)
+      #         ;;
+      #       *)
+      #         echo "HTTP_PROXY=${PROXY}" >> $GITHUB_ENV
+      #         echo "HTTPS_PROXY=${PROXY}" >> $GITHUB_ENV
+      #         ;;
+      #     esac
 
       - uses: actions/checkout@v6
         # with:
@@ -55,25 +55,17 @@ jobs:
         shell: bash
         env:
           RUNNER_LABEL: ${{ inputs.runner }}
-          PROXY: ${{ secrets.PROXYC }}
         run: |
-          # Setup proxy for install if needed
+          # Validate vendor names
           case "${RUNNER_LABEL}" in
-            h20|metax|hygon)
-              if [[ "${RUNNER_LABEL}" == "h20" ]]; then
-                VENDOR="nvidia"
-              else
-                VENDOR="${RUNNER_LABEL}"
-              fi
+            h20)
+              VENDOR="nvidia"
+              ;;
+            moore)
+              VENDOR="mthreads"
               ;;
             *)
-              # export HTTP_PROXY="${PROXY}"
-              # export HTTPS_PROXY="${PROXY}"
-              if [[ "${RUNNER_LABEL}" == "moore" ]]; then
-                VENDOR="mthreads"
-              else
-                VENDOR="${RUNNER_LABEL}"
-              fi
+              VENDOR="${RUNNER_LABEL}"
               ;;
           esac
 
