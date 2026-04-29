@@ -9,14 +9,16 @@ export LD_LIBRARY_PATH=$TX8_DEPS_ROOT/lib:/usr/local/kuiper/lib:$LD_LIBRARY_PATH
 
 # NOTE: The following setting may be needed if there are exceptions related to txops.
 # export LD_LIBRARY_PATH=$SITE_PACKAGES/txops/lib:$LD_LIBRARY_PATH
-uv pip install -e . .[tsingmicro,test]
+uv pip install -e .
+uv pip install ".[tsingmicro,test]"
 
 uv pip install --index ${FLAGOS_PYPI} \
     "torch==2.7.0+cpu" \
     "torchvision==0.22.0" \
     "torchaudio==2.7.0" \
     "torch_txda==0.1.0+20260310.294fc4a6" \
-    "txops==0.1.0+20260225.5cc33e4e"
+    "txops==0.1.0+20260225.5cc33e4e" \
+    "flagtree==0.5.0+tsingmicro3.3"
 
 # Replace flagtree with Triton if requested
 if [ -n "${USE_TRITON}" ]; then
