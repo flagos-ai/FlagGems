@@ -232,6 +232,7 @@ _FULL_CONFIG = (
     ("gelu_backward", gelu_backward),
     ("glu", glu),
     ("glu_backward", glu_backward),
+    ("grid_sample", grid_sample),
     ("greater.Scalar", greater_scalar),
     ("greater.Tensor", greater),
     ("greater.Scalar_out", greater_scalar_out),
