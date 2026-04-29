@@ -119,7 +119,6 @@ def mm_kernel_general(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
-    IS_FP64: tl.constexpr = False,
 ):
     # matrix multiplication
     pid = tle.program_id(0)
@@ -168,17 +167,11 @@ def mm_kernel_general(
             block_shape=[BLOCK_M, BLOCK_N],
         )
 
-        if IS_FP64:
-            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
-        else:
-            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = a_desc.load([offset_am.to(tl.int32), offset_k.to(tl.int32)])
             b = b_desc.load([offset_k.to(tl.int32), offset_bn.to(tl.int32)])
-            if IS_FP64:
-                acc += tl.dot(a, b, allow_tf32=False)
-            else:
-                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
             offset_k += BLOCK_K
 
         acc = acc.to(a_desc.dtype)
@@ -194,10 +187,7 @@ def mm_kernel_general(
         rn = rn.to(tl.int64)
         prev_multiple = prev_multiple_of(K, BLOCK_K)
 
-        if IS_FP64:
-            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
-        else:
-            acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
         for start_k in range(0, prev_multiple, BLOCK_K):
             rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
             a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
@@ -205,10 +195,7 @@ def mm_kernel_general(
             if a.dtype != b.dtype:
                 a = a.to(C.dtype.element_ty)
                 b = b.to(C.dtype.element_ty)
-            if IS_FP64:
-                acc += tl.dot(a, b, allow_tf32=False)
-            else:
-                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
         # loop peeling
         rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
@@ -226,10 +213,7 @@ def mm_kernel_general(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        if IS_FP64:
-            acc += tl.dot(a, b, allow_tf32=False)
-        else:
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
         acc = acc.to(C.dtype.element_ty)
         # rematerialize rm and rn to save registers
@@ -359,7 +343,7 @@ def mm_kernel_general_host_tma(
 
 
 def get_higher_dtype(a, b):
-    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
 
     if a is b:
         return a
@@ -385,11 +369,6 @@ def general_mm(a, b, c, M, N, K):
         a.stride(0) == 1,
         b.stride(0) == 1,
     )
-    # Broadcast tensors from expand() have stride=0, incompatible with TMA
-    if 0 in a.stride():
-        a = a.contiguous()
-    if 0 in b.stride():
-        b = b.contiguous()
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
@@ -456,7 +435,6 @@ def general_mm(a, b, c, M, N, K):
                 c.stride(0),
                 c.stride(1),
                 GROUP_M=8,
-                IS_FP64=a.dtype == torch.float64,
             )
     return c
 
@@ -493,7 +471,6 @@ def gemv_kernel(
     stride_bk,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    IS_FP64: tl.constexpr = False,
 ):
     """Optimized kernel for matrix-vector multiplication (N=1 case)"""
     pid = tl.program_id(0)
@@ -504,10 +481,7 @@ def gemv_kernel(
     row_mask = row_offset < M
 
     # Accumulator for this block of rows
-    if IS_FP64:
-        acc = tl.zeros((BLOCK_M,), dtype=tl.float64)
-    else:
-        acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
     # Iterate over K dimension
     for k_start in range(0, K, BLOCK_K):
@@ -523,10 +497,7 @@ def gemv_kernel(
         b = tl.load(b_ptrs, mask=k_mask, other=0.0)
 
         # Accumulate: sum over K dimension
-        if IS_FP64:
-            acc += tl.sum(a * b[None, :], axis=1)
-        else:
-            acc += tl.sum(a.to(tl.float32) * b.to(tl.float32)[None, :], axis=1)
+        acc += tl.sum(a * b[None, :], axis=1)
 
     # Store result
     c_ptrs = C + row_offset
@@ -554,7 +525,6 @@ def gemv_mm(a, b, c, M, K):
             a.stride(0),
             a.stride(1),
             b.stride(0),
-            IS_FP64=a.dtype == torch.float64,
         )
     return c
 

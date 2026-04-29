@@ -43,17 +43,6 @@ def fill_tensor_kernel(
     tl.store(out_ptr + offsets, val, mask=mask)
 
 
-def _as_contiguous(tensor):
-    """Return tensor.contiguous() view for use with flat-offset kernels.
-
-    For non-contiguous tensors this allocates a new buffer; callers that
-    need in-place semantics must copy back afterwards.
-    """
-    if tensor.is_contiguous():
-        return tensor, False
-    return tensor.contiguous(), True
-
-
 def fill_scalar(input, value):
     logger.debug("GEMS_HOPPER FILL_SCALAR")
     out = torch.empty_like(input)
@@ -68,13 +57,10 @@ def fill_scalar_out(input, value, *, out=None):
     logger.debug("GEMS_HOPPER FILL_SCALAR_OUT")
     if out is None:
         return fill_scalar(input, value)
-    out_contig, need_copy = _as_contiguous(out)
-    n_elements = out_contig.numel()
+    n_elements = out.numel()
     grid = (triton.cdiv(n_elements, 1024),)
     with torch_device_fn.device(input.device):
-        fill_scalar_kernel[grid](out_contig, value, n_elements, BLOCK_SIZE=1024)
-    if need_copy:
-        out.copy_(out_contig)
+        fill_scalar_kernel[grid](out, value, n_elements, BLOCK_SIZE=1024)
     return out
 
 
@@ -104,13 +90,10 @@ def fill_tensor_out(input, value, *, out=None):
         raise RuntimeError(
             f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
-    out_contig, need_copy = _as_contiguous(out)
-    n_elements = out_contig.numel()
+    n_elements = out.numel()
     grid = (triton.cdiv(n_elements, 1024),)
     with torch_device_fn.device(input.device):
-        fill_tensor_kernel[grid](out_contig, value, n_elements, BLOCK_SIZE=1024)
-    if need_copy:
-        out.copy_(out_contig)
+        fill_tensor_kernel[grid](out, value, n_elements, BLOCK_SIZE=1024)
     return out
 
 
@@ -122,33 +105,17 @@ def fill_tensor_(self, value):
         raise RuntimeError(
             f"fill only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
-    if self.is_contiguous():
-        n_elements = self.numel()
-        grid = (triton.cdiv(n_elements, 1024),)
-        with torch_device_fn.device(self.device):
-            fill_tensor_kernel[grid](self, value, n_elements, BLOCK_SIZE=1024)
-    else:
-        tmp = self.contiguous()
-        n_elements = tmp.numel()
-        grid = (triton.cdiv(n_elements, 1024),)
-        with torch_device_fn.device(self.device):
-            fill_tensor_kernel[grid](tmp, value, n_elements, BLOCK_SIZE=1024)
-        self.copy_(tmp)
+    n_elements = self.numel()
+    grid = (triton.cdiv(n_elements, 1024),)
+    with torch_device_fn.device(self.device):
+        fill_tensor_kernel[grid](self, value, n_elements, BLOCK_SIZE=1024)
     return self
 
 
 def fill_scalar_(self, value):
     logger.debug("GEMS_HOPPER FILL_SCALAR_")
-    if self.is_contiguous():
-        n_elements = self.numel()
-        grid = (triton.cdiv(n_elements, 1024),)
-        with torch_device_fn.device(self.device):
-            fill_scalar_kernel[grid](self, value, n_elements, BLOCK_SIZE=1024)
-    else:
-        tmp = self.contiguous()
-        n_elements = tmp.numel()
-        grid = (triton.cdiv(n_elements, 1024),)
-        with torch_device_fn.device(self.device):
-            fill_scalar_kernel[grid](tmp, value, n_elements, BLOCK_SIZE=1024)
-        self.copy_(tmp)
+    n_elements = self.numel()
+    grid = (triton.cdiv(n_elements, 1024),)
+    with torch_device_fn.device(self.device):
+        fill_scalar_kernel[grid](self, value, n_elements, BLOCK_SIZE=1024)
     return self

@@ -81,9 +81,9 @@ import triton
 from triton import language as tl
 
 from flag_gems.utils import libentry
-from flag_gems.runtime.backend import _state
-TOTAL_CORE_NUM = _state.vendor_module.utils.TOTAL_CORE_NUM
-MAX_NRAM_SIZE = _state.vendor_module.utils.MAX_NRAM_SIZE
+from flag_gems.runtime.backend import vendor_module
+TOTAL_CORE_NUM = vendor_module.utils.TOTAL_CORE_NUM
+MAX_NRAM_SIZE = vendor_module.utils.MAX_NRAM_SIZE
 
 
         """

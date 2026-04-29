@@ -14,15 +14,6 @@ from .utils import create_tma_device_descriptor, get_cached_tma_device_descripto
 
 logger = logging.getLogger("flag_gems.runtime.backend._mthreads.ops.mm")
 
-EXPAND_CONFIG_FILENAME = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "mm_mthreads_expand.yaml")
-)
-
-# Module-level capability flag: evaluated once at import time, then reused as
-# a constant for the entire process lifetime with no repeated parsing overhead.
-# False when Triton < 3.2 (e.g. 3.1), True when Triton >= 3.2.
-SQMMA_ON = tuple(int(x) for x in triton.__version__.split(".")[:2]) >= (3, 2)
-
 
 def is_supported_sqmma_layout(tensor):
     return tensor.is_contiguous() or (
@@ -32,7 +23,7 @@ def is_supported_sqmma_layout(tensor):
 
 def is_sqmma_compatible(a, b, N, K):
     return (
-        SQMMA_ON
+        os.getenv("MUSA_ENABLE_SQMMA", "0") == "1"
         and a.dim() == 2
         and b.dim() == 2
         and a.dtype == b.dtype
@@ -44,6 +35,10 @@ def is_sqmma_compatible(a, b, N, K):
     )
 
 
+def matmul_get_configs():
+    return runtime.get_tuned_config("mm")
+
+
 @triton.jit
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
@@ -52,17 +47,9 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("mm", yaml_path=EXPAND_CONFIG_FILENAME)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else runtime.get_tuned_config("mm"),
+    configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("mm", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
-    warmup=5,
-    rep=5,
+    strategy=["align32", "align32", "align32", "align32", "align32"],
 )
 @triton.jit
 def mm_kernel(
@@ -137,19 +124,15 @@ def mm_kernel(
     tl.store(C, acc, mask=mask)
 
 
+def gemv_get_configs():
+    return [triton.Config({"BLOCK_M": 64, "BLOCK_K": 64})]
+
+
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs("gemv", yaml_path=EXPAND_CONFIG_FILENAME)
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [triton.Config({"BLOCK_M": 64, "BLOCK_K": 64})],
+    configs=gemv_get_configs(),
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config("gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "default"],
-    warmup=5,
-    rep=5,
+    strategy=["align32", "align32", "align32", "default"],
 )
 @triton.jit
 def gemv_kernel(
@@ -328,30 +311,22 @@ def sqmma_descriptor_pre_hook(nargs):
     nargs["c_desc_ptr"].copy_(create_tma_device_descriptor(c, block_m, block_n, device))
 
 
-@libentry()
-@libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_general_tma",
-        pre_hook=sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
+def sqmma_get_configs(pre_hook=sqmma_descriptor_pre_hook):
+    return [
         triton.Config(
             {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64},
             num_stages=1,
             num_warps=4,
-            pre_hook=sqmma_descriptor_pre_hook,
+            pre_hook=pre_hook,
         )
-    ],
+    ]
+
+
+@libentry()
+@libtuner(
+    configs=sqmma_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
-    strategy=runtime.get_expand_config(
-        "mm_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32", "default"],
-    warmup=5,
-    rep=5,
+    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
 )
 @triton.jit
 def mm_sqmma_kernel(
@@ -501,11 +476,10 @@ def mm(a, b):
     _, N = b.shape
     # fp32 does not support MMA instructions, only enable SQMMA for fp16/bf16
     need_sqmma = a_dtype != torch.float32 and b_dtype != torch.float32
-    prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
+    prev_sqmma = None
     if need_sqmma:
+        prev_sqmma = os.environ.get("MUSA_ENABLE_SQMMA")
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
-    else:
-        os.environ.pop("MUSA_ENABLE_SQMMA", None)
     try:
         if N == 1:
             c_dtype = get_higher_dtype(a_dtype, b_dtype)
@@ -525,7 +499,8 @@ def mm(a, b):
         else:
             return mm_fma(a, b)
     finally:
-        if prev_sqmma is None:
-            os.environ.pop("MUSA_ENABLE_SQMMA", None)
-        else:
-            os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma
+        if need_sqmma:
+            if prev_sqmma is None:
+                os.environ.pop("MUSA_ENABLE_SQMMA", None)
+            else:
+                os.environ["MUSA_ENABLE_SQMMA"] = prev_sqmma

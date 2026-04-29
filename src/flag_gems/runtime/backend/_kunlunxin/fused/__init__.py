@@ -16,7 +16,6 @@ from .rwkv_ka_fusion import rwkv_ka_fusion
 from .rwkv_mm_sparsity import rwkv_mm_sparsity
 from .silu_and_mul import silu_and_mul, silu_and_mul_out
 from .skip_layernorm import skip_layer_norm
-from .sparse_attention import sparse_attn_triton
 from .topk_softmax import topk_softmax
 from .weight_norm import weight_norm
 
@@ -44,6 +43,5 @@ __all__ = [
     "rwkv_mm_sparsity",
     "dreglu",
     "reglu",
-    "sparse_attn_triton",
     "bincount",
 ]
