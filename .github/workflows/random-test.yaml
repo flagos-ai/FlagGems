@@ -38,7 +38,7 @@ jobs:
         with:
           username: ${{ github.actor }}
           team: 'FlagGems'
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.TEAMMEMBER_TOKEN }}
 
       - id: makeDecision
         env:
