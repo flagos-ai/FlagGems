@@ -42,6 +42,7 @@ class BackendState:
 _state = BackendState()
 vendor_module = _state.vendor_module
 
+
 class BackendArchEvent:
     has_arch: bool = False
     _instance = None
