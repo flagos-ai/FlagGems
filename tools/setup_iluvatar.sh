@@ -10,7 +10,7 @@ uv pip install --index ${FLAGOS_PYPI} \
     "torch==2.7.1+corex.4.4.0" \
     "torchaudio==2.7.1+corex.4.4.0" \
     "torchvision==0.22.1+corex.4.4.0" \
-    "flagtree==0.5.0+iluvatar3.1"
+    "flagtree==0.5.1+iluvatar3.1"
 
 # Replace flagtree by Triton if requested
 if [ -n "${USE_TRITON}" ]; then
