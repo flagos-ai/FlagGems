@@ -25,7 +25,6 @@ on:
         required: true
 permissions:
   contents: read
-  members: read
 
 jobs:
   check-permission:
