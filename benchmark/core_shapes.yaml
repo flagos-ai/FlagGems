@@ -71,6 +71,14 @@ gcd:
     - [64, 256, 256]
   shape_desc: "(B), M, N"
 
+median_dim:
+  shapes:
+    - [1024, 768]
+    - [2048, 1024]
+    - [1024, 2048]
+    - [2048, 4096]
+  shape_desc: "(B), M, N"
+
 softmax_backward:
   shapes:
     - [1048576] # 1024 * 1024
