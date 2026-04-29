@@ -31,6 +31,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Set global proxy
+        if: False
         shell: bash
         env:
           RUNNER_LABEL: ${{ inputs.runner }}
@@ -47,8 +48,8 @@ jobs:
           esac
 
       - uses: actions/checkout@v6
-        with:
-          ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
+        # with:
+        #  ssh-key: ${{ secrets.RUNNER_SSH_KEY }}
 
       - name: Setup FlagGems
         shell: bash
@@ -66,9 +67,9 @@ jobs:
               fi
               ;;
             *)
-              export HTTP_PROXY="${PROXY}"
-              export HTTPS_PROXY="${PROXY}"
-              if [[ "{RUNNER_LABEL}" == "moore" ]]; then
+              # export HTTP_PROXY="${PROXY}"
+              # export HTTPS_PROXY="${PROXY}"
+              if [[ "${RUNNER_LABEL}" == "moore" ]]; then
                 VENDOR="mthreads"
               else
                 VENDOR="${RUNNER_LABEL}"
