@@ -5201,6 +5201,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: upsample_nearest2d_backward
+    description: |
+      The backward case for `upsample_nearest2d`.
+    for:
+      - upsample_nearest2d_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: upsample_nearest3d
     description: |
       Performs 3D nearest-neighbor interpolation to increase the spatial size of volumetric data,
